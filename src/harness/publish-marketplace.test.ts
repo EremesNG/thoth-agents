@@ -47,7 +47,12 @@ function commitAll(root: string, message: string): void {
 function setCatalogBaseline(root: string, publishedVersion: string): void {
   const registryPath = join(root, 'catalog', 'plugins.json');
   const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as {
-    plugins: Array<{ name: string; version: string; ref: string }>;
+    plugins: Array<{
+      name: string;
+      version: string;
+      ref: string;
+      requiredSkills: string[];
+    }>;
   };
   const plugin = registry.plugins.find(({ name }) => name === 'thoth-agents');
   if (!plugin) throw new Error('Central fixture is missing thoth-agents');
@@ -55,6 +60,14 @@ function setCatalogBaseline(root: string, publishedVersion: string): void {
   const baselineVersion = publishedVersion === '0.0.0' ? '0.0.1' : '0.0.0';
   plugin.version = baselineVersion;
   plugin.ref = `v${baselineVersion}`;
+  // The previous release contract must evolve with renamed packaged skills.
+  plugin.requiredSkills = [
+    'plan-reviewer',
+    'thoth-archive',
+    'thoth-constitution',
+    'thoth-init',
+    'thoth-sdd',
+  ];
   writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
   execFileSync(process.execPath, ['scripts/render.mjs'], {
     cwd: root,
@@ -68,7 +81,12 @@ interface Fixture {
   pluginRemote: string;
   pluginWork: string;
   initialRegistry: {
-    plugins: Array<{ name: string; version: string; ref: string }>;
+    plugins: Array<{
+      name: string;
+      version: string;
+      ref: string;
+      requiredSkills: string[];
+    }>;
   };
 }
 
@@ -228,6 +246,16 @@ describe('thoth-agents marketplace publication', () => {
       readFileSync(join(checkout, 'catalog', 'plugins.json'), 'utf8'),
     ) as Fixture['initialRegistry'];
     expect(
+      registry.plugins.find(({ name }) => name === 'thoth-agents')
+        ?.requiredSkills,
+    ).toEqual([
+      'plan-reviewer',
+      'thoth-archive',
+      'thoth-constitution',
+      'thoth-init',
+      'thoth-sdd',
+    ]);
+    expect(
       registry.plugins.find(({ name }) => name === 'thoth-agents'),
     ).toMatchObject({
       version: '0.3.12',
@@ -278,6 +306,35 @@ describe('thoth-agents marketplace publication', () => {
         pluginRepository: fixture.pluginRemote,
       }),
     ).rejects.toThrow(/tag v0\.3\.13 is not visible/u);
+  });
+
+  test('validates synchronized required skills against the released tag', async () => {
+    const fixture = createFixture();
+    const extraSkill = join(
+      fixture.pluginWork,
+      'plugin',
+      'skills',
+      'unreleased-skill',
+    );
+    mkdirSync(extraSkill);
+    writeFileSync(
+      join(extraSkill, 'SKILL.md'),
+      '# Local artifact not present in the release tag\n',
+    );
+    await expect(
+      publishMarketplace({
+        projectRoot: fixture.pluginWork,
+        pluginName: 'thoth-agents',
+        centralRepository: fixture.centralRemote,
+        pluginRepository: fixture.pluginRemote,
+      }),
+    ).rejects.toThrow(/required Skill unreleased-skill is missing/u);
+    const checkout = cloneCentral(fixture, 'rejected-checkout');
+    expect(
+      JSON.parse(
+        readFileSync(join(checkout, 'catalog', 'plugins.json'), 'utf8'),
+      ),
+    ).toEqual(fixture.initialRegistry);
   });
 
   test('rejects a central main race through a normal non-force push', async () => {

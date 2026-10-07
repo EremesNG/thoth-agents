@@ -54,8 +54,7 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
   librarian: 'sonnet',
   oracle: 'opus',
   designer: 'sonnet',
-  quick: 'haiku',
-  deep: 'sonnet',
+  worker: 'sonnet',
 } as const satisfies Record<
   Exclude<AgentRoleName, 'orchestrator'>,
   ClaudeCodeModel
@@ -65,9 +64,8 @@ type ClaudeCodeSubagentName = keyof typeof CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS;
 
 export const CLAUDE_CODE_SUBAGENT_DEFAULT_EFFORTS = {
   explorer: 'low',
-  quick: 'low',
   designer: 'medium',
-  deep: 'medium',
+  worker: 'medium',
   librarian: 'high',
   oracle: 'high',
 } as const satisfies Record<ClaudeCodeSubagentName, string>;
@@ -159,7 +157,7 @@ export function renderClaudeCodeRootInstructions(
     rootPrompt,
     '<claude-code-runtime>',
     '- You are the Claude Code adaptive root activated by plugin settings.json.',
-    `- Delegate only for net gain through Agent with \`subagent_type\` set to one of these plugin-namespaced specialists: ${specialists}. Always keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
+    `- When delegation is selected, use Agent with \`subagent_type\`: ${specialists}. Honor shared ownership and explicit direct-work instructions. Keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
     '- Subagents cannot delegate further. Parallelize only independent work and maintain one writer per mutable surface.',
     '- Read-only roles deny Write and Edit while retaining other inherited tools, including MCP tools. Coordination-agent path scope remains instruction-level.',
     '- Use AskUserQuestion only for blocking material choices and TodoWrite only for genuine multi-step progress.',
@@ -220,7 +218,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with seven roles and a runtime-autonomous Spec Kit-compatible SDD bundle for Claude Code.',
+      'Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -232,7 +230,7 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
     (candidate) => candidate.name !== 'orchestrator',
   )) {
     // A denylist preserves inherited MCP tools while enforcing read-only roles.
-    // Coordination agents need Edit/Write, so their openspec/ path scope remains
+    // Coordination agents need Edit/Write, so their .thoth/ path scope remains
     // instruction-level.
     const content = renderClaudeCodeSubagent({
       name: role.name,
@@ -268,7 +266,7 @@ function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
     name: 'orchestrator',
     description:
       orchestrator?.responsibility ??
-      'Adaptive root coordinator for direct work, SDD routing, and specialist dispatch.',
+      'Adaptive root coordinator for human agreement, SDD classification, and specialist dispatch.',
     model: 'inherit',
     instructions: renderClaudeCodeRootInstructions(config),
   });

@@ -1,48 +1,7 @@
-# Tasks contract
+# Tasks
 
-**Owner**: root<br>
-**Output**: `openspec/changes/<feature>/tasks.md`
+For substantial work, record only useful implementation slices in the same ID-named record. `tasks` and `ready` gates require every accepted outcome to have concrete task coverage; planning does not. Use one checkbox row per independently acceptable work unit, with the validator-compatible `- [ ] AC-n: ...` form on that row; repeat an AC number when separate units contribute to it. Keep the outcome in the row and indent its details as shown in the template: exact known entrypoints and skill paths; concrete accepted inputs and upstream dependencies; produced output; owner, owned writes and interface boundaries; focused check with observable PASS evidence; meaningful return milestone; and stop/escalation condition. Mark writes as `none` for read-only work.
 
-Start from `<skill-dir>/templates/tasks.md`, where `<skill-dir>` is the directory
-containing the installed `thoth-sdd/SKILL.md`.
+Split a phase that contains separately acceptable outcomes before dispatch. Keep tiny cohesive mechanical edits together; do not fragment by file, test step, or mandatory agent phase. A dependent unit names the producer and accepted output, and starts only after root accepts it. Independent, precise Explorer questions may run in parallel within native capacity; dependent questions wait, and discovery is not repeated. Follow the specific discovery ownership policy when assigning evidence gathering.
 
-Every executable line uses exactly:
-
-```text
-- [ ] T### [P?] [US#?] description with FR-###/SC-### coverage in `exact/path` | Verify: observable outcome
-```
-
-IDs start at `T001` and remain unique and sequential across the entire file;
-never reset numbering per story or section. `[P]`, when present, precedes
-`[US#]`; omit `[US#]` only for shared setup or closeout. Before `| Verify:`, use
-exactly one backtick span containing one literal repository-relative path and no
-placeholder, glob, absolute path, URI, home path, or repository escape. Cover
-every FR and **buildable** SC. Outcome SCs remain verification targets but do
-not justify artificial implementation tasks.
-
-Order test-first work before its implementation, group tasks by independently
-deliverable story, identify the MVP, and state dependencies. `[P]` is permitted
-only for tasks assigned to a declared lane whose mutable path union does not
-overlap another lane in the same group. If there is no safe parallel work, use
-`- None: <evidence-backed reason>` instead. Avoid ceremonial tasks.
-
-## Parallel execution
-
-Declare safe work with this exact grammar:
-
-### Group P1
-
-- Lane L1: T001 -> T002 | Owner: deep
-- Lane L2: T003 -> T004 | Owner: quick
-- Prerequisites: None
-- Barrier: Final verification
-- Rationale: Both lane path sets are disjoint and neither lane consumes peer output.
-
-Groups and lanes are sequential and unique. Every `[P]` task belongs to exactly one lane; non-`[P]` tasks do not. Lane surfaces are the union of exact task
-paths, and lanes in a group have disjoint surfaces and no cross-lane dependency.
-The `Rationale` must explicitly state path-disjointness and cross-lane dependency
-evidence so structural validation can gate the evidence shape and Oracle can
-judge whether the claim is true.
-Prerequisites name known tasks outside the group; the barrier is a downstream
-task or `Final verification` after all lane members. If no group exists, use
-only `- None: <evidence-backed reason>` and no task may use `[P]`.
+Set meaningful native progress milestones; do not substitute a generous timeout. Preserve operator-selected model and effort. Test-first for behavior changes. Refine technical detail within accepted intent. Missing inputs or interfaces, conflicting ownership, a new independently acceptable outcome, or material scope or risk growth returns bounded progress to root for reassessment before expansion. Native harness owns liveness and waits. Keep one writer per surface and no scheduler, sidecar report, process tool, execution wrapper, or temporary artifact.

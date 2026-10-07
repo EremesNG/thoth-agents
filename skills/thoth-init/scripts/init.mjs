@@ -1,24 +1,21 @@
 #!/usr/bin/env node
-
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SKILL_ROOT = dirname(dirname(SCRIPT_PATH));
 const BUNDLE_ROOT = dirname(SKILL_ROOT);
-const OPEN_SPEC_DIRECTORIES = [
-  'openspec',
+const THOTH_DIRECTORIES = [
+  '.thoth',
+  join('.thoth', 'changes'),
+  join('.thoth', 'changes', 'archive'),
+  join('.thoth', 'specs'),
+];
+const LEGACY_ACTIVE_PATHS = [
   join('openspec', 'changes'),
-  join('openspec', 'changes', 'archive'),
   join('openspec', 'specs'),
-  join('openspec', 'memory'),
+  join('openspec', 'memory', 'constitution.md'),
 ];
 
 function parseArgs(argv) {
@@ -33,25 +30,65 @@ function parseArgs(argv) {
   return options;
 }
 
+function lstatMaybe(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return undefined;
+    throw error;
+  }
+}
+
+function assertNoSymlinkAncestors(path, label) {
+  const absolute = resolve(path);
+  const { root } = parse(absolute);
+  let cursor = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    cursor = join(cursor, part);
+    if (lstatMaybe(cursor)?.isSymbolicLink()) {
+      throw new Error(`${label} has a symlinked ancestor: ${cursor}`);
+    }
+  }
+}
+
 function assertDirectory(path, label) {
-  if (!existsSync(path)) return;
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+  assertNoSymlinkAncestors(path, label);
+  const stat = lstatMaybe(path);
+  if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
     throw new Error(`${label} must be a directory: ${path}`);
   }
 }
 
 function assertRegularFile(path, label) {
-  if (!existsSync(path)) return;
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isFile()) {
+  assertNoSymlinkAncestors(path, label);
+  const stat = lstatMaybe(path);
+  if (stat && (!stat.isFile() || stat.isSymbolicLink())) {
     throw new Error(`${label} must be a regular file: ${path}`);
   }
 }
 
+function assertNoLegacyActiveStore(project) {
+  const openspec = join(project, 'openspec');
+  assertDirectory(openspec, 'Legacy OpenSpec path');
+  for (const relativePath of LEGACY_ACTIVE_PATHS) {
+    const target = join(project, relativePath);
+    assertNoSymlinkAncestors(target, 'Legacy OpenSpec path');
+    if (lstatMaybe(target)) {
+      throw new Error(
+        `Active legacy OpenSpec content requires explicit migration before init: ${target}`,
+      );
+    }
+  }
+}
+
 function preflight(project) {
-  assertDirectory(project, 'Project root');
-  if (!existsSync(project)) {
+  assertNoSymlinkAncestors(project, 'Project root');
+  const projectStat = lstatMaybe(project);
+  if (
+    !projectStat ||
+    !projectStat.isDirectory() ||
+    projectStat.isSymbolicLink()
+  ) {
     throw new Error(
       `--project must reference an existing project directory: ${project}`,
     );
@@ -64,64 +101,40 @@ function preflight(project) {
     'constitution.md',
   );
   assertRegularFile(constitutionSource, 'Bundled constitution template');
-  if (!existsSync(constitutionSource)) {
+  if (!lstatMaybe(constitutionSource)) {
     throw new Error(
       `Bundled constitution template is missing: ${constitutionSource}`,
     );
   }
 
-  for (const directory of OPEN_SPEC_DIRECTORIES) {
-    assertDirectory(join(project, directory), 'OpenSpec path');
+  for (const directory of THOTH_DIRECTORIES) {
+    assertDirectory(join(project, directory), 'Thoth path');
   }
 
-  const constitutionTarget = join(
-    project,
-    'openspec',
-    'memory',
-    'constitution.md',
-  );
-  const manifestTarget = join(project, 'openspec', '.thoth-agents.json');
-  assertRegularFile(constitutionTarget, 'OpenSpec constitution path');
-  assertRegularFile(manifestTarget, 'OpenSpec manifest path');
+  const constitutionTarget = join(project, '.thoth', 'constitution.md');
+  assertRegularFile(constitutionTarget, 'Thoth constitution path');
+  assertNoLegacyActiveStore(project);
 
-  return {
-    constitutionSource,
-    constitutionTarget,
-    manifestTarget,
-  };
+  return { constitutionSource, constitutionTarget };
 }
 
 function createDirectory(target, report) {
-  if (existsSync(target)) return;
+  if (lstatMaybe(target)) return;
   mkdirSync(target);
   report.created.push(target);
 }
 
 function writePreservingExisting(target, content, report) {
-  if (existsSync(target)) {
+  if (lstatMaybe(target)) {
     report.preserved.push(target);
     return;
   }
-  writeFileSync(target, content);
+  writeFileSync(target, content, { flag: 'wx' });
   report.created.push(target);
 }
 
-function synchronizeManagedFile(target, content, report) {
-  if (!existsSync(target)) {
-    writeFileSync(target, content);
-    report.created.push(target);
-    return;
-  }
-  if (readFileSync(target, 'utf8') === content) {
-    report.preserved.push(target);
-    return;
-  }
-  writeFileSync(target, content);
-  report.managed.push(target);
-}
-
-function synchronizeOpenSpec(project, assets, report) {
-  for (const directory of OPEN_SPEC_DIRECTORIES) {
+function initializeThoth(project, assets, report) {
+  for (const directory of THOTH_DIRECTORIES) {
     createDirectory(join(project, directory), report);
   }
 
@@ -134,11 +147,6 @@ function synchronizeOpenSpec(project, assets, report) {
     ),
     report,
   );
-  synchronizeManagedFile(
-    assets.manifestTarget,
-    `${JSON.stringify({ version: 1, initializedBy: 'thoth-agents' }, null, 2)}\n`,
-    report,
-  );
 }
 
 try {
@@ -149,15 +157,14 @@ try {
     status: 'ready',
     project,
     created: [],
-    managed: [],
     preserved: [],
   };
 
-  synchronizeOpenSpec(project, assets, report);
+  initializeThoth(project, assets, report);
 
   const output = options.json
     ? JSON.stringify(report)
-    : `thoth-agents synchronized OpenSpec governance in ${project}`;
+    : `thoth-agents initialized .thoth governance in ${project}`;
   process.stdout.write(`${output}\n`);
 } catch (error) {
   process.stderr.write(

@@ -1,0 +1,488 @@
+{
+  "agreement": "sha256:b06e8de96cf37d7f4a9ca8dcae444a302cd309d8e71cf787e14148bf031ed72c",
+  "technical": "sha256:a87347a3232117ce107be18271576f776d1fabd6fe60478845cad6a4b5953da6",
+  "inputs": {
+    "fingerprint": "sha256:0fe008133f089a6ed835349e9c9bf719576fcb9063ac6cc9c7ea4caad092c7d5",
+    "entries": [
+      {
+        "path": ".thoth/constitution.md",
+        "type": "file",
+        "digest": "7ab247faa954bde42db005fd8e67cbee05db28e3f03a809a34388841176db743",
+        "provenance": "clean"
+      },
+      {
+        "path": ".thoth/specs/workflow/spec.md",
+        "type": "file",
+        "digest": "25515a4187e863ea918200a2dd0bc2f5c152a7b41d8b278ce6c215b934660694",
+        "provenance": "clean"
+      },
+      {
+        "path": "docs/workflow.md",
+        "type": "file",
+        "digest": "f7a227ece80ecadc64ed169b14af09eb8b365a24b46d094fb3d934e7158bd868",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/plan-reviewer/SKILL.md",
+        "type": "file",
+        "digest": "e4c2807a03930866b80839846b8783ac2896f4968941633473ac5f5c3a70e900",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/plan-reviewer/templates/plan-review.md",
+        "type": "file",
+        "digest": "6c9cc012970c3d0b0471663663582b864bd7f0e35b952939a89979a5794aa2e1",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/plan-reviewer/SKILL.md",
+        "type": "file",
+        "digest": "e4c2807a03930866b80839846b8783ac2896f4968941633473ac5f5c3a70e900",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/SKILL.md",
+        "type": "file",
+        "digest": "f72ddff42e7217054ca9e73f3e2c1c80ea2a555ca8bad86e0935ed68e6b5479e",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/examples/minimal/work.yaml",
+        "type": "file",
+        "digest": "ebe2eda233fa9ebc5598fa8442c2156fb33b5e0c6956cf9ae849fad04e8c10f9",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/references/contract.md",
+        "type": "file",
+        "digest": "f301e746ca22b27e4571c69825f8672fc7d56f2956118377dc7d7a733f3c1a73",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/examples.md",
+        "type": "file",
+        "digest": "45893fd41932ab9e225eca7f23f4088041061b44c7c6284bdd7eef53a0956b1a",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/references/planning.md",
+        "type": "file",
+        "digest": "4e5225cb30e8a20b6a38e4919688af617b4b6f519c58f21014ce9d3b112109d3",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/recovery.md",
+        "type": "file",
+        "digest": "e19cbf9ce3715c7a9b7cf33c6bf656c72d6ca900dae58d8808c103df0217c356",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/scripts/work.mjs",
+        "type": "file",
+        "digest": "32b611979171a1cf5bb7243d55b355a62fba34c887475f6e64fc0a5b88f32a3c",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/references/planning.md",
+        "type": "file",
+        "digest": "4e5225cb30e8a20b6a38e4919688af617b4b6f519c58f21014ce9d3b112109d3",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/agents/prompt-rendering.test.ts",
+        "type": "file",
+        "digest": "1133b2b95ddd8e39690b0beb9f92e29517a908fb04ba3556d895d03b63d79b19",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/agents/prompt-sections.ts",
+        "type": "file",
+        "digest": "476af5b65f570a389ac93687bc18f37bb4ec2856c852b6bbaf100dabddaaf7ac",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/core/workflow.test.ts",
+        "type": "file",
+        "digest": "193049f42932ffc5173634bf89e22a7626115b255142af6ebf534c4d680e95e4",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/core/workflow.ts",
+        "type": "file",
+        "digest": "2492d96f6996424528f042a8934a8706cec90825464d161b1d43a123f57e9fba",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/generate-integration-packages.test.ts",
+        "type": "file",
+        "digest": "4f764690d0e4957325b6192385e83301cc9042e551f09d77973d5a857e960c48",
+        "provenance": "clean"
+      }
+    ]
+  },
+  "outputs": {
+    "fingerprint": "sha256:6b645ffdd3a9f73438cc1001530f0b8e2e591adc0994afef1d61211af856f2ff",
+    "entries": [
+      {
+        "path": ".thoth/changes/pre-plan-guarantees/evidence/durable/workflow-spec.md",
+        "type": "file",
+        "digest": "8203fba004c3e0e916e57118f2040f4a8ca6580507be59721deb56d8734f72ee",
+        "provenance": "untracked"
+      },
+      {
+        "path": "AGENTS.md",
+        "type": "file",
+        "digest": "a6182c1cff66631df7a5df99c74edfdcfeed3fd7f4abe2d3197643da5b239469",
+        "provenance": "dirty"
+      },
+      {
+        "path": "README.md",
+        "type": "file",
+        "digest": "589d3fbbd1595f188d60bc833db0facdacd499d50184799b1db4d0667d75898f",
+        "provenance": "dirty"
+      },
+      {
+        "path": "docs/agent/workflow-and-skills.md",
+        "type": "file",
+        "digest": "5a48a2efa6b0af2ddb8ffc66f23f267e83c371306adba6bf52ac5ffbdba06c6f",
+        "provenance": "dirty"
+      },
+      {
+        "path": "docs/workflow.md",
+        "type": "file",
+        "digest": "f7a227ece80ecadc64ed169b14af09eb8b365a24b46d094fb3d934e7158bd868",
+        "provenance": "dirty"
+      },
+      {
+        "path": "pi/.thoth-agents-assets.json",
+        "type": "file",
+        "digest": "18a41e440f4f8e45752cf14a049f58c0d495253754865576dcb18c56f77966c7",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-deep.md",
+        "type": "file",
+        "digest": "8bc0ad7f07560f31c42052220d6bdeca4b313befbf54818e52a6fde9c61caade",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-designer.md",
+        "type": "file",
+        "digest": "f51bf33aee7d5a6a37d61e9fe1706998d354042411770b6b682e49a46803eebc",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-explorer.md",
+        "type": "file",
+        "digest": "22f653e27188c4e895d84a304bb32e8ee445c50dcc929169ca4515a0a3540015",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-librarian.md",
+        "type": "file",
+        "digest": "2a43431f8bb5a4be422f74ee875950a1a224978e5c40319cc659c73391c2040e",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-oracle.md",
+        "type": "file",
+        "digest": "e517ea7be63b0d7636e0f8b58b503d09a767fdd9f39ac603159345b686006324",
+        "provenance": "clean"
+      },
+      {
+        "path": "pi/agents/thoth-quick.md",
+        "type": "file",
+        "digest": "53c832ec4dc2ca9008bb9a0ec513a02ba6f833f6e948cea41f18e0d7e2bba7cd",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/.claude-plugin/.thoth-agents-plugin-assets.json",
+        "type": "file",
+        "digest": "b03f71eb1d7cd10136e9fa7320e2609644cf109721c3a0ddcf180c0bc993eb57",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/.claude-plugin/plugin.json",
+        "type": "file",
+        "digest": "7ae44283d1a342f5da7a80b5a6434948a1e3ec7f7f27d24cdb5c5e67c4e2f88f",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/.codex-plugin/.thoth-agents-plugin-assets.json",
+        "type": "file",
+        "digest": "8edd9d9c0a9ea8cd2c4ebc592aec95d0f9780a50c8e7781f9fca861836bf63a2",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/.codex-plugin/plugin.json",
+        "type": "file",
+        "digest": "5a1d8894c86ba6b5bd7e32e02af241f6ec340667b4724c745167f54748a795c9",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/.mcp.json",
+        "type": "file",
+        "digest": "fb7f49a386b6a88e5ead1134a8c57401751610ce9c4d078c7d76364c5225fbd2",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/deep.md",
+        "type": "file",
+        "digest": "6cc0a2e25867a064822a1acc3101fcc0f2824906ac750090b0f0b03f63288846",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/designer.md",
+        "type": "file",
+        "digest": "cfb15c03876713507168f90a721b6a90ea3b032f9ea13cc5f8ffeab4a60bc4fc",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/explorer.md",
+        "type": "file",
+        "digest": "8247d7722928590d6bd010027218982cf89afc83324530d74349483b3ff2274f",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/librarian.md",
+        "type": "file",
+        "digest": "ed9555d95729c4269b48dac634bc65fe01728f5afa3c6e458f40484b45949908",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/oracle.md",
+        "type": "file",
+        "digest": "9697ccfd5f8db6ecb6c9ab2306851145e88e49efbf71abb8905d59c668c6f310",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/agents/orchestrator.md",
+        "type": "file",
+        "digest": "934bd611a6254fa60fcde01b500ff087864982383c2b49dca6e119b044fff2ec",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/agents/quick.md",
+        "type": "file",
+        "digest": "d1dec1f94e4060cc63332fc8403bc0b2817a54f79a3a91b23f30f77cd689733a",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/codex.mcp.json",
+        "type": "file",
+        "digest": "dc8257883af56113f909c858874dfdbbd498f25972fe4f995dda36c67bfe7280",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/settings.json",
+        "type": "file",
+        "digest": "ca3466db741811aeea0d55f0293b169019e7b3668e72da10271260520a4b8ee8",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/plan-reviewer/SKILL.md",
+        "type": "file",
+        "digest": "e4c2807a03930866b80839846b8783ac2896f4968941633473ac5f5c3a70e900",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/skills/plan-reviewer/templates/plan-review.md",
+        "type": "file",
+        "digest": "6c9cc012970c3d0b0471663663582b864bd7f0e35b952939a89979a5794aa2e1",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-archive/SKILL.md",
+        "type": "file",
+        "digest": "059d9ba98ce2b52f77479cf89c7c3d7bd8b482c762526172b30bbf77a44d790e",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-archive/scripts/archive.mjs",
+        "type": "file",
+        "digest": "7265218281894d49dcdb4111040f43ba64c6b97c24d22c295a8ced9ae8df7643",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-constitution/SKILL.md",
+        "type": "file",
+        "digest": "ccf807d57fa8005d3d5d3f3f77ce891fdd8834e64fa29620360f88917ce4471a",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-constitution/scripts/validate.mjs",
+        "type": "file",
+        "digest": "359c9758f0e376c750659cfeb4bb7e4ad3067f10bbe55495ea4b228892d0106c",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-constitution/templates/constitution.md",
+        "type": "file",
+        "digest": "7fb0c11e71caac3b4992268dc8f2a1b4912359075d60be31c3edbafe16e8f977",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-init/SKILL.md",
+        "type": "file",
+        "digest": "eea3b07b99d3f668ef917f7ec7c8ec77c7f66bf545301bd325871546fac42cf8",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-init/scripts/init.mjs",
+        "type": "file",
+        "digest": "afb677e44e32f59efe0929eeff0cfd39b6bf948e48fe2dc483f8c030b79032a8",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-work/SKILL.md",
+        "type": "file",
+        "digest": "f72ddff42e7217054ca9e73f3e2c1c80ea2a555ca8bad86e0935ed68e6b5479e",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/skills/thoth-work/examples/minimal/work.yaml",
+        "type": "file",
+        "digest": "ebe2eda233fa9ebc5598fa8442c2156fb33b5e0c6956cf9ae849fad04e8c10f9",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-work/references/contract.md",
+        "type": "file",
+        "digest": "f301e746ca22b27e4571c69825f8672fc7d56f2956118377dc7d7a733f3c1a73",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/skills/thoth-work/references/examples.md",
+        "type": "file",
+        "digest": "45893fd41932ab9e225eca7f23f4088041061b44c7c6284bdd7eef53a0956b1a",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-work/references/planning.md",
+        "type": "file",
+        "digest": "4e5225cb30e8a20b6a38e4919688af617b4b6f519c58f21014ce9d3b112109d3",
+        "provenance": "dirty"
+      },
+      {
+        "path": "plugin/skills/thoth-work/references/recovery.md",
+        "type": "file",
+        "digest": "e19cbf9ce3715c7a9b7cf33c6bf656c72d6ca900dae58d8808c103df0217c356",
+        "provenance": "clean"
+      },
+      {
+        "path": "plugin/skills/thoth-work/scripts/work.mjs",
+        "type": "file",
+        "digest": "32b611979171a1cf5bb7243d55b355a62fba34c887475f6e64fc0a5b88f32a3c",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/plan-reviewer/SKILL.md",
+        "type": "file",
+        "digest": "e4c2807a03930866b80839846b8783ac2896f4968941633473ac5f5c3a70e900",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/plan-reviewer/templates/plan-review.md",
+        "type": "file",
+        "digest": "6c9cc012970c3d0b0471663663582b864bd7f0e35b952939a89979a5794aa2e1",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/plan-reviewer/SKILL.md",
+        "type": "file",
+        "digest": "e4c2807a03930866b80839846b8783ac2896f4968941633473ac5f5c3a70e900",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/SKILL.md",
+        "type": "file",
+        "digest": "f72ddff42e7217054ca9e73f3e2c1c80ea2a555ca8bad86e0935ed68e6b5479e",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/examples/minimal/work.yaml",
+        "type": "file",
+        "digest": "ebe2eda233fa9ebc5598fa8442c2156fb33b5e0c6956cf9ae849fad04e8c10f9",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/references/contract.md",
+        "type": "file",
+        "digest": "f301e746ca22b27e4571c69825f8672fc7d56f2956118377dc7d7a733f3c1a73",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/examples.md",
+        "type": "file",
+        "digest": "45893fd41932ab9e225eca7f23f4088041061b44c7c6284bdd7eef53a0956b1a",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/references/planning.md",
+        "type": "file",
+        "digest": "4e5225cb30e8a20b6a38e4919688af617b4b6f519c58f21014ce9d3b112109d3",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/recovery.md",
+        "type": "file",
+        "digest": "e19cbf9ce3715c7a9b7cf33c6bf656c72d6ca900dae58d8808c103df0217c356",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/scripts/work.mjs",
+        "type": "file",
+        "digest": "32b611979171a1cf5bb7243d55b355a62fba34c887475f6e64fc0a5b88f32a3c",
+        "provenance": "clean"
+      },
+      {
+        "path": "skills/thoth-work/SKILL.md",
+        "type": "file",
+        "digest": "f72ddff42e7217054ca9e73f3e2c1c80ea2a555ca8bad86e0935ed68e6b5479e",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/contract.md",
+        "type": "file",
+        "digest": "f301e746ca22b27e4571c69825f8672fc7d56f2956118377dc7d7a733f3c1a73",
+        "provenance": "dirty"
+      },
+      {
+        "path": "skills/thoth-work/references/planning.md",
+        "type": "file",
+        "digest": "4e5225cb30e8a20b6a38e4919688af617b4b6f519c58f21014ce9d3b112109d3",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/agents/prompt-rendering.test.ts",
+        "type": "file",
+        "digest": "1133b2b95ddd8e39690b0beb9f92e29517a908fb04ba3556d895d03b63d79b19",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/agents/prompt-sections.ts",
+        "type": "file",
+        "digest": "476af5b65f570a389ac93687bc18f37bb4ec2856c852b6bbaf100dabddaaf7ac",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/core/workflow.test.ts",
+        "type": "file",
+        "digest": "193049f42932ffc5173634bf89e22a7626115b255142af6ebf534c4d680e95e4",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/core/workflow.ts",
+        "type": "file",
+        "digest": "2492d96f6996424528f042a8934a8706cec90825464d161b1d43a123f57e9fba",
+        "provenance": "dirty"
+      },
+      {
+        "path": "src/harness/work-contract.test.ts",
+        "type": "file",
+        "digest": "1f94ac33307f08cd91a7fcc17a291519c1eb835365458240b6fe0fa67926478a",
+        "provenance": "dirty"
+      }
+    ]
+  }
+}

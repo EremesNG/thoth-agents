@@ -113,7 +113,7 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
-    expect(output).toContain('seven-role roster');
+    expect(output).toContain('six-role roster');
     expect(output).toContain(
       'simplify, tdd, progressive-context-router, and architectural-grilling',
     );
@@ -360,7 +360,7 @@ describe('commands plain operation formatters', () => {
         expect(output).toContain(backupPath);
         expect(output.split(backupPath)).toHaveLength(2);
       }
-      expect(output).toContain('Write thoth-agents seven-role config');
+      expect(output).toContain('Write thoth-agents six-role config');
       expect(output).not.toContain(
         'Refresh bundled thoth-agents OpenCode skills',
       );
@@ -505,7 +505,7 @@ describe('explicit operation commands', () => {
   ] as const)('effort-only %s command preserves current model and attaches exact catalog metadata', async (harness, model, catalogId) => {
     const services: TestModelServices = {
       operationContext: () => ({ cwd: process.cwd() }),
-      modelRoles: () => [{ role: 'deep', model }],
+      modelRoles: () => [{ role: 'worker', model }],
       modelOptions: async () => [
         {
           id: model,
@@ -521,7 +521,7 @@ describe('explicit operation commands', () => {
     expect(
       resolveCliModelRoles(
         harness,
-        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        [{ role: 'worker', effort: { kind: 'effort', value: 'high' } }],
         {
           currentRoles: services.modelRoles(harness),
           modelOptions: await services.modelOptions(harness),
@@ -529,7 +529,7 @@ describe('explicit operation commands', () => {
       ),
     ).toEqual([
       {
-        role: 'deep',
+        role: 'worker',
         model,
         provider: catalogId.split('/')[0],
         catalogId,
@@ -551,7 +551,7 @@ describe('explicit operation commands', () => {
       }
 
       const result = await captureCommand(
-        ['model', `--harness=${harness}`, '--role-effort=deep=high'],
+        ['model', `--harness=${harness}`, '--role-effort=worker=high'],
         services,
       );
       expect(result.code).toBe(0);
@@ -586,9 +586,9 @@ describe('explicit operation commands', () => {
     try {
       const roles = resolveCliModelRoles(
         'claude',
-        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        [{ role: 'worker', effort: { kind: 'effort', value: 'high' } }],
         {
-          currentRoles: [{ role: 'deep', model }],
+          currentRoles: [{ role: 'worker', model }],
           modelOptions: [
             {
               id: model,
@@ -609,7 +609,14 @@ describe('explicit operation commands', () => {
       expect(applyClaudeCodePlan(plan).applied).toBe(false);
       expect(
         existsSync(
-          join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+          join(
+            home,
+            '.claude',
+            'skills',
+            'thoth-agents',
+            'agents',
+            'worker.md',
+          ),
         ),
       ).toBe(false);
     } finally {
@@ -789,7 +796,7 @@ describe('explicit operation commands', () => {
             if (command === 'node')
               return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
             if (args[0] === '--version')
-              return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+              return { exitCode: 0, stdout: '1.0.2', stderr: '' };
             return {
               exitCode: 0,
               stdout: `User packages:\n  npm:thoth-agents@0.3.12\n    ${packageRoot}`,
@@ -815,6 +822,65 @@ describe('explicit operation commands', () => {
         'First-party Pi package ownership blocker',
       );
       expect(preview.output).toContain('remove the configured first-party');
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('Pi status and dry-run Update report the todo transition and applied Update refuses mutation', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-cli-todo-'));
+    const commands: string[] = [];
+    const services: TestModelServices = {
+      operationContext: () =>
+        ({
+          cwd: homeDir,
+          homeDir,
+          env: {},
+          piCommandExecutor: (command: string, args: readonly string[]) => {
+            commands.push(`${command} ${args.join(' ')}`);
+            if (command === 'node')
+              return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+            if (args[0] === '--version')
+              return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+            return {
+              exitCode: 0,
+              stdout: 'User packages:\n  npm:@juicesharp/rpiv-todo@2.12.0',
+              stderr: '',
+            };
+          },
+        }) as never,
+      modelRoles: () => [],
+      modelOptions: async () => [],
+    };
+
+    try {
+      const status = await captureCommand(['status', '--harness=pi'], services);
+      expect(status.code).toBe(0);
+      expect(status.output).toContain('npm:@thoth-agents/pi-todo@>=0.1.0');
+      expect(status.output).toContain('[pi-incumbent-todo-conflict]');
+      const preview = await captureCommand(
+        ['update', '--harness=pi', '--dry-run'],
+        services,
+      );
+      expect(preview.code).toBe(0);
+      expect(preview.output).toContain('Can apply: no');
+      expect(preview.output).toContain('Pi task-list package blocker');
+      for (const result of [status, preview])
+        expect(result.output).toContain(
+          'pi remove npm:@juicesharp/rpiv-todo --no-approve',
+        );
+
+      const applied = await captureCommand(
+        ['update', '--harness=pi', '--apply'],
+        services,
+      );
+      expect(applied.code).toBe(1);
+      expect(applied.output).toContain('Applied: no');
+      expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
+        false,
+      );
+      expect(existsSync(join(homeDir, '.pi'))).toBe(false);
+      expect(existsSync(join(homeDir, '.config'))).toBe(false);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }
@@ -846,14 +912,14 @@ describe('explicit operation commands', () => {
     const result = await captureCommand([
       'model',
       '--harness=codex',
-      '--role=deep',
+      '--role=worker',
       '--model=openai/gpt-5.4-mini',
     ]);
 
     expect(result.code).toBe(0);
     expect(result.output).toContain('Target harness: Codex (codex)');
     expect(result.output).toContain('Action: model-config');
-    expect(result.output).toContain('Set deep Codex subagent model line');
+    expect(result.output).toContain('Set worker Codex subagent model line');
     expectNoPlaceholder(result.output);
   });
 
@@ -862,11 +928,11 @@ describe('explicit operation commands', () => {
     const model = 'openai/gpt-5.6-sol';
     try {
       const result = await captureCommand(
-        ['model', '--harness=pi', '--role-effort=deep=ultra', '--apply'],
+        ['model', '--harness=pi', '--role-effort=worker=ultra', '--apply'],
         {
           operationContext: () =>
             ({ cwd: homeDir, homeDir }) as OperationContext,
-          modelRoles: () => [{ role: 'deep', model }],
+          modelRoles: () => [{ role: 'worker', model }],
           modelOptions: async () => [
             {
               id: model,

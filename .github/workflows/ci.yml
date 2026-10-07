@@ -49,3 +49,138 @@ jobs:
         run: pnpm test
         env:
           THOTH_PLUGINS_ROOT: ${{ github.workspace }}/thoth-plugins
+
+      # Warn-only. The PR checkout is a depth-1 merge commit; deepen both the
+      # base ref and that merge commit so the three-dot diff finds a merge base.
+      - name: Check Pi package version bumps
+        if: github.event_name == 'pull_request'
+        run: |
+          if git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"             && git fetch --no-tags --depth=200 origin "${{ github.sha }}"; then
+            node scripts/check-pi-version-bumps.mjs "origin/${{ github.base_ref }}"
+          else
+            echo "::notice title=Pi version check skipped::fetch failed"
+          fi
+
+      - name: Check pi-core
+        run: |
+          pnpm --filter @thoth-agents/pi-core run typecheck
+          pnpm --filter @thoth-agents/pi-core run test
+
+      - name: Check pi-todo
+        run: |
+          pnpm --filter @thoth-agents/pi-todo run typecheck
+          pnpm --filter @thoth-agents/pi-todo run test
+
+      - name: Check pi-questions-user
+        run: |
+          pnpm --filter @thoth-agents/pi-questions-user run typecheck
+          pnpm --filter @thoth-agents/pi-questions-user run test
+
+      - name: Check pi-subagents
+        run: |
+          pnpm --filter @thoth-agents/pi-subagents run typecheck
+          pnpm --filter @thoth-agents/pi-subagents run test
+
+      - name: Check pi-antigravity-bridge
+        run: |
+          pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+          pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+
+      - name: Check pi-background-tasks
+        run: |
+          pnpm --filter @thoth-agents/pi-background-tasks run typecheck
+          pnpm --filter @thoth-agents/pi-background-tasks run test
+
+      - name: Check pi-openai-fast
+        run: |
+          pnpm --filter @thoth-agents/pi-openai-fast run typecheck
+          pnpm --filter @thoth-agents/pi-openai-fast run test
+
+      - name: Check pi-thoth-theme
+        run: |
+          pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
+          pnpm --filter @thoth-agents/pi-thoth-theme run test
+
+      # Offline unit tests only; the package `test` script runs live Claude integrations.
+      - name: Check pi-claude-bridge
+        run: |
+          pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
+          pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
+
+  # Windows qualification for the vendored Pi packages only; the root suite stays on Ubuntu.
+  pi-packages-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck pi-core
+        run: pnpm --filter @thoth-agents/pi-core run typecheck
+
+      - name: Test pi-core
+        run: pnpm --filter @thoth-agents/pi-core run test
+
+      - name: Typecheck pi-todo
+        run: pnpm --filter @thoth-agents/pi-todo run typecheck
+
+      - name: Test pi-todo
+        run: pnpm --filter @thoth-agents/pi-todo run test
+
+      - name: Typecheck pi-questions-user
+        run: pnpm --filter @thoth-agents/pi-questions-user run typecheck
+
+      - name: Test pi-questions-user
+        run: pnpm --filter @thoth-agents/pi-questions-user run test
+
+      - name: Typecheck pi-subagents
+        run: pnpm --filter @thoth-agents/pi-subagents run typecheck
+
+      - name: Test pi-subagents
+        run: pnpm --filter @thoth-agents/pi-subagents run test
+
+      - name: Typecheck pi-antigravity-bridge
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+
+      - name: Test pi-antigravity-bridge
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+
+      - name: Typecheck pi-background-tasks
+        run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck
+
+      - name: Test pi-background-tasks
+        run: pnpm --filter @thoth-agents/pi-background-tasks run test
+
+      - name: Typecheck pi-openai-fast
+        run: pnpm --filter @thoth-agents/pi-openai-fast run typecheck
+
+      - name: Test pi-openai-fast
+        run: pnpm --filter @thoth-agents/pi-openai-fast run test
+
+      - name: Typecheck pi-thoth-theme
+        run: pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
+
+      - name: Test pi-thoth-theme
+        run: pnpm --filter @thoth-agents/pi-thoth-theme run test
+
+      - name: Typecheck pi-claude-bridge
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
+
+      # Offline unit tests only; the package `test` script runs live Claude integrations.
+      - name: Test pi-claude-bridge
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run test:unit

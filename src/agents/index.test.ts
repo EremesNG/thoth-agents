@@ -15,12 +15,11 @@ const ROLE_NAMES = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const;
 
 const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
-const WRITER_ROLES = ['designer', 'quick', 'deep'] as const;
+const WRITER_ROLES = ['designer', 'worker'] as const;
 
 function getAgent(name: string, config?: PluginConfig) {
   return createAgents(config).find((agent) => agent.name === name);
@@ -34,7 +33,7 @@ function permission(name: string, config?: PluginConfig): PermissionRecord {
 }
 
 describe('OpenCode v0.3 agent roster', () => {
-  test('creates the seven-role adaptive roster', () => {
+  test('creates the six-role adaptive roster', () => {
     expect(createAgents().map((agent) => agent.name)).toEqual(ROLE_NAMES);
     expect(SUBAGENT_NAMES).toEqual(ROLE_NAMES.slice(1));
   });
@@ -94,15 +93,14 @@ describe('OpenCode v0.3 defaults', () => {
       librarian: { model: 'openai/gpt-6-luna', variant: 'high' },
       oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
       designer: { model: 'openai/gpt-6-sol', variant: 'medium' },
-      quick: { model: 'openai/gpt-6-luna', variant: 'medium' },
-      deep: { model: 'openai/gpt-6-sol', variant: 'medium' },
+      worker: { model: 'openai/gpt-6-luna', variant: 'max' },
     });
   });
 
   test('applies explicit model, effort, temperature, and step overrides', () => {
     const config: PluginConfig = {
       agents: {
-        deep: {
+        worker: {
           model: 'custom/planner',
           variant: 'low',
           temperature: 0.25,
@@ -111,7 +109,7 @@ describe('OpenCode v0.3 defaults', () => {
       },
     };
 
-    expect(getAgentConfigs(config).deep).toMatchObject({
+    expect(getAgentConfigs(config).worker).toMatchObject({
       model: 'custom/planner',
       variant: 'low',
       temperature: 0.25,
@@ -137,10 +135,10 @@ describe('OpenCode v0.3 defaults', () => {
   test('adds bounded-step guidance when steps are configured', () => {
     const config: PluginConfig = {
       agents: {
-        quick: { steps: 35 },
+        worker: { steps: 35 },
       },
     };
-    const prompt = getAgent('quick', config)?.config.prompt ?? '';
+    const prompt = getAgent('worker', config)?.config.prompt ?? '';
 
     expect(prompt).toContain('<step-budget>');
     expect(prompt).toContain('Execution budget: 35 steps');
@@ -148,30 +146,29 @@ describe('OpenCode v0.3 defaults', () => {
 });
 
 describe('OpenCode v0.3 prompt boundaries', () => {
-  test('keeps the root compact and adaptive', () => {
+  test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt.length - 8_499).toBeLessThanOrEqual(2_500);
-    expect(prompt).toContain('adaptive root');
+    expect(prompt.length).toBeLessThanOrEqual(13_500);
+    expect(prompt).toContain('root coordinator');
     expect(prompt).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(prompt).toContain('net gain');
+    expect(prompt).toContain(
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
+    );
+    expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
-    expect(prompt).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
-    );
-    expect(prompt).toContain(
-      'Explicit safe user direction is an ownership input.',
-    );
+    expect(prompt).toMatch(/specialists execute by default.*root retains/is);
+    expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
-    expect(prompt).toContain('Accelerated SDD');
+    expect(prompt).toContain('.thoth/changes/<id>/<id>.md');
     expect(prompt).toContain('thoth-sdd');
     expect(prompt).toContain('oracle');
     expect(prompt).toContain('Final verification is mandatory.');
     expect(prompt).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');
@@ -195,7 +192,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const agent of createAgents()) {
       const length = agent.config.prompt?.length ?? 0;
       if (agent.name === 'orchestrator') {
-        expect(length - 8_499, agent.name).toBeLessThanOrEqual(2_500);
+        expect(length, agent.name).toBeLessThanOrEqual(13_500);
       } else {
         expect(length, agent.name).toBeLessThan(5_000);
       }

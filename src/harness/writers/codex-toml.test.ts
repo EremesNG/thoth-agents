@@ -17,7 +17,7 @@ describe('Codex TOML writer', () => {
       values: {
         sandbox_mode: 'workspace-write',
         developer_instructions: 'Use "quotes"\nand Windows path C:\\tmp\\x',
-        name: 'deep',
+        name: 'worker',
         description: 'Thorough implementation agent',
         model: 'gpt-5.4',
         model_reasoning_effort: 'high',
@@ -46,7 +46,7 @@ describe('Codex TOML writer', () => {
     ]);
     expect(result.content).toBe(
       [
-        'name = "deep"',
+        'name = "worker"',
         'description = "Thorough implementation agent"',
         'developer_instructions = """',
         'Use "quotes"',
@@ -111,8 +111,7 @@ describe('Codex TOML writer', () => {
           'librarian',
           'oracle',
           'designer',
-          'quick',
-          'deep',
+          'worker',
         ],
       },
     });

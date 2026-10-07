@@ -28,18 +28,17 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'docs/agent/agents-and-delegation.md',
   ],
   lifecycleFixtures: [
-    'src/harness/__fixtures__/codex/agent-deep.toml',
+    'src/harness/__fixtures__/codex/agent-worker.toml',
     'src/harness/__fixtures__/codex/mcp.toml',
   ],
   piPackageAssets: [
     'src/pi.ts',
     'pi/.thoth-agents-assets.json',
-    'pi/agents/thoth-deep.md',
+    'pi/agents/thoth-worker.md',
     'pi/agents/thoth-designer.md',
     'pi/agents/thoth-explorer.md',
     'pi/agents/thoth-librarian.md',
     'pi/agents/thoth-oracle.md',
-    'pi/agents/thoth-quick.md',
   ],
   consumerSurfaces: [
     'src/harness/registry.ts',
@@ -135,23 +134,23 @@ const BUNDLED_PROVIDER_RULES: Array<{
 ];
 
 describe('provider boundary', () => {
-  test('keeps the Codex deep lifecycle fixture aligned with canonical defaults', async () => {
+  test('keeps the Codex worker lifecycle fixture aligned with canonical defaults', async () => {
     const targets = await readTargets();
     const fixture = targets.find(
-      ({ path }) => path === 'src/harness/__fixtures__/codex/agent-deep.toml',
+      ({ path }) => path === 'src/harness/__fixtures__/codex/agent-worker.toml',
     );
 
     expect(fixture?.content).toContain(
-      `model = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.model}"`,
+      `model = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.worker.model}"`,
     );
     expect(fixture?.content).toContain(
-      `model_reasoning_effort = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.effort}"`,
+      `model_reasoning_effort = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.worker.effort}"`,
     );
   });
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(42);
+    expect(targets).toHaveLength(41);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
     ).toHaveLength(19);
@@ -163,7 +162,7 @@ describe('provider boundary', () => {
     ).toHaveLength(13);
     expect(
       targets.filter(({ group }) => group === 'piPackageAssets'),
-    ).toHaveLength(8);
+    ).toHaveLength(7);
 
     for (const target of targets) {
       for (const rule of DELETED_PATH_RULES) {
@@ -180,7 +179,7 @@ describe('provider boundary', () => {
     }
   });
 
-  test('preserves unrelated integrations, SDD semantics, and explicit external-provider references', async () => {
+  test('preserves unrelated integrations, SDD record semantics, and explicit external-provider references', async () => {
     const targets = await readTargets();
     const docs = targets.filter(
       ({ group }) => group === 'documentationAndMetadata',
@@ -192,7 +191,7 @@ describe('provider boundary', () => {
     expect(docs.some(({ content }) => /thoth-mem/i.test(content))).toBe(true);
     expect(
       docs.some(({ content }) =>
-        /openspec\/changes\/(?:<feature>|\{feature\})\//i.test(content),
+        /\.thoth\/changes\/<id>\/<id>\.md/i.test(content),
       ),
     ).toBe(true);
     expect(
@@ -207,7 +206,7 @@ describe('provider boundary', () => {
           path === 'src/mcp/index.ts' && /exa|context7|grep_app/i.test(content),
       ),
     ).toBe(true);
-    expect(consumers.some(({ content }) => /sdd|OpenSpec/i.test(content))).toBe(
+    expect(consumers.some(({ content }) => /\.thoth\//i.test(content))).toBe(
       true,
     );
     expect(

@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import {
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../core/agent-pack';
 import type { HarnessArtifact } from '../types';
 import {
   CLAUDE_CODE_CAPABILITIES,
@@ -23,6 +27,58 @@ function artifact(
 }
 
 describe('Claude Code adapter v0.3', () => {
+  test('renders canonical default-first ownership with discovery navigation and a pre-tool check', () => {
+    const root = renderClaudeCodeRootInstructions();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      root.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      block.indexOf(
+        'Root retains known low-risk mechanical work, including reviewed commits',
+      ),
+    ).toBeGreaterThan(defaultIndex);
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+    ]) {
+      expect.soft(root).not.toContain(phrase);
+    }
+  });
   test('reports enforcement gaps truthfully', () => {
     expect(claudeCodeAdapter.id).toBe('claude');
     expect(CLAUDE_CODE_CAPABILITIES).toMatchObject({
@@ -38,19 +94,18 @@ describe('Claude Code adapter v0.3', () => {
     });
   });
 
-  test('renders six specialists plus the main-thread orchestrator', () => {
+  test('renders five specialists plus the main-thread orchestrator', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
 
     expect(paths).toEqual([
-      'agents/deep.md',
       'agents/designer.md',
       'agents/explorer.md',
       'agents/librarian.md',
       'agents/oracle.md',
       'agents/orchestrator.md',
-      'agents/quick.md',
+      'agents/worker.md',
     ]);
   });
 
@@ -62,8 +117,7 @@ describe('Claude Code adapter v0.3', () => {
       )?.[1];
 
     expect(modelOf('agents/oracle.md')).toBe('opus');
-    expect(modelOf('agents/quick.md')).toBe('haiku');
-    expect(modelOf('agents/deep.md')).toBe('sonnet');
+    expect(modelOf('agents/worker.md')).toBe('sonnet');
   });
 
   test('renders proportional effort frontmatter with valid override precedence', () => {
@@ -74,20 +128,22 @@ describe('Claude Code adapter v0.3', () => {
       )?.[1];
 
     expect(effortOf(defaults, 'agents/explorer.md')).toBe('low');
-    expect(effortOf(defaults, 'agents/quick.md')).toBe('low');
     expect(effortOf(defaults, 'agents/designer.md')).toBe('medium');
-    expect(effortOf(defaults, 'agents/deep.md')).toBe('medium');
+    expect(effortOf(defaults, 'agents/worker.md')).toBe('medium');
     expect(effortOf(defaults, 'agents/librarian.md')).toBe('high');
     expect(effortOf(defaults, 'agents/oracle.md')).toBe('high');
 
     const overridden = renderWithConfig({
       projectRoot: process.cwd(),
       config: {
-        agents: { quick: { variant: 'high' }, deep: { variant: 'invalid' } },
+        agents: {
+          designer: { variant: 'high' },
+          worker: { variant: 'invalid' },
+        },
       },
     }).artifacts;
-    expect(effortOf(overridden, 'agents/quick.md')).toBe('high');
-    expect(effortOf(overridden, 'agents/deep.md')).toBe('medium');
+    expect(effortOf(overridden, 'agents/designer.md')).toBe('high');
+    expect(effortOf(overridden, 'agents/worker.md')).toBe('medium');
   });
 
   test('renders namespaced explicit selection and canonical routing descriptions', () => {
@@ -101,8 +157,7 @@ describe('Claude Code adapter v0.3', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]) {
       const content = String(
         artifact(result.artifacts, `agents/${name}.md`)?.content,
@@ -113,24 +168,26 @@ describe('Claude Code adapter v0.3', () => {
     }
   });
 
-  test('renders adaptive native root instructions with namespaced roles', () => {
+  test('renders native root coordinator instructions with namespaced roles', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
-    expect(instructions.length - 9_340).toBeLessThanOrEqual(2_500);
-    expect(instructions).toContain('adaptive root');
+    // Includes canonical discovery/navigation guidance and the Claude dialect.
+    expect(instructions.length).toBeLessThanOrEqual(15_000);
+    expect(instructions).toContain('root coordinator');
     expect(instructions).toContain('<implementation-ownership>');
-    expect(instructions).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
+    expect(instructions).toMatch(
+      /specialists execute by default.*root retains/is,
     );
     expect(instructions).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
     expect(instructions).toContain(
-      'Only after deciding delegation creates net gain',
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
     );
+    expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);
-    expect(instructions).toContain('Accelerated SDD');
+    expect(instructions).toContain('.thoth/changes/<id>/<id>.md');
     expect(instructions).toContain('Agent');
     expect(instructions).toContain('AskUserQuestion');
     expect(instructions).toContain('TodoWrite');
@@ -138,7 +195,7 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions).toContain('thoth-agents:oracle');
     expect(instructions).toContain('Final verification is mandatory.');
     expect(instructions).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(instructions).not.toContain('delegate-first');
     expect(instructions).not.toContain('requirements-interview');

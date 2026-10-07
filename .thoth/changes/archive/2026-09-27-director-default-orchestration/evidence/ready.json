@@ -1,0 +1,195 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [],
+  "work": {
+    "version": 1,
+    "change": {
+      "id": "director-default-orchestration"
+    },
+    "agreement": {
+      "status": "approved",
+      "fingerprint": "sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee",
+      "source": "user explicitly requested implementation of the director-default recommendation"
+    },
+    "goal": "Make Thoth a director by default with specialist discovery and implementation and a bounded root-direct exception",
+    "bounds": {
+      "include": [
+        "canonical ownership and discovery policy",
+        "root prompts across four harnesses",
+        "related skills and documentation",
+        "focused regression tests",
+        "generated integration assets",
+        "workflow durable specification"
+      ],
+      "exclude": [
+        "model configuration",
+        "numeric reading budgets",
+        "new scheduler or runtime enforcement",
+        "specialist role redesign",
+        "constitution amendments",
+        "deployment and publishing"
+      ]
+    },
+    "autonomy": {
+      "allowed": [
+        "implement approved behavioral policy",
+        "update directly affected tests and guidance",
+        "regenerate integration assets",
+        "execute local validation",
+        "apply declared durable update after independent PASS"
+      ],
+      "requiresApproval": [
+        "material scope or architecture changes",
+        "destructive actions",
+        "external publishing"
+      ],
+      "forbidden": [
+        "hardcoded model assignments",
+        "undocumented execution fallback",
+        "weakening independent verification",
+        "unrelated cleanup"
+      ]
+    },
+    "acceptance": [
+      {
+        "id": "AC-1",
+        "criterion": "Root assigns unknown local discovery to Explorer before searching; direct known-source low-risk consultation or minimal change stops when discovery or another dependency is needed",
+        "inputs": ["src/harness/core/agent-pack.ts"],
+        "outputs": [
+          "src/harness/core/agent-pack.ts",
+          "src/agents/prompt-sections.ts"
+        ],
+        "checks": ["focused policy and routing regression tests"]
+      },
+      {
+        "id": "AC-2",
+        "criterion": "Known bounded implementation goes to the fitting writer by default without mandatory Explorer; root retains decisions and acceptance and requests targeted missing evidence without duplicate discovery",
+        "inputs": ["src/harness/core/agent-pack.ts"],
+        "outputs": [
+          "src/agents/prompt-sections.ts",
+          "src/harness/core/workflow.ts"
+        ],
+        "checks": ["focused rendering and routing regression tests"]
+      },
+      {
+        "id": "AC-3",
+        "criterion": "Canonical and generated root instructions across OpenCode Codex Claude and Pi align without continuity or net-gain loopholes while native lifecycle memory authorization independent Oracle recovery and planning choices remain intact",
+        "inputs": [
+          "src/agents/prompt-sections.ts",
+          "skills/thoth-work/references/planning.md"
+        ],
+        "outputs": [
+          "plugin",
+          "docs/agent/agents-and-delegation.md",
+          "AGENTS.md"
+        ],
+        "checks": [
+          "adapter and integration tests",
+          "regenerated output diff inspection",
+          "independent Oracle review"
+        ]
+      },
+      {
+        "id": "AC-4",
+        "criterion": "Policy documentation and durable update match the agreed behavior without model changes numeric caps runtime-enforcement claims or unmeasured savings claims",
+        "inputs": [".thoth/specs/workflow/spec.md"],
+        "outputs": [
+          ".thoth/changes/director-default-orchestration/durable/workflow-spec.md",
+          "docs/agent/routing-cases.json"
+        ],
+        "checks": [
+          "check ci",
+          "typecheck",
+          "build",
+          "full tests",
+          "context validation",
+          "independent Oracle review"
+        ]
+      }
+    ],
+    "durableUpdates": [
+      {
+        "operation": "replace",
+        "capability": "workflow",
+        "source": ".thoth/changes/director-default-orchestration/durable/workflow-spec.md",
+        "expectedDigest": "8203fba004c3e0e916e57118f2040f4a8ca6580507be59721deb56d8734f72ee",
+        "sourceDigest": "9216cc7a544d5ad4faec17e34db5003185e94b6e9dad726826b6a2866a5b98d5"
+      }
+    ],
+    "units": [
+      {
+        "id": "policy",
+        "output": "Coherent director-default canonical policy rendered into all harnesses with regression coverage and aligned guidance",
+        "dependsOn": [],
+        "reads": [
+          "src/harness/core/agent-pack.ts",
+          "src/agents/prompt-sections.ts",
+          "src/harness/core/workflow.ts",
+          "src/agents/prompt-dialects.ts",
+          ".thoth/specs/workflow/spec.md",
+          ".thoth/changes/director-default-orchestration/durable/workflow-spec.md"
+        ],
+        "writes": [
+          "src/harness/core/agent-pack.ts",
+          "src/harness/core/workflow.ts",
+          "src/agents/prompt-sections.ts",
+          "src/agents/orchestrator.ts",
+          "src/harness/core/agent-pack.test.ts",
+          "src/harness/core/agent-routing.test.ts",
+          "src/harness/core/workflow.test.ts",
+          "src/agents/index.test.ts",
+          "src/agents/prompt-rendering.test.ts",
+          "src/harness/adapters/claude-code.ts",
+          "src/harness/adapters/codex.ts",
+          "src/harness/adapters/opencode.ts",
+          "src/harness/adapters/pi.ts",
+          "src/harness/adapters/claude-code.test.ts",
+          "src/harness/adapters/codex.test.ts",
+          "src/harness/adapters/opencode.test.ts",
+          "src/harness/adapters/pi.test.ts",
+          "AGENTS.md",
+          "README.md",
+          "docs/agent/agents-and-delegation.md",
+          "docs/agent/workflow-and-skills.md",
+          "docs/agent/routing-cases.json",
+          "docs/workflow.md",
+          "skills/thoth-work/SKILL.md",
+          "skills/thoth-work/references/planning.md",
+          "plugin",
+          "pi/.thoth-agents-assets.json",
+          "pi/agents/thoth-explorer.md"
+        ],
+        "resources": ["repository validation and integration generation"],
+        "owner": {
+          "role": "deep"
+        },
+        "checks": [
+          {
+            "id": "focused",
+            "criterion": "TDD regressions cover ownership discovery exception termination nonduplication and harness rendering",
+            "command": "pnpm exec vitest run src/harness/core/agent-pack.test.ts src/harness/core/agent-routing.test.ts src/harness/core/workflow.test.ts src/agents/index.test.ts src/agents/prompt-rendering.test.ts src/harness/adapters"
+          },
+          {
+            "id": "ci",
+            "criterion": "Formatting typechecking generation and full tests pass or failures are specifically diagnosed",
+            "command": "pnpm run check:ci && pnpm run typecheck && pnpm run build && pnpm test"
+          }
+        ],
+        "acceptance": ["AC-1", "AC-2", "AC-3", "AC-4"],
+        "baseline": {
+          "status": "unknown"
+        },
+        "semantic": {
+          "status": "pending"
+        }
+      }
+    ]
+  },
+  "sourcePaths": [".thoth/changes/director-default-orchestration/work.yaml"],
+  "fingerprints": {
+    "agreement": "sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee",
+    "inputs": "sha256:6a92ccb43ec78ea402bbbe1e809a7df787b379e6337deb07a55c35a20fecd2c6",
+    "outputs": "sha256:1c0d4a48d1921d2658b288a3e20ad9b30c35fddd5f71c039cf4601ded07ddc05"
+  }
+}

@@ -135,7 +135,7 @@ function piCapabilityDisclosure(
 ): string | undefined {
   const status = PI_PROMPT_CAPABILITIES[capability];
   if (status === 'supported') return undefined;
-  return `${capability}: ${status} in Pi; Pi extensions run with the invoking user's system permissions, and child tool allowlists are role controls rather than an OS, filesystem, process, network, or credential sandbox.`;
+  return `${capability}: ${status} in Pi; Pi extensions run with the invoking user's system permissions, and child selection through tools, disallowed_tools, configuration and native subagent_* exclusions is runtime-verified registry filtering; behavioral role limits are instruction-level, not an OS, filesystem, process, network, or credential sandbox.`;
 }
 
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
@@ -167,8 +167,6 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'root coordinator';
       case 'task':
         return 'task';
-      case 'synchronous-task-only':
-        return 'synchronous task only';
     }
   },
   renderRoleInvocation(role) {
@@ -209,8 +207,6 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'ambient Codex root session coordinator';
       case 'task':
         return 'collaboration.spawn_agent';
-      case 'synchronous-task-only':
-        return 'synchronous collaboration.spawn_agent only';
     }
   },
   renderRoleInvocation(role) {
@@ -265,8 +261,6 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'main-session coordinator';
       case 'task':
         return 'Agent tool';
-      case 'synchronous-task-only':
-        return 'synchronous Agent only';
     }
   },
   renderRoleInvocation(role) {
@@ -282,33 +276,34 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
   tools: {
     delegationTool: 'subagent_run',
-    backgroundDelegationTool: 'subagent_run',
-    backgroundStatusTool:
-      'subagent_status / subagent_result / subagent_list_tasks',
+    backgroundDelegationTool:
+      'subagent_run({ agent, task, mode: "background" })',
+    backgroundStatusTool: 'subagent_status({ task_id })',
     backgroundWaitInstruction:
-      'For background tasks, respond and wait for the automatic completion notification. Do not sleep, poll status, or fetch results merely to wait; use `subagent_status`, `subagent_result`, or `subagent_list_tasks` only for an explicitly needed intermediate status or stored result.',
+      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait. Explicit exact-name `tools` lists are the default; manual globs, including `*`, select from all registered root tools (active and inactive), minus native `subagent_*` exclusions and `disallowed_tools`; edit `disallowed_tools` manually for injected tools and trimming globs. When `enable_ask_orchestrator` is true, children receive `ask_orchestrator` regardless of `tools` selection unless denied by `disallowed_tools`; only Thoth Oracle denies `ask_orchestrator` by default for independent judgment. A task-mode child that asks a question is moved to background; answer it with `subagent_reply` and collect its result later through terminal completion.',
     userQuestionTool: 'ask_user_question',
-    progressTool: 'todo',
-    hostStatusSurface: 'subagent_list_tasks',
+    hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:
-        '`subagent_run` with one exact canonical `agent` and no deprecated batch input',
+        '`subagent_run` with one canonical `agent`, a fresh bounded `task`, and an explicit `mode` of `"task"` or `"background"`',
       sameAssignmentContinuation:
-        '`subagent_status`, `subagent_result`, or `subagent_list_tasks`; use `subagent_send_message` only when the active SDK confirms live steering, and `subagent_continue` only when continuation is explicitly enabled',
+        '`subagent_reply({ task_id, request_id?, message })` for an injected `subagent-question` when exposed; `subagent_send_message` only when exposed and its schema is confirmed; `subagent_continue` is unavailable unless `enable_continue` is explicitly enabled',
       independentContext:
-        'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent_run` task',
-      statusAction: 'inspect status, collect terminal results, or cancel',
+        'a new objective, phase, mutable surface, or independent judgment uses a fresh `subagent_run`; optional `context` is plain supporting text, not a context-mode selector',
+      statusAction:
+        '`subagent_status`, `subagent_result`, or `subagent_cancel` by `task_id`',
       terminalState:
-        'a terminal completion notification or terminal subagent_result outcome',
+        'a native terminal completion notification or terminal task-id result',
       nonterminalState:
-        'running, queued, timed-out, malformed, or merely message-accepted state',
-      sameSessionProbe: 'subagent_status for the current parent-owned task ID',
+        'waiting for an orchestrator reply, an injected `subagent-question`, running, queued, timed-out, malformed, message-accepted, or cancellation-acknowledged state',
+      sameSessionProbe:
+        '`subagent_status({ task_id })` for the current parent-owned assignment',
       enforcement: 'runtime-supported',
     },
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the ambient Pi root'
-        : `subagent_run(agent: "${piSpecialistName(role)}")`,
+        : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`,
   },
   capabilities: {
     capabilities: PI_PROMPT_CAPABILITIES,
@@ -319,14 +314,13 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Pi root session coordinator';
       case 'task':
-      case 'synchronous-task-only':
-        return 'single-agent subagent_run';
+        return 'subagent_run';
     }
   },
   renderRoleInvocation(role) {
     return role === 'orchestrator'
       ? 'ambient Pi root'
-      : `subagent_run(agent: "${piSpecialistName(role)}")`;
+      : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`;
   },
 };
 

@@ -1,43 +1,33 @@
 ---
 name: thoth-init
-description: Initialize or synchronize the minimum project OpenSpec governance structure required by thoth-agents SDD flows.
+description: Initialize canonical offline .thoth governance without modifying existing project records.
 license: MIT
-compatibility: Requires Node.js >=22.19 and write access to the target project.
+compatibility: Requires Node.js >=22.19 and write access to target project.
 metadata:
   author: thoth-agents
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Thoth Init
 
-Initialize or synchronize the current project's OpenSpec governance from this
-installed skill bundle. Resolve `<skill-dir>` as the directory containing this
-`SKILL.md`, then run the bundled script by absolute path:
+Run the installed script by absolute skill-root path:
 
 ```text
 node "<skill-dir>/scripts/init.mjs" --project <project-root> --json
 ```
 
-The project root must already exist. The initializer preflights the complete
-target structure before changing it, then ensures these minimum paths exist:
+For a new project, initialize `.thoth/changes/archive/`, `.thoth/specs/`, and
+`.thoth/constitution.md`. A missing constitution comes from the sibling
+thoth-constitution template with date placeholders filled. Preserve an existing
+constitution and all existing `.thoth` change/spec history byte-for-byte; never
+auto-migrate or overwrite project governance. Refuse symlinked ancestors,
+unknown path collisions, or an active legacy OpenSpec tree rather than creating a
+duplicate active store. Migration is an explicit project change, not an init side
+effect.
 
-- `openspec/changes/archive/`
-- `openspec/specs/`
-- `openspec/memory/`
-- `openspec/.thoth-agents.json`
-
-The missing constitution is copied from the installed sibling
-`thoth-constitution` skill. An existing constitution remains byte-for-byte
-intact, while the thoth-managed manifest may be normalized to the current
-contract. Any legacy `openspec/templates/` tree is outside the managed graph and
-remains untouched. Inspect the JSON `created`, `managed`, and `preserved` arrays
-when reporting the result.
-
-The initializer never creates, copies, validates, reads, or synchronizes SDD
-workflow templates. Those assets remain in the installed `thoth-sdd` skill and
-are consumed directly from that bundle by the workflow phase contracts.
-
-This operation is offline, idempotent, and harness-neutral. Every write stays
-inside `openspec/`. It never installs or synchronizes skills, agents, plugins,
-harness configuration, external dependencies, or global instruction files;
-those are responsibilities of `npx thoth-agents install`.
+The operation is offline and idempotent. It creates no manifests, change records,
+workflow templates, OpenSpec tree, process tools, or mirrored state. Return JSON
+`created` and `preserved` paths. No installer or network access is involved.
+This skill presents no interactive choices and does not infer missing target
+facts. Any orchestrator choice around initialization follows the shared SDD
+recommendation and per-question retry policy.

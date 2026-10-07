@@ -1,0 +1,89 @@
+version: 1
+change:
+  id: pi-windows-managed-write
+  title: Handle transient Windows locks during atomic Pi managed writes
+agreement:
+  status: approved
+  source: user
+  ref: User reports setup:pi:local EPERM replacing settings.json after package steps
+  approvedBy: user
+  fingerprint: sha256:5122f0c62596d9c5ec2068f3e1514564aca5d7b2733c7e67f36110e8de55c28a
+goal: Recover safely from transient Windows rename locks during managed Pi writes without losing concurrent edits or weakening atomic replacement.
+bounds:
+  include:
+    - Bounded Windows-only retries for transient replacement failures in writePiManagedText
+    - Revalidation before every replacement attempt, actionable persistent failure, regression tests
+  exclude:
+    - Live installation or settings mutation, process termination, permission changes
+    - In-place overwrite or unlink fallback, dependency policies and other harness writers
+autonomy:
+  allowed:
+    - Edit managed writer and focused tests
+    - Use disposable Windows file-lock probes and local checks
+  requiresApproval:
+    - Mutating live user configuration or terminating a process
+  forbidden:
+    - Overwrite a concurrently changed target or weaken symlink checks
+    - Claim identification of the process behind the reported lock without evidence
+acceptance:
+  - id: safe-replacement
+    criterion: Windows transient rename lock failures retry within a fixed bound and succeed when released; persistent failures preserve the original, clean temporary data and provide actionable diagnostics; every retry rechecks target safety and original snapshot; other errors and non-Windows paths retain fail-fast behavior.
+    inputs: [src/cli/pi-managed-write.ts]
+    outputs: [src/cli/pi-managed-write.ts, src/cli/pi-managed-write.test.ts]
+    checks: [focused-tests, static-checks, native-probe, independent-review]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: "2026-09-27T00:44:04.580Z"
+      evidence: [.thoth/changes/pi-windows-managed-write/evidence/verification.md, .thoth/changes/pi-windows-managed-write/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:ba5db57429ba5142425788e5eb172e52a0cb5969b7db06d1679809fc3c07e4cc
+      inputFingerprint: sha256:c5eac392d8b27ae900e3a983ab7b930a3dddc3a75882f83e521992699ab4f4b5
+      outputFingerprint: sha256:beae1cba6f4d60767386d858bb51537e43c9012e5711496a4d3c1664a2ec954f
+      definitionFingerprint: sha256:c276d82d47a43345f4aa6fd7e7c4fe2c0e20051eaedbbae52c2c7dc45261e103
+units:
+  - id: implementation
+    output: Safe bounded Windows rename retries and regression evidence.
+    dependsOn: []
+    reads: [src/cli/pi-managed-write.ts, src/cli/pi-install.test.ts]
+    writes: [src/cli/pi-managed-write.ts, src/cli/pi-managed-write.test.ts]
+    resources: [repository-pi-managed-writer]
+    owner:
+      role: root
+    checks:
+      - id: focused-tests
+        criterion: Transient, persistent, concurrent edit, unsafe path, cleanup and unrelated error cases pass.
+        command: pnpm exec vitest run src/cli/pi-managed-write.test.ts src/cli/pi-install.test.ts src/cli/pi-resources.test.ts
+      - id: static-checks
+        criterion: Biome, TypeScript, build and applicable regression suite pass.
+        command: pnpm run check:ci && pnpm run typecheck && pnpm run build && env -u CODEX_HOME pnpm test
+      - id: native-probe
+        criterion: Disposable Windows real file lock reproduces EPERM and demonstrates release recovery without touching live settings.
+      - id: independent-review
+        criterion: Fresh read-only Oracle judges actual diff and verified checks.
+    acceptance: [safe-replacement]
+    baseline:
+      status: captured
+      capturedAt: "2026-09-27T00:37:06.391Z"
+      paths:
+        - {path: src/cli/pi-managed-write.ts, state: preexisting, fingerprint: "sha256:6a46921e508c646bba69f327e17619f25b1088dc94a40674c4a2f74b1f54d6be"}
+        - {path: src/cli/pi-managed-write.test.ts, state: absent, fingerprint: "sha256:3b4bf7a69166135a1042e1c01b1829f6307a18693d8a92ca33d01c2d64d94633"}
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: "2026-09-27T00:44:04.454Z"
+        evidence: [.thoth/changes/pi-windows-managed-write/evidence/verification.md, .thoth/changes/pi-windows-managed-write/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:ba5db57429ba5142425788e5eb172e52a0cb5969b7db06d1679809fc3c07e4cc
+        inputFingerprint: sha256:624034d3f9dbc3efae14ef92b7e57dac74f2b7211cc509f6252da2557181515b
+        outputFingerprint: sha256:beae1cba6f4d60767386d858bb51537e43c9012e5711496a4d3c1664a2ec954f
+        definitionFingerprint: sha256:1d73817a269a6396f1af480816d450df051b7404af8ff59421185ee97520aa30
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/pi-windows-managed-write/evidence/verification.md, .thoth/changes/pi-windows-managed-write/evidence/oracle-final.md]
+  evidenceFingerprint: sha256:ba5db57429ba5142425788e5eb172e52a0cb5969b7db06d1679809fc3c07e4cc
+  inputFingerprint: sha256:624034d3f9dbc3efae14ef92b7e57dac74f2b7211cc509f6252da2557181515b
+  outputFingerprint: sha256:beae1cba6f4d60767386d858bb51537e43c9012e5711496a4d3c1664a2ec954f
+  agreementFingerprint: sha256:5122f0c62596d9c5ec2068f3e1514564aca5d7b2733c7e67f36110e8de55c28a
+  technicalFingerprint: sha256:183eeeccd341eb33ff94055d91cd1cc000ceb2e4b04ce2cacb7901bc78812b73

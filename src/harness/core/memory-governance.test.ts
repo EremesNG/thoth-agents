@@ -16,13 +16,14 @@ const PROVIDER_OPERATION_PATTERN =
   /mem_(?:save|recall|get|context|project|session)\s*\(/;
 
 describe('memory governance contract', () => {
-  test('uses the installed Pi question and progress tool names', () => {
+  test('uses the Pi question tool without requiring a progress tool', () => {
     const prompt = renderMemoryGovernanceInstructions(
-      getAgentRole('deep'),
+      getAgentRole('worker'),
       PI_PROMPT_DIALECT,
     );
     expect(prompt).toContain('`ask_user_question`');
-    expect(prompt).toContain('tracking in todo');
+    expect(prompt).toContain('tracking in written progress notes');
+    expect(prompt).not.toContain('tracking in todo');
     expect(prompt).not.toContain('undefined');
     expect(prompt).not.toContain('tracking in subagent_status');
   });
@@ -35,8 +36,8 @@ describe('memory governance contract', () => {
         provider: 'thoth-mem',
         providerOwnership: 'external',
         installedGuidance: 'thoth-mem skill',
-        canonicalSddStore: 'openspec/',
-        prohibitsSddArtifactMirroring: true,
+        canonicalWorkStore: '.thoth/',
+        prohibitsWorkArtifactMirroring: true,
         requiresParentAuthorization: true,
         rootLifecycleOwner: 'orchestrator',
         handoffOutcome: 'bounded-memory-contract',
@@ -53,7 +54,7 @@ describe('memory governance contract', () => {
   });
 
   test('renders authorization, continuity, and capability gaps without provider protocol sequencing', () => {
-    const prompt = renderMemoryGovernanceInstructions(getAgentRole('deep'));
+    const prompt = renderMemoryGovernanceInstructions(getAgentRole('worker'));
 
     expect(prompt).toContain('installed provider guidance');
     expect(prompt).toContain('thoth-mem');
@@ -62,7 +63,7 @@ describe('memory governance contract', () => {
       'accepted scope, decisions, permissions, and artifacts',
     );
     expect(prompt).toContain('root lifecycle');
-    expect(prompt).toContain('openspec/');
+    expect(prompt).toContain('.thoth/');
     expect(prompt).toMatch(/do not mirror/i);
     expect(prompt).toContain('degraded or unsupported');
     expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
@@ -73,7 +74,7 @@ describe('memory governance contract', () => {
 
   test('keeps role permissions intact while delegated provider use requires parent authorization', () => {
     const explorer = getRoleMemoryGovernance(getAgentRole('explorer'));
-    const deep = getRoleMemoryGovernance(getAgentRole('deep'));
+    const worker = getRoleMemoryGovernance(getAgentRole('worker'));
 
     expect(explorer.role).toBe('explorer');
     expect(explorer.requiresParentContext).toBe(true);
@@ -84,37 +85,37 @@ describe('memory governance contract', () => {
       'observe',
     ]);
     expect(explorer.ownsRootLifecycle).toBe(false);
-    expect(deep.role).toBe('deep');
-    expect(deep.requiresParentContext).toBe(true);
-    expect(deep.workspaceMode).toBe('write-capable');
-    expect(deep.availableAuthorizations).toEqual(
+    expect(worker.role).toBe('worker');
+    expect(worker.requiresParentContext).toBe(true);
+    expect(worker.workspaceMode).toBe('write-capable');
+    expect(worker.availableAuthorizations).toEqual(
       explorer.availableAuthorizations,
     );
-    expect(deep.ownsRootLifecycle).toBe(false);
+    expect(worker.ownsRootLifecycle).toBe(false);
     expect(explorer.rules.join('\n')).toContain('parent-scoped authorization');
     expect(explorer.rules.join('\n')).toContain(
       'does not authorize workspace mutation',
     );
-    expect(deep.rules.join('\n')).toContain('authorized context');
-    expect([...explorer.rules, ...deep.rules].join('\n')).not.toMatch(
+    expect(worker.rules.join('\n')).toContain('authorized context');
+    expect([...explorer.rules, ...worker.rules].join('\n')).not.toMatch(
       PROVIDER_OPERATION_PATTERN,
     );
   });
 
   test('renders the same neutral outcomes through harness-specific wording', () => {
     const openCode = renderMemoryGovernanceInstructions(
-      getAgentRole('quick'),
+      getAgentRole('worker'),
       OPENCODE_PROMPT_DIALECT,
     );
     const codex = renderMemoryGovernanceInstructions(
-      getAgentRole('quick'),
+      getAgentRole('worker'),
       CODEX_PROMPT_DIALECT,
     );
 
     for (const prompt of [openCode, codex]) {
       expect(prompt).toContain('parent-scoped authorization');
       expect(prompt).toContain('provider-confirmed semantic summary');
-      expect(prompt).toContain('openspec/');
+      expect(prompt).toContain('.thoth/');
       expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
     }
 

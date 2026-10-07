@@ -1,0 +1,21 @@
+{
+  "changeId": "pi-agnostic-progress",
+  "agreementFingerprint": "sha256:fa94dcb523fcd458f8b7fbce91a97d78894a85c4c9c739ce0187c37b47c53fb4",
+  "technicalFingerprint": "sha256:d0723be854b0d343588b8566256995c34fa6a521357a622b1efe202b6479be03",
+  "planChoice": {
+    "choice": "direct",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "choice": null,
+    "resolution": "pending",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": null,
+  "implementationChoiceApplicability": "Not required: direct implementation explicitly selected"
+}

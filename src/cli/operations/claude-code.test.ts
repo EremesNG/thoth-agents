@@ -446,8 +446,7 @@ describe('claudeCodeOperationAdapter', () => {
     expect(modelOf('librarian')).toBe('sonnet');
     expect(modelOf('oracle')).toBe('opus');
     expect(modelOf('designer')).toBe('sonnet');
-    expect(modelOf('quick')).toBe('haiku');
-    expect(modelOf('deep')).toBe('sonnet');
+    expect(modelOf('worker')).toBe('sonnet');
   });
 
   test('model plan is diagnostic-only and never writes manager cache files', () => {
@@ -455,7 +454,7 @@ describe('claudeCodeOperationAdapter', () => {
       {
         harness: 'claude',
         dryRun: true,
-        roles: [{ role: 'deep', model: 'opus' }],
+        roles: [{ role: 'worker', model: 'opus' }],
       },
       context(),
     );
@@ -540,7 +539,7 @@ Keep cache content.
 `;
   writeFileSync(path, content);
   const plan = buildRestoreModelPlan('claude', [], context());
-  expect(plan.items).toHaveLength(6);
+  expect(plan.items).toHaveLength(5);
   expect(plan.canApply).toBe(false);
   expect(
     plan.warnings.some(

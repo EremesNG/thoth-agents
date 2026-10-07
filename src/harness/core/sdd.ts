@@ -1,66 +1,17 @@
-import type { AgentRoleName } from './agent-pack';
-import type { MemoryDispatchContract } from './memory-governance';
-
-export type SddRoute = 'direct' | 'accelerated' | 'full';
-
+export type SddUnderstandingPhaseId = 'explore' | 'specify' | 'clarify';
+export type SddClassification = 'small' | 'substantial';
 export type SddIntent =
   | 'documentation'
   | 'mechanical'
   | 'behavior'
   | 'architecture';
-
-export type SddScope = 'local' | 'multi-file' | 'cross-cutting';
-export type SddClarity = 'clear' | 'partial' | 'uncertain';
+// Scope describes coordination impact, not the number of changed files.
+export type SddScope = 'local' | 'coordinated' | 'cross-cutting';
+export type SddUncertainty = 'low' | 'medium' | 'high';
 export type SddRisk = 'low' | 'medium' | 'high';
-export type SddFinalVerificationRisk =
-  | 'trivial-deterministic'
-  | 'architecture'
-  | 'security'
-  | 'cross-cutting-regression'
-  | 'persistent-diagnosis'
-  | 'contradictory-evidence'
-  | 'high-failure-cost'
-  | 'material-uncertainty';
-export type SddFinalVerificationOwner = 'orchestrator' | 'oracle';
-
-export interface SddFinalVerificationDecision {
-  verificationRequired: true;
-  owner: SddFinalVerificationOwner;
-  oracleRequired: boolean;
-  freshOracleRequired: boolean;
-}
-export type SddPlanningMode = 'none' | 'fast-forward' | 'gated';
-export type SddValidationGate =
-  | 'specify'
-  | 'plan'
-  | 'tasks'
-  | 'checklist'
-  | 'ready'
-  | 'closeout';
-export type SddArtifactRevisionPolicy =
-  | 'none'
-  | 'revalidate-affected-downstream';
-
-export interface SddRoutingInput {
-  intent: SddIntent;
-  scope: SddScope;
-  clarity: SddClarity;
-  contractRisk: SddRisk;
-  failureCost: SddRisk;
-  requestedRoute?: SddRoute;
-  sddRequested?: boolean;
-}
-
-export interface SddRoutingDecision {
-  route: SddRoute;
-  requiresUserInput: boolean;
-  reasons: string[];
-}
-
+export type SddClarificationOutcome = 'not-needed' | 'resolved' | 'unresolved';
 export type SddPhaseId =
-  | 'explore'
-  | 'specify'
-  | 'clarify'
+  | SddUnderstandingPhaseId
   | 'plan'
   | 'checklist'
   | 'tasks'
@@ -69,23 +20,48 @@ export type SddPhaseId =
   | 'verify'
   | 'converge'
   | 'archive';
-
 export type SddPhaseActivation = 'required' | 'conditional';
-export type SddPhaseOwner =
-  | AgentRoleName
-  | 'adaptive-implementation'
-  | 'adaptive-verification';
+export type SddVerificationOwner = 'orchestrator' | 'oracle';
+
+export interface SddUnderstandingPhaseContract {
+  id: SddUnderstandingPhaseId;
+  order: number;
+  requiredForClassification: true;
+  artifactRequired: false;
+  agentRequired: false;
+  interviewRequired: false;
+  objective: string;
+}
+
+export interface SddUnderstandingEvidence {
+  completed: readonly SddUnderstandingPhaseId[];
+  clarification: SddClarificationOutcome;
+}
+
+export interface SddChangeClassificationInput {
+  scope: SddScope;
+  uncertainty: SddUncertainty;
+  risk: SddRisk;
+  understanding: SddUnderstandingEvidence;
+}
+
+export interface SddClassificationDecision {
+  classification: SddClassification;
+  scope: SddScope;
+  uncertainty: SddUncertainty;
+  risk: SddRisk;
+  planningRequired: boolean;
+  recordRequired: boolean;
+  independentVerificationRequired: boolean;
+  reasons: string[];
+}
 
 export interface SddPhaseContract {
   id: SddPhaseId;
   order: number;
-  availableFor: SddRoute[];
-  requiredFor: SddRoute[];
   activation: SddPhaseActivation;
   prerequisites: SddPhaseId[];
   producesArtifact: boolean;
-  defaultAgentRole: SddPhaseOwner;
-  eligibleAgentRoles: AgentRoleName[];
   reason: string;
   condition?: string;
 }
@@ -95,729 +71,441 @@ export interface SddPhaseProtocol {
   objective: string;
   requiredInputs: string[];
   instructions: string[];
-  allowedWrites: string[];
   outputSchema: string[];
   doneWhen: string[];
   blockingConditions: string[];
-  handoff: string[];
 }
 
-export interface SddPhaseDispatchInput {
-  phase: SddPhaseId;
-  route: SddRoute;
-  changeName: string;
-  inputArtifacts?: string[];
-  requirements?: string[];
-  boundaries?: string[];
-  verification?: string[];
-  memory: MemoryDispatchContract;
-}
-
-export type SddArtifactId =
-  | 'spec'
-  | 'plan'
-  | 'tasks'
-  | 'requirements-checklist'
-  | 'research'
-  | 'data-model'
-  | 'contracts'
-  | 'quickstart'
-  | 'plan-review'
-  | 'verify-report'
-  | 'archive-report';
-
-export interface SddArtifactContract {
-  id: SddArtifactId;
-  path: string;
-  producedBy: SddPhaseId;
-  consumes: SddArtifactId[];
-  requiredFor: SddRoute[];
+export interface SddFinalVerificationDecision {
+  verificationRequired: true;
+  independent: boolean;
+  owner: SddVerificationOwner;
 }
 
 export interface SddWorkflowContract {
-  artifactRoot: string;
+  recordRoot: string;
+  recordPath: string;
+  understandingPhases: SddUnderstandingPhaseContract[];
   phases: SddPhaseContract[];
-  routePolicies: SddRouteExecutionPolicy[];
-  routingRules: string[];
+  classificationRules: string[];
   artifactRules: string[];
   verificationRules: string[];
 }
 
-export interface SddRouteExecutionPolicy {
-  route: SddRoute;
-  planningMode: SddPlanningMode;
-  validationGates: SddValidationGate[];
-  optionalArtifactsByDefault: boolean;
-  routineUserPauses: boolean;
-  artifactRevisionPolicy: SddArtifactRevisionPolicy;
-}
+export const SDD_UNDERSTANDING_PHASES = [
+  {
+    id: 'explore',
+    order: 0,
+    requiredForClassification: true,
+    artifactRequired: false,
+    agentRequired: false,
+    interviewRequired: false,
+    objective:
+      'Inspect proportionally to understand current behavior, constraints, and uncertainty.',
+  },
+  {
+    id: 'specify',
+    order: 1,
+    requiredForClassification: true,
+    artifactRequired: false,
+    agentRequired: false,
+    interviewRequired: false,
+    objective:
+      'State the intended outcome, non-goals, and observable acceptance proportionally.',
+  },
+  {
+    id: 'clarify',
+    order: 2,
+    requiredForClassification: true,
+    artifactRequired: false,
+    agentRequired: false,
+    interviewRequired: false,
+    objective:
+      'Resolve material uncertainty with evidence or a safe assumption; ask only when needed.',
+  },
+] as const satisfies readonly SddUnderstandingPhaseContract[];
 
 export const SDD_PHASES = [
   {
     id: 'explore',
     order: 0,
-    availableFor: ['full'],
-    requiredFor: ['full'],
     activation: 'required',
     prerequisites: [],
     producesArtifact: false,
-    defaultAgentRole: 'explorer',
-    eligibleAgentRoles: ['explorer'],
     reason:
-      'Resolve broad repository uncertainty before requirements are fixed.',
+      'Every change begins with proportionate repository and intent discovery.',
   },
   {
     id: 'specify',
     order: 1,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: ['accelerated', 'full'],
     activation: 'required',
     prerequisites: ['explore'],
-    producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
-    reason: 'Define the user-visible requirements and acceptance contract.',
+    producesArtifact: false,
+    reason: 'Settle outcome and acceptance before risk-aware classification.',
   },
   {
     id: 'clarify',
     order: 2,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: [],
-    activation: 'conditional',
+    activation: 'required',
     prerequisites: ['specify'],
     producesArtifact: false,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
-    reason: 'Resolve only material ambiguity that would change the solution.',
-    condition:
-      'Activate when unresolved decisions cannot be handled by a safe local assumption.',
+    reason:
+      'Material uncertainty must be resolved or explicitly block classification.',
   },
   {
     id: 'plan',
     order: 3,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: ['accelerated', 'full'],
     activation: 'required',
-    prerequisites: ['specify'],
+    prerequisites: ['explore', 'specify', 'clarify'],
     producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
-    reason: 'Translate requirements into an executable technical approach.',
+    reason:
+      'Substantial changes need a decision-ready technical approach in the sole record.',
   },
   {
     id: 'checklist',
     order: 4,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: [],
     activation: 'conditional',
-    prerequisites: ['specify', 'plan'],
+    prerequisites: ['plan'],
     producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
-    reason:
-      'Audit requirement quality when risk justifies an explicit checklist.',
-    condition:
-      'Activate for high-risk, compliance-sensitive, or ambiguity-prone requirements.',
+    reason: 'Audit acceptance only when risk or ambiguity justifies it.',
+    condition: 'Use for elevated risk, compliance, or acceptance ambiguity.',
   },
   {
     id: 'tasks',
     order: 5,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: ['accelerated', 'full'],
     activation: 'required',
-    prerequisites: ['specify', 'plan'],
+    prerequisites: ['plan'],
     producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
-    reason:
-      'Produce dependency-ordered implementation slices with verification.',
+    reason: 'Shape useful implementation slices and acceptance coverage.',
   },
   {
     id: 'plan-review',
     order: 6,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: [],
     activation: 'conditional',
     prerequisites: ['tasks'],
     producesArtifact: true,
-    defaultAgentRole: 'oracle',
-    eligibleAgentRoles: ['oracle'],
-    reason:
-      'Offer independent blocker-only plan review after explicit or bounded recommended-default selection once planning passes ready.',
-    condition:
-      'Activate after ready when review is selected explicitly or by the bounded recommended default after three answerless attempts.',
+    reason: 'Offer optional independent plan review after readiness.',
+    condition: 'Run only when selected; it never authorizes implementation.',
   },
   {
     id: 'implement',
     order: 7,
-    availableFor: ['direct', 'accelerated', 'full'],
-    requiredFor: ['direct', 'accelerated', 'full'],
     activation: 'required',
-    prerequisites: ['tasks'],
+    prerequisites: ['clarify'],
     producesArtifact: false,
-    defaultAgentRole: 'adaptive-implementation',
-    eligibleAgentRoles: ['orchestrator', 'designer', 'quick', 'deep'],
     reason:
-      'Choose root, designer, quick, or deep from task-shaped net gain independently from the SDD route.',
+      'Implement within accepted intent using one writer and focused checks.',
   },
   {
     id: 'verify',
     order: 8,
-    availableFor: ['direct', 'accelerated', 'full'],
-    requiredFor: ['direct', 'accelerated', 'full'],
     activation: 'required',
     prerequisites: ['implement'],
     producesArtifact: true,
-    defaultAgentRole: 'adaptive-verification',
-    eligibleAgentRoles: ['orchestrator', 'oracle'],
     reason:
-      'Keep verification mandatory while selecting root for trivial deterministic Direct checks and a fresh Oracle for material-risk Direct or artifact-backed judgment.',
+      'Verify actual outcomes and residual risk independently when required.',
   },
   {
     id: 'converge',
     order: 9,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: [],
     activation: 'conditional',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
     reason:
-      'Append traceable remaining work to tasks.md before another implementation loop.',
-    condition: 'Activate only when verification finds actionable defects.',
+      'Record bounded corrective work only when verification finds actionable gaps.',
+    condition: 'Use only for actionable defects within settled intent.',
   },
   {
     id: 'archive',
     order: 10,
-    availableFor: ['accelerated', 'full'],
-    requiredFor: ['accelerated', 'full'],
     activation: 'required',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'orchestrator',
-    eligibleAgentRoles: ['orchestrator'],
     reason:
-      'Transactionally sync declared durable deltas and close verified work with a dated audit trail.',
+      'Fail closed on incomplete work or verification, then transactionally archive.',
   },
 ] as const satisfies readonly SddPhaseContract[];
-
-export const SDD_ARTIFACT_GRAPH = [
-  {
-    id: 'spec',
-    path: 'spec.md',
-    producedBy: 'specify',
-    consumes: [],
-    requiredFor: ['accelerated', 'full'],
-  },
-  {
-    id: 'plan',
-    path: 'plan.md',
-    producedBy: 'plan',
-    consumes: ['spec'],
-    requiredFor: ['accelerated', 'full'],
-  },
-  {
-    id: 'tasks',
-    path: 'tasks.md',
-    producedBy: 'tasks',
-    consumes: ['spec', 'plan'],
-    requiredFor: ['accelerated', 'full'],
-  },
-  {
-    id: 'requirements-checklist',
-    path: 'checklists/requirements.md',
-    producedBy: 'checklist',
-    consumes: ['spec'],
-    requiredFor: [],
-  },
-  {
-    id: 'research',
-    path: 'research.md',
-    producedBy: 'plan',
-    consumes: ['spec'],
-    requiredFor: [],
-  },
-  {
-    id: 'data-model',
-    path: 'data-model.md',
-    producedBy: 'plan',
-    consumes: ['spec'],
-    requiredFor: [],
-  },
-  {
-    id: 'contracts',
-    path: 'contracts/',
-    producedBy: 'plan',
-    consumes: ['spec'],
-    requiredFor: [],
-  },
-  {
-    id: 'quickstart',
-    path: 'quickstart.md',
-    producedBy: 'plan',
-    consumes: ['spec', 'plan'],
-    requiredFor: [],
-  },
-  {
-    id: 'plan-review',
-    path: 'plan-review.md',
-    producedBy: 'plan-review',
-    consumes: ['spec', 'plan', 'tasks'],
-    requiredFor: [],
-  },
-  {
-    id: 'verify-report',
-    path: 'verify-report.md',
-    producedBy: 'verify',
-    consumes: ['spec', 'plan', 'tasks'],
-    requiredFor: ['accelerated', 'full'],
-  },
-  {
-    id: 'archive-report',
-    path: 'archive-report.md',
-    producedBy: 'archive',
-    consumes: ['spec', 'plan', 'tasks', 'verify-report'],
-    requiredFor: ['accelerated', 'full'],
-  },
-] as const satisfies readonly SddArtifactContract[];
-
-export const SDD_ROUTE_EXECUTION_POLICIES = [
-  {
-    route: 'direct',
-    planningMode: 'none',
-    validationGates: [],
-    optionalArtifactsByDefault: false,
-    routineUserPauses: false,
-    artifactRevisionPolicy: 'none',
-  },
-  {
-    route: 'accelerated',
-    planningMode: 'fast-forward',
-    validationGates: ['specify', 'ready', 'closeout'],
-    optionalArtifactsByDefault: false,
-    routineUserPauses: true,
-    artifactRevisionPolicy: 'revalidate-affected-downstream',
-  },
-  {
-    route: 'full',
-    planningMode: 'gated',
-    validationGates: ['specify', 'plan', 'tasks', 'ready', 'closeout'],
-    optionalArtifactsByDefault: false,
-    routineUserPauses: true,
-    artifactRevisionPolicy: 'revalidate-affected-downstream',
-  },
-] as const satisfies readonly SddRouteExecutionPolicy[];
 
 export const SDD_PHASE_PROTOCOLS = [
   {
     id: 'explore',
-    objective: 'Resolve repository uncertainty before requirements are fixed.',
-    requiredInputs: [
-      'User request and known scope',
-      'Repository instructions and relevant starting anchors',
-      'Questions that materially affect specification',
-    ],
+    objective:
+      'Understand current behavior and constraints in proportion to the request.',
+    requiredInputs: ['User intent and known repository context'],
     instructions: [
-      'Inspect only enough repository context to make downstream requirements decision-ready.',
-      'Separate confirmed behavior, constraints, assumptions, and unresolved material decisions.',
-      'Return distilled evidence instead of raw searches or full-file content.',
+      'Inspect repository evidence in proportion to the request to identify behavior, constraints, risks, and safe assumptions.',
+      'Root owns completing understanding and acceptance; specific discovery ownership determines who gathers evidence, even when generic guidance permits direct exploration.',
+      'Give each evidence assignment one precise question and result. Independent questions may run in parallel within native capacity; dependent questions wait until the upstream output is accepted by root. Do not duplicate discovery.',
+      'Complete this phase before specifying. No document, agent, or interview is forced in this phase.',
     ],
-    allowedWrites: ['None; exploration is read-only.'],
     outputSchema: [
-      'relevant paths and symbols',
-      'current behavior and constraints',
-      'material uncertainties and safe assumptions',
-      'recommended specification anchors',
+      'confirmed facts',
+      'constraints',
+      'safe assumptions',
+      'material uncertainty',
     ],
     doneWhen: [
-      'The root can dispatch specification without repeating repository discovery.',
+      'The next step can state intended outcomes without repeating discovery.',
     ],
     blockingConditions: [
-      'A material product choice remains human-owned and cannot be safely assumed.',
-    ],
-    handoff: [
-      'The root passes the relevant paths, constraints, accepted assumptions, and unresolved decisions to specify.',
+      'A material human-owned decision cannot safely be inferred.',
     ],
   },
   {
     id: 'specify',
     objective:
-      'Create a testable, implementation-neutral feature contract in spec.md.',
-    requiredInputs: [
-      'User intent and accepted scope',
-      'Explore handoff when the route is full',
-      'Project constitution and existing public contracts when relevant',
-    ],
+      'State the intended outcome and observable acceptance proportionally.',
+    requiredInputs: ['User intent', 'Explore findings and constraints'],
     instructions: [
-      'Record intent and scope as Why, Impact, and Affected capabilities before prescribing any contract.',
-      'Define prioritized independent stories and map each story to its FR-### and SC-### contracts with Covers metadata.',
-      'Inspect each affected canonical capability before choosing durable metadata: ADDED is only for genuinely new behavior; MODIFIED and REMOVED preserve exact existing titles; RENAMED names the exact previous title; only ADDED is valid when the capability is absent.',
-      'Give every normative MUST or SHALL requirement a descriptive title and declare it INTERNAL or as an ADDED, MODIFIED, REMOVED, or RENAMED durable capability delta; treat an ADDED warning on an existing capability as a required semantic-overlap review.',
-      'Classify every success criterion as buildable or outcome; both remain measurable, but only buildable criteria require implementation task coverage.',
-      'Capture assumptions, acceptance scenarios, edge cases, dependencies, and explicit non-goals.',
-      'Use a clarification marker only when no safe default exists and the answer materially changes scope or behavior.',
+      'Define outcomes, non-goals, and meaningful edge cases in concise working notes.',
+      'Do not persist a document before classification; only substantial work creates the one ID-named record.',
+      'No document, agent, or interview is forced in this phase.',
     ],
-    allowedWrites: ['openspec/changes/<feature>/spec.md'],
-    outputSchema: [
-      'spec.md path',
-      'requirements summary',
-      'open clarifications',
-    ],
+    outputSchema: ['intent', 'non-goals', 'observable acceptance'],
     doneWhen: [
-      'Every accepted FR and SC is testable, materially unambiguous, mapped to a story, and implementation-neutral.',
+      'Acceptance expresses the requested outcome without material ambiguity.',
     ],
     blockingConditions: [
-      'A material unresolved choice prevents a truthful acceptance contract.',
-    ],
-    handoff: [
-      'Pass accepted scope, requirements, assumptions, and clarification decisions to plan.',
+      'Acceptance depends on an unresolved material human decision.',
     ],
   },
   {
     id: 'clarify',
     objective:
-      'Resolve only material ambiguity and write accepted answers back into spec.md.',
-    requiredInputs: ['spec.md', 'The unresolved material decision'],
+      'Resolve material ambiguity without imposing routine interviews.',
+    requiredInputs: [
+      'Explore evidence',
+      'Specified outcome',
+      'Any material uncertainty',
+    ],
     instructions: [
-      'Ask a targeted question only when repository evidence and safe assumptions cannot resolve it.',
-      'Update the canonical specification with the accepted decision instead of creating a parallel answer document.',
+      'Use evidence or a safe bounded assumption when it preserves user intent.',
+      'Ask only for a material human-owned decision that cannot safely be inferred; no interview is forced.',
+      'An unresolved material clarification blocks classification.',
+      'No document, agent, or interview is forced in this phase.',
     ],
-    allowedWrites: ['openspec/changes/<feature>/spec.md'],
     outputSchema: [
-      'resolved decision',
-      'updated spec anchor',
-      'remaining risks',
+      'resolved decision or none-needed disposition',
+      'remaining material blockers',
     ],
-    doneWhen: ['The material ambiguity is resolved in the canonical spec.'],
-    blockingConditions: ['The required human decision has not been provided.'],
-    handoff: ['Pass the updated spec and accepted decision to plan.'],
+    doneWhen: ['No material intent remains unresolved.'],
+    blockingConditions: [
+      'The required human clarification has not been provided.',
+    ],
   },
   {
     id: 'plan',
-    objective:
-      'Translate the accepted specification into an executable technical approach.',
+    objective: 'Plan substantial work in its one persistent record.',
     requiredInputs: [
-      'spec.md',
-      'Relevant repository evidence and constraints',
-      'Project constitution',
+      'Settled understanding',
+      'Substantial classification',
+      'Accepted outcomes',
     ],
     instructions: [
-      'Make each technical choice traceable to a requirement or repository constraint.',
-      'Name affected components, interfaces, files, risks, migrations, and verification strategy.',
-      'Create research, data model, contracts, or quickstart artifacts only when they reduce implementation risk.',
-      'Read active constitution principles for the plan; do not amend or run constitution lifecycle validation unless an explicit constitution amendment is itself in scope.',
+      'Substantial classification only creates the `.thoth/changes/<id>/<id>.md` record.',
+      'Capture interfaces, mutable surfaces, durable deltas, dependencies, risks, and verification seams.',
+      'Plan each useful work unit with concrete inputs, outputs, and dependencies.',
+      "Record each unit's owner, owned writes, interface boundaries, focused checks with PASS evidence, and return milestone and stop condition.",
+      'Validate the plan before tasks exist; tasks are checked later for acceptance coverage.',
     ],
-    allowedWrites: [
-      'openspec/changes/<feature>/plan.md',
-      'Optional research.md, data-model.md, contracts/, and quickstart.md under the same change',
+    outputSchema: [
+      'technical approach',
+      'affected interfaces',
+      'risks',
+      'verification seams',
     ],
-    outputSchema: ['plan.md path', 'technical decisions', 'affected surfaces'],
     doneWhen: [
-      'A competent implementer can execute the plan without guessing about critical architecture or constraints.',
+      'A competent implementer can proceed without guessing at critical constraints.',
     ],
     blockingConditions: [
-      'The plan contradicts spec.md, the constitution, or confirmed repository constraints.',
-    ],
-    handoff: [
-      'Pass the accepted plan, affected surfaces, dependencies, and verification strategy to tasks.',
+      'The approach contradicts accepted intent or unresolved material choices remain.',
     ],
   },
   {
     id: 'checklist',
-    objective:
-      'Audit requirement quality when risk justifies an explicit checklist.',
-    requiredInputs: ['spec.md', 'Risk or compliance reason for the audit'],
+    objective: 'Audit acceptance only when risk warrants a focused review.',
+    requiredInputs: ['Substantial record', 'Risk or ambiguity rationale'],
     instructions: [
-      'Evaluate requirement completeness, clarity, consistency, measurability, and scenario coverage.',
-      'Record the risk or ambiguity activation reason and add only the applicable security, accessibility, compliance, performance, migration, or domain lenses.',
-      'Record checked revalidation after requirement-affecting changes, or an evidence-backed no-op when nothing relevant changed.',
-      'Do not turn the checklist into implementation tests or QA execution steps.',
+      'Assess completeness, consistency, measurability, and relevant domain coverage in the same record.',
+      'Correct material gaps without creating a second checklist artifact.',
     ],
-    allowedWrites: ['openspec/changes/<feature>/checklists/requirements.md'],
     outputSchema: [
-      'checklist path',
-      'passed items',
-      'unresolved requirement gaps',
+      'activation rationale',
+      'resolved or remaining acceptance gaps',
     ],
-    doneWhen: ['Every checklist item has an evidence-backed state.'],
+    doneWhen: ['Material acceptance gaps have an evidence-backed disposition.'],
     blockingConditions: [
-      'A high-risk requirement gap remains unresolved before task generation.',
-    ],
-    handoff: [
-      'Pass unresolved gaps back to specify; otherwise pass readiness to tasks.',
+      'A material high-risk acceptance gap remains unresolved.',
     ],
   },
   {
     id: 'tasks',
-    objective:
-      'Produce dependency-ordered, independently verifiable implementation slices.',
+    objective: 'Record useful implementation slices and acceptance coverage.',
     requiredInputs: [
-      'spec.md',
-      'plan.md',
-      'Optional planning support artifacts',
+      'Accepted outcomes',
+      'Validated plan',
+      'Known dependencies',
     ],
     instructions: [
-      'Cover every FR and buildable SC with concrete tasks, exact paths, dependencies, and verification; outcome SC remain verification targets but do not require fake implementation tasks.',
-      'Put test-first work before its corresponding implementation when behavior changes.',
-      'Mark [P] only for proven non-overlapping mutable surfaces; otherwise state why no safe parallel work exists.',
-      'Do not create ceremonial tasks for trivial edits or combine unrelated mutable surfaces.',
+      'Record one task row per outcome in the same ID-named record; each row names one independently acceptable outcome.',
+      'Use the validator-compatible `- [ ] AC-n: ...` row with indented details and name concrete inputs, outputs, dependencies, owner, owned writes, interface boundaries, focused checks with PASS evidence, a meaningful return milestone, and a stop condition for each unit.',
+      'Write `none` for owned writes on read-only work.',
+      'Split phases with separately acceptable outcomes before dispatch; keep tiny cohesive mechanical work together and do not split mechanically by file or test step.',
+      'Independent, precise Explorer questions may run in parallel within native capacity. Dependent questions wait for accepted evidence; root accepts producer outputs before consumers start, and discovery is not duplicated.',
+      'Cover every accepted outcome with concrete work; test-first for behavior changes.',
+      'Tasks and ready gates enforce coverage; the plan gate does not depend on tasks.',
     ],
-    allowedWrites: ['openspec/changes/<feature>/tasks.md'],
-    outputSchema: ['tasks.md path', 'requirement coverage', 'dependency order'],
+    outputSchema: ['pending work', 'acceptance coverage', 'dependency order'],
     doneWhen: [
-      'Every FR and buildable SC has executable task coverage and every task has a verification step.',
+      'Each outcome has an executable task or bounded implementation seam.',
     ],
     blockingConditions: [
-      'A task requires an unresolved requirement, architecture choice, or hidden prerequisite.',
-    ],
-    handoff: [
-      'After ready, pass spec.md, plan.md, tasks.md, dependencies, and verification commands to the explicitly or bounded-default selected plan-review path, or implement when the user explicitly proceeds without review.',
+      'A task depends on unresolved material intent or hidden prerequisites.',
     ],
   },
   {
     id: 'plan-review',
     objective:
-      'Perform the explicitly or recommended-default selected read-only blocker review before Accelerated or Full implementation.',
-    requiredInputs: [
-      'spec.md',
-      'plan.md',
-      'tasks.md',
-      'Optional active requirements checklist',
-      'Project constitution',
-      'Review selection after the ready gate, from an explicit answer or the bounded recommended fallback',
-    ],
+      'Offer optional independent blocker review after the ready plan.',
+    requiredInputs: ['Ready substantial record', 'Selected review disposition'],
     instructions: [
-      'At the ready gate, make at most three total attempts when the native review question returns answerless; after the third answerless result, treat Review plan with Oracle (Recommended) as selected, while any explicit Proceed without review answer wins.',
-      'Load the bundled plan-reviewer skill and review executability, completeness, correctness, and coherence without redesigning the plan.',
-      'Require task coverage for every FR and buildable SC; assess outcome SC as measurable verification targets without manufacturing implementation tasks.',
-      'For every declared parallel group, independently assess semantic independence, each lane path union and owner, real cross-lane data flow, prerequisites and barrier, and whether native capacity supports dispatch-before-wait waves with refill; require a truthful sequential fallback when concurrency is unavailable or unproven.',
-      'Return exact [OKAY] or [REJECT] semantics, default to [OKAY], and report at most three true blockers with the smallest fixes.',
-      'After [REJECT], root must repair actionable same-intent planning artifacts, revalidate affected gates, and start a fresh Oracle approval round until [OKAY]; stop instead on a material human-owned blocker.',
-      'Provide the reviewed artifact set so root can persist plan-review.md with SHA-256 freshness evidence; Oracle never writes it.',
-      'Keep plan-review approval separate from implementation confirmation and mandatory final verify.',
+      'At ready, first show the user a concise plan summary (goal, acceptance, units, risks), then always offer “Review plan with Oracle (Recommended)” or “Implement directly without review”; record the plan-review choice as EXPLICIT_REVIEW for an explicit review answer, EXPLICIT_SKIP for an explicit direct answer, or DEFAULT_REVIEW_AFTER_3 only when the third confirmed empty return selects review. Keep selection provenance separate from implementation authorization; silence never means EXPLICIT_SKIP.',
+      'For every orchestrator choice with a meaningful safe recommendation, after its first and second confirmed empty native returns repeat the same question and do no dependent work; after the third confirmed empty native return choose the recommendation. Explicit answers and Stop win. Pending, unavailable, failed, interrupted or host-prohibited questions do not count. If higher-priority host or tool rules prevent asking or repeating, obey them and report the limitation rather than claiming three returns or an explicit selection.',
+      'Never fabricate facts or secrets; recommend safe deferral when needed information or material intent is unresolved, and keep dependent work blocked.',
+      'Review scope, approach, risks, and acceptance coverage without redesigning settled intent.',
+      'Return actionable blockers and cautions; a pass is not implementation authorization or final verification.',
+      'After [OKAY], preserve the separate Implement (Recommended) / Stop authorization decision; honor applicable prior explicit authorization, and let explicit Stop supersede it.',
+      'A plan review does not substitute for fresh final verification.',
     ],
-    allowedWrites: [
-      'None; Oracle is read-only. Root persists plan-review.md when review runs.',
-    ],
-    outputSchema: [
-      'status: [OKAY] or [REJECT]',
-      'zero to three blocker findings with smallest fixes',
-      'non-blocking cautions',
-      'requirement coverage percentage',
-      'parallel executability disposition when tasks declare groups or an evidence-backed None reason',
-      'constitution alignment',
-      'reviewed artifact freshness manifest input',
-    ],
+    outputSchema: ['status', 'blockers', 'cautions'],
     doneWhen: [
-      'Oracle has returned an exact status and every true blocker has a concrete remediation anchor.',
+      'The selected review has a current, evidence-backed disposition.',
     ],
-    blockingConditions: [
-      '[REJECT] blocks the review path until root repairs planning blockers, the user explicitly proceeds without review, or an explicit override is recorded.',
-    ],
-    handoff: [
-      'On [OKAY], root persists review evidence and summarizes the approved scope, approach, ownership, verification, and material risks before asking Implement (Recommended) or Stop.',
-      'For an answerless implementation question, root makes at most three total attempts; after the third answerless result, implementation counts as selected, while any explicit Stop answer wins.',
-      '[OKAY] alone does not authorize implementation before that explicit choice or bounded fallback resolves.',
-      'A plan-review result never satisfies mandatory final verify.',
-    ],
+    blockingConditions: ['A blocking finding remains unresolved.'],
   },
   {
     id: 'implement',
     objective:
-      'Execute the accepted task slice with one writer and focused verification.',
+      'Implement the accepted small request or authorized substantial slice.',
     requiredInputs: [
-      'User request or assigned tasks.md slice',
-      'Accepted spec.md and plan.md when present',
-      'Exact implementation boundaries and verification commands',
-      'Implementation owner decision (orchestrator, designer, quick, or deep), exact mutable surface, requirement anchors, and task-shape/net-gain rationale',
+      'Settled user intent or authorized record',
+      'Exact mutable boundaries',
+      'Focused checks',
     ],
     instructions: [
-      'The root marks selected artifact-backed tasks [~] before implementation and marks them [x] only after task-specific evidence is verified; Direct or no-artifact work has no task state.',
-      'The SDD route governs artifacts and gates, not implementation ownership; choose root or a specialist from explicit safe user direction and demonstrated task-shaped net gain.',
-      'When root owns implementation, retain the accepted mutable surface with no child dispatch; when a specialist owns implementation, send one bounded dispatch with the exact surface, requirements, and verification.',
-      'Use test-first or TDD execution for behavior changes and preserve one writer per mutable surface.',
-      'Balance specialization, context isolation, independent work, quality, latency, and total cost against sequential dependency, shared mutable state, accumulated context, rediscovery, and coordination overhead.',
-      'Only after deciding delegation creates net gain, select designer for user-facing UI/UX, quick for known narrow low-risk work, and deep for coupled multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk work.',
-      'Record the owner decision, rationale, exact mutable surface, requirement anchors, and verification before implementation or dispatch.',
-      'Proven independent surfaces may use separate writers with non-overlapping files; overlapping or compatibility-coupled surfaces use one deep writer and ordered handoffs.',
-      'Quick and designer must escalate before expanding into deep-risk or compatibility-coupled scope.',
-      'Edit only the assigned implementation surface and report justified deviations from the accepted plan.',
-      'When evidence refines the same intent, return it to root so canonical artifacts are updated and only affected downstream artifacts and gates are revalidated.',
-      'Start a new change instead of expanding the active one when the intent changes.',
+      'Use one writer per mutable surface and choose an owner from task shape.',
+      'Work only from accepted inputs and named dependencies within the assigned outcome and interface boundaries.',
+      'Return bounded progress for root acceptance before dependent work starts.',
+      'Use test-first (TDD); observe red before green for behavior changes, then verify call sites, shared contracts, and edge cases.',
+      'Stop on a missing interface, ownership conflict, or new independent outcome.',
+      'Return completed bounded progress and the smallest blocker for root reassessment before expansion.',
+      'Do not create process tooling, reports, evidence generators, or temporary artifacts.',
     ],
-    allowedWrites: [
-      'Assigned product and test files',
-      'Root only: task checkbox transitions in openspec/changes/<feature>/tasks.md; child writers must not edit task state.',
-    ],
-    outputSchema: [
-      'status: completed | partial | failed',
-      'per-task outcome',
-      'files changed',
-      'executed verification and results',
-      'deviations, issues, and remaining work',
-    ],
+    outputSchema: ['outcome', 'changed files', 'checks', 'residual risks'],
     doneWhen: [
-      'The assigned task slice is complete and its focused checks pass with concrete evidence.',
+      'The assigned outcome is implemented and focused checks have run.',
     ],
     blockingConditions: [
-      'A task needs scope expansion, a material unresolved decision, or fails repeatedly without a safe bounded recovery.',
-    ],
-    handoff: [
-      'Pass changed files, per-task evidence, deviations, and verification results into the route- and risk-aware final-verification decision.',
+      'Scope, risk, or material intent changes before safe completion.',
     ],
   },
   {
     id: 'verify',
-    objective:
-      'Judge the implementation against accepted requirements using executed evidence.',
-    requiredInputs: [
-      'Implemented change or task results',
-      'spec.md, plan.md, and tasks.md for artifact-backed routes',
-      'Changed files and project verification commands',
-    ],
+    objective: 'Verify actual outcomes with independence proportional to risk.',
+    requiredInputs: ['Accepted outcomes', 'Actual change and executed checks'],
     instructions: [
-      'Trivial deterministic Direct work may use root-owned focused verification; materially risky Direct plus Accelerated and Full final verification use a fresh independent Oracle, and no implementation writer self-approves.',
-      'Run or inspect the smallest sufficient executed checks; static confidence alone is not evidence.',
-      'Judge completeness, correctness, and coherence independently so a passing test cannot hide missing or contradictory scope.',
-      'Build a compliance matrix from every accepted requirement to code and executed checks.',
-      'Record every outcome SC as PASS with concrete observed evidence or RISK with an explicit residual-risk entry.',
-      'For accelerated and full routes, the root persists the read-only oracle result as verify-report.md.',
-    ],
-    allowedWrites: [
-      'Root persistence only: openspec/changes/<feature>/verify-report.md for accelerated and full routes',
+      'Judge the actual diff, executed checks, and residual risks; verify completeness, correctness, coherence, and behavior.',
+      'Substantial or materially risky work requires a fresh independent Oracle; no writer self-approves.',
+      'For substantial work, record acceptance evidence, checks, source digests, and reviewed-record digest in the same record.',
     ],
     outputSchema: [
-      'verdict: pass | fail',
-      'compliance matrix',
-      'executed checks and results',
-      'critical issues with remediation anchors',
-      'warnings and residual risks',
+      'verdict',
+      'acceptance evidence',
+      'checks',
+      'residual risks',
     ],
     doneWhen: [
-      'Every accepted requirement is represented in the compliance matrix and the verdict matches the evidence.',
+      'Every accepted outcome has evidence or an explicit residual risk.',
     ],
     blockingConditions: [
-      'Missing required evidence, incomplete tasks, failed checks, or unresolved critical issues force a fail verdict.',
-    ],
-    handoff: [
-      'On fail, hand off actionable findings to converge; on pass, hand off the accepted verify-report.md to archive for artifact-backed routes.',
+      'A failed check, missing evidence, or critical issue remains.',
     ],
   },
   {
     id: 'converge',
     objective:
-      'Convert verified implementation gaps into traceable remaining tasks without editing product code.',
-    requiredInputs: [
-      'Failed verify result and remediation anchors',
-      'spec.md, plan.md, and tasks.md',
-      'Current maximum task and phase identifiers',
-    ],
+      'Turn actionable verification gaps into bounded corrective work.',
+    requiredInputs: ['Failed verification', 'Settled intent'],
     instructions: [
-      'Use an append-only update: add one new Convergence phase to tasks.md and never rewrite, renumber, reorder, or delete existing tasks.',
-      'Classify each gap as missing, partial, contradicts, or unrequested; append one traceable task per actionable gap, ordered by severity and linked to its source requirement.',
-      'Must not edit product code; implementation belongs to the next implement pass.',
-      'If there is no actionable gap, leave tasks.md byte-for-byte unchanged.',
+      'Record acceptance-linked follow-up in the same record when one exists.',
+      'If scope or risk changes materially, reopen understanding and classification.',
+      'Do not create a separate convergence report.',
     ],
-    allowedWrites: [
-      'Append-only changes to openspec/changes/<feature>/tasks.md',
-    ],
-    outputSchema: [
-      'outcome: tasks-appended | converged',
-      'appended task IDs and source requirements',
-      'next implementation scope',
-    ],
+    outputSchema: ['bounded follow-up', 'verification seam'],
     doneWhen: [
-      'Every actionable verification gap is represented by a new traceable task, or the implementation is confirmed converged.',
+      'Each actionable gap has a safe next action or the work is confirmed converged.',
     ],
     blockingConditions: [
-      'The verify findings lack enough evidence or source anchors to create truthful tasks.',
-    ],
-    handoff: [
-      'On tasks-appended, return to implement and then verify; on converged, re-run verify before archive.',
+      'Findings lack evidence or require material new intent.',
     ],
   },
   {
     id: 'archive',
     objective:
-      'Close a verified artifact-backed change with a durable audit trail.',
+      'Transactionally apply declared deltas and archive a verified record.',
     requiredInputs: [
-      'Completed spec.md, plan.md, and tasks.md',
-      'verify-report.md with verdict pass',
-      'Change name and current date',
+      'Complete substantial record',
+      'Fresh independent pass',
+      'Current archive date',
     ],
     instructions: [
-      'Confirm all tasks are complete, verify-report.md records pass, and there are no unresolved critical issues.',
-      'Create archive-report.md with verification lineage, completed scope, residual warnings, and final archive path.',
-      'After oracle pass, transactionally synchronize only explicitly declared durable deltas from spec.md into openspec/specs.',
-      'Stage and back up canonical writes so handled failures roll back within the active process; this is not crash-atomic across forced process or operating-system termination.',
-      'Move the complete change to openspec/changes/archive/YYYY-MM-DD-<feature>/.',
-      'An INTERNAL requirement never updates openspec/specs; undeclared prose is never merged.',
+      'Fail-closed behavior blocks incomplete tasks, acceptance evidence, authorization, or independent verification.',
+      'Apply only declared durable deltas transactionally and preserve unaffected specifications.',
+      'Move `.thoth/changes/<id>/<id>.md` to `.thoth/changes/archive/YYYY-MM-DD-<id>/<id>.md`; keep the filename stable.',
     ],
-    allowedWrites: [
-      'openspec/changes/<feature>/archive-report.md',
-      'Declared durable requirement updates under openspec/specs/',
-      'Move openspec/changes/<feature>/ to openspec/changes/archive/YYYY-MM-DD-<feature>/',
-    ],
-    outputSchema: [
-      'status: archived | blocked',
-      'archive path',
-      'canonical specifications updated',
-      'audit summary and verification lineage',
-    ],
+    outputSchema: ['archive path', 'updated specifications', 'residual risks'],
     doneWhen: [
-      'Declared durable deltas are transactionally synchronized, the audit report records the result, and the complete change directory is present at the dated archive path.',
+      'Declared deltas and verified record are archived without collisions or history loss.',
     ],
     blockingConditions: [
-      'Archive is blocked unless all tasks are complete, verify-report.md has verdict pass, and no unresolved critical issue remains.',
-    ],
-    handoff: [
-      'Return the archive path and audit summary to the root for final synthesis.',
+      'A closeout gate fails, destination collides, or a symlinked ancestor exists.',
     ],
   },
 ] as const satisfies readonly SddPhaseProtocol[];
 
-export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
-  artifactRoot: 'openspec/changes/<feature>/',
+const workflow: SddWorkflowContract = {
+  recordRoot: '.thoth/changes/<id>/',
+  recordPath: '.thoth/changes/<id>/<id>.md',
+  understandingPhases: [...SDD_UNDERSTANDING_PHASES],
   phases: [...SDD_PHASES],
-  routePolicies: SDD_ROUTE_EXECUTION_POLICIES.map((policy) => ({
-    ...policy,
-    validationGates: [...policy.validationGates],
-  })),
-  routingRules: [
-    'The root summarizes context and recommends direct, accelerated, or full from risk evidence; an explicit answer wins, while the third answerless route question selects the displayed recommendation, and an explicitly requested route already counts as selection.',
-    'Direct work is the default for clear, bounded, low-risk changes; documentation and mechanical work may remain direct across multiple files.',
-    'Accelerated SDD is used for multi-surface behavior, architecture, partial clarity, moderate risk, or broad non-behavioral coordination.',
-    'Accelerated planning fast-forwards specify, plan, and tasks without pauses between those artifacts, then offers optional oracle plan review after ready; an explicit answer wins and the third answerless review question selects Review plan with Oracle (Recommended).',
-    'Full SDD is used for unresolved scope, cross-cutting behavior or architecture, high contract risk, or high failure cost.',
-    'Use architectural-grilling before specification only when the user explicitly requests it or material product or architecture decisions remain human-owned and unresolved; never require it merely because the route is Full.',
-    'Route selection and the post-ready plan-review choice resolve through an explicit answer or their bounded recommended fallback; other input is requested only when a material unresolved decision changes the result.',
+  classificationRules: [
+    'Complete explore, specify, and clarify in order before classification.',
+    'Classify only after understanding, using scope, uncertainty, and risk.',
+    'Local scope may touch multiple files within one area; file count alone does not increase scope or escalate classification.',
+    'Coordinated multi-area or cross-cutting scope, material uncertainty, or elevated risk requires substantial planning.',
+    'Risk can require planning even when the code patch is local or small.',
+    'Human-owned material decisions stay with the user; unresolved material intent blocks classification and implementation.',
+    'Scope or risk increases reopen understanding and classification before more work.',
   ],
   artifactRules: [
-    'Spec Kit artifact semantics are preserved inside the governed openspec store.',
-    'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
-    'Research, data model, contracts, quickstart, requirements checklist, and plan-review.md are optional and created only when useful or selected.',
-    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; every route selects root, designer, quick, or deep from task shape, explicit direction, and demonstrated net gain.',
-    'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
-    'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
+    'Small clear low-risk work gets test-first implementation and verification with no record.',
+    'Substantial work creates one `.thoth/changes/<id>/<id>.md` record after classification; the record contains exploration, intent, acceptance, clarification, decisions, plan, tasks, verification, and closeout.',
+    'Archive to `.thoth/changes/archive/YYYY-MM-DD-<id>/<id>.md`; the date prefixes only the directory, and the ID filename remains stable.',
+    'No aliases, extra per-change files, reports, evidence directories, process tools, wrappers, or temporary generators are created.',
+    'Durable requirement deltas target `.thoth/specs/<capability>/spec.md` and are applied only after independent verification.',
+    'Historical changes are preserved; collisions and symlinked ancestors fail closed.',
   ],
   verificationRules: [
-    'Every route requires final verification; trivial deterministic Direct checks are root-owned, while materially risky Direct and every Accelerated or Full final verification use a fresh read-only oracle, and no implementation writer self-approves.',
-    'Accelerated and Full offer read-only oracle plan review after ready; it runs when selected explicitly or by the bounded recommended fallback and never replaces final verification.',
-    'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
-    'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
-    'A pass verdict is required before accelerated or full work can archive.',
+    'Every change is verified; small low-risk work receives focused root verification.',
+    'Substantial or materially risky work requires a fresh independent Oracle; no implementation writer self-approves.',
+    'Plan review is optional and separate from the Implement or Stop authorization decision and final verification.',
+    'A substantial record cannot close out without complete tasks, independent PASS, acceptance evidence, current digests, and Archive READY.',
+    'A verification failure blocks archive; actionable fixes must be reimplemented and reverified.',
   ],
 };
 
 function clonePhase(phase: SddPhaseContract): SddPhaseContract {
-  return {
-    ...phase,
-    availableFor: [...phase.availableFor],
-    requiredFor: [...phase.requiredFor],
-    prerequisites: [...phase.prerequisites],
-    eligibleAgentRoles: [...phase.eligibleAgentRoles],
-  };
+  return { ...phase, prerequisites: [...phase.prerequisites] };
 }
 
 function cloneProtocol(protocol: SddPhaseProtocol): SddPhaseProtocol {
@@ -825,358 +513,169 @@ function cloneProtocol(protocol: SddPhaseProtocol): SddPhaseProtocol {
     ...protocol,
     requiredInputs: [...protocol.requiredInputs],
     instructions: [...protocol.instructions],
-    allowedWrites: [...protocol.allowedWrites],
     outputSchema: [...protocol.outputSchema],
     doneWhen: [...protocol.doneWhen],
     blockingConditions: [...protocol.blockingConditions],
-    handoff: [...protocol.handoff],
   };
 }
 
-export function classifySddRoute(input: SddRoutingInput): SddRoutingDecision {
-  const requiresUserInput =
-    input.requestedRoute === undefined || input.clarity === 'uncertain';
-
-  if (input.requestedRoute) {
-    return {
-      route: input.requestedRoute,
-      requiresUserInput,
-      reasons: [
-        `The user explicitly requested the ${input.requestedRoute} route.`,
-      ],
-    };
-  }
-
-  const fullReasons: string[] = [];
-
-  if (input.clarity === 'uncertain') {
-    fullReasons.push(
-      'A material scope or requirements decision remains unresolved.',
-    );
-  }
+export function classifySddChange(
+  input: SddChangeClassificationInput,
+): SddClassificationDecision {
+  const expected: readonly SddUnderstandingPhaseId[] = [
+    'explore',
+    'specify',
+    'clarify',
+  ];
   if (
-    input.scope === 'cross-cutting' &&
-    (input.intent === 'behavior' || input.intent === 'architecture')
+    input.understanding.completed.length !== expected.length ||
+    expected.some(
+      (phase, index) => input.understanding.completed[index] !== phase,
+    )
   ) {
-    fullReasons.push('The change crosses multiple behavioral surfaces.');
+    throw new Error(
+      'Complete explore, specify, and clarify in order before classification',
+    );
   }
-  if (input.contractRisk === 'high') {
-    fullReasons.push('The public or internal contract risk is high.');
+  if (input.understanding.clarification === 'unresolved') {
+    throw new Error(
+      'An unresolved material clarification blocks classification',
+    );
   }
-  if (input.failureCost === 'high') {
-    fullReasons.push('The cost of an incorrect change is high.');
+  if (!['local', 'coordinated', 'cross-cutting'].includes(input.scope)) {
+    throw new Error(`Unknown SDD scope: ${input.scope}`);
+  }
+  if (!['low', 'medium', 'high'].includes(input.uncertainty)) {
+    throw new Error(`Unknown SDD uncertainty: ${input.uncertainty}`);
+  }
+  if (!['low', 'medium', 'high'].includes(input.risk)) {
+    throw new Error(`Unknown SDD risk: ${input.risk}`);
   }
 
-  if (fullReasons.length > 0) {
-    return {
-      route: 'full',
-      requiresUserInput,
-      reasons: fullReasons,
-    };
+  const reasons: string[] = [];
+  if (input.scope !== 'local') {
+    reasons.push(`${input.scope} scope requires a planned, traceable change.`);
   }
-
-  const acceleratedReasons: string[] = [];
-  if (input.sddRequested) {
-    acceleratedReasons.push('The user requested an SDD-backed change.');
-  }
-  if (input.clarity === 'partial') {
-    acceleratedReasons.push(
-      'The bounded scope benefits from explicit planning.',
+  if (input.uncertainty !== 'low') {
+    reasons.push(
+      `${input.uncertainty} uncertainty requires explicit planning.`,
     );
   }
-  if (input.contractRisk === 'medium' || input.failureCost === 'medium') {
-    acceleratedReasons.push('Moderate risk justifies traceable artifacts.');
+  if (input.risk !== 'low') {
+    reasons.push(`${input.risk} risk requires planning despite patch size.`);
   }
-  if (input.intent === 'architecture') {
-    acceleratedReasons.push(
-      'The architectural intent benefits from a recorded design.',
-    );
+  const classification = reasons.length > 0 ? 'substantial' : 'small';
+  if (classification === 'small') {
+    reasons.push('Scope is local, intent is clear, and risk is low.');
   }
-  if (input.intent === 'behavior' && input.scope === 'multi-file') {
-    acceleratedReasons.push(
-      'The behavior spans multiple implementation surfaces.',
-    );
-  }
-  if (
-    (input.intent === 'documentation' || input.intent === 'mechanical') &&
-    input.scope === 'cross-cutting'
-  ) {
-    acceleratedReasons.push(
-      'The broad non-behavioral change benefits from coordination.',
-    );
-  }
-
-  if (acceleratedReasons.length > 0) {
-    return {
-      route: 'accelerated',
-      requiresUserInput,
-      reasons: acceleratedReasons,
-    };
-  }
+  const independentVerificationRequired =
+    classification === 'substantial' || input.risk !== 'low';
 
   return {
-    route: 'direct',
-    requiresUserInput,
-    reasons: [
-      input.scope === 'multi-file'
-        ? 'The multi-file work is clear, low risk, and mechanically bounded.'
-        : 'The work is clear, bounded, and low risk.',
-    ],
+    classification,
+    scope: input.scope,
+    uncertainty: input.uncertainty,
+    risk: input.risk,
+    planningRequired: classification === 'substantial',
+    recordRequired: classification === 'substantial',
+    independentVerificationRequired,
+    reasons,
   };
 }
 
 export function getSddWorkflowContract(): SddWorkflowContract {
   return {
-    artifactRoot: SDD_WORKFLOW_CONTRACT.artifactRoot,
-    phases: SDD_WORKFLOW_CONTRACT.phases.map(clonePhase),
-    routePolicies: SDD_WORKFLOW_CONTRACT.routePolicies.map((policy) => ({
-      ...policy,
-      validationGates: [...policy.validationGates],
+    ...workflow,
+    understandingPhases: workflow.understandingPhases.map((phase) => ({
+      ...phase,
     })),
-    routingRules: [...SDD_WORKFLOW_CONTRACT.routingRules],
-    artifactRules: [...SDD_WORKFLOW_CONTRACT.artifactRules],
-    verificationRules: [...SDD_WORKFLOW_CONTRACT.verificationRules],
+    phases: workflow.phases.map(clonePhase),
+    classificationRules: [...workflow.classificationRules],
+    artifactRules: [...workflow.artifactRules],
+    verificationRules: [...workflow.verificationRules],
   };
-}
-
-export function getSddRouteExecutionPolicy(
-  route: SddRoute,
-): SddRouteExecutionPolicy {
-  const policy = SDD_ROUTE_EXECUTION_POLICIES.find(
-    (candidate) => candidate.route === route,
-  );
-
-  if (!policy) {
-    throw new Error(`Unknown SDD route policy: ${route}`);
-  }
-
-  return {
-    ...policy,
-    validationGates: [...policy.validationGates],
-  };
-}
-
-export function getSddArtifactGraph(): SddArtifactContract[] {
-  return SDD_ARTIFACT_GRAPH.map((artifact) => ({
-    ...artifact,
-    consumes: [...artifact.consumes],
-    requiredFor: [...artifact.requiredFor],
-  }));
 }
 
 export function getSddPhase(id: SddPhaseId): SddPhaseContract {
   const phase = SDD_PHASES.find((candidate) => candidate.id === id);
-
-  if (!phase) {
-    throw new Error(`Unknown SDD phase: ${id}`);
-  }
-
+  if (!phase) throw new Error(`Unknown SDD phase: ${id}`);
   return clonePhase(phase);
 }
 
 export function getSddPhaseProtocol(id: SddPhaseId): SddPhaseProtocol {
   const protocol = SDD_PHASE_PROTOCOLS.find((candidate) => candidate.id === id);
-
-  if (!protocol) {
-    throw new Error(`Unknown SDD phase protocol: ${id}`);
-  }
-
+  if (!protocol) throw new Error(`Unknown SDD phase protocol: ${id}`);
   return cloneProtocol(protocol);
 }
 
-export function getSddPhaseProtocolsForRole(
-  role: AgentRoleName,
-): SddPhaseProtocol[] {
-  return SDD_PHASES.filter((phase) =>
-    (phase.eligibleAgentRoles as readonly AgentRoleName[]).includes(role),
-  ).map((phase) => getSddPhaseProtocol(phase.id));
-}
-
-function renderDispatchList(items: readonly string[]): string {
-  return items.map((item) => `- ${item}`).join('\n');
-}
-
-function phaseIsAvailableInRoute(
-  phase: SddPhaseContract,
-  route: SddRoute,
-): boolean {
-  return phase.availableFor.includes(route);
-}
-
-export function renderSddPhaseDispatchEnvelope(
-  input: SddPhaseDispatchInput,
-): string {
-  const phase = getSddPhase(input.phase);
-  if (!phaseIsAvailableInRoute(phase, input.route)) {
-    throw new Error(
-      `${input.phase} is not available in the ${input.route} route`,
-    );
+export function getSddRequiredPhaseOrder(
+  classification: Pick<SddClassificationDecision, 'classification'>,
+): SddPhaseId[] {
+  const common: SddPhaseId[] = ['explore', 'specify', 'clarify'];
+  if (classification.classification === 'small') {
+    return [...common, 'implement', 'verify'];
   }
-
-  const protocol = getSddPhaseProtocol(input.phase);
-  const inputs = input.inputArtifacts?.length
-    ? input.inputArtifacts
-    : protocol.requiredInputs;
-  const requirements = [
-    ...protocol.instructions,
-    ...(input.requirements ?? []),
-  ];
-  const boundaries = [
-    ...protocol.allowedWrites.map((value) => `Allowed writes: ${value}`),
-    ...(input.boundaries ?? []),
-  ];
-  const verification = [
-    ...protocol.doneWhen.map((value) => `Done when: ${value}`),
-    ...protocol.blockingConditions.map((value) => `Block when: ${value}`),
-    ...(input.verification ?? []),
-  ];
-  const project = input.memory.project.trim();
-  const rootSessionId = input.memory.rootSessionId?.trim();
-  if (input.memory.provider !== 'thoth-mem' || project.length === 0) {
-    throw new Error('memory dispatch requires thoth-mem and a project name');
-  }
-  if (input.memory.rootSessionId !== undefined && !rootSessionId) {
-    throw new Error('root session identity must be stable or omitted');
-  }
-  const memoryContext = input.memory.context?.length
-    ? input.memory.context
-    : ['none'];
-
-  return `## PHASE
-phase=${input.phase}
-
-## ROUTE / CHANGE
-${input.route} / ${input.changeName}
-
-## OBJECTIVE
-${protocol.objective}
-
-## INPUT ARTIFACTS
-${renderDispatchList(inputs)}
-
-## REQUIREMENTS
-${renderDispatchList(requirements)}
-
-## BOUNDARIES
-${renderDispatchList(boundaries)}
-
-## VERIFICATION
-${renderDispatchList(verification)}
-
-## EXPECTED OUTPUT
-${renderDispatchList(protocol.outputSchema)}
-
-## HANDOFF
-${renderDispatchList(protocol.handoff)}
-
-## MEMORY
-provider=thoth-mem
-project=${project}
-root_session_id=${rootSessionId ?? 'unavailable'}
-authorization=${input.memory.authorization}
-context:
-${renderDispatchList(memoryContext)}`;
-}
-
-export function renderSddPhaseDispatchTemplate(): string {
-  return `## PHASE
-phase=<phase-id>
-
-## ROUTE / CHANGE
-<direct|accelerated|full> / <feature-or-direct-task>
-
-## OBJECTIVE
-<phase objective>
-
-## INPUT ARTIFACTS
-<required files, evidence, and prior handoff>
-
-## REQUIREMENTS
-<concrete outcomes and phase instructions>
-
-## BOUNDARIES
-<allowed writes, assigned surface, and non-goals>
-
-## VERIFICATION
-<done criteria, blockers, and checks>
-
-## EXPECTED OUTPUT
-<phase result fields>
-
-## HANDOFF
-<what the next phase must preserve>
-
-## MEMORY
-provider=thoth-mem
-project=<project-name>
-root_session_id=<stable-root-session-id|unavailable>
-authorization=<none|recall|observe>
-context:
-<bounded recalled context or - none>`;
-}
-
-export function getSddFinalVerificationDecision({
-  route,
-  risk,
-}: {
-  route: SddRoute;
-  risk: SddFinalVerificationRisk;
-}): SddFinalVerificationDecision {
-  const oracleRequired = route !== 'direct' || risk !== 'trivial-deterministic';
-
-  return {
-    verificationRequired: true,
-    owner: oracleRequired ? 'oracle' : 'orchestrator',
-    oracleRequired,
-    freshOracleRequired: oracleRequired,
-  };
-}
-
-export function getSddPhaseOwner(
-  route: SddRoute,
-  phaseId: SddPhaseId,
-  verificationRisk: SddFinalVerificationRisk = 'material-uncertainty',
-): SddPhaseOwner {
-  if (phaseId === 'verify') {
-    return getSddFinalVerificationDecision({
-      route,
-      risk: verificationRisk,
-    }).owner;
-  }
-
-  return getSddPhase(phaseId).defaultAgentRole;
-}
-
-export function getRequiredSddPhaseOrder(route: SddRoute): SddPhaseId[] {
-  return SDD_PHASES.filter((phase) =>
-    (phase.requiredFor as readonly SddRoute[]).includes(route),
-  ).map((phase) => phase.id);
+  return [...common, 'plan', 'tasks', 'implement', 'verify', 'archive'];
 }
 
 export function canEnterSddPhase({
-  route,
+  classification,
   completed,
   target,
 }: {
-  route: SddRoute;
+  classification: Pick<SddClassificationDecision, 'classification'>;
   completed: readonly SddPhaseId[];
   target: SddPhaseId;
 }): boolean {
   const phase = getSddPhase(target);
-  if (!phase.availableFor.includes(route)) {
+  const completedSet = new Set(completed);
+  if (phase.id === 'explore') return !completedSet.has('explore');
+  if (phase.id === 'specify')
+    return completedSet.has('explore') && !completedSet.has('specify');
+  if (phase.id === 'clarify')
+    return completedSet.has('specify') && !completedSet.has('clarify');
+
+  const understandingComplete = SDD_UNDERSTANDING_PHASES.every(({ id }) =>
+    completedSet.has(id),
+  );
+  if (!understandingComplete) return false;
+
+  if (classification.classification === 'small') {
+    if (target === 'implement') return !completedSet.has('implement');
+    if (target === 'verify')
+      return completedSet.has('implement') && !completedSet.has('verify');
     return false;
   }
 
-  const applicable = new Set<SddPhaseId>([
-    ...getRequiredSddPhaseOrder(route),
-    ...SDD_PHASES.filter(
-      (candidate) =>
-        candidate.activation === 'conditional' &&
-        (candidate.availableFor as readonly SddRoute[]).includes(route),
-    ).map((candidate) => candidate.id),
-  ]);
+  const prerequisites: Record<
+    Exclude<SddPhaseId, SddUnderstandingPhaseId>,
+    SddPhaseId[]
+  > = {
+    plan: ['clarify'],
+    checklist: ['plan'],
+    tasks: ['plan'],
+    'plan-review': ['tasks'],
+    implement: ['tasks'],
+    verify: ['implement'],
+    converge: ['verify'],
+    archive: ['verify'],
+  };
+  return prerequisites[
+    target as Exclude<SddPhaseId, SddUnderstandingPhaseId>
+  ].every((required) => completedSet.has(required));
+}
 
-  return phase.prerequisites
-    .filter((prerequisite) => applicable.has(prerequisite))
-    .every((prerequisite) => completed.includes(prerequisite));
+export function getSddFinalVerificationDecision({
+  classification,
+  risk,
+}: {
+  classification: SddClassification;
+  risk: SddRisk;
+}): SddFinalVerificationDecision {
+  const independent = classification === 'substantial' || risk !== 'low';
+  return {
+    verificationRequired: true,
+    independent,
+    owner: independent ? 'oracle' : 'orchestrator',
+  };
 }

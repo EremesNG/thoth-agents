@@ -1,0 +1,182 @@
+version: 1
+change:
+  id: consolidate-worker-role
+agreement:
+  status: approved
+  fingerprint: sha256:a64e9736dcc37a628c97362528f5cf74cc980120982f832a7b610004a3594e36
+  source: user
+goal: Remove Quick and rename Deep to Worker consistently across OpenCode, Codex, Claude Code and Pi, leaving five specialists plus the orchestrator.
+bounds:
+  include:
+    - Canonical role identity and routing without quick or deep aliases
+    - Worker retains Deep implementation capabilities and receives fresh defaults rather than Deep customizations
+    - Worker defaults to gpt-6-luna max in OpenCode and Codex and openai-codex/gpt-6-luna max in Pi
+    - Claude Worker retains sonnet medium
+    - OpenCode max validation aligned with user-observed GPT-6 Luna OpenAI variant support
+    - Five-specialist inventories in native outputs and CLI and Pi model configuration
+    - Safe retirement of attributable obsolete managed role assets during existing explicit setup or sync operations
+    - Active documentation and specifications updated without rewriting historical records
+  exclude:
+    - Backward aliases or migration of quick or deep model and effort personalizations
+    - Changes to other specialists or ambient root model defaults
+    - Live global install or sync during development
+    - External runtime scheduling or delegation implementation
+    - Rewriting previous change evidence or archived history
+    - Fixing unrelated marketplace fixture or environment failures
+autonomy:
+  allowed:
+    - Edit scoped product surfaces and tests after the planning choice
+    - Regenerate owned integration assets and schema through existing commands
+    - Run isolated local tests and native package verification
+    - Use fresh native specialists with one mutable owner per worktree
+  requiresApproval:
+    - Material product or architecture changes
+    - Live global changes or deletion of unowned resources
+    - Publishing or pushing commits
+  forbidden:
+    - Silently downgrading max
+    - Overwriting an unowned worker resource or deleting unowned quick or deep files
+    - Copying old role overrides into Worker
+acceptance:
+  - id: AC-roster
+    criterion: The public role contract, configuration schema, prompts and routing expose orchestrator plus explorer, librarian, oracle, designer and worker; quick and deep are no longer supported roles or aliases and Worker retains write-capable Deep behavior without the old quick/deep tier split.
+    inputs: [src/harness/core/agent-pack.test.ts, src/harness/core/workflow.test.ts, src/agents/index.test.ts, src/agents/prompt-rendering.test.ts, src/config]
+    outputs: [src/agents, src/config, src/harness/core, thoth-agents.schema.json]
+    checks: [Canonical inventory and rejection tests pass, No active old-name routing remains]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T04:39:36.538Z'
+      evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+      inputFingerprint: sha256:738751936ed18af0c20253a109e29efea5f9c2eefa1092ac4f7765fedb1b3863
+      outputFingerprint: sha256:3f3eb9c97b0b9140880125d72e477bfdce6f0015604562263e8f4654a467c2f9
+      definitionFingerprint: sha256:21816f49bd5787a179b2d051f731c19d50dab13d637d311e0c2bf31326340774
+  - id: AC-defaults
+    criterion: Worker ships with provider-appropriate gpt-6-luna max for Pi/Codex/OpenCode and sonnet medium for Claude; explicit max survives generation and CLI round trips without silent downgrades and other role defaults remain unchanged.
+    inputs: [src/cli/model-defaults.test.ts, src/cli/opencode-effort.test.ts, src/harness/adapters, src/cli/tui/model-catalog.test.ts]
+    outputs: [src/config/constants.ts, src/cli/model-defaults.ts, src/cli/opencode-effort.ts, src/harness/adapters, pi, plugin]
+    checks: [Default serialization and max validation tests pass]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T04:39:36.538Z'
+      evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+      inputFingerprint: sha256:50d9e00a96ba6d27c6ebb2b1f4b3e3d8bf23c0701795841131ccb7b8e744f20d
+      outputFingerprint: sha256:7a2a5735cba0ce919e9df68bef90705f5aa076aa37459430dddb72a2f9967908
+      definitionFingerprint: sha256:bee6459b9ad3ca6acc38626c58ac12fd56741c89d49c64c8a94a31d5668085f5
+  - id: AC-resources
+    criterion: Generated and installed managed inventories contain five specialists including Worker and no Quick/Deep; existing explicit reconciliation removes only provably owned obsolete role resources, rejects unowned Worker collisions, preserves unrelated assets, and never migrates old role customizations.
+    inputs: [src/cli, src/harness/generate-integration-packages.test.ts, scripts/verify-pi-package.mjs]
+    outputs: [src/cli, src/harness, scripts, pi, plugin]
+    checks: [Isolated setup and sync tests cover ownership and retirement, Packed Pi inventory and model panel tests pass]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T04:39:36.538Z'
+      evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+      inputFingerprint: sha256:acc2740b0ddde067f6dd54be18842d5e0d6027955be928dab08c3f5718dcd205
+      outputFingerprint: sha256:8ea6e649862013072f3ea2aff2386aa5d97bbda3abed92855ea92463051b21c6
+      definitionFingerprint: sha256:76dbfa86ed8b963403af6b1d40223775ecfed2649d79020e2058f28c83a99bab
+  - id: AC-docs
+    criterion: Active public docs, agent instructions and current specs describe five specialists and Worker consistently; historical archives and the prior model-panel change record remain untouched; relevant checks and fresh independent final Oracle verification are recorded.
+    inputs: [AGENTS.md, README.md, docs/agent, .thoth/specs]
+    outputs: [AGENTS.md, README.md, docs, .thoth/specs]
+    checks: [Current instruction references match source, Fresh Oracle PASS, Check/typecheck/build and available regression suite pass]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T04:39:36.538Z'
+      evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+      inputFingerprint: sha256:e92542e5c206151bf5d0c02731859d669265530df868b5734748896dd5fd6687
+      outputFingerprint: sha256:f49272205ca9ed70ab7d4d500fb60bb9edd3b3b90465721efa6e7a2c60c8566d
+      definitionFingerprint: sha256:ff516c80c1bd57a203ce9fc980e153dbffea2251516702c5ff6605a204138965
+units:
+  - id: role-contract
+    output: Consistent five-specialist role contract across source, defaults, schema, prompts, adapters, model UI, managed reconciliation and regenerated native packages
+    dependsOn: []
+    reads: [src, scripts, skills, package.json, pi, plugin]
+    writes: [src, scripts, skills, package.json, pi, plugin, thoth-agents.schema.json]
+    resources: [single source writer, isolated fixture homes, deterministic generated package outputs]
+    owner: { role: deep }
+    checks:
+      - id: canonical-tests
+        criterion: Public role and configuration boundaries verify exact roster and rejection of removed names
+        command: pnpm exec vitest run src/agents src/config src/harness/core
+      - id: harness-tests
+        criterion: Adapter and managed-resource tests verify new defaults and ownership-safe reconciliation
+        command: pnpm exec vitest run src/harness/adapters src/harness/writers src/cli/operations src/cli/pi-model-config.test.ts src/pi.test.ts src/pi/models-panel.test.ts
+      - id: generation
+        criterion: Deterministic integration inventory has only current agents
+        command: pnpm run integration:sync
+    acceptance: [AC-roster, AC-defaults, AC-resources]
+    baseline:
+      status: captured
+      capturedAt: '2026-09-27T03:35:25.916Z'
+      paths:
+        - { path: src, state: preexisting, fingerprint: 'sha256:fae2f3bafc4b1f2fd4bb548b5ae045df7b9ba43ec113086c83b7b39ad4b50be3' }
+        - { path: scripts, state: preexisting, fingerprint: 'sha256:32c1deca38412bbbff76bf25f2469d70a64cf02bb1f90a4936a526395fa734c8' }
+        - { path: skills, state: preexisting, fingerprint: 'sha256:a36bdc8e5c90aa0986a22a9474c9e103fffdb1f8a490bff7eab0f30227b8d752' }
+        - { path: package.json, state: preexisting, fingerprint: 'sha256:8980cad0b81b17ba1319d518c5bb4ca18bbb720315d21bda84ce559540d4f5f8' }
+        - { path: pi, state: preexisting, fingerprint: 'sha256:9da00f4b18259a3551b7df5db0eb3b3e0640d5f2e101bc853cf34fc9d7b1f831' }
+        - { path: plugin, state: preexisting, fingerprint: 'sha256:6ee8619cd5ec8345a1cf1951b4e51fe0ff58f8ed6ade416ec242d026bcbfc5d9' }
+        - { path: thoth-agents.schema.json, state: preexisting, fingerprint: 'sha256:da278c6ca050206ced18b070e3ab10243e355248d89d5bd3b4a5689480f8d2a0' }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T04:39:36.538Z'
+        evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+        inputFingerprint: sha256:7680b5d4330f41412fcdbf5e39b83c752470c38bcc2d125e587b8760fd37e235
+        outputFingerprint: sha256:681cce9668a55362373813af77df2f5612b94829adbdc25fb61269dbb7c94fdd
+        definitionFingerprint: sha256:3ef8262fda29c2ae18243dbefe9e5f30172ca33876594119263cc689ecacdbda
+  - id: documentation-and-verification
+    output: Current role documentation and independent verified integration with all residual limits explicit
+    dependsOn: [role-contract]
+    reads: [src, scripts, skills, package.json, pi, plugin, AGENTS.md, README.md, docs, .thoth/specs]
+    writes: [AGENTS.md, README.md, docs, .thoth/specs]
+    resources: [local build output, isolated native Pi package verification]
+    owner: { role: root }
+    checks:
+      - id: check
+        criterion: Formatting and static checks pass
+        command: pnpm run check:ci
+      - id: typecheck
+        criterion: TypeScript passes
+        command: pnpm run typecheck
+      - id: build
+        criterion: Generated packages and schema build consistently
+        command: pnpm run build
+      - id: tests
+        criterion: Available suite passes with inherited Codex home removed; missing external marketplace fixture remains explicit
+        command: env -u CODEX_HOME pnpm exec vitest run --exclude src/harness/publish-marketplace.test.ts
+      - id: package
+        criterion: Real packed native Pi verification proves five specialist definitions
+        command: pnpm run verify:pi-package
+    acceptance: [AC-docs]
+    baseline: { status: unknown }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T04:39:36.538Z'
+        evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+        inputFingerprint: sha256:2449e4c05b93095e041ea6ff4a2b287bd2a421210a44777f1c45722ae4d654af
+        outputFingerprint: sha256:f49272205ca9ed70ab7d4d500fb60bb9edd3b3b90465721efa6e7a2c60c8566d
+        definitionFingerprint: sha256:0934aafdfdc0e6af5aec317584a0126a12ee8f4822f49cf7ba343daa85109569
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/consolidate-worker-role/evidence/integration.md, .thoth/changes/consolidate-worker-role/evidence/oracle-final.md]
+  evidenceFingerprint: sha256:b32ab2e3f8645349a3613ce9750a8902b34656a5fd541fb1e5d0e832b2c640ba
+  inputFingerprint: sha256:affc88855161527545a544c15341f00e37563f2dcfd58cd8885a632ddf656fca
+  outputFingerprint: sha256:aaa1eddfe6d55921ffef94f3a9792d79e004973e0447edc8b05318b3f2d9d594
+  agreementFingerprint: sha256:a64e9736dcc37a628c97362528f5cf74cc980120982f832a7b610004a3594e36
+  technicalFingerprint: sha256:40ea3ca2f3dd164983792f300505ddbf8f5ad5a3f77acb13fcd58ebc335fdb13

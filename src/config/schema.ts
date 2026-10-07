@@ -6,8 +6,7 @@ const AGENT_NAMES = [
   'designer',
   'explorer',
   'librarian',
-  'quick',
-  'deep',
+  'worker',
 ] as const;
 
 const FALLBACK_AGENT_NAMES = [...AGENT_NAMES] as const;
@@ -50,8 +49,7 @@ export const ManualPlanSchema = z
     designer: ManualAgentPlanSchema,
     explorer: ManualAgentPlanSchema,
     librarian: ManualAgentPlanSchema,
-    quick: ManualAgentPlanSchema,
-    deep: ManualAgentPlanSchema,
+    worker: ManualAgentPlanSchema,
   })
   .strict();
 
@@ -60,18 +58,14 @@ export type ManualAgentPlan = z.infer<typeof ManualAgentPlanSchema>;
 export type ManualPlan = z.infer<typeof ManualPlanSchema>;
 
 const AgentModelChainSchema = z.array(z.string()).min(1);
+const SupportedAgentRecordKeySchema = z
+  .string()
+  .regex(/^(?!quick$|deep$).+$/, 'Unsupported removed agent role');
 
-const FallbackChainsSchema = z
-  .object({
-    orchestrator: AgentModelChainSchema.optional(),
-    oracle: AgentModelChainSchema.optional(),
-    designer: AgentModelChainSchema.optional(),
-    explorer: AgentModelChainSchema.optional(),
-    librarian: AgentModelChainSchema.optional(),
-    quick: AgentModelChainSchema.optional(),
-    deep: AgentModelChainSchema.optional(),
-  })
-  .catchall(AgentModelChainSchema);
+const FallbackChainsSchema = z.record(
+  SupportedAgentRecordKeySchema,
+  AgentModelChainSchema,
+);
 
 export type FallbackAgentName = (typeof FALLBACK_AGENT_NAMES)[number];
 
@@ -121,7 +115,10 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 /** Normalized model entry with optional per-model variant. */
 export type ModelEntry = { id: string; variant?: string };
 
-export const PresetSchema = z.record(z.string(), AgentOverrideConfigSchema);
+export const PresetSchema = z.record(
+  SupportedAgentRecordKeySchema,
+  AgentOverrideConfigSchema,
+);
 
 export type Preset = z.infer<typeof PresetSchema>;
 
@@ -166,7 +163,9 @@ export const PluginConfigSchema = z.object({
   balanceProviderUsage: z.boolean().optional(),
   manualPlan: ManualPlanSchema.optional(),
   presets: z.record(z.string(), PresetSchema).optional(),
-  agents: z.record(z.string(), AgentOverrideConfigSchema).optional(),
+  agents: z
+    .record(SupportedAgentRecordKeySchema, AgentOverrideConfigSchema)
+    .optional(),
   disabled_mcps: z.array(z.string()).optional(),
   tmux: TmuxConfigSchema.optional(),
   fallback: FailoverConfigSchema.optional(),

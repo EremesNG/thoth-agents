@@ -14,20 +14,26 @@ import { pathToFileURL } from 'node:url';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const tempRoot = mkdtempSync(join(tmpdir(), 'thoth-pi-package-'));
+function windowsShimCli(command) {
+  const located = spawnSync('where.exe', [`${command}.cmd`], {
+    encoding: 'utf8',
+  })
+    .stdout?.split(/\r?\n/)
+    .find(Boolean);
+  if (!located) throw new Error(`${command} executable is unavailable.`);
+  const shim = readFileSync(located, 'utf8');
+  const target = shim.match(/%~dp0\\([^"\r\n]*?\.js)(?=")/i)?.[1];
+  if (!target) throw new Error(`Could not resolve ${command} launcher target.`);
+  const cli = join(dirname(located), target);
+  if (!existsSync(cli))
+    throw new Error(`${command} launcher target is missing: ${cli}`);
+  return cli;
+}
 function run(command, args, options = {}) {
-  const isWindowsNpm = process.platform === 'win32' && command === 'npm';
-  const executable = isWindowsNpm ? process.execPath : command;
-  const executableArgs = isWindowsNpm
-    ? [
-        join(
-          dirname(process.execPath),
-          'node_modules',
-          'npm',
-          'bin',
-          'npm-cli.js',
-        ),
-        ...args,
-      ]
+  const isWindowsShim = process.platform === 'win32' && command === 'npm';
+  const executable = isWindowsShim ? process.execPath : command;
+  const executableArgs = isWindowsShim
+    ? [windowsShimCli(command), ...args]
     : args;
   const result = spawnSync(executable, executableArgs, {
     cwd: projectRoot,
@@ -48,19 +54,7 @@ function runPi(args, piHome) {
     return run('pi', args, {
       env: { ...process.env, PI_CODING_AGENT_DIR: piHome },
     });
-  const located = spawnSync('where.exe', ['pi.cmd'], { encoding: 'utf8' })
-    .stdout?.split(/\r?\n/)
-    .find(Boolean);
-  if (!located) throw new Error('Pi executable is unavailable.');
-  const cli = join(
-    dirname(located),
-    'node_modules',
-    '@earendil-works',
-    'pi-coding-agent',
-    'dist',
-    'bundle',
-    'cli.js',
-  );
+  const cli = windowsShimCli('pi');
   return run(process.execPath, [cli, ...args], {
     env: { ...process.env, PI_CODING_AGENT_DIR: piHome },
   });
@@ -125,23 +119,56 @@ try {
       JSON.stringify({ extensions: ['./dist/pi.js'], skills: ['./skills'] })
   )
     throw new Error('Packed Pi manifest is invalid.');
+  const agentContents = new Map();
   const agents = readdirSync(join(candidate, 'pi', 'agents'))
     .filter((name) => name.endsWith('.md'))
     .sort();
+  for (const agent of agents)
+    agentContents.set(
+      agent,
+      readFileSync(join(candidate, 'pi', 'agents', agent), 'utf8'),
+    );
   if (
     JSON.stringify(agents) !==
     JSON.stringify([
-      'thoth-deep.md',
       'thoth-designer.md',
       'thoth-explorer.md',
       'thoth-librarian.md',
       'thoth-oracle.md',
-      'thoth-quick.md',
+      'thoth-worker.md',
     ])
   )
     throw new Error(
       `Packed specialist inventory is invalid: ${agents.join(', ')}`,
     );
+  for (const [agent, content] of agentContents) {
+    const frontmatter =
+      content.match(/^---\r?\n([\s\S]*?)\r?\n---/m)?.[1] ?? '';
+    const model = frontmatter
+      .match(/^model:\s*"?([^"\r\n]+)"?\s*$/m)?.[1]
+      ?.trim();
+    const effort = frontmatter
+      .match(/^effort:\s*"?([^"\r\n]+)"?\s*$/m)?.[1]
+      ?.trim();
+    const mode = frontmatter
+      .match(/^subagent_mode:\s*"?([^"\r\n]+)"?\s*$/m)?.[1]
+      ?.trim();
+    if (
+      !model ||
+      !effort ||
+      !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ||
+      !['task', 'background'].includes(mode) ||
+      /^(defaultContext|maxSubagentDepth|async):/m.test(frontmatter) ||
+      /^thinking:/m.test(frontmatter)
+    )
+      throw new Error(`Packed specialist contract is stale: ${agent}`);
+  }
+  if (
+    agentContents
+      .get('thoth-librarian.md')
+      ?.match(/^subagent_mode:\s*"?([^"\r\n]+)"?\s*$/m)?.[1] !== 'background'
+  )
+    throw new Error('Packed librarian must run in background.');
   const skills = readdirSync(join(candidate, 'skills'), { withFileTypes: true })
     .filter(
       (entry) =>
@@ -156,7 +183,10 @@ try {
     );
   for (const forbidden of [
     'thoth-mem',
+    'pi-subagents',
     'pi-subagents-j0k3r',
+    '@thoth-agents/pi-subagents',
+    'pi-packages/pi-subagents',
     'pi-mcp-adapter',
     'context7',
     'pi-exa',
@@ -165,15 +195,8 @@ try {
       throw new Error(`External implementation tree was packed: ${forbidden}`);
   const unrelated = join(tempRoot, 'unrelated');
   mkdirSync(unrelated);
-  run(
-    process.execPath,
-    [
-      '--input-type=module',
-      '--eval',
-      `import(${JSON.stringify(pathToFileURL(join(candidate, 'dist', 'pi.js')).href)}).then(m=>{if(typeof m.default!=="function")process.exit(2)})`,
-    ],
-    { cwd: unrelated },
-  );
+  // Native peers resolve through Pi's loader rather than a bare Node import.
+  // The real-Pi probe below verifies the packed entrypoint from an isolated home.
   const piHome = join(tempRoot, 'pi-home');
   mkdirSync(piHome);
   runPi(['install', candidate, '--no-approve'], piHome);

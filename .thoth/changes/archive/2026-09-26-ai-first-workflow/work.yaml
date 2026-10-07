@@ -1,0 +1,462 @@
+version: 1
+change:
+  id: "ai-first-workflow"
+  title: "Replace narrative SDD with AI-first work contracts"
+agreement:
+  status: "approved"
+  source: "User: Estamos de acuerdo, tenemos una buena base, adelante con la implementación y cambio del actual SDD hacia este nuevo workflow"
+  fingerprint: "sha256:0b49d710b8b8a64c2f3e939d6145a231d4392e2367a06feec455866671417f28"
+goal: "Replace SDD with a compact AI-first agreement that supports bounded autonomous execution, interruption recovery and useful native parallelism."
+bounds:
+  include:
+    - "Canonical .thoth work contracts and optional context/unit/evidence files"
+    - "Offline validation, bounded checkpoints and selective resume projection"
+    - "Native harness policies, init, closeout, packaging and durable documentation migration"
+  exclude:
+    - "Custom runtime, scheduler, job database or provider memory implementation"
+    - "Automatic worktrees, merges or deployments"
+    - "Backward compatibility with the old workflow"
+    - "Changes to preexisting staged benchmark databases"
+autonomy:
+  allowed:
+    - "Implement, test and refine technical details within the accepted design"
+    - "Preserve old OpenSpec history and move active governance to .thoth"
+    - "Apply explicit reviewed durable updates after independent PASS"
+  requiresApproval:
+    - "New product intent or material architecture outside this agreement"
+    - "Destructive external operations or unavailable secrets"
+  forbidden:
+    - "Inferring native completion from timeout or checkpoint"
+    - "Self-approval by implementation writers"
+    - "Weakening acceptance to make checks pass"
+decisions:
+  -
+    id: "D1"
+    statement: "Native harness lifecycle is authoritative; Thoth supplies policy and document tooling only"
+    rationale: "Avoid reintroducing the removed graph runtime"
+  -
+    id: "D2"
+    statement: "Human agreement concentrates in planning and existing authorization persists"
+    rationale: "Execution should not repeat routine approvals"
+  -
+    id: "D3"
+    statement: "Historical OpenSpec records are preserved outside active context"
+    rationale: "Keep evidence without burdening each execution"
+acceptance:
+  -
+    id: "A1"
+    criterion: "A valid work agreement loads offline; malformed, duplicate, unsafe and cyclic contracts are rejected"
+    inputs: []
+    outputs:
+      - "skills/thoth-work/"
+    checks:
+      - "work-contract tests"
+    result:
+      status: "accepted"
+      reviewedBy: "oracle"
+      reviewedAt: "2026-09-26T21:32:37.183Z"
+      evidence:
+        - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+      evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+      definitionFingerprint: "sha256:2fcb8cc8f41b6836ef2837093f6809d804ab458818a73cacef6ee98396cc9197"
+      inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      outputFingerprint: "sha256:23d5d546a099649c18c9c0c41bb2c068b6d96319bd60931453c1f7b204089f0f"
+  -
+    id: "A2"
+    criterion: "Resume projects bounded context and detects stale content/evidence; torn checkpoint fallback never fabricates native completion"
+    inputs: []
+    outputs:
+      - "skills/thoth-work/scripts/work.mjs"
+      - "src/harness/work-recovery.test.ts"
+      - "src/harness/work-context.test.ts"
+    checks:
+      - "recovery/context tests and independent review"
+    result:
+      status: "accepted"
+      reviewedBy: "oracle"
+      reviewedAt: "2026-09-26T21:32:37.183Z"
+      evidence:
+        - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+      evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+      definitionFingerprint: "sha256:6a475e56ef45f654cf539b6907678ec89e9cad9a682f5b7810b7a02df0e71097"
+      inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      outputFingerprint: "sha256:fbf58afa59463935d5732ad6ea8d8b14de696bfb1b70c3d3d2d60f8c9850229e"
+  -
+    id: "A3"
+    criterion: "All harness prompts permit independent native concurrent dispatch, refill capacity, and per-dependency acceptance without synchronous-role restriction"
+    inputs: []
+    outputs:
+      - "src/agents/"
+      - "src/harness/core/workflow.ts"
+      - "src/harness/core/agent-pack.ts"
+      - "src/harness/adapters/"
+    checks:
+      - "rendered contract tests; native lanes observed during implementation, no cross-harness model behavior claim"
+    result:
+      status: "accepted"
+      reviewedBy: "oracle"
+      reviewedAt: "2026-09-26T21:32:37.183Z"
+      evidence:
+        - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+      evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+      definitionFingerprint: "sha256:7cade127ed5e4647a307b9171a4b4d707190587249179c5f452e33b92882d1ba"
+      inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      outputFingerprint: "sha256:db46e4a5448e313ff3ed6029c2326629771ca4a6b692fe80fccd99175d1d14bf"
+  -
+    id: "A4"
+    criterion: "Init preserves existing user files; closeout rejects stale/missing PASS and preserves undeclared specs, with handled-failure rollback"
+    inputs: []
+    outputs:
+      - "skills/thoth-init/"
+      - "skills/thoth-archive/"
+      - "skills/thoth-constitution/"
+    checks:
+      - "init/constitution/archive public CLI tests"
+    result:
+      status: "accepted"
+      reviewedBy: "oracle"
+      reviewedAt: "2026-09-26T21:32:37.183Z"
+      evidence:
+        - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+      evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+      definitionFingerprint: "sha256:cf7219a6f1cde996472a9addd1bdeabc821dfb343e317559d9d211cfa78cb333"
+      inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      outputFingerprint: "sha256:ed01d46b9fbedacb48b964b82b6b4ea74e90292abb3444660c758d2e75f251a7"
+  -
+    id: "A5"
+    criterion: "Canonical and generated packages and active documentation use .thoth and thoth-work while retaining unrelated durable history"
+    inputs: []
+    outputs:
+      - "docs/"
+      - "AGENTS.md"
+      - "README.md"
+      - "skills/README.md"
+      - "package.json"
+      - "plugin/"
+      - "pi/"
+      - "scripts/publish-marketplace.mjs"
+    checks:
+      - "check:ci, typecheck, build, full suite, independent final Oracle"
+    result:
+      status: "accepted"
+      reviewedBy: "oracle"
+      reviewedAt: "2026-09-26T21:32:37.183Z"
+      evidence:
+        - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+        - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+      evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+      definitionFingerprint: "sha256:35dda6e8ca2b7ce29006c3a0fe7f2b0ece29a4f7bd49251cdd7527b8fe9bf16a"
+      inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      outputFingerprint: "sha256:13d4ac8509d4b9c1adcd2de8394716bdf2535bc37ef0b470be6c7d577f79f179"
+units:
+  -
+    id: "U1"
+    output: "Offline work validation, selective context and bounded checkpoint recovery"
+    dependsOn: []
+    reads: []
+    writes:
+      - "skills/thoth-work/"
+      - "src/harness/work-contract.test.ts"
+      - "src/harness/work-context.test.ts"
+      - "src/harness/work-recovery.test.ts"
+    resources: []
+    owner:
+      role: "deep"
+    checks:
+      -
+        id: "U1-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A1"
+      - "A2"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:3e9658790067375fc3d03c178933d9afe5d5a32c705217495aa209a234f54ef1"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:f5291d3d2c74c506b22f2b10b986f69b8e60c3d29d1791a98bb43653c1dc84b8"
+  -
+    id: "U2"
+    output: "Native harness workflow and parallel delegation policies"
+    dependsOn: []
+    reads: []
+    writes:
+      - "src/agents/"
+      - "src/harness/core/agent-pack.ts"
+      - "src/harness/core/agent-pack.test.ts"
+      - "src/harness/core/agent-routing.test.ts"
+      - "src/harness/core/workflow.ts"
+      - "src/harness/core/workflow.test.ts"
+      - "src/harness/core/memory-governance.ts"
+      - "src/harness/core/memory-governance.test.ts"
+      - "src/harness/adapters/"
+    resources: []
+    owner:
+      role: "deep"
+    checks:
+      -
+        id: "U2-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A3"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:51ed0ca811fd4ab605a5a722d29c379f0e931e0e69976092b5fef87eb89ae454"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:e67d2c4d5937e375e989bf01b1fdba8481c774f538ca71a2072b73730f40078b"
+  -
+    id: "U3"
+    output: "Safe project initialization and current constitution"
+    dependsOn: []
+    reads: []
+    writes:
+      - "skills/thoth-init/"
+      - "skills/thoth-constitution/"
+      - ".thoth/constitution.md"
+      - "src/harness/opencode-init-command.ts"
+      - "src/harness/opencode-init-command.test.ts"
+      - "src/harness/sdd-constitution.test.ts"
+      - "src/harness/bundled-skills.test.ts"
+    resources: []
+    owner:
+      role: "deep"
+    checks:
+      -
+        id: "U3-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A4"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:ced922e31ca5080ba7c464736dc3c0209c8841418f912e8abe33b0d08fe2c6ea"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:60b69b7f5e8bdfb6e761774adde4d6ceba136892e608088ad4bc38b9e7a5bb7f"
+  -
+    id: "U4"
+    output: "Verified closeout and delivery integration"
+    dependsOn:
+      - "U1"
+    reads: []
+    writes:
+      - "skills/thoth-archive/"
+      - "skills/plan-reviewer/"
+      - "src/harness/core/owned-skills.ts"
+      - "src/harness/work-archive.test.ts"
+      - "src/harness/provider-boundary.test.ts"
+      - "src/harness/generate-integration-packages.test.ts"
+      - "src/harness/publish-marketplace.test.ts"
+      - "src/cli/codex-install.test.ts"
+      - "src/cli/install.test.ts"
+      - "src/cli/owned-skills.test.ts"
+      - "src/cli/operations/opencode.test.ts"
+      - "src/cli/install.ts"
+      - "scripts/publish-marketplace.mjs"
+    resources: []
+    owner:
+      role: "orchestrator"
+    checks:
+      -
+        id: "U4-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A4"
+      - "A5"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:8b3ae294473d7afa85dd21cb0a5bf78d6eb0808dfbf95f161933c44ede3eb07b"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:053e9ef34942589edc9868aa5befe49a48705582ff5ec8d799c62276e6ee1cbd"
+  -
+    id: "U5"
+    output: "Consistent public guidance and explicit durable contract proposals"
+    dependsOn: []
+    reads: []
+    writes:
+      - "docs/"
+      - "README.md"
+      - "AGENTS.md"
+      - "skills/README.md"
+      - "package.json"
+    resources: []
+    owner:
+      role: "deep"
+    checks:
+      -
+        id: "U5-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A5"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:a2227d775330664a9475a4c7542b2d73b5f85e7d03bbfc357e5bf36d7511f9bd"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:5c31b597e0bfacee105a22c8c53046bc4f498817f8a41fb337d6a0a3de2cf044"
+  -
+    id: "U6"
+    output: "Generated distributions and repository-wide validation"
+    dependsOn:
+      - "U1"
+      - "U2"
+      - "U3"
+      - "U4"
+      - "U5"
+    reads: []
+    writes:
+      - "plugin/"
+      - "pi/"
+    resources: []
+    owner:
+      role: "orchestrator"
+    checks:
+      -
+        id: "U6-checks"
+        criterion: "Focused public seam tests and integration checks pass; evidence records actual commands"
+    acceptance:
+      - "A5"
+    baseline:
+      status: "unknown"
+    semantic:
+      status: "accepted"
+      result:
+        status: "accepted"
+        reviewedBy: "oracle"
+        reviewedAt: "2026-09-26T21:32:37.183Z"
+        evidence:
+          - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+          - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+        evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+        definitionFingerprint: "sha256:5f720cdcead1eb703060ee1b1fa6555c035310a49c9c5ec208a7dc87525df7a2"
+        inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        outputFingerprint: "sha256:38faca9f8778f81e086d300283583ea7bcd25e422a6c513e99d65a18954f3fae"
+durableUpdates:
+  -
+    capability: "adaptive-sdd"
+    operation: "rename"
+    expectedDigest: "e8a445aefce535f2ffcc814812373ca8106722584369571e90b2214e572a6b28"
+    source: ".thoth/changes/ai-first-workflow/context/specs/workflow.md"
+    sourceDigest: "0cc06d6b28981d8e9ca171f9c3f8baa4adb4a2f4b2ecb5fd6657e6f3816fe078"
+    target: "workflow"
+  -
+    capability: "agent-delegation"
+    operation: "replace"
+    expectedDigest: "42b673130c8ab4e542e29abe611c3a486c84fa9393fc217c8c96b997bd161308"
+    source: ".thoth/changes/ai-first-workflow/context/specs/agent-delegation.md"
+    sourceDigest: "ba5f7ce650bb10ecc464f3ef0287508e940287ca1beefb941c8b0c482d1921bc"
+  -
+    capability: "cli-installation"
+    operation: "replace"
+    expectedDigest: "8b4d5e2e380e701e0495d593a742484d0368786c0267b9045c38e6de87a7c1fb"
+    source: ".thoth/changes/ai-first-workflow/context/specs/cli-installation.md"
+    sourceDigest: "96dfd1c2a00611b5a64b582dd7a192e88c166f5313d9a798ffce0a5f76c27fff"
+  -
+    capability: "external-required-skills"
+    operation: "replace"
+    expectedDigest: "08a29bff52682e54aa0cba22f692937eb68998e5320e4572e65009ce30864c06"
+    source: ".thoth/changes/ai-first-workflow/context/specs/external-required-skills.md"
+    sourceDigest: "49d3457ae25512fa937ebdcf4bb4ecf2ca8defdd1f81aa994f611e86186c4cf9"
+  -
+    capability: "memory-orchestration"
+    operation: "replace"
+    expectedDigest: "4c2a94e97d73718e816579a59a18dca0b9a9e580908429612b5d5d93932cee0b"
+    source: ".thoth/changes/ai-first-workflow/context/specs/memory-orchestration.md"
+    sourceDigest: "eeb1d94d0451d710b896cc9a69e07caca94e4a84984fb0b2f6cb413c9f173d40"
+  -
+    capability: "multi-harness-agent-pack"
+    operation: "replace"
+    expectedDigest: "552e5e13232b6fde0cd672648c72093baeb6e3c523cd8efdc6ff703516f6e6ec"
+    source: ".thoth/changes/ai-first-workflow/context/specs/multi-harness-agent-pack.md"
+    sourceDigest: "acac7b4b473b03d201c5a117eade8bab9c2a89453cd55f3a76015727babbbdd2"
+  -
+    capability: "project-identity"
+    operation: "replace"
+    expectedDigest: "a892c833bc60a4b3093442fa938100332cd0976adbc048ac5496eb2f7eaa51fb"
+    source: ".thoth/changes/ai-first-workflow/context/specs/project-identity.md"
+    sourceDigest: "74794004b56b3c634f90d44465b5195128fdbc673e79bdf7bfbc755be325f06e"
+  -
+    capability: "project-tooling"
+    operation: "replace"
+    expectedDigest: "db5cbf0221901d6a241b2bb2bdc22114b94ff49bbf11ae8b08482e364821b633"
+    source: ".thoth/changes/ai-first-workflow/context/specs/project-tooling.md"
+    sourceDigest: "6376a01e68af24451bb210ff54473aecd7d3541a09a4d15410f5670d7babfeaa"
+  -
+    capability: "release-publishing"
+    operation: "replace"
+    expectedDigest: "f9d95b6191c03a9a79e090a5a513f7cd23cc0b677ba58737b631da934fe1b16e"
+    source: ".thoth/changes/ai-first-workflow/context/specs/release-publishing.md"
+    sourceDigest: "f404cbc113e7a6d1dbf0ad0d37ed08d3847e6ee062149f8a1e4f6faa475f6823"
+verification:
+  reviewer: "oracle"
+  verdict: "pass"
+  agreementFingerprint: "sha256:0b49d710b8b8a64c2f3e939d6145a231d4392e2367a06feec455866671417f28"
+  technicalFingerprint: "sha256:cef91c4d022e3b67eb77874a24af7a129414d8cafae5459b7d2f538f66aaf8f4"
+  evidence:
+    - ".thoth/changes/ai-first-workflow/evidence/verification/checks.md"
+    - ".thoth/changes/ai-first-workflow/evidence/verification/final-oracle.md"
+    - ".thoth/changes/ai-first-workflow/evidence/verification/archive-oracle.md"
+  evidenceFingerprint: "sha256:24a38a3b1f4a3de61db09cc6fa6dec9a8adb0cd560fa13b5152eb588610443cf"
+  inputFingerprint: "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  outputFingerprint: "sha256:d98465b1956a1ee071484613d3083d6b5a53d8925f17ff697493865fbae94537"

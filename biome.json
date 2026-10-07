@@ -1,6 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.2/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "files": {
+    "includes": [
+      "**",
+      "!!pi-packages/pi-antigravity-bridge",
+      "!!pi-packages/pi-claude-bridge",
+      "!!pi-packages/pi-background-tasks"
+    ]
+  },
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -16,6 +24,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["pi-packages/pi-subagents/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noControlCharactersInRegex": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["plugin/**"],
       "formatter": { "enabled": false },

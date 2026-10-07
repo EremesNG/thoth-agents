@@ -118,7 +118,10 @@ function getNativeOpenCodeOptions(): ModelOption[] {
   try {
     const invocation = getOpenCodeModelsInvocation();
     return parseOpenCodeModels(
-      execFileSync(invocation.command, invocation.args, invocation.options),
+      execFileSync(invocation.command, invocation.args, {
+        ...invocation.options,
+        windowsHide: true,
+      }),
     );
   } catch {
     return [];

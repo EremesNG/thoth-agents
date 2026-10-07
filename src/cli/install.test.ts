@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import { applyClaudeCodeSetup } from './claude-code-install';
@@ -123,6 +123,18 @@ describe('install', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-install-'));
     const events: string[] = [];
     let firstPartyInstalled = false;
+    const installedExternal = new Set<string>();
+    const externalPaths = new Map(
+      PI_PACKAGE_SPECS.map((spec) => {
+        const path = join(homeDir, 'external', spec.id);
+        mkdirSync(path, { recursive: true });
+        writeFileSync(
+          join(path, 'package.json'),
+          JSON.stringify({ name: spec.packageName, version: spec.version }),
+        );
+        return [spec.source, path] as const;
+      }),
+    );
     const result = await install(
       { tui: false, agent: 'pi' },
       {
@@ -150,15 +162,24 @@ describe('install', () => {
           if (command === 'node')
             return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
           if (args[0] === '--version')
-            return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+            return { exitCode: 0, stdout: '1.0.2', stderr: '' };
           if (args[0] === 'list')
             return {
               exitCode: 0,
-              stdout: `${firstPartyInstalled ? `npm:thoth-agents@0.6.0\n    ${process.cwd()}\n` : ''}${PI_PACKAGE_SPECS.map(({ source }) => source).join('\n')}`,
+              stdout: [
+                ...(firstPartyInstalled
+                  ? ['npm:thoth-agents@0.6.0', `    ${process.cwd()}`]
+                  : []),
+                ...[...installedExternal].flatMap((source) => [
+                  source,
+                  `    ${externalPaths.get(source)}`,
+                ]),
+              ].join('\n'),
               stderr: '',
             };
           events.push(`package:${args[1]}`);
           if (args[1] === 'npm:thoth-agents@0.6.0') firstPartyInstalled = true;
+          else if (args[1]) installedExternal.add(args[1]);
           return { exitCode: 0, stdout: 'installed', stderr: '' };
         },
         installRequiredSkill: (skill, harness) => {
@@ -188,12 +209,12 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:pi-subagents-j0k3r@1.5.9',
-      'package:npm:@upstash/context7-pi@0.1.2',
-      'package:npm:pi-web-access@0.27.0',
-      'package:npm:pi-mcp-adapter@2.32.1',
-      'package:npm:@juicesharp/rpiv-ask-user-question@2.9.0',
-      'package:npm:@juicesharp/rpiv-todo@2.9.0',
+      'package:npm:@thoth-agents/pi-subagents@>=0.1.0',
+      'package:npm:@upstash/context7-pi@>=0.1.2',
+      'package:npm:pi-web-access@>=0.27.0',
+      'package:npm:pi-mcp-adapter@>=2.32.1',
+      'package:npm:@thoth-agents/pi-questions-user@>=0.1.0',
+      'package:npm:@thoth-agents/pi-todo@>=0.1.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',
@@ -289,9 +310,66 @@ describe('install', () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
+  test.each([
+    false,
+    true,
+  ])('Pi install reports the incumbent todo blocker without changing settings or completion (dryRun=%s)', async (dryRun) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-todo-blocker-'));
+    const settingsPath = join(homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(join(homeDir, '.pi', 'agent'), { recursive: true });
+    const settings = JSON.stringify({
+      packages: [{ source: 'npm:@juicesharp/rpiv-todo@2.12.0', skills: [] }],
+      theme: 'operator-theme',
+    });
+    writeFileSync(settingsPath, settings);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const commands: string[] = [];
+    let providerCalls = 0;
+    try {
+      const result = await install(
+        { tui: false, agent: 'pi', dryRun },
+        {
+          homeDir,
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.6.0',
+            packageRoot: process.cwd(),
+          }),
+          piCommandExecutor: (command, args) => {
+            commands.push(`${command} ${args.join(' ')}`);
+            return { exitCode: 0, stdout: '', stderr: '' };
+          },
+          runThothMemSetup: ({ harness }) => {
+            providerCalls += 1;
+            return providerResult(harness);
+          },
+          installLedgerOptions: { configRoot: join(homeDir, '.config') },
+        },
+      );
+
+      expect(result).toBe(1);
+      expect(
+        [...log.mock.calls, ...error.mock.calls].flat().join('\n'),
+      ).toContain('pi remove npm:@juicesharp/rpiv-todo --no-approve');
+      expect(commands).toEqual([]);
+      expect(providerCalls).toBe(0);
+      expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+      expect(
+        readInstallLedger({ configRoot: join(homeDir, '.config') }).status,
+      ).toBe('missing');
+      expect(existsSync(join(homeDir, '.config'))).toBe(false);
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test('Pi dry-run plans the explicit local package root', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-plan-'));
     const localPackageRoot = process.cwd();
+    const localPiRuntimeRoot = resolve('pi-packages/pi-subagents');
     const runProvider = vi.fn(({ harness }) => providerResult(harness));
     const lines: string[] = [];
     const originalLog = console.log;
@@ -303,6 +381,7 @@ describe('install', () => {
           agent: 'pi',
           dryRun: true,
           localPackageRoot,
+          localPiRuntimeRoot,
         },
         {
           homeDir,
@@ -319,6 +398,9 @@ describe('install', () => {
       expect(result).toBe(0);
       expect(lines.join('\n')).toContain(
         `pi install ${localPackageRoot} --no-approve`,
+      );
+      expect(lines.join('\n')).toContain(
+        `pi install ${localPiRuntimeRoot} --no-approve`,
       );
       expect(lines.join('\n')).toContain(
         'Local thoth-agents install omits thoth-mem setup',
@@ -340,14 +422,17 @@ describe('install', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-apply-'));
     const configRoot = join(homeDir, '.config');
     const localPackageRoot = process.cwd();
+    const localPiRuntimeRoot = resolve('pi-packages/pi-subagents');
     const runProvider = vi.fn(({ harness }) => providerResult(harness));
     let plannedFirstPartySource: string | undefined;
+    let plannedRuntimePackageRoot: string | undefined;
     try {
       const result = await install(
         {
           tui: false,
           agent: 'pi',
           localPackageRoot,
+          localPiRuntimeRoot,
         },
         {
           homeDir,
@@ -358,6 +443,7 @@ describe('install', () => {
           }),
           buildPiSetupPlan: (options) => {
             plannedFirstPartySource = options.firstPartySource;
+            plannedRuntimePackageRoot = options.runtimePackageRoot;
             return {
               dryRun: false,
               ready: true,
@@ -396,6 +482,7 @@ describe('install', () => {
 
       expect(result).toBe(0);
       expect(plannedFirstPartySource).toBe(localPackageRoot);
+      expect(plannedRuntimePackageRoot).toBe(localPiRuntimeRoot);
       expect(runProvider).not.toHaveBeenCalled();
       expect(readInstallLedger({ configRoot })).toMatchObject({
         status: 'valid',

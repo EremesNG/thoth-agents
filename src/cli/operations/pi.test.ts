@@ -109,15 +109,22 @@ function writeLocalPiReceipt(homeDir: string, packageRoot: string): string {
 }
 
 describe('Pi operations', () => {
-  const installedRuntime = (command: string, args: readonly string[]) => {
-    if (command === 'node')
-      return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
-    if (args[0] === '--version')
-      return { exitCode: 0, stdout: '0.84.4', stderr: '' };
-    return {
-      exitCode: 0,
-      stdout: PI_PACKAGE_SPECS.map(({ source }) => source).join('\n'),
-      stderr: '',
+  const installedRuntime = (homeDir: string) => {
+    const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
+      const installedPath = join(homeDir, 'external', spec.id);
+      mkdirSync(installedPath, { recursive: true });
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        JSON.stringify({ name: spec.packageName, version: spec.version }),
+      );
+      return [`  ${spec.source}`, `    ${installedPath}`];
+    }).join('\n');
+    return (command: string, args: readonly string[]) => {
+      if (command === 'node')
+        return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+      if (args[0] === '--version')
+        return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+      return { exitCode: 0, stdout: packageList, stderr: '' };
     };
   };
 
@@ -133,7 +140,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('pi-subagents-j0k3r@1.5.9'),
+        preview?.includes('npm:@thoth-agents/pi-subagents@>=0.1.0'),
       ),
     ).toBe(true);
     expect(
@@ -166,6 +173,511 @@ describe('Pi operations', () => {
     );
   });
 
+  test('reports the adopted runtime package floor, global lean config, and project override limit', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-j0k3r-status-'));
+    roots.push(homeDir);
+    const configPath = join(homeDir, '.pi', 'agent', 'subagents.json');
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        { session_resources: 'lean', enable_continue: false },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const report = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: installedRuntime(homeDir),
+    });
+
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'package',
+          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
+          state: 'installed',
+          observed: '0.1.0',
+        }),
+        expect.objectContaining({
+          kind: 'package',
+          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          state: 'installed',
+          observed: '0.1.0',
+        }),
+        expect.objectContaining({
+          kind: 'file',
+          path: configPath,
+          state: 'installed',
+        }),
+      ]),
+    );
+    expect(report.disclaimers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'pi-lean-resources-global-only',
+          message: expect.stringContaining('project-local'),
+        }),
+      ]),
+    );
+  });
+
+  test('status recognizes the adopted runtime from a configured local source manifest', () => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-local-runtime-status-'),
+    );
+    roots.push(homeDir);
+    const localRuntimeRoot = join(homeDir, 'checked-out-fork');
+    mkdirSync(localRuntimeRoot, { recursive: true });
+    writeFileSync(
+      join(localRuntimeRoot, 'package.json'),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '0.1.0' }),
+    );
+    const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
+      const installedPath = join(homeDir, 'external', spec.id);
+      mkdirSync(installedPath, { recursive: true });
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        JSON.stringify({ name: spec.packageName, version: spec.version }),
+      );
+      return [
+        `  ${spec.id === 'delegation' ? localRuntimeRoot : spec.source}`,
+        `    ${spec.id === 'delegation' ? localRuntimeRoot : installedPath}`,
+      ];
+    }).join('\n');
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command, args) =>
+        command === 'node'
+          ? { exitCode: 0, stdout: 'v24.20.0', stderr: '' }
+          : args[0] === '--version'
+            ? { exitCode: 0, stdout: '1.0.2', stderr: '' }
+            : { exitCode: 0, stdout: packageList, stderr: '' },
+    };
+    const report = getPiStatus(context);
+
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
+          state: 'installed',
+          observed: '0.1.0',
+        }),
+      ]),
+    );
+
+    const explicit = getPiStatus({
+      ...context,
+      runtimePackageRoot: localRuntimeRoot,
+    });
+    expect(explicit.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: localRuntimeRoot,
+          state: 'installed',
+          observed: '0.1.0',
+        }),
+      ]),
+    );
+  });
+
+  test('reports and blocks an incumbent delegation runtime seen in Pi package state', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-incumbent-status-'));
+    roots.push(homeDir);
+    const runtime = installedRuntime(homeDir);
+    const piCommandExecutor = (command: string, args: readonly string[]) => {
+      const result = runtime(command, args);
+      return args[0] === 'list'
+        ? {
+            ...result,
+            stdout: `${result.stdout}\nUser packages:\n  npm:pi-subagents@0.72.0\n    ${join(homeDir, 'incumbent')}`,
+          }
+        : result;
+    };
+    const context = { cwd: homeDir, homeDir, env: {}, piCommandExecutor };
+
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent delegation runtime',
+          state: 'drift',
+          observed: 'npm:pi-subagents@0.72.0',
+        }),
+      ]),
+    );
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'pi-incumbent-delegation-conflict',
+          severity: 'critical',
+          message: expect.stringContaining('pi remove npm:pi-subagents@0.72.0'),
+        }),
+      ]),
+    );
+
+    const update = buildPiUpdatePlan(context);
+    expect(update.canApply).toBe(false);
+    expect(update.blockerTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi delegation runtime blocker',
+          observed: expect.stringContaining(
+            'pi remove npm:pi-subagents@0.72.0',
+          ),
+        }),
+      ]),
+    );
+  });
+
+  test('identifies local or Git incumbents by manifest and ignores source spelling alone', () => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-git-incumbent-status-'),
+    );
+    roots.push(homeDir);
+    const installedPath = join(homeDir, 'package-cache', 'custom-package');
+    mkdirSync(installedPath, { recursive: true });
+    const source = 'git+https://example.test/vendor/custom-package.git';
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: 'pi-subagents-j0k3r', version: '1.0.0' }),
+    );
+    const runtime = installedRuntime(homeDir);
+    const piCommandExecutor = (command: string, args: readonly string[]) => {
+      const result = runtime(command, args);
+      return args[0] === 'list'
+        ? {
+            ...result,
+            stdout: `${result.stdout}\nUser packages:\n  ${source}\n    ${installedPath}`,
+          }
+        : result;
+    };
+    const context = { cwd: homeDir, homeDir, env: {}, piCommandExecutor };
+
+    const incumbentStatus = getPiStatus(context);
+    expect(incumbentStatus.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent delegation runtime',
+          observed: source,
+          state: 'drift',
+        }),
+      ]),
+    );
+    expect(buildPiUpdatePlan(context).canApply).toBe(false);
+
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: 'vendor-agent-tools', version: '1.0.0' }),
+    );
+    expect(getPiStatus(context).targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Pi incumbent delegation runtime' }),
+      ]),
+    );
+  });
+
+  test.each([
+    {
+      scope: 'User',
+      source: '../operator-task-list',
+      removalCommand: 'pi remove ../operator-task-list --no-approve',
+    },
+    {
+      scope: 'Project',
+      source: '../operator-task-list',
+      packagePath: 'operator-task-list',
+      removalCommand: 'pi remove ../operator-task-list --local --approve',
+    },
+    {
+      scope: 'User',
+      source: 'git+https://example.test/operator/rpiv-todo.git',
+      removalCommand:
+        'pi remove git+https://example.test/operator/rpiv-todo.git --no-approve',
+    },
+    {
+      scope: 'Project',
+      source: 'git:https://example.test/operator/tasks.git@v2.12.0',
+      packagePath: '.pi/git/example.test/operator/tasks',
+      removalCommand:
+        'pi remove git:https://example.test/operator/tasks.git@v2.12.0 --local --approve',
+    },
+    ...[
+      'https://github.com/operator/tasks.git/',
+      'https://www.github.com/operator/tasks',
+    ].map((source) => ({
+      scope: 'Project',
+      source,
+      packagePath: '.pi/git/github.com/operator/tasks',
+      removalCommand: `pi remove ${source} --local --approve`,
+    })),
+    {
+      scope: 'Project',
+      source: 'git:https://example.test/operator/rpiv-todo.git',
+      packagePath: '.pi/git/example.test/operator/rpiv-todo',
+      removalCommand:
+        'pi remove git:https://example.test/operator/rpiv-todo.git --local --approve',
+    },
+  ])('identifies a local/Git todo incumbent by manifest, not source spelling alone ($scope, $source)', ({
+    scope,
+    source,
+    packagePath,
+    removalCommand,
+  }) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-todo-status-'));
+    roots.push(homeDir);
+    const installedPath = join(homeDir, packagePath ?? 'operator-package');
+    mkdirSync(installedPath, { recursive: true });
+    if (scope === 'Project') {
+      const settingsPath = join(homeDir, '.pi', 'settings.json');
+      mkdirSync(dirname(settingsPath), { recursive: true });
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({ packages: [{ source, extensions: [] }] }),
+      );
+    }
+    const manifestPath = join(installedPath, 'package.json');
+    const runtime = installedRuntime(homeDir);
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        const result = runtime(command, args);
+        // Native --no-approve never lists project packages.
+        return args[0] === 'list' && scope === 'User'
+          ? {
+              ...result,
+              stdout: `${result.stdout}\nUser packages:\n  ${source}\n    ${installedPath}`,
+            }
+          : result;
+      },
+    };
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: '@juicesharp/rpiv-todo', version: '2.12.0' }),
+    );
+    expect(getPiStatus(context).targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: source,
+          state: 'drift',
+          description: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan).toMatchObject({
+        canApply: false,
+        blockerTargets: expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(`${removalCommand}.`),
+          }),
+        ]),
+      });
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: 'operator-task-tools', version: '1.0.0' }),
+    );
+    expect(getPiStatus(context).targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Pi incumbent task-list package' }),
+      ]),
+    );
+    expect(buildPiUpdatePlan(context).canApply).toBe(true);
+  });
+
+  test.each([
+    {
+      packagePath: '.pi/git/unknown.test/nested/operator/tasks',
+      settings: undefined,
+    },
+    { packagePath: '.pi/npm/node_modules/operator-tasks', settings: undefined },
+    {
+      packagePath: '.pi/git/github.com/operator/tasks',
+      settings: JSON.stringify({
+        packages: ['git:unrecognized-layout'],
+        npmCommand: ['must-not-run-project-code'],
+      }),
+    },
+    {
+      packagePath: '.pi/npm/node_modules/@vendor/renamed-tasks',
+      settings: '{ malformed settings',
+    },
+  ])('reports an unmapped installed todo and blocks Install/Update ($packagePath, settings=$settings)', ({
+    packagePath,
+    settings,
+  }) => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-scanned-todo-status-'),
+    );
+    roots.push(homeDir);
+    const cwd = join(homeDir, 'project');
+    const installedPath = join(cwd, packagePath);
+    mkdirSync(installedPath, { recursive: true });
+    const settingsPath = join(cwd, '.pi', 'settings.json');
+    if (settings !== undefined) writeFileSync(settingsPath, settings);
+    const manifestPath = join(installedPath, 'package.json');
+    const manifest = JSON.stringify({
+      name: '@juicesharp/rpiv-todo',
+      main: 'must-not-execute.js',
+      scripts: { preinstall: 'must-not-run-project-code' },
+    });
+    writeFileSync(manifestPath, manifest);
+    writeFileSync(
+      join(installedPath, 'must-not-execute.js'),
+      'throw new Error("Project code executed");',
+    );
+    const commands: string[] = [];
+    const runtime = installedRuntime(homeDir);
+    const context = {
+      cwd,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return runtime(command, args);
+      },
+    };
+
+    const report = getPiStatus(context);
+    const incumbents = report.targets.filter(
+      ({ label }) => label === 'Pi incumbent task-list package',
+    );
+    expect(incumbents).toHaveLength(1);
+    expect(incumbents[0]).toMatchObject({
+      path: installedPath,
+      state: 'drift',
+      description: expect.stringContaining(
+        'pi remove <source> --local --approve.',
+      ),
+    });
+    expect(incumbents[0].description).toContain(
+      'pi remove npm:@juicesharp/rpiv-todo --local --approve.',
+    );
+    expect(incumbents[0].description).toContain('Review the project');
+    expect(incumbents[0].description).not.toContain(
+      `pi remove ${installedPath}`,
+    );
+    expect(
+      report.diagnostics.map(({ message }) => message).join('\n'),
+    ).toContain(installedPath);
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(plan.blockerTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(installedPath),
+          }),
+        ]),
+      );
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+    expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
+    if (settings !== undefined)
+      expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    else expect(existsSync(settingsPath)).toBe(false);
+    expect(existsSync(join(homeDir, '.pi', 'agent'))).toBe(false);
+    expect(existsSync(join(homeDir, '.config'))).toBe(false);
+  });
+
+  test.each([
+    'missing',
+    'invalid',
+  ])('reports read-only identity limitations for a project Git todo source with a %s manifest', (manifestState) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-unresolved-todo-'));
+    roots.push(homeDir);
+    const source = 'git:https://example.test/operator/rpiv-todo.git@v2.12.0';
+    const settingsPath = join(homeDir, '.pi', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({ packages: [source] });
+    writeFileSync(settingsPath, settings);
+    if (manifestState === 'invalid') {
+      const packageRoot = join(
+        homeDir,
+        '.pi',
+        'git',
+        'example.test',
+        'operator',
+        'rpiv-todo',
+      );
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(join(packageRoot, 'package.json'), 'invalid JSON');
+    }
+    const commands: string[] = [];
+    const runtime = installedRuntime(homeDir);
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return runtime(command, args);
+      },
+    };
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: source,
+          state: 'drift',
+          description: expect.stringContaining(
+            'manifest identity is unavailable',
+          ),
+        }),
+      ]),
+    );
+    expect(
+      report.diagnostics.map(({ message }) => message).join('\n'),
+    ).toContain('read-only inspection cannot confirm its installed identity');
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
   test('reports provider evidence without treating an absent Exa key as a web failure', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-status-'));
     roots.push(homeDir);
@@ -185,37 +697,290 @@ describe('Pi operations', () => {
     );
   });
 
-  test('reports each RPIV package source independently without claiming live tools', () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
+  test.each([
+    'user',
+    'project',
+  ])('reports the first-party question package as missing and previews safe retired-provider migration (%s)', (scope) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-question-migration-'));
     roots.push(homeDir);
-    const report = getPiStatus({
+    const source = 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0';
+    const settingsPath =
+      scope === 'user'
+        ? join(homeDir, '.pi', 'agent', 'settings.json')
+        : join(homeDir, '.pi', 'settings.json');
+    const installedPath = join(
+      dirname(settingsPath),
+      'npm',
+      'node_modules',
+      '@juicesharp',
+      'rpiv-ask-user-question',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    const settings = JSON.stringify({
+      packages: [{ source, extensions: ['*'] }],
+      theme: 'operator',
+    });
+    writeFileSync(settingsPath, settings);
+    const commands: string[] = [];
+    const context = {
       cwd: homeDir,
       homeDir,
       env: {},
-      piCommandExecutor: (command, args) => {
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return {
+          exitCode: 0,
+          stdout:
+            command === 'node'
+              ? 'v22.19.0'
+              : args[0] === '--version'
+                ? '1.0.2'
+                : scope === 'user'
+                  ? `User packages:\n  ${source}`
+                  : 'No packages installed.',
+          stderr: '',
+        };
+      },
+    };
+    const status = getPiStatus(context);
+    expect(status.targets).toContainEqual(
+      expect.objectContaining({
+        path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        state: 'missing',
+      }),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(scope === 'user');
+      if (scope === 'user')
+        expect(plan.items).toContainEqual(
+          expect.objectContaining({
+            preview: `pi remove ${source} --no-approve`,
+          }),
+        );
+      else {
+        expect(plan.blockerTargets).toContainEqual(
+          expect.objectContaining({
+            observed: expect.stringContaining(
+              `pi remove ${source} --local --approve`,
+            ),
+          }),
+        );
+        expect(applyPiPlan(plan).applied).toBe(false);
+      }
+    }
+    expect(
+      commands.some((command) => /pi (install|remove)|--approve/.test(command)),
+    ).toBe(false);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
+  test.each([
+    {
+      scope: 'User',
+      removalCommand: 'pi remove npm:@juicesharp/rpiv-todo --no-approve',
+    },
+    {
+      scope: 'Project',
+      removalCommand: 'pi remove npm:@juicesharp/rpiv-todo --local --approve',
+    },
+  ])('reports an incumbent todo conflict and blocks update while reporting question support ($scope)', ({
+    scope,
+    removalCommand,
+  }) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
+    roots.push(homeDir);
+    const askPath = join(homeDir, 'ask');
+    const todoPath =
+      scope === 'Project'
+        ? join(
+            homeDir,
+            '.pi',
+            'npm',
+            'node_modules',
+            '@juicesharp',
+            'rpiv-todo',
+          )
+        : join(homeDir, 'todo');
+    mkdirSync(askPath);
+    mkdirSync(todoPath, { recursive: true });
+    writeFileSync(
+      join(askPath, 'package.json'),
+      JSON.stringify({
+        name: '@thoth-agents/pi-questions-user',
+        version: '0.1.0',
+      }),
+    );
+    writeFileSync(
+      join(todoPath, 'package.json'),
+      JSON.stringify({ name: '@juicesharp/rpiv-todo', version: '0.0.1' }),
+    );
+    if (scope === 'Project') {
+      const settingsPath = join(homeDir, '.pi', 'settings.json');
+      mkdirSync(dirname(settingsPath), { recursive: true });
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({ packages: ['npm:@juicesharp/rpiv-todo@>=2.9.0'] }),
+      );
+    }
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: [
-            'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
-            'npm:@juicesharp/rpiv-todo@0.0.1',
+            'User packages:',
+            '  npm:@thoth-agents/pi-questions-user@>=0.1.0',
+            `    ${askPath}`,
+            ...(scope === 'User'
+              ? ['  npm:@juicesharp/rpiv-todo@>=2.9.0', `    ${todoPath}`]
+              : []),
           ].join('\n'),
           stderr: '',
         };
       },
-    });
-    const rpiv = report.targets.filter(({ path }) =>
-      path?.includes('@juicesharp/rpiv-'),
+    };
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          state: 'missing',
+        }),
+        expect.objectContaining({
+          path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+          state: 'installed',
+          description: expect.stringContaining(
+            'does not prove live tool availability',
+          ),
+        }),
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: 'npm:@juicesharp/rpiv-todo@>=2.9.0',
+          state: 'drift',
+          description: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
     );
-    expect(rpiv.map(({ state }) => state)).toEqual(['installed', 'drift']);
-    expect(
-      rpiv.every(({ description }) =>
-        description?.includes('does not prove live tool availability'),
-      ),
-    ).toBe(true);
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code:
+            scope === 'Project'
+              ? 'pi-preflight-blocked'
+              : 'pi-incumbent-todo-conflict',
+          severity: 'critical',
+          message: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(plan.blockerTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(`${removalCommand}.`),
+          }),
+        ]),
+      );
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
+      false,
+    );
+  });
+
+  test.each([
+    false,
+    true,
+  ])('reports both todo scopes in status and update (user settings=%s)', (userSettings) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-todo-scopes-'));
+    roots.push(homeDir);
+    const source = 'npm:@juicesharp/rpiv-todo@2.12.0';
+    if (userSettings) {
+      const path = join(homeDir, '.pi', 'agent', 'settings.json');
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify({ packages: [source] }));
+    }
+    const projectSettingsPath = join(homeDir, '.pi', 'settings.json');
+    mkdirSync(dirname(projectSettingsPath), { recursive: true });
+    writeFileSync(projectSettingsPath, JSON.stringify({ packages: [source] }));
+    const runtime = installedRuntime(homeDir);
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        const result = runtime(command, args);
+        return args[0] === 'list'
+          ? {
+              ...result,
+              stdout: `${result.stdout}\nUser packages:\n  ${source}`,
+            }
+          : result;
+      },
+    };
+    const removalCommands = [
+      'pi remove npm:@juicesharp/rpiv-todo --no-approve.',
+      'pi remove npm:@juicesharp/rpiv-todo --local --approve.',
+    ];
+    const report = getPiStatus(context);
+    for (const command of removalCommands) {
+      expect(
+        report.targets
+          .filter(({ label }) => label === 'Pi incumbent task-list package')
+          .map(({ description }) => description)
+          .join('\n'),
+      ).toContain(command);
+      expect(
+        report.diagnostics.map(({ message }) => message).join('\n'),
+      ).toContain(command);
+    }
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      const recovery = plan.blockerTargets
+        .filter(({ label }) => label === 'Pi task-list package blocker')
+        .map(({ observed }) => observed)
+        .join('\n');
+      for (const command of removalCommands)
+        expect(recovery).toContain(command);
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
+      false,
+    );
   });
 
   test('reports installed web access as unverified without live runtime evidence', () => {
@@ -226,7 +991,7 @@ describe('Pi operations', () => {
       cwd: homeDir,
       homeDir,
       env: {},
-      piCommandExecutor: installedRuntime,
+      piCommandExecutor: installedRuntime(homeDir),
     });
 
     expect(
@@ -265,7 +1030,7 @@ describe('Pi operations', () => {
         cwd: homeDir,
         homeDir,
         env: {},
-        piCommandExecutor: installedRuntime,
+        piCommandExecutor: installedRuntime(homeDir),
       },
       {
         research: {
@@ -302,7 +1067,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return { exitCode: 0, stdout: '', stderr: '' };
       },
     });
@@ -317,7 +1082,7 @@ describe('Pi operations', () => {
         cwd: homeDir,
         homeDir,
         env: {},
-        piCommandExecutor: installedRuntime,
+        piCommandExecutor: installedRuntime(homeDir),
       },
       {
         research: {
@@ -390,7 +1155,7 @@ describe('Pi operations', () => {
       packageRoot,
       env: {},
       piCommandExecutor: (command, args) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -442,7 +1207,7 @@ describe('Pi operations', () => {
       homeDir,
       env: {},
       piCommandExecutor: (command, args) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -483,7 +1248,7 @@ describe('Pi operations', () => {
       packageRoot,
       env: {},
       piCommandExecutor: (command: string, args: readonly string[]) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -546,7 +1311,7 @@ describe('Pi operations', () => {
       createHash('sha256').update(readFileSync(path)).digest('hex');
     const commandExecutor =
       (list: string) => (command: string, args: readonly string[]) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list' ? { ...result, stdout: list } : result;
       };
     const ownership = (list: string) =>
@@ -667,7 +1432,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -713,7 +1478,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: configured
@@ -748,7 +1513,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -800,7 +1565,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -835,7 +1600,7 @@ describe('Pi operations', () => {
     roots.push(homeDir);
     const configuredRoot = join(homeDir, 'pi-packages', 'thoth-agents');
     seedPiPackage(configuredRoot);
-    rmSync(join(configuredRoot, 'pi', 'agents', 'thoth-deep.md'));
+    rmSync(join(configuredRoot, 'pi', 'agents', 'thoth-worker.md'));
     const source = writeLocalPiReceipt(homeDir, configuredRoot);
     const plan = buildPiSyncPlan({
       cwd: homeDir,
@@ -846,7 +1611,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -882,7 +1647,7 @@ describe('Pi operations', () => {
         {
           harness: 'pi',
           dryRun: true,
-          roles: [{ role: 'deep', model: 'provider/model' }],
+          roles: [{ role: 'worker', model: 'provider/model' }],
         },
         { cwd: homeDir, homeDir, env: {} },
       ).canApply,
@@ -898,7 +1663,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             availableEfforts: ['ultra'],
             effort: { kind: 'effort', value: 'ultra' },
@@ -913,7 +1678,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             availableEfforts: ['low'],
             effort: { kind: 'effort', value: 'high' },
@@ -932,14 +1697,48 @@ describe('Pi operations', () => {
     }
   });
 
-  test('updates model fields only inside owned specialist frontmatter', () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-apply-'));
+  test('rejects CLI model saves when owned definitions changed after preview', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-stale-'));
     roots.push(homeDir);
-    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'thoth-deep.md');
+    const agentPath = join(
+      homeDir,
+      '.pi',
+      'agent',
+      'agents',
+      'thoth-worker.md',
+    );
     mkdirSync(dirname(agentPath), { recursive: true });
     writeFileSync(
       agentPath,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: old/model\n---\nOriginal\n',
+    );
+    const plan = buildPiModelPlan(
+      { harness: 'pi', roles: [{ role: 'worker', model: 'new/model' }] },
+      { cwd: homeDir, homeDir, env: {} },
+    );
+    writeFileSync(
+      agentPath,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: external/change\n---\nEdited externally\n',
+    );
+    const result = applyPiPlan(plan);
+    expect(result.applied).toBe(false);
+    expect(readFileSync(agentPath, 'utf8')).toContain('external/change');
+  });
+
+  test('updates model fields only inside owned specialist frontmatter', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-apply-'));
+    roots.push(homeDir);
+    const agentPath = join(
+      homeDir,
+      '.pi',
+      'agent',
+      'agents',
+      'thoth-worker.md',
+    );
+    mkdirSync(dirname(agentPath), { recursive: true });
+    writeFileSync(
+      agentPath,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
     );
     const plan = buildPiModelPlan(
       {
@@ -947,7 +1746,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             effort: { kind: 'effort', value: 'high' },
           },
@@ -980,25 +1779,32 @@ describe('Pi operations', () => {
         harness: 'pi',
         dryRun: false,
         roles: [
-          { role: 'deep', model: 'inherit', effort: { kind: 'inherit' } },
+          { role: 'worker', model: 'inherit', effort: { kind: 'inherit' } },
         ],
       },
       context,
     );
     expect(applyPiPlan(plan).applied).toBe(true);
+    const inherited = readFileSync(
+      join(syncOptions.piRoot, 'agents', 'thoth-worker.md'),
+      'utf8',
+    );
+    expect(inherited).toContain('model: "inherit"');
+    expect(inherited).not.toContain('thoth-model-inherit');
+    expect(inherited).not.toContain('thoth-thinking-inherit');
     expect(syncPiSpecialists(syncOptions).success).toBe(true);
     expect(
-      defaultPiModelRoles(context).find(({ role }) => role === 'deep'),
+      defaultPiModelRoles(context).find(({ role }) => role === 'worker'),
     ).toMatchObject({
       model: 'inherit',
       effort: { kind: 'inherit' },
     });
     const content = readFileSync(
-      join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
+      join(syncOptions.piRoot, 'agents', 'thoth-worker.md'),
       'utf8',
     );
-    expect(content).toContain('model: "default"');
-    expect(content).toContain('effort: "default"');
+    expect(content).toContain('model: "inherit"');
+    expect(content).not.toMatch(/^thinking:/m);
   });
 });
 
@@ -1017,7 +1823,7 @@ test('restores Pi defaults while preserving specialist bodies and ambient root',
 name: thoth-${defaults[index]?.role}
 managed-by: thoth-agents
 model: custom/model
-effort: high
+thinking: high
 tools: read
 ---
 Keep this body.

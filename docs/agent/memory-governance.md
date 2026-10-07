@@ -28,9 +28,10 @@ thoth-agents owns only provider-neutral orchestration outcomes:
   authorization, and bounded context. It never invents identity.
 - No thoth-agents package bundles thoth-mem hooks, MCP, protocol text, or
   lifecycle implementation.
-- `openspec/` remains the canonical SDD coordination surface; phase artifacts
-  are not mirrored into provider memory. Durable lessons and continuity follow
-  the installed thoth-mem skill.
+- `.thoth/` holds active project change records, durable contracts, and
+  constitution; historical material remains preserved. Project work is not
+  mirrored into provider memory. Durable lessons and continuity follow the
+  installed thoth-mem skill.
 - A provider failure degrades memory but does not block unrelated implementation
   or verification.
 

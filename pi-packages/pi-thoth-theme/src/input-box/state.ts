@@ -1,0 +1,90 @@
+import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import type { IconMode } from '../shared/config.ts';
+import { formatDuration } from '../shared/duration.ts';
+import { frames, icon } from '../shared/icons.ts';
+import {
+  type BreathingFrame,
+  createBreathingFrame,
+  renderWorkingIndicator,
+} from './gradient.ts';
+
+export function createWorkingState(requestRender: () => void) {
+  let startedAt: number | undefined;
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  let disposed = false;
+
+  function stop() {
+    if (ticker !== undefined) clearInterval(ticker);
+    ticker = undefined;
+    startedAt = undefined;
+  }
+
+  return {
+    get isWorking() {
+      return startedAt !== undefined;
+    },
+    start() {
+      if (disposed) return;
+      stop();
+      startedAt = Date.now();
+      ticker = setInterval(requestRender, 50);
+      ticker.unref?.();
+      requestRender();
+    },
+    end() {
+      if (disposed) return;
+      stop();
+      requestRender();
+    },
+    status(
+      indicator: unknown,
+      width: number,
+      styleMuted: (text: string) => string = (text) => text,
+      frame?: BreathingFrame,
+      mode: IconMode = 'nerd',
+    ): string {
+      const ready = `${icon('ready', mode)} ready`;
+      const separator = icon('separator', mode);
+      if (
+        !indicator ||
+        typeof indicator !== 'object' ||
+        !('renderInBorder' in indicator) ||
+        typeof indicator.renderInBorder !== 'function'
+      ) {
+        return styleMuted(truncateToWidth(ready, width, ''));
+      }
+      const working = 'kind' in indicator && indicator.kind === 'working';
+      const now = frame?.now ?? Date.now();
+      const elapsed =
+        working && startedAt !== undefined
+          ? ` ${separator} ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`
+          : '';
+      const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
+      const native = indicator.renderInBorder(nativeWidth);
+      if (typeof native !== 'string' || visibleWidth(native) === 0) {
+        return styleMuted(truncateToWidth(ready, width, ''));
+      }
+      const fitted = truncateToWidth(native, nativeWidth, '');
+      const label =
+        working && startedAt !== undefined
+          ? renderWorkingIndicator(
+              fitted,
+              frame ?? createBreathingFrame(now),
+              styleMuted,
+              frames('workingFrames', mode),
+            )
+          : fitted;
+      return truncateToWidth(
+        `${label}${elapsed ? styleMuted(elapsed) : ''}`,
+        width,
+        '',
+      );
+    },
+    dispose() {
+      disposed = true;
+      stop();
+    },
+  };
+}
+
+export type WorkingState = ReturnType<typeof createWorkingState>;

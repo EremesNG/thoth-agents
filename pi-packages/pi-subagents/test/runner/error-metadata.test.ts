@@ -1,0 +1,393 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  classifyAssistantFailure,
+  classifyFallbackFailure,
+  classifyThrownError,
+  deriveErrorString,
+  normalizeErrorMetadata,
+  SubagentStructuredError,
+  safeErrorMetadataDetails,
+} from '../../src/error-metadata.js';
+import { completionMessage } from '../../src/render/completion-message.js';
+import type {
+  SubagentDefinition,
+  SubagentErrorMetadata,
+  SubagentsConfig,
+} from '../../src/types.js';
+
+describe('structured error metadata contract', () => {
+  it('includes a bounded redacted message in orchestrator-safe failure details', () => {
+    const metadata: SubagentErrorMetadata = {
+      version: 1,
+      category: 'provider_auth_error',
+      retryable: false,
+      partial_result_available: false,
+      message: `No API key found for fixture | Bearer sk-fake-secret-token | fake.user@example.com | /tmp/private.txt | prompt: SECRET_FILE_BODY | ${'x'.repeat(1400)}`,
+    };
+    const details = safeErrorMetadataDetails(metadata);
+    expect(details.message).toEqual(
+      expect.stringContaining('No API key found for fixture'),
+    );
+    expect(Array.from(details.message as string)).toHaveLength(1024);
+    expect(details.message).toEqual(expect.stringContaining('[redacted]'));
+    for (const secret of [
+      'sk-fake-secret-token',
+      'fake.user@example.com',
+      '/tmp/private.txt',
+      'SECRET_FILE_BODY',
+    ]) {
+      expect(details.message).not.toContain(secret);
+    }
+    const completion = completionMessage({
+      id: 'fixture',
+      agent: 'worker',
+      status: 'failed',
+      error: 'provider auth error',
+      error_metadata: metadata,
+    });
+    expect(completion).toContain('- message: No API key found for fixture');
+    expect(completion).not.toContain('sk-fake-secret-token');
+  });
+
+  it('normalizes v1 metadata defaults, bounds, retryability, and redaction', () => {
+    const secretLikeMessage = [
+      'Bearer sk-fake-secret-token',
+      'contact fake.user@example.com',
+      'open /tmp/fake-private.txt',
+      'prompt: summarize file contents SECRET_FILE_BODY',
+    ].join(' | ');
+    const metadata = normalizeErrorMetadata({
+      category: 'provider_rate_limit',
+      message: `${secretLikeMessage} ${'x'.repeat(1400)}`,
+      source: {
+        provider: 'openai',
+        model: 'gpt-test',
+        tool: `read_${'x'.repeat(400)}`,
+        operation: `session.prompt.${'y'.repeat(400)}`,
+      },
+      details: {
+        provider_code: 'rate_limit_429',
+        auth_header: 'Authorization: Bearer sk-fake-secret-token',
+        prompt: 'SYSTEM: fake prompt text',
+        file_path: '/tmp/fake-private.txt',
+        email: 'fake.user@example.com',
+        body: `SECRET_FILE_BODY_${'z'.repeat(800)}`,
+      },
+      cause: {
+        version: 1,
+        category: 'unknown',
+        message: 'nested cause',
+        retryable: false,
+        partial_result_available: false,
+        cause: {
+          version: 1,
+          category: 'unknown',
+          message: 'deep cause',
+          retryable: false,
+          partial_result_available: false,
+          cause: {
+            version: 1,
+            category: 'unknown',
+            message: 'too deep',
+            retryable: false,
+            partial_result_available: false,
+          },
+        },
+      },
+      attempts: [
+        {
+          version: 1,
+          category: 'provider_api_error',
+          message: 'primary',
+          retryable: true,
+          partial_result_available: false,
+          role: 'primary',
+        },
+        {
+          version: 1,
+          category: 'provider_network_error',
+          message: 'fallback',
+          retryable: true,
+          partial_result_available: false,
+          role: 'fallback',
+        },
+        {
+          version: 1,
+          category: 'unknown',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+        },
+      ],
+    });
+
+    expect(metadata.version).toBe(1);
+    expect(metadata.retryable).toBe(true);
+    expect(metadata.message.length).toBeLessThanOrEqual(1024);
+    expect(metadata.message).not.toContain('sk-fake-secret-token');
+    expect(metadata.message).not.toContain('fake.user@example.com');
+    expect(metadata.message).not.toContain('/tmp/fake-private.txt');
+    expect(metadata.message).not.toContain('SECRET_FILE_BODY');
+    expect(metadata.message).toContain('[redacted]');
+    expect(metadata.source?.tool?.length ?? 0).toBeLessThanOrEqual(256);
+    expect(metadata.source?.operation?.length ?? 0).toBeLessThanOrEqual(256);
+    expect(Object.keys(metadata.details ?? {}).length).toBeLessThanOrEqual(16);
+    expect(Object.values(metadata.details ?? {})).toEqual(
+      expect.not.arrayContaining([
+        expect.stringContaining('sk-fake-secret-token'),
+        expect.stringContaining('fake.user@example.com'),
+        expect.stringContaining('/tmp/fake-private.txt'),
+        expect.stringContaining('SECRET_FILE_BODY'),
+      ]),
+    );
+    expect(metadata.attempts).toHaveLength(2);
+    expect(metadata.attempts?.map((attempt) => attempt.role)).toEqual([
+      'primary',
+      'fallback',
+    ]);
+    expect(metadata.cause?.cause?.cause).toBeUndefined();
+  });
+
+  it('preserves exact-string compatibility for legacy-facing derived errors', () => {
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'total_timeout',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+          details: { timeout_ms: '123' },
+        }),
+      ),
+    ).toBe('timed out after 123ms');
+
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'stall_timeout',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+          details: { stall_timeout_ms: '20' },
+        }),
+      ),
+    ).toBe('Subagent stalled for 20ms without final response.');
+
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'cancelled',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: true,
+          details: { cancel_reason: 'parent abort' },
+        }),
+      ),
+    ).toBe('Subagent cancelled: parent abort');
+  });
+
+  it('keeps every stall diagnostic in a bounded sanitized error suffix', () => {
+    const metadata = normalizeErrorMetadata({
+      category: 'stall_timeout',
+      phase: 'runner_session',
+      details: {
+        stall_timeout_ms: '20',
+        ms_since_last_session_event: '500',
+        last_session_event_type: `agent_settled\u001b[31m ${'x'.repeat(1400)}`,
+        active_tools: `read Bearer sk-fake-secret-token\u0000 (500ms since update), ${'y'.repeat(1400)}`,
+        settled_after_last_start: 'true',
+        outstanding_orchestrator_questions: '0',
+      },
+    });
+    const error = new SubagentStructuredError(metadata);
+    expect(error.message.length).toBeLessThanOrEqual(1024);
+    expect(error.message).toContain('last_event=agent_settled');
+    expect(error.message).toContain('last_event_age_ms=500');
+    expect(error.message).toContain('active_tools=read Bearer [redacted]');
+    expect(error.message).toContain('settled_after_last_start=true');
+    expect(error.message).toContain('outstanding_orchestrator_questions=0');
+    expect(error.message).toBe(metadata.message);
+    expect(error.message).toBe(deriveErrorString(metadata));
+    expect(JSON.stringify(metadata)).not.toContain('sk-fake-secret-token');
+    expect(metadata.details?.last_session_event_type).not.toMatch(
+      /[\u0000-\u001f\u007f-\u009f]/,
+    );
+    expect(metadata.details?.active_tools).not.toMatch(
+      /[\u0000-\u001f\u007f-\u009f]/,
+    );
+  });
+
+  it('classifies conservative thrown errors and fallback attempts', () => {
+    const auth = classifyThrownError(
+      new Error('401 invalid api key Bearer sk-fake-secret-token'),
+      {
+        phase: 'runner_invoke',
+        provider: 'openai',
+        model: 'gpt-test',
+      },
+    );
+    expect(auth.category).toBe('provider_auth_error');
+    expect(auth.retryable).toBe(false);
+    expect(auth.message).not.toContain('sk-fake-secret-token');
+
+    const malformed = classifyThrownError(
+      { message: 'ECONNRESET fake.user@example.com' },
+      {
+        phase: 'runner_invoke',
+        provider: 'openai',
+        model: 'gpt-test',
+      },
+    );
+    expect(malformed.category).toBe('malformed_thrown_value');
+    expect(malformed.retryable).toBe(false);
+
+    const fallback = classifyFallbackFailure(
+      normalizeErrorMetadata({
+        category: 'provider_network_error',
+        message: 'primary failure',
+        retryable: true,
+        partial_result_available: false,
+        role: 'primary',
+      }),
+      normalizeErrorMetadata({
+        category: 'provider_rate_limit',
+        message: 'fallback failure',
+        retryable: true,
+        partial_result_available: false,
+        role: 'fallback',
+      }),
+    );
+    expect(fallback.category).toBe('fallback_failed');
+    expect(fallback.retryable).toBe(false);
+    expect(fallback.attempts?.map((attempt) => attempt.role)).toEqual([
+      'primary',
+      'fallback',
+    ]);
+  });
+
+  it.each([
+    'MCP tool parameters must be an object schema: agent_browser_electron {"anyOf":[{"type":"object","properties":{"timeoutMs":{"type":"number"}}}]}',
+    'MCP tool parameters must be an object schema: {"properties":{"connection":{"type":"string"},"credential":{"type":"string"},"quota":{"type":"number"}}}',
+  ])('classifies deterministic MCP schema rejection before serialized payload words and retry hints: %s', (message) => {
+    expect(
+      classifyThrownError(new Error(message), { retryable: true }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+    expect(
+      classifyAssistantFailure({ stopReason: 'error', errorMessage: message }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+      phase: 'assistant_final',
+    });
+  });
+
+  it.each([
+    'request failed: ECONNRESET',
+    'getaddrinfo ENOTFOUND example.invalid',
+    'request failed: ETIMEDOUT',
+    'Network request failed',
+    'socket hang up',
+    'Connection refused',
+    'Request timeout',
+    'Request timed out',
+  ])('keeps genuine network failures retryable: %s', (message) => {
+    expect(classifyThrownError(new Error(message))).toMatchObject({
+      category: 'provider_network_error',
+      retryable: true,
+    });
+  });
+
+  it.each([
+    'timeoutMs',
+    'networkConfig',
+    'socketPath',
+    'connectionId',
+    'reconnection',
+    'ECONNRESETCode',
+    'ENOTFOUNDCount',
+    'ETIMEDOUTHint',
+  ])('does not infer network failure from payload identifier %s', (identifier) => {
+    expect(
+      classifyThrownError(
+        new Error(
+          `Invalid tool schema: {"properties":{"${identifier}":{"type":"number"}}}`,
+        ),
+      ),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: true,
+    });
+  });
+
+  it('classifies prompt-capture failures as non-retryable provider API errors even with context words and retry hints', () => {
+    const message =
+      "prompt-capture: no capture for this 4314-char system prompt, and it embeds none of the 1 known. Claude Code would receive none of this turn's context files, skills or custom instructions.";
+    expect(
+      classifyThrownError(new Error(message), { retryable: true }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+    expect(
+      classifyThrownError('prompt-capture: maximum context length exceeded'),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+  });
+
+  it.each([
+    "This model's maximum context length is 4096 tokens. However, you requested 5000 tokens",
+    'prompt is too long: 213462 tokens > 200000 maximum',
+    'The input token count (1234567) exceeds the maximum number of tokens allowed (1048576).',
+    'Error code: 400 - context_length_exceeded',
+    'context_overflow',
+  ])('recognizes exact provider context capacity errors: %s', (message) => {
+    expect(classifyThrownError(new Error(message)).category).toBe(
+      'context_overflow',
+    );
+  });
+
+  it.each([
+    'Failed to load context files',
+    'Token encoding failed',
+    'Invalid response length',
+    'Maximum retries reached',
+    'Failed to load maximum context configuration',
+    "This model's maximum context length is 8192 tokens. Request could not be parsed: invalid JSON.",
+    'Failed to retrieve context window metadata: retry limit exceeded.',
+    'Failed to count input tokens: retry budget exceeded.',
+    'Context window was not exceeded; invalid JSON in request body.',
+    'Input does not exceed the context window; request rejected.',
+    'Input never exceeds the context window; request rejected for invalid JSON.',
+    'Input does not currently exceed the context window; request rejected for invalid JSON.',
+    'There are not too many tokens; request rejected for invalid JSON.',
+    // Generic phrasing is not inferred; only exact provider formats count.
+    'maximum context length exceeded',
+    'context window exceeded',
+    'too many tokens',
+    'input tokens exceed the context window',
+  ])('does not infer context overflow from incidental words: %s', (message) => {
+    expect(classifyThrownError(new Error(message)).category).toBe(
+      'provider_api_error',
+    );
+  });
+
+  it('wraps normalized metadata in SubagentStructuredError', () => {
+    const metadata: SubagentErrorMetadata = normalizeErrorMetadata({
+      category: 'unknown',
+      message: 'plain failure',
+      partial_result_available: false,
+    });
+    const error = new SubagentStructuredError(metadata);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe(deriveErrorString(metadata));
+    expect(error.error_metadata).toEqual(metadata);
+  });
+});

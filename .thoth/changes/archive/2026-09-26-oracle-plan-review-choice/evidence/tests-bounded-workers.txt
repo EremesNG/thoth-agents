@@ -1,0 +1,115 @@
+$ vitest run "--maxWorkers=2"
+
+ RUN  v4.1.6 C:/DEV/Proyectos/Webstorm/thoth-agents
+
+warning: in the working copy of '.agents/plugins/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude-plugin/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog/plugins.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pnpm-lock.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/catalog.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/render.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/update-plugin.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/validate.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/catalog.test.mjs', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-LfdaTA\central.git
+ * [new branch]      main -> main
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.claude-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.codex-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/plan-reviewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-archive/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-constitution/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-init/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-work/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-LfdaTA\plugin.git
+ * [new branch]      main -> main
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-LfdaTA\plugin.git
+ * [new tag]         v0.3.12 -> v0.3.12
+warning: in the working copy of '.agents/plugins/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude-plugin/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog/plugins.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pnpm-lock.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/catalog.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/render.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/update-plugin.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/validate.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/catalog.test.mjs', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-fX2yEP\central.git
+ * [new branch]      main -> main
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.claude-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.codex-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/plan-reviewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-archive/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-constitution/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-init/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-work/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-fX2yEP\plugin.git
+ * [new branch]      main -> main
+warning: in the working copy of '.agents/plugins/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude-plugin/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog/plugins.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pnpm-lock.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/catalog.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/render.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/update-plugin.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/validate.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/catalog.test.mjs', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8lPoM8\central.git
+ * [new branch]      main -> main
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.claude-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.codex-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/plan-reviewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-archive/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-constitution/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-init/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-work/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8lPoM8\plugin.git
+ * [new branch]      main -> main
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8lPoM8\plugin.git
+ * [new tag]         v0.3.12 -> v0.3.12
+warning: in the working copy of '.agents/plugins/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude-plugin/marketplace.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'catalog/plugins.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pnpm-lock.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/catalog.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/render.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/update-plugin.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/validate.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/catalog.test.mjs', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8OXCk7\central.git
+ * [new branch]      main -> main
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.claude-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/.codex-plugin/plugin.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/plan-reviewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-archive/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-constitution/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-init/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'plugin/skills/thoth-work/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8OXCk7\plugin.git
+ * [new branch]      main -> main
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8OXCk7\plugin.git
+ * [new tag]         v0.3.12 -> v0.3.12
+warning: in the working copy of 'race.txt', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\EremesNG\AppData\Local\Temp\thoth-agents-marketplace-release-8OXCk7\central.git
+   015d430..84e0592  main -> main
+
+ Test Files  95 passed (95)
+      Tests  957 passed (957)
+   Start at  17:07:39
+   Duration  55.07s (transform 1.75s, setup 0ms, import 8.53s, tests 84.41s, environment 10ms)
+

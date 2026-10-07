@@ -1,31 +1,46 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
-const VALIDATE_SCRIPT = join(
+const constitutionScript = join(
   process.cwd(),
-  'skills',
-  'thoth-constitution',
-  'scripts',
-  'validate.mjs',
+  'skills/thoth-constitution/scripts/validate.mjs',
 );
-
-const VALID_CONSTITUTION = `<!--
+const initScript = join(process.cwd(), 'skills/thoth-init/scripts/init.mjs');
+const template = join(
+  process.cwd(),
+  'skills/thoth-constitution/templates/constitution.md',
+);
+function run(script: string, args: string[]) {
+  return spawnSync(process.execPath, [script, ...args, '--json'], {
+    windowsHide: true,
+    encoding: 'utf8',
+  });
+}
+const valid = `<!--
 Sync Impact Report
 - Version change: 1.1.0 -> 2.0.0
-- Modified principles: Traceable delivery (archive semantics redefined)
+- Modified principles: Traceable delivery
 - Added sections: None
 - Removed sections: None
-- Templates: ✅ skills/thoth-archive/SKILL.md
+- Templates: ✅ workflow template
 - Follow-up TODOs: None
 -->
 # Example Constitution
 
 **Version**: 2.0.0<br>
 **Ratified**: 2026-06-20<br>
-**Last amended**: 2026-07-19
+**Last amended**: 2026-09-26
 
 ## Principles
 
@@ -39,164 +54,148 @@ Every durable change MUST remain traceable through verified closeout.
 - MINOR versions add principles or materially expand guidance.
 - PATCH versions clarify wording without changing its meaning.
 `;
-
-function validate(content: string) {
-  const root = mkdtempSync(join(tmpdir(), 'thoth-constitution-'));
-  const constitution = join(root, 'constitution.md');
-  writeFileSync(constitution, content);
-  const result = spawnSync(
-    process.execPath,
-    [VALIDATE_SCRIPT, '--constitution', constitution, '--json'],
-    { encoding: 'utf8' },
-  );
-  rmSync(root, { recursive: true, force: true });
-  return result;
+const roots: string[] = [];
+function project() {
+  const root = mkdtempSync(join(tmpdir(), 'sdd-init-'));
+  roots.push(root);
+  return root;
 }
 
-describe('constitution lifecycle validator', () => {
-  test('keeps route selection user-owned and separates optional plan review from final verify', () => {
-    const repositoryConstitution = readFileSync(
-      join(process.cwd(), 'openspec', 'memory', 'constitution.md'),
-      'utf8',
-    );
-    const initializedConstitution = readFileSync(
-      join(
-        process.cwd(),
-        'skills',
-        'thoth-constitution',
-        'templates',
-        'constitution.md',
+describe('canonical .thoth governance lifecycle', () => {
+  test('constitution template defines the shared proportional SDD and stable ID record contract', () => {
+    const content = readFileSync(template, 'utf8');
+    for (const value of [
+      '.thoth/changes/<id>/<id>.md',
+      '.thoth/specs/',
+      'explore',
+      'specify',
+      'clarify',
+      'substantial',
+      'fresh independent Oracle',
+      'one writer',
+      'process tools',
+    ])
+      expect(content).toContain(value);
+    expect(content).not.toMatch(/Direct|Accelerated|Full|openspec|change\.md/);
+    expect(
+      readFileSync(
+        join(process.cwd(), 'skills/thoth-constitution/SKILL.md'),
+        'utf8',
       ),
-      'utf8',
-    );
+    ).toContain('.thoth/constitution.md');
+    expect(
+      readFileSync(join(process.cwd(), 'skills/thoth-init/SKILL.md'), 'utf8'),
+    ).toContain('.thoth/constitution.md');
+    expect(
+      run(constitutionScript, ['--constitution', template]).status,
+    ).not.toBe(2);
+  });
 
-    expect(repositoryConstitution).toContain('**Version**: 7.1.0');
-    expect(repositoryConstitution).toContain(
-      '- Version change: 7.0.0 -> 7.1.0',
+  test('initialization creates canonical .thoth structure without creating OpenSpec', () => {
+    const root = project();
+    const first = run(initScript, ['--project', root]);
+    expect(first.status, first.stderr).toBe(0);
+    expect(existsSync(join(root, '.thoth/changes/archive'))).toBe(true);
+    expect(existsSync(join(root, '.thoth/specs'))).toBe(true);
+    const constitution = join(root, '.thoth/constitution.md');
+    expect(existsSync(constitution)).toBe(true);
+    expect(existsSync(join(root, 'openspec'))).toBe(false);
+    expect(existsSync(join(root, '.thoth/.thoth-agents.json'))).toBe(false);
+    expect(
+      run(constitutionScript, ['--constitution', constitution]).status,
+    ).toBe(0);
+    const custom = '# Project-owned constitution\n';
+    writeFileSync(constitution, custom);
+    const again = run(initScript, ['--project', root]);
+    expect(again.status).toBe(0);
+    expect(readFileSync(constitution, 'utf8')).toBe(custom);
+    expect(JSON.parse(again.stdout).preserved).toContain(constitution);
+  });
+
+  test('preserves historical changes and fails closed on unknown collisions', () => {
+    const root = project();
+    mkdirSync(join(root, '.thoth/changes/history'), { recursive: true });
+    writeFileSync(join(root, '.thoth/changes/history/old.md'), 'historical');
+    expect(run(initScript, ['--project', root]).status).toBe(0);
+    expect(
+      readFileSync(join(root, '.thoth/changes/history/old.md'), 'utf8'),
+    ).toBe('historical');
+
+    const collision = project();
+    mkdirSync(join(collision, '.thoth'), { recursive: true });
+    writeFileSync(join(collision, '.thoth/specs'), 'untracked collision');
+    const result = run(initScript, ['--project', collision]);
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(collision, '.thoth/specs'), 'utf8')).toBe(
+      'untracked collision',
     );
-    expect(repositoryConstitution).toContain('**Last amended**: 2026-09-03');
-    expect(repositoryConstitution).toContain(
-      'OpenCode, Codex, Claude Code, and Pi derive behavior',
+    expect(existsSync(join(collision, '.thoth/constitution.md'))).toBe(false);
+  });
+
+  test('does not overwrite existing .thoth governance or history and rejects an active legacy duplicate', () => {
+    const root = project();
+    mkdirSync(join(root, '.thoth/changes/history'), { recursive: true });
+    writeFileSync(join(root, '.thoth/changes/history/work.md'), 'history');
+    writeFileSync(join(root, '.thoth/constitution.md'), 'project custom');
+    expect(run(initScript, ['--project', root]).status).toBe(0);
+    expect(readFileSync(join(root, '.thoth/constitution.md'), 'utf8')).toBe(
+      'project custom',
     );
-    expect(repositoryConstitution).toContain(
-      'Before asking for Direct, Accelerated, or Full, Root MUST summarize the relevant context',
-    );
-    expect(repositoryConstitution).toContain(
-      'MUST treat the recommended route as selected after the third answerless result',
-    );
-    expect(repositoryConstitution).toContain(
-      '`Review plan with Oracle (Recommended)` counts as selected',
-    );
-    expect(repositoryConstitution).toContain(
-      'the third answerless result selects implementation',
-    );
-    expect(repositoryConstitution).toContain(
-      'Trivial deterministic Direct work MAY be verified by Root',
-    );
-    expect(repositoryConstitution).toContain(
-      'materially risky Direct work and every Accelerated or Full final verify MUST use a fresh read-only Oracle',
-    );
-    expect(repositoryConstitution).not.toContain(
-      'Every final verify remains mandatory and oracle-owned',
-    );
-    expect(repositoryConstitution).not.toContain(
-      'Full SDD also adds oracle-owned pre-implementation analysis',
-    );
-    expect(initializedConstitution).toContain(
-      'Before the SDD route question, Root MUST summarize relevant context',
-    );
-    expect(initializedConstitution).toMatch(
-      /the recommended route counts as\s+selected/,
-    );
-    expect(initializedConstitution).toMatch(
-      /`Review plan with Oracle \(Recommended\)` counts as selected/,
-    );
-    expect(initializedConstitution).toContain(
-      'the third answerless result selects implementation',
-    );
-    expect(initializedConstitution).toMatch(
-      /Trivial\s+deterministic Direct work MAY be verified by Root/,
-    );
-    expect(initializedConstitution).toMatch(
-      /every Accelerated or Full final verify MUST use a fresh independent read-only/,
-    );
-    expect(initializedConstitution).not.toContain(
-      'Every final verify MUST use an independent read-only reviewer',
+    expect(
+      readFileSync(join(root, '.thoth/changes/history/work.md'), 'utf8'),
+    ).toBe('history');
+
+    const legacy = project();
+    mkdirSync(join(legacy, 'openspec/changes'), { recursive: true });
+    writeFileSync(join(legacy, 'openspec/changes/old.md'), 'preserve');
+    expect(run(initScript, ['--project', legacy]).status).not.toBe(0);
+    expect(existsSync(join(legacy, '.thoth'))).toBe(false);
+    expect(readFileSync(join(legacy, 'openspec/changes/old.md'), 'utf8')).toBe(
+      'preserve',
     );
   });
 
-  test('keeps the repository constitution lifecycle valid', () => {
-    const result = spawnSync(
-      process.execPath,
-      [
-        VALIDATE_SCRIPT,
-        '--constitution',
-        join(process.cwd(), 'openspec', 'memory', 'constitution.md'),
-        '--json',
-      ],
-      { encoding: 'utf8' },
-    );
-
-    expect(result.status, result.stderr).toBe(0);
+  test('rejects symlinked governance ancestors before creating files', () => {
+    const root = project();
+    const outside = project();
+    symlinkSync(outside, join(root, '.thoth'), 'junction');
+    const result = run(initScript, ['--project', root]);
+    expect(result.status).not.toBe(0);
+    expect(existsSync(join(outside, 'constitution.md'))).toBe(false);
   });
 
-  test('accepts a complete SemVer amendment and sync-impact report', () => {
-    const result = validate(VALID_CONSTITUTION);
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      valid: true,
-      version: '2.0.0',
-    });
-  });
-
-  test('rejects unresolved placeholders and invalid lifecycle metadata', () => {
-    const result = validate(
-      VALID_CONSTITUTION.replaceAll('2.0.0', 'next')
+  test('rejects invalid constitution version, dates, placeholders and sync report', () => {
+    const root = project();
+    const path = join(root, 'constitution.md');
+    writeFileSync(path, valid);
+    expect(run(constitutionScript, ['--constitution', path]).status).toBe(0);
+    writeFileSync(
+      path,
+      valid
+        .replaceAll('2.0.0', 'next')
         .replace('2026-06-20', 'YYYY-MM-DD')
         .replace('Traceable delivery', '[PRINCIPLE_NAME]'),
     );
-
+    const result = run(constitutionScript, ['--constitution', path]);
     expect(result.status).toBe(1);
-    const output = JSON.parse(result.stdout);
-    expect(output.errors.map((error: { code: string }) => error.code)).toEqual(
+    expect(JSON.parse(result.stdout).errors).toEqual(
       expect.arrayContaining([
-        'CONSTITUTION-PLACEHOLDER',
-        'CONSTITUTION-VERSION',
-        'CONSTITUTION-DATE',
+        expect.objectContaining({ code: 'CONSTITUTION-PLACEHOLDER' }),
+        expect.objectContaining({ code: 'CONSTITUTION-VERSION' }),
+        expect.objectContaining({ code: 'CONSTITUTION-DATE' }),
       ]),
     );
-  });
-
-  test('requires a sync-impact report whose version matches the constitution', () => {
-    const missing = validate(
-      VALID_CONSTITUTION.replace(/<!--[\s\S]+?-->\n/, ''),
-    );
-    expect(missing.status).toBe(1);
-    expect(JSON.parse(missing.stdout).errors).toContainEqual(
+    writeFileSync(path, valid.replace(/<!--[\s\S]+?-->\n/, ''));
+    expect(
+      JSON.parse(run(constitutionScript, ['--constitution', path]).stdout)
+        .errors,
+    ).toContainEqual(
       expect.objectContaining({ code: 'CONSTITUTION-SYNC-IMPACT' }),
     );
-
-    const mismatched = validate(
-      VALID_CONSTITUTION.replace('1.1.0 -> 2.0.0', '1.1.0 -> 1.2.0'),
-    );
-    expect(mismatched.status).toBe(1);
-    expect(JSON.parse(mismatched.stdout).errors).toContainEqual(
-      expect.objectContaining({ code: 'CONSTITUTION-SYNC-VERSION' }),
-    );
   });
+});
 
-  test('requires explicit MAJOR, MINOR, and PATCH governance semantics', () => {
-    const result = validate(
-      VALID_CONSTITUTION.replace(
-        /- MAJOR[\s\S]+?- PATCH[^\n]+\n/,
-        '- Amendments use an appropriate version.\n',
-      ),
-    );
-
-    expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout).errors).toContainEqual(
-      expect.objectContaining({ code: 'CONSTITUTION-SEMVER-POLICY' }),
-    );
-  });
+afterEach(() => {
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
 });

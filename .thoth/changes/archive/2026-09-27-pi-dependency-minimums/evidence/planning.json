@@ -1,0 +1,22 @@
+{
+  "changeId": "pi-dependency-minimums",
+  "agreementFingerprint": "sha256:e6ce1467c108764eecc6e897fce1743692048301e7041febbf814f7b3c74630c",
+  "technicalFingerprint": "sha256:762b92f8769cff48b9e815f105ebbb7e4b56e28e6bce57b4321a79deb07e0057",
+  "planChoice": {
+    "choice": "direct",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "choice": null,
+    "resolution": "pending",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": null,
+  "explicitAnswer": "Implementar directamente",
+  "implementationChoiceApplicability": "Not required: direct implementation selected"
+}

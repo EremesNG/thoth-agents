@@ -1,0 +1,103 @@
+version: 1
+change:
+  id: pi-subagents-migration
+  title: Migrate Pi delegation to nicobailon pi-subagents
+agreement:
+  status: approved
+  source: user
+  ref: "Initiate migration after handoff 67b07379-2231-4ad2-a375-60de48203680"
+  approvedBy: user
+  fingerprint: sha256:8c55580a0d19ad632ab044de6b6f59e889fdd6f0dcc28adb1d631e648c6704e7
+goal: Replace the Pi delegation dependency and generated contracts with a pinned nicobailon pi-subagents runtime while preserving Thoth orchestration and memory boundaries.
+bounds:
+  include:
+    - Pi installer, generated specialists, native lifecycle guidance, tests and documentation
+    - Isolated compatibility checks and independent final review
+  exclude:
+    - Changes to the primary global Pi installation or user credentials
+    - Dual-runtime support, custom execution scheduler, nesting, missions or automatic worktrees
+    - Changes to other harness behavior or thoth-mem ownership
+autonomy:
+  allowed:
+    - Update repository implementation, tests and generated package assets
+    - Pin pi-subagents 0.71.0 and raise the minimum Pi host to upstream-supported 0.86.1
+    - Run local checks and disposable isolated runtime probes
+  requiresApproval:
+    - Global installation or changes to user-owned settings
+    - Material expansion of product behavior
+  forbidden:
+    - Delete or overwrite unrelated user resources
+    - Claim documentation evidence is runtime validation
+acceptance:
+  - id: migration
+    criterion: The installer and six generated specialists use the pinned new runtime and documented tool/configuration contracts, preserving fresh depth-one execution and safe ownership checks.
+    inputs: [src/cli, src/harness, src/agents, src/pi.ts]
+    outputs: [src/cli, src/harness, src/agents, src/pi.ts, src/pi.test.ts, pi, docs, scripts/verify-pi-package.mjs]
+    checks: [focused-tests, static-checks, package-verification, independent-review]
+  - id: compatibility
+    criterion: Isolated evidence validates package loading and agent/configuration compatibility; live provider, lifecycle and memory limitations are recorded explicitly and never claimed passed without execution evidence.
+    inputs: [src/cli, src/harness, src/agents, pi]
+    outputs: [.thoth/changes/pi-subagents-migration/evidence/compatibility.md]
+    checks: [isolated-probe, independent-review]
+units:
+  - id: implementation
+    output: Coupled Pi installer, agent rendering, native lifecycle guidance, regression tests and documentation migrated to pi-subagents 0.71.0.
+    dependsOn: []
+    reads: [src/cli, src/harness, src/agents, docs, package.json, scripts/verify-pi-package.mjs]
+    writes: [src/cli, src/harness, src/agents, docs, pi, scripts/verify-pi-package.mjs]
+    resources: [repository-pi-contracts]
+    owner:
+      role: deep
+    checks:
+      - id: focused-tests
+        criterion: Pi installer, resources, adapter, writer, dialect and dependent regressions pass.
+        command: pnpm exec vitest run src/cli/pi-install.test.ts src/cli/pi-resources.test.ts src/harness/adapters/pi.test.ts src/harness/writers/pi-agent.test.ts src/agents/prompt-dialects.test.ts
+    acceptance: [migration]
+    baseline:
+      status: captured
+      capturedAt: "2026-09-26T22:25:30.197Z"
+      paths:
+        - {path: src/cli, state: preexisting, fingerprint: "sha256:7021e774633550be6020ae719a26bedebbf634c723bf532d191c77cd64f9e7d9"}
+        - {path: src/harness, state: preexisting, fingerprint: "sha256:34e0dae2f6d8a84d702793b8ccd997f565c1bc3ebb539eaedd8253507bb7b468"}
+        - {path: src/agents, state: preexisting, fingerprint: "sha256:daf21817a3e9d3912ca8d28cf4d2443b751c7b191639f492b57120f9cdb5aeea"}
+        - {path: docs, state: preexisting, fingerprint: "sha256:8470102753466c1b549ee6a04795782938a24ff30d2c63f34282ff71e65e2ea9"}
+        - {path: pi, state: preexisting, fingerprint: "sha256:e703736854385315c09cd8e7ce8e3149c6b28cfd659742d780d8365914033362"}
+        - {path: scripts/verify-pi-package.mjs, state: preexisting, fingerprint: "sha256:eaf9629c6cc7cecc8278581f07c1626f8fd8c2dc23ce0aa71c598ba18bf50eef"}
+    semantic:
+      status: pending
+  - id: child-root-boundary
+    output: Ambient Thoth extension remains inert in native child processes without root injection or global synchronization.
+    dependsOn: []
+    reads: [src/pi.ts, src/pi.test.ts]
+    writes: [src/pi.ts, src/pi.test.ts]
+    resources: [repository-pi-extension]
+    owner:
+      role: root
+    checks:
+      - id: child-boundary-regression
+        criterion: Native child guard regression and repeated isolated runtime probe show no root authority in children.
+        command: pnpm exec vitest run src/pi.test.ts
+    acceptance: [migration]
+    baseline:
+      status: unknown
+    semantic:
+      status: pending
+  - id: compatibility
+    output: Isolated pinned-runtime probe report distinguishing passed checks and unverified live behavior.
+    dependsOn: []
+    reads: [package.json]
+    writes: [.thoth/changes/pi-subagents-migration/evidence/compatibility.md]
+    resources: [isolated-temporary-pi-root]
+    owner:
+      role: root
+    checks:
+      - id: isolated-probe
+        criterion: Inspect and exercise the pinned package in isolation without changing primary installation; report limitations.
+    acceptance: [compatibility]
+    baseline:
+      status: captured
+      capturedAt: "2026-09-26T22:25:37.036Z"
+      paths:
+        - {path: .thoth/changes/pi-subagents-migration/evidence/compatibility.md, state: absent, fingerprint: "sha256:a83d36232db6e80d75db96ce4c8f252f38a801ed16e34a2f5a08398471775fd3"}
+    semantic:
+      status: pending

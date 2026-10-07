@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import {
   type AgentRoleContract,
   getAgentPackContract,
@@ -27,9 +27,13 @@ import {
 } from '../owned-skills';
 import { resolveExecutingPackageVersion } from '../package-version';
 import { resolvePiEffort } from '../pi-effort';
+import { inspectPiExternalPackage } from '../pi-external-package';
 import {
   applyPiSetup,
   buildPiSetupPlan,
+  findPiIncumbentDelegation,
+  findPiIncumbentTodos,
+  getPiExternalPackageSpecs,
   getPiFirstPartyPackages,
   hasExactInstalledPiPackage,
   isVersionAtLeast,
@@ -37,11 +41,20 @@ import {
   PI_NODE_MINIMUM,
   PI_PACKAGE_SPECS,
   type PiCommandExecutor,
+  type PiConfiguredPackage,
+  type PiIncumbentDelegation,
   type PiSetupPlan,
   parsePiPackageList,
+  piIncumbentDelegationRecovery,
+  piIncumbentTodoRecovery,
   writePiManagedText,
 } from '../pi-install';
 import { migrateLegacyPiResources } from '../pi-migration';
+import {
+  type PiModelSnapshot,
+  readPiModelConfig,
+  savePiModelConfig,
+} from '../pi-model-config';
 import {
   classifyPiPackageOwnership,
   getPiPackageReceiptPath,
@@ -77,6 +90,7 @@ import {
 export interface PiOperationContext extends OperationContext {
   homeDir?: string;
   packageRoot?: string;
+  runtimePackageRoot?: string;
   env?: Readonly<Record<string, string | undefined>>;
   installLedgerOptions?: InstallLedgerOptions;
   buildPiSetupPlan?: typeof buildPiSetupPlan;
@@ -190,8 +204,12 @@ function disclaimers() {
     },
     {
       code: 'pi-runtime-owned',
+      message: `Pi and ${PI_PACKAGE_SPECS[0].packageName} own execution, concurrency, task/history storage, trust, and lifecycle.`,
+    },
+    {
+      code: 'pi-lean-resources-global-only',
       message:
-        'Pi and pi-subagents own execution, concurrency, task/history storage, trust, and lifecycle.',
+        'Global subagents.json requests lean session resources; project-local subagents.json may override it, and full child resource mode is unsupported.',
     },
     {
       code: 'pi-research-independent',
@@ -284,6 +302,14 @@ function runtimeTarget(
   };
 }
 
+function incumbentDelegationRecovery(incumbent: PiIncumbentDelegation): string {
+  return `Incumbent Pi delegation runtime ${incumbent.candidate.source} conflicts with ${PI_PACKAGE_SPECS[0].source}. ${piIncumbentDelegationRecovery(incumbent)}`;
+}
+
+function incumbentTodoRecovery(incumbent: PiConfiguredPackage): string {
+  return `Incumbent Pi task-list package ${incumbent.source} conflicts with @thoth-agents/pi-todo. ${piIncumbentTodoRecovery(incumbent.source, incumbent.scope, incumbent.identityLimitation, incumbent.unmappedSource)}`;
+}
+
 function runtimeDiagnostic(
   provider: PiResearchProviderId,
   evidence: PiResearchRuntimeEvidence,
@@ -335,13 +361,14 @@ function statusFromPlan(
         item.kind === 'package' ? item.target : 'attributable managed content',
       description:
         item.kind === 'package'
-          ? 'Exact installed-package evidence; this does not prove live tool availability.'
+          ? 'Validated installed-package manifest evidence; this does not prove live tool availability.'
           : undefined,
     }));
   const execute: PiCommandExecutor =
     context.piCommandExecutor ??
     ((command, args) => {
       const result = spawnSync(command, [...args], {
+        windowsHide: true,
         encoding: 'utf8',
         timeout: 5_000,
         env: {
@@ -389,33 +416,75 @@ function statusFromPlan(
       observed: pi.stdout.trim() || pi.stderr.trim() || 'unavailable',
     },
   );
+  const configuredPackages =
+    packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
+  const incumbentDelegation = findPiIncumbentDelegation(configuredPackages);
+  const incumbentTodos = [
+    ...findPiIncumbentTodos(configuredPackages),
+    ...(plan.projectIncumbentTodos ?? []),
+  ];
+  const packageSpecs = getPiExternalPackageSpecs(plan.options);
   for (const target of targets.filter(
     (candidate) =>
-      candidate.kind === 'package' && candidate.path?.startsWith('npm:'),
+      candidate.kind === 'package' &&
+      packageSpecs.some(({ source }) => source === candidate.path),
   )) {
-    const packageName = target.path
-      ?.replace(/^npm:/, '')
-      .replace(/@[^@]+$/, '');
-    target.state =
-      packages.exitCode !== 0
-        ? 'unknown'
-        : hasExactInstalledPiPackage(packages.stdout, target.path ?? '')
-          ? 'installed'
-          : packageName && packages.stdout.includes(packageName)
-            ? 'drift'
-            : 'missing';
-    target.observed =
-      packages.exitCode === 0
-        ? target.state
-        : packages.stderr.trim() || 'pi list unavailable';
+    const externalSpec = packageSpecs.find(
+      ({ source }) => source === target.path,
+    );
+    if (packages.exitCode !== 0) {
+      target.state = 'unknown';
+      target.observed = packages.stderr.trim() || 'pi list unavailable';
+    } else if (externalSpec) {
+      const inspected = inspectPiExternalPackage(
+        configuredPackages,
+        externalSpec,
+        externalSpec.id !== 'delegation' ||
+          plan.options.runtimePackageRoot !== undefined,
+      );
+      target.state = inspected.state;
+      target.observed =
+        inspected.state === 'installed' ? inspected.version : inspected.reason;
+    } else {
+      const packageName = target.path
+        ?.replace(/^npm:/, '')
+        .replace(/@[^@]+$/, '');
+      target.state = hasExactInstalledPiPackage(
+        packages.stdout,
+        target.path ?? '',
+      )
+        ? 'installed'
+        : packageName && packages.stdout.includes(packageName)
+          ? 'drift'
+          : 'missing';
+      target.observed = target.state;
+    }
   }
+  if (incumbentDelegation)
+    targets.push({
+      kind: 'package',
+      path: incumbentDelegation.candidate.source,
+      label: 'Pi incumbent delegation runtime',
+      state: 'drift',
+      expected: `not configured alongside ${PI_PACKAGE_SPECS[0].packageName}`,
+      observed: incumbentDelegation.candidate.source,
+      description: incumbentDelegationRecovery(incumbentDelegation),
+    });
+  for (const incumbentTodo of incumbentTodos)
+    targets.push({
+      kind: 'package',
+      path: incumbentTodo.source,
+      label: 'Pi incumbent task-list package',
+      state: 'drift',
+      expected: 'not configured alongside @thoth-agents/pi-todo',
+      observed: incumbentTodo.source,
+      description: incumbentTodoRecovery(incumbentTodo),
+    });
   const receiptOptions = context.installLedgerOptions ?? {
     env: context.env,
     homeDir: context.homeDir,
   };
   const receipt = readPiPackageReceipt(receiptOptions);
-  const configuredPackages =
-    packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
   const firstPartyPackages = getPiFirstPartyPackages(
     configuredPackages,
     receipt.status === 'valid' ? receipt.receipt.source : undefined,
@@ -586,6 +655,41 @@ function statusFromPlan(
     ...plan.blockers.map((message) =>
       warning(message, 'pi-preflight-blocked', 'critical'),
     ),
+    ...(incumbentDelegation &&
+    !plan.blockers.some((message) =>
+      message.includes(incumbentDelegation.candidate.source),
+    )
+      ? [
+          warning(
+            incumbentDelegationRecovery(incumbentDelegation),
+            'pi-incumbent-delegation-conflict',
+            'critical',
+          ),
+        ]
+      : []),
+    ...incumbentTodos
+      .filter(
+        (incumbentTodo) =>
+          !plan.blockers.some(
+            (message) =>
+              message.includes(incumbentTodo.source) &&
+              message.includes(
+                piIncumbentTodoRecovery(
+                  incumbentTodo.source,
+                  incumbentTodo.scope,
+                  incumbentTodo.identityLimitation,
+                  incumbentTodo.unmappedSource,
+                ),
+              ),
+          ),
+      )
+      .map((incumbentTodo) =>
+        warning(
+          incumbentTodoRecovery(incumbentTodo),
+          'pi-incumbent-todo-conflict',
+          'critical',
+        ),
+      ),
     ...plan.diagnostics.map((message) =>
       warning(message, 'pi-resource-shadowing'),
     ),
@@ -639,6 +743,7 @@ function contextPlan(context: PiOperationContext, dryRun = true): PiSetupPlan {
     commandExecutor: context.piCommandExecutor,
     packageRoot:
       context.packageRoot ?? (version.ok ? version.packageRoot : undefined),
+    runtimePackageRoot: context.runtimePackageRoot,
     expectedVersion: version.ok ? version.version : undefined,
     receiptOptions: context.installLedgerOptions,
   });
@@ -663,6 +768,7 @@ const planSources = new WeakMap<
     version?: string;
     configuredPackageRoot?: string;
     model?: ModelConfigInput;
+    modelSnapshot?: PiModelSnapshot;
   }
 >();
 
@@ -783,6 +889,33 @@ function piPlan(
         },
       ]
     : [];
+  const incumbentDelegation = status.targets.find(
+    ({ label }) => label === 'Pi incumbent delegation runtime',
+  );
+  const delegationBlockers: ManagedTarget[] = incumbentDelegation
+    ? [
+        {
+          kind: 'package',
+          path: incumbentDelegation.path,
+          label: 'Pi delegation runtime blocker',
+          state: 'drift',
+          observed:
+            incumbentDelegation.description ??
+            `${incumbentDelegation.observed} conflicts with ${PI_PACKAGE_SPECS[0].source}. Remove it manually before applying ${action}.`,
+        },
+      ]
+    : [];
+  const todoBlockers: ManagedTarget[] = status.targets
+    .filter(({ label }) => label === 'Pi incumbent task-list package')
+    .map((incumbentTodo) => ({
+      kind: 'package',
+      path: incumbentTodo.path,
+      label: 'Pi task-list package blocker',
+      state: 'drift',
+      observed:
+        incumbentTodo.description ??
+        `${incumbentTodo.observed} conflicts with @thoth-agents/pi-todo. Remove it manually before applying ${action}.`,
+    }));
   const syncSkillsUnavailable =
     action === 'sync' &&
     (!configuredPackageRoot ||
@@ -815,6 +948,8 @@ function piPlan(
       setup.ready &&
       (!complete || version.ok) &&
       ownershipBlockers.length === 0 &&
+      delegationBlockers.length === 0 &&
+      todoBlockers.length === 0 &&
       syncSkillBlockers.length === 0,
     targets: status.targets,
     blockerTargets: [
@@ -825,6 +960,8 @@ function piPlan(
         observed: message,
       })),
       ...ownershipBlockers,
+      ...delegationBlockers,
+      ...todoBlockers,
       ...syncSkillBlockers,
     ],
     surfaces: setup.items
@@ -892,20 +1029,16 @@ export function defaultPiModelRoles(
           item.kind === 'agent' &&
           basename(item.target) === `${piSpecialistName(role.name)}.md`,
       )?.target;
-      const content =
-        path && existsSync(path) ? readFileSync(path, 'utf8') : '';
-      const model = /^model:\s*["']?([^"'\r\n]+)/m.exec(content)?.[1]?.trim();
+      if (path && existsSync(path)) {
+        const configured = readPiModelConfig(dirname(dirname(path)), [
+          role.name,
+        ]).roles[0];
+        if (configured) return configured;
+      }
       return {
         role: role.name,
-        model: model && model !== 'default' ? model : 'inherit',
-        effort: (() => {
-          const value = /^effort:\s*["']?([^"'\r\n]+)/m
-            .exec(content)?.[1]
-            ?.trim();
-          return value && value !== 'default' && value !== 'inherit'
-            ? { kind: 'effort' as const, value }
-            : { kind: 'inherit' as const };
-        })(),
+        model: 'inherit',
+        effort: { kind: 'inherit' as const },
       };
     });
 }
@@ -985,33 +1118,37 @@ export function buildPiModelPlan(
     ],
     disclaimers: disclaimers(),
   };
-  planSources.set(plan, { setup, context, model: input });
+  let modelSnapshot: PiModelSnapshot | undefined;
+  if (!invalid && input.roles.length > 0) {
+    const path = items[0]?.target.path;
+    if (
+      path &&
+      items.every((item) => item.target.path && existsSync(item.target.path))
+    ) {
+      try {
+        modelSnapshot = readPiModelConfig(
+          dirname(dirname(path)),
+          input.roles.map(({ role }) => role as PiSpecialistRole),
+        );
+      } catch (error) {
+        plan.canApply = false;
+        plan.warnings.push(
+          warning(
+            error instanceof Error ? error.message : String(error),
+            'pi-model-config-invalid',
+            'critical',
+          ),
+        );
+      }
+    }
+  }
+  planSources.set(plan, {
+    setup,
+    context,
+    model: structuredClone(input),
+    modelSnapshot,
+  });
   return plan;
-}
-
-function replaceFrontmatterField(
-  content: string,
-  field: string,
-  value: string | undefined,
-): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.trim() !== '---') return content;
-  const end = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === '---',
-  );
-  if (end === -1) return content;
-  const prefix = `${field}:`;
-  const index = lines
-    .slice(1, end)
-    .findIndex((line) => line.startsWith(prefix));
-  const absoluteIndex = index === -1 ? -1 : index + 1;
-  const nativeValue =
-    value === undefined || value === 'inherit' ? 'default' : value;
-  const replacement = `${field}: ${JSON.stringify(nativeValue)}`;
-  if (absoluteIndex === -1) lines.splice(1, 0, replacement);
-  else lines[absoluteIndex] = replacement;
-  return lines.join(newline);
 }
 
 export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
@@ -1039,29 +1176,23 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
       'Pi operation plan is not applicable or was not built in this process.',
     );
   if (plan.action === 'model-config' && source.model) {
-    const changedTargets: ManagedTarget[] = [];
-    for (const role of source.model.roles) {
-      const target = plan.items.find((item) => item.title.endsWith(role.role))
-        ?.target.path;
-      if (!target || !existsSync(target))
-        return reject(
-          `Owned Pi specialist definition is missing: ${role.role}.`,
-        );
-      let content = readFileSync(target, 'utf8');
-      content = replaceFrontmatterField(content, 'model', role.model);
-      content = replaceFrontmatterField(
-        content,
-        'effort',
-        role.effort?.kind === 'effort' ? role.effort.value : undefined,
+    if (!source.modelSnapshot)
+      return reject(
+        'Owned Pi specialist definitions were missing at preview. Reopen model configuration.',
       );
-      writePiManagedText(target, content);
-      changedTargets.push({
-        kind: 'file',
-        path: target,
-        label: `Pi ${role.role} specialist`,
-        state: 'installed',
-      });
-    }
+    const snapshot = source.modelSnapshot;
+    const result = savePiModelConfig(snapshot, source.model.roles);
+    const changedTargets = fileTargets(
+      result.changedRoles.map((role) =>
+        join(snapshot.piRoot, 'agents', `${piSpecialistName(role)}.md`),
+      ),
+    );
+    source.modelSnapshot = result.snapshot;
+    if (!result.success)
+      return reject(
+        result.error ?? 'Pi model configuration failed.',
+        changedTargets,
+      );
     return {
       harness: 'pi',
       action: plan.action,

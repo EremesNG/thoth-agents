@@ -1,7 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, win32 } from 'node:path';
 import { PI_ROOT_END, PI_ROOT_START } from '../harness/writers/pi-agent';
 
 export type PiNativeObservationState =
@@ -39,6 +45,53 @@ export interface PiNativeProbeResult {
   sessionStartCount?: number;
 }
 
+export function resolvePiWindowsCliFromShim(
+  shimPath: string,
+  shimContents: string,
+): string | undefined {
+  const target = shimContents.match(
+    /"([^"\r\n]*@earendil-works[\\/]+pi-coding-agent[\\/]+dist[\\/]+bundle[\\/]+cli\.js)"\s+%\*/i,
+  )?.[1];
+  if (!target) return undefined;
+
+  const expanded = target.replace(
+    /%~dp0|%dp0%/gi,
+    `${win32.dirname(shimPath)}\\`,
+  );
+  return win32.isAbsolute(expanded) ? win32.normalize(expanded) : undefined;
+}
+
+export function findPiWindowsCli(): string | undefined {
+  const located = spawnSync('where.exe', ['pi.cmd'], {
+    windowsHide: true,
+    encoding: 'utf8',
+  })
+    .stdout?.split(/\r?\n/)
+    .find(Boolean);
+  if (!located) return undefined;
+
+  try {
+    const cli = resolvePiWindowsCliFromShim(
+      located,
+      readFileSync(located, 'utf8'),
+    );
+    if (cli && existsSync(cli)) return cli;
+  } catch {
+    // Keep the existing adjacent npm-layout fallback below.
+  }
+
+  const adjacentCli = join(
+    dirname(located),
+    'node_modules',
+    '@earendil-works',
+    'pi-coding-agent',
+    'dist',
+    'bundle',
+    'cli.js',
+  );
+  return existsSync(adjacentCli) ? adjacentCli : undefined;
+}
+
 function defaultExecutor(
   command: string,
   args: readonly string[],
@@ -47,26 +100,14 @@ function defaultExecutor(
   let executable = command;
   let executableArgs = [...args];
   if (process.platform === 'win32' && command === 'pi') {
-    const located = spawnSync('where.exe', ['pi.cmd'], { encoding: 'utf8' })
-      .stdout?.split(/\r?\n/)
-      .find(Boolean);
-    const cli = located
-      ? join(
-          dirname(located),
-          'node_modules',
-          '@earendil-works',
-          'pi-coding-agent',
-          'dist',
-          'bundle',
-          'cli.js',
-        )
-      : undefined;
-    if (cli && existsSync(cli)) {
+    const cli = findPiWindowsCli();
+    if (cli) {
       executable = process.execPath;
       executableArgs = [cli, ...args];
     }
   }
   const result = spawnSync(executable, executableArgs, {
+    windowsHide: true,
     encoding: 'utf8',
     timeout: 30_000,
     env: { ...process.env, ...env },
@@ -97,7 +138,7 @@ export function observePiNativeRoot(
       observerPath,
       `import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { createAssistantMessageEventStream, getCurrentSystemPrompt } from '@earendil-works/pi-ai';
 const manifestSha256=${JSON.stringify(options.manifestSha256)};
 const extensionSha256=${JSON.stringify(options.extensionSha256)};
 const packageRoot=${JSON.stringify(options.packageRoot)};
@@ -142,12 +183,16 @@ export default function observer(pi) {
       const stream=createAssistantMessageEventStream();
       queueMicrotask(async () => {
         try {
-          skills=discoveredSkills(context.systemPrompt);
-          const raw={systemPrompt:context.systemPrompt,messages:context.messages};
+          const systemPrompt=getCurrentSystemPrompt(context.messages);
+          skills=discoveredSkills(systemPrompt);
+          const raw={systemPrompt};
           if (streamOptions?.onPayload) await streamOptions.onPayload(raw);
           const message={role:'assistant',content:[{type:'text',text:'probe'}],api:model.api,provider:model.provider,model:model.id,usage:{input:0,output:1,cacheRead:0,cacheWrite:0,totalTokens:1,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:'stop',timestamp:Date.now()};
-          stream.push({type:'done',message});
-        } catch (error) { stream.push({type:'error',error}); }
+          stream.push({type:'start',partial:message});
+          stream.push({type:'done',reason:'stop',message});
+        } catch (error) {
+          stream.push({type:'error',reason:'error',error:{role:'assistant',content:[],api:model.api,provider:model.provider,model:model.id,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:'error',errorMessage:String(error),timestamp:Date.now()}});
+        } finally { stream.end(); }
       });
       return stream;
     }

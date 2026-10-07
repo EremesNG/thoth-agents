@@ -8,8 +8,7 @@ export const PI_SPECIALIST_ROLES: readonly PiSpecialistRole[] = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ];
 
 export function isPiSpecialistRole(role: string): role is PiSpecialistRole {

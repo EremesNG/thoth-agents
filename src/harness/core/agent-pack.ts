@@ -4,15 +4,11 @@ export type AgentRoleName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 export type AgentMutationMode = 'adaptive-root' | 'read-only' | 'write-capable';
 
-export type AgentDispatchMethod =
-  | 'root-coordinator'
-  | 'task'
-  | 'synchronous-task-only';
+export type AgentDispatchMethod = 'root-coordinator' | 'task';
 
 export interface AgentRoleContract {
   name: AgentRoleName;
@@ -39,14 +35,15 @@ export interface OrchestrationPolicy {
 }
 
 export type TaskShapingStep =
-  | 'bound-work'
-  | 'map-dependencies'
+  | 'bound-units'
+  | 'map-output-dependencies'
   | 'assign-ownership'
   | 'select-specialists'
-  | 'mark-ready-and-blocked'
-  | 'dispatch-ready-wave'
-  | 'wait-for-terminal-evidence'
-  | 'reconcile-and-verify';
+  | 'admit-ready-units'
+  | 'dispatch-to-native-capacity'
+  | 'wait-for-native-terminal-event'
+  | 'accept-results'
+  | 'refill-capacity';
 
 export interface TaskShapingPolicy {
   steps: TaskShapingStep[];
@@ -55,7 +52,13 @@ export interface TaskShapingPolicy {
   decisions: {
     dependency: string;
     ownershipConflict: string;
-    readyWave: string;
+    unitOutcome: string;
+    unitEnvelope: string;
+    phaseSplitting: string;
+    independentDiscovery: string;
+    scopeGrowth: string;
+    readyDispatch: string;
+    refill: string;
     terminalEvidence: string;
     degradation: string;
   };
@@ -67,17 +70,21 @@ export interface SpecialistDecision {
   rejectWhen: string;
 }
 
-export type ImplementationOwner =
-  | 'orchestrator'
-  | 'designer'
-  | 'quick'
-  | 'deep';
+export type ImplementationOwner = 'orchestrator' | 'designer' | 'worker';
 
 export interface ImplementationOwnershipPolicy {
   eligibleOwners: ImplementationOwner[];
-  routeIndependent: boolean;
-  delegationBenefits: string[];
-  rootContinuityBenefits: string[];
+  workflowIndependent: boolean;
+  defaultImplementationOwner: 'specialist';
+  rootIdentity: string;
+  defaultRule: string;
+  rootResponsibilities: string[];
+  discovery: string[];
+  directConsultation: string[];
+  directException: string[];
+  writerRouting: string[];
+  evidenceHandling: string[];
+  delegationFailure: string[];
   userDirection: string;
   insufficientSignals: string[];
 }
@@ -85,7 +92,7 @@ export interface ImplementationOwnershipPolicy {
 export interface AgentPackContract {
   roles: AgentRoleContract[];
   orchestrationPolicy: OrchestrationPolicy;
-  returnContract: string[];
+  returnContract: Record<AgentRoleName, string[]>;
   verificationProtocol: string[];
 }
 
@@ -95,8 +102,7 @@ export const AGENT_ROLE_NAMES = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const satisfies readonly AgentRoleName[];
 
 export const AGENT_ROLES = [
@@ -106,29 +112,30 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'requirements, SDD coordination, routing, bounded implementation, decisions, and synthesis',
+      'human agreement, SDD coordination, bounded direct exceptions, decisions, and synthesis',
     responsibility:
-      'Keep requirements, decisions, sequential SDD coordination, and final synthesis in the root thread; evaluate implementation ownership independently in every route, implement directly or delegate by demonstrated net gain, and run focused verification for trivial deterministic Direct work.',
+      'Coordinate goals, decisions, acceptance, and synthesis under the specialist-default implementation-ownership policy; direct work is limited to its bounded exceptions and explicit user instructions.',
     useWhen: [
-      'Coordinate requirements, governed artifacts, routing, and synthesis.',
-      'Implement an accepted mutable surface in any route when accumulated context and continuity outweigh delegation overhead.',
+      'Coordinate goals, constraints, decisions, governed artifacts, routing, acceptance, and synthesis.',
+      'Retain reviewed commits and known low-risk mechanical operations; honor explicit direct-work or no-delegation instructions.',
+      'Consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
     ],
     doNotUseWhen: [
       'Not for independent plan review or Oracle-required final verification.',
     ],
     escalateWhen: [
-      'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer, quick, or deep by task shape.',
+      'Reassess ownership when actual uncertainty, scope, or risk increases, not because another search is needed; never override explicit no-delegation instructions.',
     ],
     toolGovernance: [
-      'may inspect and edit the accepted bounded implementation surface in every route and may verify trivial deterministic Direct work without self-approval',
-      'loads the matching thoth-sdd phase contract on demand instead of carrying every phase protocol in its prompt',
-      'owns governed coordination writes under openspec/ and uses append-only tasks.md updates during convergence',
-      'delegates independent or specialist work only when it produces a net gain',
+      'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
+      'loads the matching thoth-sdd phase guidance on demand instead of carrying every phase protocol in its prompt',
+      'owns proportional understanding, classification, one ID-named substantial-change record, semantic acceptance, and active .thoth/ work evidence',
+      'uses the bounded implementation-ownership exceptions for reviewed commits and known low-risk mechanical work',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'runs focused checks for trivial deterministic Direct work while final verification remains mandatory',
-      'delegates selected plan review plus Accelerated, Full, and material-risk Direct final verification to a fresh oracle',
+      'runs focused checks for trivial deterministic work while final verification remains mandatory',
+      'delegates selected focused plan review plus artifact-backed and material-risk final verification to a fresh oracle',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -140,7 +147,9 @@ export const AGENT_ROLES = [
     scope: 'local repository discovery',
     responsibility:
       'Resolve broad or uncertain repository questions and return distilled evidence.',
-    useWhen: ['Repository ownership or behavior is broad or uncertain.'],
+    useWhen: [
+      'Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain.',
+    ],
     doNotUseWhen: ['Not for implementation, edits, or known narrow questions.'],
     escalateWhen: [
       'Send external evidence to librarian and mutation scope to root.',
@@ -172,14 +181,14 @@ export const AGENT_ROLES = [
   {
     name: 'oracle',
     mode: 'read-only',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: false,
     scope:
-      'diagnosis, architecture, optional plan review, and independent verification',
+      'diagnosis, architecture, optional focused plan review, and independent verification',
     responsibility:
-      'Independently review plans when the user requests it and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when selected and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
     useWhen: [
-      'Selected plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
+      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',
@@ -194,7 +203,7 @@ export const AGENT_ROLES = [
   {
     name: 'designer',
     mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: true,
     scope: 'UI/UX decisions, implementation, and visual verification',
     responsibility:
@@ -206,7 +215,7 @@ export const AGENT_ROLES = [
       'Not for backend-only, non-visual, or correctness-heavy cross-cutting work.',
     ],
     escalateWhen: [
-      'Escalate coupled contracts, migrations, or high risk to deep.',
+      'Escalate coupled contracts, migrations, or high risk to worker.',
     ],
     toolGovernance: [
       'may edit focused UI/UX files',
@@ -216,39 +225,20 @@ export const AGENT_ROLES = [
     verification: ['includes visual verification when applicable'],
   },
   {
-    name: 'quick',
+    name: 'worker',
     mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: true,
-    scope: 'fast bounded implementation',
+    scope: 'bounded nonvisual implementation and verification',
     responsibility:
-      'Implement narrow, clear, low-risk changes within an explicitly bounded surface.',
-    useWhen: ['Known narrow mechanical low-risk work has exact targets.'],
-    doNotUseWhen: [
-      'Not for coupled contracts, migrations, broad discovery, concurrency, edge cases, or high risk.',
-    ],
-    escalateWhen: [
-      'Escalate discovery, coupling, edge cases, or higher risk to deep.',
-    ],
-    toolGovernance: [
-      'edits only bounded targets',
-      'escalates when discovery or correctness risk exceeds the assignment',
-      'does not delegate further',
-    ],
-    verification: ['runs the smallest sufficient focused check'],
-  },
-  {
-    name: 'deep',
-    mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
-    canMutateWorkspace: true,
-    scope: 'correctness-critical implementation and verification',
-    responsibility:
-      'Handle multi-file, edge-case-heavy, or high-risk implementation with full local context.',
+      'Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
     useWhen: [
-      'Implementation is multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
+      'Known bounded nonvisual implementation is ready, regardless of complexity; root direct work is limited to the bounded implementation-ownership exceptions.',
+      'Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
     ],
-    doNotUseWhen: ['Not for visual-only work or narrow known low-risk edits.'],
+    doNotUseWhen: [
+      'Not for visual-only work, reviewed commits, or work explicitly retained by the user in root.',
+    ],
     escalateWhen: ['Return product or architecture choices to root.'],
     toolGovernance: [
       'may edit implementation and tests within the assigned surface',
@@ -259,52 +249,107 @@ export const AGENT_ROLES = [
   },
 ] as const satisfies readonly AgentRoleContract[];
 
+const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
+  eligibleOwners: ['orchestrator', 'designer', 'worker'],
+  workflowIndependent: true,
+  defaultImplementationOwner: 'specialist',
+  rootIdentity:
+    'You are the root coordinator. By default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize.',
+  defaultRule:
+    'Specialists execute by default for discovery of unlocated source, external research and substantive implementation; root retains goals, decisions, coordination, acceptance, and synthesis.',
+  rootResponsibilities: [
+    'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
+  ],
+  discovery: [
+    'Unlocated local source, flow, or responsibility goes to Explorer before any root code search, file read, shell/git inspection, or CodeGraph query; no preliminary discovery is needed to prepare that assignment.',
+    'A bounded discovery assignment may state an unknown location; root must not perform exploratory pre-reading to prepare it.',
+    'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+    'Before the first read/search/shell call of a turn, root checks whether this is a known bounded source within a direct-work exception; if not, dispatch the appropriate specialist. This self-check is guidance, not runtime enforcement.',
+    'The assigned investigator owns applicable discovery-tool fallback.',
+  ],
+  directConsultation: [
+    'One known source, one bounded question. On a new path or unlocated dependency, stop and delegate; do not continue discovery from acquired context.',
+    'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
+    'Required operating instructions and pertinent coordination artifacts are excluded; this never permits source or log dumps.',
+    'At exhaustion, delegate missing evidence. Prompt guidance, not runtime enforcement; it never waives independent verification.',
+  ],
+  directException: [
+    'Bounded direct-work exception: Root retains known low-risk mechanical work, including reviewed commits. Do not reopen completed discovery for mechanical operations.',
+    'Root may make a minimal authorized low-risk edit only when scope and verification are known and no discovery or independent judgment is needed.',
+  ],
+  writerRouting: [
+    'Known sufficiently bounded implementation goes directly to designer or worker by task shape without a mandatory Explorer stage.',
+    'Use librarian for needed external evidence and Oracle for independent judgment; never impose a mechanical all-role pipeline.',
+  ],
+  evidenceHandling: [
+    'Request conclusions, localized evidence, and uncertainty instead of full files, source dumps, or logs. Request next action only from Oracle, Worker and Designer.',
+    'Root must not repeat delegated discovery before, during, or after the assignment.',
+    'Missing support triggers a targeted evidence request or bounded inspection of identified evidence, while mandatory independent verification remains intact.',
+  ],
+  delegationFailure: [
+    'Report delegation failure truthfully; it does not authorize unrestricted root execution.',
+  ],
+  userDirection:
+    'Explicit user direct-work or no-delegation instruction wins; preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed. Disclose unavailable independent review; never self-approve.',
+  insufficientSignals: [
+    'workflow persistence choice',
+    'file count or an additional targeted search alone',
+    'cheaper model price without end-to-end evidence',
+  ],
+};
+
+export function getImplementationOwnershipInstructions(
+  policy: ImplementationOwnershipPolicy,
+): string[] {
+  return [
+    policy.defaultRule,
+    ...policy.discovery,
+    ...policy.directException,
+    ...policy.directConsultation,
+    policy.userDirection,
+    ...policy.writerRouting,
+    ...policy.evidenceHandling,
+    ...policy.delegationFailure,
+  ];
+}
+
 export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   maxDelegationDepth: 1,
   singleWriter: true,
-  implementationOwnership: {
-    eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
-    routeIndependent: true,
-    delegationBenefits: [
-      'specialization',
-      'context isolation',
-      'independent bounded work',
-      'safe parallelism',
-      'quality, latency, or total-cost gain',
-    ],
-    rootContinuityBenefits: [
-      'short work',
-      'one ordered reasoning chain',
-      'frequent shared-state writes',
-      'already-loaded context',
-      'rediscovery and coordination cost',
-    ],
-    userDirection: 'explicit safe user direction is an ownership input',
-    insufficientSignals: [
-      'SDD route name',
-      'file count alone',
-      'cheaper model price without end-to-end evidence',
-    ],
-  },
+  implementationOwnership: IMPLEMENTATION_OWNERSHIP_POLICY,
   taskShaping: {
     steps: [
-      'bound-work',
-      'map-dependencies',
+      'bound-units',
+      'map-output-dependencies',
       'assign-ownership',
       'select-specialists',
-      'mark-ready-and-blocked',
-      'dispatch-ready-wave',
-      'wait-for-terminal-evidence',
-      'reconcile-and-verify',
+      'admit-ready-units',
+      'dispatch-to-native-capacity',
+      'wait-for-native-terminal-event',
+      'accept-results',
+      'refill-capacity',
     ],
     nativeAuthority: true,
     boundedWidth: true,
     decisions: {
-      dependency: 'block a lane until every concrete upstream output exists',
+      unitOutcome:
+        'For exploration, research, planning, implementation, and verification, each unit has one independently acceptable outcome',
+      unitEnvelope:
+        'Name accepted upstream inputs and result produced; bound owned writes and require compatible reads, interfaces, and shared resources; include focused checks with pass evidence, a native return milestone, and stop condition',
+      phaseSplitting:
+        'Split phases with separately acceptable outcomes before dispatch; keep cohesive tiny edits together',
+      independentDiscovery:
+        'Run precise independent Explorer questions in parallel within proven native capacity; avoid duplicate reads; dependent questions wait for root-accepted fresh outputs',
+      scopeGrowth:
+        'Missing context, interfaces, ownership conflicts, or material scope growth returns bounded progress for root reassessment before expansion',
+      dependency:
+        'block a unit until every concrete upstream output is terminal, root-accepted, and fresh',
       ownershipConflict:
         'serialize overlapping mutable surfaces or assign one writer',
-      readyWave:
-        'dispatch all independent conflict-free ready lanes before waiting',
+      readyDispatch:
+        'dispatch every admitted conflict-free ready unit before waiting within proven native capacity',
+      refill:
+        'refill freed capacity with newly ready consumers before another wait',
       terminalEvidence:
         'silence, timeout, and malformed status remain nonterminal',
       degradation:
@@ -323,29 +368,53 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     rejectWhen: role.doNotUseWhen.join(' '),
   })),
   rules: [
-    'Direct, Accelerated, Full, and no-artifact execution govern artifacts and gates, not implementation ownership.',
-    'Root or a specialist may implement in every route; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
-    'Keep implementation in root when short work, one ordered reasoning chain, frequent shared-state writes, already-loaded context, rediscovery, or coordination cost outweigh delegation benefit.',
-    'Treat explicit safe user direction as an ownership input; route name, file count alone, or cheaper model price without end-to-end evidence cannot choose an owner.',
-    'After deciding to delegate implementation, select designer for UI/UX, quick for known narrow low-risk work, and deep for coupled or high-risk work.',
+    'Persistence and planning choices do not determine implementation ownership.',
+    ...getImplementationOwnershipInstructions(IMPLEMENTATION_OWNERSHIP_POLICY),
+    'Honor explicit user ownership; if independent review is prohibited, disclose the limitation and do not claim independent PASS or archive.',
+    'Across exploration, research, planning, implementation, and verification, each unit has one independently acceptable outcome; name concrete accepted inputs and output, owned writes, interfaces and resources, focused pass evidence, and a native return milestone/stop condition.',
+    'Split a phase containing separately acceptable outcomes before dispatch, keep cohesive tiny edits together, and run precise independent Explorer questions in parallel within native capacity without duplicate reads; dependent questions wait for accepted fresh outputs.',
+    'Missing context or interfaces, ownership conflicts, or material scope growth returns bounded progress for root reassessment before expansion.',
+    'On native attention or a missed agreed milestone, root inspects progress and steers, narrows, or stops safely; timeout is a safety ceiling, not a progress plan.',
+    'After two consecutive attempts without new evidence or progress, return the smallest blocker instead of repeating. Use native notifications/waits without polling or custom timers.',
+    'Freeze relevant inputs before final validation; reuse fresh evidence and rerun only checks invalidated by later edits. Reconcile owned background results before the substantive handoff.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
-    'A fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes.',
+    'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
     'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
-    'Final verification is mandatory: root owns trivial deterministic Direct checks; a fresh Oracle owns Accelerated, Full, and material-risk Direct judgment.',
+    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns artifact-backed and material-risk judgment.',
     'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],
 };
 
-export const AGENT_RETURN_CONTRACT = [
+const EVIDENCE_RETURN_FIELDS = [
   'conclusion',
   'evidence',
   'verification',
   'risks',
   'openQuestions',
+] as const;
+const HANDOFF_RETURN_FIELDS = [
+  ...EVIDENCE_RETURN_FIELDS,
   'nextAction',
 ] as const;
+
+export const AGENT_RETURN_CONTRACT = {
+  orchestrator: HANDOFF_RETURN_FIELDS,
+  explorer: EVIDENCE_RETURN_FIELDS,
+  librarian: EVIDENCE_RETURN_FIELDS,
+  oracle: HANDOFF_RETURN_FIELDS,
+  designer: HANDOFF_RETURN_FIELDS,
+  worker: HANDOFF_RETURN_FIELDS,
+} as const satisfies Record<AgentRoleName, readonly string[]>;
+
+function cloneReturnContract(
+  contract: Record<AgentRoleName, readonly string[]>,
+): AgentPackContract['returnContract'] {
+  return Object.fromEntries(
+    AGENT_ROLE_NAMES.map((role) => [role, [...contract[role]]]),
+  ) as AgentPackContract['returnContract'];
+}
 
 export const VERIFICATION_PROTOCOL = [
   'Completion reports identify changed files and verification evidence.',
@@ -359,7 +428,7 @@ export const AGENT_PACK_CONTRACT: AgentPackContract = {
     ...ORCHESTRATION_POLICY,
     rules: [...ORCHESTRATION_POLICY.rules],
   },
-  returnContract: [...AGENT_RETURN_CONTRACT],
+  returnContract: cloneReturnContract(AGENT_RETURN_CONTRACT),
   verificationProtocol: [...VERIFICATION_PROTOCOL],
 };
 
@@ -381,7 +450,7 @@ export function renderAgentRoutingDescription(role: AgentRoleContract): string {
     `Escalate when: ${role.escalateWhen.join(' ')}`,
     `Mutation: ${role.canMutateWorkspace ? `only the assigned ${role.scope} surface` : 'read-only; never mutate the workspace'}.`,
     `Verification: ${role.verification.join(' ')}`,
-    `Return: ${AGENT_RETURN_CONTRACT.join(', ')}.`,
+    `Return: ${AGENT_RETURN_CONTRACT[role.name].join(', ')}.`,
   ].join(' ');
 }
 
@@ -404,13 +473,33 @@ export function getAgentPackContract(): AgentPackContract {
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
             .eligibleOwners,
         ],
-        delegationBenefits: [
+        rootResponsibilities: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
-            .delegationBenefits,
+            .rootResponsibilities,
         ],
-        rootContinuityBenefits: [
+        discovery: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
-            .rootContinuityBenefits,
+            .discovery,
+        ],
+        directConsultation: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .directConsultation,
+        ],
+        directException: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .directException,
+        ],
+        writerRouting: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .writerRouting,
+        ],
+        evidenceHandling: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .evidenceHandling,
+        ],
+        delegationFailure: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .delegationFailure,
         ],
         insufficientSignals: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
@@ -430,7 +519,7 @@ export function getAgentPackContract(): AgentPackContract {
         ),
       rules: [...AGENT_PACK_CONTRACT.orchestrationPolicy.rules],
     },
-    returnContract: [...AGENT_PACK_CONTRACT.returnContract],
+    returnContract: cloneReturnContract(AGENT_PACK_CONTRACT.returnContract),
     verificationProtocol: [...AGENT_PACK_CONTRACT.verificationProtocol],
   };
 }

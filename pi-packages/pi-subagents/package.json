@@ -1,0 +1,85 @@
+{
+  "name": "@thoth-agents/pi-subagents",
+  "version": "0.1.0",
+  "description": "Installable Pi package that adds markdown-defined subagents, delegated task tools, history, and model profiles.",
+  "type": "module",
+  "license": "MIT",
+  "author": "j0k3r",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-subagents"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "subagents",
+    "coding-agent",
+    "agent",
+    "delegation"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./index.ts",
+  "files": [
+    "index.ts",
+    "src",
+    "skills",
+    "scripts/verify-package-files.mjs",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/*.test.mjs",
+    "!**/test/**",
+    "!**/tests/**",
+    "!**/test-support/**",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify:package": "node scripts/verify-package-files.mjs",
+    "pack:dry-run": "pnpm pack --dry-run",
+    "check": "pnpm run typecheck && pnpm test && pnpm run verify:package",
+    "prepublishOnly": "pnpm run check"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.99.0",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "1.0.2",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
+    "@types/node": "24.10.1",
+    "typebox": "1.1.38",
+    "typescript": "5.9.3",
+    "vitest": "4.1.7"
+  },
+  "dependencies": {
+    "@thoth-agents/pi-core": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

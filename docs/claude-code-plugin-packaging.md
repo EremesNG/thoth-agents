@@ -22,8 +22,7 @@ plugin/
 │   ├── librarian.md
 │   ├── oracle.md
 │   ├── designer.md
-│   ├── quick.md
-│   └── deep.md
+│   └── worker.md
 └── skills/
     ├── thoth-init/
     ├── thoth-sdd/
@@ -44,26 +43,28 @@ version and its immutable product tag.
 delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
 The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
-Claude's native `Agent` calls fan out every ready conflict-free lane before
-waiting and fan in only terminal native results. Explicitly or bounded-default
-selected plan review is optional; trivial deterministic Direct work may use focused root checks, while
-materially risky Direct work and every Accelerated or Full final verify use a
+Claude's native `Agent` calls fill available capacity with admitted independent
+units before waiting, refill capacity as units complete, and fan in only terminal
+native results. Plan review is optional; trivial deterministic low-risk work may
+use focused root checks, while materially risky or substantial work requires a
 fresh read-only Oracle.
 
 Semantic triggers keep the complete roster actionable: `librarian` handles
 current or external facts, `designer` handles material UI/UX, interaction,
-accessibility, or visual quality, and `quick` handles known narrow low-risk
-isolated edits. `deep` handles coupled or high-risk work. Native Claude
-execution and lifecycle are authoritative for dispatch, status/wait,
-steering, cancellation, and terminal results; unavailable primitives receive a
+accessibility, or visual quality, and `worker` handles delegated implementation,
+including coupled or high-risk work. Root may retain narrow low-risk work when
+continuity outweighs delegation overhead. Native Claude execution and lifecycle
+are authoritative for dispatch, status/wait, steering, cancellation, and
+terminal results; unavailable primitives receive a
 truthful sequential fallback. No additional thoth coordination mechanism is
 involved.
 
 Claude discovers plugin skills automatically. The namespaced
-`/thoth-agents:thoth-init` skill only synchronizes minimum project `openspec/`
-governance because agents and owned skills already reside in the manager-owned
-cache. Phase contracts consume SDD templates directly from that installed skill
-tree rather than copying them into the project. Mandatory external skills reside
+`/thoth-agents:thoth-init` skill creates only missing `.thoth/` governance,
+including `.thoth/constitution.md` and `.thoth/specs/`, because agents and owned
+skills already reside in the manager-owned cache. It refuses a legacy active
+OpenSpec tree rather than creating a duplicate. SDD phase contracts consume
+references, templates, and validators directly from that installed skill tree. Mandatory external skills reside
 in Claude's global skill root after CLI installation. That CLI also invokes
 thoth-mem's public provider setup; no thoth-mem asset is copied into this shared
 bundle.

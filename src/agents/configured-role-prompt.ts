@@ -25,7 +25,7 @@ export function renderConfiguredRolePrompt({
   const promptOverrides = loadAgentPrompt(role, config?.preset);
   const override = getAgentOverride(config, role);
   const modelSection = createModelFamilySection(role, model);
-  const stepSection = createStepBudgetSection(override?.steps);
+  const stepSection = createStepBudgetSection(override?.steps, role);
   const basePrompt = renderRolePrompt(createRolePromptSections(role), dialect);
   const prompt = composeAgentPrompt({
     basePrompt,

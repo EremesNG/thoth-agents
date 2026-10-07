@@ -154,7 +154,7 @@ describe('required skill install helper', () => {
       getRequiredSkillInstallCommand(testSkill, harness, {
         platform: 'linux',
       }).args,
-      { stdio: 'inherit' },
+      { stdio: 'inherit', windowsHide: true },
     );
   });
 
@@ -191,7 +191,7 @@ describe('required skill install helper', () => {
     expect(spawnSync).toHaveBeenCalledWith(
       expectedCommand.command,
       expectedCommand.args,
-      { stdio: 'inherit' },
+      { stdio: 'inherit', windowsHide: true },
     );
   });
 });

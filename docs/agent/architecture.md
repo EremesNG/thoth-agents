@@ -3,7 +3,7 @@
 ## System shape
 
 `src/index.ts` composes the OpenCode plugin. `src/harness/` owns the canonical
-seven-role and SDD contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
+six-role and SDD contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
 is the canonical thoth-owned workflow bundle. `src/cli/` owns installation plus
 status, repair, model, and TUI operations.
 
@@ -16,7 +16,7 @@ persistence, receipts, state, and recovery remain outside this package.
 1. OpenCode CLI installation configures the plugin, materializes the five
    thoth-owned skills under `~/.config/opencode/skills/`, installs external
    skills, and registers `/thoth-init`; init itself only synchronizes project
-   `openspec/` governance.
+   minimum `.thoth/` governance.
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
@@ -30,12 +30,15 @@ persistence, receipts, state, and recovery remain outside this package.
    setup, while namespaced init creates project governance only.
 5. Pi CLI setup first installs the exact executing `thoth-agents` package. Its
    `before_agent_start` hook contributes the bounded ambient root and
-   `session_start` safely synchronizes six package-owned specialists. Pi loads
+   `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   six external packages and four external skills. Published installs also
-   invoke provider-owned thoth-mem; an explicit local Pi package install leaves
-   thoth-mem to its separate local installer. Pi and `pi-subagents-j0k3r` retain
-   execution and lifecycle ownership.
+   six selected packages, including
+   `npm:@thoth-agents/pi-subagents@>=0.1.0` and
+   `npm:@thoth-agents/pi-todo@>=0.1.0`, plus four external skills. Published
+   installs also invoke provider-owned thoth-mem; an
+   explicit local Pi package install leaves thoth-mem to its separate local
+   installer. Pi and the separate `@thoth-agents/pi-subagents` runtime retain
+   delegation execution and task lifecycle ownership.
 
 ## Boundaries
 
@@ -44,8 +47,8 @@ persistence, receipts, state, and recovery remain outside this package.
 | OpenCode runtime | `src/index.ts`, hooks, MCPs, tools |
 | Pi delegation runtime | Pi plus the selected external delegation package; thoth-agents supplies only policy, prompts, managed resources, installation, and diagnostics |
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` |
-| SDD ownership | `src/harness/core/sdd.ts` |
-| Detailed SDD/init/archive contracts | `skills/` |
+| Adaptive SDD route and phase policy | `src/harness/core/sdd.ts` |
+| Detailed work/init/archive contracts | `skills/` |
 | Generated shared plugin | `src/harness/generate-integration-packages.ts`, `plugin/` |
 | Installation and operations CLI | `src/cli/` |
 | Memory setup/runtime mechanics | installed thoth-mem; thoth-agents only invokes its public setup and supplies bounded authorization |
@@ -53,36 +56,34 @@ persistence, receipts, state, and recovery remain outside this package.
 ## Invariants
 
 - OpenCode is default; OpenCode, Codex, Claude, and Pi guarantees differ.
-- Root summarizes context and recommends an SDD route; an explicit answer wins,
-  while the third answerless route question selects the recommendation. Root
-  then coordinates SDD and loads only the current contract.
-- The root shapes substantive work as dependency-aware bounded lanes: concrete
-  artifact/decision dependencies block a lane, while mere ordering preference
-  does not. Input-ready, conflict-free lanes form a native wave; root fans in
-  only terminal native results before releasing dependents.
-- After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it; an explicit answer wins, while the third answerless
-  review question selects Oracle review. Every route verifies: trivial deterministic Direct work
-  may use focused root checks, while materially risky Direct work and every
-  Accelerated or Full final verify use a fresh read-only Oracle. Review approval
-  never substitutes for verify.
+- Every change completes proportional understanding before classification.
+  Small clear low-risk work is artifact-free; substantial work uses one
+  `.thoth/changes/<id>/<id>.md` record and loads only the current phase.
+- Native ready work fills capacity before waiting; freed slots are refilled and
+  each consumer starts only after its own accepted fresh dependencies.
+- Recovery reconciles the single record, owned code and native liveness;
+  a file is not an execution lifecycle or proof of acceptance.
+- Persisted work and material risk require fresh independent Oracle verification
+  before closeout. Optional plan review does not replace final verification.
 - Semantic role selection is route-independent: `librarian` handles current or
   external facts, `designer` material user-facing UI/UX and accessibility,
-  `quick` known narrow low-risk isolated edits, `deep` coupled/high-risk work,
-  and `explorer` broad local uncertainty. Native harness execution and
-  lifecycle are the sole authority for fan-out/fan-in, status/wait, steering,
-  cancellation, and terminal results.
+  `worker` known bounded non-visual implementation regardless of complexity, and
+  `explorer` unknown local source, flow, or responsibility. Specialists execute
+  by default; root direct work is limited to the documented known-source bounded
+  exception. Native harness execution and lifecycle are the sole authority for
+  fan-out/fan-in, status/wait, steering, cancellation, and terminal results.
 - Delegation depth is one; one writer owns each mutable surface.
 - OpenCode ships only the OpenAI preset.
-- Owned SDD contracts are bundled; external skills come from canonical
-  repositories during installation and are never fetched during an SDD.
+- Owned workflow contracts are bundled; external skills come from canonical
+  repositories during installation and are never fetched during execution.
   OpenCode's CLI materializes the packaged owned contracts in its global native
   skill root because npm plugins do not expose package-relative skill roots.
 - Every published harness install requires consistent thoth-mem `complete`
   evidence. An explicit local Pi package install records thoth-agents without
   provider setup; provider assets and recovery remain independently owned.
 - Dispatch memory authorization is `none`, `recall`, or `observe`, independent
-  of workspace mode; root lifecycle never transfers and `openspec/` remains canonical.
+  of workspace mode; root lifecycle never transfers. `.thoth/` is active project
+  governance; historical material remains preserved.
 - Both marketplaces resolve to the shared `plugin/` bundle; harness-specific
   manifests and MCP surfaces coexist without duplicating canonical skills.
 - Build synchronizes the shared plugin before compilation and schema generation.

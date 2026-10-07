@@ -66,6 +66,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!pi-packages/**/lib/
 lib64/
 parts/
 sdist/
@@ -75,3 +76,6 @@ wheels/
 .installed.cfg
 *.egg
 /.codegraph/
+
+# Pi background task output
+.pi/tasks/

@@ -1,13 +1,13 @@
 # Installation
 
 thoth-agents supports OpenCode, Codex, Claude Code, and Pi. The distributions share
-one seven-role and Spec Kit-compatible SDD contract. Installation uses the CLI
+one six-role and AI-first execution contract. Installation uses the CLI
 for every harness, while Codex additionally requires a CLI-managed global
 orchestration layer that its plugin manifest cannot provide.
 
 ## Requirements
 
-- Node.js `>=22.19`
+- Node.js `>=22.19.0`
 - One supported harness installed separately
 - Permission to install/trust the selected plugin
 - Network access during installation for the plugin, external skills, and
@@ -18,7 +18,7 @@ them through their native plugin managers; the OpenCode installer synchronizes
 them into `~/.config/opencode/skills/`. The installer obtains the four mandatory
 external skills from their canonical repositories with `npx skills add`, then
 published installs invoke thoth-mem's public setup command. An explicit local Pi
-package install omits that provider step. Once installed, SDD phases load local
+package install omits that provider step. Once installed, workflow operations load local
 contracts and provider guidance without consuming either CLI or the network.
 
 Nested package installation is non-interactive: the CLI confirms both `npx`
@@ -31,10 +31,10 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 
 | Harness | Native/plugin step | Required completion step |
 | --- | --- | --- |
-| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `openspec/` |
+| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents-j0k3r` and the research packages | The package injects one bounded adaptive-root block, synchronizes six specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.1.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -42,6 +42,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | --- | --- |
 | `--agent=opencode\|codex\|claude\|pi` | Select the installation target. |
 | `--local-package-root=PATH` | Install a built local package root for Pi; the normalized path must be absolute, requires `--agent=pi`, and omits thoth-mem setup. |
+| `--local-pi-runtime-root=PATH` | Use a local checkout of the Pi delegation runtime; the normalized path must be absolute and requires `--agent=pi`. Intended for local development. |
 | `--dry-run` | Print native-manager and thoth-agents plans; published installs also invoke thoth-mem with its zero-write `--plan` mode. |
 | `--reset` | Repair only thoth-agents-managed targets; it never becomes thoth-mem `--force`. |
 | `--no-tui` | Force the non-interactive path. |
@@ -61,15 +62,20 @@ older thoth-agents entries with one exact entry while preserving unrelated
 plugins. If package identity or version cannot be verified, installation fails
 before changing configuration and never substitutes `latest`.
 
-The CLI also writes the seven-role OpenAI preset, synchronizes all five packaged
+The CLI also writes the six-role OpenAI preset, synchronizes all five packaged
 thoth-owned skills into `~/.config/opencode/skills/`, and installs all four
 external skills with `npx skills add`. Status and repair verify the resulting
 global discovery targets. It then requires provider-owned thoth-mem setup to
 complete. Restart OpenCode and invoke `/thoth-init`; it only preflights and
-synchronizes the minimum `openspec/` governance structure while preserving
-existing constitutions. SDD phases resolve templates directly from the globally
-installed `thoth-sdd` skill; init leaves any legacy `openspec/templates/` tree
-untouched. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
+initializes missing `.thoth/` governance, including `.thoth/constitution.md`
+and `.thoth/specs/`, while preserving existing project-owned content. It refuses
+a legacy active OpenSpec tree rather than creating a duplicate store. SDD phases
+resolve references, templates and validators directly from the globally
+installed `thoth-sdd` skill.
+An older globally materialized `thoth-work` skill may remain after upgrade and
+may still appear in native discovery. Inspect it and explicitly retire it if
+appropriate; setup never deletes unknown or modified global content. No Kimi,
+Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
@@ -104,7 +110,7 @@ needed for activation, not for cache garbage collection.
 The remaining CLI setup manages:
 
 - `~/.codex/AGENTS.md`: one bounded orchestrator block;
-- `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,quick,deep}.toml`;
+- `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,worker}.toml`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - `~/.codex/config.toml`: the managed feature merge; and
 - mandatory external skills in the Codex global skill root via `npx skills add`.
@@ -118,9 +124,10 @@ delegates normal marketplace and plugin mutations to the native manager and
 owns only the bounded legacy-root fallback above.
 
 Restart Codex after the CLI step. In every target repository invoke
-`$thoth-init`; this preflights and synchronizes only the minimum `openspec/`
-governance. It does not install agents, global instructions, or project template
-copies; the plugin's installed `thoth-sdd` skill remains the template source.
+`$thoth-init`; this preflights and creates only missing `.thoth/` governance,
+preserving existing project-owned content. It does not install agents, global
+instructions, or project template copies; the installed `thoth-sdd` skill
+supplies the record template.
 
 Review `/plugins` and `/hooks`. Global instructions and configuration remain
 subject to more specific project/subtree instructions, profiles, managed policy,
@@ -144,37 +151,59 @@ npx thoth-agents@latest install --agent=claude
 
 Restart Claude Code or run `/reload-plugins`, then invoke
 `/thoth-agents:thoth-init` in each repository. Claude discovers the packaged
-orchestrator, six namespaced subagents, MCP configuration, and thoth-owned skill
+orchestrator, five namespaced subagents, MCP configuration, and thoth-owned skill
 tree natively. The CLI installs and verifies the external skills, then invokes
 thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
-`openspec/` governance; workflow templates remain in the installed plugin skill.
+`.thoth/` governance; SDD templates remain in the installed plugin skill.
 
 Claude owns marketplace snapshots, cache files, enablement, and packaged model
 defaults; thoth-agents never edits that cache.
 
 ## Pi
 
-Pi requires `@earendil-works/pi-coding-agent` `0.84.4` or a compatible
-evidenced release and Node.js `>=22.19`. Preview the complete global setup
-before applying it:
+Pi requires `@earendil-works/pi-coding-agent` `>=0.99.0` and Node.js
+`>=22.19.0`. The installer rejects older Pi versions before changing Pi state.
+Preview the complete global setup before applying it:
 
 ```bash
 npx thoth-agents@latest install --agent=pi --dry-run
 npx thoth-agents@latest install --agent=pi
 ```
 
-For local development, build the checkout and pass its normalized absolute root:
+For local development, install checkout dependencies with `pnpm install`, then
+run this command from the checkout (the Pi equivalent of `setup:codex:local`):
+
+```bash
+pnpm run setup:pi:local
+```
+
+It builds first, then runs the built CLI with `--agent=pi`, the checkout's
+absolute `--local-package-root`, and the fork's absolute `--local-pi-runtime-root`
+(`pi-packages/pi-subagents`), including paths with spaces. This installs the
+checked-out runtime directly and does not require publishing it to npm. Installer
+failures propagate to the command. Restart Pi and open a new session after
+successful setup.
+
+To preview installation, use `pnpm run setup:pi:local --dry-run`. This still
+builds local artifacts, but the installer does not change global Pi state.
+Existing package conflicts still require explicit manual recovery; this shortcut
+does not remove packages or install thoth-mem.
+
+The equivalent explicit commands remain available:
 
 ```bash
 pnpm run build
-node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path-to-checkout>"
+node dist/cli/index.js install \
+  --agent=pi \
+  --local-package-root="<absolute-path-to-checkout>" \
+  --local-pi-runtime-root="<absolute-path-to-checkout>/pi-packages/pi-subagents"
 ```
 
-The local form replaces only the first source with
-`pi install <absolute-path-to-checkout> --no-approve`. It performs the same
-receipt verification, external package and skill installation, and final ledger
-commit as the public npm form, but deliberately omits thoth-mem setup. Install
-thoth-mem from its own local checkout as a separate command:
+The local first-party package is installed from the checkout path, and the local
+runtime path supplies the fork in place of its npm source. The flow performs the
+same receipt verification, remaining external package and skill installation,
+and final ledger commit as the public form, but deliberately omits thoth-mem
+setup. Install thoth-mem from its own local checkout as a separate command:
 
 ```bash
 node <absolute-thoth-mem-root>/dist/index.js setup pi --local-package-root="<absolute-thoth-mem-root>"
@@ -184,15 +213,79 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `pi-subagents-j0k3r@1.5.9` for native single-specialist foreground and
-   background tasks;
+2. `npm:@thoth-agents/pi-subagents@>=0.1.0` for native direct specialist
+   execution and task-ID lifecycle control (package version `0.1.0`; local
+   development can provide the fork path through `--local-pi-runtime-root`);
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
 5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
-6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
-   `ask_user_question` dialog;
-7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress.
+6. `npm:@thoth-agents/pi-questions-user@>=0.1.0` for the root's interactive
+   `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
+   recommendations, previews, notes and structured per-id answers; no fixed
+   maximum on questions or options;
+7. `npm:@thoth-agents/pi-todo@>=0.1.0` for the first-party session task list:
+   the `todo` tool, `/todos`, and current-session editor widget.
+
+The task-list extension is the sixth selected package after first-party
+verification. Install and applied Update install and individually verify it;
+status reports it as a managed target. Progress tracking never replaces native
+delegation or `.thoth/` change records. Unrelated task extensions remain
+operator-owned and untouched.
+
+Install and applied Update individually verify the first-party question package
+at its configured minimum after root-package verification. An installed
+user-scope `@juicesharp/rpiv-ask-user-question` is removed first through native
+`pi remove <configured-source> --no-approve`; failed or unverifiable removal
+stops setup. Project-scope conflicts block before mutation: review the project's
+ownership and trust, then run
+`pi remove <configured-source> --local --approve` from that project.
+This grants trust only for the command and does not persist a trust decision.
+Dry-run previews configured user removals and project blockers without mutation.
+Unrelated packages and settings are preserved.
+
+An installed `@juicesharp/rpiv-todo` conflicts with the first-party task list.
+Preflight stops before any mutation when it is declared in Pi's settings or
+identified from its installed manifest. Pi 1.0.2's `pi list --no-approve` omits
+project packages, so setup, status, and Update also inspect the project's
+`.pi/settings.json` packages and resolved npm, local-path, and Git manifests
+read-only. This never executes project code or grants/persists trust. Local
+paths are resolved relative to `.pi`; project Git checkouts are under
+`.pi/git/<host>/<repository>`, using Pi SDK 1.0.2's Git normalization. A read-only
+scan of `.pi/git` and `.pi/npm` also detects incumbent manifests even when no
+settings source maps to them. Linked package manifests are inspected without
+recursively following links outside the install root. When a manifest is
+unavailable, an incumbent-looking source blocks with an explicit identity
+limitation; arbitrary source names alone cannot prove package identity. Apply
+rechecks settings and install roots before mutation.
+Dry-run reports configured blockers without mutation; status and Update previews
+expose the conflict with manual removal instructions. Review ownership and
+remove it explicitly:
+
+```bash
+pi remove npm:@juicesharp/rpiv-todo --no-approve
+```
+
+This command targets user scope. For project scope, first review the project's
+ownership and trust, then run
+`pi remove npm:@juicesharp/rpiv-todo --local --approve` from that project.
+`--approve` trusts project-local settings for this command only without saving
+a trust decision. If present in both scopes, run both commands.
+
+Verify with `pi list`, then rerun setup or apply Update. The CLI never removes
+this package automatically or migrates its task state; for a local/Git install,
+use the additional removal command for the actual configured source. If the
+source cannot be mapped, diagnostics name the installed directory. After
+reviewing ownership, find the matching settings entry and remove it with
+`pi remove <source> --local --approve`; the diagnostic directory is not itself
+necessarily a configured source.
+
+The incumbent `pi-subagents` runtime and the former `pi-subagents-j0k3r`
+package are not supported beside `@thoth-agents/pi-subagents`. When setup detects
+either legacy source, it stops before mutation and prints a manual Pi package
+manager recovery action; it never deletes a user package or silently loads both
+runtimes. Review ownership, remove the conflicting package explicitly with
+Pi's package manager, and rerun setup.
 
 Before running complete setup on an installation that has either replaced web
 package, remove both with Pi's native package manager:
@@ -215,7 +308,7 @@ Before external setup, the CLI rejects unowned or ambiguous first-party state,
 requires configured, loadable, and real-Pi observed evidence, and atomically
 commits `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/pi-package.json`. The native
 extension supplies one bounded root block per turn; it and the CLI share one
-safe synchronizer for exactly six definitions under `~/.pi/agent/agents/`.
+safe synchronizer for exactly five definitions under `~/.pi/agent/agents/`.
 Pi discovers the five owned skills from the package manifest. The CLI installs
 only the four external skills with `--agent pi --global --yes --copy`. No
 orchestrator child is created. Status, previews, and applied results attribute
@@ -249,9 +342,9 @@ missing or version-drifted package evidence remains drifted. Context7, web
 access, and grep.app network/schema health is reported independently from
 package and managed-file health. Research output is untrusted data. Every Pi
 extension runs with the invoking user's system permissions and may access
-process credentials and the network; specialist tool allowlists are role
-controls, not a security sandbox. Project-local resources require an explicit
-Pi trust decision.
+process credentials and the network; specialists inherit Pi's available tools,
+which is not an OS or credential sandbox. Project-local resources require an
+explicit Pi trust decision.
 
 The initial integration supports the default global Pi root only. If
 `PI_CODING_AGENT_DIR` redirects discovery away from `~/.pi/agent`, installation
@@ -261,22 +354,57 @@ package succeeds and a later step fails, the ledger remains unchanged; resolve
 the reported blocker and rerun the idempotent complete flow. Do not delete
 unknown Pi packages or provider assets as a recovery shortcut.
 
-The six specialist definitions use `thoth-` names in both filenames and
+Setup safely merges `session_resources: "lean"` and `enable_continue: false`
+into the global `<agent-dir>/subagents.json` (normally
+`~/.pi/agent/subagents.json`), preserving unrelated settings. Lean resources
+filter `before_agent_start` and `session_start` from child sessions, except for
+trusted packages in `lifecycle_passthrough` (default: the Claude and Antigravity
+bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
+thoth-agents), which keep their full lifecycle with prompt-shaping events
+observe-only, except that a `before_provider_request` return replaces the
+provider payload (so `-fast` variants send `service_tier: "priority"` in
+children); that list is a trust list, not a sandbox. Full child
+resources are unsupported. A project-local `subagents.json` can override the
+global setting and invalidate lean isolation, so check project configuration
+separately.
+Definitions do not provide a `PI_SUBAGENT_CHILD` marker, enforced delegation
+depth, or tool allowlist; role boundaries remain instruction-level, and
+extensions still run with the invoking user's system permissions. The librarian
+definition defaults to background mode for provider access; verify the relevant
+Context7, web-access, or MCP provider and required tools before claiming
+research evidence.
+
+The five specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
-`thoth-designer`, `thoth-quick`, and `thoth-deep`. For example,
+`thoth-designer`, and `thoth-worker`. For example,
 `~/.pi/agent/agents/thoth-explorer.md` declares `name: thoth-explorer`.
 Generic definitions such as `explorer.md` can coexist; an unowned definition
-using a reserved `thoth-` specialist name blocks installation.
+using a reserved `thoth-` specialist name blocks installation. During explicit
+setup or synchronization, obsolete `thoth-quick` and `thoth-deep` definitions
+are retired only when their ownership and paths are proven safe. Unowned old
+role files and an unowned `thoth-worker` collision are preserved and reported;
+old role model or effort customizations are not copied to Worker.
 
-Fresh work uses `subagent_run` with one exact namespaced `agent`, for example
-`agent: "thoth-explorer"`. Status,
-result, list, message, cancellation, and optional continuation remain owned by
-`pi-subagents-j0k3r`; queued messages and nonterminal status never count as
-fan-in. Live steering depends on the active Pi SDK, and continuation stays
-disabled unless the operator enables it explicitly.
+Each fresh assignment uses one `subagent_run` call with a canonical specialist
+and a bounded task. Omit `mode` to follow the selected definition and
+configuration; the runtime defaults to background when both omit it. Use
+`mode:"task"` only when the user asks you to wait for completion; this explicit
+choice is preserved. Launch separate ready background assignments before
+collecting results; root
+coordinates readiness, dependencies, and acceptance. Use
+`subagent_status({task_id})`, `subagent_result({task_id})`, and
+`subagent_cancel({task_id})` only for a known task. Terminal notifications wake
+the parent, so return control rather than polling. A cancellation acknowledgement
+alone does not prove termination, and continuation is disabled by configuration.
+
+Children run in the owning Pi session. Graceful session shutdown cancels active
+children; abrupt shutdown or cleanup of arbitrary descendants is not guaranteed.
+Do not invent batch, fresh-context, workflow, depth-enforcement, or child-marker
+controls absent from the runtime contract. Lean filters extension lifecycle
+hooks, not process permissions or host tools.
 
 Pi specialists use the shared OpenAI role preset through the `openai-codex`
-provider. The ambient root retains Pi's selected model and thinking level:
+provider. The ambient root retains Pi's selected model and effort settings:
 
 | Specialist | Model | Effort |
 | --- | --- | --- |
@@ -284,18 +412,104 @@ provider. The ambient root retains Pi's selected model and thinking level:
 | librarian | `openai-codex/gpt-6-luna` | `high` |
 | oracle | `openai-codex/gpt-6-astra` | `medium` |
 | designer | `openai-codex/gpt-6-sol` | `medium` |
-| quick | `openai-codex/gpt-6-luna` | `medium` |
-| deep | `openai-codex/gpt-6-sol` | `medium` |
+| worker | `openai-codex/gpt-6-luna` | `max` |
 
-Synchronization fills missing model/effort fields in older managed definitions
-and preserves explicit frontmatter values. Model configuration stores an explicit
-inherit choice as Pi's native `default` value so later synchronization does not
-restore the packaged preset. Pi resolves model and effort independently: a
-configured role profile takes precedence over the definition, followed by global
-defaults and then the root. An explicit model override supplied to the adapter
-keeps its provider-qualified ID and inherits effort instead of imposing the
-OpenAI preset's effort. Use a provider/model available in the local Pi catalog;
-installation does not authenticate providers or silently substitute models.
+Definitions use runtime-supported `model`, `effort`, and `subagent_mode` fields.
+Synchronization migrates legacy `thinking` values to `effort`, preserves
+explicit model and effort overrides (including `max`), and translates legacy
+`model: default` to `model: inherit`. Inheritance stays unpinned by omitting an
+effort value; explicit models retain their provider-qualified IDs. Use a
+provider/model available in the local Pi catalog; installation does not
+authenticate providers or silently substitute models.
+
+### Configure subagent model profiles inside Pi
+
+Run `/subagents-model` in Pi's interactive TUI to edit model and effort profiles
+for global or project subagent definitions. The editor saves each profile to the
+configuration scope that owns its definition: global profiles go in
+`~/.pi/agent/subagents.json` (or `$PI_CODING_AGENT_DIR/subagents.json`), while
+project profiles go in `.pi/subagents.json`. Resolution for each model and effort
+field is `model_profiles` first, then definition frontmatter, then the matching
+configuration default, then the parent value. Reload Pi after updating the
+`@thoth-agents/pi-subagents` runtime to register the command.
+
+### Configure specialist tools inside Pi
+
+Run `/subagents-tools` in Pi's interactive TUI to configure the **global** five
+specialists. The panel discovers registered tools from your current Pi environment,
+including tools supplied by user extensions and MCP integrations; Thoth does not
+maintain a fixed catalog of those tools.
+
+- Use ↑/↓ and Enter to choose a specialist. In its tool list, use Space to toggle
+  a selection. Enter or Escape returns to the overview.
+- Checkboxes edit registered exact names only. Inactive tools are labeled
+  `(inactive)` and can be selected; they reach the child even while inactive in
+  the root. The child-provided `ask_orchestrator` channel is an informational
+  note, not a checkbox, and is subject to `enable_ask_orchestrator` and
+  `disallowed_tools`.
+- Existing globs (including `*`) and names absent from the registry are shown
+  read-only. Edit them manually in the definition file. Saves and partial-save
+  retries retain these entries unchanged unless defaults reset replaces the
+  selection with exactly the role's packaged defaults; no `*` hotkey or dynamic
+  mode is offered.
+- Press `r` to restore that role's packaged explicit defaults: `read, bash,
+  grep, find, ls` for Explorer and Oracle; `read, bash, edit, write, grep, find,
+  ls` for Designer and Worker; the read-only list plus research tools for
+  Librarian. Unregistered defaults are shown read-only.
+- Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
+  before discarding a dirty draft. Draft edits do not write files.
+- Selections must contain at least one tool name or retained glob. `@active`
+  is rejected with a diagnostic recommending exact names; it is not an alias
+  or a tool name. Native `subagent_*` delegation controls are not selectable.
+  Empty panel selections are rejected because the runtime can substitute default
+  tools. Generated lists omit `ask_user_question`, `todo` and third-party
+  delegation tools; these names are not a shared runtime denylist.
+- Saved lists remain in `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent
+  directory), survive synchronization/reinstallation and model-panel saves, and
+  do not change models, effort, mode or the parent's active tools. Project-local
+  definitions may shadow these global definitions. Running children are unchanged.
+- Discovery refreshes when the panel is reopened. Explicit lists stay fixed;
+  manual globs resolve against the registered inventory at each child launch.
+- Ownership, safe-path, stale-file and recoverable per-file write checks match
+  the models panel. Unsupported overrides, including the removed selector, are
+  preserved unchanged with diagnostics during synchronization, without resetting
+  them to broader defaults. Fix those definitions explicitly before using them.
+
+For advanced selections, edit `tools` in the definition frontmatter manually,
+for example `tools: "read, agent_browser_*"`. Every glob, including `*`, selects
+from all registered root tools (active and inactive), minus native `subagent_*`
+exclusions and the definition's `disallowed_tools`. Tools matched while inactive
+in the root reach the child, where they can be activated. Synchronization retains
+operator selections, including `*` and other globs, without migration.
+
+Edit `disallowed_tools` manually as a comma-separated string or YAML list of exact
+names to deny injected tools absent from the panel or trim glob results. For
+example, a broad glob can be paired with
+`disallowed_tools: "ask_user_question, todo"` to keep interaction and progress
+root-owned. Only Oracle's generated definition has this field, denying
+`ask_orchestrator` for independent judgment. Other enabled children receive that
+channel regardless of `tools`. Synchronization keeps operator denials, including
+explicit empty values; absent operator denials acquire the package value (none,
+or `ask_orchestrator` for Oracle).
+
+For every selection form (explicit lists and globs, including `*`), tools
+the child cannot load are dropped: the child runs with its available subset and
+reports dropped names as durable warnings on the running task's widget card and in
+status, results and completion messages. If none can load, launch still fails;
+unexpected extra child tools also remain an error. The panel does not edit glob
+patterns. The Claude and Antigravity bridges advertise a tool whose schema root
+is a union of object variants as an object with that union, and omit other non-object
+schemas with a warning instead of failing the request.
+
+A selected name does not prove the child's runtime registered or initialized that
+extension, MCP connection or credentials. Verify a real child invocation. Tool
+selection and native exclusions are **not an OS sandbox**: shell and MCP tools
+can still launch agents indirectly. A child with `bash` can also execute installed
+CLIs such as `codegraph` even without a directly exposed CodeGraph MCP tool.
+
+This command requires Pi's interactive TUI and tool-discovery APIs; unsupported
+hosts receive a diagnostic without configuration writes. Reload Pi after updating
+the extension to register the command.
 
 ## Skill ownership
 
@@ -347,8 +561,8 @@ evidence; reset, sync, or removal never edits or removes provider-owned assets.
 During normal work, agents follow the installed thoth-mem skill. The root owns
 stable session identity and lifecycle. Delegates may receive bounded `none`,
 `recall`, or `observe` memory authorization independently of workspace write
-permission. `openspec/` remains the canonical SDD store; phase artifacts are not
-mirrored into thoth-mem.
+permission. `.thoth/` holds active change records, durable contracts, and
+constitution; historical material remains preserved. Project work is not mirrored into thoth-mem.
 
 ## Limitations
 
@@ -382,7 +596,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, six specialist synchronization, six pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, six minimum-constrained selected packages (including the first-party task list), exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps
@@ -433,7 +647,7 @@ npx thoth-agents@latest status --harness=codex
 npx thoth-agents@latest update --harness=codex
 npx thoth-agents@latest update --harness=codex --apply
 npx thoth-agents@latest sync --harness=codex --apply
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
+npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna --effort=max
 ```
 
 Install is required for every harness; the other operations are optional
@@ -451,8 +665,8 @@ values. **Cancel** is selected initially; returning to the editor preserves any
 unapplied manual edits. A successful restore reloads saved values and clears
 those edits.
 
-OpenCode restores seven roles, including its orchestrator. Codex and Pi restore
-six specialists; their ambient root model remains host-owned. Other settings,
+OpenCode restores six roles, including its orchestrator. Codex and Pi restore
+five specialists; their ambient root model remains host-owned. Other settings,
 prompts and permissions are preserved. Catalog and runtime validation still
 apply: resolve any reported blocker before applying.
 

@@ -1,0 +1,39 @@
+{
+  "changeId": "pre-plan-guarantees",
+  "agreementFingerprint": "sha256:b06e8de96cf37d7f4a9ca8dcae444a302cd309d8e71cf787e14148bf031ed72c",
+  "technicalFingerprint": "sha256:a87347a3232117ce107be18271576f776d1fabd6fe60478845cad6a4b5953da6",
+  "identityRefresh": "Captured the pre-edit baseline and declared the previously approved staged workflow specification replacement with raw digests. Expected implementation/closeout refinement, no material change to scope, approach, ownership or acceptance; existing explicit implementation choice retained. Final Oracle must verify these current identities.",
+  "reviewChoice": {
+    "value": "oracle",
+    "resolution": "explicit",
+    "nativeAnswer": "ask_user_question returned Revisar con Oracle (Recommended) for the pre-plan-guarantees scope and test-seam question; no opaque question ID was exposed.",
+    "unansweredCount": 0,
+    "unansweredNativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "value": "implement",
+    "resolution": "explicit",
+    "nativeAnswer": "User explicitly resumed: Listo, adelante, implementa el plan aprobado.",
+    "previousDecision": "Explicit Stop after Oracle OKAY, superseded only by this user resume.",
+    "approvalRef": "d72afd66-ed6d-43db-a900-8aaec71a99ce",
+    "unansweredCount": 0,
+    "unansweredNativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "testSeams": {
+    "proposed": [
+      "public getWorkWorkflowContract API",
+      "rendered root instructions for OpenCode, Codex, Claude Code and Pi",
+      "packaged skill instruction integrity"
+    ],
+    "resolution": "explicitly confirmed with the review choice"
+  },
+  "review": {
+    "verdict": "OKAY",
+    "nativeReviewerRef": "d72afd66-ed6d-43db-a900-8aaec71a99ce",
+    "agreementFingerprint": "sha256:80cc1be9270600bd104439932854f7ddab56486bb533e98fe8239452eeb67572",
+    "technicalFingerprint": "sha256:27ba5032c39312dcbfce6051cfb6e768dd51e4ecbc6fc6a5f767d57bdba7af30",
+    "summary": "No execution blockers. Ready validation and both identities independently verified. Public workflow and four-harness rendered-root seams are appropriate. Capture baseline before implementation and declare staged specification replacement with digests before final review/archive. No tests executed by reviewer."
+  }
+}

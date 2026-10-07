@@ -1,23 +1,3 @@
-# Checklist contract
+# Checklist
 
-**Owner**: root<br>
-**Output**: `checklists/requirements.md`<br>
-**Activation**: high contract/failure risk, compliance sensitivity, or
-ambiguity-prone scope
-
-When activated, start from `<skill-dir>/templates/checklist.md`, where
-`<skill-dir>` is the directory containing the installed `thoth-sdd/SKILL.md`.
-
-Record the concrete activation reason. Use sequential `CHK###` items to audit
-the requirements—not implementation—across the base taxonomy: Completeness,
-Clarity, Consistency, Measurability, and Coverage.
-
-Add only applicable domain lenses, such as security, privacy, accessibility,
-compliance, performance, migration, or domain-specific failure rules. If none
-apply, record an evidence-backed `None` decision instead of boilerplate checks.
-Map every US, FR, SC, actor, failure mode, and relevant constraint to evidence.
-
-After clarification or planning changes, check affected revalidation items. If
-no requirement-affecting artifact changed, record an evidence-backed `Not
-required` no-op. Unresolved high-risk gaps return to specify; checklist status
-must never be inferred from code tests.
+Optional audit for risk or acceptance ambiguity after planning. Assess completeness, clarity, consistency, measurability, and relevant domain coverage in the sole substantial record. Correct gaps there and revalidate affected gates; never create a second checklist artifact. An unresolved material gap blocks implementation. Checklist is not a prerequisite to planning or tasks.

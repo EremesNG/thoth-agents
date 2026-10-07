@@ -5,8 +5,7 @@ type BuiltinAgentName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 export type AgentName = BuiltinAgentName | (string & {});
 
@@ -15,8 +14,7 @@ export const SUBAGENT_NAMES = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const satisfies readonly Exclude<BuiltinAgentName, 'orchestrator'>[];
 
 export const ORCHESTRATOR_NAME = 'orchestrator' as const;
@@ -27,13 +25,12 @@ export const ALL_AGENT_NAMES: readonly BuiltinAgentName[] = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ];
 
 // Subagent delegation rules: which agents can spawn which subagents
 // orchestrator: can spawn all subagents (full delegation)
-// quick/deep/designer: leaf nodes — no default delegation
+// worker/designer: leaf nodes — no default delegation
 // explorer/librarian/oracle: cannot spawn any subagents (leaf nodes)
 // Unknown agent types not listed here default to explorer-only access
 export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
@@ -42,8 +39,7 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
   explorer: [],
   librarian: [],
   oracle: [],
-  quick: [],
-  deep: [],
+  worker: [],
 };
 
 export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
@@ -51,8 +47,7 @@ export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
   librarian: { model: 'gpt-6-luna', effort: 'high' },
   oracle: { model: 'gpt-6-astra', effort: 'medium' },
   designer: { model: 'gpt-6-sol', effort: 'medium' },
-  quick: { model: 'gpt-6-luna', effort: 'medium' },
-  deep: { model: 'gpt-6-sol', effort: 'medium' },
+  worker: { model: 'gpt-6-luna', effort: 'max' },
 } as const satisfies Record<
   Exclude<BuiltinAgentName, 'orchestrator'>,
   { model: string; effort: string }
@@ -73,8 +68,7 @@ function buildDefaultModels(): Record<AgentName, string | undefined> {
     librarian: undefined,
     oracle: undefined,
     designer: undefined,
-    quick: undefined,
-    deep: undefined,
+    worker: undefined,
   };
 
   for (const [name, { model }] of Object.entries(

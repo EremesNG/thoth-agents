@@ -1,15 +1,17 @@
-# Clarify contract
+# Clarify
 
-**Owner**: root<br>
-**Activation**: material ambiguity only
+Required for every change, but often satisfied by recording that no material
+question remains. Use repository evidence or safe bounded assumptions for local
+technical details. Ask only when unresolved human-owned intent materially
+changes scope, behavior, architecture, security, or destructive impact; do not
+force an interview.
 
-Classify requirement dimensions as **Clear**, **Partial**, or **Missing** across
-scope, actors, data, interactions, non-functional constraints, failure behavior,
-and success evidence. Resolve from repository evidence or a safe documented
-assumption first. Ask one targeted human question only when the answer materially
-changes the result; Full SDD should normally ask no more than five high-impact
-questions in one clarification pass.
+When an orchestrator choice question has a meaningful recommended action, state
+it and follow the per-question retry rule in the [Thoth SDD entrypoint](../../SKILL.md):
+repeat after the first and second confirmed answerless returns without dependent
+work, then select the recommendation after the third. Pending, unavailable,
+failed, interrupted, and host-prohibited attempts do not count. Do not fabricate
+facts or secrets; a safe deferral may preserve a human-owned choice as unresolved.
 
-Write every accepted answer directly into `spec.md`, cite the changed FR/SC/story,
-then re-run structural validation and revalidate any existing requirements
-checklist. Do not create a parallel clarification document.
+Record the outcome in the one substantial record if one exists. An unresolved
+material decision blocks classification, planning, and implementation.

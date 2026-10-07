@@ -1,19 +1,3 @@
-# Plan contract
+# Plan
 
-**Owner**: root<br>
-**Output**: `openspec/changes/<feature>/plan.md`
-
-Start from `<skill-dir>/templates/plan.md`, where `<skill-dir>` is the directory
-containing the installed `thoth-sdd/SKILL.md`. Read active constitution
-principles and record evidence-backed pre-design and post-design Constitution
-Checks. Extract the exact active numbered principle headings once, then reuse
-that same ordered name set in both checks; only status and evidence may differ.
-Routine SDD does not amend the constitution or run its lifecycle validator;
-activate `thoth-constitution` only when an explicit constitution amendment is
-in scope.
-
-Map each technical choice to FR/SC or a confirmed repository constraint. Name
-affected components, interfaces, exact paths, migrations, risks, rollback, and
-verification seams. Create `research.md`, `data-model.md`, `contracts/`, or
-`quickstart.md` only when that artifact resolves a concrete implementation risk.
-Any unexplained constitution failure blocks tasks.
+For substantial work, translate settled intent into a compact technical approach in the same ID-named `.thoth/changes/<id>/<id>.md` record. Capture relevant interfaces, mutable surfaces, durable deltas, dependencies, risks, and focused verification seams. Describe useful work-unit boundaries with concrete accepted inputs, produced outputs, and dependencies; identify owned writes, interface boundaries, focused checks with pass evidence, and meaningful return and stop conditions where known. Keep the approach decision-ready without writing task rows before the tasks phase. Plan validation is independent of tasks: the `plan` gate must pass before tasks exist. A later material change reopens understanding and classification. Do not make an auxiliary plan document or auto-increment package versions.

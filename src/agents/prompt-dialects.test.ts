@@ -16,14 +16,14 @@ describe('prompt dialects', () => {
     );
     expect(OPENCODE_PROMPT_DIALECT.tools.userQuestionTool).toBe('question');
     expect(OPENCODE_PROMPT_DIALECT.tools.progressTool).toBe('todowrite');
-    expect(OPENCODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe('@deep');
+    expect(OPENCODE_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
+      '@worker',
+    );
     expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
     expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'root coordinator',
     );
-    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous task only',
-    );
+    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
     expect(OPENCODE_PROMPT_DIALECT.tools.hostStatusSurface).toBe('task_status');
   });
 
@@ -32,17 +32,17 @@ describe('prompt dialects', () => {
     expect(CODEX_PROMPT_DIALECT.tools.userQuestionTool).toBe(
       'request_user_input',
     );
-    expect(CODEX_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'deep role agent',
+    expect(CODEX_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
+      'worker role agent',
     );
     expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('orchestrator')).toBe(
       'orchestrator role agent',
     );
-    expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
-      'deep subagent',
+    expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('worker')).toBe(
+      'worker subagent',
     );
-    expect(CODEX_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous collaboration.spawn_agent only',
+    expect(CODEX_PROMPT_DIALECT.dispatchLabel('task')).toBe(
+      'collaboration.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
       'collaboration.wait_agent',
@@ -158,14 +158,14 @@ describe('prompt dialects', () => {
     );
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.progressTool).toBe('TodoWrite');
     // Plugin subagents are namespaced: subagent_type is `thoth-agents:<role>`.
-    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'Agent(subagent_type: thoth-agents:deep)',
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
+      'Agent(subagent_type: thoth-agents:worker)',
     );
     expect(
       CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('orchestrator'),
     ).toBe('main-thread orchestrator');
-    expect(CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
-      'thoth-agents:deep',
+    expect(CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('worker')).toBe(
+      'thoth-agents:worker',
     );
     expect(CLAUDE_CODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'main-session coordinator',
@@ -203,18 +203,60 @@ describe('prompt dialects', () => {
   test('renders Pi single-agent lifecycle without batch or false terminal claims', () => {
     expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent_run');
     expect(PI_PROMPT_DIALECT.tools.userQuestionTool).toBe('ask_user_question');
-    expect(PI_PROMPT_DIALECT.tools.progressTool).toBe('todo');
-    expect(PI_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'subagent_run(agent: "thoth-deep")',
+    expect(PI_PROMPT_DIALECT.tools.progressTool).toBeUndefined();
+    expect(PI_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
+      'subagent_run({ agent: "thoth-worker", task: "…", mode: "task" })',
+    );
+    expect(PI_PROMPT_DIALECT.tools.roleReference('librarian')).toBe(
+      'subagent_run({ agent: "thoth-librarian", task: "…", mode: "background" })',
     );
     expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).toContain(
-      'one exact canonical `agent`',
+      'one canonical `agent`, a fresh bounded `task`',
     );
     expect(
       PI_PROMPT_DIALECT.tools.lifecycle.sameAssignmentContinuation,
     ).toContain('subagent_send_message');
     expect(PI_PROMPT_DIALECT.tools.lifecycle.nonterminalState).toContain(
       'message-accepted',
+    );
+  });
+
+  test('keeps Pi question replies in the live assignment without treating waiting as completion', () => {
+    const { lifecycle, backgroundWaitInstruction } = PI_PROMPT_DIALECT.tools;
+    expect(lifecycle.sameAssignmentContinuation).toContain(
+      'subagent_reply({ task_id, request_id?, message })',
+    );
+    expect(lifecycle.sameAssignmentContinuation).toContain(
+      'injected `subagent-question`',
+    );
+    expect(lifecycle.nonterminalState).toContain(
+      'waiting for an orchestrator reply',
+    );
+    expect(lifecycle.nonterminalState).toContain(
+      'injected `subagent-question`',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'regardless of `tools` selection',
+    );
+    expect(backgroundWaitInstruction).toContain('`disallowed_tools`');
+    expect(backgroundWaitInstruction).toContain(
+      'Oracle denies `ask_orchestrator`',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'Explicit exact-name `tools` lists are the default',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'all registered root tools (active and inactive)',
+    );
+    expect(backgroundWaitInstruction).toContain('including `*`');
+    expect(backgroundWaitInstruction).toContain(
+      'edit `disallowed_tools` manually',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'A task-mode child that asks a question is moved to background',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'collect its result later through terminal completion',
     );
   });
 

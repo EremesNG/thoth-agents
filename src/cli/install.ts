@@ -171,7 +171,9 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
   lines.push(`  ${SYMBOLS.check} Seven-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
-  lines.push(`  ${SYMBOLS.check} Direct, Accelerated, and Full SDD routing`);
+  lines.push(
+    `  ${SYMBOLS.check} Proportional SDD and ID-named substantial-change records`,
+  );
   lines.push(
     `  ${SYMBOLS.check} ${dryRun ? 'thoth-mem setup plan confirmed' : 'thoth-mem setup completed through its provider-owned installer'}`,
   );
@@ -455,7 +457,7 @@ async function runInstall(
   const modelsInfo = 'Default configuration uses OpenAI models.';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the seven-role adaptive roster, native delegation, and Direct / Accelerated / Full SDD routing.${RESET}`,
+    `  ${DIM}Includes the seven-role adaptive roster, native parallel delegation, and proportional SDD governance.${RESET}`,
   );
   return 0;
 }
@@ -477,6 +479,9 @@ async function runPiInstall(
     packageRoot: executingPackageRoot,
     ...(config.localPackageRoot
       ? { firstPartySource: config.localPackageRoot }
+      : {}),
+    ...(config.localPiRuntimeRoot
+      ? { runtimePackageRoot: config.localPiRuntimeRoot }
       : {}),
     receiptOptions: dependencies.installLedgerOptions,
     verifyFirstParty: dependencies.verifyPiFirstParty,
@@ -566,6 +571,9 @@ export function createInstallConfig(args: InstallArgs): InstallConfig {
     hasTmux: args.tmux === 'yes',
     ...(args.localPackageRoot
       ? { localPackageRoot: args.localPackageRoot }
+      : {}),
+    ...(args.localPiRuntimeRoot
+      ? { localPiRuntimeRoot: args.localPiRuntimeRoot }
       : {}),
     dryRun: args.dryRun,
     reset: args.reset ?? false,

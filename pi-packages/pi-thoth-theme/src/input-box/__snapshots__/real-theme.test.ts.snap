@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`input box with the real Pi Thoth theme > keeps the pre-impact idle render byte-identical in 256color 1`] = `
+[
+  "[38;5;138m╭─ [39m[38;5;138m▲ ready[39m[38;5;138m ────────────────────────────╮[39m",
+  "[38;5;138m│[39mcontent_pi:c[7m [0m                              [38;5;138m│[39m",
+  "[38;5;138m╰──────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`input box with the real Pi Thoth theme > keeps the pre-impact idle render byte-identical in truecolor 1`] = `
+[
+  "[38;2;168;154;120m╭─ [39m[38;2;168;154;120m▲ ready[39m[38;2;168;154;120m ────────────────────────────╮[39m",
+  "[38;2;168;154;120m│[39mcontent_pi:c[7m [0m                              [38;2;168;154;120m│[39m",
+  "[38;2;168;154;120m╰──────────────────────────────────────╯[39m",
+]
+`;

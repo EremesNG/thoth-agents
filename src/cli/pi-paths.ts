@@ -17,6 +17,8 @@ export interface PiPaths {
   agentsRoot: string;
   alternateAgentsRoot: string;
   ownedSkillsRoot: string;
+  settingsPath: string;
+  subagentsConfigPath: string;
   mcpConfigPath: string;
   projectAgentRoots: string[];
   projectMcpPaths: string[];
@@ -44,6 +46,8 @@ export function resolvePiPaths(options: PiPathOptions = {}): PiPaths {
     agentsRoot: join(piRoot, 'agents'),
     alternateAgentsRoot: join(piRoot, 'subagents'),
     ownedSkillsRoot: join(piRoot, 'skills'),
+    settingsPath: join(piRoot, 'settings.json'),
+    subagentsConfigPath: join(piRoot, 'subagents.json'),
     mcpConfigPath: join(configRoot, 'mcp', 'mcp.json'),
     projectAgentRoots: [
       join(cwd, '.pi', 'agents'),

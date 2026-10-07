@@ -12,6 +12,7 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   splitting: true,
+  external: ['@earendil-works/pi-ai', '@earendil-works/pi-tui'],
   sourcemap: false,
   dts: false,
 });

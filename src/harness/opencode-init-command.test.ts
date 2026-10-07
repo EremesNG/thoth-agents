@@ -3,14 +3,14 @@ import { describe, expect, test } from 'vitest';
 import { createOpenCodeInitCommand } from './opencode-init-command';
 
 describe('OpenCode thoth-init command', () => {
-  test('translates /thoth-init into the harness-neutral OpenSpec initializer', () => {
+  test('translates /thoth-init into the harness-neutral .thoth initializer', () => {
     const command = createOpenCodeInitCommand({
       projectRoot: join('C:', 'work', 'example'),
       packageRoot: process.cwd(),
     });
 
     expect(command).toMatchObject({
-      description: 'Initialize thoth-agents project SDD governance',
+      description: 'Initialize thoth-agents project workflow governance',
       agent: 'orchestrator',
       subtask: false,
     });
@@ -23,7 +23,8 @@ describe('OpenCode thoth-init command', () => {
     expect(command.template).not.toContain('--harness');
     expect(command.template).toContain(join('C:', 'work', 'example'));
     expect(command.template).toContain('offline');
-    expect(command.template).toContain('openspec/');
+    expect(command.template).toContain('.thoth/');
+    expect(command.template).not.toContain('create .thoth/');
     expect(command.template).not.toContain('download\nskills');
   });
 });

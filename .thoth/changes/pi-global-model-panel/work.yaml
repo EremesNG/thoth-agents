@@ -1,0 +1,185 @@
+version: 1
+change:
+  id: pi-global-model-panel
+agreement:
+  status: approved
+  fingerprint: sha256:e34e283d4288d83e53aa1e30880f5de7c47c5d6a2b18730e0052ad800a485f32
+  source: user
+goal: Configure the six Thoth Pi specialists globally through /thoth-agents:models without leaving Pi or running the CLI.
+bounds:
+  include:
+    - Native Pi command and keyboard-accessible model/thinking panel
+    - Shared global specialist configuration service used by CLI and Pi UI
+    - Live Pi model catalog and model-aware effort selection
+    - Safe owned-file persistence and explicit runtime precedence diagnostics
+    - Focused tests and user documentation
+  exclude:
+    - Profiles and project-scoped configuration
+    - Ambient root model changes
+    - Other harness behavior changes
+    - Runtime scheduling or subagent lifecycle implementation
+    - Live user configuration edits during development
+    - Package installation or publication
+autonomy:
+  allowed:
+    - Edit bounded source and tests after the planning choice
+    - Run local checks and build
+    - Use native fresh specialists within one-writer ownership
+  requiresApproval:
+    - Material product or architecture changes
+    - Destructive operations or live global configuration changes
+  forbidden:
+    - Modifying other harness model settings
+    - Committing or publishing without request
+acceptance:
+  - id: AC-storage
+    criterion: CLI and native Pi share global six-specialist model/thinking persistence, preserve unrelated frontmatter and prompts, reject unowned or unsafe targets and stale drafts, and report write failures without false success.
+    inputs: [src/cli/pi-model-config.test.ts, src/cli/operations/pi.test.ts]
+    outputs: [src/cli/pi-model-config.ts, src/cli/operations/pi.ts]
+    checks: [Focused service and CLI tests pass, Sync preserves saved overrides]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T02:34:09.531Z'
+      evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+      inputFingerprint: sha256:0da11f709a5c236ffa392795244fcbe5d8dc8625093870db9a23887370b682bd
+      outputFingerprint: sha256:e31d48dfa3e7494d1d19bc244800d406bf1a3d7b7351652f8b4b23bce1ad6b22
+      definitionFingerprint: sha256:7b401f28ad0d14e16d2bc40464216b87c963afea20b3533172b99e2d1158384b
+  - id: AC-panel
+    criterion: The root-only /thoth-agents:models command opens a global six-specialist native TUI panel with live searchable model choices, compatible thinking choices, inheritance, explicit save/cancel, no writes on cancel, and graceful non-TUI behavior; the ambient root model is unchanged.
+    inputs: [src/pi.test.ts, src/pi/models-panel.test.ts]
+    outputs: [src/pi.ts, src/pi/models-panel.ts]
+    checks: [Command and panel public-boundary tests pass, Narrow-width and keyboard behavior is verified]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T02:34:09.531Z'
+      evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+      inputFingerprint: sha256:4bfe370120f1aedb58ef51fd6e17d3f55c3ae6af921d61bddc8873a3cfc89754
+      outputFingerprint: sha256:a88ff7e50acb99980a35dd7dea9d783f2fda9354a32af1420d4c886f69c8f4b2
+      definitionFingerprint: sha256:cb9ac47cdbac0e8b451ea6f30cefa330a9278ee439b2c84763566c0cbe94ba0e
+  - id: AC-integration
+    criterion: Package loading remains valid, user documentation explains global scope and actual inheritance/precedence and reload behavior, and final independent Oracle verification passes.
+    inputs: [src/pi.test.ts, src/cli/pi-model-config.test.ts, src/pi/models-panel.test.ts]
+    outputs: [src/pi.ts, src/pi/models-panel.ts, src/cli/pi-model-config.ts, README.md, docs/installation.md]
+    checks: [Typecheck passes, Build passes, Pi package verification passes, Relevant regression tests pass, Fresh Oracle PASS]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T02:34:09.531Z'
+      evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+      inputFingerprint: sha256:9d7b3cb951346f8d1e8d86d68441204f2444a54b004c7220e66816eda58a7a7c
+      outputFingerprint: sha256:4518f462c1a2bddc372276906f3cfbc56a751f759cf1f2bcda07568807caed61
+      definitionFingerprint: sha256:41fa807e45729347a7be05f7ab0d67fdd7f4624d19573ade9ca0550dcb4a95b8
+units:
+  - id: storage
+    output: Shared owned global specialist model configuration service and CLI integration with regression tests
+    dependsOn: []
+    reads: [src/cli/operations/pi.ts, src/cli/operations/pi.test.ts, src/cli/pi-effort.ts, src/cli/pi-resources.ts, src/cli/pi-managed-write.ts, src/harness/pi-specialists.ts]
+    writes: [src/cli/pi-model-config.ts, src/cli/pi-model-config.test.ts, src/cli/pi-effort.ts, src/cli/operations/pi.ts, src/cli/operations/pi.test.ts]
+    resources: [isolated temporary test directories]
+    owner: { role: root }
+    checks:
+      - id: storage-tests
+        criterion: Shared public service and existing CLI behavior pass focused tests with red-before-green evidence
+        command: pnpm exec vitest run src/cli/pi-model-config.test.ts src/cli/operations/pi.test.ts
+    acceptance: [AC-storage]
+    baseline:
+      status: captured
+      capturedAt: '2026-09-27T02:00:07.674Z'
+      paths:
+        - { path: src/cli/pi-model-config.ts, state: absent, fingerprint: 'sha256:9c18217eef6e0855f9baabfd5be6a66f2a28d3de9b09f0736d8267dd6c7ad674' }
+        - { path: src/cli/pi-model-config.test.ts, state: absent, fingerprint: 'sha256:1f0e99f343f038d153dddcfe38e639ccc512122483100ab9f65be35490f1cfe2' }
+        - { path: src/cli/pi-effort.ts, state: preexisting, fingerprint: 'sha256:6097cdca089139222b02fa17d92d2ca613b468652b1fd8eb650d4286249bdc32' }
+        - { path: src/cli/operations/pi.ts, state: preexisting, fingerprint: 'sha256:06dca6be1c41d1f5190716c68b4236c89c17579730e47741f32e370d0a0feee8' }
+        - { path: src/cli/operations/pi.test.ts, state: preexisting, fingerprint: 'sha256:1288ace2d158e97bdbad5ebe1e9026dec37a34e08d95372204fb976b18e9f898' }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T02:07:44.226Z'
+        evidence: [.thoth/changes/pi-global-model-panel/evidence/storage.md]
+        evidenceFingerprint: sha256:14a26f5a9db3039f6c0297b277131785e752947ae7e67b3f21723bafd9baa5ce
+        inputFingerprint: sha256:9b9c98976361a4b05bc6d35616c0e5fef7bc80c3de5b998c86f0c7a00ca389b3
+        outputFingerprint: sha256:58663bc41ddf694ff23ad0811da422cf6492390316ec83f1eafffc21192f1ec5
+        definitionFingerprint: sha256:44eb1ca5dc08b7874b00f4e748f8a59c82a676bc3bba5001f3280bf74b8c5a92
+  - id: panel
+    output: Native command and global editor bound to the accepted storage interface
+    dependsOn: [storage]
+    reads: [src/pi.ts, src/pi.test.ts, src/cli/pi-model-config.ts, src/cli/pi-effort.ts, src/harness/pi-specialists.ts, package.json, tsup.config.ts]
+    writes: [src/pi.ts, src/pi.test.ts, src/pi/models-panel.ts, src/pi/models-panel.test.ts]
+    resources: [isolated UI and filesystem fixtures]
+    owner: { role: designer }
+    checks:
+      - id: panel-tests
+        criterion: Tests exercise registered command and rendered panel input/output rather than private methods
+        command: pnpm exec vitest run src/pi.test.ts src/pi/models-panel.test.ts
+    acceptance: [AC-panel]
+    baseline:
+      status: captured
+      capturedAt: '2026-09-27T02:07:44.226Z'
+      paths:
+        - { path: src/pi.ts, state: preexisting, fingerprint: 'sha256:551f4d8cac2e1144802e2641c2b7da50862c0f0e6c711563a968ebb1ae4cd37b' }
+        - { path: src/pi.test.ts, state: preexisting, fingerprint: 'sha256:a3b2efcb8c065863c4395b05ae875381e6fbae2ce0ed82d555d703b7816ef172' }
+        - { path: src/pi/models-panel.ts, state: absent, fingerprint: 'sha256:60fe7045c33f0835155d572df8e14fa6b88fa56004227bd05e2677d715bb6d0a' }
+        - { path: src/pi/models-panel.test.ts, state: absent, fingerprint: 'sha256:98d899446e5060c3007bd20cf7fb27ed1d2f69da974750ab783be9b3d0d33d93' }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T02:34:09.531Z'
+        evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+        inputFingerprint: sha256:e5c3a48136dd9d81ffa123b72272b1ac4551d872eb405243f6e160848c90152a
+        outputFingerprint: sha256:2eae8a5405d1d641a5939db7d160552734091b6c89deb6396e143af1142c66e6
+        definitionFingerprint: sha256:1e9bb9102ae1bbba938acaee3bbbb9deace9bc1828f7e56f1f45c322dc553d1f
+  - id: integration
+    output: Integrated package verification and concise global configuration documentation
+    dependsOn: [storage, panel]
+    reads: [src/pi.ts, src/pi/models-panel.ts, src/cli/pi-model-config.ts, scripts/verify-pi-package.mjs, src/cli/pi-native-probe.ts, src/cli/pi-install.test.ts, README.md, docs/installation.md]
+    writes: [README.md, docs/installation.md, docs/agent/harness-packaging.md, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsup.config.ts, scripts/verify-pi-package.mjs, src/cli/pi-install.ts, src/cli/tui/model-catalog.test.ts]
+    resources: [local build output]
+    owner: { role: root }
+    checks:
+      - id: ci-check
+        criterion: Formatting and static checks pass
+        command: pnpm run check:ci
+      - id: typecheck
+        criterion: TypeScript passes
+        command: pnpm run typecheck
+      - id: build
+        criterion: Package builds without bundling a second Pi runtime
+        command: pnpm run build
+      - id: package-load
+        criterion: Packed native extension load contract passes
+        command: pnpm run verify:pi-package
+      - id: tests
+        criterion: Project regressions pass
+        command: pnpm test
+    acceptance: [AC-integration]
+    baseline: { status: unknown }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T02:34:09.531Z'
+        evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+        inputFingerprint: sha256:62de127d2fd62380c0976394105e9a5a518f0348d58c393240571e1df043b633
+        outputFingerprint: sha256:67209035bcce65d206a4131f09b74d9c32397fd854e6277108e0721558ea845b
+        definitionFingerprint: sha256:7db0677e3b5d0db5fe9416c81629b33aa97da79d307aef2c93dd73838411caa7
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/pi-global-model-panel/evidence/integration.md, .thoth/changes/pi-global-model-panel/evidence/oracle-final.md]
+  evidenceFingerprint: sha256:c625819a6a66864a69ec096ee8028becde78713df091b96fbd48f3602066b52a
+  inputFingerprint: sha256:f4ee2baaab0eb8a33691dae5e80da51aa284284fe167c85d1d3448a4a31c9056
+  outputFingerprint: sha256:fa8298d370e4877e62beb5902fedc9ea38c359e43f34c0901528b6330fc843ae
+  agreementFingerprint: sha256:e34e283d4288d83e53aa1e30880f5de7c47c5d6a2b18730e0052ad800a485f32
+  technicalFingerprint: sha256:49a90188811611b8b1b7e49c35b7efe0e4e12f5a49689487393501f9d15b8412

@@ -61,14 +61,20 @@ User-scope setup manages:
 
 - `~/.codex/AGENTS.md`: one bounded `thoth-agents:codex-root` orchestrator
   section while preserving unrelated global instructions;
-- six `~/.codex/agents/thoth-agents-<role>.toml` files for `explorer`,
-  `librarian`, `oracle`, `designer`, `quick`, and `deep`;
+- five `~/.codex/agents/thoth-agents-<role>.toml` files for `explorer`,
+  `librarian`, `oracle`, `designer`, and `worker`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - a backed-up merge in `~/.codex/config.toml` for the managed feature; and
 - mandatory external skills in Codex's user skill root, `~/.agents/skills/`,
   via `npx skills add`;
 - provider-owned thoth-mem setup through
   `npx -y thoth-mem@latest setup codex --json`.
+
+The role transition is preflighted before global writes. An existing Worker TOML
+without thoth-agents model-ownership state blocks setup and is preserved.
+Obsolete Quick or Deep TOMLs are retired only when that ownership state proves
+they are managed; their model and effort customizations are not copied to
+Worker.
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;
@@ -93,35 +99,32 @@ In each target repository invoke:
 $thoth-init
 ```
 
-This final skill step is offline and idempotent. It creates only the minimum
-OpenSpec directories, a missing project constitution, and init metadata under
-`openspec/`. SDD templates stay in the installed `thoth-sdd` plugin skill and
-are read there by phase contracts. Agent/global installation remains CLI-owned.
+This final skill step is offline and idempotent. It creates only missing
+`.thoth/` governance, including `.thoth/constitution.md` and `.thoth/specs/`,
+preserving existing project-owned content. It refuses a legacy active OpenSpec
+tree rather than creating a duplicate store. Phase references and validators
+stay in the installed `thoth-sdd` plugin skill. Agent/global installation
+remains CLI-owned.
 
-## Delegation and SDD
+## Delegation and proportional SDD
 
-The global root contract handles bounded work directly and delegates only for
-net gain. Children never delegate and each mutable surface has one writer.
-Root owns sequential SDD coordination through the bundled `thoth-sdd`
-contracts. It summarizes the relevant request context, scope, clarity, risk, and
-recommendation before asking the route question. Any explicit answer wins; the
-third answerless route question selects the displayed recommendation. Explorer
-owns Full discovery. Every route verifies: trivial deterministic Direct work may use
-focused root checks; materially risky Direct work and every Accelerated or Full
-final verify use a fresh read-only Oracle. Explicitly or bounded-default selected
-plan review remains optional.
+Every change completes proportional explore, specify, and clarify before
+classification; no phase forces a document, agent, or interview. The root
+classifies by meaningful coordination, uncertainty, and risk. File count alone
+does not increase scope: clear low-risk localized mechanical work may touch
+several files and stay small. Small work uses test-first implementation and
+focused verification without a record. Substantial work uses one
+`.thoth/changes/<id>/<id>.md` record; no alias or sidecar report is permitted.
 
-Before dispatch, the root distinguishes concrete artifact/decision dependencies
-from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
-and preserves one writer per mutable surface. It dispatches all ready,
-conflict-free lanes in a native wave before waiting, then joins only terminal
-native results before releasing dependents. Semantic triggers select `librarian`
-for current or external facts, `designer` for material UI/UX or accessibility,
-and `quick` for known narrow low-risk isolated edits; coupled or high-risk work
-uses `deep`. Codex native collaboration and lifecycle primitives are the sole
-authority for role selection, fan-out/fan-in, status/wait, steering,
-cancellation, and terminal results; unavailable primitives degrade truthfully to
-sequential work.
+Optional selected Oracle plan review remains separate from the post-review
+Implement (Recommended) / Stop decision; review never grants authorization or
+replaces final verification. Codex native collaboration owns dispatch, status,
+wait, cancellation, and terminal results. Root dispatches independent ready
+units before waiting, refills freed capacity, and accepts fresh upstream outputs
+before consumers start. Resume reads the compact record and current owned files,
+then reconciles native liveness before assigning another writer. A fresh
+read-only Oracle verifies substantial or materially risky work; see [SDD](sdd-pipeline.md)
+for evidence and limits.
 
 Standalone TOMLs are native Codex configuration layers, but role selection and
 some permission constraints remain instruction-level in the collaboration
@@ -151,7 +154,8 @@ provider targets, or emulates provider mechanics.
 During runtime the root follows the installed thoth-mem skill for recall,
 durable lessons, compaction, and semantic completion. Delegated `none`, `recall`,
 or `observe` authorization is independent from Codex workspace permissions and
-never transfers root lifecycle. `openspec/` remains the canonical SDD store.
+never transfers root lifecycle. `.thoth/` holds active change records, durable
+specs, and constitution; historical material remains preserved.
 
 ## Upstream references
 

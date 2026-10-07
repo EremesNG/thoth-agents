@@ -184,7 +184,7 @@ describe('OpenCode operations adapter v0.3', () => {
         label: model,
         provider: 'openai',
         source: 'remote' as const,
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
       })),
       context(),
     );
@@ -296,7 +296,7 @@ describe('OpenCode operations adapter v0.3', () => {
       expect.arrayContaining([
         'Ensure OpenCode plugin points at thoth-agents@0.4.8',
         'Disable OpenCode default agents',
-        'Write thoth-agents seven-role config',
+        'Write thoth-agents six-role config',
         'Synchronize global thoth-owned OpenCode skills',
         'Install required external skills',
         'Plan provider-owned thoth-mem setup',
@@ -520,7 +520,7 @@ describe('OpenCode operations adapter v0.3', () => {
     ).toBe(false);
   });
 
-  test('previews seven-role sync and all global skill installation', () => {
+  test('previews six-role sync and all global skill installation', () => {
     const sync = buildOpenCodeSyncPlan(context());
     const install = buildOpenCodeInstallPlan(context());
     const previews = [...sync.items, ...install.items]
@@ -562,7 +562,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
     expect(result.changedTargets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ observed: 'seven-role roster written' }),
+        expect.objectContaining({ observed: 'six-role roster written' }),
         expect.objectContaining({ label: 'Required OpenCode skills' }),
       ]),
     );
@@ -634,7 +634,7 @@ describe('OpenCode operations adapter v0.3', () => {
         variant: 'selected-librarian',
         temperature: 0.4,
       },
-      deep: { model: 'custom/deep', temperature: 0.5 },
+      worker: { model: 'custom/worker', temperature: 0.5 },
     };
     writeJson(liteConfigPath(), {
       ...baseConfig,
@@ -645,7 +645,7 @@ describe('OpenCode operations adapter v0.3', () => {
       },
       agents: {
         explorer: { variant: 'root-explorer', temperature: 0.25 },
-        deep: { temperature: 0.75 },
+        worker: { temperature: 0.75 },
       },
       tmux: { enabled: true, layout: 'tiled', main_pane_size: 55 },
     });
@@ -655,7 +655,7 @@ describe('OpenCode operations adapter v0.3', () => {
         dryRun: true,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             provider: 'openai',
             model: 'gpt-5.6-terra',
           },
@@ -680,7 +680,7 @@ describe('OpenCode operations adapter v0.3', () => {
       variant: 'root-explorer',
       temperature: 0.25,
     });
-    expect(written.presets.agents?.deep).toEqual({
+    expect(written.presets.agents?.worker).toEqual({
       model: 'openai/gpt-5.6-terra',
       temperature: 0.75,
     });
@@ -690,7 +690,7 @@ describe('OpenCode operations adapter v0.3', () => {
       temperature: 0.4,
     });
     expect(written.presets.custom).toEqual(customPreset);
-    expect(written.agents.deep).toEqual({
+    expect(written.agents.worker).toEqual({
       model: 'openai/gpt-5.6-terra',
       temperature: 0.75,
     });
@@ -801,7 +801,7 @@ describe('OpenCode operations adapter v0.3', () => {
             model: 'openai/gpt-5.6-luna',
             effort: { kind: 'inherit' },
           },
-          { role: 'deep', model: 'openai/gpt-5.6-terra' },
+          { role: 'worker', model: 'openai/gpt-5.6-terra' },
         ],
       },
       context(),
@@ -817,8 +817,8 @@ describe('OpenCode operations adapter v0.3', () => {
         expect.objectContaining({ code: 'opencode-roster-drift' }),
       ]),
     );
-    expect(beforeSecondApply.find(({ role }) => role === 'deep')).toEqual({
-      role: 'deep',
+    expect(beforeSecondApply.find(({ role }) => role === 'worker')).toEqual({
+      role: 'worker',
       model: 'openai/gpt-5.6-terra',
       effort: { kind: 'inherit' },
     });
@@ -832,7 +832,7 @@ describe('OpenCode operations adapter v0.3', () => {
       {
         harness: 'opencode',
         dryRun: true,
-        roles: [{ role: 'deep', model: 'openai/gpt-5.6-sol' }],
+        roles: [{ role: 'worker', model: 'openai/gpt-5.6-sol' }],
       },
       context(),
     );
@@ -840,11 +840,11 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(applyOpenCodePlan(secondPlan).applied).toBe(true);
 
     const afterSecondApply = getOpenCodeModelRoles();
-    expect(afterSecondApply.filter(({ role }) => role !== 'deep')).toEqual(
-      beforeSecondApply.filter(({ role }) => role !== 'deep'),
+    expect(afterSecondApply.filter(({ role }) => role !== 'worker')).toEqual(
+      beforeSecondApply.filter(({ role }) => role !== 'worker'),
     );
-    expect(afterSecondApply.find(({ role }) => role === 'deep')).toEqual({
-      role: 'deep',
+    expect(afterSecondApply.find(({ role }) => role === 'worker')).toEqual({
+      role: 'worker',
       model: 'openai/gpt-5.6-sol',
       effort: { kind: 'inherit' },
     });

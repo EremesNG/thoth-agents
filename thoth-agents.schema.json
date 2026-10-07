@@ -131,29 +131,7 @@
           },
           "required": ["primary", "fallback1", "fallback2", "fallback3"]
         },
-        "quick": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": ["primary", "fallback1", "fallback2", "fallback3"]
-        },
-        "deep": {
+        "worker": {
           "type": "object",
           "properties": {
             "primary": {
@@ -182,8 +160,7 @@
         "designer",
         "explorer",
         "librarian",
-        "quick",
-        "deep"
+        "worker"
       ],
       "additionalProperties": false
     },
@@ -195,7 +172,8 @@
       "additionalProperties": {
         "type": "object",
         "propertyNames": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^(?!quick$|deep$).+$"
         },
         "additionalProperties": {
           "type": "object",
@@ -249,7 +227,8 @@
     "agents": {
       "type": "object",
       "propertyNames": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^(?!quick$|deep$).+$"
       },
       "additionalProperties": {
         "type": "object",
@@ -351,56 +330,9 @@
         "chains": {
           "default": {},
           "type": "object",
-          "properties": {
-            "orchestrator": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "oracle": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "designer": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "explorer": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "librarian": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "quick": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "deep": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(?!quick$|deep$).+$"
           },
           "additionalProperties": {
             "minItems": 1,

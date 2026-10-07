@@ -32,7 +32,7 @@ export function createOracleAgent(
   return {
     name: 'oracle',
     description:
-      'Synchronous read-only strategic advisor for debugging, architecture, code review, and SDD plan review.',
+      'Read-only strategic advisor for debugging, architecture, focused plan review, and independent verification.',
     config: {
       model,
       temperature: 0.1,

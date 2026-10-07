@@ -12,8 +12,7 @@ describe('OpenAI default model projection', () => {
       librarian: { model: 'gpt-6-luna', effort: 'high' },
       oracle: { model: 'gpt-6-astra', effort: 'medium' },
       designer: { model: 'gpt-6-sol', effort: 'medium' },
-      quick: { model: 'gpt-6-luna', effort: 'medium' },
-      deep: { model: 'gpt-6-sol', effort: 'medium' },
+      worker: { model: 'gpt-6-luna', effort: 'max' },
     });
   });
 

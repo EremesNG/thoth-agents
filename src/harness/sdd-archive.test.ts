@@ -1,919 +1,330 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
-const ARCHIVE_SCRIPT = join(
-  process.cwd(),
-  'skills',
-  'thoth-archive',
-  'scripts',
-  'archive.mjs',
-);
-
-const INTERNAL_SPEC = `# Feature Specification: Example
-
-## Intent and scope
-
-**Why**: Keep internal implementation traceable.<br>
-**Impact**: No durable behavior changes.<br>
-**Affected capabilities**: None
-
-## User stories
-
-### US1 - Internal delivery (Priority: P1)
-
-**Covers**: FR-001, SC-001
-
-**Acceptance scenarios**:
-
-1. **Given** the implementation, **When** checks run, **Then** they pass.
-
-## Functional requirements
-
-- **FR-001 — Internal delivery**: \`[INTERNAL]\` The system MUST preserve behavior.
-
-## Success criteria
-
-- **SC-001** \`[buildable]\`: Focused checks pass.
-`;
-
-const OUTCOME_SPEC = INTERNAL_SPEC.replace(
-  '**Covers**: FR-001, SC-001',
-  '**Covers**: FR-001, SC-001, SC-002',
-).replace(
-  '- **SC-001** `[buildable]`: Focused checks pass.',
-  '- **SC-001** `[buildable]`: Focused checks pass.\n- **SC-002** `[outcome]`: Every release has an observed result.',
-);
-
-const DURABLE_DELTA_SPEC = `# Feature Specification: Durable example
-
-## Intent and scope
-
-**Why**: Update the durable example contract.<br>
-**Impact**: Adds, modifies, removes, and renames observable behavior.<br>
-**Affected capabilities**: \`example\`
-
-## User stories
-
-### US1 - Durable delivery (Priority: P1)
-
-**Covers**: FR-001, FR-002, FR-003, FR-004, SC-001
-
-**Acceptance scenarios**:
-
-1. **Given** a valid request, **When** the example runs, **Then** the durable result is visible.
-
-## Functional requirements
-
-- **FR-001 — Added behavior**: \`[ADDED example]\` The system MUST expose added behavior.
-- **FR-002 — Existing behavior**: \`[MODIFIED example]\` The system MUST expose updated behavior.
-- **FR-003 — Removed behavior**: \`[REMOVED example]\` The system MUST no longer expose removed behavior.
-- **FR-004 — New name**: \`[RENAMED example FROM Old name]\` The system MUST expose renamed behavior.
-
-## Success criteria
-
-- **SC-001** \`[buildable]\`: All durable contract checks pass.
-`;
-
-const MULTILINE_DURABLE_DELTA_SPEC = DURABLE_DELTA_SPEC.replace(
-  '1. **Given** a valid request, **When** the example runs, **Then** the durable result is visible.',
-  `1. **Given** a valid request with wrapped
-   context, **When** the example runs across a wrapped
-   execution path, **Then** the complete durable
-   result is visible.
-2. **Given** a second valid request,
-   **When** another execution path runs,
-   **Then** the second durable result is visible.`,
-);
-
-const EXISTING_CANONICAL_SPEC = `# Example Specification
-
-## Purpose
-
-Durable example behavior.
-
-## Requirements
-
-### Requirement: Existing behavior
-
-The system MUST expose old behavior.
-
-#### Scenario: existing
-
-- **GIVEN** an existing request
-- **WHEN** it runs
-- **THEN** the old result is visible
-
-### Requirement: Removed behavior
-
-The system MUST expose removed behavior.
-
-#### Scenario: removed
-
-- **GIVEN** a removed request
-- **WHEN** it runs
-- **THEN** the removed result is visible
-
-### Requirement: Old name
-
-The system MUST expose the old name.
-
-#### Scenario: old name
-
-- **GIVEN** an old request
-- **WHEN** it runs
-- **THEN** the old name is visible
-`;
-
-const VALID_VERIFY_REPORT = `# Verification Report: Example
-
-**Reviewer**: oracle<br>
-**Independent from implementer**: Yes<br>
-**Verdict**: PASS
-
-## Review dimensions
-
-- **Completeness**: Every accepted contract is represented.
-- **Correctness**: The implementation matches the specification.
-- **Coherence**: Specification, implementation, and evidence agree.
-
-## Compliance matrix
-
-| Requirement | Implementation evidence | Executed check | Result |
-| --- | --- | --- | --- |
-| FR-001 | \`src/example.ts:1\` | \`pnpm test\` | PASS |
-| SC-001 \`[buildable]\` | \`src/example.test.ts:1\` | \`pnpm test\` | PASS |
-
-## Findings
-
-- None.
-
-## Residual risks
-
-- None.
-`;
-
-const DURABLE_VERIFY_REPORT = VALID_VERIFY_REPORT.replace(
-  '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-  '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |\n| FR-002 | `src/example.ts:2` | `pnpm test` | PASS |\n| FR-003 | `src/example.ts:3` | `pnpm test` | PASS |\n| FR-004 | `src/example.ts:4` | `pnpm test` | PASS |',
-);
-
-const OUTCOME_RISK_VERIFY_REPORT = VALID_VERIFY_REPORT.replace(
-  '| SC-001 `[buildable]` | `src/example.test.ts:1` | `pnpm test` | PASS |',
-  '| SC-001 `[buildable]` | `src/example.test.ts:1` | `pnpm test` | PASS |\n| SC-002 `[outcome]` | Product observation pending | `N/A` | RISK |',
-).replace(
-  '## Residual risks\n\n- None.',
-  '## Residual risks\n\n- SC-002: [observation plan]',
-);
-
-function createChange() {
-  const root = mkdtempSync(join(tmpdir(), 'thoth-archive-'));
-  const changesRoot = join(root, 'openspec', 'changes');
-  const change = join(changesRoot, 'example');
-  const specs = join(root, 'openspec', 'specs');
+const script = join(process.cwd(), 'skills/thoth-archive/scripts/archive.mjs');
+const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const roots: string[] = [];
+function fixture(
+  deltas = '- None.',
+  id = 'demo',
+  specs: Record<string, string | null> = {},
+) {
+  const root = mkdtempSync(join(tmpdir(), 'sdd-archive-'));
+  roots.push(root);
+  const change = join(root, '.thoth/changes', id);
   mkdirSync(change, { recursive: true });
-  mkdirSync(specs, { recursive: true });
-  writeFileSync(join(specs, 'baseline.md'), 'permanent specification\n');
-  writeFileSync(join(change, 'spec.md'), INTERNAL_SPEC);
-  writeFileSync(join(change, 'plan.md'), '# Plan\n');
-  writeFileSync(
-    join(change, 'tasks.md'),
-    '- [x] T001 [US1] Complete the change in `src/example.ts` | Verify: focused test passes\n',
-  );
-  writeFileSync(join(change, 'verify-report.md'), VALID_VERIFY_REPORT);
-  writeFileSync(
-    join(change, 'archive-report.md'),
-    `# Archive Report: Example
-
-**Status**: READY<br>
-**Oracle verdict**: PASS<br>
-**Archive path**: \`openspec/changes/archive/YYYY-MM-DD-[feature]/\`
-
-## Completed scope
-
-- Example.
-
-## Verification lineage
-
-- \`verify-report.md\` records oracle PASS.
-
-## Canonical specification sync
-
-- Pending: archive applies declared durable deltas transactionally.
-`,
-  );
-  return { root, change, changesRoot, specs };
+  mkdirSync(join(root, '.thoth/specs'), { recursive: true });
+  writeFileSync(join(root, 'source.txt'), 'reviewed\n');
+  const capabilities = [
+    ...new Set(
+      [
+        ...deltas.matchAll(
+          /^- `(?:ADDED|MODIFIED|REMOVED|RENAMED) ([a-z0-9-]+)/gm,
+        ),
+      ].map((match) => match[1]),
+    ),
+  ];
+  const reviewedSpecs = capabilities.map((capability) => {
+    const content = specs[capability] ?? null;
+    const path = `.thoth/specs/${capability}/spec.md`;
+    if (content === null) return `- Source: ${path} | absent`;
+    const canonical = join(root, path);
+    mkdirSync(join(root, '.thoth/specs', capability), { recursive: true });
+    writeFileSync(canonical, content);
+    return `- Source: ${path} | sha256:${hash(content)}`;
+  });
+  const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver behavior.\n\n## Non-goals\n\nNo unrelated edits.\n\n## Acceptance\n\n- AC-1: Tested outcome.\n\n## Clarifications\n\n- Accepted intent is settled; no material question remains.\n\n## Decisions\n\n- Scope confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nChange implementation and tests.\n\n## Tasks\n\n- [x] AC-1: Complete tested behavior.\n\n## Authorization\n\n**Plan review**: OKAY\n**Plan review selection**: EXPLICIT_REVIEW\n**Implementation**: AUTHORIZED\n\n`;
+  const verify = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${hash(before.split('## Authorization')[0])}\n\n- AC-1: PASS | pnpm test | observed behavior\n- Source: source.txt | sha256:${hash('reviewed\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
+  writeFileSync(join(change, `${id}.md`), before + verify);
+  return { root, change, id, before };
 }
-
-function archive(change: string, fault?: string) {
+function archive(f: { root: string; change: string }, env = {}) {
   return spawnSync(
     process.execPath,
-    [ARCHIVE_SCRIPT, '--change', change, '--date', '2026-07-19', '--json'],
-    {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        ...(fault ? { THOTH_ARCHIVE_TEST_FAULT: fault } : {}),
-      },
-    },
+    [script, '--change', f.change, '--date', '2026-09-28', '--json'],
+    { windowsHide: true, encoding: 'utf8', env: { ...process.env, ...env } },
   );
 }
+afterEach(() => {
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
+const addition =
+  '- `ADDED widget` **New behavior** — The widget MUST respond.\n  - GIVEN an active widget; WHEN invoked; THEN it responds.';
 
-describe('SDD archive transition', () => {
-  test('blocks incomplete tasks', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'tasks.md'),
-        '- [ ] T001 [US1] Finish in `src/example.ts` | Verify: focused test passes\n',
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('All tasks must be complete');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('blocks a non-passing oracle verdict', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        VALID_VERIFY_REPORT.replace('**Verdict**: PASS', '**Verdict**: FAIL'),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('must record PASS');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('blocks a critical finding without explicit resolution even after PASS', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        VALID_VERIFY_REPORT.replace(
-          '- None.\n\n## Residual risks',
-          '- CRITICAL: unsafe migration.\n\n## Residual risks',
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Unresolved CRITICAL');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    '- CRITICAL RESOLVED: migration risk was eliminated.',
-    '- No CRITICAL findings remain.',
-  ])('accepts non-blocking finding text: %s', (finding) => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        VALID_VERIFY_REPORT.replace(
-          '- None.\n\n## Residual risks',
-          `${finding}\n\n## Residual risks`,
-        ),
-      );
-
-      expect(archive(fixture.change).status).toBe(0);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    {
-      label: 'titleless requirement heading',
-      canonical:
-        '# Example Specification\n\n## Requirements\n\n### Requirement:\n\nBroken body.\n',
-    },
-    {
-      label: 'duplicate exact requirement title',
-      canonical: `${EXISTING_CANONICAL_SPEC}\n### Requirement: Existing behavior\n\nDuplicate body.\n`,
-    },
-  ])('rejects a canonical baseline with $label before permanent writes', ({
-    canonical,
-  }) => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      const canonicalPath = join(capabilityDir, 'spec.md');
-      const reportPath = join(fixture.change, 'archive-report.md');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(canonicalPath, canonical);
-      writeFileSync(join(fixture.change, 'spec.md'), DURABLE_DELTA_SPEC);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-      const originalReport = readFileSync(reportPath, 'utf8');
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('SDD-SPEC-DELTA-BASELINE');
-      expect(readFileSync(canonicalPath, 'utf8')).toBe(canonical);
-      expect(readFileSync(reportPath, 'utf8')).toBe(originalReport);
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    [
-      'a non-oracle reviewer',
-      VALID_VERIFY_REPORT.replace(
-        '**Reviewer**: oracle',
-        '**Reviewer**: quick',
+describe('transactional .thoth change archive', () => {
+  test('archives after Authorization-only bookkeeping edits without a new review', () => {
+    const f = fixture();
+    const record = join(f.change, `${f.id}.md`);
+    const amended = readFileSync(record, 'utf8').replace(
+      '**Implementation**: AUTHORIZED',
+      '**Implementation**: AUTHORIZED\n\n- Authorization confirmed by root.',
+    );
+    writeFileSync(record, amended);
+    const result = archive(f);
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      readFileSync(
+        join(f.root, '.thoth/changes/archive/2026-09-28-demo/demo.md'),
+        'utf8',
       ),
-      'independent oracle reviewer',
-    ],
-    [
-      'self verification',
-      VALID_VERIFY_REPORT.replace(
-        '**Independent from implementer**: Yes',
-        '**Independent from implementer**: No',
-      ),
-      'independent oracle reviewer',
-    ],
-    [
-      'missing review dimensions',
-      VALID_VERIFY_REPORT.replace(
-        /## Review dimensions[\s\S]+?## Compliance matrix/,
-        '## Compliance matrix',
-      ),
-      'review dimensions',
-    ],
-    [
-      'missing compliance evidence',
-      VALID_VERIFY_REPORT.replace(
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |\n',
+    ).toBe(amended);
+  });
+
+  test('rejects a pre-Authorization edit as stale without mutating the active record or specs', () => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const stale = readFileSync(record, 'utf8').replace(
+      'Deliver behavior.',
+      'Deliver changed behavior.',
+    );
+    writeFileSync(record, stale);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-VERIFICATION-STALE');
+    expect(readFileSync(record, 'utf8')).toBe(stale);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test('archives the verified ID-named record and applies declared canonical delta only', () => {
+    const f = fixture(addition);
+    const result = archive(f);
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout);
+    const archiveDir = join(f.root, '.thoth/changes/archive/2026-09-28-demo');
+    expect(report).toMatchObject({
+      status: 'archived',
+      changeId: 'demo',
+      archivePath: archiveDir,
+      recordPath: join(archiveDir, 'demo.md'),
+      specsUpdated: ['widget'],
+    });
+    expect(readFileSync(join(archiveDir, 'demo.md'), 'utf8')).toContain(
+      '**Archive**: READY',
+    );
+    expect(existsSync(join(archiveDir, '2026-09-28-demo.md'))).toBe(false);
+    expect(existsSync(f.change)).toBe(false);
+    expect(
+      readFileSync(join(f.root, '.thoth/specs/widget/spec.md'), 'utf8'),
+    ).toContain('### Requirement: New behavior');
+  });
+
+  test('adds into an existing capability from its reviewed baseline', () => {
+    const existing =
+      '# Widget Specification\n\n## Requirements\n\n### Requirement: Existing behavior\n\nThe existing requirement remains.\n';
+    const f = fixture(addition, 'demo', { widget: existing });
+    const result = archive(f);
+    expect(result.status, result.stderr).toBe(0);
+    const updated = readFileSync(
+      join(f.root, '.thoth/specs/widget/spec.md'),
+      'utf8',
+    );
+    expect(updated).toContain('### Requirement: Existing behavior');
+    expect(updated).toContain('The existing requirement remains.');
+    expect(updated).toContain('### Requirement: New behavior');
+  });
+
+  test('supports --project only when it matches the active change root', () => {
+    const f = fixture();
+    const result = spawnSync(
+      process.execPath,
+      [
+        script,
+        '--project',
+        f.root,
+        '--change',
+        f.change,
+        '--date',
+        '2026-09-28',
+        '--json',
+      ],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).changeId).toBe('demo');
+    const other = fixture();
+    const mismatch = spawnSync(
+      process.execPath,
+      [
+        script,
+        '--project',
+        f.root,
+        '--change',
+        other.change,
+        '--date',
+        '2026-09-28',
+        '--json',
+      ],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    expect(mismatch.status).not.toBe(0);
+    expect(existsSync(join(other.change, 'demo.md'))).toBe(true);
+  });
+
+  test('rejects missing or stale verification without changing active record or specs', () => {
+    const f = fixture(addition);
+    writeFileSync(join(f.root, 'source.txt'), 'stale\n');
+    expect(archive(f).status).not.toBe(0);
+    expect(existsSync(f.change)).toBe(true);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+  });
+
+  test('does not overwrite same-title changes when reviewed baseline coverage is missing', () => {
+    const modified =
+      '- `MODIFIED widget` **Existing behavior** — The updated behavior MUST hold.\n  - GIVEN an existing widget; WHEN invoked; THEN updated behavior holds.';
+    const reviewed =
+      '# Widget Specification\n\n## Requirements\n\n### Requirement: Existing behavior\n\nThe reviewed behavior.\n';
+    const f = fixture(modified, 'demo', { widget: reviewed });
+    const record = join(f.change, `${f.id}.md`);
+    writeFileSync(
+      record,
+      readFileSync(record, 'utf8').replace(
+        `- Source: .thoth/specs/widget/spec.md | sha256:${hash(reviewed)}\n`,
         '',
       ),
-      'Verification evidence is missing',
-    ],
-    [
-      'template placeholders used as PASS evidence',
-      VALID_VERIFY_REPORT.replace(
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-        '| FR-001 | `[path:line]` | `[command]` | PASS |',
+    );
+    const spec = join(f.root, '.thoth/specs/widget/spec.md');
+    const newer = reviewed.replace('reviewed behavior', 'newer behavior');
+    writeFileSync(spec, newer);
+
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(existsSync(f.change)).toBe(true);
+    expect(readFileSync(spec, 'utf8')).toBe(newer);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test('rejects same-title canonical edits without replacing newer content', () => {
+    const modified =
+      '- `MODIFIED widget` **Existing behavior** — The updated behavior MUST hold.\n  - GIVEN an existing widget; WHEN invoked; THEN updated behavior holds.';
+    const reviewed =
+      '# Widget Specification\n\n## Requirements\n\n### Requirement: Existing behavior\n\nThe reviewed behavior.\n';
+    const f = fixture(modified, 'demo', { widget: reviewed });
+    const spec = join(f.root, '.thoth/specs/widget/spec.md');
+    const newer = reviewed.replace('reviewed behavior', 'newer behavior');
+    writeFileSync(spec, newer);
+
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(existsSync(f.change)).toBe(true);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(readFileSync(spec, 'utf8')).toBe(newer);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test('requires reviewed baselines and rejects deleted or newly created canonical targets', () => {
+    const missing = fixture(addition);
+    const missingRecord = join(missing.change, `${missing.id}.md`);
+    writeFileSync(
+      missingRecord,
+      readFileSync(missingRecord, 'utf8').replace(
+        '- Source: .thoth/specs/widget/spec.md | absent\n',
+        '',
       ),
-      'Verification evidence is missing',
-    ],
-    [
-      'template placeholders used as review dimensions',
-      VALID_VERIFY_REPORT.replace(
-        /## Review dimensions[\s\S]+?## Compliance matrix/,
-        '## Review dimensions\n\n- **Completeness**: [All accepted scope.]\n- **Correctness**: [Behavior matches.]\n- **Coherence**: [Artifacts agree.]\n\n## Compliance matrix',
-      ),
-      'review dimensions',
-    ],
-    [
-      'a duplicate requirement row that hides FAIL',
-      VALID_VERIFY_REPORT.replace(
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | FAIL |\n| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-      ),
-      'unique known requirement IDs',
-    ],
-    [
-      'an unknown requirement row',
-      VALID_VERIFY_REPORT.replace(
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |\n| FR-999 | `src/ghost.ts:1` | `pnpm test` | FAIL |',
-      ),
-      'unique known requirement IDs',
-    ],
-    [
-      'a malformed requirement row beside PASS',
-      VALID_VERIFY_REPORT.replace(
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-        '| FR-001 | `src/example.ts:1` | `pnpm test` | FAIL | extra |\n| FR-001 | `src/example.ts:1` | `pnpm test` | PASS |',
-      ),
-      'unique known requirement IDs',
-    ],
-  ])('revalidates direct archive closeout for %s', (_label, report, message) => {
-    const fixture = createChange();
-    try {
-      writeFileSync(join(fixture.change, 'verify-report.md'), report);
+    );
+    expect(archive(missing).status).not.toBe(0);
+    expect(existsSync(missing.change)).toBe(true);
+    expect(
+      existsSync(join(missing.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
 
-      const result = archive(fixture.change);
+    const added = fixture(addition);
+    const created = join(added.root, '.thoth/specs/widget/spec.md');
+    mkdirSync(join(added.root, '.thoth/specs/widget'), { recursive: true });
+    writeFileSync(created, '# Widget Specification\n');
+    expect(archive(added).status).not.toBe(0);
+    expect(readFileSync(created, 'utf8')).toBe('# Widget Specification\n');
+    expect(existsSync(added.change)).toBe(true);
 
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(message);
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
+    const modified =
+      '- `MODIFIED widget` **Existing behavior** — The updated behavior MUST hold.\n  - GIVEN an existing widget; WHEN invoked; THEN updated behavior holds.';
+    const original =
+      '# Widget Specification\n\n## Requirements\n\n### Requirement: Existing behavior\n\nOriginal.\n';
+    const deleted = fixture(modified, 'demo', { widget: original });
+    rmSync(join(deleted.root, '.thoth/specs/widget/spec.md'));
+    expect(archive(deleted).status).not.toBe(0);
+    expect(existsSync(deleted.change)).toBe(true);
+    expect(
+      existsSync(join(deleted.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
   });
 
-  test('moves an eligible change without modifying permanent specifications', () => {
-    const fixture = createChange();
-    try {
-      const result = archive(fixture.change);
-      const target = join(fixture.changesRoot, 'archive', '2026-07-19-example');
-
-      expect(result.status, result.stderr).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        status: 'archived',
-        archivePath: target,
-      });
-      expect(existsSync(fixture.change)).toBe(false);
-      expect(existsSync(target)).toBe(true);
-      expect(readFileSync(join(target, 'archive-report.md'), 'utf8')).toContain(
-        'openspec/changes/archive/2026-07-19-example/',
-      );
-      expect(readFileSync(join(target, 'archive-report.md'), 'utf8')).toContain(
-        '**Status**: ARCHIVED',
-      );
-      expect(readFileSync(join(target, 'archive-report.md'), 'utf8')).toContain(
-        'None: no durable behavior delta.',
-      );
-      expect(
-        readFileSync(
-          join(fixture.root, 'openspec', 'specs', 'baseline.md'),
-          'utf8',
-        ),
-      ).toBe('permanent specification\n');
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
+  test('preserves unaffected requirements and applies exact-title modifications, removals, and renames', () => {
+    const deltas =
+      '- `MODIFIED widget` **Old** — The new statement MUST hold.\n  - GIVEN old behavior; WHEN changed; THEN new behavior.\n- `REMOVED widget` **Delete** — The obsolete behavior is removed.\n- `RENAMED widget FROM Previous` **Next** — The renamed behavior MUST hold.\n  - GIVEN prior behavior; WHEN renamed; THEN the new behavior holds.';
+    const original =
+      '# Widget Specification\n\n## Requirements\n\n### Requirement: Old\n\nOriginal\n\n### Requirement: Delete\n\nRemove\n\n### Requirement: Previous\n\nRename\n\n### Requirement: Untouched\n\nPreserve byte-for-byte\n';
+    const f = fixture(deltas, 'demo', { widget: original });
+    const specs = join(f.root, '.thoth/specs/widget');
+    const result = archive(f);
+    expect(result.status, result.stderr).toBe(0);
+    const updated = readFileSync(join(specs, 'spec.md'), 'utf8');
+    expect(updated).toContain(
+      '### Requirement: Untouched\n\nPreserve byte-for-byte',
+    );
+    expect(updated).toContain('### Requirement: Next');
+    expect(updated).not.toContain('### Requirement: Delete');
+    expect(updated).not.toContain('### Requirement: Previous');
+    expect(updated).toContain('The new statement MUST hold.');
   });
 
-  test('transactionally applies ADDED, MODIFIED, REMOVED, and RENAMED deltas', () => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(join(capabilityDir, 'spec.md'), EXISTING_CANONICAL_SPEC);
-      writeFileSync(join(fixture.change, 'spec.md'), DURABLE_DELTA_SPEC);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-
-      const result = archive(fixture.change);
-      const canonical = readFileSync(join(capabilityDir, 'spec.md'), 'utf8');
-
-      expect(result.status, result.stderr).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        status: 'archived',
-        specsUpdated: ['example'],
-      });
-      expect(canonical).toContain('### Requirement: Added behavior');
-      expect(canonical).toContain('The system MUST expose updated behavior.');
-      expect(canonical).not.toContain('### Requirement: Removed behavior');
-      expect(canonical).not.toContain('### Requirement: Old name');
-      expect(canonical).toContain('### Requirement: New name');
-      expect(canonical).toContain('#### Scenario: US1 - Durable delivery 1');
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
+  test('fails closed on unsafe IDs, destination collisions, and symlinked parents', () => {
+    for (const id of ['con', 'nul', 'COM1', 'LPT9']) {
+      const f = fixture('- None.', id);
+      expect(archive(f).status, id).not.toBe(0);
+      expect(existsSync(f.change)).toBe(true);
     }
+    const f = fixture();
+    const destination = join(f.root, '.thoth/changes/archive/2026-09-28-demo');
+    mkdirSync(destination, { recursive: true });
+    writeFileSync(join(destination, 'unrelated'), 'preserve');
+    expect(archive(f).status).not.toBe(0);
+    expect(readFileSync(join(destination, 'unrelated'), 'utf8')).toBe(
+      'preserve',
+    );
+    expect(existsSync(f.change)).toBe(true);
+
+    const symlink = fixture();
+    const outside = join(symlink.root, 'outside');
+    mkdirSync(outside);
+    rmSync(join(symlink.root, '.thoth/changes/archive'), {
+      recursive: true,
+      force: true,
+    });
+    symlinkSync(
+      outside,
+      join(symlink.root, '.thoth/changes/archive'),
+      'junction',
+    );
+    expect(archive(symlink).status).not.toBe(0);
+    expect(existsSync(symlink.change)).toBe(true);
   });
 
-  test('preserves every multiline acceptance scenario in canonical deltas', () => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(join(capabilityDir, 'spec.md'), EXISTING_CANONICAL_SPEC);
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        MULTILINE_DURABLE_DELTA_SPEC,
-      );
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-
-      const result = archive(fixture.change);
-      const canonical = readFileSync(join(capabilityDir, 'spec.md'), 'utf8');
-
-      expect(result.status, result.stderr).toBe(0);
-      expect(canonical).toContain(
-        '- **GIVEN** a valid request with wrapped context',
-      );
-      expect(canonical).toContain(
-        '- **WHEN** the example runs across a wrapped execution path',
-      );
-      expect(canonical).toContain(
-        '- **THEN** the complete durable result is visible',
-      );
-      expect(canonical).toContain('#### Scenario: US1 - Durable delivery 2');
-      expect(canonical).toContain('- **GIVEN** a second valid request');
-      expect(canonical).toContain(
-        '- **THEN** the second durable result is visible',
-      );
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    {
-      label: 'ADDED for an existing exact title',
-      spec: DURABLE_DELTA_SPEC.replace(
-        'FR-001 — Added behavior',
-        'FR-001 — Existing behavior',
-      ),
-      code: 'SDD-SPEC-DELTA-ADDED-EXISTS',
-    },
-    {
-      label: 'MODIFIED for a missing exact title',
-      spec: DURABLE_DELTA_SPEC.replace(
-        'FR-002 — Existing behavior',
-        'FR-002 — Missing behavior',
-      ),
-      code: 'SDD-SPEC-DELTA-MODIFIED-MISSING',
-    },
-  ])('rejects $label with the shared preflight before permanent writes', ({
-    spec,
-    code,
-  }) => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      const canonicalPath = join(capabilityDir, 'spec.md');
-      const reportPath = join(fixture.change, 'archive-report.md');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(canonicalPath, EXISTING_CANONICAL_SPEC);
-      writeFileSync(join(fixture.change, 'spec.md'), spec);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-      const originalReport = readFileSync(reportPath, 'utf8');
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(code);
-      expect(readFileSync(canonicalPath, 'utf8')).toBe(EXISTING_CANONICAL_SPEC);
-      expect(readFileSync(reportPath, 'utf8')).toBe(originalReport);
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    ['after-original-backup'],
-    ['after-first-canonical-write'],
-    ['after-report-write'],
-    ['before-change-move'],
-  ])('rolls back canonical and report writes on a handled %s fault', (fault) => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      const canonicalPath = join(capabilityDir, 'spec.md');
-      const reportPath = join(fixture.change, 'archive-report.md');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(canonicalPath, EXISTING_CANONICAL_SPEC);
-      writeFileSync(join(fixture.change, 'spec.md'), DURABLE_DELTA_SPEC);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-      const originalReport = readFileSync(reportPath, 'utf8');
-
-      const result = archive(fixture.change, fault);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(`Injected archive fault: ${fault}`);
-      expect(readFileSync(canonicalPath, 'utf8')).toBe(EXISTING_CANONICAL_SPEC);
-      expect(existsSync(fixture.change)).toBe(true);
-      expect(readFileSync(reportPath, 'utf8')).toBe(originalReport);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('continues canonical rollback when report recovery itself fails', () => {
-    const fixture = createChange();
-    try {
-      const capabilityDir = join(fixture.specs, 'example');
-      const canonicalPath = join(capabilityDir, 'spec.md');
-      mkdirSync(capabilityDir, { recursive: true });
-      writeFileSync(canonicalPath, EXISTING_CANONICAL_SPEC);
-      writeFileSync(join(fixture.change, 'spec.md'), DURABLE_DELTA_SPEC);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-
-      const result = archive(
-        fixture.change,
-        'after-report-write,report-restore',
-      );
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('report recovery');
-      expect(readFileSync(canonicalPath, 'utf8')).toBe(EXISTING_CANONICAL_SPEC);
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('leaves every permanent spec untouched when one declared delta is invalid', () => {
-    const fixture = createChange();
-    try {
-      const invalidSpec = DURABLE_DELTA_SPEC.replace(
-        '**Affected capabilities**: `example`',
-        '**Affected capabilities**: `new-capability`, `missing-capability`',
-      )
-        .replaceAll('example]`', 'new-capability]`')
-        .replace('[MODIFIED new-capability]', '[MODIFIED missing-capability]')
-        .replace('[REMOVED new-capability]', '[REMOVED missing-capability]')
-        .replace(
-          '[RENAMED new-capability FROM Old name]',
-          '[RENAMED missing-capability FROM Old name]',
-        );
-      writeFileSync(join(fixture.change, 'spec.md'), invalidSpec);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        DURABLE_VERIFY_REPORT,
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('missing-capability');
-      expect(existsSync(join(fixture.specs, 'new-capability', 'spec.md'))).toBe(
-        false,
-      );
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects a malformed FR even when another FR parses successfully', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        DURABLE_DELTA_SPEC.replace(
-          '- **FR-002 — Existing behavior**: `[MODIFIED example]` The system MUST expose updated behavior.',
-          '- **FR-002**: The system MUST expose a silently ignored requirement.',
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Every FR-###');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    'FR-01',
-    'FR-0010',
-  ])('rejects functional requirement ID width %s', (invalidId) => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        DURABLE_DELTA_SPEC.replace(
-          '- **FR-002 — Existing behavior**: `[MODIFIED example]` The system MUST expose updated behavior.',
-          `- **${invalidId} — Existing behavior**: \`[MODIFIED example]\` The system MUST expose updated behavior.`,
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Every FR-###');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects an unformatted functional requirement candidate', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        DURABLE_DELTA_SPEC.replace(
-          '- **FR-004 — New name**: `[RENAMED example FROM Old name]` The system MUST expose renamed behavior.',
-          '- **FR-004 — New name**: `[RENAMED example FROM Old name]` The system MUST expose renamed behavior.\n  - FR-005 The system MUST not silently disappear.',
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Every FR-###');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    'SC-01',
-    'SC-0010',
-  ])('rejects success criterion ID width %s', (invalidId) => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        INTERNAL_SPEC.replace(
-          '- **SC-001** `[buildable]`: Focused checks pass.',
-          `- **${invalidId}** \`[buildable]\`: Focused checks pass.`,
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Every SC-###');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects an unformatted success criterion candidate', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        DURABLE_DELTA_SPEC.replace(
-          '- **SC-001** `[buildable]`: All durable contract checks pass.',
-          '- **SC-001** `[buildable]`: All durable contract checks pass.\n  - SC-002 Every malformed criterion is rejected.',
-        ),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Every SC-###');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects requirements displaced from their canonical sections', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(
-        join(fixture.change, 'spec.md'),
-        INTERNAL_SPEC.replace('## Functional requirements\n\n', ''),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Functional requirements');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('requires an explicit disposition for every outcome criterion', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(join(fixture.change, 'spec.md'), OUTCOME_SPEC);
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('SC-002');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects a placeholder residual risk for an outcome criterion', () => {
-    const fixture = createChange();
-    try {
-      writeFileSync(join(fixture.change, 'spec.md'), OUTCOME_SPEC);
-      writeFileSync(
-        join(fixture.change, 'verify-report.md'),
-        OUTCOME_RISK_VERIFY_REPORT,
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('SC-002');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test('blocks an archive report that is not prepared for closeout', () => {
-    const fixture = createChange();
-    try {
-      const reportPath = join(fixture.change, 'archive-report.md');
-      writeFileSync(
-        reportPath,
-        readFileSync(reportPath, 'utf8').replace('READY', 'BLOCKED'),
-      );
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('archive-report.md must record READY');
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
-
-  test.each([
-    [
-      'a status suffix',
-      (report: string) =>
-        report.replace('**Status**: READY', '**Status**: READY-ish'),
-      'record READY',
-    ],
-    [
-      'an unapproved oracle verdict',
-      (report: string) =>
-        report.replace('**Oracle verdict**: PASS', '**Oracle verdict**: FAIL'),
-      'oracle PASS',
-    ],
-    [
-      'missing verification lineage',
-      (report: string) => report.replace('verify-report.md', 'review.md'),
-      'verification lineage',
-    ],
-    [
-      'a non-canonical target placeholder',
-      (report: string) =>
-        report.replace(
-          'openspec/changes/archive/YYYY-MM-DD-[feature]/',
-          'openspec/archive/example/',
-        ),
-      'dated archive target',
-    ],
-    [
-      'a target placeholder displaced into notes',
-      (report: string) =>
-        report.replace(
-          '**Archive path**: `openspec/changes/archive/YYYY-MM-DD-[feature]/`',
-          '**Archive path**: `openspec/archive/example/`\n\n## Notes\n\n- `openspec/changes/archive/YYYY-MM-DD-[feature]/`',
-        ),
-      'dated archive target',
-    ],
-    [
-      'a pending sync marker displaced from its section',
-      (report: string) =>
-        report.replace(
-          '- Pending: archive applies declared durable deltas transactionally.',
-          '- None.\n\n## Notes\n\n- Pending: archive applies declared durable deltas transactionally.',
-        ),
-      'pending canonical specification sync',
-    ],
-  ])('blocks archive metadata with %s', (_label, mutate, message) => {
-    const fixture = createChange();
-    try {
-      const reportPath = join(fixture.change, 'archive-report.md');
-      writeFileSync(reportPath, mutate(readFileSync(reportPath, 'utf8')));
-
-      const result = archive(fixture.change);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(message);
-      expect(existsSync(fixture.change)).toBe(true);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
+  test('rolls back a handled canonical write fault and preserves the active record', () => {
+    const f = fixture(addition);
+    const result = archive(f, {
+      THOTH_ARCHIVE_TEST_FAULT: 'after-first-canonical-write',
+    });
+    expect(result.status).not.toBe(0);
+    expect(existsSync(f.change)).toBe(true);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
   });
 });

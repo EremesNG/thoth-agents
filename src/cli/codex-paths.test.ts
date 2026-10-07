@@ -20,8 +20,7 @@ describe('Codex path resolution', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]);
     expect(targets.roleAgentPaths.map((target) => target.path)).not.toContain(
       join('/custom/.codex', 'agents', 'thoth-agents-orchestrator.toml'),

@@ -1,56 +1,59 @@
 ---
 name: thoth-archive
-description: Close a passing artifact-backed thoth-agents change by transactionally synchronizing explicitly declared durable requirement deltas and moving the complete audit trail to a dated archive.
+description: Transactionally apply declared .thoth/specs deltas and archive independently verified substantial SDD changes.
 license: MIT
-compatibility: Requires Node.js >=22.19 and write access to the project OpenSpec tree.
+compatibility: Requires Node.js >=22.19 and installed sibling thoth-sdd skill.
 metadata:
   author: thoth-agents
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Thoth Archive
 
-Archive is the required terminal transition for Accelerated and Full routes.
-Resolve `<skill-dir>` as the directory containing this `SKILL.md`, and resolve
-`<skills-root>` as its parent directory. Bundled paths below are anchored to
-those installed roots rather than the project or current working directory.
+Root archives only after the implementation writer has terminated and a fresh
+independent Oracle PASS has covered the actual change, diff, checks, and risks.
+Structural closeout validation is not approval. The single record must have all
+tasks complete, explicit plan-review disposition and implementation authorization,
+every acceptance outcome's concrete PASS check/evidence, reviewed-record and
+source digests, reviewed canonical baselines for every affected capability, and
+`**Archive**: READY`. Each affected canonical spec is covered in that same record
+by its SHA-256 `Source` entry or an explicit `absent` entry. Missing or stale
+coverage blocks before canonical or archive changes. No verification or archive
+report is required or allowed.
 
-1. Confirm every task is `[x]`, `verify-report.md` records independent oracle
-   `PASS`, its compliance matrix covers every FR and buildable SC, every outcome
-   SC has observed PASS evidence or an explicit residual RISK, and no unresolved
-   CRITICAL issue remains.
-2. Prepare `archive-report.md` from
-   `<skills-root>/thoth-sdd/templates/archive-report.md` with status `READY`,
-   verification lineage, completed scope, deviations, residual warnings, and
-   the pending canonical-sync line.
-3. Run `node "<skills-root>/thoth-sdd/scripts/validate.mjs"` through `closeout`.
-4. Run `node "<skill-dir>/scripts/archive.mjs" --change <path> --date YYYY-MM-DD --json`.
-5. Return the dated archive path, updated capability specifications, and audit
-   summary.
+Plan-review selection provenance must be `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+`DEFAULT_REVIEW_AFTER_3`. A `SKIPPED` disposition requires `EXPLICIT_SKIP`; an
+`OKAY` disposition requires explicit review or the third-answerless review
+default. An unanswered offer never authorizes skip. The orchestrator owns the
+choice and uses the shared per-question recommendation rule; archive validation
+does not claim that it can authenticate the native interaction.
 
-The script reads delta metadata directly from `spec.md`:
+Run the installed sibling validator at `--through closeout`, then:
 
-- `[ADDED capability]` creates a named canonical requirement.
-- `[MODIFIED capability]` replaces the named requirement and its scenarios.
-- `[REMOVED capability]` removes the named requirement.
-- `[RENAMED capability FROM Previous title]` renames and replaces it.
-- `[INTERNAL]` never changes `openspec/specs/`.
+```text
+node "<skill-dir>/scripts/archive.mjs" --change .thoth/changes/<id> --date YYYY-MM-DD --json
+```
 
-The SDD validator preflights these operations against the canonical requirement
-titles from `specify` onward. Archive reuses the same ordered parser and
-preflight as a final defense before staging writes, preserving stable
-`SDD-SPEC-DELTA-*` incompatibility codes. An `ADDED` warning for an existing
-nonempty capability requires semantic-overlap review because differently named
-requirements cannot be proven distinct by exact-title tooling alone.
+The shipped `--project <repository-root>` option is also accepted and checked
+against the change location. JSON includes the stable change ID, archive path,
+record path, and updated capabilities.
 
-All delta targets are validated before any permanent specification changes. The
-operation stages and rolls back the full canonical update if a delta, report
-update, or final move raises a handled error in the active process. Report and
-canonical recovery are attempted independently. It never merges undeclared
-feature prose. No CLI, network access, or installation action is used during SDD
-closeout.
+The script validates before creating the transaction, revalidates under its
+exclusive transaction, and checks actual reviewed baselines again immediately
+before mutation. It applies only declared ADDED/MODIFIED/REMOVED/RENAMED
+exact-title requirements to `.thoth/specs/<capability>/spec.md`, preserving
+unaffected requirements. It then moves the active
+`.thoth/changes/<id>/<id>.md` record to
+`.thoth/changes/archive/<date>-<id>/<id>.md`. The filename and identity remain
+unchanged; the date appears only in the archive directory. Historical changes
+are preserved.
 
-This operation is not crash-atomic. Forced process or operating-system
-termination between filesystem renames can leave `.spec.md.thoth-stage-*` or
-`spec.md.thoth-backup-*` files. Inspect them and the canonical specification
-before retrying archive.
+It preflights canonical baselines and destination topology, captures displaced
+original bytes, installs exclusively without overwriting concurrent creation,
+verifies applied bytes, and rolls back handled failures. It rejects unsafe IDs,
+symlink escapes, archive collisions, and unfinished transactions. Forced
+termination is not crash-atomic; a retained
+`.thoth/.archive-transaction/recovery.json` is a filesystem recovery aid, not
+workflow state. Inspect real files, backups, and change/archive locations before
+recovery; never blindly replay external effects. No installer or network access
+is involved.

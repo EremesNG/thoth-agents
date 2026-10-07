@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import {
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../core/agent-pack';
 import type { HarnessArtifact } from '../types';
 import {
   CODEX_CAPABILITIES,
@@ -27,6 +31,58 @@ function agentContent(name: string): string {
 }
 
 describe('Codex adapter v0.3', () => {
+  test('renders canonical default-first ownership with discovery navigation and a pre-tool check', () => {
+    const root = renderCodexRootInstructions();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      root.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      block.indexOf(
+        'Root retains known low-risk mechanical work, including reviewed commits',
+      ),
+    ).toBeGreaterThan(defaultIndex);
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+    ]) {
+      expect.soft(root).not.toContain(phrase);
+    }
+  });
   test('reports Codex capabilities and instruction-level boundaries', () => {
     expect(codexAdapter.id).toBe('codex');
     expect(CODEX_CAPABILITIES).toMatchObject({
@@ -39,7 +95,7 @@ describe('Codex adapter v0.3', () => {
     });
   });
 
-  test('renders the canonical six specialist TOML files', () => {
+  test('renders the canonical five specialist TOML files', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
@@ -49,36 +105,35 @@ describe('Codex adapter v0.3', () => {
       '.codex/agents/thoth-agents-librarian.toml',
       '.codex/agents/thoth-agents-oracle.toml',
       '.codex/agents/thoth-agents-designer.toml',
-      '.codex/agents/thoth-agents-quick.toml',
-      '.codex/agents/thoth-agents-deep.toml',
+      '.codex/agents/thoth-agents-worker.toml',
     ]);
   });
 
-  test('renders a compact adaptive Codex root', () => {
+  test('renders a compact Codex root coordinator', () => {
     const root = renderCodexRootInstructions();
 
-    expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
-    expect(root).toContain('adaptive root');
+    // Includes canonical discovery/navigation guidance and the Codex dialect.
+    expect(root.length).toBeLessThanOrEqual(15_000);
+    expect(root).toContain('root coordinator');
     expect(root).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(root).toContain('net gain');
+    expect(root).toContain(
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
+    );
+    expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
-    expect(root).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
-    );
-    expect(root).toContain(
-      'Explicit safe user direction is an ownership input.',
-    );
+    expect(root).toMatch(/specialists execute by default.*root retains/is);
+    expect(root).not.toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
-    expect(root).toContain('Accelerated SDD');
+    expect(root).toContain('.thoth/changes/<id>/<id>.md');
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
     expect(root).toContain('thoth-sdd');
     expect(root).toContain('Final verification is mandatory.');
     expect(root).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');
@@ -117,8 +172,7 @@ describe('Codex adapter v0.3', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]) {
       const content = agentContent(name);
       expect(content, name).toContain('Use when:');
@@ -130,12 +184,12 @@ describe('Codex adapter v0.3', () => {
 
   test('renders read-only and writer sandbox boundaries', () => {
     const explorer = agentContent('explorer');
-    const deep = agentContent('deep');
+    const worker = agentContent('worker');
 
     expect(explorer).toContain('sandbox_mode = "read-only"');
     expect(explorer).toContain('Mode: read-only');
-    expect(deep).toContain('sandbox_mode = "workspace-write"');
-    expect(deep).toContain('write-capable');
+    expect(worker).toContain('sandbox_mode = "workspace-write"');
+    expect(worker).toContain('write-capable');
   });
 
   test('does not bundle a memory provider MCP', () => {

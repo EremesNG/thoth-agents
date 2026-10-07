@@ -1,0 +1,86 @@
+{
+  "status": "captured",
+  "capturedAt": "2026-09-27T01:01:33.543Z",
+  "paths": [
+    {
+      "path": "src/cli/pi-install.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:df0799835095484e3e36b6af648c9667f53358474fc915eb4dbd909953a594b8"
+    },
+    {
+      "path": "src/cli/install.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:9f3738a72ad9173ceced6c6e8dafb4ca4dbf12bed1ee957ed63cda7680d99138"
+    },
+    {
+      "path": "src/cli/pi-install.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:abb19d7dd11999bfb2e902e31eb1d8da5d237209be6f378e720c20bd3531e860"
+    },
+    {
+      "path": "src/cli/operations/pi.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:8fcfa0f5b3b303e165a7513a66c850ec006decc304e08377a6b5441b946dd488"
+    },
+    {
+      "path": "src/agents/prompt-dialects.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:a286eb94d9d07ebaa5aa1632bd73a7c2e42fba606ecd71d8c4e8f51745af5c93"
+    },
+    {
+      "path": "src/agents/prompt-dialects.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:5e48c0f1df2806d44368ac5ff8e96c9a99db54e26ff070dad29a54514ed97161"
+    },
+    {
+      "path": "src/agents/prompt-sections.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:1cb5fb4f3578eaa49905ac3c5a316e723b23238feba358b1d6d4dab80564b714"
+    },
+    {
+      "path": "src/harness/adapters/pi.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:0b8c7bd6a600ab164b346710162a4d48bc787ce5bffcd568eb67394d1b6c72f5"
+    },
+    {
+      "path": "src/harness/adapters/pi.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:9778bb495792f04661ddcdd43d9bb887b0feb69db878545d8711542d88df1350"
+    },
+    {
+      "path": "src/harness/core/memory-governance.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:4b45e64f5d2dbd4f4fef20c68d6490c0e33faac90fc2a83627dec6657342025e"
+    },
+    {
+      "path": "src/harness/writers/pi-agent.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:ac92c65a5168e28160991d650a26a882cfa34c89821c3eac54977a40dfbbac21"
+    },
+    {
+      "path": "pi",
+      "state": "preexisting",
+      "fingerprint": "sha256:12025186172031cda6ab36b049f993a1962de595b59bd0a902653d0d258e3fd6"
+    },
+    {
+      "path": "docs/installation.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:a1b8271ff44cee87ea1c646bae2b3199233b2593f80145f5156a466dc3016601"
+    },
+    {
+      "path": "docs/skills-and-mcps.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:c03d7d13720adc9c85c042aa2bf72d402161081fb291d49a40b9dcd84029e28a"
+    },
+    {
+      "path": "docs/agent/cli-installation.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:38e8a62948f54d98a56b2652cd792efc46ae15ff63c29d13c9ea939d7b6011a0"
+    },
+    {
+      "path": "docs/agent/harness-packaging.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:efcd49df02cdb73e21ccab9e8da26c45c75b4448853751116cdfc6db507fdd37"
+    }
+  ]
+}

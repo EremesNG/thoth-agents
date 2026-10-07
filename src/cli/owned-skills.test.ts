@@ -132,7 +132,7 @@ describe('OpenCode owned skill synchronization', () => {
 
     expect(result.success).toBe(true);
     expect(existsSync(join(staleRoot, 'obsolete.txt'))).toBe(false);
-    expect(existsSync(join(staleRoot, 'references', 'contract.md'))).toBe(true);
+    expect(existsSync(join(staleRoot, 'SKILL.md'))).toBe(true);
   });
 
   test('rejects an incomplete canonical bundle before destination writes', () => {

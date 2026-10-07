@@ -34,16 +34,18 @@ plugin structure has no agents component.
 
 The thoth-agents CLI first asks Codex's native manager to register
 `https://github.com/EremesNG/thoth-plugins.git` and install
-`thoth-agents@thoth-plugins`. It then writes six standalone custom agents
+`thoth-agents@thoth-plugins`. It then writes five standalone custom agents
 under `~/.codex/agents/`, the managed orchestrator block under
 `~/.codex/AGENTS.md`, and managed configuration under `~/.codex/config.toml`.
 It also installs the four external skills from their canonical repositories.
 The plugin package cannot perform those global writes.
 
 `$thoth-init` remains a bundled project-governance skill. It preflights and
-synchronizes only minimum `openspec/` directories, constitution, and metadata;
-it is not an agent or template installer. Phase contracts resolve templates
-directly from the sibling installed `thoth-sdd` skill.
+initializes only missing `.thoth/` governance, including `.thoth/constitution.md`
+and `.thoth/specs/`, preserving existing project-owned content. It refuses a
+legacy active OpenSpec tree rather than creating a duplicate store; it is not an
+agent or template installer. Phase contracts resolve templates directly from
+the sibling installed `thoth-sdd` skill.
 
 ## Generation lifecycle
 
@@ -73,7 +75,7 @@ personal marketplace entry for `thoth-agents` whose local source is
 `~/plugins/thoth-agents`, assigning cache-busting local versions only to the
 copied Codex and Claude manifests.
 
-The same command renders the current checkout's root instructions and six Codex
+The same command renders the current checkout's root instructions and five Codex
 role TOMLs through the normal Codex setup planner, then applies its managed model
 state and feature configuration. Existing user model and effort choices remain
 preserved. Local development setup deliberately does not run the central

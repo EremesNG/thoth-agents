@@ -15,57 +15,67 @@ Sync Impact Report
 
 ## Principles
 
-### I. User-value first
+### I. Native authority and human choice
 
-Every change MUST map to an observable user or operator outcome. Speculative
-infrastructure without a current requirement is prohibited.
+The active harness owns dispatch, status, wait, cancellation, and terminal
+results. Workflow guidance MUST NOT build a scheduler, state mirror, or process
+tools. Every change completes proportional explore, specify, and clarify
+reasoning before the orchestrator classifies by meaningful coordination and
+contract impact, uncertainty, and risk. File count alone does not increase scope:
+a clear, low-risk localized mechanical change may touch several files and remain
+small. Material product, architecture, security, and destructive decisions
+remain human-owned; unresolved material intent blocks classification and
+implementation. Whenever an orchestrator presents a choice with a meaningful
+recommended action, it states that recommendation. For each choice separately,
+repeat the same question after the first and second confirmed answerless native
+returns without taking dependent action; after the third, select the
+recommendation. Explicit answers and `Stop` win. Pending, unavailable, failed,
+interrupted, or host-prohibited attempts do not count; report higher-priority
+host limits accurately. Never fabricate facts or secrets. A safe deferral may be
+the recommendation for unresolved human-owned intent and leaves it unresolved.
 
-### II. Simplicity and bounded scope
+### II. Minimal recoverable SDD
 
-Delivery MUST use the smallest coherent design that satisfies accepted
-requirements. Non-goals MUST be named, and scope cannot expand silently.
-Before the SDD route question, Root MUST summarize relevant context, scope,
-clarity, risk, and its evidence-based recommendation. Any explicit answer wins.
-When the native question returns answerless, Root MUST make at most three total
-attempts; after the third answerless result, the recommended route counts as
-selected.
+Small, clear, low-risk work uses test-first implementation and focused
+verification without a persistent record. Substantial work uses one compact
+`.thoth/changes/<id>/<id>.md` record for grounded exploration, intent, acceptance,
+clarifications, decisions, plan, tasks, authorization, and verification. A
+patch-sized change can still require planning when coordination impact,
+uncertainty, or risk warrants it. Increased scope or risk reopens understanding
+and classification. Avoid mandatory sidecar reports, evidence directories,
+worker packets, or generated process tools. Historical changes remain untouched.
+Provider memory is independent of project records.
 
-### III. Testable contracts
+### III. Bounded ownership and verification
 
-Behavioral requirements MUST have observable acceptance evidence. Behavior
-changes MUST use test-first execution at an agreed public seam when practical.
+Delegation depth is one and each mutable surface has one writer. Root accepts
+terminal dependency results before releasing consumers. At substantial `ready`,
+root always offers Oracle plan review (Recommended) or proceeding without review,
+even if implementation was authorized; an unanswered offer never means skip.
+After `[OKAY]`, root separately offers the Implement (Recommended) / Stop choice,
+honors prior explicit authorization, and lets explicit Stop supersede it. Record
+selection provenance as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+`DEFAULT_REVIEW_AFTER_3`; only `EXPLICIT_SKIP` permits `SKIPPED`, and `OKAY`
+requires explicit review or the third-return recommendation. A plan review is not
+implementation authorization or final verification. Every change is verified;
+substantial or materially risky work needs a fresh independent Oracle judgment,
+and no implementation writer approves their own work. Archive only after
+complete acceptance evidence and verification still match the actual record and
+sources.
 
-### IV. Independent assurance
+### IV. Durable governance
 
-Every route MUST include verification proportional to the changed behavior and
-risk. The implementation writer cannot approve its own work. Trivial
-deterministic Direct work MAY be verified by Root when the decision is bounded
-and independent of the implementation writer. Materially risky Direct work and
-every Accelerated or Full final verify MUST use a fresh independent read-only
-reviewer. Pre-implementation plan review is optional and is selected explicitly
-or by the bounded recommended fallback; when offered, any explicit answer wins.
-After the third answerless result,
-`Review plan with Oracle (Recommended)` counts as selected. Actionable review
-rejections MUST be repaired and revalidated before a fresh reviewer round until
-approval or a material human-owned blocker. After approval, Root MUST give an
-approved plan summary before asking `Implement (Recommended)` or `Stop`; any
-explicit answer wins, while the third answerless result selects implementation.
-Plan review never substitutes for final verification.
-
-### V. Traceable delivery
-
-Specifications, plans, tasks, implementation evidence, verification verdicts,
-and archive reports MUST remain traceable without relying on chat history.
+Declare ADDED, MODIFIED, REMOVED, or RENAMED requirement deltas by capability and
+exact title against `.thoth/specs/`. Apply only reviewed deltas at transactional
+archive; preserve unaffected canonical requirements and historical changes.
+Recovery inspects retained transactions before retry and never blindly replays
+external effects.
 
 ## Governance
 
-- Planning MUST record evidence-backed Constitution Check results before and
-  after design; routine feature work reads the principles but does not amend or
-  revalidate constitution lifecycle metadata.
-- Exceptions MUST identify the principle, reason, risk, owner, and removal
-  condition.
-- Amendments require explicit user direction, an updated Sync Impact Report,
-  and propagation to affected templates, instructions, and documentation.
-- MAJOR versions remove or redefine governance compatibility.
-- MINOR versions add a principle or materially expand guidance.
-- PATCH versions clarify wording without changing its meaning.
+- Amendments require explicit user direction, a refreshed Sync Impact Report,
+  and propagation to affected templates and instructions.
+- Routine work reads relevant active principles; it does not amend lifecycle metadata.
+- MAJOR versions remove or redefine a principle or compatibility boundary.
+- MINOR versions add principles or materially expand guidance.
+- PATCH versions clarify wording without changing semantic behavior.

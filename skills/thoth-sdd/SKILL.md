@@ -1,130 +1,177 @@
 ---
 name: thoth-sdd
-description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and proportional independent verification.
+description: Apply proportional understanding and risk-aware SDD classification, with one ID-named record for substantial changes.
 license: MIT
-compatibility: Requires Node.js >=22.19 for bundled validation scripts.
+compatibility: Requires Node.js >=22.19 for bundled product validation.
 metadata:
   author: thoth-agents
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Thoth SDD
 
-Assess the work, recommend the lightest route that preserves correctness, and
-let the user select:
+Every change begins with three proportional reasoning steps, in order:
 
-- **Direct**: `implement -> verify`
-- **Accelerated**: `specify -> plan -> tasks -> implement -> verify -> archive`
-- **Full**: `explore -> specify -> plan -> tasks -> implement -> verify -> archive`
+1. **Explore** enough repository and user context to understand the current
+   behavior, constraints, and uncertainty.
+2. **Specify** the intended outcome, non-goals, and observable acceptance in
+   concise working notes.
+3. **Clarify** material uncertainty. Use evidence or a safe bounded assumption
+   when it preserves the user's intent; ask only when a material human-owned
+   decision cannot safely be inferred. An unresolved material decision blocks
+   classification and implementation.
 
-Conditional phases are `clarify`, `checklist`, `plan-review`, and `converge`. Direct creates no
-SDD artifacts and may cover multiple documentation or mechanical files when the
-intent is clear and risk is low.
+The root orchestrator owns completing these steps at a scale appropriate to the
+change; discovery ownership follows the root delegation policy. The sequence
+does not itself force a saved document, specialist-agent dispatch, or interview;
+the root delegation policy determines staffing. The understanding sequence is
+mandatory. Only after all three steps are complete does the orchestrator classify
+using scope, uncertainty, and risk. Scope or risk that increases during implementation
+reopens understanding and classification before further work. Never silently
+resolve material product, architecture, security, or destructive choices.
 
-Accelerated is a **fast-forward** route: root writes `spec.md`, `plan.md`, and
-`tasks.md` in one uninterrupted pass and creates optional artifacts only for a
-concrete risk. After `ready`, both artifact-backed routes offer
-`Review plan with Oracle (Recommended)` or `Proceed without review`. Full uses
-separate planning gates because uncertainty or failure cost justifies them.
+## Proportional classification
 
-An explicitly named route counts as the user's selection. Otherwise assess and
-recommend Direct, Accelerated, or Full, first summarize the relevant request
-context, scope, clarity, risk, and why the recommendation fits, then ask. When a
-native route question returns answerless, make at most three total attempts;
-after the third answerless result, treat the recommended route as selected. Any
-explicit answer wins. A generic request to “use SDD” makes Accelerated the
-minimum recommendation but does not force it.
+- **Small** means local impact, clear intent, and low risk. Local work may touch
+  several files within one area; file count alone never increases scope. Use
+  test-first implementation and focused verification; create no persistent
+  change record.
+- **Substantial** means coordinated impact across multiple areas, cross-cutting
+  contract changes, material uncertainty, or elevated failure/contract risk. A
+  small patch can still be substantial when its risk demands planning. Persist
+  one record, plan and validate before implementation, then independently
+  verify and archive.
 
-At the post-`ready` review choice, an explicit answer wins, including
-`Proceed without review`. When the native question returns answerless, make at
-most three total attempts; after the third answerless result, treat
-`Review plan with Oracle (Recommended)` as selected. Once review is selected,
-repair actionable same-intent planning blockers, revalidate affected gates, and
-use a fresh Oracle for every new approval round until `[OKAY]`; stop instead on
-a material human-owned blocker.
+A user request cannot bypass the understanding sequence or material clarification.
+Do not auto-increment package versions. Use native harness lifecycle and status;
+never build a scheduler, state mirror, or process tooling.
 
-These bounded fallbacks apply only to the route, plan-review, and implementation
-questions. Never apply them to secrets, destructive or security-sensitive
-actions, or material human-owned product or architecture decisions.
+## Ownership and decisions
 
-## Ownership
+Root owns user intent, scope, material decisions, classification, and final
+acceptance. Root also owns completing understanding, while the specific discovery
+ownership policy determines who gathers evidence; that policy takes precedence
+over generic permission for root to inspect directly. Choose an implementation
+owner from the actual task shape after classification, following
+specialist-default ownership and bounded direct-work exceptions.
+Root retains known low-risk mechanical work, including reviewed commits, without
+rediscovery.
+Explicit direct-work or no-delegation instructions win. Preserve operator-selected
+model and effort, including max. Keep one writer per mutable surface.
 
-- Root owns sequential coordination artifacts, gate execution, and archive.
-- Explorer owns Full-route repository discovery.
-- SDD routes govern artifacts and gates, not implementation ownership. Root,
-  `designer`, `quick`, or `deep` may implement in Direct, Accelerated, or Full.
-- Root decides ownership from explicit safe user direction and demonstrated net
-  gain. Delegation benefits include specialization, context isolation,
-  independent bounded work, quality, latency, or total cost; root continuity
-  benefits include short or sequential work, shared mutable state, accumulated
-  context, rediscovery, and coordination overhead. Route, file count, or cheaper
-  model price alone never selects an owner.
-- Only after deciding to delegate implementation, select `designer` for UI/UX,
-  `quick` for known narrow low-risk work, or `deep` for coupled, edge-case-heavy,
-  migration, concurrency, shared-contract, or high-risk work.
-- Each mutable surface has one writer; independent non-overlapping surfaces may
-  split, while coupled surfaces use one `deep` writer and ordered handoffs.
-- Oracle owns `plan-review` when review is explicitly selected or chosen by the
-  bounded recommended fallback. Every route requires
-  mandatory verification, but final-verification ownership is proportional:
-  trivial deterministic Direct work may be verified by Root when Root is not
-  self-approving its own implementation; materially risky Direct work and every
-  Accelerated or Full final verify require a fresh read-only Oracle. The
-  implementation writer never approves its own work.
+Every orchestrator choice with a meaningful recommended action states that
+recommendation. Track confirmed answerless native returns separately per
+question: after the first and second, repeat the same question without starting
+dependent work; after the third, select the recommendation. Explicit answers win
+and explicit `Stop` always wins. Pending, unavailable, failed, interrupted, or
+host-prohibited attempts do not count. Report higher-priority host limits
+accurately; do not claim three returns or an explicit user choice when they did
+not occur. Never invent missing facts or secrets. When a human-owned choice
+remains unresolved, a safe deferral can be the recommendation and leaves the
+decision open.
 
-## Progressive loading
+At substantial `ready`, first show the user a concise plan summary (goal,
+acceptance, key decisions, units, risks, record path), then always offer
+`Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation was already authorized.
+Silence is never an explicit review skip; run a fresh read-only review only when
+selected. After a selected `[OKAY]`, separately offer `Implement (Recommended)` /
+`Stop`; prior explicit authorization remains valid, while an explicit later
+`Stop` supersedes it. Record the plan-review selection as
+`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`; `SKIPPED`
+requires `EXPLICIT_SKIP`, and `OKAY` requires an explicit review or the third-
+return review default. A review result does not authorize implementation. Final
+verification is always required: small low-risk work can use focused root
+verification, while substantial or materially risky work requires a fresh
+independent Oracle. An implementation writer never approves its own work. If the
+user forbids delegation, perform authorized work directly but report unavailable
+independent review; never claim independent PASS or archive.
 
-Resolve `<skill-dir>` as the directory containing this `SKILL.md`, and resolve
-`<skills-root>` as its parent directory. Every bundled path below is anchored to
-one of those installed roots, never to the project or current working directory.
+## Bounded execution
 
-Use only installed local contracts during the pipeline. Never invoke the
-thoth-agents CLI, `npx skills add`, or a network fetch to advance an SDD phase.
-If a required contract or external skill is missing, stop and report an
-incomplete installation instead of provisioning it mid-workflow.
+Apply these rules across all workflow stages. Each assignment names one
+independently acceptable outcome, exact known entrypoints and skill paths,
+concrete accepted inputs and dependencies, its produced result, owned writes and
+interface boundaries, focused checks with pass evidence, and a meaningful return
+milestone and stop condition. A task row names one outcome and may repeat an
+`AC-n` when useful; split phases with separately acceptable outcomes and keep
+tiny cohesive mechanical edits together. Independent, precise Explorer questions
+may run in parallel within native capacity; dependent questions wait until root
+accepts the named upstream output. Do not duplicate discovery. Missing inputs or
+interfaces, conflicting ownership, a new independent outcome, or material scope
+growth returns bounded progress to root for reassessment before expansion. Root reacts to
+native attention or a missed agreed milestone; a timeout is not a progress plan.
+After two consecutive attempts without new evidence or progress, return the
+smallest blocker rather than looping. Use native notifications/waits without
+polling or custom timers. Freeze relevant inputs before final validation, reuse fresh checks,
+and preserve substantive handoffs across late notifications. Load the
+[implementation phase](references/phases/implement.md) for the concrete procedure.
 
-Read only the current phase contract:
+## The sole substantial-change record
 
-| Phase | Contract |
-| --- | --- |
-| explore | `<skill-dir>/references/phases/explore.md` |
-| specify | `<skill-dir>/references/phases/specify.md` |
-| clarify | `<skill-dir>/references/phases/clarify.md` |
-| plan | `<skill-dir>/references/phases/plan.md` |
-| checklist | `<skill-dir>/references/phases/checklist.md` |
-| tasks | `<skill-dir>/references/phases/tasks.md` |
-| plan-review | `<skills-root>/plan-reviewer/SKILL.md` |
-| implement | `<skill-dir>/references/phases/implement.md` |
-| verify | `<skill-dir>/references/phases/verify.md` |
-| converge | `<skill-dir>/references/phases/converge.md` |
-| archive | `<skills-root>/thoth-archive/SKILL.md` |
+After substantial classification, create only
+`.thoth/changes/<id>/<id>.md` from
+`<skill-dir>/templates/change.md`. Use a safe lowercase kebab-case ID; reject
+Windows-reserved names and unsafe path components. The record covers grounded
+exploration, intent, non-goals, acceptance, material clarifications and settled
+decisions, declared durable deltas, technical plan, tasks, authorization,
+verification, and closeout. The record is the only per-change artifact. Do not
+create sidecar specifications, plans, task lists, checklists, review or
+verification reports, evidence directories, worker reports, scripts, execution
+wrappers, or evidence generators, including temporary ones.
 
-## Validation gates
+A durable delta uses `- \`ADDED capability\` **Exact title** — Normative statement.`
+(or `MODIFIED`, `REMOVED`, `RENAMED capability FROM Previous title`). Every
+non-removal includes `  - GIVEN ...; WHEN ...; THEN ... .` Before review, verify
+the exact canonical baseline under `.thoth/specs/<capability>/spec.md`. In the
+same change record's Verification section, include exactly one reviewed source
+entry for every affected capability: the existing file's `sha256:<digest>` or
+`absent` if no canonical spec exists. `ADDED` may target either an existing or
+absent capability; other operations require an existing matching baseline. The
+validator checks each digest or reviewed absence at `verify` and `closeout`,
+not semantic quality.
 
-Run the validator from its installed absolute path:
+Archiving moves the same record to
+`.thoth/changes/archive/YYYY-MM-DD-<id>/<id>.md`; the date prefixes only the
+directory and never changes the record filename or identity. Preserve historical
+changes and fail closed on collisions or symlinked ancestors.
+
+## Progressive phase loading
+
+Resolve `<skill-dir>` as this SKILL.md's directory and `<skills-root>` as its
+parent. Read only the current phase under
+`<skill-dir>/references/phases/{explore,specify,clarify,plan,checklist,tasks,implement,verify,converge}.md`;
+plan review and archive are sibling skill contracts. Use installed local assets
+only; do not provision skills or run a network installer mid-workflow.
+
+## Gates and CLI
 
 ```text
-node "<skill-dir>/scripts/validate.mjs" --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
+node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <explore|specify|clarify|plan|tasks|checklist|ready|verify|closeout> --json
 ```
 
-- **Accelerated**: `specify`, then `ready` after the fast-forward planning pass,
-  then `closeout` after independent verification and an archive report marked
-  `READY`.
-- **Full**: `specify`, `plan`, `tasks`, then `ready` before the optional review
-  choice or implementation, and `closeout` after independent verification.
-- **Checklist**: run only when activated; the later `ready` gate includes it if
-  present.
+The early gates validate the one record proportionally. `plan` validates without
+requiring tasks. `tasks` and `ready` require concrete coverage of every accepted
+outcome. `ready` requires settled material decisions before the mandatory
+plan-review offer or implementation authorization. Run `--through verify`
+before requesting final Oracle: it requires everything `ready` does plus complete
+tasks, review disposition and `**Plan review selection**` provenance,
+implementation authorization, and reviewed source digests/baselines. It permits
+final-review and Archive placeholders. `closeout` additionally requires a fresh
+independent Oracle PASS, every acceptance outcome with concrete PASS
+check/evidence, exactly one matching record SHA-256 field, and Archive READY.
+The initial `PENDING` selection placeholder is allowed before `verify` only.
+`SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
+`DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected by a durable delta must
+have exactly one `Source` entry in the same record:
+`- Source: .thoth/specs/<capability>/spec.md | sha256:<digest>` when present, or
+`- Source: .thoth/specs/<capability>/spec.md | absent` when absent. Missing or
+stale coverage blocks `verify`, closeout, and archive. Calculate the record hash
+from exact UTF-8 bytes preceding the case-sensitive `## Authorization` heading.
+After PASS, edits confined to Authorization, Verification, or Closeout need no
+new review; any edit before `## Authorization` requires fresh independent review
+and a new digest. This allowance never waives structural checks, truthful
+provenance, stale-source rejection, or review of changed implementation.
+Structural validation is not human authorization or independent approval. Oracle
+examines the actual diff and checks, not just listed file digests.
 
-`ready` validates the artifacts needed before the explicit or bounded-default
-`Review plan with Oracle (Recommended)` / `Proceed without review` choice.
-Review approval remains separate from implementation confirmation and never
-satisfies final verification.
-`closeout` additionally requires completed tasks, independent oracle PASS,
-complete FR/buildable-SC evidence, an observed PASS or explicit residual RISK
-for every outcome SC, and an archive report ready for the transactional archive
-transition.
-
-When implementation evidence refines the same intent, root updates the canonical
-artifact and revalidates only affected downstream artifacts/gates. A changed
-intent starts a new change. Structural validation prevents malformed artifacts;
-oracle still judges completeness, correctness, coherence, and evidence.
+Archive with the installed sibling `thoth-archive` only after closeout passes.

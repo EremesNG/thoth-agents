@@ -1,25 +1,7 @@
-# Verify contract
+# Verify
 
-**Owner**: route- and risk-aware; Root for trivial deterministic Direct, otherwise a fresh read-only Oracle
+Every change requires final verification against accepted outcomes and actual execution evidence. Small low-risk work uses focused independent root checks; substantial or materially risky work requires a fresh read-only Oracle independent from the writer. Judge the actual diff, behavior, completeness, correctness, coherence, checks, and residual risks.
 
-Every route requires mandatory verification. Trivial deterministic Direct work
-may be verified by Root with focused deterministic checks. Materially risky
-Direct work and Accelerated or Full final verification use a fresh read-only
-Oracle. The implementation writer never approves its own work. Inspect changed
-code and run or validate the smallest sufficient checks.
+Before requesting final Oracle for substantial work, run `node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through verify --json`. This gate requires ready coverage, complete tasks, authorization disposition/provenance, and reviewed source digests/baselines; final-review fields, AC evidence rows, and Archive may remain placeholders. For each capability named by a durable delta, add exactly one `Source` entry for `.thoth/specs/<capability>/spec.md`: its reviewed SHA-256 when it exists, or `absent` only when no canonical file exists.
 
-Judge three dimensions separately: **completeness** of accepted scope and
-coverage, **correctness** against behavioral contracts and executed evidence,
-and **coherence** across artifacts, code, tests, and documentation. Map every FR
-and buildable SC to implementation evidence and an executed check. Record
-each outcome SC as PASS with concrete observed evidence or as RISK with an
-explicit ID-matched residual-risk entry, never as an invented implementation
-task.
-
-Return `pass` or `fail`, compliance matrix, commands/results, stable findings,
-critical issues, warnings, and remediation anchors. For Direct, return the
-verdict in-session regardless of owner. For Accelerated and Full, root persists Oracle's exact result
-using `<skill-dir>/templates/verify-report.md`, where `<skill-dir>` is the
-directory containing the installed `thoth-sdd/SKILL.md`. Fail routes to converge
-(straight back to implement for Direct); PASS permits closeout and archive for
-artifact-backed routes.
+After review, record each outcome's concrete PASS evidence, actual checks, source SHA-256 digests, and the hash of exact UTF-8 record bytes preceding the case-sensitive `## Authorization` heading. After PASS, edits confined to Authorization, Verification, or Closeout need no new review; any edit before `## Authorization` requires fresh independent review and a new digest. This allowance never waives structural checks, truthful provenance, stale-source rejection, or review of changed implementation. Recheck baselines after review; missing or stale digests/absence, missing evidence, or blockers prevent closeout and archive. Never create a verification report or evidence directory; route actionable findings to convergence.

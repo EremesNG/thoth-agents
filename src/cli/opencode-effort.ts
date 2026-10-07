@@ -10,6 +10,7 @@ const OPENAI_GPT_RUNTIME_VARIANTS = new Set([
   'medium',
   'high',
   'xhigh',
+  'max',
 ]);
 
 export function resolveOpenCodeEffort(

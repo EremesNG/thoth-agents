@@ -21,7 +21,7 @@ snapshot does not run by itself.
 | Biome CI check | `pnpm run check:ci` | root | `package.json`, `ci.yml` |
 | typecheck | `pnpm run typecheck` | root | `package.json`, `ci.yml` |
 | build | `pnpm run build` | root | `package.json`, `release.yml` |
-| packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing six specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
+| packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing five specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
 
 Replace `path/to/test` with a real test; do not literally run the placeholder.
 
@@ -30,7 +30,8 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 - Start with tests colocated with the changed behavior.
 - Add harness/writer tests when generated output or public compatibility changes.
 - Add CLI and harness tests together when installation consumes a changed artifact.
-- Add `src/harness/core/sdd.test.ts` when route, phase, or artifact ownership changes.
+- Add `src/harness/core/sdd.test.ts` and `sdd-protocol.test.ts` when route,
+  phase, authorization or artifact ownership changes.
 - Add memory-governance/provider-boundary tests when provider ownership or
   evidence reporting changes.
 - Do not report a command as successful if it was not run.
@@ -40,14 +41,35 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 
 `.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
 `pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
-build step.
+build step. The repository is a pnpm workspace: the root install also installs
+all nine `pi-packages/*` members, and CI then runs each package's `typecheck`
+plus offline tests through `pnpm --filter` (`test` for `@thoth-agents/pi-core`,
+`@thoth-agents/pi-todo`, `@thoth-agents/pi-questions-user`, `@thoth-agents/pi-subagents`,
+`@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`,
+`@thoth-agents/pi-openai-fast` and `@thoth-agents/pi-thoth-theme`,
+`test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
+Pi-core provides typed, versioned `pi.events` channels. Pi-todo is a first-party
+fork of `@juicesharp/rpiv-todo` `2.12.0` with session-state publication through
+pi-core and open-task reinjection. Pi-questions-user is the first-party
+`ask_user_question` extension with typed questions and structured per-id answers.
+A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
+install), runs only those nine package typechecks and offline tests, one step per
+command so a failure cannot be masked; the root suite runs only on Ubuntu.
+
+CI also runs a PR-only, non-blocking "Pi version bump" warning step
+(`scripts/check-pi-version-bumps.mjs`); skipped runs emit a `::notice`.
 
 `.github/workflows/release.yml` waits for successful CI for the commit, installs
 again, runs `pnpm run build`, then
-`pnpm exec vitest run src/plugin-node-runtime.test.ts`, publishes npm, and
-creates the GitHub release. Only after those steps succeed, it mints an
+`pnpm exec vitest run src/plugin-node-runtime.test.ts`. It then publishes the Pi
+packages (only versions not yet on npm), reconciles per-package `<name>@<version>`
+tags and GitHub releases (idempotent on rerun), generates root notes that exclude
+Pi-only commits and list the released Pi versions, publishes the root npm package
+and creates the GitHub release. A Pi publish failure blocks the root publish. Only
+after those steps succeed, it mints an
 ephemeral `thoth-plugins-release-bot` token scoped to `thoth-plugins` with
-`contents: write` and runs `pnpm run release:marketplace`.
+`contents: write` and runs `pnpm run release:marketplace`. Bumping and the
+one-time bootstrap are in [harness packaging](harness-packaging.md#release-flow).
 
 The marketplace integration suite consumes the canonical `thoth-plugins`
 checkout through `THOTH_PLUGINS_ROOT`; it validates the publisher locally but
@@ -63,12 +85,13 @@ For large changes and before a PR, the preserved local pre-merge order is:
 
 Use the combination applicable to the scope; the absence of build in `ci.yml`
 does not remove the human obligation to validate the build when appropriate.
+Pi verification requires Pi `>=0.99.0` and Node.js `>=22.19.0`.
 Every real Pi observation must set `PI_CODING_AGENT_DIR` to a disposable
 directory and use `--no-extensions` plus the installed and observer extensions
 explicitly. Never aim a package smoke at the operator's real Pi home.
 For packed local candidates, also record the relative configured source returned
 by `pi list --no-approve` and its resolved absolute path; byte-equality with the
-absolute install command is not valid Pi 0.84.4 evidence.
+absolute install command is not valid Pi package identity evidence.
 
 ## Common failures
 

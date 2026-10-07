@@ -47,15 +47,21 @@ function parseOperationHarness(value: string): OperationHarnessArg {
   return value;
 }
 
+function assertSupportedRoleName(role: string): void {
+  if (role === 'quick' || role === 'deep')
+    throw new Error(`Unsupported removed agent role: ${role}. Use worker.`);
+}
+
 function parseRoleModel(value: string): { role: string; model: string } {
   const separator = value.includes('=') ? '=' : ':';
   const [role, ...modelParts] = value.split(separator);
   const model = modelParts.join(separator);
   if (!role || !model) {
     throw new Error(
-      '--role-model must use role=model or role:model, for example --role-model=deep=openai/gpt-5.4-mini.',
+      '--role-model must use role=model or role:model, for example --role-model=worker=openai/gpt-5.4-mini.',
     );
   }
+  assertSupportedRoleName(role);
   return { role, model };
 }
 
@@ -68,9 +74,10 @@ function parseRoleEffort(value: string): {
   const effort = effortParts.join(separator);
   if (!role || !effort) {
     throw new Error(
-      '--role-effort must use role=effort or role:effort, for example --role-effort=deep=high.',
+      '--role-effort must use role=effort or role:effort, for example --role-effort=worker=high.',
     );
   }
+  assertSupportedRoleName(role);
   return { role, effort: normalizeEffortSelection(effort) };
 }
 
@@ -124,6 +131,7 @@ export function parseOperationArgs(args: string[]): OperationArgs {
     } else if (arg.startsWith('--role=')) {
       pendingRole = arg.split('=')[1] ?? '';
       if (!pendingRole) throw new Error('--role requires a value.');
+      assertSupportedRoleName(pendingRole);
     } else if (arg.startsWith('--provider=')) {
       pendingProvider = arg.split('=')[1] ?? '';
       if (!pendingProvider) throw new Error('--provider requires a value.');
@@ -212,6 +220,32 @@ export function parseInstallArgs(args: string[]): InstallArgs {
         );
       }
       result.localPackageRoot = localPackageRoot;
+    } else if (
+      arg === '--local-pi-runtime-root' ||
+      arg.startsWith('--local-pi-runtime-root=')
+    ) {
+      if (result.localPiRuntimeRoot !== undefined) {
+        throw new Error('--local-pi-runtime-root cannot be repeated.');
+      }
+      let localPiRuntimeRoot: string | undefined;
+      if (arg === '--local-pi-runtime-root') {
+        index += 1;
+        localPiRuntimeRoot = args[index];
+      } else {
+        localPiRuntimeRoot = arg.slice('--local-pi-runtime-root='.length);
+      }
+      if (!localPiRuntimeRoot || localPiRuntimeRoot.startsWith('--')) {
+        throw new Error('--local-pi-runtime-root requires a value.');
+      }
+      if (
+        !isAbsolute(localPiRuntimeRoot) ||
+        resolve(localPiRuntimeRoot) !== localPiRuntimeRoot
+      ) {
+        throw new Error(
+          '--local-pi-runtime-root requires a normalized absolute path.',
+        );
+      }
+      result.localPiRuntimeRoot = localPiRuntimeRoot;
     } else if (arg === '-h' || arg === '--help') {
       throw new Error('help');
     } else {
@@ -221,6 +255,11 @@ export function parseInstallArgs(args: string[]): InstallArgs {
 
   if (result.localPackageRoot !== undefined && result.agent !== 'pi') {
     throw new Error('--local-package-root is supported only with --agent=pi.');
+  }
+  if (result.localPiRuntimeRoot !== undefined && result.agent !== 'pi') {
+    throw new Error(
+      '--local-pi-runtime-root is supported only with --agent=pi.',
+    );
   }
 
   return result;

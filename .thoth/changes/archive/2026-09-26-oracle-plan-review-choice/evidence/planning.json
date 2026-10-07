@@ -1,0 +1,45 @@
+{
+  "changeId": "oracle-plan-review-choice",
+  "agreementFingerprint": "sha256:5831592f1c8c02a2bea276ee845d6248a286377361bd3b9dee707a93027e299a",
+  "technicalFingerprint": "sha256:458507810f935f69b09edc6c194914c86e93ee2d40fec9530d13e2cdd4a45dab",
+  "reviewChoice": {
+    "choice": "oracle",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReference": "request_user_input_async/call_ZxtPiA2WIpn5YgBQIaBarKt2; user selected review",
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": {
+    "status": "okay",
+    "reviewer": "/root/oracle_planning_choices_plan",
+    "reviewedAt": "2026-09-26T22:53:48.118Z",
+    "agreementFingerprint": "sha256:c507605eaf5e16a3f4e471ca7433aa1954c6d5af9ac844ff5c018a07ac4d1e80",
+    "technicalFingerprint": "sha256:763d8a359bc6582519f625895ddc3e8a15e3b4b6118187fe9f55555fd63b9033",
+    "reviewedInputs": [
+      {
+        "path": ".thoth/changes/oracle-plan-review-choice/work.yaml",
+        "sha256": "10cb6da78a75cbfabe0c360bff770d18351629f50e56b6b2e739e5106c3f1bd8"
+      },
+      {
+        "path": ".thoth/changes/oracle-plan-review-choice/context/workflow.md",
+        "sha256": "6efc3d4d7be7fee26c78653546f9e51a5f4d8ad71a901a368d7189e18ddb2579"
+      },
+      {
+        "path": ".thoth/changes/oracle-plan-review-choice/context/multi-harness-agent-pack.md",
+        "sha256": "fa8743886a7b3dd44e254a53be54435da4813f1f47d317b15aec1f3ded40fa3c"
+      }
+    ],
+    "evidence": ".thoth/changes/oracle-plan-review-choice/evidence/plan-review.md"
+  },
+  "implementationChoice": {
+    "choice": "implement",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReference": "request_user_input_async/call_7cVMBHBWHfP2Q4yHYeWR9F0s; user selected Implementar (recomendado)",
+    "approvalReference": "/root/oracle_planning_choices_plan",
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "refinement": "Added the existing skills overview to the same documentation synchronization scope; no product, approach, ownership, autonomy or risk change. Original reviewed fingerprints retained in review. Applied the plan Oracle's nonblocking wording clarification that fallback resolutions also survive resume; original review identities remain historical. No material replanning. Updated existing constitution integrity assertions for the approved 9.0.0 amendment."
+}

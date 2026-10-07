@@ -1,0 +1,317 @@
+import type { Theme } from '@earendil-works/pi-coding-agent';
+import { Box, type Component, Text } from '@earendil-works/pi-tui';
+import {
+  createKitRenderMemo,
+  type RenderIndicatorContext,
+  type RenderStatus,
+  renderToolFooter,
+  resolveIcon,
+  resolveStatusGlyph,
+  type ThothRenderKit,
+} from '@thoth-agents/pi-core';
+import { selectTaskSubjectById } from '../state/selectors.js';
+import type { TaskState } from '../state/state.js';
+import { sanitizeTerminalText } from '../tool/sanitize.js';
+import type {
+  Task,
+  TaskAction,
+  TaskDetails,
+  TaskMutationParams,
+  TaskStatus,
+} from '../tool/types.js';
+
+export function formatStatusLabel(status: TaskStatus): string {
+  return status === 'in_progress' ? 'in progress' : status;
+}
+
+// ---------------------------------------------------------------------------
+// Status presentation tables — the single source of truth for glyph/color.
+// ---------------------------------------------------------------------------
+
+export const STATUS_GLYPH: Record<TaskStatus, string> = {
+  pending: '○',
+  in_progress: '◐',
+  completed: '●',
+  deleted: '⊘',
+};
+
+/**
+ * Color palette for the renderResult status echo. `deleted` uses `muted` so a
+ * successful delete is visually distinct from the error branch (which uses
+ * `error` + `✗`)..
+ */
+export const STATUS_COLOR: Record<
+  TaskStatus,
+  'dim' | 'warning' | 'success' | 'muted'
+> = {
+  pending: 'dim',
+  in_progress: 'warning',
+  completed: 'success',
+  deleted: 'muted',
+};
+
+/**
+ * Per-action prefix glyph for renderCall. `+` create, `→` update, `×` delete,
+ * `›` get, `≣` list, `∅` clear..
+ */
+export const ACTION_GLYPH: Record<TaskAction, string> = {
+  create: '+',
+  update: '→',
+  delete: '×',
+  get: '›',
+  // ☰ measures two cells in newer Unicode tables but one in older terminals.
+  list: '≣',
+  clear: '∅',
+};
+
+/**
+ * Glyph for the persistent overlay's per-task row. Differs from `STATUS_GLYPH`
+ * for `completed` (`✓` vs `●`) and `deleted` (`✗` vs `⊘`) because the
+ * overlay caller never renders a `deleted` row but uses `✗` in its
+ * error-toned palette..
+ */
+export function overlayStatusGlyph(status: TaskStatus, theme: Theme): string {
+  switch (status) {
+    case 'pending':
+      return theme.fg('dim', resolveStatusGlyph(status, '○'));
+    case 'in_progress':
+      return theme.fg('warning', resolveStatusGlyph(status, '◐'));
+    case 'completed':
+      return theme.fg('success', resolveStatusGlyph(status, '✓'));
+    case 'deleted':
+      return theme.fg('error', resolveStatusGlyph(status, '✗'));
+  }
+}
+
+/**
+ * Format a single task row for the persistent overlay. The subject color
+ * reflects task state while IDs and supporting metadata stay visually quiet.
+ */
+export function formatOverlayTaskLine(
+  t: Task,
+  theme: Theme,
+  showId: boolean,
+  kit?: ThothRenderKit,
+): string {
+  const glyph = kit
+    ? kit.statusGlyph(theme, t.status)
+    : overlayStatusGlyph(t.status, theme);
+  const subjectColor =
+    t.status === 'in_progress'
+      ? 'accent'
+      : t.status === 'completed' || t.status === 'deleted'
+        ? 'muted'
+        : 'text';
+  let subject = theme.fg(subjectColor, sanitizeTerminalText(t.subject));
+  if (t.status === 'completed' || t.status === 'deleted') {
+    subject = theme.strikethrough(subject);
+  }
+  let line = `${glyph}`;
+  if (showId) line += ` ${theme.fg('dim', `#${t.id}`)}`;
+  line += ` ${subject}`;
+  if (t.status === 'in_progress' && t.activeForm) {
+    line += ` ${theme.fg('muted', `(${sanitizeTerminalText(t.activeForm)})`)}`;
+  }
+  if (t.blockedBy && t.blockedBy.length > 0) {
+    line += ` ${theme.fg('muted', `⛓ ${t.blockedBy.map((id) => `#${id}`).join(',')}`)}`;
+  }
+  return line;
+}
+
+/**
+ * Format a single task line for the `/todos` slash command (no glyph color,
+ * indented bullet prefix). Pre-refactor `todo.ts:670-674`.
+ */
+export function formatCommandTaskLine(t: Task, glyph: string): string {
+  const form =
+    t.status === 'in_progress' && t.activeForm
+      ? ` (${sanitizeTerminalText(t.activeForm)})`
+      : '';
+  const block = t.blockedBy?.length
+    ? `    ⛓ ${t.blockedBy.map((id) => `#${id}`).join(',')}`
+    : '';
+  return `  ${glyph} #${t.id} ${sanitizeTerminalText(t.subject)}${form}${block}`;
+}
+
+// ---------------------------------------------------------------------------
+// Tool render hooks — wrapped so `todo.ts` becomes a thin call-site.
+// ---------------------------------------------------------------------------
+
+const HAS_RESULT = 'todoHasResult';
+
+function executionStatus(
+  context: RenderIndicatorContext | undefined,
+  isPartial: boolean,
+): RenderStatus {
+  if (!(context?.isPartial ?? isPartial)) {
+    return context?.isError ? 'failed' : 'completed';
+  }
+  return context?.executionStarted === false ? 'pending' : 'running';
+}
+
+/** Split the SDK's one Box across its stacked call/result renderer slots. */
+function renderNative(
+  text: string,
+  theme: Theme,
+  width: number,
+  status: RenderStatus,
+  part: 'full' | 'start' | 'end',
+): string[] {
+  const role =
+    status === 'pending' || status === 'running'
+      ? 'toolPendingBg'
+      : status === 'failed'
+        ? 'toolErrorBg'
+        : 'toolSuccessBg';
+  const bg = (line: string) => theme.bg(role, line);
+  const box = new Box(1, part === 'full' ? 1 : 0, bg);
+  box.addChild(new Text(text, 0, 0));
+  const rows = box.render(width);
+  if (part === 'full') return rows;
+  const padding = bg(' '.repeat(Math.max(0, width)));
+  return part === 'start' ? [padding, ...rows] : [...rows, padding];
+}
+
+/** Read kit availability inside render(), including for an already mounted row. */
+export function renderTodoCall(
+  args: TaskMutationParams & { action: TaskAction },
+  theme: Theme,
+  state: TaskState,
+  context?: RenderIndicatorContext,
+): Component {
+  const textForRender = () => {
+    const glyph =
+      args.action === 'update'
+        ? resolveIcon('arrowRight', '→')
+        : args.action === 'get'
+          ? resolveIcon('selection', '›')
+          : (ACTION_GLYPH[args.action] ?? args.action);
+    let text = theme.fg('muted', glyph);
+
+    if (args.action === 'create' && args.subject) {
+      text += ` ${theme.fg('dim', sanitizeTerminalText(args.subject))}`;
+    } else if (
+      (args.action === 'update' ||
+        args.action === 'get' ||
+        args.action === 'delete') &&
+      args.id !== undefined
+    ) {
+      const subject = selectTaskSubjectById(state, args.id);
+      text += ` ${theme.fg('accent', subject ? sanitizeTerminalText(subject) : `#${args.id}`)}`;
+    } else if (args.action === 'list' && args.status) {
+      text += ` ${theme.fg('muted', formatStatusLabel(args.status))}`;
+    }
+    return text;
+  };
+  const memo = createKitRenderMemo();
+  return {
+    render(width) {
+      return memo.render(width, (kit) => {
+        const text = textForRender();
+        const status = executionStatus(context, true);
+        // SDK constructs both slots before rendering either; renderResult marks
+        // the shared state, so the first completed render has no duplicate padding.
+        const part = context?.state?.[HAS_RESULT] ? 'start' : 'full';
+        if (kit) {
+          return kit.card(
+            theme,
+            {
+              title: 'todo',
+              body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+              status,
+              isSuccess:
+                Boolean(context?.state?.[HAS_RESULT]) &&
+                status === 'completed' &&
+                context?.executionStarted !== false,
+              context,
+              footer: renderToolFooter(kit, theme, { status, context }),
+              isError: context?.isError,
+              part,
+            },
+            width,
+          );
+        }
+        return renderNative(
+          theme.fg('toolTitle', theme.bold('todo ')) + text,
+          theme,
+          width,
+          status,
+          part,
+        );
+      });
+    },
+    invalidate() {
+      memo.invalidate();
+    },
+  };
+}
+
+/** Preserve the current task-status echo, with a kit or native shell. */
+export function renderTodoResult(
+  result: { details?: unknown },
+  theme: Theme,
+  options: { isPartial?: boolean } = {},
+  context?: RenderIndicatorContext,
+): Component {
+  if (context?.state) context.state[HAS_RESULT] = true;
+  const details = result.details as TaskDetails | undefined;
+  let status: TaskStatus | undefined;
+  if (details) {
+    const params = details.params as TaskMutationParams;
+    switch (details.action) {
+      case 'create':
+        status = details.tasks[details.tasks.length - 1]?.status;
+        break;
+      case 'update':
+        status =
+          params.status ??
+          details.tasks.find((t) => t.id === params.id)?.status;
+        break;
+      case 'delete':
+        status = details.tasks.find((t) => t.id === params.id)?.status;
+        break;
+      case 'list':
+      case 'get':
+      case 'clear':
+        break;
+    }
+  }
+  const memo = createKitRenderMemo();
+  return {
+    render(width) {
+      return memo.render(width, (kit) => {
+        const toolStatus = executionStatus(context, options.isPartial ?? false);
+        const text = status
+          ? theme.fg(
+              STATUS_COLOR[status],
+              `${resolveStatusGlyph(status, STATUS_GLYPH[status])} ${formatStatusLabel(status)}`,
+            )
+          : theme.fg('success', resolveStatusGlyph('completed', '✓'));
+        if (kit) {
+          return kit.card(
+            theme,
+            {
+              body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+              status: toolStatus,
+              isSuccess:
+                toolStatus === 'completed' &&
+                context?.executionStarted !== false,
+              context,
+              footer: renderToolFooter(kit, theme, {
+                status: toolStatus,
+                context,
+              }),
+              isError: context?.isError,
+              part: 'end',
+            },
+            width,
+          );
+        }
+        return renderNative(text, theme, width, toolStatus, 'end');
+      });
+    },
+    invalidate() {
+      memo.invalidate();
+    },
+  };
+}

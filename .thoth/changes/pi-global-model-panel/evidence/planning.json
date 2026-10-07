@@ -1,0 +1,31 @@
+{
+  "changeId": "pi-global-model-panel",
+  "agreementFingerprint": "sha256:e34e283d4288d83e53aa1e30880f5de7c47c5d6a2b18730e0052ad800a485f32",
+  "technicalFingerprint": "sha256:0ab13fad50dd023921f9a623436d955b2450bddb534909e0fb5aff9c0a9acf62",
+  "reviewChoice": {
+    "choice": "oracle",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "choice": "implement",
+    "resolution": "explicit",
+    "approvalRef": "c5f3c9d8-8b5c-4434-9ebf-746d734289f9",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": {
+    "verdict": "OKAY",
+    "nativeReviewerRef": "c5f3c9d8-8b5c-4434-9ebf-746d734289f9",
+    "agreementFingerprint": "sha256:e34e283d4288d83e53aa1e30880f5de7c47c5d6a2b18730e0052ad800a485f32",
+    "technicalFingerprint": "sha256:0ab13fad50dd023921f9a623436d955b2450bddb534909e0fb5aff9c0a9acf62",
+    "evidence": ".thoth/changes/pi-global-model-panel/evidence/plan-review.md"
+  },
+  "planningEvidence": {
+    "uiDesignRun": "b31a51ad-9886-409a-8f12-0c6952e11fc7",
+    "readyValidation": "Passed with zero errors and warnings after accepted UI design; design.md records UI, runtime findings and test seams."
+  }
+}

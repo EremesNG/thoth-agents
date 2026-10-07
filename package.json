@@ -1,7 +1,7 @@
 {
   "name": "thoth-agents",
   "version": "0.4.2",
-  "description": "Adaptive multi-harness orchestration with seven roles, runtime-autonomous Spec Kit-compatible SDD routes, and external provider boundaries.",
+  "description": "Adaptive multi-harness orchestration with six roles, runtime-autonomous AI-first execution routes, and external provider boundaries.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -57,6 +57,7 @@
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
     "verify:pi-package": "node scripts/verify-pi-package.mjs",
     "setup:codex:local": "pnpm run build && tsx scripts/setup-codex-local.ts",
+    "setup:pi:local": "pnpm run build && node scripts/setup-pi-local.mjs",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -68,6 +69,7 @@
     "prepublishOnly": "pnpm run build && pnpm run integration:verify",
     "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- plugin",
     "release:marketplace": "node scripts/publish-marketplace.mjs",
+    "release:pi": "node scripts/release-pi.mjs",
     "release:patch": "npm version patch --ignore-scripts=false && git push --follow-tags",
     "release:minor": "npm version minor --ignore-scripts=false && git push --follow-tags",
     "release:major": "npm version major --ignore-scripts=false && git push --follow-tags"
@@ -77,18 +79,30 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@opencode-ai/plugin": "1.18.2",
     "@opencode-ai/sdk": "1.18.2",
+    "hosted-git-info": "9.0.3",
     "ink": "^7.0.3",
     "react": "^19.2.6",
+    "semver": "^7.8.5",
     "unique-names-generator": "^4.7.1",
     "vscode-jsonrpc": "^8.2.0",
     "vscode-languageserver-protocol": "^3.17.5",
     "which": "^6.0.0",
+    "yaml": "2.9.0",
     "zod": "^4.1.8"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.99.0",
+    "@earendil-works/pi-tui": ">=0.99.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
+    "@types/hosted-git-info": "3.0.5",
     "@types/node": "^22.19.19",
     "@types/react": "^19.2.15",
+    "@types/semver": "^7.8.0",
     "@types/which": "^3.0.4",
     "ink-testing-library": "^4.0.0",
     "tsup": "^8.5.1",
@@ -99,6 +113,6 @@
   "overrides": {
     "hono": "4.12.19",
     "postcss": "8.5.14",
-    "tsx": "4.22.2"
+    "tsx": "4.22.4"
   }
 }

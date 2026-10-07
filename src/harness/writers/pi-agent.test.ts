@@ -1,9 +1,48 @@
 import { describe, expect, test } from 'vitest';
 import { piAdapter } from '../adapters/pi';
-import { PI_ROOT_END, PI_ROOT_START } from './pi-agent';
+import {
+  getPiSpecialistDefaultTools,
+  PI_ROOT_END,
+  PI_ROOT_START,
+} from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('renders one ambient root block and exactly six owned specialists deterministically', () => {
+  test('keeps specialist allowlists independent of injected ask_orchestrator', () => {
+    const roles = [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'worker',
+    ] as const;
+    expect(
+      roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
+    ).toEqual([
+      ['explorer', ['read', 'bash', 'grep', 'find', 'ls']],
+      [
+        'librarian',
+        [
+          'read',
+          'bash',
+          'grep',
+          'find',
+          'ls',
+          'resolve-library-id',
+          'query-docs',
+          'mcp',
+          'web_search',
+          'fetch_content',
+          'get_search_content',
+          'source_check',
+        ],
+      ],
+      ['oracle', ['read', 'bash', 'grep', 'find', 'ls']],
+      ['designer', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+      ['worker', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+    ]);
+  });
+
+  test('renders one ambient root block and exactly five owned specialists deterministically', () => {
     const first = piAdapter.render({ projectRoot: process.cwd() });
     const second = piAdapter.render({ projectRoot: process.cwd() });
     expect(second.artifacts).toEqual(first.artifacts);
@@ -18,15 +57,34 @@ describe('Pi agent writer', () => {
       'agents/thoth-librarian.md',
       'agents/thoth-oracle.md',
       'agents/thoth-designer.md',
-      'agents/thoth-quick.md',
-      'agents/thoth-deep.md',
+      'agents/thoth-worker.md',
     ]);
     expect(
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
+    const expectedTools: Record<string, string> = {
+      'agents/thoth-explorer.md': 'read, bash, grep, find, ls',
+      'agents/thoth-librarian.md':
+        'read, bash, grep, find, ls, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+      'agents/thoth-oracle.md': 'read, bash, grep, find, ls',
+      'agents/thoth-designer.md': 'read, bash, edit, write, grep, find, ls',
+      'agents/thoth-worker.md': 'read, bash, edit, write, grep, find, ls',
+    };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
-      expect(artifact.content).toContain('tools:');
+      expect(artifact.content.match(/^tools: (.+)$/m)?.[1]).toBe(
+        JSON.stringify(expectedTools[artifact.path]),
+      );
+      expect(artifact.content.match(/^disallowed_tools: (.+)$/m)?.[1]).toBe(
+        artifact.path === 'agents/thoth-oracle.md'
+          ? '"ask_orchestrator"'
+          : undefined,
+      );
+      expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
+      expect(artifact.content).toContain('subagent_mode: "background"');
+      expect(artifact.content).not.toMatch(
+        /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
+      );
       expect(artifact.content).toContain(
         `name: ${artifact.path.slice('agents/'.length, -'.md'.length)}`,
       );
@@ -34,26 +92,12 @@ describe('Pi agent writer', () => {
     const librarian = agents.find(
       (artifact) => artifact.path === 'agents/thoth-librarian.md',
     );
-    expect(librarian?.content).toContain(
-      'tools: "read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"',
-    );
-    expect(librarian?.content).not.toMatch(
-      /tools:.*(?:web_fetch|web_\*_exa|exa_research_\*)/,
-    );
-    for (const agent of agents.filter((artifact) => artifact !== librarian)) {
-      expect(agent.content).toContain(
-        ['designer', 'quick', 'deep'].some((role) =>
-          agent.path.endsWith(`thoth-${role}.md`),
-        )
-          ? 'tools: "read, bash, edit, write"'
-          : 'tools: "read, bash"',
-      );
-      expect(agent.content).not.toMatch(
-        /tools:.*\b(?:web_search|fetch_content|get_search_content|source_check)\b/,
-      );
-      expect(agent.content).not.toMatch(
-        /tools:.*\b(?:ask_user_question|todo)\b/,
-      );
+    expect(librarian?.content).toContain('provider is loaded');
+    expect(librarian?.content).not.toContain('tool allowlist');
+    for (const artifact of agents.filter(
+      (artifact) => artifact.path !== 'agents/thoth-librarian.md',
+    )) {
+      expect(artifact.content).not.toContain('\nasync: true\n');
     }
     expect(
       first.artifacts.some((artifact) =>

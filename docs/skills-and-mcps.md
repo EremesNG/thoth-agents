@@ -1,158 +1,81 @@
 # Skills and MCPs
 
-thoth-agents 0.3.0 separates compact role prompts from detailed, on-demand
-workflow contracts. The thoth-owned phase contracts ship inside the plugin
-bundle, while mandatory external skills are installed from their canonical
-repositories during setup. SDD execution itself requires neither the CLI nor a
-runtime download.
+Thoth-owned workflow skills ship with the product; mandatory external skills
+are installed from their canonical repositories during setup. SDD execution
+uses already installed local contracts and never invokes the CLI or a download.
 
-## Owned workflow skills
-
-| Skill | Contract |
+| Owned skill | Contract |
 | --- | --- |
-| `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only |
-| `thoth-sdd` | Contextual route recommendation, explicit-or-bounded-default selection, progressive phase references, templates, and structural validation |
-| `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
-| `thoth-archive` | Passing verification gate, audit report, and dated archive move |
-| `plan-reviewer` | Explicit-or-bounded-default, blocker-focused Oracle plan review with convergence and SHA-256 freshness evidence |
+| `thoth-init` | Offline idempotent minimum `.thoth/` governance at `.thoth/constitution.md`, preserving existing project governance and history. |
+| `thoth-sdd` | Proportional explore/specify/clarify phases, post-understanding classification, one ID-named substantial-change record, and structural readiness/closeout validation. |
+| `thoth-constitution` | Explicit versioned amendments and governance validator. |
+| `thoth-archive` | Fresh independent PASS, transactional declared durable updates and dated archive. |
+| `plan-reviewer` | Optional blocker-focused read-only plan review. |
 
-The adaptive root loads only the current contract. It owns specify, clarify,
-plan, checklist, tasks, converge, report persistence, and archive. Explorer owns
-Full discovery. Every route verifies: trivial deterministic Direct work may use
-focused root checks; materially risky Direct work and every Accelerated or Full
-final verify use a fresh read-only Oracle. Offered plan review remains read-only.
+Root loads only the current phase. Every change completes proportional
+explore/specify/clarify before classification; no phase forces a document,
+specialist, or interview. Small clear low-risk work is test-first and artifact-
+free. Substantial work uses one `.thoth/changes/<id>/<id>.md`, without aliases,
+sidecars, reports, or a default evidence directory. Optional selected Oracle plan
+review stays separate from the post-review Implement-or-Stop choice. Fresh Oracle
+judgment remains mandatory for substantial or materially risky work. See [the
+SDD guide](sdd-pipeline.md).
 
-After `ready` on Accelerated or Full, root offers `Review plan with Oracle
-(Recommended)` or `Proceed without review`. Any explicit answer wins; after
-three total answerless native results, review counts as selected. `plan-reviewer`
-returns exactly `[OKAY]` or `[REJECT]` and no more than three actionable
-blockers. Root repairs same-intent blockers, revalidates affected gates, and
-uses a fresh Oracle round until `[OKAY]` or a material human-owned blocker. Root
-alone persists `plan-review.md` with reviewed-source SHA-256 digests; it is never
-mirrored into provider memory. After `[OKAY]`, root summarizes the approved plan
-before asking `Implement (Recommended)` or `Stop`. Any explicit answer wins;
-after three total answerless results, implementation counts as selected.
-Approval alone never authorizes implementation or replaces mandatory final
-Oracle verification.
-
-Before implementation, root records concrete artifact/decision dependencies,
-ownership, specialist fit, and verification inputs. Input-complete lanes are
-ready; lanes waiting on upstream artifacts are blocked. All ready conflict-free
-lanes are dispatched in a native wave before waiting, and fan-in accepts only
-terminal native results. Semantic triggers route current or external facts to
-`librarian`, material user-facing UI/UX or accessibility to `designer`, and
-known narrow low-risk isolated edits to `quick`; coupled or high-risk work uses
-`deep`. Native harness execution and lifecycle remain authoritative, with
-truthful sequential fallback when a primitive is unavailable.
-
-## Mandatory execution skills
-
-| Skill | Canonical source | Trigger |
+| External skill | Canonical source | Trigger |
 | --- | --- | --- |
-| `simplify` | `EremesNG/skills` | After implementation, simplify touched code without behavior changes |
-| `tdd` | `mattpocock/skills` | Before implementing behavior changes |
-| `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work |
-| `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
+| `simplify` | `EremesNG/skills` | Review the implementation diff without changing behavior. |
+| `tdd` | `mattpocock/skills` | Test-first behavior changes. |
+| `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work. |
+| `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision. |
 
-Build copies only the five owned skills to the shared `plugin/skills` tree used
-by Codex and Claude. The OpenCode CLI copies those packaged skills to its global
-discovery root. Pi discovers them directly through the installed
-`thoth-agents` package manifest and creates no new global skill copies; only
-byte-identical attributable legacy copies may be retired. `/thoth-init`
-only initializes or synchronizes the minimum project `openspec/` structure.
-Every SDD phase anchors its contract, template, and validator paths to the
-installed `thoth-sdd` skill; no project-local template directory is required.
-
-For every harness, the thoth-agents installer invokes `npx skills add` with the
-canonical repository, exact skill name, global scope, and concrete harness
-selector. There are no vendored copies of these external skills in this
-repository or the generated plugin packages. A failed mandatory skill install
-fails the overall installation.
-
-After the external skills, the published installation command invokes
-thoth-mem's public setup for the selected harness. An explicit local Pi package
-install omits that call and requires a separate local thoth-mem installation.
-This administrative call is installation orchestration, not a bundled provider
-implementation; SDD phases never invoke either CLI.
-
-## SDD contract loading
-
-`thoth-sdd` contains one reference per phase. Detailed contracts are absent from
-the static agent prompts and loaded only after a route reaches that phase.
-
-| Phase | Owner |
-| --- | --- |
-| `explore` | read-only `explorer` |
-| `specify`, `clarify`, `plan`, `checklist`, `tasks` | root |
-| `plan-review` | optional read-only `oracle`, after explicit or bounded-default review selection |
-| `implement` | root or one bounded writer |
-| `verify` | root for trivial deterministic Direct; fresh read-only `oracle` for materially risky Direct and every Accelerated/Full final verify |
-| `converge`, report persistence, `archive` | root |
-
-Artifact-backed phases use canonical templates, FR/SC and US identifiers,
-Constitution checks, exact task grammar, checklist taxonomy/revalidation, and an
-offline structural validator. Plans reuse the same exact active Constitution
-principle names before and after design. Task IDs start at `T001`, remain global
-and sequential, and each task carries exactly one literal repository-relative
-path before its verification outcome. Oracle semantic review remains a separate
-gate.
+Build copies the five owned skills to shared `plugin/skills` for Codex and
+Claude. OpenCode synchronizes them into its global discovery root. Pi discovers
+them via the package manifest, preserving unrelated provider and Pi assets.
+`/thoth-init` creates only missing minimum `.thoth/` paths. Phase references,
+templates and maintained validators resolve relative to the installed
+`thoth-sdd` skill, never to a project-local template directory. Missing assets
+are installation drift, not permission to provision mid-workflow. The installer
+uses `npx skills add` for external skills during setup; a failed mandatory
+install fails setup.
 
 ## thoth-agents MCPs
 
-The shared harness bundle may expose the research MCPs used by thoth-agents:
+The shared harness bundle may expose `exa`, `context7` and `grep_app` research
+MCPs. OpenCode composes them at runtime; Codex reads `plugin/codex.mcp.json`
+and Claude `plugin/.mcp.json`. Pi uses native
+`@upstash/context7-pi@0.1.2` and `pi-web-access@0.27.0` extensions, while
+`pi-mcp-adapter@2.32.1` exposes only the global grep.app server. Provider
+settings, tool aliases, disabled tools and credentials are operator-owned;
+installation does not prove live provider availability.
 
-| MCP | Purpose |
-| --- | --- |
-| `exa` | External research and source discovery. |
-| `context7` | Current library documentation. |
-| `grep_app` | Public code search. |
-
-Their exact configuration differs by harness. OpenCode composes them at runtime;
-Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
-Pi uses a hybrid stack: `@upstash/context7-pi@0.1.2` and
-`pi-web-access@0.27.0` are native extensions, while
-`pi-mcp-adapter@2.32.1` exposes only the global `https://mcp.grep.app` server.
-The managed grep entry uses legacy protocol and lazy lifecycle, omits
-`directTools`, and requires no credentials. pi-web-access supports Exa, including
-its keyless public MCP path, and other configured providers. Provider settings,
-tool aliases, disabled tools, and credentials remain operator-owned;
-thoth-agents never copies or rewrites them.
-
-The default pi-web-access tools are `web_search`, `fetch_content`,
-`get_search_content`, and `source_check`; only the root and librarian receive
-the corresponding guidance/allowlist. Delegated research uses `workflow: "none"`
-to avoid the interactive curator. The package does not retain dedicated pi-exa
-answer, similarity, or research-planner tools. Package presence is unverified
-runtime evidence rather than proof of a successful provider request. Failures
-are reported explicitly, and fetched or searched content remains untrusted.
-Fetches may create extension-owned caches or clones outside the workspace even
-for a read-only role. The separate `rpiv-ask-user-question` and `rpiv-todo`
-packages expose root-owned interaction and session-local progress rather than
-child coordination state.
+Pi's default web tools are `web_search`, `fetch_content`,
+`get_search_content` and `source_check`; only root and librarian receive their
+guidance. Delegated research uses `workflow: "none"` to avoid the interactive
+curator. Fetched content is untrusted and may create extension-owned caches
+outside the workspace. Pi's first-party `@thoth-agents/pi-questions-user`
+provides root-owned `ask_user_question`: optional title, stable question ids,
+headers/prompts, single/multi/text/confirm types and advisory required flags.
+Single/multi options have unique values, labels, optional descriptions/previews
+and a structured `recommended` flag (never preselected). There is no fixed
+maximum on questions or options; ask targeted questions rather than unrelated
+batches. Results expose `details.answers[id]` with status, values, labels, custom
+text and question/option notes. Skips and cancellation are not approval, and
+`no_ui` is not a human answer; partial recorded answers may survive cancellation.
+Without custom UI it falls back to sequential select/input; without UI it is
+inactive. Children still route questions through `ask_orchestrator`, not human
+dialogs. The CLI removes a conflicting user-scope juicesharp question package
+natively before installation; project conflicts require manual trust-aware removal.
+Provider-neutral progress guidance treats tools as optional: use an available
+tool according to its exposed contract or lightweight written progress. For Pi,
+the CLI installs the required first-party `@thoth-agents/pi-todo` task-list
+package. An installed `@juicesharp/rpiv-todo` blocks setup until the operator
+removes it with `pi remove npm:@juicesharp/rpiv-todo --no-approve`. Thoth supplies
+no task scheduler or child-coordination state. Capability gaps are reported
+truthfully.
 
 ## thoth-mem boundary
 
-thoth-mem is not a bundled skill or MCP. It is an independently installed
-plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
-evidence, receipts, installed skill, and lifecycle behavior.
-
-Published `npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest
-setup <opencode|codex|claude|pi> --json` after thoth-agents-owned setup and
-mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
-not pass `--force`, edit provider files, or claim success unless status and exit
-evidence consistently report `complete`. An explicit local Pi package install
-omits provider setup and requires thoth-mem to be installed separately from its
-own local checkout.
-
-At runtime, root and children load the installed `thoth-mem` skill only for an
-authorized memory outcome. Root owns stable session identity, real-user intent,
-and lifecycle. A child receives `none`, `recall`, or `observe` separately from
-its workspace permissions; `observe` can authorize a durable provider
-observation without allowing file edits or root lifecycle. `openspec/` remains
-canonical, and phase artifacts are not mirrored into provider memory.
-
-## QA boundary
-
-`playwright-cli`, Playwright, browser drivers, integration runners, and other QA
-executables remain project-owned. A workflow may use an already available QA
-surface but must not provision one merely because thoth-agents is installed.
+thoth-mem is not a bundled skill or MCP: it is an independently installed
+plugin/provider. Published installs invoke its public setup; explicit local Pi
+package installs leave it to a separate installer. It owns hooks, MCP, lifecycle,
+persistence and recovery; project work artifacts are never mirrored there.

@@ -7,15 +7,15 @@ describe('managed model state effort compatibility', () => {
       parseManagedModelStateJson(
         JSON.stringify({
           version: 1,
-          models: { deep: 'gpt-5' },
-          configuredModels: { deep: 'gpt-5.6-sol' },
+          models: { worker: 'gpt-5' },
+          configuredModels: { worker: 'gpt-5.6-sol' },
         }),
         1,
       ),
     ).toEqual({
       version: 1,
-      models: { deep: 'gpt-5' },
-      configuredModels: { deep: 'gpt-5.6-sol' },
+      models: { worker: 'gpt-5' },
+      configuredModels: { worker: 'gpt-5.6-sol' },
     });
   });
 
@@ -25,7 +25,7 @@ describe('managed model state effort compatibility', () => {
         version: 1,
         models: {},
         configuredEfforts: {
-          deep: 'ultra',
+          worker: 'ultra',
           quick: 'inherit',
           explorer: 42,
         },
@@ -35,7 +35,7 @@ describe('managed model state effort compatibility', () => {
     expect(parsed).toEqual({
       version: 1,
       models: {},
-      configuredEfforts: { deep: 'ultra' },
+      configuredEfforts: { worker: 'ultra' },
     });
     expect(JSON.parse(stableJson(parsed))).toEqual(parsed);
   });

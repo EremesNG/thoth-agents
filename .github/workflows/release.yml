@@ -63,7 +63,7 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           RELEASE_BRANCH: ${{ steps.release-branch.outputs.name }}
         run: |
-          for attempt in {1..30}; do
+          for attempt in {1..90}; do
             runs=$(
               gh api \
                 "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&per_page=20"

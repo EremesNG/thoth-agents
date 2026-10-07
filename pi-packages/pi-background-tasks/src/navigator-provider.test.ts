@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { getWorkPanelLifecycle } from '@thoth-agents/pi-core';
+import { describe, expect, it } from "vitest";
 import { logPathFor, readMeta, taskDir, writeMeta } from "./registry.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
@@ -19,11 +20,51 @@ function task(host: ReturnType<typeof lifecycleHost>, id: string, status: Backgr
 }
 
 describe("Background Work panel provider", () => {
+  it('binds prompt lifecycle, collapses idle outcomes, and disposes across switch/shutdown', async () => {
+    const host = lifecycleHost('panel-lifecycle', true);
+    const metas: BackgroundTaskMeta[] = [];
+    try {
+      await host.emit('session_start');
+      await host.emit('input', { source: 'interactive', text: 'build it' });
+      await host.emit('before_agent_start', { prompt: 'build it' });
+      expect(getWorkPanelLifecycle(host.ctx as any).epoch).toBe(1);
+      await host.emit('session_start');
+      expect(getWorkPanelLifecycle(host.ctx as any).epoch).toBe(1);
+      host.setIdle(false);
+      await host.emit('agent_start');
+      expect(getWorkPanelLifecycle(host.ctx as any).busy).toBe(true);
+      const done = task(host, 'bg_panel_lifecycle_done', 'succeeded');
+      metas.push(done);
+      expect(host.panel.render().join('\n')).toContain(done.id);
+      host.setIdle(true);
+      await host.emit('agent_settled');
+      expect(host.panel.render().filter(line => !line.includes('interact'))).toEqual(['◆ Background · 1 done · 0 failed']);
+      host.panel.key('\x1b[D');
+      expect(host.panel.render().at(-1)).toContain('Enter history');
+      expect(host.panel.render().at(-1)).not.toContain('x ');
+      host.panel.key('\x1b');
+      await host.emit('session_before_switch');
+      host.ctx.sessionManager.getSessionId = () => 'panel-lifecycle-new';
+      await host.emit('session_start');
+      expect(getWorkPanelLifecycle(host.ctx as any).epoch).toBe(0);
+      await host.emit('input', { source: 'rpc', text: 'new task' });
+      await host.emit('before_agent_start', { prompt: 'new task' });
+      expect(getWorkPanelLifecycle(host.ctx as any).epoch).toBe(1);
+      await host.emit('session_shutdown', 'reload');
+      await host.emit('input', { source: 'interactive', text: 'after shutdown' });
+      await host.emit('before_agent_start', { prompt: 'after shutdown' });
+      expect(getWorkPanelLifecycle(host.ctx as any).epoch).toBe(0);
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
   it("renders a compact Background counter and uses only the shared host cue and listener", async () => {
     const host = lifecycleHost("work-panel-summary", true);
+    await host.emit("session_start");
     const metas = [task(host, "bg_panel_running", "running"), task(host, "bg_panel_failed", "failed")];
     try {
-      await host.emit("session_start");
       const lines = host.panel.render();
       expect(lines[0]).toContain("Background · 1 running · 1 failed");
       expect(lines).toHaveLength(4);
@@ -35,8 +76,9 @@ describe("Background Work panel provider", () => {
       expect(host.widgets.has("background-work-list")).toBe(false);
       expect(lines.join("\n")).not.toContain("work navigator");
       writeMeta({ ...metas[0]!, status: "succeeded", endedAt: Date.now() });
-      expect(host.panel.render()[0]).toContain("Background · 0 running · 1 failed");
-      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 2");
+      expect(host.panel.render()[0]).toContain("Background · 1 done · 1 failed");
+      expect(host.panel.render()).toHaveLength(2);
+      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
     } finally {
       await host.emit("session_shutdown", "reload");
       for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
@@ -63,24 +105,32 @@ describe("Background Work panel provider", () => {
     }
   });
 
-  it("expires terminal rows at exactly 30 seconds without another tool call", async () => {
-    const host = lifecycleHost("panel-expiry", true);
-    await host.emit("session_start");
-    vi.useFakeTimers();
-    const meta = task(host, "bg_panel_expiring", "failed");
+  it("opts into prompt retention without expiring terminal rows and counts dismissed outcomes", async () => {
+    const host = lifecycleHost("panel-retention", true);
+    const failed = task(host, "bg_panel_old_failed", "failed");
+    writeMeta({ ...failed, endedAt: Date.now() - 60_000 });
+    const timedOut = task(host, "bg_panel_timed_out", "timed_out");
+    const done = task(host, "bg_panel_done", "succeeded");
+    const dismissed = task(host, "bg_panel_dismissed", "cancelled");
+    writeMeta({ ...dismissed, dismissedAt: Date.now() });
+    const running = task(host, "bg_panel_live", "running");
     try {
-      expect(host.panel.render().join("\n")).toContain(meta.id);
-      await vi.advanceTimersByTimeAsync(29_999);
-      expect(host.panel.render().join("\n")).toContain(meta.id);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(host.panel.render()).toEqual([]);
-      expect(host.statuses.get("thoth-work-panel")).toBeUndefined();
-      expect(readMeta(meta.id)?.status).toBe("failed");
-      expect(readMeta(meta.id)?.dismissedAt).toBeUndefined();
+      await host.emit("session_start");
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      expect(provider.retention).toBe("prompt");
+      const rows = provider.listRows(Date.now() + 120_000);
+      expect(rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: failed.id, state: "failed", endedAt: expect.any(Number) }),
+        expect.objectContaining({ id: timedOut.id, state: "failed" }),
+        expect.objectContaining({ id: done.id, state: "done" }),
+        expect.objectContaining({ id: running.id, state: "running" }),
+      ]));
+      expect(rows.some(row => row.id === dismissed.id)).toBe(false);
+      expect(rows.every(row => row.expiresAt === undefined)).toBe(true);
+      expect(provider.summary?.()).toMatchObject({ running: 1, failed: 2, completed: 2 });
     } finally {
       await host.emit("session_shutdown", "reload");
-      vi.useRealTimers();
-      rmSync(taskDir(meta.id), { recursive: true, force: true });
+      for (const meta of [failed, timedOut, done, dismissed, running]) rmSync(taskDir(meta.id), { recursive: true, force: true });
     }
   });
 
@@ -94,7 +144,7 @@ describe("Background Work panel provider", () => {
     writeMeta({ ...foreignCwd, callbackOrigin: { cwd: `${cwd}/other`, sessionId: "panel-after-switch" } });
     try {
       await host.emit("session_start");
-      expect(host.panel.render().join("\n")).toContain(old.id);
+      expect(getBackgroundTasksNavigator(host.pi).provider.listRows(Date.now()).map(row => row.id)).toEqual([old.id]);
       expect(host.panel.render().join("\n")).not.toContain(next.id);
       await host.emit("session_before_switch");
       expect(host.panel.listenerCount()).toBe(0);
@@ -104,8 +154,8 @@ describe("Background Work panel provider", () => {
       await host.emit("session_start");
       expect(host.panel.listenerCount()).toBe(1);
       const lines = host.panel.render();
-      expect(lines[0]).toContain("Background · 0 running · 1 failed");
-      expect(lines.join("\n")).toContain(next.id);
+      expect(lines[0]).toContain("Background · 0 done · 1 failed");
+      expect(getBackgroundTasksNavigator(host.pi).provider.listRows(Date.now()).map(row => row.id)).toEqual([next.id]);
       expect(lines.join("\n")).not.toContain(old.id);
       expect(lines.join("\n")).not.toContain(foreignCwd.id);
     } finally {
@@ -122,7 +172,8 @@ describe("Background Work panel provider", () => {
     try {
       await host.emit("session_start");
       const provider = getBackgroundTasksNavigator(host.pi).provider;
-      expect(host.panel.render()).toEqual([]);
+      expect(host.panel.render()[0]).toContain('Background · 0 done · 0 failed');
+      expect(provider.listRows(Date.now())).toEqual([]);
       expect(provider.detail(foreign.id, Date.now())).toBeNull();
       provider.close(foreign.id);
       expect(readMeta(foreign.id)?.dismissedAt).toBeUndefined();
@@ -145,6 +196,7 @@ it('shows provider status and timing instead of commands with semantic name, sta
   host.panel.ui.theme.fg = (role, text) => { styled.push([role, text]); return text; };
   try {
     await host.emit('session_start');
+    writeMeta({ ...failed, name: 'failed build', result: { reason: 'result' }, endedAt: Date.now() });
     const text = host.panel.render().join('\n');
     expect(text).toContain('every 20s');
     expect(text).toMatch(/9m (46|47)s left/);

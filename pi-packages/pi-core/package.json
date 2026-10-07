@@ -17,6 +17,7 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./history-panel": "./src/history-panel.ts",
     "./testing": "./src/testing.ts"
   },
   "repository": {

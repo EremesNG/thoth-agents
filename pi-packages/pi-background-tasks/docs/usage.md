@@ -44,7 +44,30 @@ Watch and `bg_task` spawn/watch actions use the same shell contract and report t
 - `bg_task`: action wrapper for spawn/watch/list/status/log/stop/clear.
 - `bg_status`: action wrapper for list/status/log/stop/clear.
 
-Default scope is the current session. `all:true` explicitly allows inspection or by-ID mutation of another session's task. Bulk clear dismisses owned terminal tasks only. Completion callbacks are follow-ups tied to the task's originating session; cancellation is quiet. The interactive navigator retains task details and logs.
+Default scope is the current session. `all:true` explicitly allows inspection or by-ID mutation of another session's task. Bulk clear dismisses owned terminal tasks only. Completion callbacks are follow-ups tied to the task's originating session; cancellation is quiet.
+
+### Interactive history
+
+Run `/bg`, or focus the Work panel with ← on an empty editor and press Enter on
+the Background summary or a task row. Row Enter opens history at that task.
+There is no default history shortcut. History is scoped to the current cwd and
+session, lists newest first, and includes dismissed tasks and older outcomes
+that no longer render above the editor.
+
+- ←/→ selects tasks; ↑/↓, PgUp/PgDn, Home/End and mouse wheel scroll content.
+- `[`/`]` selects the previous/next retained log page (up to 64 KiB per page).
+- `x` twice stops the selected running task; terminal history is not dismissed.
+- Esc, `q` or Ctrl+C closes the panel.
+
+The panel shows status, command, start/end/elapsed timing, exit/error metadata
+and retained output. Notices disclose output lost to capture or retention; lost
+bytes cannot be recovered by paging. The above-editor section uses prompt
+retention, not a 30-second timeout: running work always shows, current-prompt
+failures/timeouts show while busy, and at most three current-prompt completed
+outcomes show. An idle section without running work collapses to a summary of
+session done/failed totals. Dismissed tasks stay out of rows, not history or totals.
+Prompt epochs follow pi-core's observed-text matching for interactive/RPC input
+submitted while idle; queued streaming input does not advance the epoch.
 
 ## Intent and evidence
 

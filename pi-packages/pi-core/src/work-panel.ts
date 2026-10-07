@@ -7,6 +7,9 @@ import { safely } from './work-panel-render.js';
 
 export const WORK_PANEL_VERSION = 1 as const;
 
+/** Queued/stopping work is normalized to running; timed-out work to failed. */
+export type WorkPanelItemState = 'running' | 'failed' | 'done';
+
 export type WorkPanelStatusTone =
   | 'running'
   | 'success'
@@ -51,6 +54,10 @@ export interface WorkPanelRow {
   providerId?: string;
   name?: string;
   status?: string;
+  /** Required by prompt-retained providers; presentation status remains provider-owned. */
+  state?: WorkPanelItemState;
+  /** Terminal completion time in Unix milliseconds, required for prompt retention. */
+  endedAt?: number;
   statusTone?: WorkPanelStatusTone;
   /** Override the state-derived color, e.g. pending Todos use normal text. */
   statusGlyphRole?: WorkPanelSegmentRole;
@@ -117,6 +124,8 @@ export interface WorkPanelProvider {
   id: string;
   label: string;
   priority: number;
+  /** Additive v1 opt-in: retain only current-prompt outcomes, collapse while idle. */
+  retention?: 'prompt';
   /** Advisory provider count; host cues and focus use selectable section rows instead. */
   visibleCount(): number;
   listRows(now: number): WorkPanelRow[];
@@ -133,6 +142,9 @@ export interface WorkPanelProvider {
   /** Resolve only once the custom detail UI is closed; input is suspended until then. */
   // biome-ignore lint/suspicious/noConfusingVoidType: synchronous no-ops and awaited custom UIs are supported.
   open?(id: string, ctx: ExtensionContext): void | Promise<unknown>;
+  /** Summary-line action; resolves only after the history UI closes. */
+  // biome-ignore lint/suspicious/noConfusingVoidType: synchronous no-ops and awaited custom UIs are supported.
+  openHistory?(ctx: ExtensionContext): void | Promise<unknown>;
   summary?(): WorkPanelSummary | string;
   showSection?(rows: WorkPanelRow[], now: number): boolean;
   parentRow?(now: number): WorkPanelRow | null;

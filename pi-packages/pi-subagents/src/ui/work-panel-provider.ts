@@ -4,6 +4,7 @@ import {
   resolveIcon,
   resolveStatusGlyph,
   WORK_PANEL_VERSION,
+  type WorkPanelItemState,
   type WorkPanelProvider,
   type WorkPanelSegment,
 } from '@thoth-agents/pi-core';
@@ -14,11 +15,22 @@ import {
   renderSubagentWorkRow,
 } from './background-widget.js';
 
+function taskState(task: SubagentTask): WorkPanelItemState {
+  if (['queued', 'stopping', 'running'].includes(task.status)) return 'running';
+  return task.status === 'completed' ? 'done' : 'failed';
+}
+
+function completionTime(task: SubagentTask): number | undefined {
+  const endedAt = task.ended_at ? Date.parse(task.ended_at) : NaN;
+  return Number.isFinite(endedAt) ? endedAt : undefined;
+}
+
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
   onTaskUpdate(notify: () => void): () => void;
   cancel(id: string, reason: string): unknown;
   open: NonNullable<WorkPanelProvider['open']>;
+  openHistory?: WorkPanelProvider['openHistory'];
   theme?: () => RenderKitTheme;
 }): WorkPanelProvider {
   const runningTask = (id: string) =>
@@ -32,6 +44,7 @@ export function createSubagentsWorkPanelProvider(source: {
     id: 'subagents',
     label: 'Agents',
     priority: 10,
+    retention: 'prompt',
     visibleCount: () => source.listTasks().length,
     refreshIntervalMs: 100,
     summary: () => {
@@ -59,7 +72,14 @@ export function createSubagentsWorkPanelProvider(source: {
             },
           );
       }
-      return { text: parts.map(({ text }) => text).join(''), segments: parts };
+      return {
+        text: parts.map(({ text }) => text).join(''),
+        segments: parts,
+        running: count('running') + count('queued') + count('stopping'),
+        completed: count('completed'),
+        failed: count('failed') + count('cancelled') + count('interrupted'),
+        total: tasks.length,
+      };
     },
     listRows: () =>
       [...source.listTasks()]
@@ -80,6 +100,8 @@ export function createSubagentsWorkPanelProvider(source: {
           name: task.agent,
           primary: formatTaskSummary(task),
           status: task.status,
+          state: taskState(task),
+          endedAt: completionTime(task),
           statusGlyph: (now) => {
             const frame = Math.floor(now / 100);
             if (task.status === 'running') {
@@ -108,6 +130,7 @@ export function createSubagentsWorkPanelProvider(source: {
       return { action: 'cancel', providerId: 'subagents', id };
     },
     open: source.open,
+    openHistory: source.openHistory,
     onVisibleChanged: (notify) => source.onTaskUpdate(notify),
   };
 }

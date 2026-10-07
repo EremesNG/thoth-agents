@@ -63,6 +63,7 @@ export {
 export type {
   WorkPanelCloseOutcome,
   WorkPanelDetail,
+  WorkPanelItemState,
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,
@@ -77,3 +78,8 @@ export {
   registerWorkPanelProvider,
   WORK_PANEL_VERSION,
 } from './work-panel.js';
+export type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
+export {
+  bindWorkPanelLifecycle,
+  getWorkPanelLifecycle,
+} from './work-panel-lifecycle.js';

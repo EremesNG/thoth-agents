@@ -4,6 +4,10 @@ import { resolveIcon } from './render-kit.js';
 import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
 import {
+  getWorkPanelLifecycle,
+  onWorkPanelLifecycleChanged,
+} from './work-panel-lifecycle.js';
+import {
   type PanelRow,
   panelCloseLabel,
   panelSections,
@@ -77,6 +81,7 @@ export function createWorkPanelHost(
   let installed = false;
   let requestRender: (() => void) | undefined;
   let removeInput: (() => void) | undefined;
+  let removeLifecycle: (() => void) | undefined;
   let previousFactory: EditorFactory | undefined;
   let factory: EditorFactory | undefined;
   let editor: Component | undefined;
@@ -107,7 +112,8 @@ export function createWorkPanelHost(
       Math.max(0, width),
       resolveIcon('ellipsis', '...'),
     ) ?? [...text].slice(0, Math.max(0, width)).join('');
-  const sections = () => panelSections(providers(), Date.now());
+  const sections = () =>
+    panelSections(providers(), Date.now(), getWorkPanelLifecycle(ctx));
   function rows(): PanelRow[] {
     const all = sections()
       .flatMap((section) => section.rows)
@@ -168,7 +174,8 @@ export function createWorkPanelHost(
   const matches = (data: string, key: keyof typeof keyCodes) =>
     toolkit?.matchesKey(data, key) ?? data === keyCodes[key];
   function open(entry: PanelRow): void {
-    if (suspended) return;
+    if (suspended || (entry.sectionSummary && !entry.provider.openHistory))
+      return;
     suspended = true;
     releaseFocus();
     host.refresh();
@@ -183,65 +190,62 @@ export function createWorkPanelHost(
     let detailComponent: ReturnType<typeof createWorkPanelDetail> | undefined;
     let detailHandle: OverlayHandle | undefined;
     let detailFinished = false;
-    const show = () =>
-      entry.provider.open
-        ? entry.provider.open(entry.row.id, ctx)
-        : ctx.ui.custom<void>(
-            (detailTui, theme, _keybindings, done) => {
-              const component = createWorkPanelDetail({
-                rows: sectionRows,
-                selected: sectionSelected,
-                select(next) {
-                  selectedKey = next.key;
-                  host.refresh();
-                },
-                closeItem: handleClose,
-                clearCloseArm,
-                done: () =>
-                  closeOwnedDetailOverlay(
-                    detailTui,
-                    detailHandle,
-                    () => done(),
-                    finished,
-                  ),
-                onFocusLost: () => {
-                  if (
-                    (detailTui as FocusTUI).getFocusedComponent?.() !==
-                    component
-                  )
-                    component.dismiss();
-                },
-                requestRender: () => detailTui.requestRender(),
-                theme,
-                height: () =>
-                  Math.max(0, Math.floor(detailTui.terminal.rows * 0.8)),
-                width: () =>
-                  Math.min(100, Math.floor(detailTui.terminal.columns * 0.9)),
-                clip,
-                wrap: (text, width) =>
-                  toolkit?.wrapTextWithAnsi(text, Math.max(1, width)) ??
-                  text.split(/\r?\n/),
-                measure: (text) =>
-                  toolkit?.visibleWidth(text) ?? [...text].length,
-                matches,
-              });
-              detailComponent = component;
-              dismissDetail = () => component.dismiss();
-              return component;
+    const show = () => {
+      if (entry.sectionSummary) return entry.provider.openHistory?.(ctx);
+      if (entry.provider.open) return entry.provider.open(entry.row.id, ctx);
+      return ctx.ui.custom<void>(
+        (detailTui, theme, _keybindings, done) => {
+          const component = createWorkPanelDetail({
+            rows: sectionRows,
+            selected: sectionSelected,
+            select(next) {
+              selectedKey = next.key;
+              host.refresh();
             },
-            {
-              overlay: true,
-              onHandle(handle) {
-                detailHandle = handle;
-                if (detailFinished) handle.hide();
-              },
-              overlayOptions: () => ({
-                width: detailComponent?.width ?? 0,
-                maxHeight: '80%',
-                anchor: 'center',
-              }),
+            closeItem: handleClose,
+            clearCloseArm,
+            done: () =>
+              closeOwnedDetailOverlay(
+                detailTui,
+                detailHandle,
+                () => done(),
+                finished,
+              ),
+            onFocusLost: () => {
+              if ((detailTui as FocusTUI).getFocusedComponent?.() !== component)
+                component.dismiss();
             },
-          );
+            requestRender: () => detailTui.requestRender(),
+            theme,
+            height: () =>
+              Math.max(0, Math.floor(detailTui.terminal.rows * 0.8)),
+            width: () =>
+              Math.min(100, Math.floor(detailTui.terminal.columns * 0.9)),
+            clip,
+            wrap: (text, width) =>
+              toolkit?.wrapTextWithAnsi(text, Math.max(1, width)) ??
+              text.split(/\r?\n/),
+            measure: (text) => toolkit?.visibleWidth(text) ?? [...text].length,
+            matches,
+          });
+          detailComponent = component;
+          dismissDetail = () => component.dismiss();
+          return component;
+        },
+        {
+          overlay: true,
+          onHandle(handle) {
+            detailHandle = handle;
+            if (detailFinished) handle.hide();
+          },
+          overlayOptions: () => ({
+            width: detailComponent?.width ?? 0,
+            maxHeight: '80%',
+            anchor: 'center',
+          }),
+        },
+      );
+    };
     const finished = () => {
       if (detailFinished) return;
       detailFinished = true;
@@ -296,9 +300,12 @@ export function createWorkPanelHost(
       releaseFocus();
     } else if (matches(data, 'enter')) {
       const entry = selected();
+      if (entry?.sectionSummary && !entry.provider.openHistory)
+        return undefined;
       if (entry) open(entry);
     } else if (data === 'x' || data === 'X') {
       const entry = selected();
+      if (entry?.sectionSummary) return undefined;
       if (entry) handleClose(entry);
     } else return undefined;
     host.refresh();
@@ -357,6 +364,7 @@ export function createWorkPanelHost(
       stopRenderTimer();
       dismissDetail?.();
       removeInput?.();
+      removeLifecycle?.();
       if (installed) {
         ctx.ui.setWidget(WIDGET_KEY, undefined);
         ctx.ui.setStatus(WIDGET_KEY, undefined);
@@ -402,7 +410,8 @@ export function createWorkPanelHost(
         return {
           render(width) {
             refreshStatusCue(rows().length);
-            const label = panelCloseLabel(selected());
+            const entry = selected();
+            const label = panelCloseLabel(entry);
             return renderPanel(sections(), width, Date.now(), theme, clip, {
               measure: toolkit?.visibleWidth,
               selectedKey: focused ? selectedKey : undefined,
@@ -412,8 +421,14 @@ export function createWorkPanelHost(
               ),
               hint: focused
                 ? [
-                    `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`,
-                    'Enter open',
+                    !entry?.sectionSummary || rows().length > 1
+                      ? `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`
+                      : '',
+                    entry?.sectionSummary
+                      ? entry.provider.openHistory
+                        ? 'Enter history'
+                        : ''
+                      : 'Enter open',
                     label ? `x ${label}` : '',
                     'Esc back',
                   ]
@@ -430,6 +445,7 @@ export function createWorkPanelHost(
     removeInput = ctx.ui.onTerminalInput(handleInput);
     installed = true;
   }
+  removeLifecycle = onWorkPanelLifecycleChanged(ctx, () => host.refresh());
   host.ready = (async () => {
     [agent, toolkit] = await Promise.all([
       import('@earendil-works/pi-coding-agent').catch(() => undefined),

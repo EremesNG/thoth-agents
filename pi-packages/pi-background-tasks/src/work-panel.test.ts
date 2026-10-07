@@ -10,8 +10,11 @@ const LEFT = "\x1b[D";
 const UP = "\x1b[A";
 
 describe("Background interaction through the pi-core host", () => {
-  it.each([false, true])("opens command/log detail and confirms dismissal in the overlay (KIT=%s)", async (withKit) => {
+  it.each([false, true])("opens selected history with full retained logs and keeps terminal dismissal on the work row (KIT=%s)", async (withKit) => {
     const host = lifecycleHost(`panel-detail-${withKit}`, true);
+    await host.emit('session_start');
+    host.setIdle(false);
+    await host.emit('agent_start');
     const id = `bg_panel_detail_${withKit}`;
     const now = Date.now();
     const command = "pnpm run build --verbose --all";
@@ -23,7 +26,6 @@ describe("Background interaction through the pi-core host", () => {
     });
     writeFileSync(logPathFor(id), Array.from({ length: 30 }, (_, index) => `line-${index}`).join("\n"));
     try {
-      await host.emit("session_start");
       expect(host.panel.key(UP)).toBeUndefined();
       expect(host.panel.key(LEFT)).toEqual({ consume: true });
       expect(host.panel.render().filter((line) => line.includes("› "))).toHaveLength(1);
@@ -33,24 +35,25 @@ describe("Background interaction through the pi-core host", () => {
       expect(detail).toContain("failed build");
       expect(detail).toContain(command);
       expect(detail).toContain("line-29");
-      expect(detail).not.toContain("line-0");
+      expect(detail).toContain("line-0");
       expect(host.panel.key("x")).toBeUndefined();
       expect(readMeta(id)?.dismissedAt).toBeUndefined();
-      host.panel.detailKey("l");
-      const shortDetail = host.panel.detailRender().join("\n");
-      expect(shortDetail).not.toContain("line-19");
-      expect(shortDetail).toContain("line-29");
-      expect(shortDetail).toContain(command);
-      expect(shortDetail).not.toMatch(/folded|Enter expand\/collapse/);
-      host.panel.detailKey("\r");
-      expect(host.panel.detailRender().join("\n")).toBe(shortDetail);
+      expect(detail).not.toMatch(/folded|Enter expand\/collapse/);
+      host.panel.detailKey("x");
       host.panel.detailKey("x");
       expect(readMeta(id)?.dismissedAt).toBeUndefined();
+      host.panel.detailKey('q');
+      await new Promise<void>(resolve => setImmediate(resolve));
+      host.panel.key(LEFT);
+      host.panel.key('x');
+      expect(readMeta(id)?.dismissedAt).toBeUndefined();
       expect(host.statuses.get("thoth-work-panel-close")).toBe("Press x again to dismiss failed build");
-      host.panel.detailKey("x");
+      host.panel.key('x');
       expect(readMeta(id)?.dismissedAt).toBeTypeOf("number");
-      await Promise.resolve();
-      expect(host.panel.render()).toEqual([]);
+      host.setIdle(true);
+      await host.emit('agent_settled');
+      expect(host.panel.render()[0]).toContain('Background · 0 done · 1 failed');
+      host.panel.key('\x1b');
       expect(host.panel.key(UP)).toBeUndefined();
       expect(host.statuses.get("thoth-work-panel-close")).toBeUndefined();
     } finally {
@@ -82,7 +85,7 @@ describe("Background interaction through the pi-core host", () => {
       expect(host.statuses.get("thoth-work-panel-close")).toBe("Press x again to stop panel sleeper");
       expect(host.panel.key("x")).toEqual({ consume: true });
       await expect.poll(() => readMeta(id)?.status, { timeout: 10000 }).toBe("cancelled");
-      expect(host.panel.render().join("\n")).toContain("panel sleeper");
+      expect(host.panel.render()[0]).toContain('Background · 1 done · 0 failed');
       expect(host.panel.key("\x1b")).toEqual({ consume: true });
       expect(host.panel.render().join("\n")).not.toContain("› ");
       for (const width of [1, 24, 80]) {

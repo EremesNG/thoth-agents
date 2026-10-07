@@ -104,7 +104,7 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 - **GIVEN** a themed bash card that has already produced output
 - **WHEN** it is still running and then completes
-- **THEN** it shows the standard running footer and the accent border while running, and after completion the standard terminal footer with the completed status icon and the success border for exit code 0 or the failed status icon and the error border for a failure 
+- **THEN** it shows the standard running footer and the accent border while running, and after completion the standard terminal footer with the completed status icon and the success border for exit code 0 or the failed status icon and the error border for a failure
 
 ### Requirement: Claude bridge projects Pi prompt sections
 
@@ -134,7 +134,7 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 - **GIVEN** a themed read, bash or subagent tool card with Nerd icons
 - **WHEN** it is running and then finishes
-- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `<completed icon> · <elapsed>[ · summary]` or `<failed icon> · <elapsed>[ · summary]` after finishing, and in ASCII mode the ASCII frame, separator and status icons 
+- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `<completed icon> · <elapsed>[ · summary]` or `<failed icon> · <elapsed>[ · summary]` after finishing, and in ASCII mode the ASCII frame, separator and status icons
 
 ### Requirement: Thoth Pi question tool
 
@@ -148,13 +148,13 @@ The `@thoth-agents/pi-questions-user` package MUST register `ask_user_question` 
 
 ### Requirement: Thoth Pi work panel
 
-`@thoth-agents/pi-core` MUST define a versioned work-panel contract with a process-wide provider registry; first-party packages that show live work above the editor (subagents, task list, background tasks) MUST register sections through it instead of installing their own above-editor widgets or panel navigation handlers; the host MUST install exactly one panel widget and one panel input listener per UI session, MUST render compact sections with one heading and counter each, one line per item, a total height budget with exact `+N more` overflow counts, and semantic theme roles for status glyphs, names, secondary text and metrics, MUST keep a single selection, MUST be focused with ← only from an empty, focused root editor with no overlay or dialog open and released with Esc, MUST leave unfocused ↑/↓ to the editor, MUST end the panel with a hint row listing only the actions available for the selected item, MUST let a provider with a custom open action show its own UI and otherwise show item details in a framed opaque card of stable size whose ↑/↓ stays within the opened section, MUST close that card only when another UI actually takes focus, and MUST expose a read-only focus-guard query so other key handlers in those packages consume nothing outside the focused root editor.
+`@thoth-agents/pi-core` MUST define a versioned work-panel contract with a process-wide provider registry; first-party packages that show live work above the editor (subagents, task list, background tasks) MUST register sections through it instead of installing their own above-editor widgets or panel navigation handlers; the host MUST install exactly one panel widget and one panel input listener per UI session, MUST render compact sections with one heading and counter each, one line per rendered item, a total height budget with exact `+N more` overflow counts, and semantic theme roles for status glyphs, names, secondary text and metrics; for sections that opt in to prompt retention the host MUST track a prompt epoch that advances when a run starts with exactly the observed text of an interactive or RPC prompt submitted while the agent was idle, MUST compare each run's starting prompt exactly with the retained text it observed for idle interactive or RPC submissions and MUST NOT advance the epoch for a run whose prompt matches none of them (including prompts queued while streaming), and MUST track the agent idle state; MUST render running items, items failed in the current epoch and at most the three most recent items completed in the current epoch while the agent is busy or the section has running items, and MUST otherwise collapse the section to one selectable summary line whose Enter opens that provider's history panel; the host MUST keep a single selection, MUST be focused with ← only from an empty, focused root editor with no overlay or dialog open and released with Esc, MUST leave unfocused ↑/↓ to the editor, MUST end the panel with a hint row listing only the actions available for the selected item, MUST let a provider with a custom open action show its own UI and otherwise show item details in a framed opaque card of stable size whose ↑/↓ stays within the opened section, MUST close that card only when another UI actually takes focus, and MUST expose a read-only focus-guard query so other key handlers in those packages consume nothing outside the focused root editor.
 
 #### Scenario: Thoth Pi work panel
 
-- **GIVEN** subagents, todos and background tasks active in one Pi session
-- **WHEN** the user presses ← on an empty editor, moves with ↑↓ across sections, opens a task-list item's detail, moves with ↑↓, a question dialog then opens, and the user presses Esc
-- **THEN** one panel with one cursor traverses all items, the detail card keeps its size and stays in the Todos section, the card closes when the dialog opens so Esc acts on the dialog, and unfocused ↑ recalls prompt history
+- **GIVEN** subagents and background tasks opted in, 55 completed subagents from earlier prompts and an idle agent
+- **WHEN** the user presses ← on an empty editor, moves with ↓ to the Agents summary line and presses Enter
+- **THEN** Agents and Background each render as one summary line with session done/failed counts, and the subagents history panel opens; and while a later prompt is busy, only running items, that prompt's failed items and its three most recent completed items render as rows 
 
 ### Requirement: Render kit semantic icons
 
@@ -164,4 +164,14 @@ The `@thoth-agents/pi-questions-user` package MUST register `ask_user_question` 
 
 - **GIVEN** the theme kit is registered with Nerd icons
 - **WHEN** a subagent, bridge, task-list or work-panel row renders a completed status
-- **THEN** it shows the theme completed icon, and without a registered kit it shows its current native glyph 
+- **THEN** it shows the theme completed icon, and without a registered kit it shows its current native glyph
+
+### Requirement: Background task history panel
+
+`@thoth-agents/pi-background-tasks` MUST provide a history panel built on the pi-core history panel shell that lists every current-session task, including expired and dismissed ones, newest first, and shows each task's status, command, timing, exit or error metadata and its retained log paged in bounded pages with a visible notice when earlier output was lost to retention; it MUST open from the Background summary line, from Enter on a background row with that task selected, and from the `/bg` command, and MUST let the user stop a running task with a confirmed close action.
+
+#### Scenario: Background task history panel
+
+- **GIVEN** a session with a dismissed completed task and a running task
+- **WHEN** the user runs `/bg`
+- **THEN** both tasks are listed newest first, selecting the completed task shows its metadata and paged log, and pressing x twice on the running task stops it 

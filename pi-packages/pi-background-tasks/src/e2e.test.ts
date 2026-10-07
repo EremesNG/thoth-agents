@@ -169,7 +169,10 @@ describe("extension e2e", () => {
       const verbose = await harness.execute("bg_task_status", { id, verbose: true });
       const log = await harness.execute("bg_task_log", { id });
       await harness.fireSessionStart();
-      const panel = harness.panel.render().join("\n");
+      const opened = harness.command('bg');
+      const panel = harness.panel.detailRender(160).join("\n");
+      harness.panel.detailKey('q');
+      await opened;
       for (const text of [list, status, log]) {
         expect(text).toMatch(/^Action required.*build failed with exit 9/);
         expect(text.indexOf("Action required")).toBeLessThan(text.indexOf(id));
@@ -285,7 +288,7 @@ describe("extension e2e", () => {
     }
   });
 
-  it("hides terminal Work panel rows after 30 seconds", async () => {
+  it("keeps older and dismissed terminal tasks in history while collapsing idle Work panel rows", async () => {
     const harness = createHarness({ sessionId: "session-a", mode: "tui", hasUI: true });
     const failedLaunch = await harness.execute("bg_task_spawn", {
       name: "recent-failure",
@@ -306,11 +309,12 @@ describe("extension e2e", () => {
     const succeeded = await waitForMeta(succeededId, (meta) => meta?.status === "succeeded" && typeof meta.endedAt === "number");
     await harness.fireSessionStart();
     let list = harness.panel.render().join("\n");
-    expect(list).toContain("recent-failure");
-    expect(list).toContain("recent-success");
+    expect(list).toContain('Background');
+    expect(list).not.toContain("recent-failure");
+    expect(list).not.toContain("recent-success");
 
     writeMeta({ ...failed!, endedAt: Date.now() - 31_000 });
-    writeMeta({ ...succeeded!, endedAt: Date.now() - 31_000 });
+    writeMeta({ ...succeeded!, endedAt: Date.now() - 31_000, dismissedAt: Date.now() });
     await harness.fireSessionStart();
 
     list = harness.panel.render().join("\n");
@@ -318,6 +322,12 @@ describe("extension e2e", () => {
     expect(list).not.toContain("recent-success");
     expect(readMeta(failedId)?.status).toBe("failed");
     expect(readMeta(succeededId)?.status).toBe("succeeded");
+    const opened = harness.command('bg');
+    const history = harness.panel.detailRender(160).join('\n');
+    expect(history).toContain('recent-failure');
+    expect(history).toContain('recent-success');
+    harness.panel.detailKey('q');
+    await opened;
   });
 
   it("clears terminal tasks for the active session without touching running or other-session tasks", async () => {
@@ -390,6 +400,7 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
   const sessionStartHandlers: Array<(event: unknown, ctx: unknown) => unknown> = [];
   const messages: string[] = [];
   const messageAttempts: string[] = [];
+  const commands = new Map<string, any>();
   const panel = workPanelUI();
   const events = new EventEmitter();
   const cwd = options.cwd ?? process.cwd();
@@ -405,6 +416,7 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
   };
   const pi = {
     events,
+    registerCommand(name: string, command: any) { commands.set(name, command); },
     registerTool(tool: RegisteredTool) {
       tools.set(tool.name, tool);
     },
@@ -428,6 +440,7 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
     messageAttempts,
     panel,
     events,
+    command(name: string) { return commands.get(name).handler('', context); },
     async execute(name: string, params: Record<string, unknown>) {
       const tool = tools.get(name);
       if (!tool) throw new Error(`tool not registered: ${name}`);

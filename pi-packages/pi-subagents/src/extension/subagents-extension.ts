@@ -1,4 +1,5 @@
 import {
+  bindWorkPanelLifecycle,
   ensureWorkPanel,
   publishToolDefinitions,
   registerWorkPanelProvider,
@@ -130,6 +131,7 @@ export default function subagentsExtension(pi: any): void {
   let panelCtx: any;
   let unregisterWorkPanel: (() => void) | undefined;
   let releaseWorkPanel: (() => void) | undefined;
+  let releaseWorkPanelLifecycle: (() => void) | undefined;
   let workPanelGeneration = 0;
   let activePanelCancelSelected: (() => void) | undefined;
   let activePanelRequestRender: (() => void) | undefined;
@@ -159,6 +161,8 @@ export default function subagentsExtension(pi: any): void {
     unregisterWorkPanel = undefined;
     releaseWorkPanel?.();
     releaseWorkPanel = undefined;
+    releaseWorkPanelLifecycle?.();
+    releaseWorkPanelLifecycle = undefined;
     panelCtx = undefined;
   };
 
@@ -185,6 +189,7 @@ export default function subagentsExtension(pi: any): void {
       openPanel(panelCtx ?? ctx, taskId),
     );
     if (!ctx.hasUI || ctx.mode !== 'tui') return;
+    releaseWorkPanelLifecycle = bindWorkPanelLifecycle(pi, ctx);
     const generation = workPanelGeneration;
     unregisterWorkPanel = registerWorkPanelProvider(
       ctx,
@@ -193,6 +198,7 @@ export default function subagentsExtension(pi: any): void {
         onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
         cancel: (id, reason) => manager.cancel(id, reason),
         open: (id, liveCtx) => openPanel(liveCtx, id),
+        openHistory: (liveCtx) => openPanel(liveCtx),
         theme: () => ctx.ui.theme,
       }),
     );

@@ -74,6 +74,22 @@ import type {
 import { SubagentsHistoryPanel } from '../../src/ui.js';
 import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
+function registerPanelTestEvent(
+  handlers: Record<string, any>,
+  event: string,
+  handler: (...args: any[]) => unknown,
+): () => void {
+  const previous = handlers[event];
+  let disposed = false;
+  handlers[event] = async (...args: any[]) => {
+    await previous?.(...args);
+    if (!disposed) return handler(...args);
+  };
+  return () => {
+    disposed = true;
+  };
+}
+
 const require = createRequire(import.meta.url);
 
 let tmp: string;
@@ -2316,7 +2332,7 @@ describe('subagents panel and extension ui', () => {
     try {
       extension({
         on: (event: string, handler: any) => {
-          handlers[event] = handler;
+          return registerPanelTestEvent(handlers, event, handler);
         },
         registerTool: () => undefined,
         registerCommand: () => undefined,
@@ -2337,7 +2353,7 @@ describe('subagents panel and extension ui', () => {
     const fixture = workPanelSession(tmp);
     extension({
       on: (event: string, handler: any) => {
-        handlers[event] = handler;
+        return registerPanelTestEvent(handlers, event, handler);
       },
       registerTool: () => undefined,
       registerCommand: () => undefined,
@@ -2365,7 +2381,7 @@ describe('subagents panel and extension ui', () => {
     extension({
       registerTool: () => undefined,
       on: (event: string, handler: any) => {
-        handlers[event] = handler;
+        return registerPanelTestEvent(handlers, event, handler);
       },
       registerShortcut: (key: string, shortcut: any) => {
         if (key === 'ctrl+,') historyShortcutHandler = shortcut.handler;

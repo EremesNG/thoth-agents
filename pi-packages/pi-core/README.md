@@ -253,6 +253,8 @@ registerWorkPanelProvider(pi: ExtensionAPI | ExtensionContext,
   provider: WorkPanelProvider): () => void;
 ensureWorkPanel(ctx: ExtensionContext): Promise<() => void>;
 isWorkPanelRootEditorInputActive(ctx: ExtensionContext): boolean | undefined;
+bindWorkPanelLifecycle(pi: ExtensionAPI, ctx: ExtensionContext): () => void;
+getWorkPanelLifecycle(ctx: ExtensionContext): WorkPanelLifecycleState;
 ```
 
 `WORK_PANEL_VERSION` is `1`. Providers carry `version`, `id`, `label`, `priority`,
@@ -320,3 +322,50 @@ nothing, consumes no input and does not require an empty editor or Work focus.
 It returns `true` only when the installed host's root editor is input-active,
 `false` when guarded, and `undefined` when the session has no installed host.
 Separate task-mode controls can reuse it; callers own their no-host fallback.
+
+### Prompt retention (additive v1 opt-in)
+
+Providers may set `retention: 'prompt'`, supply each item's
+`state: 'running' | 'failed' | 'done'` and terminal `endedAt` (Unix milliseconds),
+and implement `openHistory(ctx)`. Normalize queued/stopping work to `running`,
+and timed-out work to `failed`. Presentation `status`, glyphs and formatting
+remain independent. Providers without this opt-in keep the behavior above,
+including the task-list's informational summaries and advisory row caps.
+
+Opting-in extensions call `bindWorkPanelLifecycle(pi, ctx)` on session activation,
+before `ensureWorkPanel(ctx)`. Only the first live binding for that session
+manager/session ID subscribes; later bindings return inert disposers. The owning
+binding's release, session replacement or shutdown unsubscribes and clears its
+state/candidates, allowing a fresh binding to take over. Binding installs no UI.
+`getWorkPanelLifecycle` returns a read-only snapshot
+`{ epoch, epochStartedAt, busy }`; busy initializes from `!ctx.isIdle()` and is
+refreshed on `agent_start`/`agent_settled`, never `agent_end`.
+
+Epoch boundaries are an **observed-text heuristic**, not an origin guarantee.
+The bridge retains the latest four non-blank interactive/RPC input texts observed
+while `ctx.isIdle()`. A `before_agent_start` advances the epoch only if its prompt
+exactly equals a retained candidate, consuming one matching occurrence. Earlier
+handlers' transforms are already part of the observed text. Later transforms or
+prompt expansion, handled inputs with no matching later run, distinct extension
+prompts/wake-ups, and steer/followUp entered while streaming do not advance it.
+Conversely, *any* run matching retained text advances it, including an extension
+run or another input transformed into a coincidentally equal prompt. Candidates
+survive unrelated/interleaved runs until matched, evicted or disposed.
+
+While busy, or while that section has running items, rows eligible for the panel
+are all running items, all failures ending at/after `epochStartedAt`, and the
+three most recent completions ending at/after it. Missing/non-finite terminal
+`endedAt` values are ineligible. Provider ordering is retained; equal completion
+times prefer the provider's earlier rows. Legacy `expiresAt` does not apply to
+opted-in rows. Budget overflow counts only eligible rows, never older history or
+completions excluded by the hard cap. This filters the panel, not provider storage.
+
+When idle with no running items, each opted-in section becomes one selectable
+heading: e.g. `▲ Agents · 4 done · 1 failed`. Session counts come from numeric
+`summary().completed`/`summary().failed` when supplied, otherwise from all listed
+items; provide totals explicitly when dismissed items are omitted from `listRows`.
+Even an empty opted-in section has a summary unless `showSection` suppresses it.
+Summary lines share the single cursor with item rows: left focuses, up/down move,
+Enter invokes `openHistory(ctx)`, Esc/right release. They have no close action;
+the hint advertises history only when an opener exists. Like `open`, asynchronous
+`openHistory` must resolve only once its UI closes so host input stays suspended.

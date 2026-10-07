@@ -2,6 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Cold PowerShell starts can exceed 5 s on loaded hosts; keep each probe bounded.
+const POWERSHELL_VALIDATION_TIMEOUT_MS = 15_000;
+
 const flags = () => ['-NoProfile', '-NonInteractive', ...(process.platform === 'win32' ? ['-WindowStyle', 'Hidden'] : [])];
 const validation = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); @{edition=$PSVersionTable.PSEdition;major=$PSVersionTable.PSVersion.Major;minor=$PSVersionTable.PSVersion.Minor;version=$PSVersionTable.PSVersion.ToString()}|ConvertTo-Json -Compress";
 
@@ -27,7 +30,7 @@ export function resolvePowerShellConfig(): PowerShellConfig {
   const reasons: string[] = [];
   for (const executable of new Set(candidates)) {
     const check = spawnSync(executable, [...flags(), '-EncodedCommand', Buffer.from(validation, 'utf16le').toString('base64')],
-      { windowsHide: true, encoding: 'utf8', timeout: 5000 });
+      { windowsHide: true, encoding: 'utf8', timeout: POWERSHELL_VALIDATION_TIMEOUT_MS });
     try {
       const version = JSON.parse(String(check.stdout).trim());
       if (check.status === 0 && ((version.edition === 'Core' && Number.isInteger(version.major) && version.major >= 7)

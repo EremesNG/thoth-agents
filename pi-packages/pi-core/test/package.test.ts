@@ -52,6 +52,7 @@ describe('Pi ecosystem package manifests', () => {
     expect(core.main).toBe('./src/index.ts');
     expect(core.exports).toEqual({
       '.': './src/index.ts',
+      './history-panel': './src/history-panel.ts',
       './testing': './src/testing.ts',
     });
     expect(core.files).toEqual([

@@ -6,6 +6,7 @@ import {
   resolveStatusGlyph,
 } from './render-kit.js';
 import type {
+  WorkPanelItemState,
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,
@@ -13,16 +14,21 @@ import type {
   WorkPanelSegmentRole,
   WorkPanelSummary,
 } from './work-panel.js';
+import type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 
 export interface PanelRow {
   provider: WorkPanelProvider;
   row: WorkPanelRow;
   key: string;
   parent?: boolean;
+  /** Selectable collapsed heading, distinct from informational row.summary. */
+  sectionSummary?: boolean;
 }
 export interface PanelSection {
   provider: WorkPanelProvider;
   rows: PanelRow[];
+  collapsed?: boolean;
+  counts?: { done: number; failed: number };
 }
 
 /** A failed provider cannot hide unrelated sections or break the editor. */
@@ -40,13 +46,14 @@ export function singleLine(text: string): string {
 
 /** Parents and no-op providers expose no close action in either panel or detail. */
 export function panelCloseLabel(entry: PanelRow | undefined): string {
-  if (!entry || entry.parent) return '';
+  if (!entry || entry.parent || entry.sectionSummary) return '';
   return safely(() => singleLine(entry.provider.armCloseLabel(entry.row)), '');
 }
 
 export function panelSections(
   providers: WorkPanelProvider[],
   now: number,
+  lifecycle?: WorkPanelLifecycleState,
 ): PanelSection[] {
   const sections: PanelSection[] = [];
   for (const provider of [...providers].sort(
@@ -54,9 +61,66 @@ export function panelSections(
   )) {
     const rows = safely(() => provider.listRows(now), []);
     const parent = safely(() => provider.parentRow?.(now), undefined);
-    if (!rows.length && !parent) continue;
+    if (provider.retention !== 'prompt' && !rows.length && !parent) continue;
     if (!safely(() => provider.showSection?.(rows, now) ?? true, false))
       continue;
+    if (provider.retention === 'prompt') {
+      const items = rows.filter((row) => !row.summary);
+      const running = items.filter((row) => itemState(row) === 'running');
+      const summary = safely(() => provider.summary?.(), undefined);
+      const counts = {
+        done:
+          typeof summary === 'object' && summary.completed !== undefined
+            ? summary.completed
+            : items.filter((row) => itemState(row) === 'done').length,
+        failed:
+          typeof summary === 'object' && summary.failed !== undefined
+            ? summary.failed
+            : items.filter((row) => itemState(row) === 'failed').length,
+      };
+      if (!lifecycle?.busy && !running.length) {
+        sections.push({
+          provider,
+          collapsed: true,
+          counts,
+          rows: [
+            {
+              provider,
+              row: { id: 'history', primary: provider.label },
+              key: JSON.stringify([provider.id, null]),
+              sectionSummary: true,
+            },
+          ],
+        });
+        continue;
+      }
+      const current = (row: WorkPanelRow) =>
+        row.endedAt !== undefined &&
+        Number.isFinite(row.endedAt) &&
+        row.endedAt >= (lifecycle?.epochStartedAt ?? now);
+      const done = new Set(
+        items
+          .filter((row) => itemState(row) === 'done' && current(row))
+          .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+          .slice(0, 3),
+      );
+      const eligible = items.filter(
+        (row) =>
+          itemState(row) === 'running' ||
+          (itemState(row) === 'failed' && current(row)) ||
+          done.has(row),
+      );
+      sections.push({
+        provider,
+        counts,
+        rows: eligible.map((row) => ({
+          provider,
+          row,
+          key: JSON.stringify([provider.id, row.id]),
+        })),
+      });
+      continue;
+    }
     sections.push({
       provider,
       rows: [
@@ -72,6 +136,17 @@ export function panelSections(
     });
   }
   return sections.filter((section) => section.rows.length);
+}
+
+/** Retention state is separate from presentation; queued/stopping stay live. */
+function itemState(row: WorkPanelRow): WorkPanelItemState | undefined {
+  if (['queued', 'stopping'].includes(row.status ?? '')) return 'running';
+  if (row.state) return row.state;
+  const status = workPanelRenderStatus(row);
+  if (status === 'running' || status === 'in_progress') return 'running';
+  if (status === 'failed' || row.status === 'timed_out') return 'failed';
+  if (status === 'completed') return 'done';
+  return undefined;
 }
 
 function summarySegments(
@@ -209,7 +284,14 @@ export function renderPanel(
     : undefined;
   const budget = Math.max(0, Math.floor(options.budget ?? 12));
   const remaining = Math.max(0, budget - (hint ? 1 : 0));
-  const visible = sections.slice(0, Math.floor(remaining / 2));
+  const visible: PanelSection[] = [];
+  let minimumCost = 0;
+  for (const section of sections) {
+    const cost = section.collapsed ? 1 : 2;
+    if (minimumCost + cost > remaining) break;
+    visible.push(section);
+    minimumCost += cost;
+  }
   const selectedSection = sections.find((section) =>
     section.rows.some((entry) => entry.key === options.selectedKey),
   );
@@ -261,7 +343,9 @@ export function renderPanel(
     1 +
     (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
   const plans = visible.map((section) => {
-    const items = section.rows.filter(({ row }) => !row.summary);
+    const items = section.collapsed
+      ? []
+      : section.rows.filter(({ row }) => !row.summary);
     const summaries = section.rows.filter(({ row }) => row.summary);
     const selectedIndex = items.findIndex(
       ({ key }) => key === options.selectedKey,
@@ -276,10 +360,12 @@ export function renderPanel(
     };
   });
   const cost = (plan: (typeof plans)[number]) =>
-    1 +
-    plan.chosen.reduce((sum, entry) => sum + blockCost(entry), 0) +
-    plan.summaries.length +
-    (plan.items.length > plan.chosen.length ? 1 : 0);
+    plan.section.collapsed
+      ? 1
+      : 1 +
+        plan.chosen.reduce((sum, entry) => sum + blockCost(entry), 0) +
+        plan.summaries.length +
+        (plan.items.length > plan.chosen.length ? 1 : 0);
   const totalCost = () => plans.reduce((sum, plan) => sum + cost(plan), 0);
   // Whole metric blocks and the selected section take precedence over lower sections.
   while (plans.length > 1 && totalCost() > remaining) {
@@ -375,20 +461,39 @@ export function renderPanel(
       letter.toUpperCase(),
     );
     const counter = styleSegments(
-      summarySegments(
-        safely(() => provider.summary?.(), undefined),
-        rows,
-      ),
+      plan.section.collapsed
+        ? [
+            { text: `${plan.section.counts?.done ?? 0} done`, role: 'meta' },
+            { text: ` ${resolveIcon('separator', '·')} `, role: 'meta' },
+            {
+              text: `${plan.section.counts?.failed ?? 0} failed`,
+              role: (plan.section.counts?.failed ?? 0) > 0 ? 'error' : 'meta',
+            },
+          ]
+        : summarySegments(
+            safely(() => provider.summary?.(), undefined),
+            rows,
+          ),
     );
+    const selectedSummary =
+      plan.section.collapsed &&
+      rows.some(({ key }) => key === options.selectedKey);
+    const heading = kit
+      ? kit.widgetHeading(
+          theme,
+          { title, suffix: `${resolveIcon('separator', '·')} ${counter}` },
+          Math.max(0, width - (selectedSummary ? 2 : 0)),
+        )
+      : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', `${resolveIcon('separator', '·')} `)}${counter}`;
     const sectionLines = [
-      kit
-        ? kit.widgetHeading(
-            theme,
-            { title, suffix: `${resolveIcon('separator', '·')} ${counter}` },
-            width,
-          )
-        : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', `${resolveIcon('separator', '·')} `)}${counter}`,
+      selectedSummary
+        ? `${fg('accent', `${resolveIcon('selection', '›')} `)}${heading}`
+        : heading,
     ];
+    if (plan.section.collapsed) {
+      lines.push(...sectionLines);
+      continue;
+    }
     const hidden = plan.items.length - chosen.length;
     const more = hidden > 0 && remaining - lines.length >= 3;
     const bodyBudget = Math.max(

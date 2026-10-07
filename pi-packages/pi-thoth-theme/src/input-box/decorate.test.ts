@@ -232,7 +232,7 @@ describe('input-box editor composition', () => {
     let modelName = 'First model';
     const provider: StatusSnapshotProvider = () => ({
       modelName,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     deps.getStatusSnapshot = provider;
@@ -256,7 +256,7 @@ describe('input-box editor composition', () => {
       contextTokens: 60_000,
       contextPercent: 30,
       contextWindow: 200_000,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     decorate();
@@ -280,7 +280,7 @@ describe('input-box editor composition', () => {
       contextTokens: null,
       contextPercent: null,
       contextWindow: 200_000,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     decorate();
@@ -313,7 +313,7 @@ describe('input-box editor composition', () => {
       contextTokens: 60_000,
       contextPercent: 95,
       contextWindow: 200_000,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     decorate();
@@ -332,7 +332,7 @@ describe('input-box editor composition', () => {
       modelName: 'Opus',
       gitBranch: 'main',
       cwd: '~\\orca\\workspaces\\thoth-agents\\thoth-theme',
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     decorate();
@@ -364,7 +364,7 @@ describe('input-box editor composition', () => {
       contextTokens: 60_000,
       contextPercent: 30,
       contextWindow: 200_000,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     });
     decorate();

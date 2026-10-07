@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
 import { icon } from '../shared/icons.ts';
+import type { SessionTokenTotals } from './tokens.ts';
 
 export interface ContextUsageInfo {
   percent?: number | null;
@@ -199,11 +200,7 @@ export function formatContextSegments(
 }
 
 export interface FooterData extends StatusData {
-  tokenTotals?: {
-    readonly input: number;
-    readonly output: number;
-    readonly cacheRead: number;
-  };
+  tokenTotals?: SessionTokenTotals;
   /** `null` means not yet measured; `undefined` hides the segment. */
   tokensPerSecond?: number | null;
 }
@@ -214,7 +211,7 @@ function formatRate(rate: number | null): string {
 }
 
 /**
- * One-row footer below the editor: cost, session tokens, cache read, tok/s.
+ * One-row footer below the editor: cost, total input/output, cache hit %, tok/s.
  * Lowest priority drops first: tok/s, cache, tokens; cost truncates last.
  */
 export function renderStatusLine(
@@ -239,19 +236,20 @@ export function renderStatusLine(
   }
   const totals = data.tokenTotals;
   if (totals) {
+    const totalInput = totals.input + totals.cacheRead + totals.cacheWrite;
+    const cacheHitRatio =
+      totalInput === 0
+        ? '—'
+        : `${Math.round((totals.cacheRead / totalInput) * 100)}%`;
     const up = icon('tokensIn', mode);
     const down = icon('tokensOut', mode);
     segments.push(
       themeFg(
         theme,
         'muted',
-        `${up}${formatTokens(totals.input)} ${down}${formatTokens(totals.output)}`,
+        `${up}${formatTokens(totalInput)} ${down}${formatTokens(totals.output)}`,
       ),
-      themeFg(
-        theme,
-        'muted',
-        `${icon('cache', mode)} ${formatTokens(totals.cacheRead)}`,
-      ),
+      themeFg(theme, 'muted', `${icon('cache', mode)} ${cacheHitRatio}`),
     );
   }
   if (data.tokensPerSecond !== undefined) {
@@ -261,7 +259,7 @@ export function renderStatusLine(
         'muted',
         mode === 'ascii'
           ? `${formatRate(data.tokensPerSecond)} ${icon('throughput', mode)}`
-          : `${icon('throughput', mode)} ${formatRate(data.tokensPerSecond)}`,
+          : `${icon('throughput', mode)} ${formatRate(data.tokensPerSecond)} tok/s`,
       ),
     );
   }

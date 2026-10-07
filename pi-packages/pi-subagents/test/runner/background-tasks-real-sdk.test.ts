@@ -20,6 +20,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { SubagentManager } from '../../src/manager.js';
 import { sdkSubagentRunner } from '../../src/runner/sdk-runner.js';
 import type { SubagentsConfig } from '../../src/types.js';
+import { waitForFixtureJobs } from './fixtures/background-job-readiness.js';
 import { fixtureProvider } from './fixtures/provider-fixture.js';
 
 const forkExtension = fileURLToPath(
@@ -119,12 +120,7 @@ function backgroundProvider(
         stream.end(message);
       } else {
         void (async () => {
-          const deadline = Date.now() + 10_000;
-          while (!files.every(fs.existsSync)) {
-            if (Date.now() >= deadline)
-              throw new Error('Fixture jobs did not start');
-            await new Promise((resolve) => setTimeout(resolve, 25));
-          }
+          await waitForFixtureJobs(files);
           if (!pids(files).every(alive))
             throw new Error('Fixture process tree is not alive');
           ready();
@@ -305,8 +301,10 @@ async function fixture(hanging = false) {
       children.push({ controller, settled, files });
       await Promise.race([
         provider.started,
-        settled.then(() => {
-          throw new Error('Child ended before fixture jobs started');
+        settled.then((outcome) => {
+          throw new Error('Child ended before fixture jobs started', {
+            cause: outcome,
+          });
         }),
       ]);
       return { controller, settled, files };
@@ -373,6 +371,7 @@ async function fixture(hanging = false) {
   };
 }
 
+// Include resource loading, bounded job startup, and the 5s hanging shutdown.
 it('stops multiple child job trees before disposal despite a preceding hanging passthrough shutdown', async () => {
   const parent = await fixture(true);
   const disposedAlive: number[][] = [];
@@ -396,7 +395,7 @@ it('stops multiple child job trees before disposal despite a preceding hanging p
     vi.restoreAllMocks();
     await parent.close();
   }
-}, 40_000);
+}, 60_000);
 
 it.each([
   'success',

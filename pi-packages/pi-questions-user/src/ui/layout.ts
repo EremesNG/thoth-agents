@@ -19,17 +19,22 @@ export function windowStart(
   return clamped;
 }
 
-/** Fraction of the terminal the whole questionnaire may occupy; the chat above stays visible. */
+/** Baseline height, growing with content while leaving chat visible above. */
 const HEIGHT_FRACTION = 0.4;
+const HEIGHT_CAP_FRACTION = 0.65;
 /** Frame, tabs, dividers, note row and two hint rows around prompt + content. */
 export const CHROME_ROWS = 8;
-/** Smallest content area: room for a label plus a short editor. */
+/** Preferred content area: room for a label plus a short editor. */
 export const MIN_CONTENT_ROWS = 6;
-export const MAX_PROMPT_ROWS = 3;
-
-/** Total rows the component may use, derived from the terminal height. */
+/** Baseline rows derived from the terminal height. */
 export function heightBudget(terminalRows: number): number {
   return Math.max(12, Math.floor(terminalRows * HEIGHT_FRACTION));
+}
+
+export function adaptiveHeight(terminalRows: number, need: number): number {
+  const base = heightBudget(terminalRows);
+  const cap = Math.max(base, Math.floor(terminalRows * HEIGHT_CAP_FRACTION));
+  return Math.max(base, Math.min(need, cap));
 }
 
 /** Split `width` into list and preview columns separated by a three-column gutter. */

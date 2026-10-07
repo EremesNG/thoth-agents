@@ -3,7 +3,12 @@ import type {
   Theme,
 } from '@earendil-works/pi-coding-agent';
 import { initTheme } from '@earendil-works/pi-coding-agent';
-import { type TUI, visibleWidth } from '@earendil-works/pi-tui';
+import {
+  CURSOR_MARKER,
+  getKeybindings,
+  type TUI,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -14,7 +19,11 @@ import {
   setOptionNote,
 } from '../src/answers.js';
 import type { QuestionUISession } from '../src/custom-ui.js';
-import type { Questionnaire } from '../src/schema.js';
+import {
+  DEFAULT_LABELS,
+  LABEL_KEYS,
+  type Questionnaire,
+} from '../src/schema.js';
 import { createQuestionnaireUI } from '../src/ui/index.js';
 
 const theme = {
@@ -31,10 +40,14 @@ const KEY = {
   right: '\x1b[C',
   left: '\x1b[D',
   enter: '\r',
+  shiftEnter: '\x1b[13;2u',
   esc: '\x1b',
   pageDown: '\x1b[6~',
   shiftUp: '\x1b[1;2A',
   shiftDown: '\x1b[1;2B',
+  altUp: '\x1b[1;3A',
+  altDown: '\x1b[1;3B',
+  collapse: '\x1d',
 };
 
 const options = (n: number) =>
@@ -62,7 +75,8 @@ function setup(
   const results: (QuestionResult | undefined)[] = [];
   let mounted = false;
   let dispose: (() => void) | undefined;
-  const tui = { requestRender() {}, terminal: { rows } } as unknown as TUI;
+  const requestRender = vi.fn();
+  const tui = { requestRender, terminal: { rows } } as unknown as TUI;
   const ui = createQuestionnaireUI(session)(
     tui,
     theme,
@@ -94,6 +108,7 @@ function setup(
     send,
     text,
     component,
+    requestRender,
     get mounted() {
       return mounted;
     },
@@ -163,6 +178,142 @@ const uneven: Questionnaire = {
 };
 
 describe('questionnaire UI', () => {
+  describe('single-row chrome', () => {
+    const prompt = Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+      '\n',
+    );
+    const physicalRows = (frame: string[]) => frame.join('\n').split('\n');
+    const expectRows = (frame: string[], width: number) => {
+      expect(physicalRows(frame)).toHaveLength(frame.length);
+      expect(frame.every((line) => !/[\r\n\t]/.test(line))).toBe(true);
+      expect(frame.every((line) => visibleWidth(line) <= width)).toBe(true);
+    };
+
+    it.each([
+      { width: 80, label: 'HEAD\nMIDDLE\nTAIL' },
+      { width: 140, label: 'HEAD\nMIDDLE\nTAIL' },
+      { width: 80, label: 'HEAD\r\t  MIDDLE\r\tTAIL' },
+      { width: 140, label: 'HEAD\r\t  MIDDLE\r\tTAIL' },
+    ])('normalizes option-note heading whitespace at $width×40 without growing the frame ($label)', ({
+      width,
+      label,
+    }) => {
+      const host = setup({
+        questions: [
+          {
+            id: 'a',
+            header: 'Choice',
+            prompt,
+            type: 'single',
+            options: [{ value: 'a', label }],
+          },
+        ],
+      });
+      const height = host.component.render(width).length;
+      expect(height).toBe(26);
+      host.send('n');
+      const frame = host.component.render(width);
+      expect(frame).toHaveLength(height);
+      expect(physicalRows(frame)).toHaveLength(height);
+      expect(frame.join('\n')).toContain('Note for “HEAD MIDDLE TAIL”');
+      expectRows(frame, width);
+      expect(host.session.state.questions[0].options?.[0].label).toBe(label);
+    });
+
+    it.each([
+      'Planning\nDetails',
+      'Planning\r\n\t  Details',
+    ])('normalizes the multiline title %j in the collapsed row', (title) => {
+      const host = setup({ ...two, title });
+      host.send(KEY.collapse);
+      const frame = host.component.render(80);
+      expect(frame).toEqual([' Planning Details · Ctrl+] expand · Esc cancel']);
+      expect(physicalRows(frame)).toHaveLength(1);
+      expectRows(frame, 80);
+    });
+
+    it.each([
+      { width: 80, kit: false },
+      { width: 140, kit: false },
+      { width: 80, kit: true },
+      { width: 140, kit: true },
+    ])('normalizes multiline titles and tab headers at $width columns (kit: $kit)', ({
+      width,
+      kit,
+    }) => {
+      if (kit) kitToken = registerRenderKit(createTestRenderKit(), {});
+      const host = setup({
+        title: 'Planning\r\n\t  Details',
+        questions: two.questions.map((q, i) => ({
+          ...q,
+          prompt,
+          header: i === 0 ? 'First\nDetails' : 'Second\r\n\t  Details',
+        })),
+      });
+      for (const header of ['[○ First Details]', '[○ Second Details]']) {
+        const frame = host.component.render(width);
+        expect(frame).toHaveLength(26);
+        expect(physicalRows(frame)).toHaveLength(26);
+        expect(frame[0]).toContain('Planning Details');
+        expect(frame[1]).toContain(header);
+        expectRows(frame, width);
+        host.send(KEY.tab);
+      }
+      const review = host.component.render(width);
+      expect(review.join('\n')).toContain('First Details:');
+      expect(review.join('\n')).toContain('Second Details:');
+      expectRows(review, width);
+    });
+
+    it.each([
+      80, 140,
+    ])('normalizes multiline label overrides in fixed rows across UI modes at %i columns', (width) => {
+      const host = setup({
+        labels: Object.fromEntries(
+          LABEL_KEYS.map((key) => [key, `${DEFAULT_LABELS[key]}\r\n\t  extra`]),
+        ),
+        questions: [
+          ...two.questions.map((q) => ({ ...q, prompt })),
+          { id: 't', header: 'Text', prompt, type: 'text' },
+        ],
+      });
+      const check = () => expectRows(host.component.render(width), width);
+      check();
+      host.send(KEY.down);
+      check();
+      expect(host.text(width)).toContain('Preview extra · ★ Recommended extra');
+      host.send('n');
+      check();
+      expect(host.text(width)).toContain('Note for extra “Option 2”');
+      expect(host.text(width)).toContain('Enter save extra');
+      host.send('draft\n\t note', KEY.esc, 'N');
+      check();
+      expect(host.text(width)).toContain('Note for this question extra');
+      host.send('question\n\t note', KEY.esc, KEY.down, KEY.down, KEY.enter);
+      check();
+      expect(host.text(width)).toContain('Type something. extra');
+      host.send(KEY.esc, KEY.tab);
+      check();
+      host.send(KEY.tab);
+      check();
+      expect(host.text(width)).toContain('Your answer extra');
+      host.send(KEY.esc);
+      check();
+      expect(host.text(width)).toContain(
+        'No text yet. Press Enter to write an answer. extra',
+      );
+      host.send(KEY.tab);
+      check();
+      expect(host.text(width)).toContain('Review your answers extra');
+      host.send(KEY.collapse);
+      check();
+      expect(host.text(width)).toContain(
+        'Ask user extra · Ctrl+] expand extra',
+      );
+      expect(host.session.state.labels?.preview).toBe('Preview\r\n\t  extra');
+    });
+  });
+
   it('shows title, tabs, header and prompt', () => {
     const { text } = setup(two);
     const out = text();
@@ -188,8 +339,38 @@ describe('questionnaire UI', () => {
 
   it('never preselects the recommended option but marks it', () => {
     const { text, session } = setup(two);
-    expect(text()).toContain('★ recommended');
+    expect(text()).toContain('› 1. ○   Option 1');
+    expect(text()).toContain('  2. ○ ★ Option 2');
+    expect(text()).not.toContain('Option 2 ★ recommended');
     expect(session.state.answers.a.values).toEqual([]);
+  });
+
+  it('puts recommended status in the preview header without duplicating label text', () => {
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Choice',
+          prompt: 'Pick',
+          type: 'single',
+          options: [
+            { value: 'a', label: 'Plain' },
+            {
+              value: 'b',
+              label: 'Better (Recommended)',
+              recommended: true,
+              preview: lines(40),
+            },
+          ],
+        },
+      ],
+    });
+    host.send(KEY.down);
+    const out = host.text();
+    expect(out).toContain('› 2. ○ ★ Better (Recommended)');
+    expect(out).toMatch(/Preview · ★ Recommended \d+-\d+\/\d+/);
+    expect(out).not.toContain('(Recommended) ★');
+    expect(out).not.toContain('★ recommended');
   });
 
   it('selects with numeric shortcut and advances; reports state changes', () => {
@@ -305,6 +486,740 @@ describe('questionnaire UI', () => {
     expect(() => host.text()).toThrow();
     expect(() => host.send('n')).toThrow();
     expect(host.session.onStateChange).not.toHaveBeenCalled();
+  });
+
+  it('shows the full Work Panel proposal and wrapped choices when they fit', () => {
+    const prompt =
+      'Ambos widgets son secciones del Work Panel compartido de pi-core. Propuesta: mientras el agente trabaja, cada sección muestra lo en ejecución + los fallidos y hasta 3 completados del turno. En reposo (sin nada en ejecución), cada sección queda en 1 línea: `▲ Agents · 4 done · 1 failed` / `▲ Background · 2 done`. Navegación: `←` enfoca el panel (como hoy), `↑/↓` se mueve entre las líneas de sección, `Enter` abre el historial de esa sección, `→/Esc` sale. Los fallidos del turno pasan al resumen al enviar tu siguiente prompt. ¿De acuerdo?';
+    const host = setup({
+      questions: [
+        {
+          id: 'panel',
+          header: 'Work Panel',
+          prompt,
+          type: 'single',
+          options: [
+            { value: 'yes', label: 'Así como está propuesto' },
+            {
+              value: 'inline',
+              label:
+                'Enter expande la sección en el sitio (filas) y un segundo Enter abre el historial completo',
+            },
+          ],
+        },
+      ],
+    });
+    const out = host.component.render(78);
+    expect(out.length).toBeGreaterThanOrEqual(16);
+    expect(out.length).toBeLessThanOrEqual(26);
+    const body = out.map((line) => line.slice(2, -2).trim()).join(' ');
+    expect(body).toContain(prompt);
+    expect(body).toContain(
+      'Enter expande la sección en el sitio (filas) y un segundo Enter abre el historial completo',
+    );
+    expect(out.join('\n')).not.toContain('…');
+  });
+
+  it.each([
+    80, 140,
+  ])('wraps option labels with an aligned hanging indent at %i columns', (width) => {
+    for (const recommended of [false, true]) {
+      const label =
+        'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega';
+      const host = setup({
+        questions: [
+          {
+            id: 'a',
+            header: 'Wrap',
+            prompt: 'Pick',
+            type: 'multi',
+            options: [
+              { value: 'a', label, recommended },
+              { value: 'b', label: 'Other' },
+            ],
+          },
+        ],
+      });
+      const out = host.component.render(width);
+      const first = out.findIndex((line) => line.includes('alpha'));
+      const last = out.findIndex((line) => line.includes('omega'));
+      expect(last).toBeGreaterThan(first);
+      const indent = recommended ? 9 : 7;
+      for (const line of out.slice(first + 1, last + 1)) {
+        expect(line.slice(2)).toMatch(new RegExp(`^ {${indent}}\\S`));
+      }
+      const rendered = out
+        .slice(first, last + 1)
+        .map((line) =>
+          line.slice(2 + indent, width === 140 ? 2 + 59 : -2).trim(),
+        )
+        .join(' ');
+      expect(rendered).toBe(label);
+    }
+  });
+
+  it('gives spare rows to the preview and keeps two preview body rows when options overflow', () => {
+    const questionnaire = (count: number): Questionnaire => ({
+      questions: [
+        {
+          id: 'a',
+          header: 'Preview',
+          prompt: 'Pick',
+          type: 'single',
+          options: options(count).map((option) => ({
+            ...option,
+            recommended: false,
+            preview: lines(40),
+          })),
+        },
+      ],
+    });
+    const spare = setup(questionnaire(2));
+    expect(spare.component.render(80)).toHaveLength(26);
+    expect(spare.text()).toContain('Preview 1-13/79');
+    expect(spare.text()).toContain('line 6');
+    const crowded = setup(questionnaire(30));
+    expect(crowded.component.render(80)).toHaveLength(26);
+    expect(crowded.text()).toContain('Preview 1-2/79');
+    expect(crowded.text()).toContain('line 0');
+    expect(crowded.text()).not.toContain('line 1');
+  });
+
+  it('gives the preview rows left over between whole wrapped options in a scrolling window', () => {
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Whole items',
+          prompt: 'Pick',
+          type: 'single',
+          options: Array.from({ length: 30 }, (_, i) => ({
+            value: `v${i}`,
+            label: `Choice ${i}\nContinuation ${i}`,
+            preview: lines(40),
+          })),
+        },
+      ],
+    });
+    expect(host.text()).toContain('Preview 1-3/79');
+    expect(host.text()).toContain('Continuation 0');
+    expect(host.component.render(80)).toHaveLength(26);
+  });
+
+  it('returns unused prompt and list rows on shorter tabs to the preview without changing height', () => {
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Long',
+          prompt: 'One\nTwo\nThree\nFour\nFive\nSix',
+          type: 'single',
+          options: options(30).map((option) => ({
+            ...option,
+            recommended: false,
+            preview: lines(40),
+          })),
+        },
+        {
+          id: 'b',
+          header: 'Short',
+          prompt: 'Pick',
+          type: 'single',
+          options: options(3).map((option) => ({
+            ...option,
+            recommended: false,
+            preview: lines(40),
+          })),
+        },
+      ],
+    });
+    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.text()).toContain('Preview 1-2/79');
+    host.send(KEY.tab);
+    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.text()).toContain('Preview 1-12/79');
+  });
+
+  it.each([
+    80, 140,
+  ])('keeps every row of the selected option visible in a scrolling list at %i columns', (width) => {
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Window',
+          prompt: 'Pick',
+          type: 'multi',
+          options: Array.from({ length: 20 }, (_, i) => ({
+            value: `v${i}`,
+            label: `Choice-${i} starts here with a deliberately long explanation that wraps across multiple lines and ends at Tail-${i}.`,
+          })),
+        },
+      ],
+    });
+    for (let i = 0; i < 15; i++) {
+      host.send(KEY.down);
+      const out = host.text(width);
+      expect(out).toContain(`Choice-${i + 1}`);
+      expect(out).toContain(`Tail-${i + 1}.`);
+      expect(out).toContain(`${i + 2}/21`);
+    }
+    host.send(KEY.up);
+    expect(host.text(width)).toContain('Choice-14');
+    expect(host.text(width)).toContain('Tail-14.');
+  });
+
+  it('scrolls the option list before capping a prompt that fits with the minimum preview', () => {
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Priority',
+          type: 'single',
+          prompt: Array.from({ length: 13 }, (_, i) => `Prompt-row-${i}`).join(
+            '\n',
+          ),
+          options: options(30),
+        },
+      ],
+    });
+    const out = host.component.render(80);
+    expect(out).toHaveLength(26);
+    expect(out.join('\n')).toContain('Prompt-row-12');
+    expect(out.join('\n')).toContain('1/31');
+    expect(out.join('\n')).toContain('Preview 1-2/3');
+    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+  });
+
+  it('shows all fourteen prompt rows above a one-row preview at 80×40', () => {
+    const promptRows = Array.from({ length: 14 }, (_, i) => `Prompt-row-${i}`);
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Priority',
+          type: 'single',
+          prompt: promptRows.join('\n'),
+          options: options(30).map((option) => ({
+            ...option,
+            preview: 'One preview row',
+          })),
+        },
+      ],
+    });
+    const out = host.component.render(80);
+    expect(out).toHaveLength(26);
+    const body = out.map((line) => line.slice(2, -2).trim()).join('\n');
+    expect(body).toContain(promptRows.join('\n'));
+    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+    expect(out.join('\n')).toContain('› 1. ○   Option 1');
+    expect(out.join('\n')).toContain('1/31');
+    expect(out.join('\n')).toContain('One preview row');
+    host.send(KEY.down);
+    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.text()).toContain('Prompt-row-13');
+    expect(host.text()).toContain('› 2. ○ ★ Option 2');
+  });
+
+  it('shows all sixteen prompt rows beside a complete selected option at 140×40', () => {
+    const promptRows = Array.from({ length: 16 }, (_, i) => `Prompt-row-${i}`);
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Priority',
+          type: 'single',
+          prompt: promptRows.join('\n'),
+          options: options(30).map((option) => ({
+            ...option,
+            preview: 'One preview row',
+          })),
+        },
+      ],
+    });
+    const out = host.component.render(140);
+    expect(out).toHaveLength(26);
+    const body = out.map((line) => line.slice(2, -2).trim()).join('\n');
+    expect(body).toContain(promptRows.join('\n'));
+    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+    expect(out.join('\n')).toContain('› 1. ○   Option 1');
+    expect(out.join('\n')).toContain('1/31');
+    expect(out.join('\n')).toContain('One preview row');
+    host.send(KEY.down);
+    expect(host.component.render(140)).toHaveLength(26);
+    expect(host.text(140)).toContain('Prompt-row-15');
+    expect(host.text(140)).toContain('› 2. ○ ★ Option 2');
+  });
+
+  it.each([
+    80, 140,
+  ])('shows a fitting active prompt despite a six-row label on another tab at %i columns', (width) => {
+    const promptRows = Array.from(
+      { length: 13 },
+      (_, i) => `Active-prompt-${i}`,
+    );
+    const labelRows = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Prompt',
+          type: 'single',
+          prompt: promptRows.join('\n'),
+          options: options(30),
+        },
+        {
+          id: 'b',
+          header: 'Label',
+          type: 'single',
+          prompt: 'Pick',
+          options: [
+            {
+              value: 'long',
+              label: labelRows.join('\n'),
+              preview: lines(40),
+            },
+            { value: 'short', label: 'Short' },
+          ],
+        },
+      ],
+    });
+    const height = host.component.render(width).length;
+    expect(height).toBe(26);
+    for (const keys of [[], [KEY.down], ['n'], [KEY.esc, KEY.up]]) {
+      host.send(...keys);
+      const frame = host.component.render(width);
+      expect(frame).toHaveLength(height);
+      const body = frame.map((line) => line.slice(2, -2).trim()).join('\n');
+      expect(body).toContain(promptRows.join('\n'));
+      expect(frame.join('\n')).not.toContain('Alt+↑↓ prompt');
+    }
+    host.send(KEY.tab);
+    const labelFrame = host.component.render(width);
+    expect(labelFrame).toHaveLength(height);
+    for (const row of labelRows) expect(labelFrame.join('\n')).toContain(row);
+    for (const keys of [[KEY.down], ['N'], [KEY.esc, KEY.tab], [KEY.tab]]) {
+      host.send(...keys);
+      expect(host.component.render(width)).toHaveLength(height);
+    }
+    expect(host.text(width)).toContain('Active-prompt-12');
+    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+  });
+
+  it.each([
+    16, 21,
+  ])('reveals every wrapped prompt tail when scrolling at 80×%i', (rows) => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Prompt',
+            type: 'single',
+            prompt: ['A', 'B', 'C']
+              .map((letter, i) => `${letter.repeat(70)}_TAIL${i}`)
+              .join('\n'),
+            options: options(3),
+          },
+        ],
+      },
+      rows,
+    );
+    const height = host.component.render(80).length;
+    expect(host.text()).toContain('Alt+↑↓ prompt');
+    const frames: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const frame = host.component.render(80);
+      expect(frame).toHaveLength(height);
+      expect(frame.every((line) => visibleWidth(line) <= 80)).toBe(true);
+      frames.push(frame.join('\n'));
+      host.send(KEY.altDown);
+    }
+    for (const tail of ['_TAIL0', '_TAIL1', '_TAIL2']) {
+      expect(frames.join('\n')).toContain(tail);
+    }
+  });
+
+  it('scrolls capped prompts with Alt+arrows, shows an indicator and resets on tab switch', () => {
+    const prompt = Array.from({ length: 50 }, (_, i) => `Prompt-row-${i}`).join(
+      '\n',
+    );
+    const host = setup({
+      questions: [
+        {
+          id: 'a',
+          header: 'Long',
+          prompt,
+          type: 'single',
+          options: options(3),
+        },
+        {
+          id: 'b',
+          header: 'Short',
+          prompt: 'Short prompt',
+          type: 'single',
+          options: options(2),
+        },
+      ],
+    });
+    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.text()).toContain('Prompt-row-0');
+    expect(host.text()).not.toContain('Prompt-row-49');
+    expect(host.text()).toMatch(/↓ \d+ more/);
+    expect(host.text()).toContain('Alt+↑↓ prompt');
+    host.send(KEY.altDown);
+    expect(host.text()).not.toContain('Prompt-row-0');
+    expect(host.text()).toContain('↑ 1 more');
+    host.send(KEY.altUp);
+    expect(host.text()).toContain('Prompt-row-0');
+    for (let i = 0; i < 60; i++) host.send(KEY.altDown);
+    expect(host.text()).toContain('Prompt-row-49');
+    host.send(KEY.tab, KEY.shiftTab);
+    expect(host.text()).toContain('Prompt-row-0');
+    host.send('n', KEY.altDown);
+    expect(host.text()).not.toContain('Prompt-row-0');
+    expect(host.text()).toContain('Note for');
+    expect(setup(two).text()).not.toContain('Alt+↑↓ prompt');
+  });
+
+  it.each([
+    80, 140,
+  ])('shows prompt scroll help only for the active overflowing prompt without changing height at %i columns', (width) => {
+    const host = setup({
+      questions: [
+        {
+          ...two.questions[0],
+          prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+            '\n',
+          ),
+        },
+        { ...two.questions[1], prompt: 'Short prompt' },
+      ],
+    });
+    const height = host.component.render(width).length;
+    expect(host.text(width)).toContain('Alt+↑↓ prompt');
+    host.send(KEY.tab);
+    expect(host.text(width)).toContain('Short prompt');
+    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.component.render(width)).toHaveLength(height);
+    host.send('N');
+    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.component.render(width)).toHaveLength(height);
+    host.send(KEY.esc, KEY.tab);
+    expect(host.text(width)).toContain('Review your answers');
+    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.component.render(width)).toHaveLength(height);
+    host.send(KEY.tab);
+    expect(host.text(width)).toContain('Alt+↑↓ prompt');
+    expect(host.component.render(width)).toHaveLength(height);
+  });
+
+  it.each([
+    false,
+    true,
+  ])('preserves native editor Alt+arrows unless the active prompt overflows (%s)', (overflow) => {
+    const keybindings = getKeybindings();
+    const previous = keybindings.getUserBindings();
+    keybindings.setUserBindings({
+      ...previous,
+      'tui.editor.cursorUp': 'alt+up',
+      'tui.editor.cursorDown': 'alt+down',
+    });
+    try {
+      const host = setup({
+        questions: [
+          {
+            ...two.questions[0],
+            prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+              '\n',
+            ),
+          },
+          {
+            id: 'b',
+            header: 'Text',
+            prompt: overflow
+              ? Array.from({ length: 50 }, (_, i) => `Edit-prompt-${i}`).join(
+                  '\n',
+                )
+              : 'Short prompt',
+            type: 'text',
+          },
+        ],
+      });
+      host.send(KEY.tab);
+      host.component.render(80);
+      host.send(
+        '\x1b[200~Head\nTail\x1b[201~',
+        KEY.altUp,
+        '!',
+        KEY.altDown,
+        '!',
+        KEY.esc,
+      );
+      expect(host.session.state.answers.b.customText).toBe(
+        overflow ? 'Head\nTail!!' : 'Head!\nTail!',
+      );
+      if (overflow) {
+        expect(host.text()).not.toContain('Edit-prompt-0');
+        expect(host.text()).toContain('↑ 1 more');
+      } else expect(host.text()).toContain('Short prompt');
+    } finally {
+      keybindings.setUserBindings(previous);
+    }
+  });
+
+  it.each([
+    'options',
+    'review',
+    'text',
+    'custom',
+    'optionNote',
+    'questionNote',
+  ])('collapses to one row, ignores input and restores the exact %s state', (mode) => {
+    const host = setup({
+      title: 'Planning',
+      questions: [
+        {
+          ...two.questions[0],
+          prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+            '\n',
+          ),
+          options: options(30).map((option) => ({
+            ...option,
+            preview: lines(40),
+          })),
+        },
+        { id: 'text', header: 'Text', prompt: 'Explain', type: 'text' },
+      ],
+    });
+    if (mode === 'options') {
+      for (let i = 0; i < 20; i++) host.send(KEY.down);
+      host.send(KEY.altDown, KEY.shiftDown);
+    } else if (mode === 'review') host.send(KEY.tab, KEY.tab, KEY.down);
+    else if (mode === 'text') host.send(KEY.tab, 'draft', KEY.left);
+    else if (mode === 'custom') {
+      for (let i = 0; i < 30; i++) host.send(KEY.down);
+      host.send(KEY.enter, 'draft', KEY.left);
+    } else host.send(mode === 'optionNote' ? 'n' : 'N', 'draft', KEY.left);
+    const before = host.component.render(80);
+    const state = host.session.state;
+    expect(before.join('\n')).toContain('Ctrl+] collapse');
+    host.requestRender.mockClear();
+    host.send(KEY.collapse);
+    const collapsed = host.component.render(80);
+    expect(collapsed).toEqual([' Planning · Ctrl+] expand · Esc cancel']);
+    expect(visibleWidth(host.component.render(20)[0])).toBeLessThanOrEqual(20);
+    host.send(
+      KEY.down,
+      KEY.tab,
+      KEY.enter,
+      '1',
+      'ignored',
+      KEY.altDown,
+      KEY.right,
+    );
+    expect(host.component.render(80)).toEqual(collapsed);
+    expect(host.results).toEqual([]);
+    expect(host.session.state).toBe(state);
+    host.send(KEY.collapse);
+    expect(host.component.render(80)).toEqual(before);
+    expect(host.requestRender).toHaveBeenCalledTimes(2);
+  });
+
+  it('toggles only once per Kitty key press, ignoring repeats and releases', () => {
+    const host = setup(two);
+    host.send('\x1b[93;5u', '\x1b[93;5:2u', '\x1b[93;5:3u');
+    expect(host.component.render(80)).toHaveLength(1);
+    host.send('\x1b[93;5u', '\x1b[93;5:3u');
+    expect(host.component.render(80).length).toBeGreaterThan(1);
+  });
+
+  it('Esc cancels while collapsed even when an editor was active', () => {
+    const host = setup(two);
+    host.send('1', 'N', 'draft', KEY.collapse, KEY.esc);
+    expect(host.results[0]?.details.cancelled).toBe(true);
+    expect(host.results[0]?.details.answers.a.values).toEqual(['v1']);
+    expect(host.results).toHaveLength(1);
+  });
+
+  it('keeps the selected option and height cap even when a tiny terminal cannot fit the normal minimums', () => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Tiny',
+            type: 'single',
+            prompt: Array.from(
+              { length: 50 },
+              (_, i) => `Prompt-row-${i}`,
+            ).join('\n'),
+            options: options(30),
+          },
+        ],
+      },
+      16,
+    );
+    expect(() => host.component.render(80)).not.toThrow();
+    const out = host.component.render(80);
+    expect(out.length).toBeLessThanOrEqual(12);
+    expect(out.join('\n')).toContain('› 1. ○   Option 1');
+    expect(out.find((line) => line.includes('Prompt-row-0'))).toContain('↓');
+    host.send(KEY.down);
+    expect(host.text()).toContain('› 2. ○ ★ Option 2');
+  });
+
+  it('keeps all three selected label rows visible at 80×16 without growing the frame', () => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Tiny',
+            type: 'single',
+            prompt: 'Pick',
+            options: [
+              { value: 'short', label: 'Short' },
+              { value: 'long', label: 'HEAD\nMIDDLE\nTAIL' },
+            ],
+          },
+        ],
+      },
+      16,
+    );
+    expect(host.component.render(80)).toHaveLength(12);
+    host.send(KEY.down);
+    const out = host.component.render(80);
+    const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(
+      out.slice(first, first + 3).map((line) => line.slice(2, -2).trim()),
+    ).toEqual(['› 2. ○ HEAD', 'MIDDLE', 'TAIL']);
+    expect(out).toHaveLength(12);
+    host.send(KEY.up, KEY.down);
+    expect(host.text()).toContain('TAIL');
+    expect(host.component.render(80)).toHaveLength(12);
+  });
+
+  it('keeps all four selected label rows visible at 80×21 without growing the frame', () => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Tiny',
+            type: 'single',
+            prompt: 'Pick',
+            options: [
+              { value: 'short', label: 'Short' },
+              { value: 'long', label: 'HEAD\nMIDDLE-ONE\nMIDDLE-TWO\nTAIL' },
+            ],
+          },
+        ],
+      },
+      21,
+    );
+    expect(host.component.render(80)).toHaveLength(13);
+    host.send(KEY.down);
+    const out = host.component.render(80);
+    const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(
+      out.slice(first, first + 4).map((line) => line.slice(2, -2).trim()),
+    ).toEqual(['› 2. ○ HEAD', 'MIDDLE-ONE', 'MIDDLE-TWO', 'TAIL']);
+    expect(out).toHaveLength(13);
+    host.send(KEY.up, KEY.down);
+    expect(host.text()).toContain('TAIL');
+    expect(host.component.render(80)).toHaveLength(13);
+  });
+
+  it('marks the last visible label row when the selected label cannot fit even with a one-row prompt', () => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Tiny',
+            type: 'single',
+            prompt: 'Prompt-first\nPrompt-last',
+            options: [
+              { value: 'short', label: 'Short' },
+              {
+                value: 'long',
+                label: 'HEAD\nMIDDLE-ONE\nMIDDLE-TWO\nMIDDLE-THREE\nTAIL',
+              },
+            ],
+          },
+        ],
+      },
+      16,
+    );
+    const height = host.component.render(80).length;
+    host.send(KEY.down);
+    expect(() => host.component.render(80)).not.toThrow();
+    const out = host.component.render(80);
+    const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(
+      out.slice(first, first + 3).map((line) => line.slice(2, -2).trim()),
+    ).toEqual(['› 2. ○ HEAD', 'MIDDLE-ONE', 'MIDDLE-TWO…']);
+    expect(out.find((line) => line.includes('Prompt-first'))).toContain('↓');
+    expect(out.join('\n')).not.toContain('TAIL');
+    expect(out).toHaveLength(height);
+    expect(out.length).toBeLessThanOrEqual(12);
+    host.send(KEY.altDown);
+    expect(host.text()).toContain('Prompt-last');
+    expect(host.component.render(80)).toHaveLength(height);
+    host.send(KEY.up, KEY.down);
+    expect(host.text()).toContain('MIDDLE-TWO…');
+    expect(host.component.render(80)).toHaveLength(height);
+  });
+
+  it.each([
+    { kind: 'multiline', label: 'Head\nTail' },
+    {
+      kind: 'wrapped',
+      label:
+        'Head starts here with a deliberately long explanation that wraps across multiple lines and continues with additional context before the selected option finally ends at Tail.',
+    },
+  ])('prioritizes every row of a selected $kind label over preview rows at 80×21', ({
+    label,
+  }) => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Tiny',
+            type: 'single',
+            prompt: 'Pick',
+            options: [
+              { value: 'short', label: 'Short' },
+              { value: 'long', label, preview: 'Preview-body-content' },
+            ],
+          },
+        ],
+      },
+      21,
+    );
+    const height = host.component.render(80).length;
+    host.send(KEY.down);
+    const out = host.component.render(80);
+    const first = out.findIndex((line) => line.includes('Head'));
+    const last = out.findIndex((line) => line.includes('Tail'));
+    expect(last).toBeGreaterThan(first);
+    expect(
+      out
+        .slice(first, last + 1)
+        .map((line) => line.slice(9, -2).trim())
+        .join(' '),
+    ).toBe(label.replace('\n', ' '));
+    expect(out.join('\n')).not.toContain('Preview-body-content');
+    expect(out).toHaveLength(height);
+    expect(out.length).toBeLessThanOrEqual(13);
+    host.send(KEY.up, KEY.down);
+    expect(host.text()).toContain('Tail');
+    expect(host.component.render(80)).toHaveLength(height);
   });
 
   it('windows 30 options and keeps the cursor visible', () => {
@@ -432,6 +1347,104 @@ describe('questionnaire UI', () => {
     expect(t.text()).not.toContain('1.');
     t.send('h', 'e', 'y', KEY.enter);
     expect(t.results[0]?.details.answers.t.customText).toBe('hey');
+  });
+
+  it.each([
+    { mode: 'text', width: 80 },
+    { mode: 'text', width: 140 },
+    { mode: 'custom', width: 80 },
+    { mode: 'custom', width: 140 },
+    { mode: 'optionNote', width: 80 },
+    { mode: 'optionNote', width: 140 },
+    { mode: 'questionNote', width: 80 },
+    { mode: 'questionNote', width: 140 },
+  ])('keeps the $mode draft and native borders visible under a 50-line prompt at $width×40 without changing height', ({
+    mode,
+    width,
+  }) => {
+    const host = setup({
+      questions: [
+        {
+          id: 'draft',
+          header: 'Draft',
+          prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+            '\n',
+          ),
+          ...(mode === 'text'
+            ? { type: 'text' as const }
+            : { type: 'single' as const, options: options(1) }),
+        },
+        two.questions[1],
+      ],
+    });
+    const openKeys =
+      mode === 'text'
+        ? []
+        : mode === 'custom'
+          ? [KEY.down, KEY.enter]
+          : [mode === 'optionNote' ? 'n' : 'N'];
+    const height = host.component.render(width).length;
+    host.send(...openKeys, 'VISIBLE-DRAFT');
+    const frame = host.component.render(width);
+    expect(frame.join('\n')).toContain('VISIBLE-DRAFT');
+    const cursorRow = frame.findIndex((line) => line.includes(CURSOR_MARKER));
+    expect(cursorRow).toBeGreaterThan(0);
+    for (const border of [frame[cursorRow - 1], frame[cursorRow + 1]]) {
+      expect(border.slice(2, -2).trim()).toMatch(/^─+$/);
+    }
+    expect(frame).toHaveLength(height);
+    expect(frame.join('\n')).toContain('Alt+↑↓ prompt');
+    host.send(KEY.esc, KEY.tab);
+    expect(host.component.render(width)).toHaveLength(height);
+    host.send(KEY.shiftTab, ...(mode === 'text' ? [KEY.enter] : openKeys));
+    expect(host.text(width)).toContain('VISIBLE-DRAFT');
+    expect(host.component.render(width)).toHaveLength(height);
+  });
+
+  it.each([
+    { width: 80, rows: 40 },
+    { width: 140, rows: 40 },
+    { width: 80, rows: 16 },
+    { width: 140, rows: 16 },
+  ])('keeps the cursor line of a tall draft visible instead of its tail at $width×$rows', ({
+    width,
+    rows,
+  }) => {
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'draft',
+            header: 'Draft',
+            prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+              '\n',
+            ),
+            type: 'text',
+          },
+        ],
+      },
+      rows,
+    );
+    const height = host.component.render(width).length;
+    for (let i = 0; i < 20; i++) {
+      host.send(`Draft-${i}`, ...(i < 19 ? [KEY.shiftEnter] : []));
+    }
+    for (let i = 0; i < 18; i++) host.send(KEY.up);
+    host.send('VISIBLE-DRAFT');
+    const frame = host.component.render(width);
+    expect(frame.join('\n')).toContain('VISIBLE-DRAFT');
+    const cursorRow = frame.findIndex((line) => line.includes(CURSOR_MARKER));
+    expect(cursorRow).toBeGreaterThan(0);
+    for (const border of [frame[cursorRow - 1], frame[cursorRow + 1]]) {
+      expect(border.slice(2, -2).trim()).toMatch(/^─.*─$/);
+    }
+    expect(frame).toHaveLength(height);
+    expect(frame.every((line) => visibleWidth(line) <= width)).toBe(true);
+    if (rows === 16) {
+      expect(frame.find((line) => line.includes('Prompt-0'))).toContain('↓');
+    }
+    host.send(KEY.esc);
+    expect(host.component.render(width)).toHaveLength(height);
   });
 
   it('confirm shows Yes/No without free text', () => {
@@ -638,8 +1651,8 @@ describe('questionnaire UI', () => {
           seen();
         }
         expect(heights.size).toBe(1);
-        // Whole component stays under half the terminal so chat history stays visible.
-        expect([...heights][0]).toBeLessThanOrEqual(Math.floor(40 * 0.4));
+        expect([...heights][0]).toBeGreaterThanOrEqual(16);
+        expect([...heights][0]).toBeLessThanOrEqual(26);
         if (kit) {
           withdrawRenderKit(kitToken as symbol);
           kitToken = undefined;
@@ -647,12 +1660,15 @@ describe('questionnaire UI', () => {
       }
     });
 
-    it('scales the height budget with the terminal but never past 40% of it', () => {
+    it('uses at least the base height and grows for content up to 65% of the terminal', () => {
       const height = (rows: number) =>
         setup(uneven, rows).component.render(80).length;
-      expect(height(60)).toBeLessThanOrEqual(24);
+      expect(height(40)).toBe(26);
+      expect(height(60)).toBeGreaterThanOrEqual(24);
+      expect(height(60)).toBeLessThanOrEqual(39);
       expect(height(60)).toBeGreaterThan(height(30));
-      expect(height(100)).toBeLessThanOrEqual(40);
+      expect(height(100)).toBeGreaterThanOrEqual(40);
+      expect(height(100)).toBeLessThanOrEqual(65);
     });
   });
 
@@ -668,6 +1684,9 @@ describe('questionnaire UI', () => {
         cancel: 'Cancelar',
         typeSomething: 'Escribe algo.',
         select: 'elegir',
+        collapse: 'replegar',
+        expand: 'desplegar',
+        recommended: 'recomendado',
         required: 'obligatoria',
         unanswered: 'sin responder',
         answered: 'respondidas',
@@ -705,6 +1724,18 @@ describe('questionnaire UI', () => {
       host.send(KEY.tab);
       expect(host.text(140)).toContain('Escribe algo.');
       expect(host.text(140)).not.toContain('Type something.');
+    });
+
+    it('localizes collapse controls and recommended preview headers', () => {
+      const host = setup(labelled);
+      expect(host.text()).toContain('Ctrl+] replegar');
+      host.send(KEY.collapse);
+      expect(host.component.render(80)).toEqual([
+        ' Ask user · Ctrl+] desplegar · Esc cancelar',
+      ]);
+      host.send(KEY.collapse, KEY.tab, KEY.down);
+      expect(host.text()).toContain('Preview · ★ Recomendado');
+      expect(host.text()).not.toContain('Option 2 ★');
     });
 
     it('localizes review warnings for unanswered required questions', () => {

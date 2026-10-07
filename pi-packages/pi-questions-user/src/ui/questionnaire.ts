@@ -5,7 +5,10 @@ import type {
 import { getSelectListTheme } from '@earendil-works/pi-coding-agent';
 import {
   type Component,
+  CURSOR_MARKER,
   Editor,
+  isKeyRelease,
+  isKeyRepeat,
   matchesKey,
   type TUI,
   truncateToWidth,
@@ -27,13 +30,17 @@ import {
 import type { QuestionUIFactory, QuestionUISession } from '../custom-ui.js';
 import { getOwn } from '../records.js';
 import type { Question } from '../schema.js';
-import { type Labels, type QuestionOption, resolveLabels } from '../schema.js';
+import {
+  LABEL_KEYS,
+  type Labels,
+  type QuestionOption,
+  resolveLabels,
+} from '../schema.js';
 import { pad, renderFrame } from './frame.js';
 import {
+  adaptiveHeight,
   CHROME_ROWS,
-  heightBudget,
   isWide,
-  MAX_PROMPT_ROWS,
   MIN_CONTENT_ROWS,
   splitColumns,
   windowStart,
@@ -49,19 +56,29 @@ type ReviewRow =
   | { kind: 'question'; index: number }
   | { kind: 'action'; action: 'submit' | 'back' | 'cancel' };
 
-const MIN_NARROW_PREVIEW = 2;
+const MIN_PREVIEW_BODY_ROWS = 2;
 const REVIEW_ACTIONS = ['submit', 'back', 'cancel'] as const;
 
-/** Static geometry of the frame body; see QuestionnaireComponent.layout. */
-interface Layout {
+/** Cached questionnaire-wide height; active sections divide its available rows. */
+interface Geometry {
   inner: number;
   wide: boolean;
   left: number;
   right: number;
+  available: number;
+}
+
+interface Layout extends Geometry {
   promptRows: number;
   content: number;
+  promptOverflow: boolean;
   listRows: number;
   previewBody: number;
+}
+
+/** User text in fixed-row chrome must be flattened before measuring or clipping. */
+function singleLine(text: string): string {
+  return text.replace(/\s+/g, ' ');
 }
 
 /** Exactly `rows` lines: clipped, or padded with blanks. */
@@ -78,6 +95,42 @@ function rowCount(question: Question): number {
   return (question.options?.length ?? 0) + (hasFreeText(question) ? 1 : 0);
 }
 
+function listHeight(items: string[][]): number {
+  return items.reduce((sum, item) => sum + item.length, 0);
+}
+
+/** Window whole items; the overflow counter yields to the selected label. */
+function listWindow(
+  items: string[][],
+  cursor: number,
+  size: number,
+  previous: number,
+) {
+  const overflow = listHeight(items) > size;
+  const counter = overflow && (items[cursor]?.length ?? 1) < size;
+  const body = Math.max(1, size - (counter ? 1 : 0));
+  let start = overflow ? Math.min(previous, cursor) : 0;
+  let selectedRows = listHeight(items.slice(start, cursor + 1));
+  while (start < cursor && selectedRows > body) {
+    selectedRows -= items[start].length;
+    start++;
+  }
+  let end = start;
+  let used = 0;
+  while (end < items.length) {
+    if (used + items[end].length > body && end > start) break;
+    used += items[end].length;
+    end++;
+  }
+  return {
+    start,
+    end,
+    counter,
+    body,
+    rows: Math.min(used, body) + (counter ? 1 : 0),
+  };
+}
+
 export class QuestionnaireComponent implements Component {
   private state: AnswerState;
   private tab = 0;
@@ -86,11 +139,13 @@ export class QuestionnaireComponent implements Component {
   private reviewCursor = 0;
   private reviewStart = 0;
   private previewScroll = 0;
+  private promptScroll = 0;
   private edit?: { target: EditTarget; editor: Editor };
   private finished = false;
+  private collapsed = false;
   private readonly onAbort = () => this.finish(true, 'aborted');
   private readonly markdown = new MarkdownCache();
-  private readonly layouts = new Map<string, Layout>();
+  private readonly layouts = new Map<string, Geometry>();
   private readonly labels: Labels;
   private lastWidth = 80;
 
@@ -102,6 +157,9 @@ export class QuestionnaireComponent implements Component {
   ) {
     this.state = session.state;
     this.labels = resolveLabels(session.state.labels);
+    // UI phrases are single-line chrome; leave the session's raw overrides intact.
+    for (const key of LABEL_KEYS)
+      this.labels[key] = singleLine(this.labels[key]);
     this.cursors = this.state.questions.map(() => 0);
     this.starts = this.state.questions.map(() => 0);
     session.signal?.addEventListener('abort', this.onAbort, { once: true });
@@ -143,6 +201,7 @@ export class QuestionnaireComponent implements Component {
     const last = this.reviewIndex ?? this.state.questions.length - 1;
     this.tab = (tab + last + 1) % (last + 1);
     this.previewScroll = 0;
+    this.promptScroll = 0;
     this.enterTab();
   }
 
@@ -262,6 +321,19 @@ export class QuestionnaireComponent implements Component {
 
   handleInput(data: string): void {
     if (this.finished) return;
+    if (matchesKey(data, 'ctrl+]')) {
+      if (isKeyRelease(data) || isKeyRepeat(data)) return;
+      this.collapsed = !this.collapsed;
+      this.tui.requestRender();
+      return;
+    }
+    if (this.collapsed) {
+      if (matchesKey(data, 'escape')) this.finish(true);
+      return;
+    }
+    if (matchesKey(data, 'alt+up') || matchesKey(data, 'alt+down')) {
+      if (this.scrollPrompt(matchesKey(data, 'alt+up') ? -1 : 1)) return;
+    }
     if (this.edit) {
       this.handleEditorInput(data);
       return;
@@ -421,6 +493,21 @@ export class QuestionnaireComponent implements Component {
     );
   }
 
+  private scrollPrompt(direction: number): boolean {
+    const question = this.question;
+    if (!question) return false;
+    const layout = this.currentLayout(this.lastWidth);
+    const total = this.promptViewportLines(question, layout).length;
+    if (total <= layout.promptRows) return false;
+    const body = Math.max(1, layout.promptRows - 1);
+    this.promptScroll = Math.min(
+      Math.max(0, this.promptScroll + direction),
+      Math.max(0, total - body),
+    );
+    this.tui.requestRender();
+    return true;
+  }
+
   // --- rendering -----------------------------------------------------------
 
   invalidate(): void {
@@ -434,7 +521,7 @@ export class QuestionnaireComponent implements Component {
    * questionnaire content, never on cursor, tab or answers, so the component
    * keeps one height while the user navigates.
    */
-  private layout(width: number): Layout {
+  private layout(width: number): Geometry {
     const rows = this.tui.terminal.rows;
     const key = `${width}x${rows}`;
     let layout = this.layouts.get(key);
@@ -443,12 +530,15 @@ export class QuestionnaireComponent implements Component {
     const wide = isWide(width);
     const { left, right } = splitColumns(inner);
     const questions = this.state.questions;
-    const promptRows = Math.min(
-      MAX_PROMPT_ROWS,
-      Math.max(1, ...questions.map((q) => this.promptLines(q, inner).length)),
+    const promptNeed = Math.max(
+      1,
+      ...questions.map((q) => this.promptLines(q, inner).length),
     );
     const interactive = questions.filter((q) => q.type !== 'text');
-    const listNeed = Math.max(0, ...interactive.map(rowCount));
+    const lists = interactive.map((q) =>
+      this.listLabels(q, wide ? left : inner),
+    );
+    const listNeed = Math.max(0, ...lists.map(listHeight));
     const previewNeed = Math.max(
       0,
       ...interactive.flatMap((q) =>
@@ -461,44 +551,103 @@ export class QuestionnaireComponent implements Component {
         ),
       ),
     );
-    const narrowPreview = Math.min(
-      Math.max(previewNeed, MIN_NARROW_PREVIEW),
-      4,
-    );
     const review =
       this.reviewIndex === undefined ? 0 : questions.length + 3 + 2;
-    const needed = Math.max(
+    const previewMinimum = wide ? 1 : MIN_PREVIEW_BODY_ROWS;
+    const contentNeed = Math.max(
       MIN_CONTENT_ROWS,
       review,
       wide
-        ? Math.max(listNeed, previewNeed + 1) + 1
-        : listNeed + 1 + narrowPreview + 1,
+        ? Math.max(listNeed, previewNeed + 1)
+        : listNeed + 1 + Math.max(previewNeed, previewMinimum),
     );
-    const budget = heightBudget(rows) - CHROME_ROWS - promptRows;
-    const content = Math.max(MIN_CONTENT_ROWS, Math.min(needed, budget));
-    // Narrow: the list keeps priority (down to 3 rows); the preview takes the rest.
-    const listRows = wide
-      ? content
-      : Math.min(listNeed, Math.max(3, content - 1 - MIN_NARROW_PREVIEW));
-    const previewBody = wide
-      ? content - 1
-      : Math.max(1, content - 1 - listRows);
+    const height = adaptiveHeight(rows, CHROME_ROWS + promptNeed + contentNeed);
     layout = {
       inner,
       wide,
       left,
       right,
-      promptRows,
-      content,
-      listRows,
-      previewBody,
+      available: height - CHROME_ROWS,
     };
     this.layouts.set(key, layout);
     return layout;
   }
 
+  /** Reserve an active editor, else allocate prompt, selected label, then preview. */
+  private currentLayout(width: number): Layout {
+    const reserved = this.layout(width);
+    const promptNeed = this.question
+      ? this.promptLines(this.question, reserved.inner).length
+      : 1;
+    const items =
+      this.question && this.question.type !== 'text'
+        ? this.listLabels(
+            this.question,
+            reserved.wide ? reserved.left : reserved.inner,
+            true,
+          )
+        : [];
+    const cursor = this.cursors[this.tab] ?? 0;
+    // In degraded heights, preview rows yield to the complete selected label.
+    // Prefer the whole list, or the selected label plus its overflow counter.
+    const selectedMinimum = Math.min(
+      listHeight(items),
+      (items[cursor]?.length ?? 1) + 1,
+    );
+    const previewMinimum =
+      this.question && this.question.type !== 'text'
+        ? Math.min(
+            MIN_PREVIEW_BODY_ROWS,
+            this.markdown.render(
+              this.focusPreview(this.question),
+              reserved.wide ? reserved.right : reserved.inner,
+            ).length,
+          )
+        : 0;
+    // Reserve the editor label plus its borders and cursor row before the prompt.
+    const contentMinimum = Math.min(
+      reserved.available - 1,
+      this.edit
+        ? 1 + Math.min(3, this.edit.editor.render(reserved.inner).length)
+        : this.question && this.question.type !== 'text'
+          ? reserved.wide
+            ? Math.max(1 + previewMinimum, selectedMinimum)
+            : selectedMinimum + 1 + previewMinimum
+          : this.question
+            ? 2
+            : 3,
+    );
+    const promptRows = Math.min(
+      promptNeed,
+      reserved.available - contentMinimum,
+    );
+    const content = reserved.available - promptRows;
+    const listRows = reserved.wide
+      ? content
+      : listWindow(
+          items,
+          cursor,
+          Math.min(
+            content,
+            Math.max(selectedMinimum, content - 1 - previewMinimum),
+          ),
+          this.starts[this.tab] ?? 0,
+        ).rows;
+    const previewBody = reserved.wide
+      ? content - 1
+      : Math.max(0, content - 1 - listRows);
+    return {
+      ...reserved,
+      promptRows,
+      promptOverflow: promptNeed > promptRows,
+      content,
+      listRows,
+      previewBody,
+    };
+  }
+
   private previewHeight(): number {
-    return this.layout(this.lastWidth).previewBody;
+    return this.currentLayout(this.lastWidth).previewBody;
   }
 
   private promptLines(question: Question, width: number): string[] {
@@ -508,10 +657,41 @@ export class QuestionnaireComponent implements Component {
     );
   }
 
+  /** Wrap to leave room for an inline counter, so scrolling never hides text. */
+  private promptViewportLines(question: Question, layout: Layout): string[] {
+    const lines = this.promptLines(question, layout.inner);
+    if (layout.promptRows !== 1 || !layout.promptOverflow) return lines;
+    // A character-per-row bound keeps both counters within their reservation
+    // at every scroll offset, including after the narrower wrapping adds rows.
+    const maximum = lines.reduce(
+      (sum, line) => sum + Math.max(1, visibleWidth(line)),
+      0,
+    );
+    const indicatorWidth = visibleWidth(
+      `↑ ${maximum} ${this.labels.more} · ↓ ${maximum} ${this.labels.more}`,
+    );
+    return this.promptLines(
+      question,
+      Math.max(1, layout.inner - indicatorWidth - 3),
+    );
+  }
+
   render(width: number): string[] {
     if (width <= 0) return [];
     this.lastWidth = width;
-    const layout = this.layout(width);
+    const title = singleLine(this.state.title ?? this.labels.askUser);
+    if (this.collapsed) {
+      return [
+        this.theme.fg(
+          'dim',
+          truncateToWidth(
+            ` ${title} · Ctrl+] ${this.labels.expand} · Esc ${this.labels.cancel.toLowerCase()}`,
+            width,
+          ),
+        ),
+      ];
+    }
+    const layout = this.currentLayout(width);
     const t = this.theme;
     const onReview = this.tab === this.reviewIndex;
     const answered = this.state.questions.filter(
@@ -520,20 +700,13 @@ export class QuestionnaireComponent implements Component {
     const frame = renderFrame(
       t,
       {
-        title: this.state.title ?? this.labels.askUser,
+        title,
         head: [this.renderTabs(layout.inner)],
         sections: [
           {
             title: `${answered}/${this.state.questions.length} ${this.labels.answered}`,
             rows: [
-              ...fixed(
-                onReview
-                  ? [t.bold(this.labels.reviewHeading)]
-                  : this.question
-                    ? this.promptLines(this.question, layout.inner)
-                    : [],
-                layout.promptRows,
-              ),
+              ...this.renderPrompt(layout),
               ...fixed(
                 onReview
                   ? this.renderReview(layout)
@@ -543,7 +716,7 @@ export class QuestionnaireComponent implements Component {
               this.noteRow(),
             ],
           },
-          { title: '', rows: this.renderHints(layout.inner) },
+          { title: '', rows: this.renderHints(layout) },
         ],
       },
       width,
@@ -551,14 +724,40 @@ export class QuestionnaireComponent implements Component {
     return frame.map((line) => truncateToWidth(line, width));
   }
 
+  private renderPrompt(layout: Layout): string[] {
+    const lines =
+      this.tab === this.reviewIndex
+        ? [this.theme.bold(this.labels.reviewHeading)]
+        : this.question
+          ? this.promptViewportLines(this.question, layout)
+          : [];
+    if (lines.length <= layout.promptRows)
+      return fixed(lines, layout.promptRows);
+    const body = Math.max(1, layout.promptRows - 1);
+    this.promptScroll = Math.min(
+      this.promptScroll,
+      Math.max(0, lines.length - body),
+    );
+    const visible = lines.slice(this.promptScroll, this.promptScroll + body);
+    const below = lines.length - this.promptScroll - visible.length;
+    const indicators = [
+      this.promptScroll > 0 ? `↑ ${this.promptScroll} ${this.labels.more}` : '',
+      below > 0 ? `↓ ${below} ${this.labels.more}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const indicator = this.theme.fg('muted', indicators);
+    if (layout.promptRows === 1) {
+      return [`${visible[0] ?? ''} · ${indicator}`];
+    }
+    return [...visible, indicator];
+  }
+
   private noteRow(): string {
     const question = this.question;
     const note = question ? getAnswer(this.state, question.id).note : undefined;
     return note && !this.edit
-      ? this.theme.fg(
-          'muted',
-          `✎ ${this.labels.note}: ${note.replace(/\s+/g, ' ')}`,
-        )
+      ? this.theme.fg('muted', `✎ ${this.labels.note}: ${singleLine(note)}`)
       : '';
   }
 
@@ -566,7 +765,7 @@ export class QuestionnaireComponent implements Component {
     const t = this.theme;
     const labels = this.state.questions.map((question, index) => {
       const answered = getAnswer(this.state, question.id).status === 'answered';
-      const text = `${answered ? '✓' : '○'} ${question.header}`;
+      const text = `${answered ? '✓' : '○'} ${singleLine(question.header)}`;
       return index === this.tab
         ? t.bold(t.fg('accent', `[${text}]`))
         : ` ${text} `;
@@ -609,6 +808,7 @@ export class QuestionnaireComponent implements Component {
         preview,
         layout.right,
         layout.previewBody,
+        this.previewTitle(question),
       );
       return Array.from(
         { length: layout.content },
@@ -616,10 +816,14 @@ export class QuestionnaireComponent implements Component {
           `${pad(list[i] ?? '', layout.left)} ${t.fg('borderMuted', '│')} ${side[i] ?? ''}`,
       );
     }
+    if (layout.listRows === layout.content) {
+      return this.renderList(question, layout.inner, layout.listRows);
+    }
     const [header, ...body] = this.renderPreview(
       preview,
       layout.inner,
       layout.previewBody,
+      this.previewTitle(question),
     );
     return [
       ...fixed(
@@ -655,11 +859,62 @@ export class QuestionnaireComponent implements Component {
       const option = question?.options?.find((o) => o.value === target.value);
       label = `${this.labels.noteFor} “${option?.label ?? target.value}”`;
     }
-    // A long draft keeps its last rows visible inside the reserved area.
+    const lines = edit.editor.render(layout.inner);
+    // In tiny terminals the label yields to the native borders and cursor row.
+    const heading =
+      layout.content > Math.min(3, lines.length)
+        ? [
+            this.theme.fg(
+              'accent',
+              truncateToWidth(singleLine(label), layout.inner),
+            ),
+          ]
+        : [];
+    const rows = layout.content - heading.length;
+    if (lines.length <= rows) return [...heading, ...lines];
+    const body = lines.slice(1, -1);
+    const size = Math.max(1, rows - 2);
+    const cursor = Math.max(
+      0,
+      body.findIndex((line) => line.includes(CURSOR_MARKER)),
+    );
+    const start = windowStart(
+      body.length,
+      cursor,
+      size,
+      Math.max(0, cursor - Math.floor(size / 2)),
+    );
     return [
-      this.theme.fg('accent', label),
-      ...edit.editor.render(layout.inner).slice(-(layout.content - 1)),
+      ...heading,
+      lines[0],
+      ...body.slice(start, start + size),
+      lines[lines.length - 1],
     ];
+  }
+
+  /** Prefix includes an aligned star gutter only when this question needs it. */
+  private listIndent(question: Question): number {
+    return question.options?.some((option) => option.recommended) ? 9 : 7;
+  }
+
+  private listLabels(
+    question: Question,
+    width: number,
+    withDrafts = false,
+  ): string[][] {
+    const answer = withDrafts ? getAnswer(this.state, question.id) : undefined;
+    const labelWidth = Math.max(1, width - this.listIndent(question));
+    return Array.from({ length: rowCount(question) }, (_, i) => {
+      const option = question.options?.[i];
+      let label = option?.label ?? this.labels.typeSomething;
+      if (option && getOwn(answer?.optionNotes, option.value)) {
+        label += this.theme.fg('muted', ' ✎');
+      }
+      if (!option && answer?.customText) {
+        label += this.theme.fg('muted', `: ${singleLine(answer.customText)}`);
+      }
+      return wrapTextWithAnsi(label, labelWidth);
+    });
   }
 
   private renderList(
@@ -669,42 +924,59 @@ export class QuestionnaireComponent implements Component {
   ): string[] {
     const t = this.theme;
     const answer = getAnswer(this.state, question.id);
-    const options = question.options ?? [];
-    const total = rowCount(question);
-    const windowRows = total > size ? size - 1 : size;
+    const items = this.listLabels(question, width, true);
+    const total = items.length;
     const cursor = this.cursors[this.tab];
-    const start = windowStart(total, cursor, windowRows, this.starts[this.tab]);
+    const { start, end, counter, body } = listWindow(
+      items,
+      cursor,
+      size,
+      this.starts[this.tab],
+    );
     this.starts[this.tab] = start;
-    const end = Math.min(start + windowRows, total);
     const multi = question.type === 'multi';
+    const indent = this.listIndent(question);
     const lines: string[] = [];
     for (let i = start; i < end; i++) {
+      const item = items[i];
       const focused = i === cursor;
-      const option = options[i];
+      const option = question.options?.[i];
       const checked = option
         ? answer.values.includes(option.value)
         : Boolean(answer.customText);
       const mark = multi ? (checked ? '☑' : '☐') : checked ? '◉' : '○';
       const number = i < 9 ? `${i + 1}.` : '  ';
-      let label = option ? option.label : this.labels.typeSomething;
-      if (option?.recommended) {
-        label += t.fg('success', ` ★ ${this.labels.recommended}`);
+      const star =
+        indent === 9
+          ? `${option?.recommended ? t.fg('success', '★') : ' '} `
+          : '';
+      const prefix = `${focused ? '›' : ' '} ${number} ${mark} ${star}`;
+      for (const [row, label] of item.entries()) {
+        const text = `${row === 0 ? prefix : ' '.repeat(indent)}${label}`;
+        lines.push(focused ? t.fg('accent', text) : text);
       }
-      if (option && getOwn(answer.optionNotes, option.value)) {
-        label += t.fg('muted', ' ✎');
-      }
-      if (!option && answer.customText) {
-        label += t.fg('muted', `: ${answer.customText.replace(/\s+/g, ' ')}`);
-      }
-      const text = `${focused ? '›' : ' '} ${number} ${mark} ${label}`;
-      lines.push(focused ? t.fg('accent', text) : text);
     }
-    if (total > windowRows) {
+    if (lines.length > body) {
+      lines.splice(body);
+      lines[body - 1] = t.fg(
+        'accent',
+        `${truncateToWidth(lines[body - 1], width - 1, '')}…`,
+      );
+    }
+    if (counter) {
       const up = start > 0 ? '↑' : ' ';
       const down = end < total ? '↓' : ' ';
       lines.push(t.fg('muted', `  ${up} ${cursor + 1}/${total} ${down}`));
     }
     return lines.map((line) => truncateToWidth(line, width));
+  }
+
+  private previewTitle(question: Question): string {
+    const option = question.options?.[this.cursors[this.tab]];
+    const recommended = this.labels.recommended;
+    return option?.recommended
+      ? `${this.labels.preview} · ${this.theme.fg('success', `★ ${recommended.charAt(0).toUpperCase()}${recommended.slice(1)}`)}`
+      : this.labels.preview;
   }
 
   private previewSource(option: QuestionOption): string {
@@ -727,6 +999,7 @@ export class QuestionnaireComponent implements Component {
     source: string,
     width: number,
     height: number,
+    title: string,
   ): string[] {
     const all = this.markdown.render(source, width);
     this.previewScroll = Math.min(
@@ -739,8 +1012,8 @@ export class QuestionnaireComponent implements Component {
     const header = this.theme.fg(
       'muted',
       all.length > height
-        ? `${this.labels.preview} ${above + 1}-${above + visible.length}/${all.length}${above > 0 ? ` · ↑ ${above} ${this.labels.more}` : ''}${below > 0 ? ` · ↓ ${below} ${this.labels.more}` : ''}`
-        : this.labels.preview,
+        ? `${title} ${above + 1}-${above + visible.length}/${all.length}${above > 0 ? ` · ↑ ${above} ${this.labels.more}` : ''}${below > 0 ? ` · ↓ ${below} ${this.labels.more}` : ''}`
+        : title,
     );
     return [header, ...fixed(visible, height)].map((line) =>
       truncateToWidth(line, width),
@@ -785,7 +1058,7 @@ export class QuestionnaireComponent implements Component {
         } else {
           summary = t.fg('muted', this.labels.skipped);
         }
-        text = `${prefix} ${question.header}: ${summary}`;
+        text = `${prefix} ${singleLine(question.header)}: ${summary}`;
       } else {
         text = `${prefix} ▸ ${actions[row.action]}`;
       }
@@ -804,8 +1077,12 @@ export class QuestionnaireComponent implements Component {
   }
 
   /** Key hints flowed onto exactly two rows without splitting a hint. */
-  private renderHints(width: number): string[] {
+  private renderHints(layout: Layout): string[] {
+    const width = layout.inner;
     const l = this.labels;
+    const promptHint = layout.promptOverflow
+      ? [`Alt+↑↓ ${l.scrollPrompt}`]
+      : [];
     let items: string[];
     if (this.edit) {
       items = [
@@ -813,6 +1090,8 @@ export class QuestionnaireComponent implements Component {
         `Shift+Enter ${l.newline}`,
         `Tab ${l.switchTab}`,
         `Esc ${l.keepDraft}`,
+        `Ctrl+] ${l.collapse}`,
+        ...promptHint,
       ];
     } else if (this.tab === this.reviewIndex) {
       items = [
@@ -820,6 +1099,8 @@ export class QuestionnaireComponent implements Component {
         `Enter ${l.select}`,
         `Tab/←→ ${l.switchTab}`,
         `Esc ${l.cancel.toLowerCase()}`,
+        `Ctrl+] ${l.collapse}`,
+        ...promptHint,
       ];
     } else {
       items = [
@@ -828,8 +1109,9 @@ export class QuestionnaireComponent implements Component {
         this.question?.type === 'multi'
           ? `Space ${l.toggle} · Enter ${l.next}`
           : `Enter ${l.select}`,
-        `n ${l.optionNote}`,
-        `N ${l.questionNote}`,
+        `Ctrl+] ${l.collapse}`,
+        ...promptHint,
+        `n/N ${l.note.toLowerCase()}`,
         `x ${l.clear}`,
         `⇧↑↓/[ ] ${l.scrollPreview}`,
         `Tab/←→ ${l.switchTab}`,

@@ -51,7 +51,8 @@ language. Keys: `askUser`, `yes`, `no`, `typeSomething`, `yourAnswer`, `submit`,
 `noDescription`, `typeOwn`, `noTextYet`, `note`, `noteForQuestion`, `noteFor`,
 `cancelled`, `cancelledKept`, `error`, `answered`, and the key-hint verbs `move`,
 `pick`, `select`, `toggle`, `next`, `optionNote`, `questionNote`, `clear`,
-`scrollPreview`, `more`, `switchTab`, `save`, `newline`, `keepDraft`. The native
+`scrollPreview`, `scrollPrompt`, `more`, `switchTab`, `save`, `newline`, `keepDraft`,
+`collapse`, `expand`. The native
 questionnaire, the sequential RPC fallback, synthesized confirm options and the
 transcript result card all use them. When supplied, `labels` is echoed in
 `details.labels` so the result card renders in the same language; it is absent
@@ -62,7 +63,12 @@ otherwise.
 ```
 
 `required` is advisory: a user may skip any question. Recommendations are markers,
-never selected or submitted automatically. Single/multi offer a free-text entry;
+never selected or submitted automatically. In the questionnaire, a colored `★`
+gutter between the radio/checkbox and label marks recommended options; other rows
+reserve the same space only when the question has a recommendation. Labels are
+not suffixed with recommendation text. The focused recommendation's preview header
+shows `Preview · ★ Recommended` (localized), retaining its scroll range.
+Single/multi offer a free-text entry;
 multi combines it with picks. Text is input only. The sequential fallback uses
 numbered options to distinguish duplicate labels and control-like labels, repeated
 multi toggles plus Done, and explicit Skip (blank text also skips).
@@ -132,11 +138,21 @@ The questionnaire is drawn in the thoth frame: a rounded border with the title,
 a tabs row, dividers around the question/option/preview area and a two-row hint
 footer. The frame comes from the pi-core render kit resolved at render time and
 falls back to the same glyphs drawn natively when no kit is registered (the theme
-package is never a dependency). Its height is fixed for a given width and terminal
-size: it is derived from the whole questionnaire (longest prompt, option count,
-longest preview) and capped at 40% of the terminal rows (never below 12 rows), so
-it never jumps while navigating and the chat history above stays visible and
-scrollable. Option lists and previews scroll inside the reserved area.
+package is never a dependency). Expanded height stays stable across options, tabs
+and editors for a given questionnaire and terminal size. Its baseline is
+`max(12, floor(rows * 0.4))`; content can grow it up to `floor(rows * 0.65)` (never
+below that baseline). Need is measured across all questions: frame chrome, full
+wrapped prompts, wrapped option labels and previews. Prompts take priority, then
+labels with hanging indents; spare rows go to the preview. At the cap, the narrow
+preview shrinks to a minimum of up to two body rows of actual content, then lists
+scroll by whole options, and finally overflowing prompts scroll with a visible indicator. In tiny terminals
+that cannot fit those minimums, preview rows shrink further to preserve the height
+cap and selected option. Wide terminals (100+ columns) wrap labels within the
+list column beside the scrolling preview. Active editors reserve their native
+borders and at least the cursor line before the prompt; tall drafts clip around
+the cursor. In tiny terminals the editor label yields to that minimum.
+`Ctrl+]` collapses the non-overlay panel to one dim row; expanding restores its
+tab, cursor, scroll positions and editor drafts.
 
 The registered tool includes call/result renderers using the pi-core render kit
 when available, with native Pi rendering as fallback. The call and result parts
@@ -187,6 +203,11 @@ Questionnaire navigation/action bindings are fixed and **not user-rebindable**:
   `PageUp`/`PageDown`, `Home`/`End`, `Ctrl+Up`/`Down` and the mouse wheel for the
   transcript before the questionnaire sees them, so `Shift+arrows` and `[`/`]`
   are the keys that always work.
+- `Alt+Up` / `Alt+Down`: scroll an overflowing prompt by a line; its indicator
+  shows hidden rows. The hint appears only when a prompt overflows; switching tabs
+  resets prompt scroll.
+- `Ctrl+]`: collapse/expand from any state, including editors. While collapsed,
+  only `Ctrl+]` (expand) and `Esc` (cancel) are handled.
 - `Esc` outside an editor: cancel, retaining recorded answers.
 
 Text/note editors use Pi's native editor for typing and editing (`Enter` saves,

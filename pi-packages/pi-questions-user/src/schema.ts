@@ -39,11 +39,14 @@ export const DEFAULT_LABELS = {
   questionNote: 'question note',
   clear: 'clear',
   scrollPreview: 'preview',
+  scrollPrompt: 'prompt',
   more: 'more',
   switchTab: 'switch',
   save: 'save',
   newline: 'newline',
   keepDraft: 'keep draft',
+  collapse: 'collapse',
+  expand: 'expand',
 } as const;
 
 export type LabelKey = keyof typeof DEFAULT_LABELS;

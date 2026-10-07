@@ -46,7 +46,8 @@ describe.skipIf(process.platform !== 'win32')('Windows declared shell integratio
     vi.stubEnv('PI_BACKGROUND_TASKS_PWSH', 'Z:/missing/pwsh.exe');
     const key = Symbol.for('thoth-agents.background-tasks.windows-job-helper.v1');
     const previous = Reflect.get(globalThis, key);
-    const client = new WindowsJobClient({ testFaults: true, requestTimeoutMs: 1000 });
+    // Healthy 5.1 launches/queries can exceed 1 s under load; schema faults reply immediately.
+    const client = new WindowsJobClient({ testFaults: true });
     Reflect.set(globalThis, key, client);
     const host = lifecycleHost('fresh-no-pwsh');
     const pids: number[] = [];

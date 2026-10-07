@@ -55,6 +55,11 @@ pi-core and open-task reinjection. Pi-questions-user is the first-party
 A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
 install), runs only those nine package typechecks and offline tests, one step per
 command so a failure cannot be masked; the root suite runs only on Ubuntu.
+Its vitest steps pass `--retry=2` so an isolated slow-runner failure does not block
+a release, while a consistent failure still fails; fix flakes at their cause
+rather than relying on retries. `workflow_dispatch` allows manual CI runs (for
+example repeated Windows stability checks); `release.yml` only waits for `push` runs.
+Both CI jobs provision Bun `1.3.14` for the pi-subagents Bun runtime compatibility test.
 
 CI also runs a PR-only, non-blocking "Pi version bump" warning step
 (`scripts/check-pi-version-bumps.mjs`); skipped runs emit a `::notice`.

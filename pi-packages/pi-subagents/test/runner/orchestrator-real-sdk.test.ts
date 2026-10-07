@@ -1,11 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, it, vi } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
+import type { SubagentManager } from '../../src/manager.js';
 import { sendSubagentQuestionMessage } from '../../src/render/question-message.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
+
+// The real session still has permission hardening/teardown after the last reply.
+// Synchronize on the public terminal update, not vi.waitFor's 1s default, which
+// can expire during Windows I/O. The runner and this integration test are bounded
+// by their existing 10s/30s deadlines; failed/cancelled updates also unblock so the
+// completed assertion reports the actual outcome instead of waiting forever.
+async function waitForTerminalTask(manager: SubagentManager, id: string) {
+  let remove = () => {};
+  const terminal = new Promise<void>((resolve) => {
+    const check = () => {
+      const status = manager.getTask(id)?.status;
+      if (status && ['completed', 'failed', 'cancelled'].includes(status))
+        resolve();
+    };
+    remove = manager.onTaskUpdate(check);
+    check();
+  });
+  onTestFinished(() => remove());
+  try {
+    await terminal;
+  } finally {
+    remove();
+  }
+}
 
 it.each([
   ['subagent_run', 'same turn'],
@@ -159,9 +184,8 @@ it.each([
         expect(reply.isError).not.toBe(true);
       }
       expect(requestIds.size).toBe(2);
-      await vi.waitFor(() =>
-        expect(manager.getTask(taskId)?.status).toBe('completed'),
-      );
+      await waitForTerminalTask(manager, taskId);
+      expect(manager.getTask(taskId)?.status).toBe('completed');
       expect(childReplies).toEqual(['answer:first', 'answer:second']);
       expect(pi.sendMessage).toHaveBeenCalledTimes(2);
     } finally {
@@ -272,9 +296,8 @@ it('answers repeated injected real-SDK questions through subagent_reply in the s
       );
       expect(result.isError).not.toBe(true);
     }
-    await vi.waitFor(() =>
-      expect(manager.getTask(id)?.status).toBe('completed'),
-    );
+    await waitForTerminalTask(manager, id);
+    expect(manager.getTask(id)?.status).toBe('completed');
     expect(manager.getTask(id)?.result).toBe('runtime only; package check');
     expect(
       manager.getTask(id)?.progress_updates?.map((update) => update.message),

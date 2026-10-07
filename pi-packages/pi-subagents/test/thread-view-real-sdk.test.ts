@@ -11,6 +11,21 @@ import {
 } from '../src/thread-view.js';
 import type { SubagentThreadItem } from '../src/types.js';
 
+// These runtime integrations keep the theme package's TS-extension compiler
+// settings. Load its modules once during collection, not inside the first themed
+// assertion's 5s deadline (cold import exceeded 5s under Windows contention).
+const toolsModule = new URL(
+  '../../pi-thoth-theme/src/tools/index.ts',
+  import.meta.url,
+).href;
+const kitModule = new URL(
+  '../../pi-thoth-theme/src/render-kit/index.ts',
+  import.meta.url,
+).href;
+const [{ createToolRendererResolver }, { createRenderKit }] = await Promise.all(
+  [import(toolsModule), import(kitModule)],
+);
+
 let fixtureRoot: string;
 let previousAgentDir: string | undefined;
 
@@ -296,16 +311,6 @@ it.each([
     renderResult: () => new Text('error output'),
   };
   if (withKit) {
-    const toolsModule = new URL(
-      '../../pi-thoth-theme/src/tools/index.ts',
-      import.meta.url,
-    ).href;
-    const kitModule = new URL(
-      '../../pi-thoth-theme/src/render-kit/index.ts',
-      import.meta.url,
-    ).href;
-    const { createToolRendererResolver } = await import(toolsModule);
-    const { createRenderKit } = await import(kitModule);
     const resolve = createToolRendererResolver(
       { getAllTools: () => [] },
       { icons: 'ascii', tools: { enabled: true } },
@@ -398,17 +403,6 @@ it.each([
   const { initTheme } = await import('@earendil-works/pi-coding-agent');
   const { stripTerminalSequences, visibleWidth, truncateToWidth } =
     await import('@earendil-works/pi-tui');
-  // Runtime integration: the theme package owns its TS-extension compiler settings.
-  const toolsModule = new URL(
-    '../../pi-thoth-theme/src/tools/index.ts',
-    import.meta.url,
-  ).href;
-  const kitModule = new URL(
-    '../../pi-thoth-theme/src/render-kit/index.ts',
-    import.meta.url,
-  ).href;
-  const { createToolRendererResolver } = await import(toolsModule);
-  const { createRenderKit } = await import(kitModule);
   initTheme('dark', false);
   expect(await preloadPiComponentsForSubagentRendering()).toBe(true);
   const resolve = createToolRendererResolver(

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyFallbackFailure,
   classifyThrownError,
@@ -9,17 +9,44 @@ import {
   normalizeErrorMetadata,
   SubagentStructuredError,
 } from '../../src/error-metadata.js';
+import { sdkSubagentRunner } from '../../src/runner.js';
 import type {
   SubagentDefinition,
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
-import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 
 const sessionManagerSpies = vi.hoisted(() => ({
-  create: vi.fn(() => ({ path: '/tmp/subagent-session.jsonl' })),
+  // Snapshot-only cases do not persist a session file. A nonexistent fake path
+  // would exercise permission retries twice per run for no relevant assertion.
+  create: vi.fn(() => ({ path: '' })),
+  createAgentSession: vi.fn(),
   open: vi.fn((sessionPath: string) => ({ path: sessionPath })),
 }));
+
+vi.mock('@earendil-works/pi-coding-agent', async () => ({
+  ModelRuntime: (await import('../helpers/model-runtime-fixture.js'))
+    .ModelRuntimeFixture,
+  SessionManager: {
+    inMemory: () => ({}),
+    create: sessionManagerSpies.create,
+    open: sessionManagerSpies.open,
+  },
+  createAgentSession: sessionManagerSpies.createAgentSession,
+}));
+
+let persistentSessionDir: string | undefined;
+beforeEach(() => {
+  sessionManagerSpies.create.mockReset();
+  sessionManagerSpies.open.mockClear();
+  sessionManagerSpies.createAgentSession.mockReset();
+});
+afterEach(() => {
+  if (persistentSessionDir) {
+    fs.rmSync(persistentSessionDir, { recursive: true, force: true });
+    persistentSessionDir = undefined;
+  }
+});
 
 describe('subagent runner thread snapshots', () => {
   const definition: SubagentDefinition = {
@@ -42,23 +69,15 @@ describe('subagent runner thread snapshots', () => {
     cwd = '/workspace',
     overrides: Record<string, unknown> = {},
   ) {
-    vi.resetModules();
     sessionManagerSpies.create.mockClear();
     sessionManagerSpies.open.mockClear();
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: {
-        inMemory: () => ({}),
-        create: sessionManagerSpies.create,
-        open: sessionManagerSpies.open,
-      },
-      createAgentSession: vi.fn((options: any) => ({
+    sessionManagerSpies.createAgentSession.mockImplementation(
+      (options: any) => ({
         session: Object.assign(session, {
           getAllTools: () => options.tools.map((name: string) => ({ name })),
         }),
-      })),
-    }));
-    const { sdkSubagentRunner } = await import('../../src/runner.js');
+      }),
+    );
     const activities: any[] = [];
     const result = await sdkSubagentRunner({
       definition,
@@ -74,6 +93,12 @@ describe('subagent runner thread snapshots', () => {
   }
 
   it('creates persistent nested sessions for new tasks, reopens the exact session for continuations, and excludes earlier assistant text from the current attempt result', async () => {
+    persistentSessionDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'pi-subagent-snapshot-'),
+    );
+    const sessionPath = path.join(persistentSessionDir, 'session.jsonl');
+    fs.writeFileSync(sessionPath, '{"type":"session"}\n');
+    sessionManagerSpies.create.mockReturnValueOnce({ path: sessionPath });
     const initialSession = {
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
@@ -92,9 +117,7 @@ describe('subagent runner thread snapshots', () => {
     expect(sessionManagerSpies.create).toHaveBeenCalledOnce();
     expect(sessionManagerSpies.open).not.toHaveBeenCalled();
     expect(initialRun.result.result).toBe('initial answer');
-    expect(initialRun.result.nested_session_path).toBe(
-      '/tmp/subagent-session.jsonl',
-    );
+    expect(initialRun.result.nested_session_path).toBe(sessionPath);
     expect(initialRun.result.thread_snapshot?.items.slice(0, 3)).toEqual([
       expect.objectContaining({ type: 'attempt', attempt: 1 }),
       expect.objectContaining({
@@ -138,7 +161,7 @@ describe('subagent runner thread snapshots', () => {
     };
 
     const continued = await runWithSession(continuationSession, '/workspace', {
-      nested_session_path: '/tmp/subagent-session.jsonl',
+      nested_session_path: sessionPath,
       continuation: {
         prompt: 'Resume from the terminal state.',
         attempt: 2,
@@ -157,7 +180,7 @@ describe('subagent runner thread snapshots', () => {
     });
 
     expect(sessionManagerSpies.open).toHaveBeenCalledWith(
-      '/tmp/subagent-session.jsonl',
+      sessionPath,
       expect.any(String),
       '/workspace',
     );
@@ -425,7 +448,6 @@ describe('subagent runner thread snapshots', () => {
 
   it('stalls long-running tool calls when they stop sending updates', async () => {
     vi.useFakeTimers();
-    vi.resetModules();
     let subscriber: ((event: unknown) => void) | undefined;
     let resolvePrompt: (() => void) | undefined;
     const session = {
@@ -464,18 +486,15 @@ describe('subagent runner thread snapshots', () => {
       ],
       dispose: vi.fn(async () => undefined),
     };
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: { inMemory: () => ({}) },
-      createAgentSession: vi.fn((options: any) => ({
+    sessionManagerSpies.createAgentSession.mockImplementation(
+      (options: any) => ({
         session: Object.assign(session, {
           getAllTools: () => options.tools.map((name: string) => ({ name })),
         }),
-      })),
-    }));
+      }),
+    );
 
     try {
-      const { sdkSubagentRunner } = await import('../../src/runner.js');
       const promise = sdkSubagentRunner({
         definition,
         task: 'apply work that stalls inside a tool',
@@ -528,8 +547,6 @@ describe('subagent runner thread snapshots', () => {
       ],
       dispose: vi.fn(async () => undefined),
     };
-    // Avoid the fixture's nonexistent persistent path and its permission retries.
-    sessionManagerSpies.create.mockReturnValueOnce({ path: '' });
     const outcome = runWithSession(session, '/workspace', {
       config: {
         ...config,

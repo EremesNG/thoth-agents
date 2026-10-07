@@ -10,8 +10,9 @@ function register() {
   registerTools({ on() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
   return tools;
 }
-describe('registration-time shell disclosure', () => {
+describe.each(['win32', 'linux'] as const)('registration-time shell disclosure on %s', platform => {
   it.each(['Core', 'Desktop', 'missing'] as const)('discloses bash path and %s PowerShell in all command tools and parameter docs', edition => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
     vi.mocked(SettingsManager.create).mockReturnValue({ getShellPath: () => undefined } as SettingsManager);
     vi.mocked(getShellConfig).mockReturnValue({ shell: 'D:/Git/bin/bash.exe', args: ['-c'] });
     vi.stubEnv('PI_BACKGROUND_TASKS_PWSH', 'test-powershell.exe');
@@ -21,13 +22,20 @@ describe('registration-time shell disclosure', () => {
       const tool = tools.get(name);
       for (const text of [tool.description, tool.parameters.properties.command.description, tool.parameters.properties.shell.description]) {
         expect(text).toContain('D:/Git/bin/bash.exe');
-        if (edition === 'missing') expect(text).toContain('powershell unavailable');
-        else expect(text).toContain(edition === 'Core' ? 'PowerShell Core 7.5.2' : 'PowerShell Desktop 5.1.19041');
-        if (edition === 'Desktop') expect(text).toContain('5.1 lacks &&/||');
+        // Desktop 5.1 is Windows-only; a successful probe must not advertise it on POSIX.
+        if (edition === 'missing' || (edition === 'Desktop' && platform === 'linux')) {
+          expect(text).toContain('powershell unavailable');
+          expect(text).not.toContain('PowerShell Desktop 5.1.19041');
+          expect(text).not.toContain('5.1 lacks &&/||');
+        } else {
+          expect(text).toContain(edition === 'Core' ? 'PowerShell Core 7.5.2' : 'PowerShell Desktop 5.1.19041');
+          if (edition === 'Desktop') expect(text).toContain('5.1 lacks &&/||');
+        }
       }
     }
   });
   it('says bash is unavailable rather than advertising sh/WSL', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
     vi.mocked(SettingsManager.create).mockReturnValue({ getShellPath: () => undefined } as SettingsManager);
     vi.mocked(getShellConfig).mockReturnValue({ shell: 'sh', args: ['-c'] });
     vi.mocked(spawnSync).mockReturnValue({ status: 1, stdout: '' } as ReturnType<typeof spawnSync>);

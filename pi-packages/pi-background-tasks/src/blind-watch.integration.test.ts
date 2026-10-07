@@ -60,7 +60,7 @@ function scripted(stdout: string, stderr = "", exitCode = 0): CommandResult {
   return { stdout, stderr, exitCode, signal: null, startedAt: at, endedAt: at };
 }
 
-function localWatch(pi: ExtensionAPI, runner: LocalPollSequence, extra: { blind_checks?: number } = {}) {
+function localWatch(pi: ExtensionAPI, runner: LocalPollSequence, extra: { blind_checks?: number; callback?: boolean; timeout_seconds?: number } = {}) {
   const meta = startWatchTask(pi, { ...runner.spec, callback: false,
     interval_seconds: 1, timeout_seconds: 60, success_when: SUCCESS, failure_when: FAILURE, ...extra },
   process.cwd(), origin, () => origin);
@@ -104,7 +104,7 @@ describe("#359 blind watch checks", () => {
     await expect.poll(() => messages.length, { timeout: 15_000, interval: 50 }).toBe(1);
     expect(messages[0]).toContain(id);
     expect(messages[0]).toContain("Transform function expected");
-    expect(messages[0]).toContain("redirect it (2>/dev/null) or set blind_checks:0");
+    expect(messages[0]).toContain("redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0");
 
     // Blind checks keep coming; the watch keeps running and never wakes the parent again.
     const streak = readMeta(id)!.blindCheckStreak!;
@@ -130,6 +130,28 @@ describe("#359 blind watch checks", () => {
     expect(observations(id)).toEqual([]);
     expect(messages).toEqual([]);
     await stopTask(pi, id, () => origin);
+  }, 30_000);
+
+  // Equivalent wake coverage on every platform, without a POSIX shell/PATH fixture.
+  it("keeps the stderr evidence and remediation hint in a blind-check wake (local watch)", async () => {
+    const { pi, messages } = host();
+    const runner = new LocalPollSequence([scripted("STILL_UNKNOWN\n", `${GCLOUD_ERROR}\n`)]);
+    const meta = localWatch(pi, runner, { callback: true, timeout_seconds: 0 });
+    await expect.poll(() => blindIncident(meta.id)?.status, { timeout: 15_000, interval: 50 }).toBe("unresolved");
+
+    // A compact incident summary may be clipped, but its actionable evidence must survive.
+    const realNow = Date.now.bind(Date);
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + 61_000);
+    await expect.poll(() => messages.length, { timeout: 15_000, interval: 50 }).toBe(1);
+    expect(messages[0]).toContain(meta.id);
+    expect(messages[0]).toContain("Transform function expected");
+    expect(messages[0]).toContain("redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0");
+    const streak = readMeta(meta.id)!.blindCheckStreak!;
+    await expect.poll(() => readMeta(meta.id)!.blindCheckStreak! >= streak + 2, { timeout: 15_000, interval: 50 }).toBe(true);
+    expect(messages).toHaveLength(1);
+    expect(observations(meta.id).filter((x) => x.operation === "watch-blind")).toHaveLength(1);
+    expect(readMeta(meta.id)?.status).toBe("running");
+    await stopTask(pi, meta.id, () => origin);
   }, 30_000);
 
   it("a pending-but-healthy check (clean STILL_RUNNING, no stderr) never triggers", async () => {

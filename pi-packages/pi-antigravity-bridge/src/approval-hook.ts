@@ -28,7 +28,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { bridgeMcpConfigDir } from "./mcp-server.js";
+import { isDeepStrictEqual } from "node:util";
+import { logsDir } from "./config.js";
+import { APPROVAL_PARK_TIMEOUT_MS, bridgeMcpConfigDir } from "./mcp-server.js";
 
 export const HOOK_GROUP = "pi-bridge-gate";
 
@@ -55,14 +57,44 @@ function pidAlive(pid: number): boolean {
 	}
 }
 
-/** Which session a gate group belongs to, parsed from the script path its
- *  command embeds (`.../approval-hook-<pid>.js`). The pid is the ownership
- *  proof: the script is per-pid (0600, written by that session). Returns
- *  null for groups we cannot attribute (foreign/future formats - never
- *  touched). */
-function gateGroupPid(group: unknown): number | null {
-	const m = /approval-hook-(\d+)\.js/.exec(JSON.stringify(group));
-	return m ? Number(m[1]) : null;
+/** Hook script file name. `.mjs` is load-bearing: the script uses top-level
+ *  `await`, and Node 22.19 does not sniff ESM syntax for a bare `.js`
+ *  without a package.json "type", so it would die with a SyntaxError (exit 1). */
+export function approvalHookFileName(pid: number, instanceId: string): string {
+	return `approval-hook-${pid}-${instanceId}.mjs`;
+}
+
+/** Reconstruct, rather than infer, ownership of a workspace group. History
+ *  (06cda31) establishes per-pid keys, UUID-v4-suffixed .js scripts in logsDir(),
+ *  and this exact buildGateGroup shape with a 480s park budget. Neither bare
+ *  group keys nor pid-only script names are established: preserve them.
+ *  JSON object-key order is immaterial; every value and extra key matters. */
+function reconstructedGateGroupPid(key: string, group: unknown): number | null {
+	const owner = /^pi-bridge-gate-([1-9]\d{0,9})$/.exec(key);
+	if (!owner) return null;
+	const pid = Number(owner[1]);
+	// Conservative ceiling (Linux pid_max limit); never probe ambiguous numbers.
+	if (pid > 4194304 || key !== gateGroupKey(pid)) return null;
+	const command = (group as { PreToolUse?: Array<{ hooks?: Array<{ command?: unknown }> }> } | null)
+		?.PreToolUse?.[0]?.hooks?.[0]?.command;
+	if (typeof command !== "string" || !command.startsWith("node ")) return null;
+	let script: unknown;
+	try {
+		script = JSON.parse(command.slice(5));
+	} catch {
+		return null;
+	}
+	if (typeof script !== "string") return null;
+	const name = /^approval-hook-([1-9]\d{0,9})-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(mjs|js)$/.exec(path.basename(script));
+	if (!name || name[1] !== owner[1]) return null;
+	const instanceId = name[2] as string;
+	const fileName = name[3] === "mjs" ? approvalHookFileName(pid, instanceId) : `approval-hook-${pid}-${instanceId}.js`;
+	const expected = buildGateGroup({
+		port: 0, token: "", // These fields are not serialized into the group.
+		scriptPath: path.join(logsDir(), fileName),
+		parkBudgetMs: APPROVAL_PARK_TIMEOUT_MS,
+	});
+	return isDeepStrictEqual(group, expected) ? pid : null;
 }
 
 /** agy native tools worth gating: everything that mutates the machine. */
@@ -253,9 +285,7 @@ export function sweepWorkspaceGateGroups(workspaceDir: string): number {
 	}
 	let swept = 0;
 	for (const key of Object.keys(current)) {
-		const isGateGroup = key === GATE_GROUP_PREFIX || key.startsWith(`${GATE_GROUP_PREFIX}-`);
-		if (!isGateGroup) continue;
-		const pid = gateGroupPid(current[key]);
+		const pid = reconstructedGateGroupPid(key, current[key]);
 		if (pid === null || pidAlive(pid)) continue;
 		delete current[key];
 		swept += 1;

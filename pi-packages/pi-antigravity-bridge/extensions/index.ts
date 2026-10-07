@@ -62,7 +62,7 @@ import {
 	type GatePolicy,
 } from "../src/approval-gate.js";
 import { detectPermissionGateExtensions, resolveGateMode } from "../src/approval-detect.js";
-import { hookScriptSource, removeGateHooks, stageGateHooks, sweepWorkspaceGateGroups } from "../src/approval-hook.js";
+import { approvalHookFileName, hookScriptSource, removeGateHooks, stageGateHooks, sweepWorkspaceGateGroups } from "../src/approval-hook.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import { runAcpAuth } from "../src/acp/auth.js";
@@ -997,7 +997,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				} else {
 					// Script: instance-private file; 0600 because the bridge token is
 					// embedded (peer review 2026-09-07).
-					const scriptPath = path.join(logsDir(), `approval-hook-${process.pid}-${instanceId}.js`);
+					const scriptPath = path.join(logsDir(), approvalHookFileName(process.pid, instanceId));
 					fs.mkdirSync(path.dirname(scriptPath), { recursive: true, mode: 0o700 });
 					fs.writeFileSync(
 						scriptPath,

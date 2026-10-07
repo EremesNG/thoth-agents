@@ -11,7 +11,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "vitest";
-import { hookScriptSource } from "../src/approval-hook.js";
+import { approvalHookFileName, hookScriptSource } from "../src/approval-hook.js";
 
 let server: http.Server | null = null;
 
@@ -27,7 +27,7 @@ async function runHookScript(
 	stdinText: string,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hook-exec-"));
-	const scriptFile = path.join(tmpDir, "hook.js");
+	const scriptFile = path.join(tmpDir, approvalHookFileName(process.pid, "test-instance"));
 	fs.writeFileSync(scriptFile, scriptContent, { mode: 0o700 });
 	try {
 		const proc = spawn("node", [scriptFile], {

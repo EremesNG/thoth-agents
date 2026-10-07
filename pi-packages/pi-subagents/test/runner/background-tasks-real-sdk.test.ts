@@ -42,6 +42,19 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+// CI only prints the error message, so surface why the child settled early.
+function describeOutcome(outcome: unknown): string {
+  const { error, result } = outcome as { error?: unknown; result?: unknown };
+  if (error === undefined)
+    return `resolved ${JSON.stringify(result)?.slice(0, 2000)}`;
+  if (!(error instanceof Error)) return `rejected ${String(error)}`;
+  const details = JSON.stringify({
+    ...error,
+    cause: String(error.cause ?? ''),
+  });
+  return `${error.name}: ${error.message} ${details.slice(0, 2000)}`;
+}
+
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -302,9 +315,10 @@ async function fixture(hanging = false) {
       await Promise.race([
         provider.started,
         settled.then((outcome) => {
-          throw new Error('Child ended before fixture jobs started', {
-            cause: outcome,
-          });
+          throw new Error(
+            `Child ended before fixture jobs started: ${describeOutcome(outcome)}`,
+            { cause: outcome },
+          );
         }),
       ]);
       return { controller, settled, files };

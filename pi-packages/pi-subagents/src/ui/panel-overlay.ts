@@ -206,6 +206,7 @@ export async function showSubagentsPanel(input: {
   const cwd = ctx?.cwd ?? process.cwd();
   const sessionId = currentSessionId(ctx);
   let refresh: NodeJS.Timeout | undefined;
+  let disposePanel: (() => void) | undefined;
   try {
     await ctx.ui.custom(
       (tui: any, theme: any, _keybindings: any, done: () => void) => {
@@ -219,6 +220,7 @@ export async function showSubagentsPanel(input: {
         let nextRenderReason = 'initial';
         let renderCycle = 0;
         const close = () => {
+          disposePanel?.();
           if (refresh) clearInterval(refresh);
           renderLogger.log({ event: 'panel_disposed' });
           setMouseTracking(tui, false);
@@ -269,6 +271,7 @@ export async function showSubagentsPanel(input: {
               contextWindowForTask(ctx, task),
           },
         );
+        disposePanel = () => panel.dispose();
         renderLogger.log({ event: 'panel_created' });
         renderLogger.log({
           event: 'render_requested',
@@ -363,6 +366,7 @@ export async function showSubagentsPanel(input: {
       },
     );
   } finally {
+    disposePanel?.();
     setActivePanelCancelSelected(undefined);
     setActivePanelRequestRender(undefined);
     if (refresh) clearInterval(refresh);

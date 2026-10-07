@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import {
+  getWorkPanelLifecycle,
+  registerRenderKit,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension from '../index.js';
@@ -31,6 +35,27 @@ function createExtensionManagerFake() {
     listSessionTasks: vi.fn(() => [] as SubagentTask[]),
     getTask: vi.fn((_id: string) => undefined as SubagentTask | undefined),
     cancel: vi.fn(),
+  };
+}
+
+function extensionEventBus() {
+  const handlers = new Map<string, Function>();
+  const listeners = new Map<string, Set<Function>>();
+  const on = (event: string, handler: Function) => {
+    const callbacks = listeners.get(event) ?? new Set<Function>();
+    listeners.set(event, callbacks);
+    callbacks.add(handler);
+    handlers.set(event, async (...args: unknown[]) => {
+      for (const callback of [...callbacks]) await callback(...args);
+    });
+    return () => {
+      callbacks.delete(handler);
+    };
+  };
+  return {
+    handlers,
+    on,
+    count: (event: string) => listeners.get(event)?.size ?? 0,
   };
 }
 
@@ -68,6 +93,145 @@ afterEach(() => {
 });
 
 describe('subagents smoke', () => {
+  it('binds prompt lifecycle for the active UI session and releases subscriptions on replacement and shutdown', async () => {
+    const { handlers, on, count } = extensionEventBus();
+    extension({ registerTool: vi.fn(), on });
+    const first = workPanelSession(env.tmp, 'lifecycle-first');
+    let idle = true;
+    const ctx = { ...first.ctx, isIdle: () => idle };
+    const second = workPanelSession(env.tmp, 'lifecycle-second');
+    const nextCtx = { ...second.ctx, isIdle: () => idle };
+    try {
+      await handlers.get('session_start')?.({}, ctx);
+      expect(count('input')).toBe(1);
+      await handlers.get('input')?.(
+        { source: 'interactive', text: 'inspect work' },
+        ctx,
+      );
+      await handlers.get('before_agent_start')?.(
+        { prompt: 'inspect work' },
+        ctx,
+      );
+      idle = false;
+      await handlers.get('agent_start')?.({}, ctx);
+      expect(getWorkPanelLifecycle(ctx as never)).toMatchObject({
+        epoch: 1,
+        busy: true,
+      });
+      idle = true;
+      await handlers.get('agent_settled')?.({}, ctx);
+      expect(getWorkPanelLifecycle(ctx as never).busy).toBe(false);
+      await handlers.get('session_start')?.({}, nextCtx);
+      expect(count('input')).toBe(1);
+      await handlers.get('input')?.(
+        { source: 'rpc', text: 'next work' },
+        nextCtx,
+      );
+      await handlers.get('before_agent_start')?.(
+        { prompt: 'next work' },
+        nextCtx,
+      );
+      expect(getWorkPanelLifecycle(nextCtx as never).epoch).toBe(1);
+      expect(getWorkPanelLifecycle(ctx as never).epoch).toBe(0);
+    } finally {
+      await handlers.get('session_shutdown')?.({}, nextCtx);
+    }
+    expect(count('input')).toBe(0);
+    expect(count('before_agent_start')).toBe(0);
+    expect(count('agent_start')).toBe(0);
+    expect(count('agent_settled')).toBe(0);
+  });
+  it('shows only live/current prompt outcomes while busy, collapses when idle and opens existing history from Enter', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const { handlers, on } = extensionEventBus();
+    extension({ registerTool: vi.fn(), on });
+    const fixture = workPanelSession(env.tmp, 'retention-session');
+    let idle = true;
+    const ctx = { ...fixture.ctx, isIdle: () => idle };
+    const makeTask = (
+      id: string,
+      status: SubagentTask['status'],
+      ended_at?: string,
+    ): SubagentTask => ({
+      id,
+      agent: id,
+      mode: 'background',
+      status,
+      task: `task ${id}`,
+      created_at: '2025-12-31T23:59:00Z',
+      ended_at,
+    });
+    let tasks = [
+      makeTask('old-done', 'completed', '2025-12-31T23:59:59Z'),
+      makeTask('old-failed', 'failed', '2025-12-31T23:59:59Z'),
+    ];
+    managerInstance.listActiveSessionTasks.mockImplementation(() => tasks);
+    managerInstance.listSessionTasks.mockImplementation(() => tasks);
+    try {
+      await handlers.get('session_start')?.({}, ctx);
+      expect(fixture.render().join(' ')).toContain(
+        'Agents · 1 done · 1 failed',
+      );
+      fixture.key('\u001b[D');
+      expect(fixture.render()).toHaveLength(2);
+      expect(fixture.render().join(' ')).toContain('Enter history');
+      expect(fixture.render().join(' ')).not.toContain('x close');
+      expect(fixture.key('\r')).toEqual({ consume: true });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fixture.ui.custom).toHaveBeenCalledOnce();
+      expect(fixture.panelRender().join(' ')).toContain('task old-done');
+      fixture.key('q');
+      await Promise.resolve();
+      await Promise.resolve();
+      await handlers.get('input')?.(
+        { source: 'interactive', text: 'new prompt' },
+        ctx,
+      );
+      await handlers.get('before_agent_start')?.({ prompt: 'new prompt' }, ctx);
+      idle = false;
+      await handlers.get('agent_start')?.({}, ctx);
+      tasks = [
+        ...tasks,
+        makeTask('live-work', 'running'),
+        makeTask('queued-work', 'queued'),
+        makeTask('stopping-work', 'stopping'),
+        makeTask('current-failed', 'cancelled', '2026-01-01T00:00:01Z'),
+        ...[1, 2, 3, 4].map((index) =>
+          makeTask(`done-${index}`, 'completed', `2026-01-01T00:00:0${index}Z`),
+        ),
+      ];
+      const busy = fixture.render(300).join(' ');
+      for (const label of [
+        'live-work',
+        'queued-work',
+        'stopping-work',
+        'current-failed',
+        'done-2',
+        'done-3',
+        'done-4',
+      ])
+        expect(busy).toContain(label);
+      for (const label of ['old-done', 'old-failed', 'done-1', '+'])
+        expect(busy).not.toContain(label);
+      for (const item of tasks)
+        if (['running', 'queued', 'stopping'].includes(item.status)) {
+          item.status = 'completed';
+          item.ended_at = '2026-01-01T00:00:05Z';
+        }
+      idle = true;
+      await handlers.get('agent_settled')?.({}, ctx);
+      expect(fixture.render().join(' ')).toContain(
+        'Agents · 8 done · 2 failed',
+      );
+      expect(fixture.render().join(' ')).not.toContain('live-work');
+    } finally {
+      fixture.key('q');
+      await handlers.get('session_shutdown')?.({}, ctx);
+    }
+  });
+
   it('keeps root and deep import smoke reachable', () => {
     expect(typeof extension).toBe('function');
     expect(typeof runSubagentModelsCommand).toBe('function');
@@ -203,15 +367,13 @@ describe('subagents smoke', () => {
 
   it('reconciles orphaned tasks on session start and closes the manager on session shutdown', async () => {
     const { reconcileOrphanedTasks, close } = managerInstance;
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     const pi = {
       registerMessageRenderer: vi.fn(),
       registerShortcut: vi.fn(),
       registerCommand: vi.fn(),
       registerTool: vi.fn(),
-      on: vi.fn((event: string, handler: Function) => {
-        handlers.set(event, handler);
-      }),
+      on: vi.fn(on),
     };
 
     extension(pi);
@@ -253,16 +415,14 @@ describe('subagents smoke', () => {
   });
 
   it('does not deliver a background completion to a replaced Pi session', async () => {
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     const pi = {
       sendMessage: vi.fn(),
       registerMessageRenderer: vi.fn(),
       registerShortcut: vi.fn(),
       registerCommand: vi.fn(),
       registerTool: vi.fn(),
-      on: vi.fn((event: string, handler: Function) => {
-        handlers.set(event, handler);
-      }),
+      on: vi.fn(on),
     };
 
     extension(pi);
@@ -324,10 +484,10 @@ describe('subagents smoke', () => {
     };
     managerInstance.listActiveSessionTasks.mockReturnValue([task]);
     const fixture = workPanelSession(env.tmp);
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     try {
       await handlers.get('session_start')?.({}, fixture.ctx);
@@ -346,7 +506,7 @@ describe('subagents smoke', () => {
       const requests = fixture.tui.requestRender.mock.calls.length;
       vi.advanceTimersByTime(2000);
       expect(fixture.render()).toEqual(terminal);
-      expect(terminal.join(' ')).toContain('✓');
+      expect(terminal.join(' ')).toContain('Agents · 1 done · 0 failed');
       expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
       expect(vi.getTimerCount()).toBe(0);
       task.status = 'running';
@@ -376,10 +536,10 @@ describe('subagents smoke', () => {
       tasks.find((task) => task.id === id),
     );
     const fixture = workPanelSession(env.tmp);
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     try {
       await handlers.get('session_start')?.({}, fixture.ctx);
@@ -426,10 +586,10 @@ describe('subagents smoke', () => {
     };
     managerInstance.listActiveSessionTasks.mockReturnValue([task]);
     const fixture = workPanelSession(env.tmp);
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     try {
       await handlers.get('session_start')?.({}, fixture.ctx);
@@ -466,10 +626,10 @@ describe('subagents smoke', () => {
     });
     const first = workPanelSession(env.tmp, 'first-session');
     const second = workPanelSession(env.tmp, 'second-session');
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     try {
       await handlers.get('session_start')?.({}, first.ctx);
@@ -487,10 +647,10 @@ describe('subagents smoke', () => {
 
   it('releases an in-flight host installation when the session shuts down before ensure resolves', async () => {
     const fixture = workPanelSession(env.tmp);
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     const starting = handlers.get('session_start')?.({}, fixture.ctx);
     await handlers.get('session_shutdown')?.({}, fixture.ctx);
@@ -519,10 +679,10 @@ describe('subagents smoke', () => {
       },
     ]);
     const fixture = workPanelSession(env.tmp);
-    const handlers = new Map<string, Function>();
+    const { handlers, on } = extensionEventBus();
     extension({
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => handlers.set(event, handler),
+      on,
     });
     try {
       await handlers.get('session_start')?.({}, fixture.ctx);

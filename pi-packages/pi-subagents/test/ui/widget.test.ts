@@ -50,6 +50,59 @@ function provider(tasks: SubagentTask[]) {
 }
 
 describe('Agents work-panel rows', () => {
+  it('opts into prompt retention with live and terminal states, completion times and session totals', () => {
+    const agents = provider(
+      [
+        'queued',
+        'stopping',
+        'running',
+        'completed',
+        'failed',
+        'cancelled',
+        'interrupted',
+      ].map((status, index) =>
+        task({
+          id: `${index}`,
+          status: status as SubagentTask['status'],
+          ended_at: index >= 3 ? '2026-01-01T00:00:09Z' : undefined,
+        }),
+      ),
+    );
+    expect(agents.retention).toBe('prompt');
+    const rows = agents.listRows(now);
+    expect(
+      ['0', '1', '2', '3', '4', '5', '6'].map(
+        (id) => rows.find((row) => row.id === id)?.state,
+      ),
+    ).toEqual([
+      'running',
+      'running',
+      'running',
+      'done',
+      'failed',
+      'failed',
+      'failed',
+    ]);
+    expect(rows.find((row) => row.id === '3')?.endedAt).toBe(
+      Date.parse('2026-01-01T00:00:09Z'),
+    );
+    expect(rows.find((row) => row.id === '0')?.endedAt).toBeUndefined();
+    expect(agents.summary!()).toMatchObject({
+      completed: 1,
+      failed: 3,
+      running: 3,
+      total: 7,
+    });
+    expect(
+      provider([
+        task({
+          status: 'failed',
+          ended_at: 'invalid',
+          error: 'timed out after 1000ms',
+        }),
+      ]).listRows(now)[0],
+    ).toMatchObject({ state: 'failed', endedAt: undefined });
+  });
   it('summarizes the session, keeps streaming rows stationary and cancels only a still-running task', () => {
     const older = task({ id: 'older', created_at: '2026-01-01T00:00:00Z' });
     const newer = task({ id: 'newer', created_at: '2026-01-01T00:00:01Z' });

@@ -73,6 +73,9 @@ export function fakeJobHelper(basePid:number) {
     },
     failLaunch(){launchFault=true;},
     rejectLaunch(){rejectLaunch=true;},
+    // Keep partial cleanup failing across automatic leader-close retries until
+    // the test explicitly permits a later stop/shutdown to settle the job.
+    failCleanup(){failTerminations=Infinity;},
     allowCleanup(){failTerminations=0;queryError=undefined;queryErrorCode=undefined;oneQueryError=undefined;ignoreTerminate=false;unavailable=false;},
     failQuery(message?:string,code?:string){queryError=message;queryErrorCode=code;},
     failHelper(value=true){unavailable=value;},

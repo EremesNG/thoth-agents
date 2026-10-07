@@ -161,8 +161,10 @@ describe("watch cleanup ownership after termination failure", () => {
     expect(await after.status(id)).toMatchObject({ status: "cancelled" });
   });
 
-  it("failed timeout cleanup stays running and owned until a later non-reload shutdown verifies termination", async () => {
+  it.each(["win32", "linux"])("failed timeout cleanup stays running and owned until a later non-reload shutdown verifies termination (entry platform %s)", async (entryPlatform) => {
+    Object.defineProperty(process, "platform", { value: entryPlatform, configurable: true });
     const { live } = faultInjectedTree();
+    fixture.failCleanup();
     const host = lifecycleHost("failed-watch-timeout"); hosts.push(host);
     await host.emit("session_start");
     const id = await launchBlockedWatch(host, 0.05);
@@ -171,12 +173,19 @@ describe("watch cleanup ownership after termination failure", () => {
       const meta = await host.status(id);
       return meta.status !== "running" || !!meta.stopError;
     }).toBe(true);
+    // The helper reports leader exit after the timeout's failed termination;
+    // wait for close-driven cleanup too, rather than racing its next query.
+    await expect.poll(() => fixture.requests.filter(r => r.op === "terminate").length).toBe(2);
     expect(await host.status(id)).toMatchObject({ status: "running", stopError: "TerminateJobObject: Access is denied" });
     expect((await host.status(id)).endedAt).toBeUndefined();
     expect([...live]).toEqual([930002]);
     expect(host.messages).toEqual([]);
+    expect(fixture.requests.filter(r => r.op === "release")).toHaveLength(0);
 
+    fixture.allowCleanup();
     await host.emit("session_shutdown", "quit");
+    expect(fixture.requests.filter(r => r.op === "terminate")).toHaveLength(3);
+    expect(fixture.requests.filter(r => r.op === "release")).toHaveLength(1);
     expect([...live]).toEqual([]);
     expect(await host.status(id)).toMatchObject({ status: "cancelled" });
     expect(host.messages).toEqual([]);

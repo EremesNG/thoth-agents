@@ -13,7 +13,6 @@ const requiredFiles = [
   'README.md',
   'LICENSE',
   'package.json',
-  '.releaserc.json',
   'src/config.ts',
   'src/debug.ts',
   'src/history.ts',

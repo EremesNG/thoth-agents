@@ -228,23 +228,12 @@ Producers share this helper rather than defining package-local kits.
 
 ### Workspace package release
 
-Consumers depend on pi-core with `workspace:^`. Publish pi-core before consumers,
-and use `pnpm pack` / `pnpm publish` so packed manifests contain a semver range.
-For pi-subagents, semantic-release keeps `@semantic-release/npm` with
-`npmPublish: false` for version preparation; pinned `@semantic-release/exec`
-runs `pnpm publish --no-git-checks` (including `prepublishOnly`).
-
-The npm plugin 13.1.5's existing credential contract is configured npmrc auth
-(including `NPM_CONFIG_USERCONFIG`) or `NPM_TOKEN`. With npm publishing disabled,
-the plugin skips auth setup, so the exec command preserves configured auth and,
-only when missing and `NPM_TOKEN` is supplied, copies the user npmrc to an OS-temp
-file with registry-scoped `_authToken=${NPM_TOKEN}` interpolation. Registry
-resolution honors package `publishConfig.registry`, `NPM_CONFIG_REGISTRY`, scoped
-npmrc registry and the default registry. pnpm receives the temporary file via
-`NPM_CONFIG_USERCONFIG`; it is removed on both success and failure. No token is
-embedded in command arguments or checked-in files. Without `NPM_TOKEN`, existing
-npmrc/trusted-publishing configuration is left to pnpm unchanged; no new
-credential or release workflow is introduced.
+Consumers depend on pi-core with `workspace:^`. `pnpm pack` and `pnpm publish`
+rewrite it to a semver range (for example `^0.1.0`) in the packed manifest.
+Every `pi-packages/*` package is versioned independently and published to npm
+by the root `v*.*.*` tag release workflow (`.github/workflows/release.yml`)
+through npm trusted publishing, before the root package. Publish pi-core before
+its consumers on first publication; later bumps follow the root release flow.
 
 ## Development
 

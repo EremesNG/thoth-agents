@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-antigravity-bridge",
-  "version": "1.7.8",
+  "version": "0.1.0",
   "description": "Gemini provider for Pi on the Antigravity ACP server (official Google ACP) or the stream-json agy CLI. Use antigravity/* models in Pi. Full /model picker support. Models runs Pi's tools. ToS safe to use.",
   "keywords": [
     "pi-package",
@@ -36,6 +36,12 @@
   "files": [
     "extensions",
     "src",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/*.test.mjs",
+    "!**/test/**",
+    "!**/tests/**",
+    "!**/test-support/**",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

@@ -209,7 +209,7 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:@thoth-agents/pi-subagents@>=1.0.0',
+      'package:npm:@thoth-agents/pi-subagents@>=0.1.0',
       'package:npm:@upstash/context7-pi@>=0.1.2',
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',

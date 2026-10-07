@@ -56,12 +56,20 @@ A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and fro
 install), runs only those nine package typechecks and offline tests, one step per
 command so a failure cannot be masked; the root suite runs only on Ubuntu.
 
+CI also runs a PR-only, non-blocking "Pi version bump" warning step
+(`scripts/check-pi-version-bumps.mjs`); skipped runs emit a `::notice`.
+
 `.github/workflows/release.yml` waits for successful CI for the commit, installs
 again, runs `pnpm run build`, then
-`pnpm exec vitest run src/plugin-node-runtime.test.ts`, publishes npm, and
-creates the GitHub release. Only after those steps succeed, it mints an
+`pnpm exec vitest run src/plugin-node-runtime.test.ts`. It then publishes the Pi
+packages (only versions not yet on npm), reconciles per-package `<name>@<version>`
+tags and GitHub releases (idempotent on rerun), generates root notes that exclude
+Pi-only commits and list the released Pi versions, publishes the root npm package
+and creates the GitHub release. A Pi publish failure blocks the root publish. Only
+after those steps succeed, it mints an
 ephemeral `thoth-plugins-release-bot` token scoped to `thoth-plugins` with
-`contents: write` and runs `pnpm run release:marketplace`.
+`contents: write` and runs `pnpm run release:marketplace`. Bumping and the
+one-time bootstrap are in [harness packaging](harness-packaging.md#release-flow).
 
 The marketplace integration suite consumes the canonical `thoth-plugins`
 checkout through `THOTH_PLUGINS_ROOT`; it validates the publisher locally but

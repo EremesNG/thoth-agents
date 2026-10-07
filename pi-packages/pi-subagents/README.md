@@ -38,12 +38,12 @@ owns input interception and refreshes only while a child runs.
 ## Install as a Pi package
 
 This fork is an installable Pi package named `@thoth-agents/pi-subagents`,
-version `1.0.0`.
+version `0.1.0`.
 
 Thoth-managed public setup uses this npm source:
 
 ```bash
-pi install 'npm:@thoth-agents/pi-subagents@>=1.0.0'
+pi install 'npm:@thoth-agents/pi-subagents@>=0.1.0'
 ```
 
 For local development in this monorepo, use the checkout directly:
@@ -57,7 +57,7 @@ publishing the local package to npm. To configure Pi directly, use the same
 scoped source and add `-l` to install for one project instead of globally:
 
 ```bash
-pi install -l 'npm:@thoth-agents/pi-subagents@>=1.0.0'
+pi install -l 'npm:@thoth-agents/pi-subagents@>=0.1.0'
 ```
 
 The package manifest exposes:
@@ -688,11 +688,11 @@ pnpm --filter @thoth-agents/pi-subagents run check
 
 ### Workspace releases
 
-Publish `@thoth-agents/pi-core` before the next pi-subagents release. Use
-`pnpm pack` / `pnpm publish` so the `workspace:^` dependency becomes a semver
-range in the published manifest. Semantic-release keeps `@semantic-release/npm`
-with `npmPublish: false` for version preparation; `@semantic-release/exec` runs
-`pnpm publish --no-git-checks`, including `prepublishOnly`.
+This package is published to npm by the root `v*.*.*` tag release workflow
+together with the other `pi-packages/*` packages. Publish
+`@thoth-agents/pi-core` first on first publication. Use `pnpm pack` /
+`pnpm publish` so the `workspace:^` dependency becomes a semver range in the
+published manifest; `prepublishOnly` runs the package check for manual publishes.
 
 ## Related project docs
 

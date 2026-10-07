@@ -93,8 +93,8 @@ globs; only Oracle denies `ask_orchestrator` by default. See
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,
 existing-package conflicts, and recovery. Thoth manages its separate Pi
-delegation runtime as package `@thoth-agents/pi-subagents` (`1.0.0`) through
-`npm:@thoth-agents/pi-subagents@>=1.0.0`. Existing `pi-subagents` and
+delegation runtime as package `@thoth-agents/pi-subagents` (`0.1.0`) through
+`npm:@thoth-agents/pi-subagents@>=0.1.0`. Existing `pi-subagents` and
 `pi-subagents-j0k3r` installs need manual recovery through Pi's package manager
 before setup. Local checkout development uses `pnpm run setup:pi:local`, which
 points Pi at the fork under `pi-packages/pi-subagents`; publishing the fork is

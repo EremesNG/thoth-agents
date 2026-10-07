@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 type Section = 'Improvements' | 'Bugfixes';
 type Area =
@@ -33,35 +34,96 @@ const botAuthors = new Set([
   'github-actions[bot]',
   'dependabot[bot]',
 ]);
-const internalAuthors = new Set(
-  [process.env.GITHUB_REPOSITORY_OWNER, getGitHubRepository()?.split('/')[0]]
-    .filter(Boolean)
-    .map((author) => author?.toLowerCase()),
-);
+let internalAuthors = new Set<string>();
 
-const args = parseArgs(process.argv.slice(2));
-const outputPath = args.outputPath ?? 'release-notes.md';
-const currentRef = args.to ?? process.env.GITHUB_REF_NAME ?? getCurrentTag();
-const previousRef = args.from ?? getPreviousTag(currentRef);
-const commits = getCommits(previousRef, currentRef);
-const authorLogins = getGitHubAuthorLogins(previousRef, currentRef);
-const releaseNotes = renderReleaseNotes(
-  commits.map((commit) => ({
-    ...commit,
-    author: authorLogins.get(commit.hash) ?? commit.author,
-  })),
-  previousRef,
-  currentRef,
-);
-
-writeFileSync(outputPath, releaseNotes);
-
-function parseArgs(values: string[]): {
+export type GenerateOptions = {
   from?: string;
   to?: string;
   outputPath?: string;
-} {
-  const parsed: { from?: string; to?: string; outputPath?: string } = {};
+  tagPrefix?: string;
+  path?: string;
+  excludePath?: string;
+  packageTags?: string;
+};
+
+type Context = {
+  cwd?: string;
+  /** GitHub `owner/repo`; `null` disables repository and `gh` lookups. */
+  repository?: string | null;
+  /** Set false to skip the `gh api` author lookup (offline runs). */
+  lookupAuthors?: boolean;
+};
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  const args = parseArgs(process.argv.slice(2));
+
+  writeFileSync(
+    args.outputPath ?? 'release-notes.md',
+    generateReleaseNotes(args),
+  );
+}
+
+export function generateReleaseNotes(
+  options: GenerateOptions,
+  context: Context = {},
+): string {
+  const repo =
+    context.repository === undefined
+      ? getGitHubRepository(context.cwd)
+      : (context.repository ?? undefined);
+
+  internalAuthors = new Set(
+    [process.env.GITHUB_REPOSITORY_OWNER, repo?.split('/')[0]]
+      .filter(Boolean)
+      .map((author) => author?.toLowerCase()),
+  );
+
+  const currentRef =
+    options.to ?? process.env.GITHUB_REF_NAME ?? getCurrentTag(context.cwd);
+  const previousRef =
+    options.from ??
+    getPreviousTag(currentRef, options.tagPrefix ?? 'v', context.cwd);
+  const commits = getCommits(
+    previousRef,
+    currentRef,
+    options.path,
+    options.excludePath,
+    context.cwd,
+  );
+  const authorLogins =
+    context.lookupAuthors === false
+      ? new Map<string, string>()
+      : getGitHubAuthorLogins(previousRef, currentRef, repo);
+  const notes = renderReleaseNotes(
+    commits.map((commit) => ({
+      ...commit,
+      author: authorLogins.get(commit.hash) ?? commit.author,
+    })),
+    previousRef,
+    currentRef,
+  );
+
+  if (!options.packageTags) {
+    return notes;
+  }
+
+  const section = renderPackageTagsSection(
+    getPackageTags(currentRef, options.packageTags, context.cwd),
+    repo,
+  );
+
+  return section ? `${notes}\n${section}` : notes;
+}
+
+function git(args: string[], cwd?: string): string {
+  return execFileSync('git', args, { encoding: 'utf8', cwd });
+}
+
+export function parseArgs(values: string[]): GenerateOptions {
+  const parsed: GenerateOptions = {};
 
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
@@ -78,6 +140,20 @@ function parseArgs(values: string[]): {
       continue;
     }
 
+    const flags = {
+      '--tag-prefix': 'tagPrefix',
+      '--path': 'path',
+      '--exclude-path': 'excludePath',
+      '--package-tags': 'packageTags',
+    } as const;
+    const key = flags[value as keyof typeof flags];
+
+    if (key && values[index + 1]) {
+      parsed[key] = values[index + 1];
+      index += 1;
+      continue;
+    }
+
     if (!value.startsWith('-')) {
       parsed.outputPath = value;
     }
@@ -86,54 +162,96 @@ function parseArgs(values: string[]): {
   return parsed;
 }
 
-function getCurrentTag(): string {
-  return execFileSync('git', ['describe', '--tags', '--exact-match'], {
-    encoding: 'utf8',
-  }).trim();
+function getCurrentTag(cwd?: string): string {
+  return git(['describe', '--tags', '--exact-match'], cwd).trim();
 }
 
-function getPreviousTag(ref: string): string | undefined {
-  const tags = execFileSync(
-    'git',
-    ['tag', '--sort=-creatordate', '--merged', ref],
-    { encoding: 'utf8' },
-  )
+export function getPreviousTag(
+  ref: string,
+  prefix = 'v',
+  cwd?: string,
+): string | undefined {
+  const tags = git(['tag', '--sort=-creatordate', '--merged', ref], cwd)
     .split('\n')
     .map((value) => value.trim())
     .filter(Boolean)
-    .filter((value) => value !== ref);
+    .filter((value) => value !== ref && value.startsWith(prefix));
 
   return tags[0];
 }
 
-function getCommits(from: string | undefined, to: string): Commit[] {
+export function getPackageTags(
+  ref: string,
+  glob: string,
+  cwd?: string,
+): string[] {
+  return git(['tag', '--points-at', `${ref}^{commit}`, '--list', glob], cwd)
+    .split('\n')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .sort();
+}
+
+export function renderPackageTagsSection(
+  tags: string[],
+  repo: string | undefined,
+): string {
+  if (tags.length === 0) {
+    return '';
+  }
+
+  const items = tags.map((tag) =>
+    repo
+      ? `- [${tag}](https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)})`
+      : `- ${tag}`,
+  );
+
+  return `## Pi packages\n\n${items.join('\n')}\n`;
+}
+
+export function isInsideDir(file: string, dir: string): boolean {
+  return file.startsWith(`${dir.replace(/\/+$/, '')}/`);
+}
+
+function getCommits(
+  from: string | undefined,
+  to: string,
+  path?: string,
+  excludePath?: string,
+  cwd?: string,
+): Commit[] {
   const range = from ? `${from}..${to}` : to;
-  const hashes = execFileSync('git', ['log', '--format=%H', range], {
-    encoding: 'utf8',
-  })
+  const hashes = git(
+    ['log', '--format=%H', range, ...(path ? ['--', path] : [])],
+    cwd,
+  )
     .split('\n')
     .map((value) => value.trim())
     .filter(Boolean);
 
   return removeRevertedCommits(
     hashes
-      .map((hash) => toCommit(hash))
-      .filter((commit) => isNotableCommit(commit.subject)),
+      .map((hash) => toCommit(hash, cwd))
+      .filter((commit) => isNotableCommit(commit.subject))
+      .filter(
+        (commit) =>
+          !excludePath ||
+          commit.files.length === 0 ||
+          !commit.files.every((file) => isInsideDir(file, excludePath)),
+      ),
   );
 }
 
-function toCommit(hash: string): Commit {
-  const [subject = '', authorName = '', authorEmail = ''] = execFileSync(
-    'git',
+function toCommit(hash: string, cwd?: string): Commit {
+  const [subject = '', authorName = '', authorEmail = ''] = git(
     ['show', '--no-patch', '--format=%s%x1f%an%x1f%ae', hash],
-    { encoding: 'utf8' },
+    cwd,
   )
     .trim()
     .split('\x1f');
-  const files = execFileSync(
-    'git',
-    ['diff-tree', '--no-commit-id', '--name-only', '-r', hash],
-    { encoding: 'utf8' },
+  const files = git(
+    ['log', '-1', '-m', '--first-parent', '--name-only', '--format=', hash],
+    cwd,
   )
     .split('\n')
     .map((value) => value.trim())
@@ -150,14 +268,9 @@ function toCommit(hash: string): Commit {
 function getGitHubAuthorLogins(
   from: string | undefined,
   to: string,
+  repo: string | undefined,
 ): Map<string, string> {
-  if (!from) {
-    return new Map();
-  }
-
-  const repo = getGitHubRepository();
-
-  if (!repo) {
+  if (!from || !repo) {
     return new Map();
   }
 
@@ -186,15 +299,13 @@ function getGitHubAuthorLogins(
   }
 }
 
-function getGitHubRepository(): string | undefined {
+function getGitHubRepository(cwd?: string): string | undefined {
   if (process.env.GITHUB_REPOSITORY) {
     return process.env.GITHUB_REPOSITORY;
   }
 
   try {
-    const remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-    }).trim();
+    const remote = git(['remote', 'get-url', 'origin'], cwd).trim();
 
     return remote
       .replace(/^git@github\.com:/, '')
@@ -241,7 +352,7 @@ function removeRevertedCommits(commits: Commit[]): Commit[] {
   return [...seen.values()];
 }
 
-function renderReleaseNotes(
+export function renderReleaseNotes(
   commits: Commit[],
   from: string | undefined,
   to: string,
@@ -410,7 +521,7 @@ function isExternalContributor(author: string): boolean {
   return !botAuthors.has(author) && !internalAuthors.has(normalized);
 }
 
-function normalizeRef(input: string | undefined): string | undefined {
+export function normalizeRef(input: string | undefined): string | undefined {
   if (!input || input === 'HEAD' || input.startsWith('v')) {
     return input;
   }

@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=1.0.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.1.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -213,8 +213,8 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `npm:@thoth-agents/pi-subagents@>=1.0.0` for native direct specialist
-   execution and task-ID lifecycle control (package version `1.0.0`; local
+2. `npm:@thoth-agents/pi-subagents@>=0.1.0` for native direct specialist
+   execution and task-ID lifecycle control (package version `0.1.0`; local
    development can provide the fork path through `--local-pi-runtime-root`);
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default

@@ -9,12 +9,12 @@ import {
   normalizeErrorMetadata,
   SubagentStructuredError,
 } from '../../src/error-metadata.js';
+import { sdkSubagentRunner } from '../../src/runner.js';
 import type {
   SubagentDefinition,
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
-import { sdkSubagentRunner } from '../../src/runner.js';
 
 const sessionManagerSpies = vi.hoisted(() => ({
   // Snapshot-only cases do not persist a session file. A nonexistent fake path

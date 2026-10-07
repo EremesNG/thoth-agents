@@ -11,8 +11,7 @@ export const FIXTURE_JOB_STARTUP_TIMEOUT_MS = 15_000 + 10_000 + 10_000;
 export async function waitForFixtureJobs(files: string[]): Promise<void> {
   const deadline = Date.now() + FIXTURE_JOB_STARTUP_TIMEOUT_MS;
   while (!files.every((file) => fs.existsSync(file))) {
-    if (Date.now() >= deadline)
-      throw new Error('Fixture jobs did not start');
+    if (Date.now() >= deadline) throw new Error('Fixture jobs did not start');
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }

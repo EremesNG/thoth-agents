@@ -8,14 +8,14 @@ import {
   normalizeErrorMetadata,
   SubagentStructuredError,
 } from '../../src/error-metadata.js';
+import { SubagentHistoryStore } from '../../src/history.js';
+import { SubagentManager } from '../../src/manager.js';
+import { sdkSubagentRunner } from '../../src/runner.js';
 import type {
   SubagentDefinition,
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
-import { SubagentHistoryStore } from '../../src/history.js';
-import { SubagentManager } from '../../src/manager.js';
-import { sdkSubagentRunner } from '../../src/runner.js';
 
 const sdkMocks = vi.hoisted(() => ({ createAgentSession: vi.fn() }));
 

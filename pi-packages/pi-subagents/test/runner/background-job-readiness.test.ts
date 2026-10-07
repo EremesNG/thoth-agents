@@ -25,8 +25,12 @@ it('waits for every PID file when asynchronous job startup exceeds ten seconds',
   const files = fixtureFiles();
   let outcome = 'pending';
   const ready = waitForFixtureJobs(files).then(
-    () => { outcome = 'ready'; },
-    () => { outcome = 'failed'; },
+    () => {
+      outcome = 'ready';
+    },
+    () => {
+      outcome = 'failed';
+    },
   );
 
   // A measured cold Windows helper needed 10.989s; its permitted readiness

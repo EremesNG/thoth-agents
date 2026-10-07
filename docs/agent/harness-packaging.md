@@ -29,7 +29,7 @@
   the five owned skills from the manifest, while the shared synchronizer
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
-  `npm:@thoth-agents/pi-subagents@>=1.0.0`.
+  `npm:@thoth-agents/pi-subagents@>=0.1.0`.
   The root package and all nine `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
@@ -202,12 +202,83 @@ SDK's default pi-tui `Box(1, 1, bg)`, with `toolPendingBg`, `toolSuccessBg` or
 `toolErrorBg`, without nested frames. Message/widget fallbacks retain native
 presentation. See [pi-core's KIT contract](../../pi-packages/pi-core/README.md#render-kit-v1).
 
-Publish pi-core before pi-subagents, pi-questions-user, pi-todo and the other KIT consumers (theme,
-background tasks and both bridges). Use `pnpm pack` / `pnpm publish` to convert
-`workspace:^` dependencies to semver ranges. pi-subagents semantic-release keeps
-`@semantic-release/npm` with `npmPublish: false` for version preparation and uses
-`@semantic-release/exec` to run `pnpm publish --no-git-checks`, including
-`prepublishOnly`.
+Pi packages are versioned and published independently of the root package.
+Use `pnpm pack` / `pnpm publish` to convert `workspace:^` dependencies to semver
+ranges.
+
+### Release flow
+
+`release.yml` runs on the root `v*.*.*` tag, after CI, build and the runtime test:
+
+1. **Publish Pi packages** in dependency order (pi-core first), only versions not
+   yet on npm, via trusted publishing.
+2. **Reconcile Pi releases**: create the per-package tag `<name>@<version>` and a
+   GitHub release for each published version, with notes from commits touching
+   that package directory. Reconciliation is idempotent; rerunning the workflow
+   fills in whatever is missing.
+3. **Root notes** exclude Pi-only commits and list the released Pi versions
+   (`scripts/generate-release-notes.ts` flags `--tag-prefix`, `--path`,
+   `--exclude-path`, `--package-tags`).
+4. Root `npm publish`, GitHub release, then marketplace publication.
+
+A Pi publish failure blocks the root publish.
+
+### Bumping
+
+```
+pnpm release:pi pi-subagents patch   # dir or name; patch|minor|major
+git commit -am "chore(pi-subagents): release x.y.z"
+pnpm release:patch                   # or release:minor / release:major
+```
+
+`release:pi` runs `npm version --no-git-tag-version`. The root release needs a
+clean tree, and a Pi-only fix still bumps the root, since Pi packages ship only
+from a root tag. In 0.x, a caret range does not cross a minor: a pi-core bump
+0.1 → 0.2 falls outside consumers' published `^0.1.0` until the consumers are
+bumped and republished.
+
+PRs get a non-blocking "Pi version bump" warning (`scripts/check-pi-version-bumps.mjs`)
+when a Pi package changed without a version bump; when skipped it emits a
+`::notice`.
+
+### One-time bootstrap
+
+Trusted publishing can only be configured for packages that already exist on npm,
+so the first versions (0.1.0) are published manually.
+
+Prerequisites: npm >= 11.15.0 (`npm i -g npm@latest`), `npm login`, account 2FA
+enabled, ownership of the `@thoth-agents` npm scope/org (create it on npmjs.com if
+missing), and a clean checkout of the merged commit with
+`pnpm install --frozen-lockfile`.
+
+Publish in dependency order, each from its own directory (pnpm rewrites
+`workspace:^`; it prompts for an OTP, or pass `--otp <code>`):
+
+```
+cd pi-packages/<pkg>
+pnpm publish --access public --no-git-checks
+npm view @thoth-agents/<pkg> version
+```
+
+Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
+pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme.
+
+Then, per package:
+
+```
+npm trust github @thoth-agents/<pkg> --file release.yml --repository EremesNG/thoth-agents --yes --allow-publish
+```
+
+Verify flag names with `npm trust --help` (syntax: `npm trust github [package]
+--file [--repo|--repository] [--env|--environment] [--allow-publish]
+[--allow-stage-publish] [-y|--yes]`). Configurations created after 2026-09-03
+default to stage-publish only, so `--allow-publish` is needed for direct
+`npm publish` from CI. Confirm on npmjs.com → package → Settings → Trusted
+publishing. The root `thoth-agents` trusted publisher must also reference
+`release.yml` (already in use).
+
+Finally run `pnpm release:minor` (0.5.0). It tags and triggers `release.yml`; the
+reconcile step creates the tags and releases for the bootstrap 0.1.0 versions.
 
 ## Verification
 

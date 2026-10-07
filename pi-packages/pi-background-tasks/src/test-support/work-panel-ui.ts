@@ -14,7 +14,7 @@ export function workPanelUI() {
   let detail: Component | undefined;
   let finishDetail: (() => void) | undefined;
   const tui = {
-    terminal: { rows: 50, columns: 120 },
+    terminal: { rows: 50, columns: 120, write(data: string) { uiCalls.push(data); } },
     requestRender() {},
     getFocusedComponent: () => focused,
     hasOverlay: () => overlay,
@@ -38,7 +38,7 @@ export function workPanelUI() {
     custom(factory: any) {
       return new Promise<void>((resolve) => {
         const done = () => { overlay = false; focused = editor; resolve(); };
-        detail = factory(tui, ui.theme, {}, done);
+        detail = factory(tui, ui.theme, { matches: () => false }, done);
         focused = detail;
         overlay = true;
         finishDetail = done;

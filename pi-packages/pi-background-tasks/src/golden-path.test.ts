@@ -64,6 +64,7 @@ describe("golden path: background process journey", () => {
 function createHarness() {
   const tools = new Map<string, RegisteredTool>();
   const pi = {
+    registerCommand() {},
     registerTool(tool: RegisteredTool) {
       tools.set(tool.name, tool);
     },

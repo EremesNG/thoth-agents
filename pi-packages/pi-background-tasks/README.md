@@ -37,6 +37,28 @@ A watch repeatedly executes a command until `success_when`, `failure_when`, or t
 
 Completion callbacks are session-origin scoped and delivered as Pi follow-ups. Cancelled tasks do not wake the agent. Failed checks remain visible in status and can receive failure-attention callbacks. The Work panel's Background section shows local work and its evidence.
 
+### Work panel and history
+
+The Background section shows running work and current-prompt outcomes while the
+agent is busy (all failures/timeouts and at most three recent completed tasks).
+When idle with no running tasks, it collapses to one selectable summary with
+session done/failed totals. This replaces the former 30-second row expiry.
+Prompt retention uses pi-core's observed-text heuristic: a run must match an
+interactive/RPC prompt observed while idle; prompts queued while streaming do
+not advance it.
+
+Press ← from an empty editor to focus the Work panel, ↑/↓ to select, and Enter
+to open history (a task row selects that task). `/bg` opens the same panel; no
+default shortcut is added. History lists every retained task from the current
+cwd/session, newest first, including dismissed tasks and older outcomes. Task
+metadata and retained logs are shown in bounded pages of up to 64 KiB, with
+visible capture/retention loss notices. ←/→ selects a task, ↑/↓, PgUp/PgDn,
+Home/End and the mouse wheel scroll the current page; `[`/`]` pages the log.
+Press `x` twice to stop a running task; Esc, `q` or Ctrl+C closes history.
+Dismissing a terminal Work-panel row does not remove it from history or totals.
+Registry retention is unchanged: maintenance removes terminal artifacts after
+seven days.
+
 Tool calls/results, completion/failure messages and the Work panel's Background
 section render through the theme's Render KIT when present, discovered through
 `@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi

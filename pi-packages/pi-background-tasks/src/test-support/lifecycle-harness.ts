@@ -5,6 +5,8 @@ import { workPanelUI } from "./work-panel-ui.js";
 
 export function lifecycleHost(sessionId: string, hasUI = false) {
   const tools = new Map<string, any>();
+  const commands = new Map<string, any>();
+  let idle = true;
   const handlers = new Map<string, Array<(event: any, ctx: any) => unknown>>();
   const messages: string[] = [];
   const panel = workPanelUI();
@@ -13,10 +15,12 @@ export function lifecycleHost(sessionId: string, hasUI = false) {
     cwd: process.cwd(), mode: hasUI ? "tui" : "print", hasUI,
     sessionManager: { getSessionId: () => sessionId },
     ui: panel.ui,
+    isIdle: () => idle,
   };
   const pi = {
     events: new EventEmitter(),
     registerTool(tool: any) { tools.set(tool.name, tool); },
+    registerCommand(name: string, command: any) { commands.set(name, command); },
     on(name: string, handler: (event: any, ctx: any) => unknown) {
       const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list);
       return () => handlers.set(name, (handlers.get(name) ?? []).filter((entry) => entry !== handler));
@@ -25,9 +29,11 @@ export function lifecycleHost(sessionId: string, hasUI = false) {
   } as unknown as ExtensionAPI;
   backgroundTasksExtension(pi);
   return {
-    pi, ctx, tools, messages, widgets, statuses, uiCalls, panel,
-    async emit(type: string, reason?: string) {
-      for (const handler of [...(handlers.get(type) ?? [])]) await handler({ type, reason }, ctx);
+    pi, ctx, tools, commands, messages, widgets, statuses, uiCalls, panel,
+    setIdle(value: boolean) { idle = value; },
+    async emit(type: string, data?: string | Record<string, unknown>) {
+      const event = typeof data === 'object' ? { type, ...data } : { type, reason: data };
+      for (const handler of [...(handlers.get(type) ?? [])]) await handler(event, ctx);
     },
     async execute(name: string, params: Record<string, unknown>, signal = new AbortController().signal) {
       const result = await tools.get(name).execute("lifecycle-test", params, signal, undefined, ctx);

@@ -11,13 +11,13 @@ import {
 import { actionableFailures, failureLabel, readFailureState } from "./shared-failure-observations.js";
 import { failurePath, failureView } from "./failures.js";
 import { formatDuration } from "./format-duration.js";
+import { showBackgroundTasksHistory } from './history-panel.js';
 import { readLog } from "./logs.js";
-import { listMetasForOrigin, onMetaChanged, readMeta, writeMeta } from "./registry.js";
+import { belongsToOrigin, listMetasForOrigin, onMetaChanged, readMeta, writeMeta } from "./registry.js";
 import { stopTask } from "./runtime.js";
 import { observeBackgroundTaskStall } from "./stall.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, BackgroundTaskStatus } from "./types.js";
 
-const TERMINAL_ROW_RETENTION_MS = 30_000;
 const DEFAULT_LOG_TAIL_ROWS = 25;
 
 function createBackgroundTasksNavigator(pi: ExtensionAPI) {
@@ -48,17 +48,21 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     id: "background-tasks",
     label: "Background",
     priority: 30,
+    retention: 'prompt',
     refreshIntervalMs: 1000,
     supportsLogTail: true,
+    open: (id, ctx) => openHistory(ctx, id),
+    openHistory: (ctx) => openHistory(ctx),
     summary: () => {
-      const metas = visibleMetas();
+      const metas = sessionMetas();
       return {
         running: metas.filter((meta) => meta.status === "running").length,
         failed: metas.filter((meta) => meta.status === "failed" || meta.status === "timed_out").length,
+        completed: metas.filter((meta) => meta.status === "succeeded" || meta.status === "cancelled").length,
       };
     },
-    visibleCount: () => visibleMetas(Date.now()).filter((meta) => meta.status === "running").length,
-    listRows: (now) => visibleMetas(now).map((meta) => rowFromMeta(meta, now)),
+    visibleCount: () => visibleMetas().filter((meta) => meta.status === "running").length,
+    listRows: (now) => visibleMetas().map((meta) => rowFromMeta(meta, now)),
     detail: (id, now, options) => detailFromMeta(readActiveMeta(id), now, options),
     armCloseLabel: (row) => row.status === "running" ? "stop" : "dismiss",
     close: (id) => {
@@ -84,36 +88,24 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
 
   function readActiveMeta(id: string): BackgroundTaskMeta | undefined {
     const meta = readMeta(id);
-    return meta && belongsToActiveSession(meta) ? meta : undefined;
+    return meta && activeOrigin && belongsToOrigin(meta, activeOrigin) ? meta : undefined;
   }
 
-  function visibleMetas(now = Date.now()): BackgroundTaskMeta[] {
-    const active = activeOrigin;
-    if (!active) return [];
-    return listMetasForOrigin(active).filter((meta) => meta.dismissedAt === undefined && belongsToActiveSession(meta) && !isExpiredTerminalRow(meta, now));
+  function sessionMetas(): BackgroundTaskMeta[] {
+    return activeOrigin ? listMetasForOrigin(activeOrigin) : [];
   }
 
-  function belongsToActiveSession(meta: BackgroundTaskMeta): boolean {
-    const active = activeOrigin;
-    if (!active) return false;
-    const origin = meta.callbackOrigin;
-    if (origin) {
-      if (origin.cwd !== active.cwd) return false;
-      if (origin.sessionId || active.sessionId) return origin.sessionId === active.sessionId;
-      return true;
-    }
-    if (active.sessionId) return false;
-    return meta.cwd === active.cwd;
+  function visibleMetas(): BackgroundTaskMeta[] {
+    return sessionMetas().filter((meta) => meta.dismissedAt === undefined);
   }
 
-  function isExpiredTerminalRow(meta: BackgroundTaskMeta, now: number): boolean {
-    if (meta.status === "running") return false;
-    const endedAt = meta.endedAt;
-    return typeof endedAt === "number" && now - endedAt >= TERMINAL_ROW_RETENTION_MS;
+  function openHistory(ctx: ExtensionContext, selectedTaskId?: string): Promise<void> {
+    return showBackgroundTasksHistory(pi, ctx, getNavigatorOrigin(ctx), selectedTaskId);
   }
 
   return {
     ensure: ensureBackgroundTasksNavigator,
+    openHistory,
     refresh(_ctx?: ExtensionContext) { notifyChanged?.(); },
     provider,
     dispose() {
@@ -152,6 +144,8 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     id: meta.id,
     name: meta.name,
     status: meta.status,
+    state: meta.status === 'running' ? 'running' : meta.status === 'failed' || meta.status === 'timed_out' ? 'failed' : 'done',
+    endedAt: meta.endedAt,
     statusTone: toneForStatus(meta.status),
     kind: meta.kind === "command_watch" ? "watch" : "process",
     elapsed,
@@ -166,9 +160,6 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     secondary: secondaryLabel(meta),
     facts,
     sortStartedAt: meta.startedAt,
-    expiresAt: meta.status === "running" || meta.endedAt === undefined
-      ? undefined
-      : meta.endedAt + TERMINAL_ROW_RETENTION_MS,
   };
 }
 

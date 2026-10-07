@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  bindWorkPanelLifecycle,
   publishToolDefinitions,
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
@@ -13,6 +14,7 @@ import { registerTools } from "./tools.js";
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const definitions: ToolDefinitionLike[] = [];
   let publication: ToolDefinitionHandle | undefined;
+  let releaseLifecycle: (() => void) | undefined;
   const registerTool = pi.registerTool.bind(pi);
   pi.registerTool = (tool) => {
     const result = registerTool(tool);
@@ -24,13 +26,18 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   // Registered before registerTools(pi), so this runs before running tasks are resumed.
   pi.on("session_start", async (_event, ctx) => {
     if (ctx.hasUI && !publication) publication = publishToolDefinitions(definitions);
+    releaseLifecycle ??= bindWorkPanelLifecycle(pi, ctx);
     resumeScheduledWork(pi);
     await navigator.ensure(ctx);
   });
   pi.on("session_before_switch", async () => {
+    releaseLifecycle?.();
+    releaseLifecycle = undefined;
     navigator.dispose();
   });
   pi.on("session_shutdown", async (event, ctx) => {
+    releaseLifecycle?.();
+    releaseLifecycle = undefined;
     publication?.withdraw();
     publication = undefined;
     suspendScheduledWork(pi);
@@ -44,6 +51,10 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       if (stopped.some((meta) => meta?.status === "running")) throw new Error("Background job cleanup failed: a process tree is still running");
     }
     navigator.dispose();
+  });
+  pi.registerCommand('bg', {
+    description: 'Open background task history for the current session',
+    handler: async (_args, ctx) => { await navigator.openHistory(ctx); },
   });
   pi.registerMessageRenderer?.(COMPLETION_BATCH_TYPE, renderBackgroundMessage);
   pi.registerMessageRenderer?.(TASK_FAILURE_TYPE, renderBackgroundMessage);

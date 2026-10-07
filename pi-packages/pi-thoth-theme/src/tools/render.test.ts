@@ -722,6 +722,9 @@ describe('Built-in tool renderers', () => {
       ];
       const grep = createCustomGrepTool(cwd, createConfig(icons));
       const theme = createAnsiTheme();
+      // All generated rows, including tree decoration, fit at 120 columns.
+      // A 1000-column viewport only adds padding and repeated ANSI clipping;
+      // keep the full case matrix and exact round-trip assertions instead.
       for (const { file, ambiguous: ambiguousFile } of files) {
         for (const { content, ambiguous: ambiguousContent } of contents) {
           for (const line of ['1', '21', '0007', '9007199254740993']) {
@@ -743,7 +746,7 @@ describe('Built-in tool renderers', () => {
                 theme,
                 baseContext,
               )
-              .render(1000);
+              .render(120);
             expectGrepDataRows(
               rendered,
               data,
@@ -760,7 +763,7 @@ describe('Built-in tool renderers', () => {
               theme,
               baseContext,
             )
-            .render(1000);
+            .render(120);
           expectGrepDataRows(rendered, data, 'raw');
         }
       }

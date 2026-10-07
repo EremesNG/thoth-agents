@@ -155,3 +155,13 @@ Root MUST own understanding and acceptance while applying the specific discovery
 - **GIVEN** a planned discovery or implementation assignment contains several separately acceptable outcomes
 - **WHEN** the root prepares dispatch
 - **THEN** it separates the outcomes, records their concrete dependencies, and dispatches only ready conflict-free units with bounded ownership and return conditions
+
+### Requirement: Bind final review to judged record content
+
+The reviewed record digest MUST cover the exact bytes preceding the `## Authorization` heading, a `verify` validator stage MUST check closeout structure before final Oracle review, and edits after PASS confined to Authorization, Verification, or Closeout MUST NOT require a new review while any edit before `## Authorization` MUST invalidate the PASS.
+
+#### Scenario: Bind final review to judged record content
+
+- **GIVEN** a substantial record with a final Oracle PASS and matching digest
+- **WHEN** root edits only Authorization, Verification, or Closeout lines
+- **THEN** closeout remains valid without a new Oracle round, and WHEN any byte before `## Authorization` changes THEN closeout fails as stale until a fresh independent review records a new digest 

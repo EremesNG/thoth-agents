@@ -249,7 +249,7 @@ describe('input box with the real Pi Thoth theme', () => {
       contextTokens: 60_000,
       contextPercent: 30,
       contextWindow: 200_000,
-      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokensPerSecond: null,
     }));
     editor.setText('content');

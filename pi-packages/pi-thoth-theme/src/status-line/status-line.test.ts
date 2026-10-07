@@ -185,7 +185,7 @@ describe('registerStatusLine', () => {
         cost: 0.3,
         subagentCost: 0,
         isSubscription: true,
-        tokenTotals: { input: 10, output: 10, cacheRead: 0 },
+        tokenTotals: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 },
         tokensPerSecond: null,
       });
       component.render(120);
@@ -463,7 +463,7 @@ describe('registerStatusLine', () => {
     try {
       const initialFooter = component.render(120);
       expect(initialFooter).toEqual([
-        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
       ]);
       expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
@@ -486,7 +486,7 @@ describe('registerStatusLine', () => {
       });
       expect(editor.render(120)[2]).toBe(box[2]);
       expect(component.render(120)).toEqual([
-        '\uf155 1.000 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+        '\uf155 1.000 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
       ]);
       expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
     } finally {
@@ -502,7 +502,7 @@ describe('registerStatusLine', () => {
     const component = createFooter(mocks, config);
     try {
       expect(component.render(80)).toEqual([
-        '$0.300 | ^10 v10 | cache 0 | — tok/s',
+        '$0.300 | ^10 v10 | cache 0% | — tok/s',
       ]);
       const { top, bottom } = borders(editor, 80);
       expect(top).toBe(
@@ -537,7 +537,7 @@ describe('registerStatusLine', () => {
     expect(lines).toHaveLength(1);
     const row = lines[0];
     expect(row).toBe(
-      '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+      '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
     );
     for (const hidden of ['Test Model', '◐', '⑂', '/workspace', '50K', '25%'])
       expect(row).not.toContain(hidden);
@@ -895,9 +895,19 @@ describe('registerStatusLine', () => {
       vi.setSystemTime(250);
       dispatch('message_end', { role: 'assistant', usage: { output: 10 } });
       const [entry] = mocks.sessionManager.getEntries();
-      mocks.sessionManager.getEntries.mockReturnValue([entry, entry]);
+      const cachedEntry = {
+        ...entry,
+        message: {
+          ...entry.message,
+          usage: { ...entry.message.usage, cacheRead: 40, cacheWrite: 10 },
+        },
+      };
+      mocks.sessionManager.getEntries.mockReturnValue([
+        cachedEntry,
+        cachedEntry,
+      ]);
       expect(component.getStatusSnapshot()).toMatchObject({
-        tokenTotals: { input: 20, output: 20, cacheRead: 0 },
+        tokenTotals: { input: 20, output: 20, cacheRead: 80, cacheWrite: 20 },
         tokensPerSecond: 40,
       });
       mocks.events.emit('thoth:subagent-usage', {
@@ -906,15 +916,16 @@ describe('registerStatusLine', () => {
         input: 999,
         output: 999,
         cacheRead: 999,
+        cacheWrite: 999,
       });
       expect(component.getStatusSnapshot()).toMatchObject({
         cost: 0.6,
         subagentCost: 0.7,
-        tokenTotals: { input: 20, output: 20, cacheRead: 0 },
+        tokenTotals: { input: 20, output: 20, cacheRead: 80, cacheWrite: 20 },
         tokensPerSecond: 40,
       });
       expect(component.render(120)[0]).toBe(
-        '\uf155 1.300 · \uf06220 \uf06320 · \u{f01bc} 0 · \u{f04c5} 40',
+        '\uf155 1.300 · \uf062120 \uf06320 · \u{f01bc} 67% · \u{f04c5} 40 tok/s',
       );
     } finally {
       component.dispose();
@@ -950,7 +961,7 @@ describe('registerStatusLine', () => {
       for (const handler of mocks.eventHandlers.get('session_start') ?? [])
         handler();
       expect(component.getStatusSnapshot()).toMatchObject({
-        tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+        tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         tokensPerSecond: null,
       });
       vi.setSystemTime(2000);
@@ -1015,7 +1026,7 @@ describe('registerStatusLine', () => {
       const beforePersistence = component.getStatusSnapshot();
       expect(beforePersistence).toMatchObject({
         cost: 0,
-        tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+        tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextTokens: 0,
         contextPercent: 0,
       });
@@ -1032,14 +1043,14 @@ describe('registerStatusLine', () => {
       const persisted = component.getStatusSnapshot();
       expect(persisted).toMatchObject({
         cost: 0.3,
-        tokenTotals: { input: 10, output: 10, cacheRead: 0 },
+        tokenTotals: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 },
         contextTokens: 50000,
         contextPercent: 25,
         contextWindow: 200000,
       });
       expect(component.getStatusSnapshot()).toBe(persisted);
       expect(component.render(120)[0]).toBe(
-        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
       );
     } finally {
       component.dispose();

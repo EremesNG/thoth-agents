@@ -145,9 +145,9 @@ describe('renderStatusLine - subscription cost', () => {
 
 const NERD_FOOTER = [
   '\uf155 1.234',
-  '\uf06212.3K \uf0633.4K',
-  '\u{f01bc} 80K',
-  '\u{f04c5} 42',
+  '\uf062100K \uf0633.4K',
+  '\u{f01bc} 80%',
+  '\u{f04c5} 42 tok/s',
 ].join(' · ');
 
 describe('footer row - cost, tokens, cache and tok/s only', () => {
@@ -160,20 +160,59 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
     contextTokens: 425900,
     contextWindow: 1000000,
     cost: 1.234,
-    tokenTotals: { input: 12_300, output: 3_400, cacheRead: 80_000 },
+    tokenTotals: {
+      input: 12_300,
+      output: 3_400,
+      cacheRead: 80_000,
+      cacheWrite: 7_700,
+    },
     tokensPerSecond: 42.46,
   };
 
-  it('renders cost, input/output tokens, cache read and tok/s in priority order', () => {
+  it('shows total input sent including cache-read and cache-write in priority order', () => {
     expect(renderStatusLine(data, { width: 200, mode: 'nerd' })).toBe(
       NERD_FOOTER,
     );
   });
 
-  it('renders ASCII glyphs', () => {
+  it('renders ASCII labels with a cache hit percentage of total input sent', () => {
     expect(renderStatusLine(data, { width: 200, mode: 'ascii' })).toBe(
-      '$1.234 | ^12.3K v3.4K | cache 80K | 42 tok/s',
+      '$1.234 | ^100K v3.4K | cache 80% | 42 tok/s',
     );
+  });
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('shows an unavailable cache hit ratio when total input is zero in %s mode', (mode) => {
+    expect(
+      renderStatusLine(
+        { tokenTotals: { input: 0, output: 12, cacheRead: 0, cacheWrite: 0 } },
+        { width: 200, mode },
+      ),
+    ).toBe(
+      mode === 'nerd' ? '\uf0620 \uf06312 · \u{f01bc} —' : '^0 v12 | cache —',
+    );
+  });
+
+  it.each([
+    { input: 5, cacheRead: 0, cacheWrite: 0, expected: '0%' },
+    { input: 0, cacheRead: 5, cacheWrite: 0, expected: '100%' },
+    { input: 0, cacheRead: 0, cacheWrite: 5, expected: '0%' },
+    { input: 1, cacheRead: 1, cacheWrite: 1, expected: '33%' },
+    { input: 0, cacheRead: 2, cacheWrite: 1, expected: '67%' },
+  ])('rounds cache hits to $expected for $input uncached, $cacheRead read and $cacheWrite written tokens', ({
+    expected,
+    ...totals
+  }) => {
+    for (const mode of ['nerd', 'ascii'] as const) {
+      expect(
+        renderStatusLine(
+          { tokenTotals: { ...totals, output: 999 } },
+          { width: 200, mode },
+        ),
+      ).toContain(`${mode === 'nerd' ? '\u{f01bc}' : 'cache'} ${expected}`);
+    }
   });
 
   it('never renders model, effort, branch, cwd or context', () => {
@@ -185,26 +224,33 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
       'feature',
       '\ue0a0',
       '~/project',
-      '%',
+      '43%',
       '425',
       '●',
     ])
       expect(rendered).not.toContain(text);
   });
 
-  it('shows a dash for unmeasured tok/s and formats slow rates with one decimal', () => {
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('shows a dash for unmeasured tok/s and formats slow rates with one decimal in %s mode', (mode) => {
     expect(
       renderStatusLine(
         { ...data, tokensPerSecond: null },
-        { width: 200, mode: 'nerd' },
+        { width: 200, mode },
       ),
-    ).toBe(NERD_FOOTER.replace('42', '—'));
+    ).toBe(
+      mode === 'nerd'
+        ? NERD_FOOTER.replace('42', '—')
+        : '$1.234 | ^100K v3.4K | cache 80% | — tok/s',
+    );
     expect(
       renderStatusLine(
         { ...data, tokensPerSecond: 7.25 },
-        { width: 200, mode: 'nerd' },
+        { width: 200, mode },
       ),
-    ).toContain('\u{f04c5} 7.3');
+    ).toContain(mode === 'nerd' ? '\u{f04c5} 7.3 tok/s' : '7.3 tok/s');
   });
 
   it('omits rate and tokens when the snapshot has none', () => {
@@ -220,25 +266,60 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
       { width: 200, mode: 'nerd', theme: mockTheme },
     );
     expect(rendered).toContain('[accent]\uf155 2.000 (sub)[/accent]');
-    expect(rendered).toContain('[muted]\uf06212.3K \uf0633.4K[/muted]');
-    expect(rendered).toContain('[muted]\u{f01bc} 80K[/muted]');
-    expect(rendered).toContain('[muted]\u{f04c5} 42[/muted]');
+    expect(rendered).toContain('[muted]\uf062100K \uf0633.4K[/muted]');
+    expect(rendered).toContain('[muted]\u{f01bc} 80%[/muted]');
+    expect(rendered).toContain('[muted]\u{f04c5} 42 tok/s[/muted]');
   });
 
-  it('drops tok/s, then cache, then tokens, then truncates cost as width shrinks', () => {
-    const at = (width: number) =>
-      renderStatusLine(data, { width, mode: 'nerd' });
-    const cost = '\uf155 1.234';
-    const tokens = '\uf06212.3K \uf0633.4K';
-    const cache = '\u{f01bc} 80K';
-    expect(at(37)).toBe(NERD_FOOTER);
-    expect(at(36)).toBe(`${cost} · ${tokens} · ${cache}`);
-    expect(at(30)).toBe(`${cost} · ${tokens} · ${cache}`);
-    expect(at(29)).toBe(`${cost} · ${tokens}`);
-    expect(at(22)).toBe(`${cost} · ${tokens}`);
-    expect(at(21)).toBe(cost);
-    expect(at(7)).toBe(cost);
-    expect(stripTerminalSequences(at(4))).toBe('\uf155 1.');
+  it.each([
+    {
+      mode: 'nerd' as const,
+      full: NERD_FOOTER,
+      cost: '\uf155 1.234',
+      tokens: '\uf062100K \uf0633.4K',
+      cache: '\u{f01bc} 80%',
+      separator: ' · ',
+      fullWidth: 42,
+      cacheWidth: 29,
+      tokensWidth: 21,
+      costWidth: 7,
+      truncatedCost: '\uf155 1.',
+    },
+    {
+      mode: 'ascii' as const,
+      full: '$1.234 | ^100K v3.4K | cache 80% | 42 tok/s',
+      cost: '$1.234',
+      tokens: '^100K v3.4K',
+      cache: 'cache 80%',
+      separator: ' | ',
+      fullWidth: 43,
+      cacheWidth: 32,
+      tokensWidth: 20,
+      costWidth: 6,
+      truncatedCost: '$1.2',
+    },
+  ])('drops tok/s, then cache, then tokens, then truncates cost as width shrinks in $mode mode', ({
+    mode,
+    full,
+    cost,
+    tokens,
+    cache,
+    separator,
+    fullWidth,
+    cacheWidth,
+    tokensWidth,
+    costWidth,
+    truncatedCost,
+  }) => {
+    const at = (width: number) => renderStatusLine(data, { width, mode });
+    expect(at(fullWidth)).toBe(full);
+    expect(at(fullWidth - 1)).toBe([cost, tokens, cache].join(separator));
+    expect(at(cacheWidth)).toBe([cost, tokens, cache].join(separator));
+    expect(at(cacheWidth - 1)).toBe([cost, tokens].join(separator));
+    expect(at(tokensWidth)).toBe([cost, tokens].join(separator));
+    expect(at(tokensWidth - 1)).toBe(cost);
+    expect(at(costWidth)).toBe(cost);
+    expect(stripTerminalSequences(at(4))).toBe(truncatedCost);
     expect(at(0)).toBe('');
   });
 
@@ -247,7 +328,12 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
       ...data,
       subagentCost: 12.3456,
       isSubscription: true,
-      tokenTotals: { input: 123_456_789, output: 9_999_999, cacheRead: 5e9 },
+      tokenTotals: {
+        input: 123_456_789,
+        output: 9_999_999,
+        cacheRead: 5e9,
+        cacheWrite: 1e6,
+      },
     };
     for (const mode of ['nerd', 'ascii'] as const) {
       for (const theme of [undefined, mockTheme]) {

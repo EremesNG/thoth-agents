@@ -11,17 +11,24 @@ export function fakeJobHelper(basePid:number) {
   const jobs=new Map<string,typeof primary>();
   const unrelated=new Set<number>();
   const requests:{op:string;key?:string}[]=[];
-  let launchCount=0,failTerminations=1,queryError:string|undefined,oneQueryError:string|undefined,ignoreTerminate=false,unavailable=false;
+  let launchCount=0,failTerminations=1,queryError:string|undefined,queryErrorCode:string|undefined,oneQueryError:string|undefined,ignoreTerminate=false,unavailable=false;
   let onTerminate:(()=>void)|undefined;
-  let launchFault=false;
+  let launchFault=false,rejectLaunch=false;
   const stdout=new PassThrough(),stderr=new PassThrough();
   const child=Object.assign(new EventEmitter(),{pid:basePid+999,stdout,stderr,exitCode:null as number|null,signalCode:null as string|null,unref(){},kill(){this.exitCode=1;(this as unknown as EventEmitter).emit('exit',1,null);return true;}});
+  const responseGates=new Map<string,{received:()=>void;reply?:()=>void}>();
   const reply=(id:number,value:Record<string,unknown>)=>stdout.write(JSON.stringify({id,...value})+'\n');
+  const respond=(op:string,id:number,value:Record<string,unknown>)=>{
+    const gate=responseGates.get(op);
+    if(gate){responseGates.delete(op);gate.reply=()=>reply(id,value);gate.received();}
+    else reply(id,value);
+  };
   const stdin=new Writable({write(chunk,_encoding,done){
     for(const line of String(chunk).trim().split('\n')) {
       const request=JSON.parse(line);requests.push(request);
       if(unavailable){reply(request.id,{error:'helper unavailable mid-cleanup'});continue;}
       if(request.op==='launch') {
+        if(rejectLaunch){rejectLaunch=false;reply(request.id,{error:'CreateProcessW failed'});continue;}
         const state=launchCount++===0?primary:{live:new Set([basePid+launchCount*10,basePid+launchCount*10+1]),exitCode:null};
         jobs.set(request.key,state);
         // Native output files exist even when the process writes nothing.
@@ -31,7 +38,7 @@ export function fakeJobHelper(basePid:number) {
       }
       const state=jobs.get(request.key);
       if(!state){reply(request.id,{error:'unknown owned container',errorCode:'UNKNOWN_KEY'});continue;}
-      if(request.op==='query'&&(queryError||oneQueryError)) {reply(request.id,{error:queryError||oneQueryError});oneQueryError=undefined;continue;}
+      if(request.op==='query'&&(queryError||oneQueryError)) {reply(request.id,{error:queryError||oneQueryError,errorCode:queryErrorCode});oneQueryError=undefined;continue;}
       if(request.op==='terminate') {
         state.live.delete([...state.live].find(pid=>pid===basePid) ?? -1);
         state.exitCode ??= 1;
@@ -41,9 +48,9 @@ export function fakeJobHelper(basePid:number) {
       }
       if(request.op==='release') {
         if(state.live.size){reply(request.id,{error:'cannot release nonempty container'});continue;}
-        jobs.delete(request.key);reply(request.id,{released:true});continue;
+        jobs.delete(request.key);respond(request.op,request.id,{released:true});continue;
       }
-      reply(request.id,{pid:basePid,activeProcesses:state.live.size,exitCode:state.exitCode,creationTime:'2026-10-01T00:00:00.000Z'});
+      respond(request.op,request.id,{pid:basePid,activeProcesses:state.live.size,exitCode:state.exitCode,creationTime:'2026-10-01T00:00:00.000Z'});
     }
     done();
   }});
@@ -58,9 +65,16 @@ export function fakeJobHelper(basePid:number) {
   }};
   return {live:primary.live,child:leader,requests,helper:child,
     get launchCount(){return launchCount;},
+    holdNextResponse(op:'query'|'release'){
+      let received!:()=>void;
+      const pending=new Promise<void>(resolve=>{received=resolve;});
+      const gate={received,reply:undefined as (()=>void)|undefined};responseGates.set(op,gate);
+      return {received:pending,reply(){if(!gate.reply)throw new Error('No response is held');gate.reply();}};
+    },
     failLaunch(){launchFault=true;},
-    allowCleanup(){failTerminations=0;queryError=undefined;oneQueryError=undefined;ignoreTerminate=false;unavailable=false;},
-    failQuery(message?:string){queryError=message;},
+    rejectLaunch(){rejectLaunch=true;},
+    allowCleanup(){failTerminations=0;queryError=undefined;queryErrorCode=undefined;oneQueryError=undefined;ignoreTerminate=false;unavailable=false;},
+    failQuery(message?:string,code?:string){queryError=message;queryErrorCode=code;},
     failHelper(value=true){unavailable=value;},
     leaveActive(value=true){ignoreTerminate=value;},
     onTerminate(callback:()=>void){onTerminate=callback;},

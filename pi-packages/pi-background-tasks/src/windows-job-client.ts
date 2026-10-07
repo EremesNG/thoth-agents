@@ -106,14 +106,27 @@ export class WindowsJobClient {
   /** Reserve ownership synchronously, before any launch I/O or acknowledgment. */
   createJob(spec:JobLaunch):PendingWindowsJob {
     const key=randomUUID();
-    let sent=false, acknowledged=false, absent=false, verified=false, released=false;
+    let sent=false, acknowledged=false, absent=false, verified=false, releaseStarted=false, released=false;
     let pid:number|undefined, last:JobState|undefined, stopping:Promise<void>|undefined;
     let submitted!:()=>void;
     const submission=new Promise<void>(resolve=>{submitted=resolve;});
-    const query=async()=>{
-      await submission;
-      if(released && last)return last;
-      last=await this.request('query',{key}) as JobState;pid=last.pid;return last;
+    let operationTail=Promise.resolve();
+    const serialize=<T>(operation:()=>Promise<T>):Promise<T>=>{
+      const result=operationTail.then(operation);
+      // A failed acknowledgment must not poison this job's cleanup retries.
+      operationTail=result.then(()=>{},()=>{});
+      return result;
+    };
+    const query=()=>{
+      if(releaseStarted){
+        if(last)return Promise.resolve(last);
+        // A rejected launch can be released without ever having a job state.
+        return Promise.reject(Object.assign(new Error('Unknown job key'),{code:'UNKNOWN_KEY'}));
+      }
+      return serialize(async()=>{
+        await submission;
+        last=await this.request('query',{key}) as JobState;pid=last.pid;return last;
+      });
     };
     const job:PendingWindowsJob={get pid(){return pid;},get ready(){return ready;},query,
       terminate:()=>{
@@ -133,8 +146,14 @@ export class WindowsJobClient {
       waitForExit:async()=>{await ready;for(;;){const value=await query();if(value.exitCode!==null)return value.exitCode;await pause();}},
       release:async()=>{
         if(released)return;if(!verified)throw new Error('Cannot release an unverified Windows job');
-        if(!absent)try{await this.request('release',{key});}catch(error){if(!unknownKey(error))throw error;}
-        released=true;this.jobs.delete(key);
+        // The helper can remove the key even when its acknowledgment is lost.
+        // Stop new queries now; drain previously issued queries before release.
+        releaseStarted=true;
+        await serialize(async()=>{
+          if(released)return;
+          if(!absent)try{await this.request('release',{key});}catch(error){if(!unknownKey(error))throw error;}
+          released=true;this.jobs.delete(key);
+        });
       },
     };
     this.jobs.set(key,job);

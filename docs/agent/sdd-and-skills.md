@@ -11,7 +11,7 @@ for the end-to-end lifecycle.
   risk-aware classification, phase prerequisites, and verification decisions.
 - `src/agents/prompt-sections.ts`: root SDD and bounded phase-dispatch guidance.
 - `skills/thoth-sdd/`: current phase references, ID-named record template, and
-  maintained readiness/closeout validator.
+  maintained readiness/verify/closeout validator.
 - `skills/thoth-archive/`: transactional declared `.thoth/specs` updates and
   stable-filename archive.
 - `skills/thoth-constitution/`: explicit versioned governance lifecycle.
@@ -76,11 +76,20 @@ for the end-to-end lifecycle.
 - Record plan-review provenance as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
   `DEFAULT_REVIEW_AFTER_3`; `SKIPPED` is valid only with `EXPLICIT_SKIP`, while
   `OKAY` requires an explicit review or the third-return review default. The
-  initial `PENDING` placeholder is valid before closeout only.
+  initial `PENDING` placeholder is valid before `verify` only.
 - Every change verifies. Small low-risk work receives focused checks; substantial
   or materially risky work requires fresh read-only Oracle judgment. Root maps
-  acceptance to actual checks and changed source before PASS. Failed verification
-  is corrected within accepted intent and reverified.
+  acceptance to actual checks and changed source before PASS. Run the validator
+  with `--through verify` before requesting final Oracle; this stage follows
+  `ready`, requiring complete tasks, authorization disposition/provenance, and
+  reviewed source digests/baselines while allowing final-review placeholders.
+  Failed verification is corrected within accepted intent and reverified.
+- The reviewed record SHA-256 covers exact UTF-8 bytes before the case-sensitive
+  `## Authorization` heading. After PASS, edits confined to Authorization,
+  Verification, or Closeout need no new review; edits before `## Authorization`
+  require fresh independent review and a new digest. This allowance never waives
+  structural checks, truthful provenance, stale-source rejection, or review of
+  changed implementation.
 - Archive only after fresh PASS and complete closeout. Transactionally apply
   declared exact-title `ADDED`, `MODIFIED`, `REMOVED`, or `RENAMED` deltas under
   `.thoth/specs/`. Keep the record filename stable in

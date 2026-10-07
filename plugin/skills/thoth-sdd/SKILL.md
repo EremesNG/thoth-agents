@@ -127,8 +127,8 @@ same change record's Verification section, include exactly one reviewed source
 entry for every affected capability: the existing file's `sha256:<digest>` or
 `absent` if no canonical spec exists. `ADDED` may target either an existing or
 absent capability; other operations require an existing matching baseline. The
-validator checks each digest or reviewed absence at closeout, not semantic
-quality.
+validator checks each digest or reviewed absence at `verify` and `closeout`,
+not semantic quality.
 
 Archiving moves the same record to
 `.thoth/changes/archive/YYYY-MM-DD-<id>/<id>.md`; the date prefixes only the
@@ -146,27 +146,32 @@ only; do not provision skills or run a network installer mid-workflow.
 ## Gates and CLI
 
 ```text
-node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <explore|specify|clarify|plan|tasks|checklist|ready|closeout> --json
+node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <explore|specify|clarify|plan|tasks|checklist|ready|verify|closeout> --json
 ```
 
 The early gates validate the one record proportionally. `plan` validates without
 requiring tasks. `tasks` and `ready` require concrete coverage of every accepted
 outcome. `ready` requires settled material decisions before the mandatory
-plan-review offer or implementation authorization. `closeout` requires complete
-tasks, review disposition plus `**Plan review selection**` provenance
-(`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`) and
-implementation authorization, a fresh independent Oracle PASS, every acceptance
-outcome with concrete PASS check/evidence, a matching record SHA-256 and reviewed
-source SHA-256 digests. The initial `PENDING` selection placeholder is allowed
-before closeout only. `SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires an
-explicit review or `DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected
-by a durable delta must have exactly one `Source` entry in the same record:
+plan-review offer or implementation authorization. Run `--through verify`
+before requesting final Oracle: it requires everything `ready` does plus complete
+tasks, review disposition and `**Plan review selection**` provenance,
+implementation authorization, and reviewed source digests/baselines. It permits
+final-review and Archive placeholders. `closeout` additionally requires a fresh
+independent Oracle PASS, every acceptance outcome with concrete PASS
+check/evidence, exactly one matching record SHA-256 field, and Archive READY.
+The initial `PENDING` selection placeholder is allowed before `verify` only.
+`SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
+`DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected by a durable delta must
+have exactly one `Source` entry in the same record:
 `- Source: .thoth/specs/<capability>/spec.md | sha256:<digest>` when present, or
 `- Source: .thoth/specs/<capability>/spec.md | absent` when absent. Missing or
-stale coverage blocks closeout and archive. Calculate the record hash from exact
-UTF-8 bytes preceding `## Verification`; update it only after a fresh independent
-review if that prefix changes. Structural validation is not human authorization
-or independent approval. Oracle examines the actual diff and checks, not just
-listed file digests.
+stale coverage blocks `verify`, closeout, and archive. Calculate the record hash
+from exact UTF-8 bytes preceding the case-sensitive `## Authorization` heading.
+After PASS, edits confined to Authorization, Verification, or Closeout need no
+new review; any edit before `## Authorization` requires fresh independent review
+and a new digest. This allowance never waives structural checks, truthful
+provenance, stale-source rejection, or review of changed implementation.
+Structural validation is not human authorization or independent approval. Oracle
+examines the actual diff and checks, not just listed file digests.
 
 Archive with the installed sibling `thoth-archive` only after closeout passes.

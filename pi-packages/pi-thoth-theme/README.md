@@ -18,10 +18,13 @@ of the module toggles below.
 
 ## Modules
 
-- **Status line**: a responsive footer row below the input showing model and
-  thinking effort, git branch, context usage, cumulative session cost and compact
-  extension statuses. It omits the working-directory path and does not claim the
-  custom editor slot.
+- **Status line**: a responsive footer below the input showing cumulative
+  session cost (including subagents), main-session input/output totals, cache hit
+  percentage and output speed in `tok/s`. Input includes uncached, cache-read and
+  cache-write tokens; the hit percentage is cache-read divided by total input
+  (`—` when total input is zero). Subagent tokens are excluded. Narrow widths
+  drop speed, then cache, then tokens before truncating cost. Editor-border
+  metadata is decorated in place without claiming the custom editor slot.
 - **Tools**: boxed calls and results for `read`, `bash`, `powershell`, `ls`,
   `grep`, `find`, `edit` and `write`, with Nerd Font icons or ASCII
   alternatives. `bash` and `powershell` show a live elapsed time while running. Execution and
@@ -81,8 +84,9 @@ subscription-backed usage with `(sub)` in the status line cost segment.
 `inputBox.enabled` defaults to `true` and requires `statusLine.enabled` to be
 `true`. It frames the native editor in a rounded `muted` (sand) box with side borders,
 a dim `type or / for commands` placeholder, and top-left ready or native working
-status (including elapsed seconds). The bottom border is a plain rounded rule;
-native scroll indicators are preserved. The status line always stays in its
+status (including elapsed seconds). Git branch and working directory appear on
+the top border; model, thinking effort and context usage appear on the bottom.
+Native scroll indicators are preserved. The status line always stays in its
 separate footer row below the box. Narrow widths use the native editor geometry.
 Disable `inputBox` to keep the native editor and the same footer.
 

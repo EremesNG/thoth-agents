@@ -167,7 +167,7 @@ test("createExecGitOps: toplevel + showHead against a real temp repo", () => {
 	if (!gitAvailable()) return;
 	// Resolve the symlink: on macOS os.tmpdir() is /var/... but git rev-parse
 	// --show-toplevel returns the canonical /private/var/... form.
-	const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "agy-diff-")));
+	const repo = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "agy-diff-")));
 	try {
 		const run = (args: string[]) => execFileSync("git", args, { windowsHide: true, cwd: repo, stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
 		run(["init", "-q"]);

@@ -115,6 +115,7 @@ jobs:
           exit 1
 
       - name: Install dependencies
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Build package
@@ -123,10 +124,68 @@ jobs:
       - name: Check built plugin runtime
         run: pnpm exec vitest run src/plugin-node-runtime.test.ts
 
+      - name: Publish Pi packages
+        id: pi-publish
+        run: pnpm publish -r --filter "./pi-packages/*" --ignore-scripts --no-git-checks
+
+      - name: Reconcile Pi releases
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          failed=0
+          notes_file="$(mktemp)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for manifest in pi-packages/*/package.json; do
+            dir="$(dirname "$manifest")"
+            name="$(node -p "require('./${manifest}').name")"
+            version="$(node -p "require('./${manifest}').version")"
+            tag="${name}@${version}"
+
+            published="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+            if [ "$published" != "$version" ]; then
+              echo "Skipping ${tag}: not published to npm."
+              continue
+            fi
+
+            if [ -z "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+              git tag -a "${tag}" -m "Release ${tag}" "$GITHUB_SHA" &&
+                git push origin "refs/tags/${tag}" || {
+                  echo "Failed to create tag ${tag}."
+                  failed=1
+                  continue
+                }
+            fi
+
+            if ! gh release view "${tag}" > /dev/null 2>&1; then
+              pnpm tsx scripts/generate-release-notes.ts \
+                --tag-prefix "${name}@" \
+                --path "${dir}" \
+                --to "${tag}" \
+                "$notes_file" &&
+                gh release create "${tag}" \
+                  --verify-tag \
+                  --title "${tag}" \
+                  --notes-file "$notes_file" || {
+                  echo "Failed to create release ${tag}."
+                  failed=1
+                }
+            fi
+          done
+
+          exit "$failed"
+
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ github.token }}
-        run: pnpm tsx scripts/generate-release-notes.ts release-notes.md
+        run: >
+          pnpm tsx scripts/generate-release-notes.ts
+          --exclude-path pi-packages
+          --package-tags '@thoth-agents/*@*'
+          release-notes.md
 
       - name: Publish to npm
         run: npm publish --ignore-scripts

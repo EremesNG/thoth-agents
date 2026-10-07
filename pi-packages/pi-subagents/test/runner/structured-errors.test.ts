@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyThrownError,
   deriveErrorString,
@@ -13,7 +13,24 @@ import type {
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
-import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
+import { SubagentHistoryStore } from '../../src/history.js';
+import { SubagentManager } from '../../src/manager.js';
+import { sdkSubagentRunner } from '../../src/runner.js';
+
+const sdkMocks = vi.hoisted(() => ({ createAgentSession: vi.fn() }));
+
+// Load the real SDK's frontmatter parser once during collection for the history
+// integration case. Keep sessions/providers at the SDK boundary double: changing
+// a session does not require invalidating the runner's entire import graph.
+vi.mock('@earendil-works/pi-coding-agent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ModelRuntime: (await import('../helpers/model-runtime-fixture.js'))
+    .ModelRuntimeFixture,
+  SessionManager: { inMemory: () => ({}) },
+  createAgentSession: sdkMocks.createAgentSession,
+}));
+
+beforeEach(() => sdkMocks.createAgentSession.mockReset());
 
 describe('subagent runner structured errors', () => {
   const definition: SubagentDefinition = {
@@ -35,19 +52,14 @@ describe('subagent runner structured errors', () => {
     sessionFactory: () => any,
     overrides: { config?: SubagentsConfig; ctx?: any } = {},
   ) {
-    vi.resetModules();
-    const createAgentSession = vi.fn(() => ({
-      session: {
-        getAllTools: () => [{ name: 'read' }],
-        ...sessionFactory(),
-      },
-    }));
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: { inMemory: () => ({}) },
-      createAgentSession,
-    }));
-    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const createAgentSession = sdkMocks.createAgentSession.mockImplementation(
+      () => ({
+        session: {
+          getAllTools: () => [{ name: 'read' }],
+          ...sessionFactory(),
+        },
+      }),
+    );
     return {
       createAgentSession,
       promise: sdkSubagentRunner({
@@ -255,36 +267,27 @@ describe('subagent runner structured errors', () => {
       }),
     );
     vi.useFakeTimers();
-    vi.resetModules();
     let subscriber: ((event: unknown) => void) | undefined;
     let resolvePrompt: (() => void) | undefined;
-    vi.doMock('@earendil-works/pi-coding-agent', async (importOriginal) => ({
-      ...(await importOriginal<Record<string, unknown>>()),
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: { inMemory: () => ({}) },
-      createAgentSession: () => ({
-        session: {
-          getAllTools: () => [{ name: 'read' }],
-          subscribe: (callback: (event: unknown) => void) => {
-            subscriber = callback;
-            return () => {};
-          },
-          prompt: async () => {
-            subscriber?.({ type: 'agent_start' });
-            subscriber?.({ type: 'agent_settled' });
-            return new Promise<void>((resolve) => {
-              resolvePrompt = resolve;
-            });
-          },
-          abort: async () => resolvePrompt?.(),
-          messages: [{ role: 'assistant', content: 'partial text' }],
-          dispose: async () => {},
+    sdkMocks.createAgentSession.mockImplementation(() => ({
+      session: {
+        getAllTools: () => [{ name: 'read' }],
+        subscribe: (callback: (event: unknown) => void) => {
+          subscriber = callback;
+          return () => {};
         },
-      }),
+        prompt: async () => {
+          subscriber?.({ type: 'agent_start' });
+          subscriber?.({ type: 'agent_settled' });
+          return new Promise<void>((resolve) => {
+            resolvePrompt = resolve;
+          });
+        },
+        abort: async () => resolvePrompt?.(),
+        messages: [{ role: 'assistant', content: 'partial text' }],
+        dispose: async () => {},
+      },
     }));
-    const { sdkSubagentRunner } = await import('../../src/runner.js');
-    const { SubagentManager } = await import('../../src/manager.js');
-    const { SubagentHistoryStore } = await import('../../src/history.js');
     let thrownMessage: string | undefined;
     const manager = new SubagentManager(async (input) => {
       try {
@@ -514,10 +517,9 @@ describe('subagent runner structured errors', () => {
   });
 
   it('returns the original selected-model failure without retrying or notifying', async () => {
-    vi.resetModules();
     const primaryModel = { provider: 'preferred', id: 'primary-model' };
     const fallbackModel = { provider: 'current', id: 'fallback-model' };
-    const createAgentSession = vi.fn().mockReturnValueOnce({
+    const createAgentSession = sdkMocks.createAgentSession.mockReturnValueOnce({
       session: {
         getAllTools: () => [{ name: 'read' }],
         subscribe: vi.fn(() => vi.fn()),
@@ -528,12 +530,6 @@ describe('subagent runner structured errors', () => {
         dispose: vi.fn(async () => undefined),
       },
     });
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: { inMemory: () => ({}) },
-      createAgentSession,
-    }));
-    const { sdkSubagentRunner } = await import('../../src/runner.js');
     const sliceConfig: SubagentsConfig = {
       ...config,
       model_profiles: {
@@ -574,9 +570,8 @@ describe('subagent runner structured errors', () => {
   });
 
   it('preserves the original selected-model failure when current model matches preferred', async () => {
-    vi.resetModules();
     const sharedModel = { provider: 'preferred', id: 'primary-model' };
-    const createAgentSession = vi.fn().mockReturnValueOnce({
+    const createAgentSession = sdkMocks.createAgentSession.mockReturnValueOnce({
       session: {
         getAllTools: () => [{ name: 'read' }],
         subscribe: vi.fn(() => vi.fn()),
@@ -587,12 +582,6 @@ describe('subagent runner structured errors', () => {
         dispose: vi.fn(async () => undefined),
       },
     });
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      ModelRuntime: ModelRuntimeFixture,
-      SessionManager: { inMemory: () => ({}) },
-      createAgentSession,
-    }));
-    const { sdkSubagentRunner } = await import('../../src/runner.js');
     const sliceConfig: SubagentsConfig = {
       ...config,
       model_profiles: {

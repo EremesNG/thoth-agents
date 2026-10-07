@@ -77,7 +77,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
  console.log(JSON.stringify({event:'init',init:{conversation_id:'conv-lazy'}}));
  console.log(JSON.stringify({event:'result',result:{status:'SUCCESS',response:'ok',conversation_id:'conv-lazy'}}));
 }
-`);
+`, { mode: 0o755 }); // executable: AGY_ACP_BIN reuse requires X_OK on POSIX, else ACP auto-setup downloads for real
 	vi.stubEnv("HOME", os.homedir());
 	vi.stubEnv("USERPROFILE", os.homedir());
 	vi.stubEnv("AGY_BIN", bin);
@@ -110,7 +110,7 @@ test.each([
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
 	if (engine === "acp") {
 		const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
-		fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+		fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 		vi.stubEnv("AGY_ACP_BIN", bin);
 	}
 	const stderr: string[] = [];
@@ -195,7 +195,7 @@ test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifac
 		Object.defineProperty(process, "platform", platform);
 	}
 	assert.equal(spawn.mock.calls.length, 1);
-	assert.deepEqual(spawn.mock.calls[0], ["xdg-open", [fs.realpathSync(path.join(dir, "report.md"))], {
+	assert.deepEqual(spawn.mock.calls[0], ["xdg-open", [fs.realpathSync.native(path.join(dir, "report.md"))], {
 		detached: true, stdio: "ignore", shell: false, windowsHide: true,
 	}]);
 	assert.equal(unref.mock.calls.length, 1);
@@ -354,7 +354,7 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	const dir = path.dirname(process.env.AGY_BIN!);
 	const bin = path.join(dir, "acp.mjs");
 	const log = path.join(dir, "acp-wire.jsonl");
-	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
 	vi.stubEnv("AGY_ACP_BIN", bin);
 	vi.stubEnv("ACP_FAKE_LOG", log);
@@ -572,7 +572,7 @@ test("legacy-global ACP shutdown preserves shared descriptor caches", async () =
 	const dir = path.dirname(process.env.AGY_BIN!);
 	const bin = path.join(dir, "acp.mjs");
 	const log = path.join(dir, "acp-wire.jsonl");
-	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
 	vi.stubEnv("AGY_ACP_BIN", bin);
 	vi.stubEnv("ACP_FAKE_LOG", log);
@@ -671,7 +671,7 @@ test("lazy startFlight has an absolute deadline and late completion cannot publi
 test("ACP status and native-entry sinks may reject without leaking from event callbacks", async () => {
 	const spawn = fixture();
 	const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
-	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
 	vi.stubEnv("AGY_ACP_BIN", bin);
 	vi.stubEnv("ACP_FAKE_SCENARIO", "tool-diff");

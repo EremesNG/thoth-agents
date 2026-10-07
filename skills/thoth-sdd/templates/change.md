@@ -62,11 +62,20 @@ for owned writes.
 
 ## Authorization
 
+Accepted values: Plan review: `OKAY | SKIPPED`; Plan review selection:
+`EXPLICIT_REVIEW | EXPLICIT_SKIP | DEFAULT_REVIEW_AFTER_3`; Implementation:
+`AUTHORIZED`. Put notes on separate lines below the fields, never on field lines.
+
 **Plan review**: PENDING
 **Plan review selection**: PENDING
 **Implementation**: PENDING
 
 ## Verification
+
+Accepted values: Reviewer: `oracle`; Independent from implementer: `Yes`;
+Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
+exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
+exactly one SHA field line; put notes on separate lines below the fields.
 
 **Reviewer**: PENDING
 **Independent from implementer**: PENDING
@@ -79,5 +88,7 @@ for owned writes.
 - Source: .thoth/specs/<new-capability>/spec.md | absent
 
 ## Closeout
+
+Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
 **Archive**: PENDING

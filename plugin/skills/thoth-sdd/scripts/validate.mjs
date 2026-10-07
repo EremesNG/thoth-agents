@@ -27,6 +27,7 @@ const gates = [
   'tasks',
   'checklist',
   'ready',
+  'verify',
   'closeout',
 ];
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -126,12 +127,13 @@ export function resolveSddChangeLocation(change) {
   return { projectRoot, changeRoot, id, recordPath, archived, archiveDate };
 }
 
-function section(text, name) {
+function section(text, name, { trim = true } = {}) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = new RegExp(`^## ${escaped}\\s*$`, 'im').exec(text);
   if (!match) return undefined;
   const tail = text.slice(match.index + match[0].length);
-  return tail.slice(0, /^## /m.exec(tail)?.index ?? tail.length).trim();
+  const content = tail.slice(0, /^## /m.exec(tail)?.index ?? tail.length);
+  return trim ? content.trim() : content;
 }
 
 function localFile(root, name) {
@@ -387,14 +389,25 @@ export function validate({ change, through }) {
   if (through === 'explore') needed.push('Exploration');
   else needed.push('Exploration', 'Intent', 'Non-goals', 'Acceptance');
   if (
-    ['clarify', 'plan', 'tasks', 'checklist', 'ready', 'closeout'].includes(
+    [
+      'clarify',
+      'plan',
+      'tasks',
+      'checklist',
+      'ready',
+      'verify',
+      'closeout',
+    ].includes(through)
+  )
+    needed.push('Clarifications', 'Decisions');
+  if (
+    ['plan', 'tasks', 'checklist', 'ready', 'verify', 'closeout'].includes(
       through,
     )
   )
-    needed.push('Clarifications', 'Decisions');
-  if (['plan', 'tasks', 'checklist', 'ready', 'closeout'].includes(through))
     needed.push('Durable deltas', 'Plan');
-  if (['tasks', 'ready', 'closeout'].includes(through)) needed.push('Tasks');
+  if (['tasks', 'ready', 'verify', 'closeout'].includes(through))
+    needed.push('Tasks');
   for (const name of needed) {
     const content = section(text, name);
     if (!settled(content)) {
@@ -427,10 +440,10 @@ export function validate({ change, through }) {
     );
   }
   const ids = clauses.filter(Boolean).map((match) => match[1]);
-  if (['tasks', 'ready', 'closeout'].includes(through)) {
+  if (['tasks', 'ready', 'verify', 'closeout'].includes(through)) {
     const rows = coverageErrors(text, ids, errors, recordName);
     if (
-      through === 'closeout' &&
+      ['verify', 'closeout'].includes(through) &&
       rows.some((line) => !line.startsWith('- [x]'))
     )
       errors.push(
@@ -438,9 +451,15 @@ export function validate({ change, through }) {
       );
   }
   if (
-    ['clarify', 'plan', 'tasks', 'checklist', 'ready', 'closeout'].includes(
-      through,
-    )
+    [
+      'clarify',
+      'plan',
+      'tasks',
+      'checklist',
+      'ready',
+      'verify',
+      'closeout',
+    ].includes(through)
   ) {
     for (const name of ['Clarifications', 'Decisions']) {
       if (!settled(section(text, name))) {
@@ -461,12 +480,15 @@ export function validate({ change, through }) {
     : [];
   if (
     deltaSection &&
-    ['plan', 'tasks', 'checklist', 'ready', 'closeout'].includes(through)
+    ['plan', 'tasks', 'checklist', 'ready', 'verify', 'closeout'].includes(
+      through,
+    )
   ) {
     preflightDeltas(projectRoot, deltas, errors, warnings, recordName);
   }
 
-  if (through === 'closeout') {
+  if (['verify', 'closeout'].includes(through)) {
+    const authorizationHeading = /^## Authorization\s*$/m.exec(text);
     const auth = section(text, 'Authorization') ?? '';
     const reviewDisposition = /^\*\*Plan review\*\*: (SKIPPED|OKAY)$/m.exec(
       auth,
@@ -480,7 +502,8 @@ export function validate({ change, through }) {
           )?.[1]
         : undefined;
     if (
-      !/^\*\*Plan review\*\*: (?:SKIPPED|OKAY)$/m.test(auth) ||
+      !authorizationHeading ||
+      !reviewDisposition ||
       !/^\*\*Implementation\*\*: AUTHORIZED$/m.test(auth)
     ) {
       errors.push(
@@ -509,53 +532,64 @@ export function validate({ change, through }) {
         ),
       );
     }
-    const verified = section(text, 'Verification') ?? '';
-    const prefix = text.slice(
-      0,
-      /^## Verification\s*$/m.exec(text)?.index ?? text.length,
-    );
-    if (
-      !/^\*\*Reviewer\*\*: oracle$/m.test(verified) ||
-      !/^\*\*Independent from implementer\*\*: Yes$/m.test(verified) ||
-      !/^\*\*Verdict\*\*: PASS$/m.test(verified)
-    ) {
-      errors.push(
-        issue(
-          'SDD-VERIFICATION',
-          'Fresh independent Oracle PASS is required',
-          recordName,
-        ),
-      );
-    }
-    if (!verified.includes(`**Reviewed record SHA-256**: ${sha(prefix)}`)) {
-      errors.push(
-        issue(
-          'SDD-VERIFICATION-STALE',
-          'Reviewed record does not match the pre-verification content',
-          recordName,
-        ),
-      );
-    }
-    const rows = verified.split(/\r?\n/).filter((line) => /^- AC-/.test(line));
-    if (
-      rows.length !== ids.length ||
-      ids.some(
-        (id) =>
-          !rows.some((row) =>
-            new RegExp(
-              `^- ${id}: PASS \\| (?!none|TBD)\\S.+ \\| (?!none|TBD)\\S.+$`,
-              'i',
-            ).test(row),
+    const verificationText =
+      section(text, 'Verification', { trim: false }) ?? '';
+    const verified = verificationText.trim();
+    if (through === 'closeout') {
+      const prefix = text.slice(0, authorizationHeading?.index ?? text.length);
+      if (
+        !/^\*\*Reviewer\*\*: oracle$/m.test(verified) ||
+        !/^\*\*Independent from implementer\*\*: Yes$/m.test(verified) ||
+        !/^\*\*Verdict\*\*: PASS$/m.test(verified)
+      ) {
+        errors.push(
+          issue(
+            'SDD-VERIFICATION',
+            'Fresh independent Oracle PASS is required',
+            recordName,
           ),
-      )
-    ) {
-      errors.push(
-        issue(
-          'SDD-VERIFICATION-COVERAGE',
-          'Every accepted outcome needs concrete PASS check and evidence',
-          recordName,
-        ),
-      );
+        );
+      }
+      const digestLines =
+        verificationText.match(/^\*\*Reviewed record SHA-256\*\*:.*$/gm) ?? [];
+      const reviewedDigest =
+        digestLines.length === 1
+          ? /^\*\*Reviewed record SHA-256\*\*: ([a-f0-9]{64})$/.exec(
+              digestLines[0],
+            )?.[1]
+          : undefined;
+      if (reviewedDigest !== sha(prefix)) {
+        errors.push(
+          issue(
+            'SDD-VERIFICATION-STALE',
+            'Reviewed record does not match the content before Authorization',
+            recordName,
+          ),
+        );
+      }
+      const rows = verified
+        .split(/\r?\n/)
+        .filter((line) => /^- AC-/.test(line));
+      if (
+        rows.length !== ids.length ||
+        ids.some(
+          (id) =>
+            !rows.some((row) =>
+              new RegExp(
+                `^- ${id}: PASS \\| (?!none|TBD)\\S.+ \\| (?!none|TBD)\\S.+$`,
+                'i',
+              ).test(row),
+            ),
+        )
+      ) {
+        errors.push(
+          issue(
+            'SDD-VERIFICATION-COVERAGE',
+            'Every accepted outcome needs concrete PASS check and evidence',
+            recordName,
+          ),
+        );
+      }
     }
     const sources = verified
       .split(/\r?\n/)
@@ -676,7 +710,10 @@ export function validate({ change, through }) {
         );
       }
     }
-    if (!/^\*\*Archive\*\*: READY$/m.test(section(text, 'Closeout') ?? '')) {
+    if (
+      through === 'closeout' &&
+      !/^\*\*Archive\*\*: READY$/m.test(section(text, 'Closeout') ?? '')
+    ) {
       errors.push(
         issue('SDD-ARCHIVE-READINESS', 'Archive must be READY', recordName),
       );

@@ -46,7 +46,7 @@ function fixture(
     return `- Source: ${path} | sha256:${hash(content)}`;
   });
   const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver behavior.\n\n## Non-goals\n\nNo unrelated edits.\n\n## Acceptance\n\n- AC-1: Tested outcome.\n\n## Clarifications\n\n- Accepted intent is settled; no material question remains.\n\n## Decisions\n\n- Scope confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nChange implementation and tests.\n\n## Tasks\n\n- [x] AC-1: Complete tested behavior.\n\n## Authorization\n\n**Plan review**: OKAY\n**Plan review selection**: EXPLICIT_REVIEW\n**Implementation**: AUTHORIZED\n\n`;
-  const verify = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${hash(before)}\n\n- AC-1: PASS | pnpm test | observed behavior\n- Source: source.txt | sha256:${hash('reviewed\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
+  const verify = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${hash(before.split('## Authorization')[0])}\n\n- AC-1: PASS | pnpm test | observed behavior\n- Source: source.txt | sha256:${hash('reviewed\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
   writeFileSync(join(change, `${id}.md`), before + verify);
   return { root, change, id, before };
 }
@@ -65,6 +65,43 @@ const addition =
   '- `ADDED widget` **New behavior** — The widget MUST respond.\n  - GIVEN an active widget; WHEN invoked; THEN it responds.';
 
 describe('transactional .thoth change archive', () => {
+  test('archives after Authorization-only bookkeeping edits without a new review', () => {
+    const f = fixture();
+    const record = join(f.change, `${f.id}.md`);
+    const amended = readFileSync(record, 'utf8').replace(
+      '**Implementation**: AUTHORIZED',
+      '**Implementation**: AUTHORIZED\n\n- Authorization confirmed by root.',
+    );
+    writeFileSync(record, amended);
+    const result = archive(f);
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      readFileSync(
+        join(f.root, '.thoth/changes/archive/2026-09-28-demo/demo.md'),
+        'utf8',
+      ),
+    ).toBe(amended);
+  });
+
+  test('rejects a pre-Authorization edit as stale without mutating the active record or specs', () => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const stale = readFileSync(record, 'utf8').replace(
+      'Deliver behavior.',
+      'Deliver changed behavior.',
+    );
+    writeFileSync(record, stale);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-VERIFICATION-STALE');
+    expect(readFileSync(record, 'utf8')).toBe(stale);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
   test('archives the verified ID-named record and applies declared canonical delta only', () => {
     const f = fixture(addition);
     const result = archive(f);

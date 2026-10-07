@@ -50,7 +50,7 @@ function fixture(
     return `- Source: ${path} | sha256:${digest(content)}`;
   });
   const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver explicit behavior.\n\n## Non-goals\n\nNo unrelated migration.\n\n## Acceptance\n\n- AC-1: Visible result is checked.\n\n## Clarifications\n\n- No material question remains; accepted intent is settled.\n\n## Decisions\n\n- Scope and behavior confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nUpdate source and test behavior; no process tooling.\n\n## Tasks\n\n- [x] AC-1: Implement and test the behavior.\n\n## Authorization\n\n**Plan review**: ${reviewDisposition}\n${reviewSelection === null ? '' : `**Plan review selection**: ${reviewSelection}\n`}**Implementation**: ${implementationAuthorization}\n\n`;
-  const verification = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${digest(before)}\n\n- AC-1: PASS | pnpm test | behavior observed\n- Source: source.txt | sha256:${digest('verified implementation\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
+  const verification = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${digest(before.split('## Authorization')[0])}\n\n- AC-1: PASS | pnpm test | behavior observed\n- Source: source.txt | sha256:${digest('verified implementation\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
   writeFileSync(join(change, `${id}.md`), before + verification);
   return { root, change, id, before, verification };
 }
@@ -76,7 +76,192 @@ afterEach(() => {
 });
 
 describe('ID-named SDD validator', () => {
-  test('requires plan-review selection provenance at closeout', () => {
+  test.each([
+    ['Authorization', '**Implementation**: AUTHORIZED'],
+    ['Verification', '**Verdict**: PASS'],
+    ['Closeout', '**Archive**: READY'],
+  ])('keeps closeout valid after %s-only bookkeeping edits following PASS', (section, field) => {
+    const f = fixture();
+    const record = join(f.change, `${f.id}.md`);
+    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+    writeFileSync(
+      record,
+      readFileSync(record, 'utf8').replace(
+        field,
+        `${field}\n\n- ${section} bookkeeping confirmed by root.`,
+      ),
+    );
+    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+  });
+
+  test.each([
+    ['annotated', (line: string) => `${line} (reviewed)`],
+    ['duplicated', (line: string) => `${line}\n${line}`],
+    ['duplicate-annotated', (line: string) => `${line}\n${line} (note)`],
+    ['substring-embedded', (line: string) => `note: ${line}`],
+    ['missing', () => ''],
+    [
+      'uppercase',
+      (line: string) =>
+        line.replace(/[a-f0-9]{64}$/, (hex) => hex.toUpperCase()),
+    ],
+  ])('rejects a %s reviewed-record SHA line at closeout', (_name, invalidLine) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          /^\*\*Reviewed record SHA-256\*\*: .*$/m,
+          invalidLine,
+        ),
+    );
+    const result = validate(f.change, 'closeout');
+    expect(result.report.valid).toBe(false);
+    expect(result.report.errors.map(({ code }) => code)).toContain(
+      'SDD-VERIFICATION-STALE',
+    );
+  });
+
+  test('rejects trailing whitespace on a SHA field at the end of Verification', () => {
+    const f = fixture();
+    const shaLine = f.verification.match(
+      /^\*\*Reviewed record SHA-256\*\*: .*$/m,
+    )?.[0];
+    const reordered = f.verification
+      .replace(`${shaLine}\n`, '')
+      .replace('## Closeout', `${shaLine} \n\n## Closeout`);
+    writeFileSync(join(f.change, `${f.id}.md`), f.before + reordered);
+
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toEqual(['SDD-VERIFICATION-STALE']);
+  });
+
+  test('verify accepts final-review and Archive placeholders with complete tasks and reviewed sources', () => {
+    const f = fixture();
+    const placeholders = f.verification
+      .replace('**Reviewer**: oracle', '**Reviewer**: PENDING')
+      .replace(
+        '**Independent from implementer**: Yes',
+        '**Independent from implementer**: PENDING',
+      )
+      .replace('**Verdict**: PASS', '**Verdict**: PENDING')
+      .replace(
+        /^\*\*Reviewed record SHA-256\*\*: .*$/m,
+        '**Reviewed record SHA-256**: PENDING',
+      )
+      .replace(
+        '- AC-1: PASS | pnpm test | behavior observed',
+        '- AC-1: PENDING | check | evidence',
+      )
+      .replace('**Archive**: READY', '**Archive**: PENDING');
+    writeFileSync(join(f.change, `${f.id}.md`), f.before + placeholders);
+
+    expect(validate(f.change, 'verify').report.valid).toBe(true);
+    const closeout = validate(f.change, 'closeout');
+    expect(closeout.report.errors.map(({ code }) => code)).toEqual([
+      'SDD-VERIFICATION',
+      'SDD-VERIFICATION-STALE',
+      'SDD-VERIFICATION-COVERAGE',
+      'SDD-ARCHIVE-READINESS',
+    ]);
+  });
+
+  test.each([
+    'verify',
+    'closeout',
+  ])('%s requires the case-sensitive Authorization heading', (gate) => {
+    for (const replacement of ['## Approval', '## authorization']) {
+      const f = fixture();
+      writeFileSync(
+        join(f.change, `${f.id}.md`),
+        f.before.replace('## Authorization', replacement) + f.verification,
+      );
+      const result = validate(f.change, gate);
+      expect(result.report.valid, replacement).toBe(false);
+      expect(
+        result.report.errors.map(({ code }) => code),
+        replacement,
+      ).toContain('SDD-AUTHORIZATION');
+    }
+  });
+
+  test('rejects any pre-Authorization edit after PASS as stale', () => {
+    const f = fixture();
+    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before.replace(
+        'Deliver explicit behavior.',
+        'Deliver changed behavior.',
+      ) + f.verification,
+    );
+    const result = validate(f.change, 'closeout');
+    expect(result.report.valid).toBe(false);
+    expect(result.report.errors.map(({ code }) => code)).toEqual([
+      'SDD-VERIFICATION-STALE',
+    ]);
+  });
+
+  test.each([
+    'verify',
+    'closeout',
+  ])('%s rejects annotated Authorization after PASS', (gate) => {
+    const annotated = fixture(
+      'annotated-auth',
+      '- None.',
+      {},
+      'OKAY (note)',
+      'EXPLICIT_REVIEW',
+    );
+    expect(validate(annotated.change, 'ready').report.valid).toBe(true);
+    expect(
+      validate(annotated.change, gate).report.errors.map(({ code }) => code),
+    ).toContain('SDD-AUTHORIZATION');
+  });
+
+  test('verify rejects incomplete tasks that are valid at ready', () => {
+    const incomplete = fixture('incomplete');
+    writeFileSync(
+      join(incomplete.change, `${incomplete.id}.md`),
+      incomplete.before.replace('- [x] AC-1:', '- [ ] AC-1:') +
+        incomplete.verification,
+    );
+    expect(validate(incomplete.change, 'ready').report.valid).toBe(true);
+    expect(
+      validate(incomplete.change, 'verify').report.errors.map(
+        ({ code }) => code,
+      ),
+    ).toEqual(['SDD-TASK-INCOMPLETE']);
+  });
+
+  test('verify rejects stale, missing, and malformed reviewed implementation sources', () => {
+    const f = fixture();
+    writeFileSync(join(f.root, 'source.txt'), 'changed implementation\n');
+    expect(
+      validate(f.change, 'verify').report.errors.map(({ code }) => code),
+    ).toEqual(['SDD-VERIFICATION-SOURCE']);
+
+    writeFileSync(join(f.root, 'source.txt'), 'verified implementation\n');
+    for (const replacement of ['', '- Source: source.txt | sha256:PENDING']) {
+      writeFileSync(
+        join(f.change, `${f.id}.md`),
+        f.before +
+          f.verification.replace(
+            /^- Source: source.txt \| sha256:.*$/m,
+            replacement,
+          ),
+      );
+      expect(
+        validate(f.change, 'verify').report.errors.map(({ code }) => code),
+      ).toEqual(['SDD-VERIFICATION-SOURCE']);
+    }
+  });
+
+  test.each([
+    'verify',
+    'closeout',
+  ])('requires plan-review selection provenance at %s', (gate) => {
     const invalidSelections = [
       ['missing', 'SKIPPED', null],
       ['placeholder', 'SKIPPED', 'PENDING'],
@@ -95,7 +280,7 @@ describe('ID-named SDD validator', () => {
 
     for (const [id, disposition, selection] of invalidSelections) {
       const f = fixture(id, '- None.', {}, disposition, selection);
-      const result = validate(f.change, 'closeout');
+      const result = validate(f.change, gate);
 
       expect(result.report.valid, id).toBe(false);
       expect(
@@ -115,7 +300,7 @@ describe('ID-named SDD validator', () => {
     }
   });
 
-  test('permits the initial review-selection placeholder before closeout', () => {
+  test('permits the initial review-selection placeholder at ready', () => {
     const f = fixture(
       'pending-review-selection',
       '- None.',
@@ -131,6 +316,32 @@ describe('ID-named SDD validator', () => {
     ).toContain('SDD-REVIEW-SELECTION');
   });
 
+  test('a template-derived record permits Authorization, Verification, and Closeout placeholders at ready', () => {
+    const f = fixture();
+    const template = readFileSync(
+      join(process.cwd(), 'skills/thoth-sdd/templates/change.md'),
+      'utf8',
+    );
+    const prepared = template
+      .replace('# Change: <id>', `# Change: ${f.id}`)
+      .replace('<local|coordinated|cross-cutting>', 'coordinated')
+      .replace('<low|medium|high>', 'low')
+      .replace('<low|medium|high>', 'low')
+      .replace(
+        /^TBD: .*$/gm,
+        'Accepted behavior and focused checks are concrete.',
+      )
+      .replace(/^- PENDING: .*$/gm, '- Material choices are settled.')
+      .replace('- AC-1: TBD', '- AC-1: Visible result is checked.')
+      .replace(
+        '- [ ] AC-1: TBD',
+        '- [ ] AC-1: Implement and test the behavior.',
+      );
+    writeFileSync(join(f.change, `${f.id}.md`), prepared);
+
+    expect(validate(f.change, 'ready').report.valid).toBe(true);
+  });
+
   test('validates one substantial record and locates it by its known ID', () => {
     const f = fixture();
     expect(validate(f.change, 'explore').report.valid).toBe(true);
@@ -139,6 +350,7 @@ describe('ID-named SDD validator', () => {
     expect(validate(f.change, 'plan').report.valid).toBe(true);
     expect(validate(f.change, 'tasks').report.valid).toBe(true);
     expect(validate(f.change).report.valid).toBe(true);
+    expect(validate(f.change, 'verify').report.valid).toBe(true);
     expect(validate(f.change, 'closeout').report.valid).toBe(true);
     expect(validate(f.change).report).toMatchObject({
       changeId: 'example',
@@ -155,7 +367,7 @@ describe('ID-named SDD validator', () => {
     );
     writeFileSync(path, withoutTasks);
     expect(validate(f.change, 'plan').status).toBe(0);
-    for (const gate of ['tasks', 'ready']) {
+    for (const gate of ['tasks', 'ready', 'verify']) {
       const result = validate(f.change, gate);
       expect(result.status).toBe(1);
       expect(result.report.errors.map(({ code }) => code)).toContain(
@@ -172,22 +384,25 @@ describe('ID-named SDD validator', () => {
       'PENDING: ask product owner about behavior.',
     );
     writeFileSync(path, unresolved + f.verification);
-    for (const gate of ['clarify', 'plan', 'ready'])
+    for (const gate of ['clarify', 'plan', 'ready', 'verify'])
       expect(validate(f.change, gate).report.valid, gate).toBe(false);
   });
 
-  test('requires reviewed canonical baselines and rejects same-title edits', () => {
+  test.each([
+    'verify',
+    'closeout',
+  ])('requires reviewed canonical baselines and rejects same-title edits at %s', (gate) => {
     const addition =
       '- `ADDED widget` **New behavior** — The widget MUST respond.\n  - GIVEN an active widget; WHEN invoked; THEN it responds.';
     const original =
       '# Widget Specification\n\n## Requirements\n\n### Requirement: Existing behavior\n\nThe original reviewed statement.\n';
     const f = fixture('reviewed-spec', addition, { widget: original });
     const record = join(f.change, `${f.id}.md`);
-    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+    expect(validate(f.change, gate).report.valid).toBe(true);
 
     const updated = join(f.root, '.thoth/specs/widget/spec.md');
     writeFileSync(updated, original.replace('original reviewed', 'newer'));
-    const stale = validate(f.change, 'closeout');
+    const stale = validate(f.change, gate);
     expect(stale.report.valid).toBe(false);
     expect(stale.report.errors.map(({ code }) => code)).toContain(
       'SDD-VERIFICATION-SPEC-BASELINE',
@@ -201,22 +416,25 @@ describe('ID-named SDD validator', () => {
         '',
       ),
     );
-    const missing = validate(f.change, 'closeout');
+    const missing = validate(f.change, gate);
     expect(missing.report.valid).toBe(false);
     expect(missing.report.errors.map(({ code }) => code)).toContain(
       'SDD-VERIFICATION-SPEC-BASELINE',
     );
   });
 
-  test('reviews absence for a new capability and rejects later creation', () => {
+  test.each([
+    'verify',
+    'closeout',
+  ])('reviews absence for a new capability and rejects later creation at %s', (gate) => {
     const addition =
       '- `ADDED widget` **New behavior** — The widget MUST respond.\n  - GIVEN an active widget; WHEN invoked; THEN it responds.';
     const f = fixture('absent-spec', addition);
-    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+    expect(validate(f.change, gate).report.valid).toBe(true);
     const created = join(f.root, '.thoth/specs/widget/spec.md');
     mkdirSync(join(f.root, '.thoth/specs/widget'), { recursive: true });
     writeFileSync(created, '# Widget Specification\n');
-    const stale = validate(f.change, 'closeout');
+    const stale = validate(f.change, gate);
     expect(stale.report.valid).toBe(false);
     expect(stale.report.errors.map(({ code }) => code)).toContain(
       'SDD-VERIFICATION-SPEC-BASELINE',

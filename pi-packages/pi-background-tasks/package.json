@@ -16,7 +16,7 @@
   ],
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.ts"
     ],
     "image": "https://raw.githubusercontent.com/1aboveio/pi-better-harness/main/docs/images/package-gallery/pi-better-background-tasks.png"
   },
@@ -39,14 +39,11 @@
     "test:e2e": "vitest run src/e2e.test.ts",
     "test:cross-session": "vitest run src/e2e.test.ts -t \"different session\"",
     "test:golden": "vitest run src/golden-path.test.ts",
-    "test:integration": "npm run test:e2e && npm run test:golden"
+    "test:integration": "npm run test:e2e && npm run test:golden",
+    "build": "node ../../scripts/build-pi-extensions.mjs pi-background-tasks"
   },
   "files": [
-    "src/**/*.ts",
-    "src/windows-job-helper.ps1",
-    "src/windows-job-helper.cs",
-    "!src/**/*.test.ts",
-    "!src/test-support/**",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -63,14 +60,12 @@
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@earendil-works/pi-ai": "1.0.2",
-    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@thoth-agents/pi-core": "workspace:^"
   },
   "upstream": {
     "repository": "https://github.com/1aboveio/pi-better-harness",
     "commit": "86876e8369a673892a10c4e8df15460386ad0132",
     "directory": "packages/pi-better-background-tasks"
-  },
-  "dependencies": {
-    "@thoth-agents/pi-core": "workspace:^"
   }
 }

@@ -14,10 +14,10 @@
     "pi",
     "questions"
   ],
-  "main": "./src/index.ts",
+  "main": "./dist/index.ts",
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.ts"
     ]
   },
   "repository": {
@@ -30,17 +30,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "node ../../scripts/build-pi-extensions.mjs pi-questions-user"
   },
   "files": [
-    "src/**/*.ts",
-    "!**/*.test.ts",
+    "dist",
     "README.md",
     "LICENSE"
   ],
-  "dependencies": {
-    "@thoth-agents/pi-core": "workspace:^"
-  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.99.0",
     "@earendil-works/pi-tui": ">=0.99.0",
@@ -55,6 +52,7 @@
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@earendil-works/pi-ai": "1.0.2",
-    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@thoth-agents/pi-core": "workspace:^"
   }
 }

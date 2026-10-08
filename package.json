@@ -51,7 +51,7 @@
     ]
   },
   "scripts": {
-    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
+    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema && pnpm run build:pi-extensions",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
@@ -72,7 +72,8 @@
     "release:pi": "node scripts/release-pi.mjs",
     "release:patch": "npm version patch --ignore-scripts=false && git push --follow-tags",
     "release:minor": "npm version minor --ignore-scripts=false && git push --follow-tags",
-    "release:major": "npm version major --ignore-scripts=false && git push --follow-tags"
+    "release:major": "npm version major --ignore-scripts=false && git push --follow-tags",
+    "build:pi-extensions": "node scripts/build-pi-extensions.mjs"
   },
   "dependencies": {
     "@ast-grep/cli": "^0.40.0",
@@ -104,6 +105,7 @@
     "@types/react": "^19.2.15",
     "@types/semver": "^7.8.0",
     "@types/which": "^3.0.4",
+    "esbuild": "0.28.2",
     "ink-testing-library": "^4.0.0",
     "tsup": "^8.5.1",
     "tsx": "4.22.4",

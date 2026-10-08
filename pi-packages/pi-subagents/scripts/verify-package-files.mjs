@@ -9,22 +9,10 @@ const packageName = JSON.parse(
 ).name;
 
 const requiredFiles = [
-  'index.ts',
+  'dist/index.ts',
   'README.md',
   'LICENSE',
   'package.json',
-  'src/config.ts',
-  'src/debug.ts',
-  'src/history.ts',
-  'src/interaction-channel.ts',
-  'src/manager.ts',
-  'src/model-profiles-ui.ts',
-  'src/profile-resolver.ts',
-  'src/runner.ts',
-  'src/thread-view.ts',
-  'src/tools.ts',
-  'src/types.ts',
-  'src/ui.ts',
   'skills/subagents-configuration/SKILL.md',
 ];
 

@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,8 +9,9 @@ const packageJson = JSON.parse(
 ) as Record<string, any>;
 
 describe('pi package manifest', () => {
-  it('depends on pi-core through the workspace and has no semantic-release', () => {
-    expect(packageJson.dependencies['@thoth-agents/pi-core']).toMatch(
+  it('builds with pi-core through the workspace and has no semantic-release', () => {
+    expect(packageJson.dependencies?.['@thoth-agents/pi-core']).toBeUndefined();
+    expect(packageJson.devDependencies['@thoth-agents/pi-core']).toMatch(
       /^(workspace:\^|\^\d+\.\d+\.\d+)$/,
     );
     expect(packageJson.scripts.release).toBeUndefined();
@@ -31,7 +34,7 @@ describe('pi package manifest', () => {
 
   it('declares pi resources for install and gallery discovery', () => {
     expect(packageJson.pi).toMatchObject({
-      extensions: ['./index.ts'],
+      extensions: ['./dist/index.ts'],
       skills: ['./skills'],
     });
     expect(packageJson.description).toMatch(/subagents/i);
@@ -61,18 +64,56 @@ describe('pi package manifest', () => {
 
   it('limits the npm package to runtime resources and docs', () => {
     expect(packageJson.files).toEqual(
-      expect.arrayContaining([
-        'index.ts',
-        'src',
-        'skills',
-        'scripts/verify-package-files.mjs',
-        'README.md',
-        'LICENSE',
-      ]),
+      expect.arrayContaining(['dist', 'skills', 'README.md', 'LICENSE']),
     );
+    expect(packageJson.main).toBe('./dist/index.ts');
+    expect(packageJson.files).not.toContain('index.ts');
+    expect(packageJson.files).not.toContain('src');
     expect(packageJson.files).not.toContain('node_modules');
     expect(packageJson.files).not.toContain('test');
     expect(packageJson.files).not.toContain('.releaserc.json');
     expect(packageJson.publishConfig).toEqual({ access: 'public' });
+  });
+
+  it('verifies a source-free package and rejects a missing bundle', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-files-'));
+    try {
+      for (const resource of [
+        'dist/index.ts',
+        'README.md',
+        'LICENSE',
+        'skills/subagents-configuration/SKILL.md',
+      ]) {
+        const destination = path.join(root, resource);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.writeFileSync(destination, 'fixture');
+      }
+      fs.writeFileSync(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: '@thoth-agents/pi-subagents' }),
+      );
+      fs.mkdirSync(path.join(root, 'scripts'));
+      const script = path.join(root, 'scripts/verify-package-files.mjs');
+      fs.copyFileSync(
+        path.join(process.cwd(), 'scripts/verify-package-files.mjs'),
+        script,
+      );
+      const complete = spawnSync(process.execPath, [script], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      expect(complete.status, complete.stderr).toBe(0);
+
+      fs.unlinkSync(path.join(root, 'dist/index.ts'));
+      const incomplete = spawnSync(process.execPath, [script], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      expect(incomplete.status).toBe(1);
+      expect(incomplete.stderr).toContain('dist/index.ts');
+      expect(incomplete.stderr).toContain('Refusing to pack/publish');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

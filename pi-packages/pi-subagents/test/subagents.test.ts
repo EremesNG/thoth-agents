@@ -145,7 +145,7 @@ describe('subagents smoke', () => {
     expect(count('agent_start')).toBe(0);
     expect(count('agent_settled')).toBe(0);
   });
-  it('shows only live/current prompt outcomes while busy, collapses when idle and opens existing history from Enter', async () => {
+  it('lingers idle outcomes, collapses after linger and the next prompt, and opens existing history from Enter', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const { handlers, on } = extensionEventBus();
@@ -167,8 +167,8 @@ describe('subagents smoke', () => {
       ended_at,
     });
     let tasks = [
-      makeTask('old-done', 'completed', '2025-12-31T23:59:59Z'),
-      makeTask('old-failed', 'failed', '2025-12-31T23:59:59Z'),
+      makeTask('old-done', 'completed', '2025-12-31T23:59:00Z'),
+      makeTask('old-failed', 'failed', '2025-12-31T23:59:00Z'),
     ];
     managerInstance.listActiveSessionTasks.mockImplementation(() => tasks);
     managerInstance.listSessionTasks.mockImplementation(() => tasks);
@@ -206,6 +206,7 @@ describe('subagents smoke', () => {
           makeTask(`done-${index}`, 'completed', `2026-01-01T00:00:0${index}Z`),
         ),
       ];
+      vi.setSystemTime(new Date('2026-01-01T00:00:06Z'));
       const busy = fixture.render(300).join(' ');
       for (const label of [
         'live-work',
@@ -226,13 +227,97 @@ describe('subagents smoke', () => {
         }
       idle = true;
       await handlers.get('agent_settled')?.({}, ctx);
+      expect(fixture.render(300).join(' ')).toContain('live-work');
+      expect(fixture.render(300).join(' ')).toContain('current-failed');
+      vi.advanceTimersByTime(10_000);
+      expect(fixture.render().join(' ')).not.toContain('live-work');
+      expect(fixture.render().join(' ')).toContain('current-failed');
+      vi.advanceTimersByTime(16_000);
+      expect(fixture.render().join(' ')).toContain('current-failed');
+      await handlers.get('input')?.(
+        { source: 'interactive', text: 'next prompt' },
+        ctx,
+      );
+      await handlers.get('before_agent_start')?.(
+        { prompt: 'next prompt' },
+        ctx,
+      );
+      expect(fixture.render()).toHaveLength(2);
       expect(fixture.render().join(' ')).toContain(
         'Agents · 8 done · 2 failed',
       );
-      expect(fixture.render().join(' ')).not.toContain('live-work');
+      expect(fixture.render().join(' ')).not.toContain('current-failed');
     } finally {
       fixture.key('q');
       await handlers.get('session_shutdown')?.({}, ctx);
+    }
+  });
+
+  it('dismisses finished work with two x presses while summary Enter and /subagents keep the task in history', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const task: SubagentTask = {
+      id: 'dismissed',
+      agent: 'worker',
+      mode: 'background',
+      status: 'completed',
+      task: 'retained history task',
+      result: 'retained result',
+      created_at: '2025-12-31T23:59:00Z',
+      ended_at: '2026-01-01T00:00:00Z',
+    };
+    managerInstance.listActiveSessionTasks.mockReturnValue([task]);
+    managerInstance.listSessionTasks.mockReturnValue([task]);
+    const commands = new Map<
+      string,
+      { handler: (args: string, ctx: unknown) => Promise<void> }
+    >();
+    const { handlers, on } = extensionEventBus();
+    extension({
+      registerTool: vi.fn(),
+      on,
+      registerCommand: (name: string, command: any) =>
+        commands.set(name, command),
+    });
+    const fixture = workPanelSession(env.tmp, 'dismissal-session');
+    try {
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      expect(fixture.render().join(' ')).toContain('worker');
+      fixture.key('\u001b[D');
+      expect(fixture.render().at(-1)).toContain('x dismiss');
+      fixture.key('x');
+      expect(fixture.render().join(' ')).toContain('worker');
+      fixture.key('x');
+      expect(fixture.render().join(' ')).not.toContain('worker');
+      expect(fixture.render().join(' ')).toContain(
+        'Agents · 1 done · 0 failed',
+      );
+      expect(fixture.render().at(-1)).toContain('Enter history');
+      expect(managerInstance.cancel).not.toHaveBeenCalled();
+      expect(task.status).toBe('completed');
+      fixture.key('\r');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fixture.panelRender().join(' ')).toContain(
+        'retained history task',
+      );
+      expect(fixture.panelRender().join(' ')).toContain('retained result');
+      fixture.key('q');
+      await Promise.resolve();
+      await Promise.resolve();
+      const opening = commands.get('subagents')!.handler('', fixture.ctx);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fixture.panelRender().join(' ')).toContain(
+        'retained history task',
+      );
+      fixture.key('q');
+      await opening;
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      expect(fixture.render().join(' ')).toContain('worker');
+    } finally {
+      fixture.key('q');
+      await handlers.get('session_shutdown')?.({}, fixture.ctx);
     }
   });
 
@@ -465,7 +550,7 @@ describe('subagents smoke', () => {
   it.each([
     false,
     true,
-  ])('refreshes and animates only while a child runs, then disposes the provider (KIT=%s)', async (withKit) => {
+  ])('animates running work, refreshes once at the linger boundary, then disposes the provider (KIT=%s)', async (withKit) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const token = withKit
@@ -510,8 +595,16 @@ describe('subagents smoke', () => {
       const requests = fixture.tui.requestRender.mock.calls.length;
       vi.advanceTimersByTime(2000);
       expect(fixture.render()).toEqual(terminal);
-      expect(terminal.join(' ')).toContain('Agents · 1 done · 0 failed');
+      expect(terminal.join(' ')).toContain('worker');
+      expect(terminal.join(' ')).toContain('✓');
       expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(8000);
+      expect(fixture.render().join(' ')).toContain(
+        'Agents · 1 done · 0 failed',
+      );
+      expect(fixture.render().join(' ')).not.toContain('worker');
+      expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests + 1);
       expect(vi.getTimerCount()).toBe(0);
       task.status = 'running';
       notify?.();

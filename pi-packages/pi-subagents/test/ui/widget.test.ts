@@ -139,12 +139,72 @@ describe('Agents work-panel rows', () => {
     });
     expect(cancel).toHaveBeenCalledWith('newer', 'cancelled from work panel');
     newer.status = 'completed';
-    expect(agents.armCloseLabel(row)).toBe('');
+    expect(agents.armCloseLabel(row)).toBe('dismiss');
     agents.close(row.id);
     agents.close('queued');
     agents.close('missing');
     expect(cancel).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    'completed',
+    'failed',
+    'cancelled',
+    'interrupted',
+  ] as const)('dismisses a %s row only from this provider session, preserving history and totals', async (status) => {
+    const terminal = task({ status, ended_at: '2026-01-01T00:00:09Z' });
+    const tasks = [terminal];
+    const snapshot = structuredClone(tasks);
+    const cancel = vi.fn();
+    const notify = vi.fn();
+    const openHistory = vi.fn(async () => {});
+    const agents = createSubagentsWorkPanelProvider({
+      listTasks: () => tasks,
+      onTaskUpdate: () => () => {},
+      cancel,
+      open: async () => {},
+      openHistory,
+    });
+    const unsubscribe = agents.onVisibleChanged!(notify);
+    const row = agents.listRows(now)[0]!;
+    const totals = agents.summary!();
+    expect(agents.armCloseLabel(row)).toBe('dismiss');
+    expect(agents.close(terminal.id)).toMatchObject({
+      action: 'dismissed',
+      providerId: 'subagents',
+      id: terminal.id,
+    });
+    expect(agents.listRows(now)).toEqual([]);
+    expect(agents.visibleCount()).toBe(0);
+    expect(notify).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(agents.summary!()).toEqual(totals);
+    expect(tasks).toEqual(snapshot);
+    await agents.openHistory!({} as never);
+    expect(openHistory).toHaveBeenCalledOnce();
+    expect(
+      provider(tasks)
+        .listRows(now)
+        .map((item) => item.id),
+    ).toEqual([terminal.id]);
+    unsubscribe();
+  });
+
+  it('shows a dismissed task again when it is continued and keeps cancel available for the new run', () => {
+    const continued = task({ status: 'completed' });
+    const agents = provider([continued]);
+    agents.close(continued.id);
+    expect(agents.listRows(now)).toEqual([]);
+    continued.status = 'running';
+    const row = agents.listRows(now)[0]!;
+    expect(row).toMatchObject({ id: continued.id, state: 'running' });
+    expect(agents.armCloseLabel(row)).toBe('cancel');
+    continued.status = 'failed';
+    expect(agents.listRows(now)[0]).toMatchObject({
+      id: continued.id,
+      state: 'failed',
+    });
+  });
+
   it('animates only running rows and distinguishes queue, completion, cancellation and failure', () => {
     const rows = provider(
       ['running', 'queued', 'completed', 'cancelled', 'failed'].map(

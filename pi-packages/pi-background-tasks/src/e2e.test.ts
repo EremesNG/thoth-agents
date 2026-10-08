@@ -288,7 +288,7 @@ describe("extension e2e", () => {
     }
   });
 
-  it("keeps older and dismissed terminal tasks in history while collapsing idle Work panel rows", async () => {
+  it("lingers recent idle Work panel rows and keeps older and manually dismissed terminal tasks in history", async () => {
     const harness = createHarness({ sessionId: "session-a", mode: "tui", hasUI: true });
     const failedLaunch = await harness.execute("bg_task_spawn", {
       name: "recent-failure",
@@ -306,15 +306,19 @@ describe("extension e2e", () => {
     const succeededId = extractTaskId(succeededLaunch);
 
     const failed = await waitForMeta(failedId, (meta) => meta?.status === "failed" && typeof meta.endedAt === "number");
-    const succeeded = await waitForMeta(succeededId, (meta) => meta?.status === "succeeded" && typeof meta.endedAt === "number");
+    await waitForMeta(succeededId, (meta) => meta?.status === "succeeded" && typeof meta.endedAt === "number");
     await harness.fireSessionStart();
     let list = harness.panel.render().join("\n");
     expect(list).toContain('Background');
-    expect(list).not.toContain("recent-failure");
+    expect(list).toContain("recent-failure");
+    expect(list).toContain("recent-success");
+    getBackgroundTasksNavigator(harness.pi).provider.close(succeededId);
+    expect(readMeta(succeededId)?.dismissedAt).toBeTypeOf("number");
+    list = harness.panel.render().join("\n");
+    expect(list).toContain("recent-failure");
     expect(list).not.toContain("recent-success");
 
     writeMeta({ ...failed!, endedAt: Date.now() - 31_000 });
-    writeMeta({ ...succeeded!, endedAt: Date.now() - 31_000, dismissedAt: Date.now() });
     await harness.fireSessionStart();
 
     list = harness.panel.render().join("\n");

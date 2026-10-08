@@ -19,6 +19,7 @@ import {
   singleLine,
   workPanelRenderStatus,
 } from './work-panel-render.js';
+import { workPanelRegistry } from './work-panel-state.js';
 
 const WIDGET_KEY = 'thoth-work-panel';
 const CLOSE_KEY = 'thoth-work-panel-close';
@@ -411,7 +412,12 @@ export function createWorkPanelHost(
     },
   };
   function install(): void {
-    if (disposed || !providers().length) return;
+    if (
+      disposed ||
+      workPanelRegistry(false)?.hosts.get(ctx.sessionManager) !== host ||
+      !providers().length
+    )
+      return;
     previousFactory = ctx.ui.getEditorComponent?.();
     if (
       typeof ctx.ui.setWidget !== 'function' ||

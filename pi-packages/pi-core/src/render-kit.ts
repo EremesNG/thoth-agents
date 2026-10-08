@@ -439,15 +439,34 @@ export function renderToolFooter(
 
 export type RenderKitToken = symbol;
 
-const registryKey = Symbol.for('thoth-agents.pi-core.render-kit.v1');
+const RENDER_KIT_VERSION = 1;
+const registryKey = Symbol.for(
+  `thoth-agents.pi-core.render-kit.v${RENDER_KIT_VERSION}`,
+);
 interface Registration {
   kit: ThothRenderKit;
   owner: object;
   token: RenderKitToken;
 }
 const shared = globalThis as typeof globalThis & {
-  [registryKey]?: Registration;
+  [registryKey]?: unknown;
 };
+
+function registration(): Registration | undefined {
+  try {
+    const record = shared[registryKey] as Registration | null;
+    if (
+      record &&
+      typeof record.token === 'symbol' &&
+      record.owner !== null &&
+      (typeof record.owner === 'object' || typeof record.owner === 'function')
+    )
+      return record;
+  } catch {
+    // Foreign registrations may expose throwing accessors.
+  }
+  return undefined;
+}
 
 /** Replaces the current kit; even re-registration by the same owner gets a new token. */
 export function registerRenderKit(
@@ -461,15 +480,15 @@ export function registerRenderKit(
 
 /** A stale or foreign token cannot withdraw a newer registration. No stack restoration. */
 export function withdrawRenderKit(token: RenderKitToken): void {
-  if (shared[registryKey]?.token === token) delete shared[registryKey];
+  if (registration()?.token === token) delete shared[registryKey];
 }
 
 /** Discover on each render, never cache across renders or extension reloads. */
 export function getRenderKit(): ThothRenderKit | undefined {
   try {
-    const kit = shared[registryKey]?.kit;
+    const kit = registration()?.kit;
     if (
-      kit?.version === 1 &&
+      kit?.version === RENDER_KIT_VERSION &&
       (!('resolveToolRenderers' in kit) ||
         typeof kit.resolveToolRenderers === 'function') &&
       (!('toolFooter' in kit) || typeof kit.toolFooter === 'function') &&

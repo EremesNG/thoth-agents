@@ -13,12 +13,90 @@ import {
 } from '../src/index.js';
 
 const handles: ToolDefinitionHandle[] = [];
+const registryKey = Symbol.for('thoth-agents.pi-core.tool-definitions.v1');
+const shared = globalThis as typeof globalThis & Record<symbol, unknown>;
 
 afterEach(() => {
   for (const handle of handles.splice(0)) handle.withdraw();
+  delete shared[registryKey];
 });
 
 describe('tool definition registry', () => {
+  it.each([
+    null,
+    {},
+    { entries: {}, version: 0 },
+    { entries: new Map(), version: Number.NaN },
+    { entries: new Map(), version: '1' },
+    { entries: new Map([['foreign', {}]]), version: 0 },
+    { entries: new Map([['foreign', [null]]]), version: 0 },
+    {
+      entries: new Map([['foreign', [{ token: Symbol(), definition: {} }]]]),
+      version: 0,
+    },
+    {
+      entries: new Map([
+        [
+          'foreign',
+          [
+            {
+              token: Symbol(),
+              definition: { name: 'foreign', renderCall: 42 },
+            },
+          ],
+        ],
+      ]),
+      version: 0,
+    },
+    {
+      entries: new Map([
+        [
+          'foreign',
+          [
+            {
+              token: Symbol(),
+              definition: { name: 'foreign', renderResult: 'bad' },
+            },
+          ],
+        ],
+      ]),
+      version: 0,
+    },
+    {
+      entries: new Map([
+        [
+          'foreign',
+          [
+            {
+              token: Symbol(),
+              definition: { name: 'foreign', renderShell: 'bad' },
+            },
+          ],
+        ],
+      ]),
+      version: 0,
+    },
+    {
+      get entries(): never {
+        throw new Error('foreign accessor');
+      },
+      version: 0,
+    },
+  ])('uses no-registry behavior for malformed foreign records', (record) => {
+    shared[registryKey] = record;
+    expect(getPublishedToolDefinition('foreign')).toBeUndefined();
+    expect(getToolDefinitionRegistryVersion()).toBe(0);
+    const handle = publishToolDefinitions([{ name: 'own' }]);
+    handles.push(handle);
+    expect(() => handle.publish([{ name: 'later' }])).not.toThrow();
+    expect(getPublishedToolDefinition('own')).toBeUndefined();
+    expect(getPublishedToolDefinition('later')).toBeUndefined();
+    expect(getToolDefinitionRegistryVersion()).toBe(0);
+    expect(() => handle.withdraw()).not.toThrow();
+    expect(getPublishedToolDefinition('own')).toBeUndefined();
+    expect(shared[registryKey]).toBe(record);
+  });
+
   it('accepts host definitions and renderer types without casts', () => {
     expectTypeOf<ToolDefinition>().toExtend<ToolDefinitionLike>();
     expectTypeOf<ToolRenderers>().toExtend<ToolRenderersLike>();

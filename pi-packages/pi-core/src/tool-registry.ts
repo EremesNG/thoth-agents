@@ -31,14 +31,54 @@ interface Registry {
   version: number;
 }
 
-const registryKey = Symbol.for('thoth-agents.pi-core.tool-definitions.v1');
+const TOOL_DEFINITION_REGISTRY_VERSION = 1;
+const registryKey = Symbol.for(
+  `thoth-agents.pi-core.tool-definitions.v${TOOL_DEFINITION_REGISTRY_VERSION}`,
+);
 const shared = globalThis as typeof globalThis & {
-  [registryKey]?: Registry;
+  [registryKey]?: unknown;
 };
 
-function registry(): Registry {
-  shared[registryKey] ??= { entries: new Map(), version: 0 };
-  return shared[registryKey];
+function isPublication(publication: Publication | null, name: string): boolean {
+  const definition = publication?.definition;
+  return (
+    typeof publication?.token === 'symbol' &&
+    definition?.name === name &&
+    (definition.renderCall === undefined ||
+      typeof definition.renderCall === 'function') &&
+    (definition.renderResult === undefined ||
+      typeof definition.renderResult === 'function') &&
+    (definition.renderShell === undefined ||
+      definition.renderShell === 'default' ||
+      definition.renderShell === 'self')
+  );
+}
+
+function registry(): Registry | undefined {
+  try {
+    if (shared[registryKey] === undefined)
+      shared[registryKey] = { entries: new Map(), version: 0 };
+    const state = shared[registryKey] as Registry | null;
+    if (
+      !state ||
+      !(state.entries instanceof Map) ||
+      !Number.isSafeInteger(state.version) ||
+      state.version < 0
+    )
+      return undefined;
+    for (const [name, publications] of state.entries) {
+      if (
+        typeof name !== 'string' ||
+        !Array.isArray(publications) ||
+        !publications.every((publication) => isPublication(publication, name))
+      )
+        return undefined;
+    }
+    return state;
+  } catch {
+    // Foreign records (including throwing accessors) act like no registry.
+    return undefined;
+  }
 }
 
 /** Publish full definitions for one instance; the latest live publication wins. */
@@ -46,6 +86,7 @@ export function publishToolDefinitions(
   definitions: readonly ToolDefinitionLike[],
 ): ToolDefinitionHandle {
   const state = registry();
+  if (!state) return { publish() {}, withdraw() {} };
   const entries = state.entries;
   const token = Symbol('tool-definition-publication');
   const names = new Set<string>();
@@ -85,10 +126,10 @@ export function publishToolDefinitions(
 export function getPublishedToolDefinition(
   name: string,
 ): ToolDefinitionLike | undefined {
-  return registry().entries.get(name)?.at(-1)?.definition;
+  return registry()?.entries.get(name)?.at(-1)?.definition;
 }
 
 /** Monotonic change counter; nonempty publication/withdrawal batches increment once. */
 export function getToolDefinitionRegistryVersion(): number {
-  return registry().version;
+  return registry()?.version ?? 0;
 }

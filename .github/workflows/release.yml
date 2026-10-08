@@ -168,6 +168,7 @@ jobs:
                 "$notes_file" &&
                 gh release create "${tag}" \
                   --verify-tag \
+                  --latest=false \
                   --title "${tag}" \
                   --notes-file "$notes_file" || {
                   echo "Failed to create release ${tag}."

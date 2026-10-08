@@ -54,6 +54,7 @@ describe('release workflow Pi packages', () => {
     expect(script).toContain('git ls-remote --tags origin');
     expect(script).toContain('gh release view');
     expect(script).toContain('--verify-tag');
+    expect(script).toContain('--latest=false');
     expect(script).toMatch(/--to "\$\{tag\}"/);
     expect(script).toMatch(/--tag-prefix "\$\{name\}@"/);
 

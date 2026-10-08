@@ -2,6 +2,7 @@
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import {
+  bindWorkPanelLifecycle,
   ensureWorkPanel,
   publishToolDefinitions,
   registerWorkPanelProvider,
@@ -21,6 +22,7 @@ import {
   sid,
 } from './state/store.js';
 import { registerTodosCommand, registerTodoTool } from './todo.js';
+import { forgetCompletedList } from './todo-visibility.js';
 import { createTodoWorkPanelProvider } from './todo-work-panel.js';
 
 // Pi invalidates ctx proxies after session replacement. Only this known race
@@ -42,6 +44,7 @@ export default function (pi: ExtensionAPI) {
   const statePublisher = new TodoStatePublisher(pi.events);
   let unregisterProvider: (() => void) | undefined;
   let releaseWorkPanel: (() => void) | undefined;
+  let releaseLifecycle: (() => void) | undefined;
   let lifecycleGeneration = 0;
 
   registerTodoTool(pi);
@@ -77,9 +80,16 @@ export default function (pi: ExtensionAPI) {
     if (getActiveRenderSession() === '') setActiveRenderSession(id);
     if (id !== getActiveRenderSession()) return;
     const generation = ++lifecycleGeneration;
+    // Bind before the host so the prompt epoch is tracked even when Todos is the only provider.
+    releaseLifecycle?.();
+    releaseLifecycle = bindWorkPanelLifecycle(pi, ctx);
+    forgetCompletedList(id);
     unregisterProvider ??= registerWorkPanelProvider(
       ctx,
-      createTodoWorkPanelProvider(),
+      createTodoWorkPanelProvider({
+        ctx,
+        strikethrough: (text) => ctx.ui.theme.strikethrough(text),
+      }),
     );
     const release = await ensureWorkPanel(ctx);
     if (generation !== lifecycleGeneration) {
@@ -109,11 +119,14 @@ export default function (pi: ExtensionAPI) {
       s = '';
     }
     evictSession(s);
+    forgetCompletedList(s);
     if (s === '') statePublisher.dispose();
     else statePublisher.evict(s);
     if (s === '' || s === getActiveRenderSession()) {
       lifecycleGeneration++;
       try {
+        releaseLifecycle?.();
+        releaseLifecycle = undefined;
         releaseWorkPanel?.();
       } finally {
         releaseWorkPanel = undefined;

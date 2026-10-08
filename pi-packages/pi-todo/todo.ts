@@ -8,7 +8,7 @@
  */
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { resolveIcon, resolveStatusGlyph } from '@thoth-agents/pi-core';
+import { resolveIcon } from '@thoth-agents/pi-core';
 import { publishTodoState } from './state/publish.js';
 import {
   selectTasksByStatus,
@@ -17,6 +17,8 @@ import {
 } from './state/selectors.js';
 import { applyTaskMutation } from './state/state-reducer.js';
 import { commitState, getRenderState, getState, sid } from './state/store.js';
+import { canOpenTodoPanel, showTodoPanel } from './todo-panel.js';
+import { currentEpoch, isCompletedListHidden } from './todo-visibility.js';
 import { buildToolResult } from './tool/response-envelope.js';
 import {
   COMMAND_NAME,
@@ -33,6 +35,7 @@ import {
   renderTodoCall,
   renderTodoResult,
 } from './view/format.js';
+import { taskGlyph } from './view/task-glyphs.js';
 
 // Fixed upstream English section headings.
 const SECTION_PENDING = '── Pending ──';
@@ -143,10 +146,17 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
         ctx.ui.notify(ERR_REQUIRES_INTERACTIVE, 'error');
         return;
       }
-      const state = getState(sid(ctx));
-      const visible = selectVisibleTasks(state);
+      const id = sid(ctx);
+      const state = getState(id);
+      const visible = isCompletedListHidden(id, state, currentEpoch(ctx))
+        ? []
+        : selectVisibleTasks(state);
       if (visible.length === 0) {
         ctx.ui.notify(MSG_NO_TODOS, 'info');
+        return;
+      }
+      if (canOpenTodoPanel(ctx)) {
+        await showTodoPanel(ctx);
         return;
       }
       const groups = selectTasksByStatus(state);
@@ -168,23 +178,17 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
       if (groups.pending.length > 0) {
         lines.push(SECTION_PENDING);
         for (const task of groups.pending)
-          lines.push(
-            formatCommandTaskLine(task, resolveStatusGlyph('pending', '○')),
-          );
+          lines.push(formatCommandTaskLine(task, taskGlyph('pending')));
       }
       if (groups.inProgress.length > 0) {
         lines.push(SECTION_IN_PROGRESS);
         for (const task of groups.inProgress)
-          lines.push(
-            formatCommandTaskLine(task, resolveStatusGlyph('in_progress', '◐')),
-          );
+          lines.push(formatCommandTaskLine(task, taskGlyph('in_progress')));
       }
       if (groups.completed.length > 0) {
         lines.push(SECTION_COMPLETED);
         for (const task of groups.completed)
-          lines.push(
-            formatCommandTaskLine(task, resolveStatusGlyph('completed', '✓')),
-          );
+          lines.push(formatCommandTaskLine(task, taskGlyph('completed')));
       }
 
       ctx.ui.notify(lines.join('\n'), 'info');

@@ -37,6 +37,8 @@
   "files": [
     "index.ts",
     "todo.ts",
+    "todo-panel.ts",
+    "todo-visibility.ts",
     "todo-work-panel.ts",
     "state/**/*.ts",
     "tool/**/*.ts",

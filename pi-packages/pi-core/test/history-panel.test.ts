@@ -276,6 +276,46 @@ describe('history panel keys', () => {
 });
 
 describe('history panel navigation', () => {
+  it('anchors opted-in content at the top on open and after keyboard or mouse selection', () => {
+    const entries = ['a', 'b'].map((id) => ({
+      ...item(id),
+      lines: Array.from({ length: 30 }, (_, index) => `${id}-line-${index}`),
+    }));
+    const value = panel(entries, { contentScroll: 'top', maxLines: 24 });
+    expect(text(value)).toContain('a-line-0');
+    expect(text(value)).not.toContain('a-line-29');
+    value.handleInput('\u001b[B');
+    expect(text(value)).toContain('a-line-1');
+    expect(text(value)).not.toContain('a-line-0');
+    value.handleInput('\u001b[F');
+    expect(text(value)).toContain('a-line-29');
+    value.handleInput('\u001b[C');
+    expect(text(value)).toContain('b-line-0');
+    expect(text(value)).not.toContain('b-line-29');
+    value.handleInput('\u001b[F');
+    value.handleMouse({ type: 'click', row: 4, col: 5 });
+    expect(text(value)).toContain('a-line-0');
+    expect(text(value)).not.toContain('a-line-29');
+  });
+  it('resets top-anchored content when a refresh removes or reorders the selected item', () => {
+    const entries = ['a', 'b'].map((id) => ({
+      ...item(id),
+      lines: Array.from({ length: 30 }, (_, index) => `${id}-line-${index}`),
+    }));
+    const value = panel(entries, {
+      contentScroll: 'top',
+      initialSelectedId: 'b',
+    });
+    expect(text(value)).toContain('b-line-0');
+    value.handleInput('\u001b[F');
+    expect(text(value)).toContain('b-line-29');
+    entries.pop();
+    expect(text(value)).toContain('a-line-0');
+    value.handleInput('\u001b[F');
+    entries.unshift({ ...item('c'), lines: ['c-first', ...entries[0].lines] });
+    expect(text(value)).toContain('c-first');
+  });
+
   it('initially selects by id, bounds selection when refreshed items disappear, and exposes render metrics', () => {
     const entries = [item('a'), item('b')];
     const value = panel(entries, { initialSelectedId: 'b' });
@@ -342,6 +382,52 @@ describe('history panel navigation', () => {
 });
 
 describe('history panel layout', () => {
+  it.each([
+    40, 60, 120,
+  ])('resolves every shell border, divider and close mark through an ASCII kit at width %i', (width) => {
+    for (const entries of [[], [item('a'), item('b')]]) {
+      const value = panel(
+        entries,
+        {},
+        { renderItemLabel: (entry) => entry.name },
+      );
+      const native = text(value, width);
+      const icons: Record<string, string> = {
+        agent: '@',
+        arrowLeft: '<',
+        arrowRight: '>',
+        arrowUp: '^',
+        arrowDown: 'v',
+        scrollUp: '^',
+        scrollDown: 'v',
+        separator: '|',
+        ellipsis: '...',
+        close: 'x',
+        boxTopLeft: '+',
+        boxTopRight: '+',
+        boxBottomLeft: '+',
+        boxBottomRight: '+',
+        boxHorizontal: '-',
+        boxVertical: '|',
+        boxTDown: '+',
+        boxTUp: '+',
+        boxTRight: '+',
+        boxTLeft: '+',
+        boxCross: '+',
+      };
+      const token = registerRenderKit(
+        createTestRenderKit({ icon: (name) => icons[name] ?? '' }),
+        {},
+      );
+      cleanups.push(() => withdrawRenderKit(token));
+      const rendered = text(value, width);
+      expect(rendered).toContain('[x Cerrar]');
+      expect(rendered).not.toMatch(/[╭╮╰╯─│┬┴├┤┼✕]/);
+      expect(value.getRenderDebugState().widthViolationCount).toBe(0);
+      withdrawRenderKit(token);
+      expect(text(value, width)).toBe(native);
+    }
+  });
   it('preserves visually fitting ANSI rows without calling a raw embedding truncator', () => {
     const line =
       '\u001b[42m│\u001b[0m \u001b[42mread\u001b[0m    \u001b[42mAGENTS.md\u001b[0m \u001b[42m│\u001b[0m';

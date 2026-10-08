@@ -44,14 +44,98 @@ const ids = (source: WorkPanelProvider, busy = true) =>
   );
 
 describe('prompt-retained work panel eligibility', () => {
-  it('keeps all running and current failed rows, only the three newest current completions, and no old terminal rows', () => {
+  it.each([
+    false,
+    true,
+  ])('lingers done rows across prompt epochs then collapses to selectable history (busy: %s)', (busy) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_999);
+    const source = retained([row('done', 'done', 1000)]);
+    const nextEpoch = { epoch: 2, epochStartedAt: 2000, busy };
+    expect(
+      panelSections([source], Date.now(), nextEpoch)[0]?.rows.map(
+        ({ row }) => row.id,
+      ),
+    ).toEqual(['done']);
+    vi.advanceTimersByTime(1);
+    expect(panelSections([source], Date.now(), nextEpoch)).toMatchObject([
+      {
+        collapsed: true,
+        counts: { done: 1, failed: 0 },
+        rows: [{ sectionSummary: true, row: { id: 'history' } }],
+      },
+    ]);
+  });
+  it.each([
+    false,
+    true,
+  ])('defers collapse for failures until both the epoch and thirty-second minimum have elapsed (busy: %s)', (busy) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(30_999);
+    const source = retained([row('failed', 'failed', 1000)]);
+    const nextEpoch = { epoch: 2, epochStartedAt: 2000, busy };
+    expect(
+      panelSections([source], Date.now(), nextEpoch)[0]?.collapsed,
+    ).not.toBe(true);
+    expect(
+      panelSections([source], Date.now(), nextEpoch)[0]?.rows[0]?.row.id,
+    ).toBe('failed');
+    vi.advanceTimersByTime(1);
+    expect(panelSections([source], Date.now(), nextEpoch)[0]?.collapsed).toBe(
+      true,
+    );
+    expect(
+      panelSections([source], Date.now(), {
+        ...nextEpoch,
+        epochStartedAt: 1000,
+      })[0]?.rows[0]?.row.id,
+    ).toBe('failed');
+  });
+
+  it('refreshes at ten- and thirty-second linger boundaries without polling and collapses idle history afterwards', async () => {
+    await import('@earendil-works/pi-coding-agent');
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const session = uiSession();
+    const bridge = bindSession(session);
+    cleanups.push(
+      registerWorkPanelProvider(
+        session.ctx,
+        retained([row('done', 'done', 1000), row('failed', 'failed', 1000)]),
+      ),
+      await ensureWorkPanel(session.ctx),
+    );
+    vi.advanceTimersByTime(1);
+    bridge.emit('input', { source: 'interactive', text: 'next prompt' });
+    bridge.emit('before_agent_start', { prompt: 'next prompt' });
+    expect(session.render()).toContain('  ✗ failed');
+    expect(session.render()).toContain('  ✓ done');
+    const initialRenders = session.tui.requestRender.mock.calls.length;
+    vi.advanceTimersByTime(9998);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders);
+    vi.advanceTimersByTime(1);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders + 1);
+    expect(session.render()).not.toContain('  ✓ done');
+    expect(session.render()).toContain('  ✗ failed');
+    vi.advanceTimersByTime(19_999);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders + 1);
+    vi.advanceTimersByTime(1);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders + 2);
+    expect(session.render()).toEqual([
+      '◆ Agents · 1 done · 1 failed',
+      '← interact',
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps all running and current failed rows, only the three newest lingering completions, and no expired terminal rows', () => {
     const source = retained([
       row('old done', 'done', 999),
       row('running', 'running'),
       row('done 1', 'done', 1100),
       row('failed 1', 'failed', 1000),
       row('done 4', 'done', 1400),
-      row('old failed', 'failed', 900),
+      row('old failed', 'failed', -30_000),
       row('done 2', 'done', 1200),
       row('done 3', 'done', 1300),
       row('failed 2', 'failed', 1500),
@@ -98,7 +182,7 @@ describe('prompt-retained work panel eligibility', () => {
   it('counts overflow only from eligible rows, never old failures or completions outside the hard cap', () => {
     const source = retained([
       ...Array.from({ length: 55 }, (_, i) => row(`old ${i}`, 'done', 900)),
-      row('old failure', 'failed', 999),
+      row('old failure', 'failed', -30_000),
       ...Array.from({ length: 5 }, (_, i) =>
         row(`done ${i}`, 'done', 1100 + i),
       ),
@@ -293,14 +377,14 @@ describe('idle retained section summaries', () => {
     ).toEqual([]);
   });
 
-  it('expands on lifecycle events and running items, advances retention on matching prompts, and collapses only on settlement without running work', async () => {
+  it('expands on lifecycle events and defers idle collapse until lingering work clears after a matching prompt', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
     const session = uiSession();
     const bridge = bindSession(session);
     let items = [
-      row('old done', 'done', 900),
-      row('old failed', 'failed', 800),
+      row('old done', 'done', -30_000),
+      row('old failed', 'failed', -30_000),
     ];
     let notify = () => {};
     cleanups.push(
@@ -347,11 +431,15 @@ describe('idle retained section summaries', () => {
     );
     notify();
     expect(session.render()).toEqual([
-      '◆ Agents · 3 done · 2 failed',
+      '◆ Agents · 3 items',
+      '  ✓ live',
+      '  ✓ new done',
+      '  ✗ new failed',
       '← interact',
     ]);
+    vi.advanceTimersByTime(40_000);
+    expect(session.render()).toContain('  ✗ new failed'); // Current-epoch failures outlive the minimum linger.
     expect(session.tui.requestRender).toHaveBeenCalled();
-    vi.setSystemTime(3000);
     bridge.emit('input', { source: 'rpc', text: 'next prompt' });
     bridge.emit('before_agent_start', { prompt: 'next prompt' });
     bridge.setIdle(false);

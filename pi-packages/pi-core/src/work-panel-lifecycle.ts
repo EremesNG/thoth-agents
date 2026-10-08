@@ -80,7 +80,8 @@ export function onWorkPanelLifecycleChanged(
 }
 
 /**
- * Opting-in extensions bind on activation, before ensureWorkPanel(ctx).
+ * Extensions bind on activation, before ensureWorkPanel(ctx), regardless of retention.
+ * Context-only provider registration cannot install these ExtensionAPI handlers.
  * The first live binding owns the subscriptions; later bindings are inert.
  * Disposal, session replacement and shutdown allow a new binding to take over.
  * Prompt identity is deliberately only observed-text equality, not origin proof.

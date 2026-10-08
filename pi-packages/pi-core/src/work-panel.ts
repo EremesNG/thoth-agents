@@ -49,8 +49,10 @@ export interface WorkPanelRow {
   id: string;
   primary: string;
   segments?: readonly WorkPanelSegment[];
-  /** Nonselectable section summary; excluded from item caps and overflow counts. */
+  /** Section summary; excluded from item caps and overflow counts. Informational by default. */
   summary?: boolean;
+  /** Prefer dropping this item before other items when the panel exceeds its height budget. */
+  dropFirst?: boolean;
   providerId?: string;
   name?: string;
   status?: string;
@@ -124,7 +126,7 @@ export interface WorkPanelProvider {
   id: string;
   label: string;
   priority: number;
-  /** Additive v1 opt-in: retain only current-prompt outcomes, collapse while idle. */
+  /** Additive v1 opt-in: linger terminal outcomes, then collapse idle sections to history. */
   retention?: 'prompt';
   /** Advisory provider count; host cues and focus use selectable section rows instead. */
   visibleCount(): number;
@@ -142,9 +144,15 @@ export interface WorkPanelProvider {
   /** Resolve only once the custom detail UI is closed; input is suspended until then. */
   // biome-ignore lint/suspicious/noConfusingVoidType: synchronous no-ops and awaited custom UIs are supported.
   open?(id: string, ctx: ExtensionContext): void | Promise<unknown>;
-  /** Summary-line action; resolves only after the history UI closes. */
+  /** Heading/summary action; resolves only after the provider's UI closes. */
   // biome-ignore lint/suspicious/noConfusingVoidType: synchronous no-ops and awaited custom UIs are supported.
   openHistory?(ctx: ExtensionContext): void | Promise<unknown>;
+  /** Make the expanded section heading selectable; Enter calls openHistory. */
+  selectableHeading?: boolean;
+  /** Make provider and overflow summary lines selectable; Enter calls openHistory. */
+  selectableSummary?: boolean;
+  /** Label for the exact number of omitted dropFirst items; other overflow stays `+N more`. */
+  droppedSummary?(count: number): string;
   summary?(): WorkPanelSummary | string;
   showSection?(rows: WorkPanelRow[], now: number): boolean;
   parentRow?(now: number): WorkPanelRow | null;

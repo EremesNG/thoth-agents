@@ -11,6 +11,8 @@ import {
   isSelectablePanelRow,
   type PanelRow,
   panelCloseLabel,
+  panelLingerEndsAt,
+  panelOverflowEntries,
   panelSections,
   renderPanel,
   safely,
@@ -96,6 +98,16 @@ export function createWorkPanelHost(
   let dismissDetail: (() => void) | undefined;
   let renderTimer: ReturnType<typeof setTimeout> | undefined;
   let statusCue: string | undefined;
+  let panelWidth: number | undefined;
+  let panelTui: TUI | undefined;
+  const panelBudget = () =>
+    Math.min(
+      12,
+      Math.max(
+        0,
+        Math.floor((panelTui?.terminal.rows ?? tui?.terminal.rows ?? 24) / 2),
+      ),
+    );
 
   function refreshStatusCue(count: number, force = false): void {
     const next =
@@ -116,8 +128,24 @@ export function createWorkPanelHost(
   const sections = () =>
     panelSections(providers(), Date.now(), getWorkPanelLifecycle(ctx));
   function rows(): PanelRow[] {
-    const all = sections()
-      .flatMap((section) => section.rows)
+    const current = sections();
+    const overflow = current.some(({ provider }) => provider.selectableSummary)
+      ? panelOverflowEntries(
+          current,
+          panelWidth ??
+            panelTui?.terminal.columns ??
+            tui?.terminal.columns ??
+            100,
+          Date.now(),
+          panelBudget(),
+          focused ? selectedKey : undefined,
+        )
+      : new Map<string, PanelRow[]>();
+    const all = current
+      .flatMap((section) => [
+        ...section.rows,
+        ...(overflow.get(section.provider.id) ?? []),
+      ])
       .filter(isSelectablePanelRow);
     if (!all.some((entry) => entry.key === selectedKey))
       selectedKey = all[0]?.key;
@@ -181,7 +209,9 @@ export function createWorkPanelHost(
     releaseFocus();
     host.refresh();
     const sectionRows = () =>
-      rows().filter((row) => row.provider.id === entry.provider.id);
+      rows().filter(
+        (row) => row.provider.id === entry.provider.id && !row.sectionSummary,
+      );
     const sectionSelected = () => {
       const all = sectionRows();
       const current = all.find((row) => row.key === selectedKey) ?? all[0];
@@ -333,9 +363,14 @@ export function createWorkPanelHost(
       ) {
         delay = Math.min(delay, Math.max(100, interval));
       }
-      for (const { row } of rows)
-        if (row.expiresAt !== undefined && row.expiresAt > now)
-          delay = Math.min(delay, row.expiresAt - now);
+      for (const { row } of rows) {
+        const expiresAt =
+          provider.retention === 'prompt'
+            ? panelLingerEndsAt(row)
+            : row.expiresAt;
+        if (expiresAt !== undefined && expiresAt > now)
+          delay = Math.min(delay, expiresAt - now);
+      }
     }
     if (Number.isFinite(delay)) {
       renderTimer = setTimeout(() => host.refresh(), delay);
@@ -407,19 +442,18 @@ export function createWorkPanelHost(
     ctx.ui.setWidget(
       WIDGET_KEY,
       (widgetTui, theme) => {
+        panelTui = widgetTui;
         requestRender = () => widgetTui.requestRender();
         return {
           render(width) {
+            panelWidth = width;
             refreshStatusCue(rows().length);
             const entry = selected();
             const label = panelCloseLabel(entry);
             return renderPanel(sections(), width, Date.now(), theme, clip, {
               measure: toolkit?.visibleWidth,
               selectedKey: focused ? selectedKey : undefined,
-              budget: Math.min(
-                12,
-                Math.max(0, Math.floor(widgetTui.terminal.rows / 2)),
-              ),
+              budget: panelBudget(),
               hint: focused
                 ? [
                     !entry?.sectionSummary || rows().length > 1
@@ -427,7 +461,9 @@ export function createWorkPanelHost(
                       : '',
                     entry?.sectionSummary
                       ? entry.provider.openHistory
-                        ? 'Enter history'
+                        ? entry.provider.retention === 'prompt'
+                          ? 'Enter history'
+                          : 'Enter open'
                         : ''
                       : 'Enter open',
                     label ? `x ${label}` : '',

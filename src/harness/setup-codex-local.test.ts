@@ -1,14 +1,16 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { syncCodexLocalSetup } from '../../scripts/setup-codex-local';
 import { CODEX_ROLE_NAMES } from '../cli/codex-paths';
 
@@ -137,6 +139,134 @@ describe('Codex local development setup', () => {
     expect(readFileSync(join(codexHome, 'config.toml'), 'utf8')).toContain(
       'default_mode_request_user_input = true',
     );
+  });
+
+  test.each([
+    ['install', 'EPERM', 1],
+    ['backup', 'EPERM', 3],
+    ['install', 'EPERM', 3],
+    ['install', 'EACCES', 1],
+    ['install', 'EBUSY', 1],
+  ] as const)('retries the %s rename after %s fails %i times', (phase, code, failureCount) => {
+    const homeDirectory = temporaryHome();
+    personalMarketplace(homeDirectory);
+    const pluginTarget = join(homeDirectory, 'plugins', 'thoth-agents');
+    mkdirSync(pluginTarget, { recursive: true });
+    writeFileSync(join(pluginTarget, 'stale.txt'), 'stale\n');
+    const failure = Object.assign(new Error('Plugin directory is busy'), {
+      code,
+    });
+    let failuresRemaining = failureCount;
+    const rename = vi.fn<typeof renameSync>((source, destination) => {
+      const selectedRename =
+        phase === 'backup'
+          ? source === pluginTarget
+          : destination === pluginTarget;
+      if (selectedRename && failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        throw failure;
+      }
+      renameSync(source, destination);
+    });
+
+    const result = syncCodexLocalSetup({
+      repositoryRoot: process.cwd(),
+      homeDirectory,
+      cachebuster: 'retry',
+      inspectPluginState: false,
+      rename,
+    });
+
+    expect(rename).toHaveBeenCalledTimes(failureCount + 2);
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(result.pluginTarget, '.codex-plugin', 'plugin.json'),
+          'utf8',
+        ),
+      ),
+    ).toMatchObject({ version: result.version });
+    expect(readdirSync(dirname(pluginTarget))).toEqual(['thoth-agents']);
+    expect(() => readFileSync(join(pluginTarget, 'stale.txt'))).toThrow();
+  });
+
+  test.each([
+    'backup',
+    'install',
+  ] as const)('rethrows the last error after ten %s attempts and preserves the existing plugin', (phase) => {
+    const homeDirectory = temporaryHome();
+    personalMarketplace(homeDirectory);
+    const pluginTarget = join(homeDirectory, 'plugins', 'thoth-agents');
+    mkdirSync(pluginTarget, { recursive: true });
+    writeFileSync(join(pluginTarget, 'stale.txt'), 'preserve me\n');
+    const failures: Error[] = [];
+    const rename = vi.fn<typeof renameSync>((source, destination) => {
+      const selectedRename =
+        phase === 'backup'
+          ? source === pluginTarget
+          : destination === pluginTarget;
+      if (selectedRename) {
+        const failure = Object.assign(
+          new Error(`Busy on attempt ${failures.length + 1}`),
+          {
+            code: 'EPERM',
+          },
+        );
+        failures.push(failure);
+        throw failure;
+      }
+      renameSync(source, destination);
+    });
+
+    let caught: unknown;
+    try {
+      syncCodexLocalSetup({
+        repositoryRoot: process.cwd(),
+        homeDirectory,
+        cachebuster: 'retry-exhausted',
+        inspectPluginState: false,
+        rename,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(failures).toHaveLength(10);
+    expect(caught).toBe(failures[9]);
+    expect(rename).toHaveBeenCalledTimes(phase === 'backup' ? 10 : 11);
+    expect(readFileSync(join(pluginTarget, 'stale.txt'), 'utf8')).toBe(
+      'preserve me\n',
+    );
+    expect(readdirSync(dirname(pluginTarget))).toEqual(['thoth-agents']);
+  });
+
+  test.each([
+    'ENOENT',
+    undefined,
+  ])('does not retry a rename error with code %s', (code) => {
+    const homeDirectory = temporaryHome();
+    personalMarketplace(homeDirectory);
+    const failure = Object.assign(new Error('Rename failed'), { code });
+    const rename = vi.fn<typeof renameSync>(() => {
+      throw failure;
+    });
+
+    let caught: unknown;
+    try {
+      syncCodexLocalSetup({
+        repositoryRoot: process.cwd(),
+        homeDirectory,
+        cachebuster: 'no-retry',
+        inspectPluginState: false,
+        rename,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(failure);
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(readdirSync(join(homeDirectory, 'plugins'))).toEqual([]);
   });
 
   test('rejects an ambiguous public and personal plugin selection before writing', () => {

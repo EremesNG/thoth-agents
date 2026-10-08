@@ -8,6 +8,7 @@ import {
   onWorkPanelLifecycleChanged,
 } from './work-panel-lifecycle.js';
 import {
+  isSelectablePanelRow,
   type PanelRow,
   panelCloseLabel,
   panelSections,
@@ -117,7 +118,7 @@ export function createWorkPanelHost(
   function rows(): PanelRow[] {
     const all = sections()
       .flatMap((section) => section.rows)
-      .filter(({ row }) => !row.summary);
+      .filter(isSelectablePanelRow);
     if (!all.some((entry) => entry.key === selectedKey))
       selectedKey = all[0]?.key;
     if (!all.length) releaseFocus();

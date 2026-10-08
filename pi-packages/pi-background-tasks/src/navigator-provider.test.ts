@@ -172,7 +172,7 @@ describe("Background Work panel provider", () => {
     try {
       await host.emit("session_start");
       const provider = getBackgroundTasksNavigator(host.pi).provider;
-      expect(host.panel.render()[0]).toContain('Background · 0 done · 0 failed');
+      expect(host.panel.render()).toEqual([]);
       expect(provider.listRows(Date.now())).toEqual([]);
       expect(provider.detail(foreign.id, Date.now())).toBeNull();
       provider.close(foreign.id);

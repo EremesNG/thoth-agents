@@ -8,6 +8,7 @@ import {
   type WorkPanelProvider,
   type WorkPanelSegment,
 } from '@thoth-agents/pi-core';
+import type { SubagentSessionTaskCounts } from '../history.js';
 import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
 import {
@@ -27,6 +28,7 @@ function completionTime(task: SubagentTask): number | undefined {
 
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
+  persistedCounts?: SubagentSessionTaskCounts;
   onTaskUpdate(notify: () => void): () => void;
   cancel(id: string, reason: string): unknown;
   open: NonNullable<WorkPanelProvider['open']>;
@@ -49,8 +51,16 @@ export function createSubagentsWorkPanelProvider(source: {
     refreshIntervalMs: 100,
     summary: () => {
       const tasks = source.listTasks();
-      const count = (status: SubagentTask['status']) =>
-        tasks.filter((task) => task.status === status).length;
+      const counts = { ...source.persistedCounts?.counts };
+      for (const task of tasks) {
+        const persistedStatus = source.persistedCounts?.statusesById.get(
+          task.id,
+        );
+        if (persistedStatus)
+          counts[persistedStatus] = (counts[persistedStatus] ?? 0) - 1;
+        counts[task.status] = (counts[task.status] ?? 0) + 1;
+      }
+      const count = (status: SubagentTask['status']) => counts[status] ?? 0;
       const parts: WorkPanelSegment[] = [
         { text: `${count('running')} running`, role: 'meta' },
       ];
@@ -78,7 +88,7 @@ export function createSubagentsWorkPanelProvider(source: {
         running: count('running') + count('queued') + count('stopping'),
         completed: count('completed'),
         failed: count('failed') + count('cancelled') + count('interrupted'),
-        total: tasks.length,
+        total: Object.values(counts).reduce((sum, total) => sum + total, 0),
       };
     },
     listRows: () =>

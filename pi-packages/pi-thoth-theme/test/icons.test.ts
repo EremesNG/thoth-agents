@@ -25,6 +25,7 @@ describe('icon table', () => {
     ['edit', 'f044', '[edit]'],
     ['search', 'f002', '?'],
     ['powershell', 'e70f', 'PS'],
+    ['warning', 'f071', '!'],
   ] as const)('%s uses its Nerd codepoint and ASCII label', (name, nerd, ascii) => {
     expect(cp(icon(name, 'nerd'))).toBe(nerd);
     expect(icon(name, 'ascii')).toBe(ascii);
@@ -38,12 +39,52 @@ describe('icon table', () => {
     ['arrowLeft', '←', '<'],
     ['arrowRight', '→', '>'],
     ['selection', '›', '>'],
+    ['selectionSelected', '\u{f111}', '*'],
+    ['selectionUnselected', '\u{f10c}', 'o'],
+    ['taskInProgress', '◐', '*'],
+    ['separatorHeavy', '┃', '|'],
+    ['boxTopLeft', '╭', '+'],
+    ['boxTopRight', '╮', '+'],
+    ['boxVertical', '│', '|'],
+    ['boxBottomLeft', '╰', '+'],
+    ['boxBottomRight', '╯', '+'],
+    ['boxHorizontal', '─', '-'],
     ['scrollUp', '↑', '^'],
     ['scrollDown', '↓', 'v'],
     ['ready', '▲', '^'],
-  ] as const)('%s keeps its Unicode glyph in Nerd mode', (name, nerd, ascii) => {
+  ] as const)('%s resolves its Nerd and ASCII glyphs', (name, nerd, ascii) => {
     expect(icon(name, 'nerd')).toBe(nerd);
     expect(icon(name, 'ascii')).toBe(ascii);
+  });
+
+  it('provides native Unicode glyphs, statuses and motion frames', () => {
+    expect(icon('branch', 'unicode')).toBe('⑂');
+    expect(icon('agent', 'unicode')).toBe('⚙');
+    expect(icon('warning', 'unicode')).toBe('⚠');
+    expect(icon('selectionSelected', 'unicode')).toBe('●');
+    expect(icon('selectionUnselected', 'unicode')).toBe('○');
+    expect(icon('taskInProgress', 'unicode')).toBe('◇');
+    expect(icon('boxTopLeft', 'unicode')).toBe('╭');
+    expect(icon('powershell', 'unicode')).toBe('PS');
+    expect(statusIcon('pending', 'unicode')).toBe('○');
+    expect(statusIcon('in_progress', 'unicode')).toBe('◐');
+    expect(statusIcon('completed', 'unicode')).toBe('✓');
+    expect(statusIcon('cancelled', 'unicode')).toBe('■');
+    expect(statusIcon('deleted', 'unicode')).toBe('⊘');
+    expect(statusIcon('warning', 'unicode')).toBe('!');
+    expect(frames('spinnerFrames', 'unicode')).toEqual([
+      '⠋',
+      '⠙',
+      '⠹',
+      '⠸',
+      '⠼',
+      '⠴',
+      '⠦',
+      '⠧',
+      '⠇',
+      '⠏',
+    ]);
+    expect(frames('workingFrames', 'unicode')).toEqual(['△', '◭', '▲', '◮']);
   });
 
   it('provides animation frames per mode', () => {

@@ -2,7 +2,7 @@ import { rmSync, writeFileSync } from "node:fs";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { logPathFor, readMeta, taskDir, writeMeta } from "./registry.js";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
 
@@ -29,6 +29,7 @@ describe("Background interaction through the pi-core host", () => {
     const statuses = ["succeeded", "cancelled", "failed", "timed_out"] as const;
     const ids = statuses.map((status) => `bg_panel_resumed_${dismissed}_${status}`);
     const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
     try {
       for (const [index, status] of statuses.entries()) {
         const id = ids[index]!;
@@ -45,18 +46,30 @@ describe("Background interaction through the pi-core host", () => {
       await host.emit("session_before_switch");
       host.ctx.sessionManager.getSessionId = () => sessionId;
       await host.emit("session_start");
+      if (!dismissed) {
+        expect(host.panel.render()[0]).toContain('Background · 0 running · 3 failed');
+        expect(host.panel.render()).toHaveLength(6);
+        expect(host.panel.render().join('\n')).toContain('retained succeeded');
+        expect(host.panel.render().join('\n')).toContain('retained cancelled');
+        expect(host.statuses.get('thoth-work-panel')).toBe('← work · 4');
+        clock.mockReturnValue(now + 6000);
+        expect(host.panel.render().join('\n')).not.toContain('retained succeeded');
+        expect(host.panel.render().join('\n')).toContain('retained cancelled');
+        clock.mockReturnValue(now + 25_000);
+      }
       expect(host.panel.render()).toEqual([
-        "◆ Background · 2 done · 2 failed",
+        "◆ Background · 1 done · 3 failed",
         "← interact",
       ]);
       expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
       expect(host.panel.key(LEFT)).toEqual({ consume: true });
       expect(host.panel.render()).toEqual([
-        "› ◆ Background · 2 done · 2 failed",
+        "› ◆ Background · 1 done · 3 failed",
         "Enter history · Esc back",
       ]);
     } finally {
       await host.emit("session_shutdown", "reload");
+      clock.mockRestore();
       for (const id of ids) rmSync(taskDir(id), { recursive: true, force: true });
     }
   });
@@ -136,7 +149,9 @@ describe("Background interaction through the pi-core host", () => {
       expect(host.statuses.get("thoth-work-panel-close")).toBe("Press x again to stop panel sleeper");
       expect(host.panel.key("x")).toEqual({ consume: true });
       await expect.poll(() => readMeta(id)?.status, { timeout: 10000 }).toBe("cancelled");
-      expect(host.panel.render()[0]).toContain('Background · 1 done · 0 failed');
+      expect(host.panel.render()[0]).toContain('Background · 0 running · 1 failed');
+      expect(host.panel.render().join('\n')).toContain('panel sleeper');
+      expect(host.panel.render().at(-1)).toContain('x dismiss');
       expect(host.panel.key("\x1b")).toEqual({ consume: true });
       expect(host.panel.render().join("\n")).not.toContain("› ");
       for (const width of [1, 24, 80]) {

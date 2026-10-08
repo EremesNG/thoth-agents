@@ -16,12 +16,17 @@ import type {
 } from './work-panel.js';
 import type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 
+const DONE_LINGER_MS = 10_000;
+const FAILED_MIN_LINGER_MS = 30_000;
+
 export interface PanelRow {
   provider: WorkPanelProvider;
   row: WorkPanelRow;
   key: string;
   parent?: boolean;
-  /** Selectable collapsed heading, distinct from informational row.summary. */
+  /** Selectable heading rendered in-place, never counted as an item or extra body line. */
+  sectionHeading?: boolean;
+  /** Provider-level action (collapsed history, opted-in heading or summary). */
   sectionSummary?: boolean;
 }
 export interface PanelSection {
@@ -31,7 +36,7 @@ export interface PanelSection {
   counts?: { done: number; failed: number };
 }
 
-/** Collapsed histories are selectable; informational summaries are not. */
+/** Provider-level actions opt in; ordinary items and collapsed histories are selectable. */
 export function isSelectablePanelRow(entry: PanelRow): boolean {
   return entry.sectionSummary === true || !entry.row.summary;
 }
@@ -71,7 +76,6 @@ export function panelSections(
       continue;
     if (provider.retention === 'prompt') {
       const items = rows.filter((row) => !row.summary);
-      const running = items.filter((row) => itemState(row) === 'running');
       const summary = safely(() => provider.summary?.(), undefined);
       const counts = {
         done:
@@ -83,7 +87,21 @@ export function panelSections(
             ? summary.failed
             : items.filter((row) => itemState(row) === 'failed').length,
       };
-      if (!lifecycle?.busy && !running.length) {
+      const done = new Set(
+        items
+          .filter((row) => itemState(row) === 'done' && lingers(row, now))
+          .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+          .slice(0, 3),
+      );
+      const eligible = items.filter(
+        (row) =>
+          itemState(row) === 'running' ||
+          (itemState(row) === 'failed' &&
+            (endedInEpoch(row, lifecycle?.epochStartedAt ?? now) ||
+              lingers(row, now))) ||
+          done.has(row),
+      );
+      if (!eligible.length) {
         if (!counts.done && !counts.failed) continue;
         sections.push({
           provider,
@@ -100,22 +118,6 @@ export function panelSections(
         });
         continue;
       }
-      const current = (row: WorkPanelRow) =>
-        row.endedAt !== undefined &&
-        Number.isFinite(row.endedAt) &&
-        row.endedAt >= (lifecycle?.epochStartedAt ?? now);
-      const done = new Set(
-        items
-          .filter((row) => itemState(row) === 'done' && current(row))
-          .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
-          .slice(0, 3),
-      );
-      const eligible = items.filter(
-        (row) =>
-          itemState(row) === 'running' ||
-          (itemState(row) === 'failed' && current(row)) ||
-          done.has(row),
-      );
       sections.push({
         provider,
         counts,
@@ -141,7 +143,62 @@ export function panelSections(
       })),
     });
   }
-  return sections.filter((section) => section.rows.length);
+  return sections
+    .filter((section) => section.rows.length)
+    .map((section) => {
+      if (section.collapsed) return section;
+      const { provider } = section;
+      return {
+        ...section,
+        rows: [
+          ...(provider.selectableHeading
+            ? [
+                {
+                  provider,
+                  row: {
+                    id: 'heading',
+                    primary: provider.label,
+                    summary: true,
+                  },
+                  key: JSON.stringify([provider.id, null, 'heading']),
+                  sectionHeading: true,
+                  sectionSummary: true,
+                },
+              ]
+            : []),
+          ...section.rows.map((entry) => ({
+            ...entry,
+            sectionSummary:
+              entry.row.summary && provider.selectableSummary
+                ? true
+                : undefined,
+          })),
+        ],
+      };
+    });
+}
+
+/** Internal scheduling seam: only finite terminal timestamps have a linger boundary. */
+export function panelLingerEndsAt(row: WorkPanelRow): number | undefined {
+  if (row.endedAt === undefined || !Number.isFinite(row.endedAt))
+    return undefined;
+  const state = itemState(row);
+  if (state === 'done') return row.endedAt + DONE_LINGER_MS;
+  if (state === 'failed') return row.endedAt + FAILED_MIN_LINGER_MS;
+  return undefined;
+}
+
+function lingers(row: WorkPanelRow, now: number): boolean {
+  const endsAt = panelLingerEndsAt(row);
+  return endsAt !== undefined && now < endsAt;
+}
+
+function endedInEpoch(row: WorkPanelRow, epochStartedAt: number): boolean {
+  return (
+    row.endedAt !== undefined &&
+    Number.isFinite(row.endedAt) &&
+    row.endedAt >= epochStartedAt
+  );
 }
 
 /** Retention state is separate from presentation; queued/stopping stay live. */
@@ -179,6 +236,71 @@ function summarySegments(
   return parts.length
     ? parts
     : [{ text: `${rows.length} items`, role: 'meta' }];
+}
+
+function overflowCounts(
+  provider: WorkPanelProvider,
+  items: PanelRow[],
+  chosen: PanelRow[],
+) {
+  const hidden = items.filter((entry) => !chosen.includes(entry));
+  const preferred = provider.droppedSummary
+    ? hidden.filter(({ row }) => row.dropFirst).length
+    : 0;
+  const other = hidden.length - preferred;
+  return { preferred, other, lines: Number(preferred > 0) + Number(other > 0) };
+}
+
+function overflowKey(provider: WorkPanelProvider, id: string): string {
+  return JSON.stringify([provider.id, null, id]);
+}
+
+function overflowRows(
+  provider: WorkPanelProvider,
+  items: PanelRow[],
+  chosen: PanelRow[],
+  combine = false,
+  selectedKey?: string,
+): PanelRow[] {
+  const { preferred, other } = overflowCounts(provider, items, chosen);
+  let rows: WorkPanelRow[] = [
+    ...(preferred
+      ? [
+          {
+            id: 'overflow-drop-first',
+            primary:
+              safely(
+                () => singleLine(provider.droppedSummary?.(preferred) ?? ''),
+                '',
+              ) || `+${preferred} more`,
+            summary: true,
+          },
+        ]
+      : []),
+    ...(other
+      ? [{ id: 'overflow-more', primary: `+${other} more`, summary: true }]
+      : []),
+  ];
+  if (combine && rows.length > 1) {
+    rows = [
+      {
+        id:
+          selectedKey === overflowKey(provider, 'overflow-more')
+            ? 'overflow-more'
+            : 'overflow-drop-first',
+        primary: rows
+          .map((row) => row.primary)
+          .join(` ${resolveIcon('separator', '·')} `),
+        summary: true,
+      },
+    ];
+  }
+  return rows.map((row) => ({
+    provider,
+    row,
+    key: overflowKey(provider, row.id),
+    sectionSummary: provider.selectableSummary,
+  }));
 }
 
 const segmentRoles = {
@@ -221,6 +343,224 @@ const nativeGlyphs = {
   blocked: '⊘',
   unknown: '?',
 };
+
+function panelContentReader(width: number, now: number) {
+  const kit = getRenderKit();
+  const contents = new Map<PanelRow, WorkPanelRowContent>();
+  function contentFor(entry: PanelRow) {
+    let content = contents.get(entry);
+    if (!content) {
+      content = safely(
+        () => entry.row.render?.(Math.max(0, width - (kit ? 7 : 4)), now),
+        undefined,
+      ) ?? {
+        text: [entry.row.name, entry.row.primary, entry.row.elapsed]
+          .filter(Boolean)
+          .join(` ${resolveIcon('separator', '·')} `),
+        segments: entry.row.segments ?? [
+          ...(entry.row.name
+            ? [
+                { text: entry.row.name, role: 'primary' as const },
+                {
+                  text: ` ${resolveIcon('separator', '·')} `,
+                  role: 'meta' as const,
+                },
+              ]
+            : []),
+          {
+            text: entry.row.primary,
+            role: entry.row.name ? 'secondary' : 'primary',
+          },
+          ...(entry.row.elapsed
+            ? [
+                {
+                  text: ` ${resolveIcon('separator', '·')} ${entry.row.elapsed}`,
+                  role: 'meta' as const,
+                },
+              ]
+            : []),
+        ],
+        extraRows: entry.row.extraRows,
+      };
+      contents.set(entry, content);
+    }
+    return content;
+  }
+  return contentFor;
+}
+
+interface PanelPlan {
+  section: PanelSection;
+  items: PanelRow[];
+  summaries: PanelRow[];
+  chosen: PanelRow[];
+  selectedIndex: number;
+  combineOverflow: boolean;
+  hideOverflow: boolean;
+}
+
+function overflowLineCount(plan: PanelPlan, chosen = plan.chosen): number {
+  if (plan.hideOverflow) return 0;
+  const { lines } = overflowCounts(plan.section.provider, plan.items, chosen);
+  return plan.combineOverflow ? Math.min(1, lines) : lines;
+}
+
+function planOverflowRows(plan: PanelPlan, selectedKey?: string): PanelRow[] {
+  return plan.hideOverflow
+    ? []
+    : overflowRows(
+        plan.section.provider,
+        plan.items,
+        plan.chosen,
+        plan.combineOverflow,
+        selectedKey,
+      );
+}
+
+function planPanelSections(
+  sections: PanelSection[],
+  remaining: number,
+  blockCost: (entry: PanelRow) => number,
+  selectedKey?: string,
+): PanelPlan[] {
+  const visible: PanelSection[] = [];
+  let minimumCost = 0;
+  for (const section of sections) {
+    const cost = section.collapsed ? 1 : 2;
+    if (minimumCost + cost > remaining) break;
+    visible.push(section);
+    minimumCost += cost;
+  }
+  const selectedSection = sections.find(
+    (section) =>
+      section.rows.some((entry) => entry.key === selectedKey) ||
+      ['overflow-drop-first', 'overflow-more'].some(
+        (id) => overflowKey(section.provider, id) === selectedKey,
+      ),
+  );
+  if (selectedSection && visible.length && !visible.includes(selectedSection)) {
+    visible[visible.length - 1] = selectedSection;
+    visible.sort((a, b) => sections.indexOf(a) - sections.indexOf(b));
+  }
+  const plans = visible.map((section) => {
+    const items = section.collapsed
+      ? []
+      : section.rows.filter(({ row }) => !row.summary);
+    const summaries = section.rows.filter(
+      (entry) => entry.row.summary && !entry.sectionHeading,
+    );
+    const selectedIndex = items.findIndex(({ key }) => key === selectedKey);
+    const initial =
+      selectedIndex >= 0
+        ? items[selectedIndex]
+        : (items.find(({ row }) => !row.dropFirst) ?? items[0]);
+    return {
+      section,
+      items,
+      summaries,
+      chosen: initial ? [initial] : [],
+      selectedIndex,
+      combineOverflow: false,
+      hideOverflow: false,
+    };
+  });
+  const cost = (plan: (typeof plans)[number]) =>
+    plan.section.collapsed
+      ? 1
+      : 1 +
+        plan.chosen.reduce((sum, entry) => sum + blockCost(entry), 0) +
+        plan.summaries.length +
+        overflowLineCount(plan);
+  const totalCost = () => plans.reduce((sum, plan) => sum + cost(plan), 0);
+  // Whole metric blocks and the selected section take precedence over lower sections.
+  while (plans.length > 1 && totalCost() > remaining) {
+    let removable = plans.length - 1;
+    if (plans[removable]?.section === selectedSection) removable -= 1;
+    plans.splice(removable, 1);
+  }
+  const only = plans.length === 1 ? plans[0] : undefined;
+  if (only && cost(only) > remaining) {
+    // Preserve exact counts without allowing a second overflow line to hide the chosen item.
+    only.combineOverflow = true;
+    if (cost(only) > remaining) {
+      const overflowSelected = ['overflow-drop-first', 'overflow-more'].some(
+        (id) => overflowKey(only.section.provider, id) === selectedKey,
+      );
+      const { preferred } = overflowCounts(
+        only.section.provider,
+        only.items,
+        only.chosen,
+      );
+      // Provider-labelled or selectable counts remain available even when the
+      // body can only fit a summary; ordinary log panels retain their item.
+      if (
+        overflowSelected ||
+        preferred > 0 ||
+        only.section.provider.selectableSummary
+      )
+        only.chosen = [];
+      else only.hideOverflow = true;
+    }
+  }
+  // Share caps and spare height among ordinary items before allocating drop-first items.
+  for (const dropFirst of [false, true]) {
+    for (const capped of [true, false]) {
+      let added: boolean;
+      do {
+        added = false;
+        for (const plan of plans) {
+          const cap = Math.max(
+            1,
+            Math.floor(plan.section.provider.rowCap ?? 3),
+          );
+          if (capped && plan.chosen.length >= cap) continue;
+          const start = Math.max(0, plan.selectedIndex - cap + 1);
+          const candidates = [
+            ...plan.items.slice(start),
+            ...plan.items.slice(0, start),
+          ];
+          const next = candidates.find(
+            (entry) =>
+              Boolean(entry.row.dropFirst) === dropFirst &&
+              !plan.chosen.includes(entry),
+          );
+          if (!next) continue;
+          const delta =
+            blockCost(next) +
+            overflowLineCount(plan, [...plan.chosen, next]) -
+            overflowLineCount(plan);
+          if (totalCost() + delta > remaining) continue;
+          plan.chosen.push(next);
+          added = true;
+        }
+      } while (added);
+    }
+  }
+  return plans;
+}
+
+/** Host navigation uses the same height plan as rendering, including synthetic overflow actions. */
+export function panelOverflowEntries(
+  sections: PanelSection[],
+  width: number,
+  now: number,
+  budget: number,
+  selectedKey?: string,
+): Map<string, PanelRow[]> {
+  const contentFor = panelContentReader(width, now);
+  const blockCost = (entry: PanelRow) =>
+    1 +
+    (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
+  const hasHint = sections.some((section) =>
+    section.rows.some(isSelectablePanelRow),
+  );
+  const remaining = Math.max(0, budget - Number(hasHint));
+  return new Map(
+    planPanelSections(sections, remaining, blockCost, selectedKey).map(
+      (plan) => [plan.section.provider.id, planOverflowRows(plan, selectedKey)],
+    ),
+  );
+}
 
 export function renderPanel(
   sections: PanelSection[],
@@ -290,119 +630,16 @@ export function renderPanel(
     : undefined;
   const budget = Math.max(0, Math.floor(options.budget ?? 12));
   const remaining = Math.max(0, budget - (hint ? 1 : 0));
-  const visible: PanelSection[] = [];
-  let minimumCost = 0;
-  for (const section of sections) {
-    const cost = section.collapsed ? 1 : 2;
-    if (minimumCost + cost > remaining) break;
-    visible.push(section);
-    minimumCost += cost;
-  }
-  const selectedSection = sections.find((section) =>
-    section.rows.some((entry) => entry.key === options.selectedKey),
-  );
-  if (selectedSection && visible.length && !visible.includes(selectedSection)) {
-    visible[visible.length - 1] = selectedSection;
-    visible.sort((a, b) => sections.indexOf(a) - sections.indexOf(b));
-  }
-  const contents = new Map<PanelRow, WorkPanelRowContent>();
-  function contentFor(entry: PanelRow) {
-    let content = contents.get(entry);
-    if (!content) {
-      content = safely(
-        () => entry.row.render?.(Math.max(0, width - (kit ? 7 : 4)), now),
-        undefined,
-      ) ?? {
-        text: [entry.row.name, entry.row.primary, entry.row.elapsed]
-          .filter(Boolean)
-          .join(` ${resolveIcon('separator', '·')} `),
-        segments: entry.row.segments ?? [
-          ...(entry.row.name
-            ? [
-                { text: entry.row.name, role: 'primary' as const },
-                {
-                  text: ` ${resolveIcon('separator', '·')} `,
-                  role: 'meta' as const,
-                },
-              ]
-            : []),
-          {
-            text: entry.row.primary,
-            role: entry.row.name ? 'secondary' : 'primary',
-          },
-          ...(entry.row.elapsed
-            ? [
-                {
-                  text: ` ${resolveIcon('separator', '·')} ${entry.row.elapsed}`,
-                  role: 'meta' as const,
-                },
-              ]
-            : []),
-        ],
-        extraRows: entry.row.extraRows,
-      };
-      contents.set(entry, content);
-    }
-    return content;
-  }
+  const contentFor = panelContentReader(width, now);
   const blockCost = (entry: PanelRow) =>
     1 +
     (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
-  const plans = visible.map((section) => {
-    const items = section.collapsed
-      ? []
-      : section.rows.filter(({ row }) => !row.summary);
-    const summaries = section.rows.filter(({ row }) => row.summary);
-    const selectedIndex = items.findIndex(
-      ({ key }) => key === options.selectedKey,
-    );
-    const initial = items[selectedIndex >= 0 ? selectedIndex : 0];
-    return {
-      section,
-      items,
-      summaries,
-      chosen: initial ? [initial] : [],
-      selectedIndex,
-    };
-  });
-  const cost = (plan: (typeof plans)[number]) =>
-    plan.section.collapsed
-      ? 1
-      : 1 +
-        plan.chosen.reduce((sum, entry) => sum + blockCost(entry), 0) +
-        plan.summaries.length +
-        (plan.items.length > plan.chosen.length ? 1 : 0);
-  const totalCost = () => plans.reduce((sum, plan) => sum + cost(plan), 0);
-  // Whole metric blocks and the selected section take precedence over lower sections.
-  while (plans.length > 1 && totalCost() > remaining) {
-    let removable = plans.length - 1;
-    if (plans[removable]?.section === selectedSection) removable -= 1;
-    plans.splice(removable, 1);
-  }
-  // First share the budget within preferred caps, then use spare space for open items.
-  for (const capped of [true, false]) {
-    let added: boolean;
-    do {
-      added = false;
-      for (const plan of plans) {
-        const cap = Math.max(1, Math.floor(plan.section.provider.rowCap ?? 3));
-        if (capped && plan.chosen.length >= cap) continue;
-        const start = Math.max(0, plan.selectedIndex - cap + 1);
-        const candidates = [
-          ...plan.items.slice(start),
-          ...plan.items.slice(0, start),
-        ];
-        const next = candidates.find((entry) => !plan.chosen.includes(entry));
-        if (!next) continue;
-        const delta =
-          blockCost(next) -
-          (plan.chosen.length + 1 === plan.items.length ? 1 : 0);
-        if (totalCost() + delta > remaining) continue;
-        plan.chosen.push(next);
-        added = true;
-      }
-    } while (added);
-  }
+  const plans = planPanelSections(
+    sections,
+    remaining,
+    blockCost,
+    options.selectedKey,
+  );
   const lines: string[] = [];
   for (const plan of plans) {
     const { provider, rows } = plan.section;
@@ -445,7 +682,8 @@ export function renderPanel(
               theme,
               {
                 text: `${styledGlyph}${body}`,
-                selected: !row.summary && options.selectedKey === key,
+                selected:
+                  isSelectablePanelRow(entry) && options.selectedKey === key,
                 depth: 0,
                 last:
                   index === entries.length - 1 &&
@@ -453,7 +691,7 @@ export function renderPanel(
               },
               width,
             )
-          : `${options.selectedKey === key && !row.summary ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
+          : `${options.selectedKey === key && isSelectablePanelRow(entry) ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
         ...(content.extraRows ?? [])
           .filter((extra) => extra.trim())
           .map((extra, index) =>
@@ -478,12 +716,14 @@ export function renderPanel(
           ]
         : summarySegments(
             safely(() => provider.summary?.(), undefined),
-            rows,
+            rows.filter((entry) => !entry.sectionHeading),
           ),
     );
-    const selectedSummary =
-      plan.section.collapsed &&
-      rows.some(({ key }) => key === options.selectedKey);
+    const selectedSummary = rows.some(
+      (entry) =>
+        (plan.section.collapsed || entry.sectionHeading) &&
+        entry.key === options.selectedKey,
+    );
     const heading = kit
       ? kit.widgetHeading(
           theme,
@@ -500,14 +740,20 @@ export function renderPanel(
       lines.push(...sectionLines);
       continue;
     }
-    const hidden = plan.items.length - chosen.length;
-    const more = hidden > 0 && remaining - lines.length >= 3;
+    const overflow = planOverflowRows(plan, options.selectedKey);
+    const more = overflow.length > 0 && remaining - lines.length >= 2;
     const bodyBudget = Math.max(
       0,
-      remaining - lines.length - 1 - (more ? 1 : 0),
+      remaining - lines.length - 1 - (more ? overflow.length : 0),
     );
     sectionLines.push(...blocks.flat().slice(0, bodyBudget));
-    if (more) sectionLines.push(fg('dim', `  +${hidden} more`));
+    if (more)
+      sectionLines.push(
+        ...overflow.map(
+          (entry) =>
+            `${options.selectedKey === entry.key && isSelectablePanelRow(entry) ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${fg('dim', entry.row.primary)}`,
+        ),
+      );
     lines.push(...sectionLines);
   }
   if (hint && budget) lines.push(fg('dim', hint));

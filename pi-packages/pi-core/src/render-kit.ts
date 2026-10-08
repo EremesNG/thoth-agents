@@ -52,9 +52,26 @@ export type SemanticGlyphName =
   | 'arrowLeft'
   | 'arrowRight'
   | 'selection'
+  | 'selectionSelected'
+  | 'selectionUnselected'
+  | 'taskInProgress'
+  | 'separatorHeavy'
+  | 'boxTopLeft'
+  | 'boxTopRight'
+  | 'boxVertical'
+  | 'boxBottomLeft'
+  | 'boxBottomRight'
+  | 'boxHorizontal'
+  | 'boxTDown'
+  | 'boxTUp'
+  | 'boxTRight'
+  | 'boxTLeft'
+  | 'boxCross'
+  | 'close'
   | 'scrollUp'
   | 'scrollDown'
-  | 'ready';
+  | 'ready'
+  | 'warning';
 
 export type SemanticFrameName = 'spinnerFrames' | 'workingFrames';
 export type SemanticIconName = SemanticGlyphName | SemanticFrameName;
@@ -230,9 +247,26 @@ const nativeIcons: Record<SemanticGlyphName, string> = {
   arrowLeft: '←',
   arrowRight: '→',
   selection: '›',
+  selectionSelected: '●',
+  selectionUnselected: '○',
+  taskInProgress: '◇',
+  separatorHeavy: '┃',
+  boxTopLeft: '╭',
+  boxTopRight: '╮',
+  boxVertical: '│',
+  boxBottomLeft: '╰',
+  boxBottomRight: '╯',
+  boxHorizontal: '─',
+  boxTDown: '┬',
+  boxTUp: '┴',
+  boxTRight: '├',
+  boxTLeft: '┤',
+  boxCross: '┼',
+  close: '✕',
   scrollUp: '↑',
   scrollDown: '↓',
   ready: '▲',
+  warning: '⚠',
 };
 
 const nativeFrames: Record<SemanticFrameName, readonly string[]> = {

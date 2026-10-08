@@ -55,12 +55,15 @@ export function createMockCtx(
   options: {
     sessionId?: string;
     hasUI?: boolean;
+    mode?: string;
     branch?: unknown[];
     ui?: ReturnType<typeof createMockUI>;
   } = {},
 ) {
   return {
     hasUI: options.hasUI ?? true,
+    mode: options.mode,
+    isIdle: () => true,
     ui: options.ui ?? createMockUI(),
     sessionManager: {
       getSessionId: vi.fn(() => options.sessionId ?? 'test-session'),

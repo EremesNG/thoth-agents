@@ -11,14 +11,28 @@ export {
 export function agentIcon(): string {
   return resolveIcon('agent', '󰣇');
 }
-export const CYBER_SEPARATOR = '┃';
+export function cyberSeparator(): string {
+  return resolveIcon('separatorHeavy', '┃');
+}
 export const BOX_CHARS = {
-  topLeft: '╭',
-  topRight: '╮',
-  vertical: '│',
-  bottomLeft: '╰',
-  bottomRight: '╯',
-  horizontal: '─',
+  get topLeft() {
+    return resolveIcon('boxTopLeft', '╭');
+  },
+  get topRight() {
+    return resolveIcon('boxTopRight', '╮');
+  },
+  get vertical() {
+    return resolveIcon('boxVertical', '│');
+  },
+  get bottomLeft() {
+    return resolveIcon('boxBottomLeft', '╰');
+  },
+  get bottomRight() {
+    return resolveIcon('boxBottomRight', '╯');
+  },
+  get horizontal() {
+    return resolveIcon('boxHorizontal', '─');
+  },
 } as const;
 
 export function themeFg(theme: any, role: ThemeColor, text: string): string {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type IconMode = 'nerd' | 'ascii';
+export type IconMode = 'nerd' | 'unicode' | 'ascii';
 
 export const DEFAULT_RESPECT_PACKAGES: readonly string[] = [
   'thoth-agents',
@@ -69,7 +69,10 @@ export function loadConfig(
     // Missing or malformed package configuration uses package defaults.
   }
   return {
-    icons: config.icons === 'ascii' ? 'ascii' : 'nerd',
+    icons:
+      config.icons === 'ascii' || config.icons === 'unicode'
+        ? config.icons
+        : 'nerd',
     ...(config.inputBox === undefined
       ? {}
       : { inputBox: { enabled: moduleEnabled(config.inputBox) } }),

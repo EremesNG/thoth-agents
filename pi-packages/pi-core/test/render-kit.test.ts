@@ -233,9 +233,26 @@ describe('semantic icon resolvers', () => {
       arrowLeft: '←',
       arrowRight: '→',
       selection: '›',
+      selectionSelected: '●',
+      selectionUnselected: '○',
+      taskInProgress: '◇',
+      separatorHeavy: '┃',
+      boxTopLeft: '╭',
+      boxTopRight: '╮',
+      boxVertical: '│',
+      boxBottomLeft: '╰',
+      boxBottomRight: '╯',
+      boxHorizontal: '─',
+      boxTDown: '┬',
+      boxTUp: '┴',
+      boxTRight: '├',
+      boxTLeft: '┤',
+      boxCross: '┼',
+      close: '✕',
       scrollUp: '↑',
       scrollDown: '↓',
       ready: '▲',
+      warning: '⚠',
     };
     const resolved = Object.fromEntries(
       (Object.keys(nativeIcons) as SemanticGlyphName[]).map((name) => [
@@ -246,6 +263,64 @@ describe('semantic icon resolvers', () => {
     expect(resolved).toEqual(nativeIcons);
     expect(resolveIcon('separator', '┃')).toBe('┃');
     expect(resolveIcon('folder', '')).toBe('');
+  });
+
+  it('preserves new panel glyphs with legacy v1 icon lookups', () => {
+    const native = () => [
+      resolveIcon('taskInProgress'),
+      resolveIcon('selectionSelected'),
+      resolveIcon('selectionUnselected'),
+      resolveIcon('separatorHeavy'),
+      resolveIcon('boxTopLeft'),
+      resolveIcon('boxHorizontal'),
+      resolveIcon('boxTDown'),
+      resolveIcon('boxTUp'),
+      resolveIcon('boxTRight'),
+      resolveIcon('boxTLeft'),
+      resolveIcon('boxCross'),
+      resolveIcon('close'),
+    ];
+    registerRenderKit(kit, {});
+    expect(native()).toEqual([
+      '◇',
+      '●',
+      '○',
+      '┃',
+      '╭',
+      '─',
+      '┬',
+      '┴',
+      '├',
+      '┤',
+      '┼',
+      '✕',
+    ]);
+    registerRenderKit(
+      {
+        ...kit,
+        icon(name) {
+          if (name === 'selection') return '>';
+          throw new Error('unsupported icon');
+        },
+      },
+      {},
+    );
+    expect(getRenderKit()?.version).toBe(1);
+    expect(resolveIcon('selection')).toBe('>');
+    expect(native()).toEqual([
+      '◇',
+      '●',
+      '○',
+      '┃',
+      '╭',
+      '─',
+      '┬',
+      '┴',
+      '├',
+      '┤',
+      '┼',
+      '✕',
+    ]);
   });
 
   it('preserves native statuses and caller-specific status fallbacks without a kit', () => {

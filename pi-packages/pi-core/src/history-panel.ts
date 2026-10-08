@@ -91,6 +91,8 @@ export interface HistoryPanelOptions {
   disposeOnClose?: boolean;
   maxLines?: number | (() => number);
   initialSelectedId?: string;
+  /** Start content at the top on open/selection instead of following log output. */
+  contentScroll?: 'tail' | 'top';
   matchesKey?: (data: string, key: string) => boolean;
   visibleWidth?: (text: string) => number;
   truncateToWidth?: (text: string, width: number) => string;
@@ -109,19 +111,6 @@ export interface HistoryPanelOptions {
   footerActions?: () => string;
 }
 
-const BOX = {
-  topLeft: '╭',
-  topRight: '╮',
-  bottomLeft: '╰',
-  bottomRight: '╯',
-  horizontal: '─',
-  vertical: '│',
-  tDown: '┬',
-  tUp: '┴',
-  tRight: '├',
-  tLeft: '┤',
-  cross: '┼',
-} as const;
 const plainTheme: RenderKitTheme = { fg: (_role, text) => text };
 const matchesRawKey = createHistoryPanelKeyMatcher();
 
@@ -134,6 +123,7 @@ export class HistoryPanel<T> {
   private lastMaxScroll = 0;
   private lastSelectedIndex = -1;
   private initialSelectedId?: string;
+  private lastContentItemId?: string;
   private rowItemMap = new Map<number, string>();
   private disposed = false;
   private lastIsSplit = true;
@@ -161,6 +151,7 @@ export class HistoryPanel<T> {
     private options: HistoryPanelOptions,
   ) {
     this.initialSelectedId = options.initialSelectedId;
+    this.resetContentScroll();
     const interval = options.refreshMs ?? 1000;
     if (options.requestRender && Number.isFinite(interval) && interval > 0) {
       this.refreshTimer = setInterval(
@@ -320,8 +311,7 @@ export class HistoryPanel<T> {
         0,
         Math.min(this.adapter.items().length - 1, this.selected + delta),
       );
-      this.scroll = 0;
-      this.followTail = true;
+      this.resetContentScroll();
       return;
     }
     if (this.matches(data, 'down')) this.scrollBy(1);
@@ -451,9 +441,13 @@ export class HistoryPanel<T> {
     if (index < 0) return false;
     this.selected = index;
     this.closeArm = undefined;
-    this.scroll = 0;
-    this.followTail = true;
+    this.resetContentScroll();
     return true;
+  }
+
+  private resetContentScroll(): void {
+    this.scroll = 0;
+    this.followTail = this.options.contentScroll !== 'top';
   }
 
   render(width: number): string[] {
@@ -508,7 +502,20 @@ export class HistoryPanel<T> {
       this.options.theme?.bold?.(this.options.title) ?? this.options.title,
     );
     const leftTitle = `${b(this.options.titleIcon?.() ?? resolveIcon('agent', '󰣇'))} ${title}`;
-    const close = this.fg('error', '[✕ Cerrar]');
+    const close = this.fg('error', `[${resolveIcon('close')} Cerrar]`);
+    const BOX = {
+      topLeft: resolveIcon('boxTopLeft'),
+      topRight: resolveIcon('boxTopRight'),
+      bottomLeft: resolveIcon('boxBottomLeft'),
+      bottomRight: resolveIcon('boxBottomRight'),
+      horizontal: resolveIcon('boxHorizontal'),
+      vertical: resolveIcon('boxVertical'),
+      tDown: resolveIcon('boxTDown'),
+      tUp: resolveIcon('boxTUp'),
+      tRight: resolveIcon('boxTRight'),
+      tLeft: resolveIcon('boxTLeft'),
+      cross: resolveIcon('boxCross'),
+    };
     const closeWidth = this.measure(close);
     const rows: string[] = [];
     const top = () => {
@@ -518,6 +525,13 @@ export class HistoryPanel<T> {
     const cell = (text: string) =>
       `${b(BOX.vertical)} ${this.pad(text, rightWidth)} ${b(BOX.vertical)}`;
     const item = items[this.selected];
+    const itemId = item === undefined ? undefined : this.adapter.id(item);
+    if (
+      this.options.contentScroll === 'top' &&
+      itemId !== this.lastContentItemId
+    )
+      this.resetContentScroll();
+    this.lastContentItemId = itemId;
     if (item === undefined) {
       rows.push(
         top(),

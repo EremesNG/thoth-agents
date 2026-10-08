@@ -26,9 +26,10 @@ of the module toggles below.
   drop speed, then cache, then tokens before truncating cost. Editor-border
   metadata is decorated in place without claiming the custom editor slot.
 - **Tools**: boxed calls and results for `read`, `bash`, `powershell`, `ls`,
-  `grep`, `find`, `edit` and `write`, with Nerd Font icons or ASCII
-  alternatives. `bash` and `powershell` show a live elapsed time while running. Execution and
-  parameters delegate to Pi's built-in tools; Pi's native output toggle still
+  `grep`, `find`, `edit` and `write`, with Nerd Font icons, native Unicode
+  glyphs or ASCII alternatives. `bash` and `powershell` show a live elapsed time
+  while running. Execution and parameters delegate to Pi's built-in tools;
+  Pi's native output toggle still
   collapses and expands results. Registered non-built-in tools keep their own
   renderers when their package matches `tools.respectPackages` (including
   thoth-agents and thoth-mem by default). Other tools get a generic frame with
@@ -75,7 +76,10 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 }
 ```
 
-`icons` accepts `"nerd"` (default) or `"ascii"`. Each module's `enabled` key
+`icons` accepts `"nerd"` (default), `"unicode"` (native Render KIT glyphs,
+status symbols and animation frames, with Unicode substitutes for Nerd glyphs),
+or `"ascii"` (plain-text alternatives).
+Missing or malformed icon values use `"nerd"`. Each module's `enabled` key
 accepts a boolean and defaults to `true`. Set it to `false` to leave Pi's native
 behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
 provider identifier strings (defaults to `["claude-bridge"]`) to mark
@@ -106,7 +110,9 @@ malformed or invalid values use defaults. Pi settings are never read for
 package configuration.
 
 **A Nerd Font is required for the default icons.** Configure your terminal to
-use one, or set `"icons": "ascii"` for plain-text alternatives.
+use one, set `"icons": "unicode"` for native glyphs, or use `"icons": "ascii"`
+for plain-text alternatives. Unicode mode substitutes a Unicode glyph where
+the native fallback is a Nerd glyph (agent `⚙`).
 
 ## Attribution
 

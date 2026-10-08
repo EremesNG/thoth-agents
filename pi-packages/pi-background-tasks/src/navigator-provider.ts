@@ -57,8 +57,8 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
       const metas = sessionMetas();
       return {
         running: metas.filter((meta) => meta.status === "running").length,
-        failed: metas.filter((meta) => meta.status === "failed" || meta.status === "timed_out").length,
-        completed: metas.filter((meta) => meta.status === "succeeded" || meta.status === "cancelled").length,
+        failed: metas.filter((meta) => meta.status === "failed" || meta.status === "timed_out" || meta.status === "cancelled").length,
+        completed: metas.filter((meta) => meta.status === "succeeded").length,
       };
     },
     visibleCount: () => visibleMetas().filter((meta) => meta.status === "running").length,
@@ -144,7 +144,7 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     id: meta.id,
     name: meta.name,
     status: meta.status,
-    state: meta.status === 'running' ? 'running' : meta.status === 'failed' || meta.status === 'timed_out' ? 'failed' : 'done',
+    state: meta.status === 'running' ? 'running' : meta.status === 'succeeded' ? 'done' : 'failed',
     endedAt: meta.endedAt,
     statusTone: toneForStatus(meta.status),
     kind: meta.kind === "command_watch" ? "watch" : "process",

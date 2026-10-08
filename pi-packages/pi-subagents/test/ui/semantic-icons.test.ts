@@ -8,6 +8,7 @@ import { textComponent } from '../../src/render/tools/components.js';
 import type { SubagentTask } from '../../src/types.js';
 import { renderSubagentWorkRow } from '../../src/ui/background-widget.js';
 import { SubagentsHistoryPanel } from '../../src/ui/subagents-history-panel.js';
+import { frameBox } from '../../src/ui/theme.js';
 
 const theme = {
   fg: (_role: string, text: string) => text,
@@ -48,6 +49,16 @@ function asciiKit(separator = '|') {
         ['scrollUp', '^'],
         ['scrollDown', 'v'],
         ['selection', '>'],
+        ['selectionSelected', '*'],
+        ['selectionUnselected', 'o'],
+        ['separatorHeavy', '|'],
+        ['boxTopLeft', '+'],
+        ['boxTopRight', '+'],
+        ['boxBottomLeft', '+'],
+        ['boxBottomRight', '+'],
+        ['boxVertical', '|'],
+        ['boxHorizontal', '-'],
+        ['warning', '!'],
       ]).get(name) ?? '',
   });
 }
@@ -89,7 +100,28 @@ it('work-row metrics use token icons and separators with bounded resolved ellips
   }
 });
 
-it('mounted history navigation and scroll re-resolve while radio dots and literal response text stay intact', () => {
+it('work-row dropped-tools warnings resolve the semantic icon and keep the native fallback', () => {
+  const warned = {
+    ...task,
+    status: 'running' as const,
+    dropped_tools: ['missing_tool'],
+  };
+  const native = renderSubagentWorkRow(warned, 200, 0);
+  expect(native.text).toContain('⚠ 1 dropped');
+  const token = registerRenderKit(asciiKit(), {});
+  onTestFinished(() => withdrawRenderKit(token));
+  const themed = renderSubagentWorkRow(warned, 200, 0);
+  expect(themed.text).toContain('! 1 dropped');
+  expect(themed.segments).toContainEqual({
+    text: ' | ! 1 dropped',
+    role: 'warning',
+  });
+  expect(themed.text).not.toContain('⚠');
+  withdrawRenderKit(token);
+  expect(renderSubagentWorkRow(warned, 200, 0)).toEqual(native);
+});
+
+it('mounted history navigation, selection and scroll re-resolve while literal response text stays intact', () => {
   const panel = new SubagentsHistoryPanel(
     Array.from({ length: 9 }, (_, i) => ({
       ...task,
@@ -105,14 +137,21 @@ it('mounted history navigation and scroll re-resolve while radio dots and litera
     25,
   );
   const native = panel.render(80);
+  expect(native.join('\n')).toContain('●');
+  expect(native.join('\n')).toContain('○');
   const token = registerRenderKit(asciiKit(), {});
   onTestFinished(() => withdrawRenderKit(token));
   const themed = panel.render(80).join('\n');
   expect(themed).toContain('@ subagents');
   expect(themed).toContain('</> select | ^/v scroll');
   expect(themed).toContain('^/v');
-  expect(themed).toContain('●');
-  expect(themed).toContain('○');
+  expect(themed).toContain('1/9 | agent: worker | status: completed');
+  expect(themed).not.toContain('┃');
+  expect(themed).toContain('+- delegated task');
+  expect(themed).toContain('* 1. Worker');
+  expect(themed).toContain('o 2. Worker');
+  expect(themed).not.toContain('●');
+  expect(themed).not.toContain('○');
   expect(themed).toContain('literal · … response');
   for (const width of [40, 55, 80, 100, 160])
     expect(
@@ -120,6 +159,24 @@ it('mounted history navigation and scroll re-resolve while radio dots and litera
     ).toBe(true);
   withdrawRenderKit(token);
   expect(panel.render(80)).toEqual(native);
+});
+
+it('frame boxes resolve semantic borders at render time and restore native output', () => {
+  const native = frameBox('test', ['body'], 20);
+  expect(native).toEqual([
+    '╭─ test ───────────╮',
+    '│ body             │',
+    '╰──────────────────╯',
+  ]);
+  const token = registerRenderKit(asciiKit(), {});
+  onTestFinished(() => withdrawRenderKit(token));
+  expect(frameBox('test', ['body'], 20)).toEqual([
+    '+- test -----------+',
+    '| body             |',
+    '+------------------+',
+  ]);
+  withdrawRenderKit(token);
+  expect(frameBox('test', ['body'], 20)).toEqual(native);
 });
 
 it('mounted model profiles resolve selection, separators, and navigation after kit changes', () => {

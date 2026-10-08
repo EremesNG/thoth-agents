@@ -23,11 +23,15 @@ Open-task reinjection uses the append-only approach demonstrated by
 - No configuration or localization dependencies: English text and upstream
   default tool guidance are fixed. Pi's tool-output expansion support is retained.
 - Registers a versioned Work panel provider (priority 20, label `Todos`) with
-  a `completed/total done` counter. Open tasks appear in-progress first (with
-  their active form), then pending, followed by `+N done` when completed tasks
-  exist. Deleted tasks are excluded; the section hides when no pending or
-  in-progress tasks remain, including when all tasks are completed. Enter opens
-  the host's subject/status/description detail; todos have no close action.
+  a `completed/total done` counter. Every non-deleted task is listed; completed
+  tasks are marked (completed glyph, dim, strikethrough) and are dropped first
+  on overflow with an exact `+N done` line. Enter on any row, the heading or a
+  summary line opens the Todos panel (pi-core history panel shell) with the
+  current list grouped in progress, not started and completed, plus the selected
+  task's details. `/todos` opens the same panel in the interactive TUI and keeps
+  its text output elsewhere. A fully completed list stays visible until the next
+  recognized prompt, then disappears from the section, panel and `/todos`
+  without changing task state. Todos have no close action.
 - The provider reads only the foreground session's local store and notifies the
   host on every foreground mutation, replay, or ownership change. Children never
   rebind the panel or display their tasks in it. Headless sessions retain the

@@ -3,7 +3,13 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bindWorkPanelLifecycle, getWorkPanelLifecycle } from '../src/index.js';
+import {
+  bindWorkPanelLifecycle,
+  ensureWorkPanel,
+  getWorkPanelLifecycle,
+  registerWorkPanelProvider,
+} from '../src/index.js';
+import { provider, uiSession } from './work-panel-fixture.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -11,10 +17,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function lifecycleSession() {
+function lifecycleSession(base?: ExtensionContext) {
   let idle = true;
   let sessionId = 'session-a';
   const ctx = {
+    ...base,
     sessionManager: { getSessionId: () => sessionId },
     isIdle: () => idle,
   } as ExtensionContext;
@@ -219,6 +226,51 @@ describe('work panel observed-text prompt epochs', () => {
 });
 
 describe('work panel lifecycle ownership and busy state', () => {
+  it('binds prompt epochs and idle changes through events with only a non-retained task-list provider', async () => {
+    await import('@earendil-works/pi-coding-agent');
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const ui = uiSession();
+    const session = lifecycleSession(ui.ctx);
+    cleanups.push(bindWorkPanelLifecycle(session.pi, session.ctx));
+    const completedEpoch = getWorkPanelLifecycle(session.ctx).epoch;
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        listRows: () => [
+          { id: 'done', primary: 'Completed task', status: 'completed' },
+        ],
+        showSection: () =>
+          getWorkPanelLifecycle(session.ctx).epoch === completedEpoch,
+        armCloseLabel: () => '',
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(ui.render()).toContain('  ✓ Completed task');
+    expect(session.listenerCount()).toBe(6);
+    session.input('next prompt');
+    vi.setSystemTime(2000);
+    session.start('next prompt');
+    expect(getWorkPanelLifecycle(session.ctx)).toEqual({
+      epoch: 1,
+      epochStartedAt: 2000,
+      busy: false,
+    });
+    expect(ui.render()).toEqual([]);
+    session.setIdle(false);
+    session.emit('agent_start');
+    expect(getWorkPanelLifecycle(session.ctx).busy).toBe(true);
+    session.input('streaming follow-up');
+    session.setIdle(true);
+    session.emit('agent_settled');
+    session.start('streaming follow-up');
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
+    expect(getWorkPanelLifecycle(session.ctx).busy).toBe(false);
+    expect(ui.tui.requestRender).toHaveBeenCalled();
+    const snapshot = getWorkPanelLifecycle(session.ctx);
+    Object.assign(snapshot, { epoch: 99 });
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
+  });
   it('initializes and refreshes busy from isIdle on start/settled, not agent_end', () => {
     const session = lifecycleSession();
     session.setIdle(false);

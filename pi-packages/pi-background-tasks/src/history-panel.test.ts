@@ -1,4 +1,6 @@
 import { appendFileSync, rmSync, writeFileSync } from 'node:fs';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it } from 'vitest';
 import { BackgroundTasksHistoryPanel } from './history-panel.js';
 import { logPathFor, taskDir, writeMeta } from './registry.js';
@@ -89,6 +91,35 @@ describe('Background task history', () => {
       await host.emit('session_shutdown', 'reload');
       for (const id of [old.id, newer.id, 'bg_history_row_newest'])
         rmSync(taskDir(id), { recursive: true, force: true });
+    }
+  });
+
+  it('resolves selection and generated separators at render time without changing retained log text', () => {
+    const host = lifecycleHost('history-icons', true);
+    const meta = task(host, 'bg_history_icons', { dismissedAt: 3000, name: 'icon task' });
+    writeFileSync(meta.logPath, 'literal · log › content\n');
+    const panel = panelFor(host, meta.id);
+    let token: ReturnType<typeof registerRenderKit> | undefined;
+    try {
+      const native = panel.render(160);
+      expect(native.join('\n')).toContain('› icon task');
+      expect(native.join('\n')).toContain('Status: succeeded · dismissed');
+      token = registerRenderKit(createTestRenderKit({
+        icon: (name) => name === 'selection' ? '>' : name === 'separator' ? '|' : '',
+      }), {});
+      const themed = panel.render(160).join('\n');
+      expect(themed).toContain('> icon task');
+      expect(themed).toContain('icon task | succeeded');
+      expect(themed).toContain('Status: succeeded | dismissed');
+      expect(themed).toContain('Retained log | bytes');
+      expect(themed).toContain('literal · log › content');
+      withdrawRenderKit(token);
+      token = undefined;
+      expect(panel.render(160)).toEqual(native);
+    } finally {
+      if (token) withdrawRenderKit(token);
+      panel.dispose();
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
     }
   });
 

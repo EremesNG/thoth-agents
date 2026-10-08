@@ -35,10 +35,16 @@ export function createSubagentsWorkPanelProvider(source: {
   openHistory?: WorkPanelProvider['openHistory'];
   theme?: () => RenderKitTheme;
 }): WorkPanelProvider {
-  const runningTask = (id: string) =>
-    source
-      .listTasks()
-      .find((task) => task.id === id && task.status === 'running');
+  const dismissed = new Set<string>();
+  const listeners = new Set<() => void>();
+  const taskById = (id: string) =>
+    source.listTasks().find((task) => task.id === id);
+  const visibleTasks = () =>
+    source.listTasks().filter((task) => {
+      // Continuing an existing task starts new work, not a dismissed outcome.
+      if (taskState(task) === 'running') dismissed.delete(task.id);
+      return !dismissed.has(task.id);
+    });
   const rank = (task: SubagentTask) =>
     task.status === 'running' ? 0 : task.status === 'queued' ? 1 : 2;
   return {
@@ -47,7 +53,7 @@ export function createSubagentsWorkPanelProvider(source: {
     label: 'Agents',
     priority: 10,
     retention: 'prompt',
-    visibleCount: () => source.listTasks().length,
+    visibleCount: () => visibleTasks().length,
     refreshIntervalMs: 100,
     summary: () => {
       const tasks = source.listTasks();
@@ -92,7 +98,7 @@ export function createSubagentsWorkPanelProvider(source: {
       };
     },
     listRows: () =>
-      [...source.listTasks()]
+      visibleTasks()
         .sort(
           (a, b) =>
             rank(a) - rank(b) ||
@@ -133,14 +139,33 @@ export function createSubagentsWorkPanelProvider(source: {
             renderSubagentWorkRow(task, width, now, source.theme?.()),
         })),
     detail: () => null,
-    armCloseLabel: (row) => (runningTask(row.id) ? 'cancel' : ''),
+    armCloseLabel: (row) => {
+      const task = taskById(row.id);
+      if (!task) return '';
+      if (task.status === 'running') return 'cancel';
+      return taskState(task) === 'running' ? '' : 'dismiss';
+    },
     close: (id) => {
-      if (!runningTask(id)) return;
-      source.cancel(id, 'cancelled from work panel');
-      return { action: 'cancel', providerId: 'subagents', id };
+      const task = taskById(id);
+      if (!task) return;
+      if (task.status === 'running') {
+        source.cancel(id, 'cancelled from work panel');
+        return { action: 'cancel', providerId: 'subagents', id };
+      }
+      if (taskState(task) === 'running' || dismissed.has(id)) return;
+      dismissed.add(id);
+      for (const notify of listeners) notify();
+      return { action: 'dismissed', providerId: 'subagents', id };
     },
     open: source.open,
     openHistory: source.openHistory,
-    onVisibleChanged: (notify) => source.onTaskUpdate(notify),
+    onVisibleChanged: (notify) => {
+      listeners.add(notify);
+      const unsubscribe = source.onTaskUpdate(notify);
+      return () => {
+        listeners.delete(notify);
+        unsubscribe();
+      };
+    },
   };
 }

@@ -9,6 +9,11 @@ import {
   withdrawRenderKit,
 } from '../src/index.js';
 import { createTestRenderKit } from '../src/testing.js';
+import {
+  panelOverflowEntries,
+  panelSections,
+  renderPanel,
+} from '../src/work-panel-render.js';
 
 import { provider, uiSession } from './work-panel-fixture.js';
 
@@ -161,6 +166,177 @@ const keys = {
   escape: '\x1b',
 };
 describe('work panel input', () => {
+  it.each([
+    false,
+    true,
+  ])('selects provider headings and summaries and opens the provider UI without row actions (kit: %s)', async (themed) => {
+    const session = uiSession();
+    const openHistory = vi.fn();
+    if (themed) {
+      const token = registerRenderKit(createTestRenderKit(), {});
+      cleanups.push(() => withdrawRenderKit(token));
+    }
+    const source = {
+      ...provider('todos', 'Todos', 20),
+      selectableHeading: true,
+      selectableSummary: true,
+      openHistory,
+      open: vi.fn(),
+      listRows: () => [
+        { id: 'open', primary: 'Open task', status: 'pending' },
+        { id: 'done', primary: '+4 done', summary: true },
+      ],
+    };
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, source),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.key(keys.left);
+    expect(session.render()[0]).toBe(
+      themed ? '› Todos · 2 items' : '› ◆ Todos · 2 items',
+    );
+    expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
+    expect(session.key('x')).toBeUndefined();
+    session.key(keys.enter);
+    expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+    expect(source.open).not.toHaveBeenCalled();
+    await Promise.resolve();
+    session.key(keys.left);
+    session.key(keys.down);
+    expect(
+      session
+        .render()
+        .some(
+          (line: string) => line.startsWith('› ') && line.includes('Open task'),
+        ),
+    ).toBe(true);
+    session.key(keys.down);
+    expect(
+      session
+        .render()
+        .some(
+          (line: string) => line.startsWith('› ') && line.includes('+4 done'),
+        ),
+    ).toBe(true);
+    expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
+    session.key(keys.enter);
+    expect(openHistory).toHaveBeenCalledTimes(2);
+    expect(source.close).not.toHaveBeenCalled();
+    expect(session.ui.custom).not.toHaveBeenCalled();
+  });
+  it('selects exact overflow summaries, keeps their provider visible, and opens the provider UI', async () => {
+    const session = uiSession();
+    const openHistory = vi.fn();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, provider()),
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        selectableHeading: true,
+        selectableSummary: true,
+        droppedSummary: (count) => `+${count} done`,
+        openHistory,
+        listRows: () => [
+          ...Array.from({ length: 6 }, (_, i) => ({
+            id: `done-${i}`,
+            primary: `Done ${i}`,
+            status: 'completed',
+            dropFirst: true,
+          })),
+          ...Array.from({ length: 4 }, (_, i) => ({
+            id: `open-${i}`,
+            primary: `Open ${i}`,
+            status: 'pending',
+          })),
+        ],
+      }),
+      registerWorkPanelProvider(
+        session.ctx,
+        provider('background', 'Background', 30),
+      ),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.key(keys.left);
+    for (let i = 0; i < 12; i++) session.key(keys.down);
+    expect(session.render()).toContain('› +5 done');
+    expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
+    expect(session.key('x')).toBeUndefined();
+    expect(session.key(keys.enter)).toEqual({ consume: true });
+    expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+    expect(session.ui.custom).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    false,
+    true,
+  ])('keeps exact labelled and ordinary overflow counts independently selectable (kit: %s)', async (themed) => {
+    const session = uiSession();
+    const openHistory = vi.fn();
+    if (themed) {
+      const token = registerRenderKit(createTestRenderKit(), {});
+      cleanups.push(() => withdrawRenderKit(token));
+    }
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        selectableHeading: true,
+        selectableSummary: true,
+        droppedSummary: (count) => `+${count} done`,
+        openHistory,
+        listRows: () => [
+          ...Array.from({ length: 5 }, (_, i) => ({
+            id: `done-${i}`,
+            primary: `Done ${i}`,
+            status: 'completed',
+            dropFirst: true,
+          })),
+          ...Array.from({ length: 10 }, (_, i) => ({
+            id: `open-${i}`,
+            primary: `Open ${i}`,
+            status: 'pending',
+          })),
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.key(keys.left);
+    for (let i = 0; i < 16; i++) session.key(keys.down);
+    const lines = session.render();
+    expect(lines).toHaveLength(12);
+    expect(lines).toContain('› +5 done');
+    expect(lines).toContain('  +2 more');
+    expect(lines.filter((line: string) => line.includes('Open '))).toHaveLength(
+      8,
+    );
+    expect(lines.some((line: string) => line.includes('Done '))).toBe(false);
+    session.key(keys.down);
+    expect(session.render()).toContain('› +2 more');
+    session.key(keys.enter);
+    expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+  });
+
+  it('omits unavailable actions from opted-in headings and summary hints', async () => {
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        selectableHeading: true,
+        selectableSummary: true,
+        listRows: () => [{ id: 'done', primary: '+4 done', summary: true }],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.key(keys.left);
+    expect(session.render().at(-1)).toBe('↑↓ move · Esc back');
+    expect(session.key(keys.enter)).toBeUndefined();
+    expect(session.key('x')).toBeUndefined();
+    session.key(keys.down);
+    expect(session.render()).toContain('› +4 done');
+    expect(session.render().at(-1)).toBe('↑↓ move · Esc back');
+    expect(session.key(keys.enter)).toBeUndefined();
+    expect(session.key('x')).toBeUndefined();
+    expect(session.ui.custom).not.toHaveBeenCalled();
+  });
+
   it('offers interaction for a failed background item even when no active work is reported', async () => {
     const session = uiSession();
     cleanups.push(
@@ -406,6 +582,123 @@ describe('work panel root editor input guard query', () => {
 });
 
 describe('work panel compact budget', () => {
+  it('drops provider-marked rows first across mixed sections and labels the exact omitted count', async () => {
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, provider()),
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        listRows: () => [
+          ...Array.from({ length: 6 }, (_, i) => ({
+            id: `done-${i}`,
+            primary: `Done ${i}`,
+            status: 'completed',
+            dropFirst: true,
+          })),
+          ...Array.from({ length: 4 }, (_, i) => ({
+            id: `open-${i}`,
+            primary: `Open ${i}`,
+            status: 'pending',
+          })),
+        ],
+        droppedSummary: (count) => `+${count} done`,
+      }),
+      registerWorkPanelProvider(
+        session.ctx,
+        provider('background', 'Background', 30),
+      ),
+      await ensureWorkPanel(session.ctx),
+    );
+    const lines = session.render();
+    expect(lines).toHaveLength(12);
+    expect(lines).toContain('  +5 done');
+    expect(lines.filter((line: string) => line.includes('Done '))).toHaveLength(
+      1,
+    );
+    for (let i = 0; i < 4; i++) expect(lines).toContain(`  ○ Open ${i}`);
+    expect(lines).toContain('  ◐ Agents item');
+    expect(lines).toContain('  ◐ Background item');
+  });
+  it('combines labelled and ordinary overflow at small heights without undercounting hidden items', async () => {
+    const session = uiSession();
+    session.tui.terminal.rows = 8;
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        selectableHeading: true,
+        selectableSummary: true,
+        droppedSummary: (count) => `+${count} done`,
+        openHistory: vi.fn(),
+        listRows: () => [
+          ...Array.from({ length: 5 }, (_, i) => ({
+            id: `done-${i}`,
+            primary: `Done ${i}`,
+            status: 'completed',
+            dropFirst: true,
+          })),
+          ...Array.from({ length: 10 }, (_, i) => ({
+            id: `open-${i}`,
+            primary: `Open ${i}`,
+            status: 'pending',
+          })),
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toEqual([
+      '◆ Todos · 15 items',
+      '  ○ Open 0',
+      '  +5 done · +9 more',
+      '← interact',
+    ]);
+    session.key(keys.left);
+    for (let i = 0; i < 16; i++) session.key(keys.down);
+    expect(session.render()).toContain('› +5 done · +9 more');
+  });
+
+  it('uses spare height for ordinary items in any section before drop-first items', async () => {
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () =>
+          Array.from({ length: 6 }, (_, i) => ({
+            id: `live-${i}`,
+            primary: `Live ${i}`,
+            status: 'running',
+          })),
+      }),
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos', 20),
+        droppedSummary: (count) => `+${count} done`,
+        listRows: () => [
+          { id: 'open-1', primary: 'Open 1', status: 'pending' },
+          { id: 'open-2', primary: 'Open 2', status: 'pending' },
+          {
+            id: 'done-1',
+            primary: 'Done 1',
+            status: 'completed',
+            dropFirst: true,
+          },
+          {
+            id: 'done-2',
+            primary: 'Done 2',
+            status: 'completed',
+            dropFirst: true,
+          },
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    const lines = session.render();
+    expect(lines).toHaveLength(12);
+    expect(lines.filter((line: string) => line.includes('Live '))).toHaveLength(
+      6,
+    );
+    expect(lines).toContain('  +2 done');
+    expect(lines.some((line: string) => line.includes('Done '))).toBe(false);
+  });
+
   it.each([
     100, 60, 24,
   ])('caps each section and the whole panel at width %i, keeping a selected hidden item visible', async (width) => {
@@ -1120,6 +1413,67 @@ it.each([
   cleanups.push(await ensureWorkPanel(session.ctx));
   session.render();
   expect(styles).toContainEqual([role, glyph]);
+});
+
+it.each([
+  0, 1, 2, 3, 4,
+])('preserves exact selectable drop-first counts within a budget of %i', (budget) => {
+  const source = {
+    ...provider('todos', 'Todos', 20),
+    selectableHeading: true,
+    selectableSummary: true,
+    droppedSummary: (count: number) => `+${count} done`,
+    listRows: () => [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `done-${index}`,
+        primary: `Done ${index}`,
+        status: 'completed',
+        dropFirst: true,
+      })),
+      { id: 'pending', primary: 'Pending', status: 'pending' },
+    ],
+  };
+  const sections = panelSections([source], 0);
+  const selectedKey = JSON.stringify(['todos', 'pending']);
+  const lines = renderPanel(
+    sections,
+    120,
+    0,
+    { fg: (_role, text) => text },
+    (text) => text,
+    { budget, hint: 'hint', selectedKey },
+  );
+  expect(lines.length).toBeLessThanOrEqual(budget);
+  const overflow = panelOverflowEntries(
+    sections,
+    120,
+    0,
+    budget,
+    selectedKey,
+  ).get('todos');
+  if (budget < 3) {
+    expect(lines).toEqual(budget ? ['hint'] : []);
+    expect(overflow).toBeUndefined();
+  } else {
+    expect(lines).toContain(
+      budget === 3 ? '  +10 done · +1 more' : '  +10 done',
+    );
+    expect(overflow?.[0]).toMatchObject({
+      sectionSummary: true,
+      row: { primary: budget === 3 ? '+10 done · +1 more' : '+10 done' },
+    });
+    const summaryKey = overflow?.[0].key;
+    expect(
+      renderPanel(
+        sections,
+        120,
+        0,
+        { fg: (_role, text) => text },
+        (text) => text,
+        { budget, hint: 'hint', selectedKey: summaryKey },
+      ),
+    ).toContain(budget === 3 ? '› +10 done · +1 more' : '› +10 done');
+  }
 });
 
 it('keeps the selected item instead of an overflow counter when a tiny terminal only has room for one body row', async () => {

@@ -3,6 +3,7 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import { wrapTextWithAnsi } from '@earendil-works/pi-tui';
+import { resolveIcon } from '@thoth-agents/pi-core';
 import {
   createHistoryPanelKeyMatcher,
   HistoryPanel,
@@ -78,7 +79,7 @@ function lossNotices(page: PageResult): string[] {
   return page.gaps.map((gap) =>
     gap.kind === 'read'
       ? `Log unavailable: ${gap.detail ?? 'read failed'}`
-      : `Notice: ${gap.kind} output lost (${gap.bytes ?? 0} bytes)${gap.detail ? ` · ${gap.detail}` : ''}`,
+      : `Notice: ${gap.kind} output lost (${gap.bytes ?? 0} bytes)${gap.detail ? ` ${resolveIcon('separator', '·')} ${gap.detail}` : ''}`,
   );
 }
 
@@ -90,7 +91,7 @@ function contentFor(
   const command =
     meta.command || meta.argv?.join(' ') || '(no command recorded)';
   const rows = [
-    `Status: ${meta.status}${meta.dismissedAt !== undefined ? ' · dismissed' : ''}`,
+    `Status: ${meta.status}${meta.dismissedAt !== undefined ? ` ${resolveIcon('separator', '·')} dismissed` : ''}`,
     `Command: ${command}`,
     `Started: ${new Date(meta.startedAt).toISOString()}`,
     `Ended: ${meta.endedAt === undefined ? '(running)' : new Date(meta.endedAt).toISOString()}`,
@@ -105,7 +106,7 @@ function contentFor(
     `Log: ${meta.logPath}`,
     ...lossNotices(page),
     ...(page.reset ? [`Log reset: ${page.reset}`] : []),
-    `Retained log · bytes ${page.startByte}-${page.endByte}/${page.totalBytes}`,
+    `Retained log ${resolveIcon('separator', '·')} bytes ${page.startByte}-${page.endByte}/${page.totalBytes}`,
     ...(page.text ? terminalDisplayRows(page.text) : ['(log is empty)']),
   ];
   return rows.flatMap((row) => wrapTextWithAnsi(row, Math.max(1, width)));
@@ -164,7 +165,7 @@ export class BackgroundTasksHistoryPanel extends HistoryPanel<BackgroundTaskMeta
         items: () => listMetasForOrigin(origin),
         id: (meta) => meta.id,
         renderItemLabel: (meta, context) =>
-          `${context.selected ? '›' : ' '} ${meta.name || meta.id}`,
+          `${context.selected ? resolveIcon('selection', '›') : ' '} ${meta.name || meta.id}`,
         renderContent: (meta, width) => [
           ...contentFor(meta, width, currentPage(meta)),
           ...(actionError?.id === meta.id
@@ -185,13 +186,13 @@ export class BackgroundTasksHistoryPanel extends HistoryPanel<BackgroundTaskMeta
         renderHeader: (meta) => {
           const current = currentPage(meta);
           const metadata = [
-            `${meta.name || meta.id} · ${meta.status}`,
-            lossNotices(current).join(' · ') ||
+            `${meta.name || meta.id} ${resolveIcon('separator', '·')} ${meta.status}`,
+            lossNotices(current).join(` ${resolveIcon('separator', '·')} `) ||
               `Command: ${meta.command || meta.argv?.join(' ') || '(no command recorded)'}`,
           ];
           return {
             badge: meta.status,
-            shortcuts: meta.status === 'running' ? 'x stop · ' : '',
+            shortcuts: meta.status === 'running' ? `x stop ${resolveIcon('separator', '·')} ` : '',
             wideRows: metadata,
             narrowRows: metadata,
           };

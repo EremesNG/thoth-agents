@@ -6,7 +6,7 @@ import {
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { uiSession } from '../pi-core/test/work-panel-fixture.js';
 import {
   clearActiveRenderSession,
@@ -27,7 +27,7 @@ afterEach(() => {
 it.each([
   false,
   true,
-])('hides an all-done task list with no widget lines (render kit: %s)', async (themed) => {
+])('keeps an all-done task list visible with its counter until the next prompt (render kit: %s)', async (themed) => {
   const session = uiSession();
   setActiveRenderSession('foreground');
   replaceState('foreground', {
@@ -46,18 +46,13 @@ it.each([
   cleanups.push(registerWorkPanelProvider(session.ctx, provider));
   cleanups.push(await ensureWorkPanel(session.ctx));
 
-  expect(session.render()).toEqual([]);
-  expect(provider.listRows(0)).toEqual([]);
-  expect(provider.visibleCount()).toBe(0);
+  const lines: string[] = session.render();
+  expect(lines[0]).toContain('Todos · 7/7 done');
+  expect(lines.some((line) => line.includes('Finished 1'))).toBe(true);
+  expect(provider.visibleCount()).toBe(7);
   expect(provider.summary()).toEqual({ completed: 7, total: 7 });
-  expect(session.key('\x1b[D')).toBeUndefined();
-  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
-    'thoth-work-panel',
-    undefined,
-  );
 });
-
-it('removes the Todos section and releases focus as soon as the last open task completes', async () => {
+it('keeps a finished task list shown with completed rows marked as the last open task completes', async () => {
   const session = uiSession();
   setActiveRenderSession('foreground');
   replaceState('foreground', {
@@ -74,14 +69,9 @@ it('removes the Todos section and releases focus as soon as the last open task c
   expect(session.render()).toEqual([
     '◆ Todos · 1/2 done',
     '  ◇ Last open task',
-    '  +1 done',
+    '  ✓ Already finished',
     '← interact',
   ]);
-  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
-    'thoth-work-panel',
-    '← work · 1',
-  );
-  expect(session.key('\x1b[D')).toEqual({ consume: true });
 
   commitState('foreground', {
     tasks: [
@@ -90,16 +80,97 @@ it('removes the Todos section and releases focus as soon as the last open task c
     ],
     nextId: 3,
   });
-  expect(session.render()).toEqual([]);
-  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
-    'thoth-work-panel',
-    undefined,
-  );
-  for (const key of ['\x1b[D', '\x1b[A', '\x1b[B', '\r', 'x'])
-    expect(session.key(key)).toBeUndefined();
+  expect(session.render()).toEqual([
+    '◆ Todos · 2/2 done',
+    '  ✓ Last open task',
+    '  ✓ Already finished',
+    '← interact',
+  ]);
 });
 
-it('lists in-progress work with its active form before pending work and a trailing done count', () => {
+it('opens the panel from the heading, a row and the dropped-done summary, and drops completed rows first with an exact count', async () => {
+  const session = uiSession();
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      ...Array.from({ length: 14 }, (_, index) => ({
+        id: index + 1,
+        subject: `Done ${index + 1}`,
+        status: 'completed' as const,
+      })),
+      { id: 15, subject: 'Open one', status: 'in_progress' as const },
+      { id: 16, subject: 'Open two', status: 'pending' as const },
+    ],
+    nextId: 17,
+  });
+  const provider = createTodoWorkPanelProvider();
+  const open = vi.fn();
+  const openHistory = vi.fn();
+  provider.open = open;
+  provider.openHistory = openHistory;
+  cleanups.push(registerWorkPanelProvider(session.ctx, provider));
+  cleanups.push(await ensureWorkPanel(session.ctx));
+
+  const lines: string[] = session.render();
+  expect(lines[0]).toBe('◆ Todos · 14/16 done');
+  expect(lines.some((line) => line.includes('Open one'))).toBe(true);
+  expect(lines.some((line) => line.includes('Open two'))).toBe(true);
+  const dropped = lines.find((line) => /\+\d+ done/.test(line));
+  expect(dropped).toBeDefined();
+  const hidden = Number(/\+(\d+) done/.exec(dropped ?? '')?.[1]);
+  expect(lines.filter((line) => line.includes('✓')).length + hidden).toBe(14);
+
+  session.key('\x1b[D');
+  session.key('\r');
+  expect(openHistory).toHaveBeenCalledTimes(1);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  session.key('\x1b[D');
+  session.key('\x1b[B');
+  session.key('\r');
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(open.mock.calls[0][0]).toBe(
+    String(open.mock.calls[0][0] && Number(open.mock.calls[0][0])),
+  );
+});
+it('keeps exact completed counts selectable in a three-line widget and stays bounded below it', async () => {
+  const session = uiSession();
+  session.tui.terminal.rows = 6;
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: index + 1,
+        subject: `Done ${index + 1}`,
+        status: 'completed' as const,
+      })),
+      { id: 11, subject: 'Pending', status: 'pending' as const },
+    ],
+    nextId: 12,
+  });
+  const provider = createTodoWorkPanelProvider();
+  const openHistory = vi.fn();
+  provider.openHistory = openHistory;
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider),
+    await ensureWorkPanel(session.ctx),
+  );
+  expect(session.render()).toEqual([
+    '◆ Todos · 10/11 done',
+    '  +10 done · +1 more',
+    '← interact',
+  ]);
+  session.key('\x1b[D');
+  for (let index = 0; index < 12; index++) session.key('\x1b[B');
+  expect(session.render()).toContain('› +10 done · +1 more');
+  session.key('\r');
+  expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+  for (const height of [0, 2, 4]) {
+    session.tui.terminal.rows = height;
+    expect(session.render().length).toBeLessThanOrEqual(height / 2);
+  }
+});
+
+it('lists every visible task in order with completed rows marked, dropped first and strikethrough dim', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
     tasks: [
@@ -111,57 +182,54 @@ it('lists in-progress work with its active form before pending work and a traili
         status: 'in_progress',
         activeForm: 'Implementing feature',
       },
-      { id: 4, subject: 'Pending last', status: 'pending' },
       { id: 5, subject: 'Deleted task', status: 'deleted' },
     ],
     nextId: 6,
   });
-  const provider = createTodoWorkPanelProvider();
+  const provider = createTodoWorkPanelProvider({
+    strikethrough: (text) => `~${text}~`,
+  });
   expect(provider).toMatchObject({
     version: 1,
     id: 'todos',
     label: 'Todos',
     priority: 20,
+    selectableHeading: true,
+    selectableSummary: true,
   });
-  expect(provider.summary()).toEqual({ completed: 1, total: 4 });
-  expect(provider.listRows(0).map((row) => row.primary)).toEqual([
-    'Implement feature (Implementing feature)',
-    'Pending first',
-    'Pending last',
-    '+1 done',
+  expect(provider.droppedSummary(4)).toBe('+4 done');
+  expect(provider.summary()).toEqual({ completed: 1, total: 3 });
+  const rows = provider.listRows(0);
+  expect(rows.map((row) => row.id)).toEqual(['1', '2', '3']);
+  expect(rows.map((row) => row.dropFirst)).toEqual([
+    undefined,
+    true,
+    undefined,
   ]);
+  expect(rows[1]).toMatchObject({
+    statusGlyph: '✓',
+    statusGlyphRole: 'success',
+    segments: [{ text: '~Finished task~', role: 'dim' }],
+  });
+  expect(rows[2].primary).toBe('Implement feature (Implementing feature)');
   expect(provider.visibleCount()).toBe(3);
 });
-
-it('provides host detail with the subject, status and multiline description, without a close action', () => {
+it('has no generic detail card and no close action; rows open the panel instead', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
-    tasks: [
-      {
-        id: 7,
-        subject: 'Write tests',
-        status: 'in_progress',
-        description: 'Cover ordering.\nCover replay.',
-        activeForm: 'Writing tests',
-      },
-    ],
+    tasks: [{ id: 7, subject: 'Write tests', status: 'in_progress' }],
     nextId: 8,
   });
   const provider = createTodoWorkPanelProvider();
-  expect(provider.detail('7', 0)).toMatchObject({
-    id: '7',
-    title: 'Write tests',
-    status: 'in_progress',
-    evidence: { label: 'Description', text: 'Cover ordering.\nCover replay.' },
-  });
   const row = provider.listRows(0)[0];
+  expect(provider.detail('7', 0)).toBeNull();
   expect(provider.armCloseLabel(row)).toBe('');
+  expect(typeof provider.open).toBe('function');
+  expect(typeof provider.openHistory).toBe('function');
   expect('supportsLogTail' in provider).toBe(false);
   provider.close('7');
   expect(provider.listRows(0)[0]).toEqual(row);
-  expect(provider.detail('missing', 0)).toBeNull();
 });
-
 it('notifies on every foreground commit, replay and eviction, but not child changes, and unsubscribes cleanly', () => {
   setActiveRenderSession('foreground');
   const provider = createTodoWorkPanelProvider();
@@ -193,7 +261,7 @@ it('notifies on every foreground commit, replay and eviction, but not child chan
   expect(updates).toEqual([['Created'], ['Replayed'], []]);
 });
 
-it('keeps model-controlled row and detail text terminal-safe', () => {
+it('keeps model-controlled row text terminal-safe', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
     tasks: [
@@ -202,8 +270,6 @@ it('keeps model-controlled row and detail text terminal-safe', () => {
         subject: 'Safe\u001b[31m subject\u001b[0m\nline',
         status: 'in_progress',
         activeForm: 'Working\twell\u202e',
-        description:
-          'First\u001b]52;c;secret\u0007 line\nSecond\u001b[31m line\u001b[0m',
       },
     ],
     nextId: 2,
@@ -212,12 +278,7 @@ it('keeps model-controlled row and detail text terminal-safe', () => {
   expect(provider.listRows(0)[0].primary).toBe(
     'Safe subject line (Working well)',
   );
-  expect(provider.detail('1', 0)).toMatchObject({
-    title: 'Safe subject line',
-    evidence: { text: 'First line\nSecond line' },
-  });
 });
-
 it('refreshes when foreground ownership changes or clears', () => {
   replaceState('first', {
     tasks: [{ id: 1, subject: 'First', status: 'pending' }],
@@ -289,7 +350,7 @@ it.each([
   expect(provider.visibleCount()).toBe(0);
 });
 
-it('hides completed-only lists and excludes pending active forms', () => {
+it('shows completed-only lists and excludes pending active forms', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
     tasks: [
@@ -299,7 +360,10 @@ it('hides completed-only lists and excludes pending active forms', () => {
     nextId: 3,
   });
   const provider = createTodoWorkPanelProvider();
-  expect(provider.listRows(0)).toEqual([]);
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual([
+    'Finished one',
+    'Finished two',
+  ]);
   expect(provider.summary()).toEqual({ completed: 2, total: 2 });
   replaceState('foreground', {
     tasks: [
@@ -313,14 +377,8 @@ it('hides completed-only lists and excludes pending active forms', () => {
     nextId: 2,
   });
   expect(provider.listRows(0).map((row) => row.primary)).toEqual(['Pending']);
-  expect(provider.detail('1', 0)?.evidence).toEqual({
-    label: 'Description',
-    text: '',
-    emptyText: '(no description)',
-  });
 });
-
-it('publishes distinct todo glyphs and semantic subject, active-form and done-summary hierarchy', () => {
+it('publishes distinct todo glyphs and semantic subject and active-form hierarchy', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
     tasks: [
@@ -331,9 +389,8 @@ it('publishes distinct todo glyphs and semantic subject, active-form and done-su
         activeForm: 'Verifying',
       },
       { id: 2, subject: 'Archive', status: 'pending' },
-      { id: 3, subject: 'Finished', status: 'completed' },
     ],
-    nextId: 4,
+    nextId: 3,
   });
   const rows = createTodoWorkPanelProvider().listRows(0);
   expect(rows[0]).toMatchObject({
@@ -349,12 +406,7 @@ it('publishes distinct todo glyphs and semantic subject, active-form and done-su
     statusGlyphRole: 'secondary',
     segments: [{ text: 'Archive', role: 'primary' }],
   });
-  expect(rows[2]).toMatchObject({
-    summary: true,
-    segments: [{ text: '+1 done', role: 'dim' }],
-  });
 });
-
 it('todo producer overrides let the registered kit win and restore native glyphs on withdrawal', () => {
   setActiveRenderSession('glyph-test');
   cleanups.push(() => evictSession('glyph-test'));
@@ -371,7 +423,8 @@ it('todo producer overrides let the registered kit win and restore native glyphs
     '○',
   ]);
   const kit = createTestRenderKit();
-  kit.statusGlyph = (_theme, status) => (status === 'in_progress' ? '*' : '-');
+  kit.icon = (name) => (name === 'taskInProgress' ? '*' : name);
+  kit.statusGlyph = (_theme, status) => (status === 'pending' ? '-' : '+');
   const token = registerRenderKit(kit, {});
   cleanups.push(() => withdrawRenderKit(token));
   expect(provider.listRows(0).map((row) => row.statusGlyph)).toEqual([

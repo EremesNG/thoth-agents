@@ -47,7 +47,7 @@ function setup() {
     for (const handler of captured.events.get(event) ?? [])
       await handler({} as never, ctx as never);
   };
-  return { current, child, tool, emit };
+  return { current, child, tool, emit, captured };
 }
 
 it('refreshes immediately after todo mutations while child sessions cannot rebind or contaminate the section', async () => {
@@ -78,7 +78,6 @@ it('refreshes immediately after todo mutations while child sessions cannot rebin
   expect(provider.listRows(0).map((row) => row.primary)).toEqual([
     'Current work',
   ]);
-  expect(provider.detail('1', 0)?.title).toBe('Current work');
   expect(panel.registrations[0].unregister).not.toHaveBeenCalled();
   expect(panel.releases[0]).not.toHaveBeenCalled();
 });
@@ -109,7 +108,6 @@ it.each([
   expect(provider.listRows(0).map((row) => row.primary)).toEqual([
     'Restored work',
   ]);
-  expect(provider.detail('1', 0)?.evidence.text).toBe('Restored description');
   changed.mockClear();
   await emit(event, createMockCtx({ sessionId: 'child', branch: [] }));
   expect(changed).not.toHaveBeenCalled();
@@ -206,4 +204,98 @@ it('still clears foreground ownership and unsubscribes when host disposal throws
   expect(panel.registrations[0].unregister).toHaveBeenCalledTimes(1);
   expect(getActiveRenderSession()).toBe('');
   expect(getState('foreground').tasks).toEqual([]);
+});
+
+it('hides a fully completed list after the next recognized prompt, keeping task state and reinjection untouched', async () => {
+  const { current, tool, emit, captured } = setup();
+  await emit('session_start');
+  const { provider, changed } = panel.registrations[0];
+  await tool.execute(
+    'a',
+    { action: 'create', subject: 'Only task' },
+    undefined,
+    undefined,
+    current,
+  );
+  await tool.execute(
+    'b',
+    { action: 'update', id: 1, status: 'completed' },
+    undefined,
+    undefined,
+    current,
+  );
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual(['Only task']);
+
+  // A prompt queued while streaming or typed elsewhere is not a recognized prompt.
+  const ctx = current as never;
+  const dispatch = async (name: string, event: unknown) => {
+    for (const handler of captured.events.get(name) ?? [])
+      await handler(event as never, ctx);
+  };
+  await dispatch('before_agent_start', {
+    prompt: 'unobserved',
+    systemPrompt: '',
+  });
+  expect(provider.listRows(0)).toHaveLength(1);
+
+  changed.mockClear();
+  await dispatch('input', { source: 'interactive', text: 'next job' });
+  await dispatch('before_agent_start', {
+    prompt: 'next job',
+    systemPrompt: '',
+  });
+  expect(provider.listRows(0)).toEqual([]);
+  expect(provider.visibleCount()).toBe(0);
+  expect(getState('foreground').tasks).toMatchObject([
+    { subject: 'Only task', status: 'completed' },
+  ]);
+
+  const notify = current.ui.notify as ReturnType<typeof vi.fn>;
+  await captured.commands.get('todos')?.handler('', current);
+  expect(notify).toHaveBeenLastCalledWith(
+    expect.stringContaining('No todos'),
+    'info',
+  );
+
+  // New work shows the list again; a later completion waits for its own prompt.
+  await tool.execute(
+    'c',
+    { action: 'create', subject: 'Fresh task' },
+    undefined,
+    undefined,
+    current,
+  );
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual([
+    'Only task',
+    'Fresh task',
+  ]);
+});
+
+it('leaves an open task list visible across prompts and unbinds the lifecycle on shutdown', async () => {
+  const { current, tool, emit, captured } = setup();
+  await emit('session_start');
+  const { provider } = panel.registrations[0];
+  await tool.execute(
+    'a',
+    { action: 'create', subject: 'Still open' },
+    undefined,
+    undefined,
+    current,
+  );
+  for (const handler of captured.events.get('input') ?? [])
+    await handler(
+      { source: 'interactive', text: 'again' } as never,
+      current as never,
+    );
+  for (const handler of captured.events.get('before_agent_start') ?? [])
+    await handler(
+      { prompt: 'again', systemPrompt: '' } as never,
+      current as never,
+    );
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual([
+    'Still open',
+  ]);
+  expect(captured.events.get('input')).toHaveLength(1);
+  await emit('session_shutdown');
+  expect(captured.events.get('input')).toHaveLength(0);
 });

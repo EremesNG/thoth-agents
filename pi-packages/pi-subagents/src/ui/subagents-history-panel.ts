@@ -22,7 +22,7 @@ import type {
 import {
   agentIcon,
   BOX_CHARS,
-  CYBER_SEPARATOR,
+  cyberSeparator,
   themeAccent,
   themeDim,
   themeFg,
@@ -272,7 +272,9 @@ export class SubagentsHistoryPanel {
   }
 
   private itemLabel(task: SubagentTask, context: HistoryPanelContext): string {
-    const icon = context.selected ? '●' : '○';
+    const icon = context.selected
+      ? resolveIcon('selectionSelected', '●')
+      : resolveIcon('selectionUnselected', '○');
     const name = task.display_name?.trim() || task.agent;
     if (context.layout === 'wide') {
       const effort = task.effort ? ` effort:${task.effort}` : '';
@@ -314,7 +316,7 @@ export class SubagentsHistoryPanel {
     const lastActivity = currentTask.last_activity
       ? `${currentTask.last_activity}${stallHint}`
       : undefined;
-    const separator = ` ${themeFg(th, 'accent', CYBER_SEPARATOR)} `;
+    const separator = ` ${themeFg(th, 'accent', cyberSeparator())} `;
     const displayName = currentTask.display_name?.trim();
     let taskText = (currentTask.task || '').trim().replace(/\s+/g, ' ');
     if (

@@ -1,8 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
 import type {
   RenderKitTheme,
   RenderStatus,
   SemanticIconName,
+} from '@thoth-agents/pi-core';
+import {
+  registerRenderKit,
+  resolveFrames,
+  resolveIcon,
+  resolveStatusGlyph,
+  withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,12 +26,29 @@ import { renderWelcomeHeader } from '../src/welcome/render.ts';
 import type { WelcomeData } from '../src/welcome/resources.ts';
 
 const theme: RenderKitTheme = { fg: (_role, text) => text };
-const modes: readonly IconMode[] = ['nerd', 'ascii'];
+const modes: readonly IconMode[] = ['nerd', 'unicode', 'ascii'];
 const plainTheme = { fg: (_token: string, text: string) => text };
 
 describe('theme kit icon lookup per mode', () => {
-  const expected: Record<IconMode, Record<string, string | string[]>> = {
+  it('documents the Unicode agent substitution rather than requiring its native Nerd glyph', () => {
+    const readme = readFileSync(
+      new URL('../README.md', import.meta.url),
+      'utf8',
+    );
+    expect(readme).toContain('agent `⚙`');
+    expect(readme).not.toContain(
+      'Unicode mode preserves the native agent symbol',
+    );
+    expect(readme).not.toContain(
+      'which still needs a font providing that glyph',
+    );
+  });
+  const expected: Record<
+    IconMode,
+    Record<SemanticIconName, string | readonly string[]>
+  > = {
     nerd: {
+      warning: '\u{f071}',
       branch: '\u{e0a0}',
       folder: '\u{f07c}',
       model: '\u{f06a9}',
@@ -49,6 +74,71 @@ describe('theme kit icon lookup per mode', () => {
       arrowLeft: '←',
       arrowRight: '→',
       selection: '›',
+      selectionSelected: '\u{f111}',
+      selectionUnselected: '\u{f10c}',
+      taskInProgress: '◐',
+      separatorHeavy: '┃',
+      boxTopLeft: '╭',
+      boxTopRight: '╮',
+      boxVertical: '│',
+      boxBottomLeft: '╰',
+      boxBottomRight: '╯',
+      boxHorizontal: '─',
+      boxTDown: '┬',
+      boxTUp: '┴',
+      boxTRight: '├',
+      boxTLeft: '┤',
+      boxCross: '┼',
+      close: '\u{f00d}',
+      scrollUp: '↑',
+      scrollDown: '↓',
+      ready: '▲',
+      spinnerFrames: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+      workingFrames: ['△', '◭', '▲', '◮'],
+    },
+    unicode: {
+      warning: '⚠',
+      branch: '⑂',
+      folder: 'dir',
+      model: '●',
+      effort: '◐',
+      context: 'ctx',
+      cost: '$',
+      tokensIn: '↑',
+      tokensOut: '↓',
+      cache: 'cache',
+      throughput: 'tok/s',
+      agent: '⚙',
+      tool: '*',
+      bash: '$',
+      read: 'read',
+      write: 'write',
+      edit: 'edit',
+      search: 'search',
+      file: 'file',
+      separator: '·',
+      ellipsis: '…',
+      arrowUp: '↑',
+      arrowDown: '↓',
+      arrowLeft: '←',
+      arrowRight: '→',
+      selection: '›',
+      selectionSelected: '●',
+      selectionUnselected: '○',
+      taskInProgress: '◇',
+      separatorHeavy: '┃',
+      boxTopLeft: '╭',
+      boxTopRight: '╮',
+      boxVertical: '│',
+      boxBottomLeft: '╰',
+      boxBottomRight: '╯',
+      boxHorizontal: '─',
+      boxTDown: '┬',
+      boxTUp: '┴',
+      boxTRight: '├',
+      boxTLeft: '┤',
+      boxCross: '┼',
+      close: '✕',
       scrollUp: '↑',
       scrollDown: '↓',
       ready: '▲',
@@ -56,6 +146,7 @@ describe('theme kit icon lookup per mode', () => {
       workingFrames: ['△', '◭', '▲', '◮'],
     },
     ascii: {
+      warning: '!',
       branch: 'git',
       folder: 'dir',
       model: '*',
@@ -81,6 +172,22 @@ describe('theme kit icon lookup per mode', () => {
       arrowLeft: '<',
       arrowRight: '>',
       selection: '>',
+      selectionSelected: '*',
+      selectionUnselected: 'o',
+      taskInProgress: '*',
+      separatorHeavy: '|',
+      boxTopLeft: '+',
+      boxTopRight: '+',
+      boxVertical: '|',
+      boxBottomLeft: '+',
+      boxBottomRight: '+',
+      boxHorizontal: '-',
+      boxTDown: '+',
+      boxTUp: '+',
+      boxTRight: '+',
+      boxTLeft: '+',
+      boxCross: '+',
+      close: 'x',
       scrollUp: '^',
       scrollDown: 'v',
       ready: '^',
@@ -113,6 +220,20 @@ describe('theme kit icon lookup per mode', () => {
       blocked: '\u{f05e}',
       unknown: '\u{f128}',
     },
+    unicode: {
+      pending: '○',
+      queued: '○',
+      in_progress: '◐',
+      running: '◐',
+      completed: '✓',
+      failed: '✗',
+      cancelled: '■',
+      interrupted: '■',
+      stopping: '■',
+      deleted: '⊘',
+      blocked: '⊘',
+      unknown: '?',
+    },
     ascii: {
       pending: '-',
       queued: '~',
@@ -135,11 +256,42 @@ describe('theme kit icon lookup per mode', () => {
       expect(kit.statusGlyph(theme, status as RenderStatus)).toBe(glyph);
     }
   });
+
+  it('matches core native fallbacks except the pure Unicode agent icon through the registered Unicode kit', () => {
+    const names = (Object.keys(expected.unicode) as SemanticIconName[]).filter(
+      (name) => name !== 'agent',
+    );
+    expect(resolveIcon('agent')).toBe('\u{f08c7}');
+    const resolve = (name: SemanticIconName) =>
+      name === 'spinnerFrames' || name === 'workingFrames'
+        ? resolveFrames(name)
+        : resolveIcon(name);
+    const native = names.map(resolve);
+    const statusNames = Object.keys(statuses.unicode) as RenderStatus[];
+    const nativeStatuses = statusNames.map((status) =>
+      resolveStatusGlyph(status),
+    );
+    const token = registerRenderKit(
+      createRenderKit({}, undefined, 'unicode'),
+      {},
+    );
+    try {
+      expect(resolveIcon('agent')).toBe('⚙');
+      expect(names.map(resolve)).toEqual(native);
+      expect(statusNames.map((status) => resolveStatusGlyph(status))).toEqual(
+        nativeStatuses,
+      );
+    } finally {
+      withdrawRenderKit(token);
+    }
+    expect(resolveIcon('agent')).toBe('\u{f08c7}');
+  });
 });
 
 describe('standard tool footer per mode', () => {
   it.each([
     ['nerd', '▲ · 2s', '\u{f00c} · 2s · 1 line', '\u{f00d} · 2s · boom'],
+    ['unicode', '▲ · 2s', '✓ · 2s · 1 line', '✗ · 2s · boom'],
     ['ascii', 'O | 2s', '+ | 2s | 1 line', 'x | 2s | boom'],
   ] as const)('renders running, completed and failed in %s mode', (mode, running, done, failed) => {
     const kit = createRenderKit({}, undefined, mode);
@@ -152,6 +304,7 @@ describe('standard tool footer per mode', () => {
 
   it.each([
     ['nerd', '… 3 more lines · ctrl+o to expand'],
+    ['unicode', '… 3 more lines · ctrl+o to expand'],
     ['ascii', '... 3 more lines | ctrl+o to expand'],
   ] as const)('collapses with the %s ellipsis and separator', (mode, hint) => {
     const kit = createRenderKit({}, undefined, mode);
@@ -187,9 +340,10 @@ describe('standard tool footer per mode', () => {
   });
 });
 
-describe('editor borders in both icon modes', () => {
+describe('editor borders in every icon mode', () => {
   it.each([
     ['nerd', '↑ 7 more', '↓ 7 more'],
+    ['unicode', '↑ 7 more', '↓ 7 more'],
     ['ascii', '^ 7 more', 'v 7 more'],
   ] as const)('labels scroll counts in %s mode', (mode, up, down) => {
     expect(scrollLabel('up', 7, mode)).toBe(up);
@@ -244,6 +398,9 @@ describe('editor borders in both icon modes', () => {
       '^ ready',
     );
     expect(state.status(undefined, 20, undefined, undefined, 'nerd')).toBe(
+      '▲ ready',
+    );
+    expect(state.status(undefined, 20, undefined, undefined, 'unicode')).toBe(
       '▲ ready',
     );
     const indicator = {

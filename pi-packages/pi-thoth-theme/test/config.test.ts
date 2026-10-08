@@ -70,6 +70,29 @@ describe('loadConfig', () => {
     });
   });
 
+  it.each([
+    'nerd',
+    'unicode',
+    'ascii',
+  ] as const)('accepts %s icon mode', (icons) => {
+    writeFileSync(configPath, JSON.stringify({ icons }));
+    expect(loadConfig(configPath).icons).toBe(icons);
+  });
+
+  it.each([
+    null,
+    false,
+    42,
+    '',
+    'Unicode',
+    'unicode ',
+    [],
+    {},
+  ])('defaults invalid icon value %j to Nerd', (icons) => {
+    writeFileSync(configPath, JSON.stringify({ icons }));
+    expect(loadConfig(configPath).icons).toBe('nerd');
+  });
+
   it('returns independent defaults for each load', () => {
     const config = loadConfig(configPath);
     config.statusLine.enabled = false;

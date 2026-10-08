@@ -1,6 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMockCtx, createMockPi } from './test/helpers.js';
+import { createMockCtx, createMockPi, createMockUI } from './test/helpers.js';
 import {
   __resetState,
   registerTodosCommand,
@@ -111,7 +111,7 @@ describe('/todos command — grouped output', () => {
     expect(out).toContain('1 pending');
   });
 
-  it("renders 'In Progress' group with ◐ glyph and activeForm suffix", async () => {
+  it("renders 'In Progress' group with ◇ glyph and activeForm suffix", async () => {
     const { tool, cmd } = setup();
     await seed(tool, [
       { action: 'create', subject: 'build', activeForm: 'Building' },
@@ -121,7 +121,7 @@ describe('/todos command — grouped output', () => {
     await cmd.handler('', ctx as never);
     const out = grabOutput(ctx);
     expect(out).toContain('── In Progress ──');
-    expect(out).toContain('◐ #1 build (Building)');
+    expect(out).toContain('◇ #1 build (Building)');
     expect(out).toContain('1 in progress');
   });
 
@@ -207,7 +207,8 @@ it('/todos uses kit status glyphs and separators without changing execution resu
     ctx,
   );
   const kit = createTestRenderKit({
-    icon: (name) => (name === 'separator' ? '|' : name),
+    icon: (name) =>
+      name === 'separator' ? '|' : name === 'taskInProgress' ? '*' : name,
   });
   kit.statusGlyph = (_theme, status) => (status === 'pending' ? '-' : '*');
   const token = registerRenderKit(kit, {});
@@ -236,4 +237,49 @@ it('/todos uses kit status glyphs and separators without changing execution resu
   } finally {
     withdrawRenderKit(token);
   }
+});
+
+describe('/todos command — panel', () => {
+  async function seeded() {
+    const { tool, cmd } = setup();
+    await seed(tool, [
+      { action: 'create', subject: 'research' },
+      { action: 'create', subject: 'build' },
+      { action: 'update', id: 2, status: 'completed' },
+    ]);
+    return cmd;
+  }
+
+  it('opens the task list panel when the interactive TUI offers custom UI', async () => {
+    const cmd = await seeded();
+    const custom = vi.fn(async () => undefined);
+    const ctx = createMockCtx({
+      mode: 'tui',
+      ui: createMockUI({ custom } as never),
+    });
+    await cmd.handler('', ctx as never);
+    expect(custom).toHaveBeenCalledTimes(1);
+    expect(custom.mock.calls[0]).toMatchObject([
+      expect.any(Function),
+      { overlay: true },
+    ]);
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+  });
+
+  it('keeps the text output without custom UI', async () => {
+    const cmd = await seeded();
+    for (const ctx of [
+      createMockCtx({ mode: 'tui' }),
+      createMockCtx({
+        mode: 'rpc',
+        ui: createMockUI({ custom: vi.fn() } as never),
+      }),
+    ]) {
+      await cmd.handler('', ctx as never);
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        expect.stringContaining('1/2 completed'),
+        'info',
+      );
+    }
+  });
 });

@@ -93,7 +93,7 @@ export function renderSubagentWorkRow(
   const warningText =
     (task.status === 'running' || task.status === 'queued') &&
     task.dropped_tools?.length
-      ? `⚠ ${task.dropped_tools.length} dropped`
+      ? `${resolveIcon('warning', '⚠')} ${task.dropped_tools.length} dropped`
       : '';
   const warning =
     warningText && theme ? themeWarning(theme, warningText) : warningText;

@@ -205,3 +205,13 @@ pi-core render-kit and tool-definition registries stored on `globalThis` MUST us
 - **GIVEN** two extensions bundled with different pi-core versions in one Pi UI session
 - **WHEN** both look up the registries and register work-panel sections
 - **THEN** one panel widget and one input listener exist, compatible sections share it, an incompatible copy contributes no section, and neither extension throws
+
+### Requirement: Pi question focus over panel overlays
+
+The `ask_user_question` TUI MUST open as its own overlay and keep keyboard input while the subagents or task-list history overlay is open; the questionnaire, the subagents history overlay, the task-list history overlay and the work-panel detail card MUST close only their own overlay handle, so that closing one never removes, hides or unfocuses another, and when the focus target restored on close is no longer mounted they MUST focus the currently mounted root editor.
+
+#### Scenario: Pi question focus over panel overlays
+
+- **GIVEN** the subagents or task-list history overlay is open
+- **WHEN** the root agent asks a question and the user then closes the history overlay
+- **THEN** the questionnaire stays visible, receives keyboard input and returns the user's answer 

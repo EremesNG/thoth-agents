@@ -2462,6 +2462,7 @@ describe('subagents panel and extension ui', () => {
 
     expect(customOptions).toEqual({
       overlay: true,
+      onHandle: expect.any(Function),
       overlayOptions: {
         anchor: 'top-left',
         width: '100%',

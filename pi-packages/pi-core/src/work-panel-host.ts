@@ -1,5 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
-import type { Component, OverlayHandle, TUI } from '@earendil-works/pi-tui';
+import type { Component, TUI } from '@earendil-works/pi-tui';
+import { openOwnedOverlay } from './owned-overlay.js';
 import { resolveIcon } from './render-kit.js';
 import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
@@ -36,40 +37,6 @@ export interface WorkPanelHost {
   isRootEditorInputActive(): boolean | undefined;
   refresh(): void;
   dispose(): void;
-}
-
-/**
- * coding-agent 1.0.2's custom-overlay done() calls TUI.hideOverlay(), popping the
- * top entry even when a newer UI has focus. Reroute only that synchronous call
- * to the owned handle so settling the card cannot remove the newer UI.
- * With incomplete hooks, hide only the owned handle and release host state;
- * never call the unsafe top-of-stack closer.
- */
-function closeOwnedDetailOverlay(
-  tui: TUI,
-  handle: OverlayHandle | undefined,
-  done: () => void,
-  release: () => void,
-): void {
-  const originalHide = tui.hideOverlay;
-  if (
-    typeof originalHide !== 'function' ||
-    typeof handle?.hide !== 'function'
-  ) {
-    try {
-      if (typeof handle?.hide === 'function') handle.hide();
-    } finally {
-      release();
-    }
-    return;
-  }
-  tui.hideOverlay = () => handle.hide();
-  try {
-    done();
-  } finally {
-    tui.hideOverlay = originalHide;
-    release();
-  }
 }
 
 /** Internal host: optional runtime peers are loaded only after a TUI is requested. */
@@ -220,13 +187,13 @@ export function createWorkPanelHost(
       return current;
     };
     let detailComponent: ReturnType<typeof createWorkPanelDetail> | undefined;
-    let detailHandle: OverlayHandle | undefined;
     let detailFinished = false;
     const show = () => {
       if (entry.sectionSummary) return entry.provider.openHistory?.(ctx);
       if (entry.provider.open) return entry.provider.open(entry.row.id, ctx);
-      return ctx.ui.custom<void>(
-        (detailTui, theme, _keybindings, done) => {
+      return openOwnedOverlay<void>(
+        ctx,
+        (detailTui, theme, _keybindings, close) => {
           const component = createWorkPanelDetail({
             rows: sectionRows,
             selected: sectionSelected,
@@ -236,13 +203,13 @@ export function createWorkPanelHost(
             },
             closeItem: handleClose,
             clearCloseArm,
-            done: () =>
-              closeOwnedDetailOverlay(
-                detailTui,
-                detailHandle,
-                () => done(),
-                finished,
-              ),
+            done: () => {
+              try {
+                close();
+              } finally {
+                finished();
+              }
+            },
             onFocusLost: () => {
               if ((detailTui as FocusTUI).getFocusedComponent?.() !== component)
                 component.dismiss();
@@ -265,11 +232,6 @@ export function createWorkPanelHost(
           return component;
         },
         {
-          overlay: true,
-          onHandle(handle) {
-            detailHandle = handle;
-            if (detailFinished) handle.hide();
-          },
           overlayOptions: () => ({
             width: detailComponent?.width ?? 0,
             maxHeight: '80%',

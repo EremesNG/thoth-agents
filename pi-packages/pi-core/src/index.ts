@@ -8,6 +8,11 @@ export {
 } from './channels.js';
 export { formatDuration } from './duration.js';
 export type {
+  OwnedOverlayFactory,
+  OwnedOverlayOptions,
+} from './owned-overlay.js';
+export { openOwnedOverlay } from './owned-overlay.js';
+export type {
   RenderCardOptions,
   RenderCardSection,
   RenderCollapseOptions,

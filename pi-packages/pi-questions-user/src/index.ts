@@ -3,6 +3,7 @@ import type {
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import {
+  openOwnedOverlay,
   publishToolDefinitions,
   type ToolDefinitionHandle,
 } from '@thoth-agents/pi-core';
@@ -57,10 +58,35 @@ export function createQuestionTool(
             },
           });
           if (factory) {
+            let abortOverlay: (() => void) | undefined;
             const customResult = await waitForUI(
-              () => ctx.ui.custom<QuestionResult | undefined>(factory),
+              () =>
+                openOwnedOverlay<QuestionResult | undefined>(
+                  ctx,
+                  (tui, theme, keys, close) => {
+                    // Hooks may ignore signals; abort must still close the owned overlay.
+                    abortOverlay = () =>
+                      close(
+                        buildResult(state, {
+                          cancelled: true,
+                          error: 'aborted',
+                        }),
+                      );
+                    signal?.addEventListener('abort', abortOverlay, {
+                      once: true,
+                    });
+                    if (signal?.aborted) abortOverlay();
+                    return factory(tui, theme, keys, close);
+                  },
+                  {
+                    overlayOptions: { width: '100%', anchor: 'bottom-center' },
+                  },
+                ),
               signal,
-            );
+            ).finally(() => {
+              if (abortOverlay)
+                signal?.removeEventListener('abort', abortOverlay);
+            });
             // RPC's undefined sentinel is not a user cancellation.
             if (customResult !== undefined) return customResult;
           }

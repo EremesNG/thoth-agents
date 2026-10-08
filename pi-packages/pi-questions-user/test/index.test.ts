@@ -50,7 +50,7 @@ function context(
 const custom: ExtensionUIContext['custom'] = async (factory) =>
   new Promise((resolve) => {
     factory(
-      undefined as never,
+      { hideOverlay() {} } as unknown as TUI,
       undefined as never,
       undefined as never,
       resolve,
@@ -283,7 +283,11 @@ it('custom undefined is an unavailable sentinel and runs fallback', async () => 
     undefined,
     ctx,
   );
-  expect(custom).toHaveBeenCalledWith(expect.any(Function));
+  expect(custom).toHaveBeenCalledWith(expect.any(Function), {
+    overlay: true,
+    overlayOptions: { width: '100%', anchor: 'bottom-center' },
+    onHandle: expect.any(Function),
+  });
   expect(result.details).toMatchObject({
     cancelled: false,
     answers: { plan: { values: ['safe'] } },

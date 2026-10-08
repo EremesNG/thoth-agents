@@ -105,3 +105,13 @@ A root command MUST bump one Pi package version without creating a commit or tag
 - **GIVEN** a pull request changing a Pi package's source without changing its version
 - **WHEN** CI runs
 - **THEN** a warning annotation names that package and the job does not fail
+
+### Requirement: Pi extension bundles built before publication
+
+The tag-triggered release MUST generate every Pi extension bundle before publishing `pi-packages/*`, and CI MUST build the bundles and load each one through Pi's extension loader.
+
+#### Scenario: Pi extension bundles built before publication
+
+- **GIVEN** a release tag for a Pi extension package version not yet on npm
+- **WHEN** the release workflow publishes Pi packages
+- **THEN** the published tarball contains the freshly generated bundle referenced by its Pi extension entry

@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +10,6 @@ import {
 import { expect, it } from 'vitest';
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
-const coreRoot = path.resolve(packageRoot, '../pi-core');
 
 function run(command: string, args: string[], cwd: string): string {
   // Package managers use .cmd shims on Windows; quote paths for that shell.
@@ -26,7 +24,7 @@ function run(command: string, args: string[], cwd: string): string {
   });
 }
 
-it('loads the packed todo extension with its packed core dependency through Pi SDK 1.0.2 offline', async () => {
+it('loads the packed todo bundle without a runtime core dependency through Pi SDK 1.0.2 offline', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-todo-packed-'));
   let loader: DefaultResourceLoader | undefined;
   try {
@@ -35,9 +33,8 @@ it('loads the packed todo extension with its packed core dependency through Pi S
     const agentDir = path.join(root, 'agent');
     for (const directory of [tarballs, install, agentDir])
       fs.mkdirSync(directory);
-    run('pnpm', ['pack', '--pack-destination', tarballs], coreRoot);
+    run('pnpm', ['run', 'build'], packageRoot);
     run('pnpm', ['pack', '--pack-destination', tarballs], packageRoot);
-    const coreTar = path.join(tarballs, 'thoth-agents-pi-core-0.1.0.tgz');
     const todoTar = path.join(tarballs, 'thoth-agents-pi-todo-0.1.0.tgz');
     fs.writeFileSync(
       path.join(install, 'package.json'),
@@ -53,14 +50,13 @@ it('loads the packed todo extension with its packed core dependency through Pi S
         '--no-audit',
         '--no-fund',
         '--package-lock=false',
-        coreTar,
         todoTar,
       ],
       install,
     );
 
-    // Only SDK peers are supplied from the development install. Both Thoth
-    // packages above are regular npm-extracted tarballs, never workspace links.
+    // Only SDK peers are supplied from the development install. The extension
+    // is a regular npm-extracted tarball, never a workspace link.
     for (const peer of [
       '@earendil-works/pi-coding-agent',
       '@earendil-works/pi-ai',
@@ -96,31 +92,20 @@ it('loads the packed todo extension with its packed core dependency through Pi S
       ),
     );
     expect(sdkManifest.version).toBe('1.0.2');
-    expect(manifest.dependencies['@thoth-agents/pi-core']).toBe('^0.1.0');
-    expect(fs.lstatSync(installedCore).isSymbolicLink()).toBe(false);
+    expect(manifest.pi.extensions).toEqual(['./dist/index.ts']);
+    expect(manifest.dependencies?.['@thoth-agents/pi-core']).toBeUndefined();
+    expect(manifest.devDependencies['@thoth-agents/pi-core']).toBe('^0.1.0');
+    expect(fs.existsSync(installedCore)).toBe(false);
     expect(fs.lstatSync(installedTodo).isSymbolicLink()).toBe(false);
-    const requireFromTodo = createRequire(
-      path.join(installedTodo, 'package.json'),
-    );
-    expect(requireFromTodo.resolve('@thoth-agents/pi-core')).toBe(
-      path.join(installedCore, 'src/index.ts'),
-    );
     const shipped = fs
       .readdirSync(installedTodo, { recursive: true })
-      .map(String);
+      .map((file) => String(file).split(path.sep).join('/'));
     expect(shipped).not.toContain('test');
-    expect(shipped.some((file) => file.endsWith('.test.ts'))).toBe(false);
-    for (const resource of [
-      'index.ts',
-      'todo.ts',
-      'todo-work-panel.ts',
-      'state/replay.ts',
-      'state/publish.ts',
-      'tool/types.ts',
-      'view/format.ts',
-      'README.md',
-      'LICENSE',
-    ])
+    expect(shipped).not.toContain('src');
+    expect(shipped.filter((file) => file.endsWith('.ts'))).toEqual([
+      'dist/index.ts',
+    ]);
+    for (const resource of ['dist/index.ts', 'README.md', 'LICENSE'])
       expect(fs.existsSync(path.join(installedTodo, resource))).toBe(true);
 
     loader = new DefaultResourceLoader({

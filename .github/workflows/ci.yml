@@ -40,6 +40,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build Pi extension bundles
+        run: pnpm run build:pi-extensions
+
+      - name: Load Pi bundles and verify packed contents
+        timeout-minutes: 2
+        run: pnpm run test:pi-extensions
+
       - name: Check
         run: pnpm run check:ci
 
@@ -144,6 +151,13 @@ jobs:
       # twice so isolated runner hiccups do not block releases; consistent failures still fail.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build Pi extension bundles
+        run: pnpm run build:pi-extensions
+
+      - name: Load Pi bundles and verify packed contents
+        timeout-minutes: 2
+        run: pnpm run test:pi-extensions
 
       - name: Typecheck pi-core
         run: pnpm --filter @thoth-agents/pi-core run typecheck

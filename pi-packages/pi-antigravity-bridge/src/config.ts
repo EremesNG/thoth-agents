@@ -111,10 +111,6 @@ export interface AgyConfig {
 	 *  these exist for NON-Antigravity provider sessions and every call
 	 *  spends Antigravity quota. Takes effect at pi start (or /reload). */
 	webTools: boolean;
-	/** Set after the one-time notice about a leftover legacy invokeTool patch
-	 *  on the installed pi. The notice never repeats; /agy patch-cleanup is
-	 *  always available. */
-	patchCleanupNotified?: boolean;
 	/** Custom agy agent for stream-json turns (`--agent`, /agy agent).
 	 *  Absent = agy's default agent. ACP turns ignore it (no protocol slot). */
 	agent?: string;
@@ -366,7 +362,6 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		queueTimeoutMs: parseWaitMs(process.env.AGY_QUEUE_TIMEOUT_MS ?? file.queueTimeoutMs),
 		agent,
 		approvals: { gateMode, mode: gateAskMode },
-		patchCleanupNotified: file.patchCleanupNotified === true,
 	};
 }
 

@@ -14,7 +14,6 @@ vi.mock("../src/models.js", async (original) => ({
 	...await original<typeof import("../src/models.js")>(),
 	loadModelCatalogRaw: async () => "",
 }));
-vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 
 function session() {
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();

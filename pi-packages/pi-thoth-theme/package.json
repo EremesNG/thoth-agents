@@ -16,7 +16,7 @@
   ],
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.ts"
     ],
     "themes": [
       "./themes"
@@ -32,11 +32,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "node ../../scripts/build-pi-extensions.mjs pi-thoth-theme"
   },
   "files": [
-    "src/**/*.ts",
-    "!src/**/*.test.ts",
+    "dist",
     "themes/**",
     "README.md",
     "LICENSE"
@@ -54,13 +54,11 @@
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@earendil-works/pi-ai": "1.0.2",
-    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@thoth-agents/pi-core": "workspace:^"
   },
   "upstream": {
     "repository": "https://github.com/QuangThai/pi-omp-theme",
     "role": "primary source"
-  },
-  "dependencies": {
-    "@thoth-agents/pi-core": "workspace:^"
   }
 }

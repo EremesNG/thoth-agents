@@ -2,10 +2,15 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
-import { createWorkPanelHost, type WorkPanelHost } from './work-panel-host.js';
+import { createWorkPanelHost } from './work-panel-host.js';
 import { safely } from './work-panel-render.js';
+import {
+  type Registration,
+  WORK_PANEL_VERSION,
+  workPanelRegistry,
+} from './work-panel-state.js';
 
-export const WORK_PANEL_VERSION = 1 as const;
+export { WORK_PANEL_VERSION } from './work-panel-state.js';
 
 /** Queued/stopping work is normalized to running; timed-out work to failed. */
 export type WorkPanelItemState = 'running' | 'failed' | 'done';
@@ -163,32 +168,8 @@ export interface WorkPanelProvider {
   rowCap?: number;
 }
 
-// All mutable ownership, including in-flight installation, lives across bundled copies.
-const registryKey = Symbol.for('thoth.pi-core.work-panel');
-interface Registration {
-  provider: WorkPanelProvider;
-  unsubscribe?: () => void;
-  removeShutdown?: () => void;
-}
-interface Registry {
-  version: typeof WORK_PANEL_VERSION;
-  providers: Map<string, Registration>;
-  hosts: Map<object, WorkPanelHost>;
-}
-const shared = globalThis as typeof globalThis & { [registryKey]?: Registry };
-function registry(): Registry {
-  if (!shared[registryKey]) {
-    shared[registryKey] = {
-      version: WORK_PANEL_VERSION,
-      providers: new Map(),
-      hosts: new Map(),
-    };
-  }
-  return shared[registryKey];
-}
-
 function refresh(): void {
-  for (const host of registry().hosts.values()) host.refresh();
+  for (const host of workPanelRegistry()?.hosts.values() ?? []) host.refresh();
 }
 
 /**
@@ -199,7 +180,7 @@ function refresh(): void {
 export function isWorkPanelRootEditorInputActive(
   ctx: ExtensionContext,
 ): boolean | undefined {
-  const host = shared[registryKey]?.hosts.get(ctx?.sessionManager);
+  const host = workPanelRegistry(false)?.hosts.get(ctx?.sessionManager);
   if (!host || host.sessionId !== ctx.sessionManager.getSessionId())
     return undefined;
   return host.isRootEditorInputActive();
@@ -215,7 +196,8 @@ export function registerWorkPanelProvider(
   provider: WorkPanelProvider,
 ): () => void {
   if (provider.version !== WORK_PANEL_VERSION) return () => {};
-  const state = registry();
+  const state = workPanelRegistry();
+  if (!state) return () => {};
   const previous = state.providers.get(provider.id);
   safely(() => previous?.unsubscribe?.(), undefined);
   safely(() => previous?.removeShutdown?.(), undefined);
@@ -260,7 +242,8 @@ export async function ensureWorkPanel(
   ctx: ExtensionContext,
 ): Promise<() => void> {
   if (!ctx.hasUI || ctx.mode !== 'tui') return () => {};
-  const state = registry();
+  const state = workPanelRegistry();
+  if (!state) return () => {};
   const key = ctx.sessionManager;
   const sessionId = ctx.sessionManager.getSessionId();
   let host = state.hosts.get(key);

@@ -14,7 +14,7 @@ const sdkVersions = {
 };
 
 describe('Pi ecosystem package manifests', () => {
-  it('ships a public TS-source library and its dependent extension on one SDK generation', () => {
+  it('ships a public TS-source library and its bundled extension on one SDK generation', () => {
     const core = manifest('../package.json');
     const todo = manifest('../../pi-todo/package.json');
 
@@ -41,12 +41,14 @@ describe('Pi ecosystem package manifests', () => {
       expect(pkg.keywords).toContain('pi-package');
       expect(pkg.files).not.toContain('test');
       expect(pkg.files).not.toContain('node_modules');
-      expect(
-        pkg.files.some(
-          (entry: string) =>
-            entry.startsWith('!') && entry.endsWith('*.test.ts'),
-        ),
-      ).toBe(true);
+      if (pkg === core) {
+        expect(
+          pkg.files.some(
+            (entry: string) =>
+              entry.startsWith('!') && entry.endsWith('*.test.ts'),
+          ),
+        ).toBe(true);
+      }
     }
 
     expect(core.main).toBe('./src/index.ts');
@@ -75,15 +77,14 @@ describe('Pi ecosystem package manifests', () => {
       'pi-claude-bridge',
       'pi-antigravity-bridge',
     ]) {
-      expect(
-        manifest(`../../${name}/package.json`).dependencies[
-          '@thoth-agents/pi-core'
-        ],
-      ).toBe('workspace:^');
+      const consumer = manifest(`../../${name}/package.json`);
+      expect(consumer.devDependencies['@thoth-agents/pi-core']).toBe(
+        'workspace:^',
+      );
+      expect(consumer.dependencies?.['@thoth-agents/pi-core']).toBeUndefined();
     }
-    expect(todo.dependencies).toEqual({
-      '@thoth-agents/pi-core': 'workspace:^',
-    });
+    expect(todo.dependencies).toBeUndefined();
+    expect(todo.devDependencies['@thoth-agents/pi-core']).toBe('workspace:^');
     expect(todo.peerDependencies).toEqual({
       '@earendil-works/pi-coding-agent': '>=0.99.0',
       '@earendil-works/pi-tui': '>=0.99.0',
@@ -91,8 +92,9 @@ describe('Pi ecosystem package manifests', () => {
       typebox: '*',
     });
     expect(todo.devDependencies.typebox).toBe('^1.3.4');
-    expect(todo.pi).toEqual({ extensions: ['./index.ts'] });
+    expect(todo.main).toBe('./dist/index.ts');
+    expect(todo.pi).toEqual({ extensions: ['./dist/index.ts'] });
     expect(todo.keywords).toContain('pi-extension');
-    expect(todo.files).toContain('index.ts');
+    expect(todo.files).toEqual(['dist', 'README.md', 'LICENSE']);
   });
 });

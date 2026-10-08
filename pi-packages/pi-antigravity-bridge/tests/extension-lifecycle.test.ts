@@ -17,7 +17,6 @@ import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
-vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 vi.mock("node:crypto", async (original) => {
 	const actual = await original<typeof import("node:crypto")>();
 	return { ...actual, randomUUID: vi.fn(actual.randomUUID) };
@@ -48,7 +47,7 @@ function session(providerName = "antigravity", tools: Array<{ name: string; desc
 		getAllTools: () => tools, getActiveTools: () => tools.map((tool) => tool.name),
 	} as unknown as ExtensionAPI;
 	const s = {
-		pi, ctx, notices,
+		pi, ctx, notices, commands,
 		command: (args: string, ui: any = ctx.ui) => commands.get("agy").handler(args, { ...ctx, ui }),
 		emit: async (name: string, event: any = { reason: "startup" }) => {
 			for (const fn of handlers.get(name) ?? []) await fn(event, ctx);
@@ -160,6 +159,17 @@ test.each([
 	}
 	assert.deepEqual(s.notices, [], "headless output must not depend on UI notifications");
 	assert.equal("type" in union, false, "Pi's validation schema stays original");
+});
+
+test("/agy help ends with supported runtime commands", async () => {
+	fixture();
+	const s = session("other");
+	await extension(s.pi);
+	assert.ok(s.commands.get("agy").description.endsWith("|acp-bin <path|auto>|clear]"));
+	await s.command("");
+	assert.ok(s.notices.at(-1)?.endsWith("/agy acp-bin <path|auto>, /agy clear, /agy doctor"));
+	await s.command("clear");
+	assert.equal(s.notices.at(-1), "Cleared all antigravity session bindings.");
 });
 
 test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifact-opener console", async (args) => {

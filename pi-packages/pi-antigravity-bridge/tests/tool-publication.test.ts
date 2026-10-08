@@ -10,7 +10,6 @@ vi.mock("../src/models.js", async (original) => ({
 	loadModelCatalogRaw: async () => "",
 	refreshModelCatalogIfNeeded: async () => {},
 }));
-vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 
 const sessions: Array<{ emit: (name: string) => Promise<void> }> = [];
 afterEach(async () => {

@@ -13,7 +13,7 @@
 //
 // /agy command: full runtime config surface (engine, mode, permissions,
 // bridge tools, model, thinking, digest, system prompt, acp binary) plus
-// doctor, auth, patch-cleanup, and session clear. Config persists to
+// doctor, auth, and session clear. Config persists to
 // ~/.pi/agent/antigravity-bridge/config.json so toggles survive restarts.
 
 import { waitWithDeadline } from "../src/waits.js";
@@ -107,7 +107,6 @@ import {
 import { mapAgyToolToNative } from "../src/native-tools.js";
 import { bridgedPiTools } from "../src/bridge-catalog.js";
 import { Type } from "typebox";
-import { patchStatus, restorePatch } from "../src/patch-cleanup.js";
 import { withDialogLock } from "../src/dialog-lock.js";
 import { createPublishedToolRegistrar } from "../src/tool-publication.js";
 
@@ -685,10 +684,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// bridge startup below: on a genuine first run the modal blocks input
 		// anyway, so the delay is invisible.
 		if (event.reason === "startup" && ctx.mode === "tui" && shouldOfferEnginePicker(CONFIG_PATH)) {
-			// Best-effort, like the legacy-patch notice below: a picker failure
-			// (mid-prompt TUI teardown, resize races) must never take down the
-			// rest of session_start - the MCP bridge startup included. The
-			// default engine keeps working untouched.
+			// Best-effort: picker failures (mid-prompt TUI teardown, resize races)
+			// must never take down session_start, including MCP bridge startup.
+			// The default engine keeps working untouched.
 			try {
 				const picked = await showEnginePicker(ctx.ui);
 				if (picked) {
@@ -700,23 +698,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				fileLog.log("engine-picker", { error: String(err) }, "warn");
 				console.error(`[antigravity-bridge] engine picker failed: ${String(err)}`);
 			}
-		}
-		// Legacy cleanup: users who ran the old consent-gated patcher still
-		// carry pi.invokeTool in their installed pi. Inert, but tell them once
-		// and offer /agy patch-cleanup. Never auto-edits the install.
-		try {
-			if (!loadConfig().patchCleanupNotified && patchStatus().present) {
-				// Flag after surfacing, not before: headless sessions log to
-				// stderr (ctx.ui.notify is a no-op without a UI), so the notice
-				// is never silently dropped.
-				const msg =
-					"Your pi install still carries the old pi.invokeTool patch. It is unused and harmless; a pi update also removes it. To restore the original files from the backup now: /agy patch-cleanup";
-				if (ctx.hasUI) notifyUi(ctx.ui, msg, "info");
-				else console.error(`[antigravity-bridge] ${msg}`);
-				saveConfig({ patchCleanupNotified: true });
-			}
-		} catch {
-			/* detection is best-effort */
 		}
 		if (ctx.model?.provider === "antigravity") await ensureBridgeStarted();
 	});
@@ -1211,7 +1192,7 @@ function statusText(ctx: AgyCommandCtx): string {
 		`  sessions:      ${ctx.store.size} bound`,
 		`  config:        ${CONFIG_PATH}`,
 		"",
-		"Subcommands: /agy auth, /agy auth-manual, /agy engine stream-json|acp, /agy mode plan|accept-edits, /agy permissions on|off, /agy ask on|off, /agy model <alias>, /agy thinking low|medium|high, /agy agent <name|off>, /agy subagents, /agy quota, /agy artifacts [open <n|name>], /agy tasks [tail <id>], /agy bridge all|mcp|none, /agy tools [hide|show <name>|reset], /agy web on|off, /agy digest on|off, /agy system-prompt on|off, /agy timeout <1-1440|off>, /agy acp-bin <path|auto>, /agy patch-cleanup, /agy clear, /agy doctor",
+		"Subcommands: /agy auth, /agy auth-manual, /agy engine stream-json|acp, /agy mode plan|accept-edits, /agy permissions on|off, /agy ask on|off, /agy model <alias>, /agy thinking low|medium|high, /agy agent <name|off>, /agy subagents, /agy quota, /agy artifacts [open <n|name>], /agy tasks [tail <id>], /agy bridge all|mcp|none, /agy tools [hide|show <name>|reset], /agy web on|off, /agy digest on|off, /agy system-prompt on|off, /agy timeout <1-1440|off>, /agy acp-bin <path|auto>, /agy clear, /agy doctor",
 	].join("\n");
 }
 
@@ -1219,7 +1200,7 @@ function statusText(ctx: AgyCommandCtx): string {
 function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 	pi.registerCommand("agy", {
 		description:
-			"Antigravity provider: doctor (health + settings), settings picker, clear sessions. Usage: /agy [doctor|auth|auth-manual|engine stream-json|acp|mode plan|accept-edits|permissions on|off|ask on|off|model <alias>|thinking low|medium|high|agent <name|off>|subagents|quota|artifacts [open <n|name>]|tasks [tail <id>]|bridge all|mcp|none|tools [hide|show <name>|reset]|web on|off|digest on|off|system-prompt on|off|timeout <1-1440|off>|acp-bin <path|auto>|patch-cleanup|clear]",
+			"Antigravity provider: doctor (health + settings), settings picker, clear sessions. Usage: /agy [doctor|auth|auth-manual|engine stream-json|acp|mode plan|accept-edits|permissions on|off|ask on|off|model <alias>|thinking low|medium|high|agent <name|off>|subagents|quota|artifacts [open <n|name>]|tasks [tail <id>]|bridge all|mcp|none|tools [hide|show <name>|reset]|web on|off|digest on|off|system-prompt on|off|timeout <1-1440|off>|acp-bin <path|auto>|clear]",
 		handler: async (args, cmdCtx: ExtensionCommandContext) => {
 			const ui = cmdCtx.ui;
 			if (ui) ctx.setUi(ui);
@@ -1232,26 +1213,6 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			if (sub === "clear") {
 				ctx.store.clear();
 				notifyUi(ui, "Cleared all antigravity session bindings.", "info");
-				return;
-			}
-			if (sub === "patch-cleanup") {
-				const st = patchStatus();
-				if (!st.present) {
-					notifyUi(ui,
-						st.root
-							? `No invokeTool patch detected on pi ${st.version}. Nothing to clean.`
-							: "Could not locate the installed pi package. Nothing cleaned.",
-						"info",
-					);
-					return;
-				}
-				const r = restorePatch();
-				notifyUi(ui,
-					r.ok
-						? `Restored ${r.restoredFiles.length} file(s) from ${r.backupDir}. The running session is unaffected; the files on disk are clean again.`
-						: `patch-cleanup failed: ${r.reason}`,
-					r.ok ? "info" : "error",
-				);
 				return;
 			}
 			if (sub === "timeout") {

@@ -26,6 +26,27 @@ function stubTTY(value: boolean | undefined, run: () => void): void {
 	}
 }
 
+test("config: load/save expose only current runtime settings", () => {
+	const p = tmpConfig();
+	try {
+		const keys = [
+			"acp", "agent", "approvals", "askTool", "bridgeDiscovery", "bridgeTools",
+			"defaultModel", "defaultThinking", "digest", "engine", "inactivityTimeoutMin",
+			"mode", "queueTimeoutMs", "skipPermissions", "startupTimeoutMs", "systemPrompt",
+			"turnTimeoutMin", "webTools",
+		];
+		assert.deepEqual(Object.keys(loadConfig(p)).sort(), keys);
+		fs.writeFileSync(p, JSON.stringify({ obsoleteNotice: true, bridgeTools: "none" }));
+		const saved = saveConfig({ mode: "plan" }, p);
+		assert.deepEqual(Object.keys(saved).sort(), keys);
+		assert.equal(saved.bridgeTools, "none");
+		assert.equal(saved.mode, "plan");
+		assert.equal("obsoleteNotice" in JSON.parse(fs.readFileSync(p, "utf8")), false);
+	} finally {
+		fs.rmSync(path.dirname(p), { recursive: true, force: true });
+	}
+});
+
 test("config: defaults select the full bridge surface", () => {
 	const p = tmpConfig();
 	try {

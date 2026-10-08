@@ -22,25 +22,17 @@
   "engines": {
     "node": ">=22.19.0"
   },
-  "main": "./index.ts",
+  "main": "./dist/index.ts",
   "files": [
-    "index.ts",
-    "src",
+    "dist",
     "skills",
-    "scripts/verify-package-files.mjs",
-    "!**/*.test.ts",
-    "!**/*.test.tsx",
-    "!**/*.test.mjs",
-    "!**/test/**",
-    "!**/tests/**",
-    "!**/test-support/**",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
   ],
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.ts"
     ],
     "skills": [
       "./skills"
@@ -52,7 +44,8 @@
     "verify:package": "node scripts/verify-package-files.mjs",
     "pack:dry-run": "pnpm pack --dry-run",
     "check": "pnpm run typecheck && pnpm test && pnpm run verify:package",
-    "prepublishOnly": "pnpm run check"
+    "prepublishOnly": "pnpm run build && pnpm run check",
+    "build": "node ../../scripts/build-pi-extensions.mjs pi-subagents"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.99.0",
@@ -74,9 +67,7 @@
     "@types/node": "24.10.1",
     "typebox": "1.1.38",
     "typescript": "5.9.3",
-    "vitest": "4.1.7"
-  },
-  "dependencies": {
+    "vitest": "4.1.7",
     "@thoth-agents/pi-core": "workspace:^"
   },
   "publishConfig": {

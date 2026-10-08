@@ -185,3 +185,23 @@ The `@thoth-agents/pi-questions-user` package MUST register `ask_user_question` 
 - **GIVEN** `pi-thoth-theme.json` with `"icons": "unicode"`
 - **WHEN** a work-panel row renders a completed status
 - **THEN** it shows the native Unicode completed glyph instead of the Nerd icon
+
+### Requirement: Bundled Pi extension packages
+
+Each first-party Pi extension package MUST declare as its Pi extension entry one generated single-file bundle with a `.ts` extension that inlines pi-core and every dependency except the host-provided `@earendil-works/*` and `typebox` modules and declared per-package exceptions, MUST ship the bundle and its runtime assets in its published files, and MUST NOT require pi-core or other inlined dependencies at runtime.
+
+#### Scenario: Bundled Pi extension packages
+
+- **GIVEN** a first-party Pi extension package installed from npm without sibling host SDK copies
+- **WHEN** Pi loads it
+- **THEN** Pi transpiles one bundle file through its aliases, no duplicate host SDK module is loaded, and the extension activates with its runtime assets available
+
+### Requirement: Version-tolerant pi-core registries
+
+pi-core render-kit and tool-definition registries stored on `globalThis` MUST use keys that include their contract version, and consumers MUST fall back to their no-registry behavior when a stored record does not match the expected shape; the work panel MUST keep one version-independent ownership slot so that exactly one panel widget and one panel input listener exist per UI session across pi-core copies, and a copy with an incompatible work-panel contract MUST install no host and register no section instead of throwing.
+
+#### Scenario: Version-tolerant pi-core registries
+
+- **GIVEN** two extensions bundled with different pi-core versions in one Pi UI session
+- **WHEN** both look up the registries and register work-panel sections
+- **THEN** one panel widget and one input listener exist, compatible sections share it, an incompatible copy contributes no section, and neither extension throws

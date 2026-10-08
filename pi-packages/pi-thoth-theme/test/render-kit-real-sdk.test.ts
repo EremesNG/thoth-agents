@@ -162,7 +162,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
   ])('discovers at render time with %s and leaves package-owned self shells untouched', async (order) => {
     expect(VERSION).toBe('1.0.2');
     const session = await loadSession(order);
-    const themeExtension = join(themePackage, 'src', 'index.ts');
+    const themeExtension = join(themePackage, 'dist', 'index.ts');
     const producerExtension = join(producerPackage, 'index.ts');
     expect(session.extensionRunner.getExtensionPaths()).toEqual(
       order === 'theme first'

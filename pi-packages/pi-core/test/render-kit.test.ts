@@ -173,6 +173,9 @@ describe('render kit registry', () => {
   it.each([
     null,
     {},
+    { kit },
+    { kit, owner: {}, token: 'foreign' },
+    { kit, owner: null, token: Symbol('foreign') },
     { kit: { ...kit, version: 2 } },
     { kit: { version: 1 } },
     { kit: { ...kit, card: null } },
@@ -184,6 +187,24 @@ describe('render kit registry', () => {
   ])('ignores missing, incompatible or malformed foreign registrations', (value) => {
     shared[registryKey] = value;
     expect(getRenderKit()).toBeUndefined();
+    expect(resolveIcon('selection', 'native')).toBe('native');
+    expect(
+      renderToolFooter(getRenderKit(), theme, {
+        status: 'completed',
+        summary: 'Done',
+      }),
+    ).toBe('✓ · Done');
+  });
+
+  it('ignores a malformed record when withdrawing without touching foreign state', () => {
+    const record = {
+      get token(): never {
+        throw new Error('foreign accessor');
+      },
+    };
+    shared[registryKey] = record;
+    expect(() => withdrawRenderKit(Symbol('foreign'))).not.toThrow();
+    expect(shared[registryKey]).toBe(record);
   });
 
   it('discovers the current kit and withdraws only the owning registration', () => {

@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import { type Lifecycle, workPanelRegistry } from './work-panel-state.js';
 
 export interface WorkPanelLifecycleState {
   readonly epoch: number;
@@ -10,38 +11,18 @@ export interface WorkPanelLifecycleState {
   readonly busy: boolean;
 }
 
-interface Lifecycle {
-  sessionId: string;
-  state: WorkPanelLifecycleState;
-  candidates: string[];
-  dispose?: () => void;
-}
-interface LifecycleRegistry {
-  sessions: WeakMap<object, Lifecycle>;
-  listeners: WeakMap<object, Set<() => void>>;
-}
-const registryKey = Symbol.for('thoth.pi-core.work-panel-lifecycle.v1');
-const shared = globalThis as typeof globalThis & {
-  [registryKey]?: LifecycleRegistry;
-};
 const CANDIDATE_LIMIT = 4;
-function registry(): LifecycleRegistry {
-  if (!shared[registryKey]) {
-    shared[registryKey] = {
-      sessions: new WeakMap(),
-      listeners: new WeakMap(),
-    };
-  }
-  return shared[registryKey];
-}
 function isBusy(ctx: ExtensionContext): boolean {
   return typeof ctx.isIdle === 'function' && !ctx.isIdle();
 }
 function notify(key: object): void {
-  for (const listener of registry().listeners.get(key) ?? []) listener();
+  for (const listener of workPanelRegistry()?.lifecycle.listeners.get(key) ??
+    [])
+    listener();
 }
-function lifecycle(ctx: ExtensionContext): Lifecycle {
-  const sessions = registry().sessions;
+function lifecycle(ctx: ExtensionContext): Lifecycle | undefined {
+  const sessions = workPanelRegistry()?.lifecycle.sessions;
+  if (!sessions) return undefined;
   const key = ctx.sessionManager;
   const sessionId = key.getSessionId();
   let current = sessions.get(key);
@@ -61,7 +42,10 @@ function lifecycle(ctx: ExtensionContext): Lifecycle {
 export function getWorkPanelLifecycle(
   ctx: ExtensionContext,
 ): WorkPanelLifecycleState {
-  return { ...lifecycle(ctx).state };
+  const current = lifecycle(ctx);
+  return current
+    ? { ...current.state }
+    : { epoch: 0, epochStartedAt: Date.now(), busy: isBusy(ctx) };
 }
 
 /** Internal host notification seam, shared across separately bundled copies. */
@@ -69,13 +53,15 @@ export function onWorkPanelLifecycleChanged(
   ctx: ExtensionContext,
   listener: () => void,
 ): () => void {
+  const state = workPanelRegistry()?.lifecycle;
+  if (!state) return () => {};
   const key = ctx.sessionManager;
-  const listeners = registry().listeners.get(key) ?? new Set();
-  registry().listeners.set(key, listeners);
+  const listeners = state.listeners.get(key) ?? new Set();
+  state.listeners.set(key, listeners);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
-    if (!listeners.size) registry().listeners.delete(key);
+    if (!listeners.size) state.listeners.delete(key);
   };
 }
 
@@ -90,8 +76,9 @@ export function bindWorkPanelLifecycle(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
 ): () => void {
+  const state = workPanelRegistry()?.lifecycle;
   const current = lifecycle(ctx);
-  if (current.dispose) return () => {};
+  if (!state || !current || current.dispose) return () => {};
   const key = ctx.sessionManager;
   const removers: Array<() => void> = [];
   let disposed = false;
@@ -101,8 +88,7 @@ export function bindWorkPanelLifecycle(
     for (const remove of removers.splice(0)) remove();
     current.candidates.length = 0;
     current.dispose = undefined;
-    if (registry().sessions.get(key) === current)
-      registry().sessions.delete(key);
+    if (state.sessions.get(key) === current) state.sessions.delete(key);
     notify(key);
   };
   current.dispose = dispose;

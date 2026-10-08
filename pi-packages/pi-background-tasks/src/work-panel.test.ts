@@ -10,6 +10,57 @@ const LEFT = "\x1b[D";
 const UP = "\x1b[A";
 
 describe("Background interaction through the pi-core host", () => {
+  it("contributes no lines or interaction hint in a fresh session without tasks", async () => {
+    const host = lifecycleHost("panel-fresh-empty", true);
+    try {
+      await host.emit("session_start");
+      expect(host.panel.render()).toEqual([]);
+      expect(host.statuses.get("thoth-work-panel")).toBeUndefined();
+      for (const key of [LEFT, UP, "\x1b[B", "\r", "x", "\x1b"])
+        expect(host.panel.key(key)).toBeUndefined();
+    } finally {
+      await host.emit("session_shutdown", "reload");
+    }
+  });
+
+  it.each([false, true])("restores durable completed and failed counts in a resumed session (dismissed=%s)", async (dismissed) => {
+    const host = lifecycleHost(`panel-resume-empty-${dismissed}`, true);
+    const sessionId = `panel-resumed-${dismissed}`;
+    const statuses = ["succeeded", "cancelled", "failed", "timed_out"] as const;
+    const ids = statuses.map((status) => `bg_panel_resumed_${dismissed}_${status}`);
+    const now = Date.now();
+    try {
+      for (const [index, status] of statuses.entries()) {
+        const id = ids[index]!;
+        writeMeta({
+          id, name: `retained ${status}`, kind: "process", status,
+          startedAt: now - 10000, endedAt: now - 5000,
+          logPath: logPathFor(id), cwd: host.ctx.cwd, spawnPid: process.pid,
+          callback: false, callbackOrigin: { cwd: host.ctx.cwd, sessionId },
+          ...(dismissed ? { dismissedAt: now - 4000 } : {}),
+        });
+      }
+      await host.emit("session_start");
+      expect(host.panel.render()).toEqual([]);
+      await host.emit("session_before_switch");
+      host.ctx.sessionManager.getSessionId = () => sessionId;
+      await host.emit("session_start");
+      expect(host.panel.render()).toEqual([
+        "◆ Background · 2 done · 2 failed",
+        "← interact",
+      ]);
+      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
+      expect(host.panel.key(LEFT)).toEqual({ consume: true });
+      expect(host.panel.render()).toEqual([
+        "› ◆ Background · 2 done · 2 failed",
+        "Enter history · Esc back",
+      ]);
+    } finally {
+      await host.emit("session_shutdown", "reload");
+      for (const id of ids) rmSync(taskDir(id), { recursive: true, force: true });
+    }
+  });
+
   it.each([false, true])("opens selected history with full retained logs and keeps terminal dismissal on the work row (KIT=%s)", async (withKit) => {
     const host = lifecycleHost(`panel-detail-${withKit}`, true);
     await host.emit('session_start');

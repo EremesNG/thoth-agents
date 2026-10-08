@@ -31,6 +31,11 @@ export interface PanelSection {
   counts?: { done: number; failed: number };
 }
 
+/** Collapsed histories are selectable; informational summaries are not. */
+export function isSelectablePanelRow(entry: PanelRow): boolean {
+  return entry.sectionSummary === true || !entry.row.summary;
+}
+
 /** A failed provider cannot hide unrelated sections or break the editor. */
 export function safely<T>(read: () => T, fallback: T): T {
   try {
@@ -79,6 +84,7 @@ export function panelSections(
             : items.filter((row) => itemState(row) === 'failed').length,
       };
       if (!lifecycle?.busy && !running.length) {
+        if (!counts.done && !counts.failed) continue;
         sections.push({
           provider,
           collapsed: true,
@@ -86,7 +92,7 @@ export function panelSections(
           rows: [
             {
               provider,
-              row: { id: 'history', primary: provider.label },
+              row: { id: 'history', primary: provider.label, summary: true },
               key: JSON.stringify([provider.id, null]),
               sectionSummary: true,
             },
@@ -278,7 +284,7 @@ export function renderPanel(
       .join('');
   };
   const hint = sections.some((section) =>
-    section.rows.some(({ row }) => !row.summary),
+    section.rows.some(isSelectablePanelRow),
   )
     ? options.hint
     : undefined;

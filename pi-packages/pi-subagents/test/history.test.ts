@@ -52,6 +52,49 @@ describe('subagent history persistence and display_name compatibility', () => {
     fs.mkdirSync(tmp, { recursive: true });
   });
 
+  it('snapshots exact session status counts beyond the history row cap', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'completed-0',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'persisted task',
+      created_at: '2026-01-01T00:00:00Z',
+      session_id: 'resumed-session',
+    };
+    for (let index = 0; index < 125; index++)
+      store.upsertTask(tmp, { ...task, id: `completed-${index}` });
+    for (let index = 0; index < 17; index++)
+      store.upsertTask(tmp, {
+        ...task,
+        id: `failed-${index}`,
+        status: 'failed',
+      });
+    store.upsertTask(tmp, { ...task, attempt: 2 });
+    store.upsertTask(tmp, {
+      ...task,
+      id: 'foreign-session',
+      session_id: 'other-session',
+    });
+    store.upsertTask(path.join(tmp, 'other-cwd'), {
+      ...task,
+      id: 'foreign-cwd',
+    });
+
+    const snapshot = store.snapshotSessionTaskCounts(tmp, 'resumed-session');
+    expect(snapshot.counts).toEqual({ completed: 125, failed: 17 });
+    expect(snapshot.statusesById.size).toBe(142);
+    expect(snapshot.statusesById.get('completed-0')).toBe('completed');
+    expect(snapshot.statusesById.get('failed-16')).toBe('failed');
+    expect(snapshot.statusesById.has('foreign-session')).toBe(false);
+    expect(snapshot.statusesById.has('foreign-cwd')).toBe(false);
+    expect(store.listSessionTasks(tmp, 'resumed-session')).toHaveLength(100);
+    expect(
+      store.snapshotSessionTaskCounts(tmp, 'empty-session').counts,
+    ).toEqual({});
+  });
+
   it('persists and retrieves display_name across task queries and attempts', () => {
     const store = createHistoryStore();
     const task: SubagentTask = {

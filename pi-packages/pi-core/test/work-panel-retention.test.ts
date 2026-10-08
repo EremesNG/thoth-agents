@@ -164,6 +164,76 @@ function bindSession(session: ReturnType<typeof uiSession>) {
 
 describe('idle retained section summaries', () => {
   it.each([
+    'fresh',
+    'loaded',
+  ])('occupies no lines or input focus for an empty %s session', async (kind) => {
+    const session = uiSession();
+    bindSession(session);
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...retained(kind === 'loaded' ? [row('old', 'done', 10)] : []),
+        summary: () => ({ completed: 0, failed: 0 }),
+      }),
+      registerWorkPanelProvider(session.ctx, {
+        ...retained([]),
+        id: 'background',
+        label: 'Background',
+        priority: 30,
+        summary: () => ({ completed: 0, failed: 0 }),
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toEqual([]);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      undefined,
+    );
+    for (const key of ['\x1b[D', '\x1b[A', '\x1b[B', '\r', 'x', '\x1b'])
+      expect(session.key(key)).toBeUndefined();
+  });
+
+  it('hides a zero-count section without hiding or selecting past a populated section after resume', async () => {
+    const session = uiSession();
+    const bridge = bindSession(session);
+    const emptyHistory = vi.fn();
+    const populatedHistory = vi.fn();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...retained([row('old', 'done', 10)]),
+        summary: () => ({ completed: 0, failed: 0 }),
+        openHistory: emptyHistory,
+      }),
+      registerWorkPanelProvider(session.ctx, {
+        ...retained([]),
+        id: 'background',
+        label: 'Background',
+        priority: 30,
+        summary: () => ({ completed: 4, failed: 1 }),
+        openHistory: populatedHistory,
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    bridge.emit('session_start');
+    expect(session.render()).toEqual([
+      '◆ Background · 4 done · 1 failed',
+      '← interact',
+    ]);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 1',
+    );
+    expect(session.key('\x1b[D')).toEqual({ consume: true });
+    expect(session.key('\x1b[B')).toEqual({ consume: true });
+    expect(session.render()).toEqual([
+      '› ◆ Background · 4 done · 1 failed',
+      'Enter history · Esc back',
+    ]);
+    expect(session.key('\r')).toEqual({ consume: true });
+    expect(populatedHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+    expect(emptyHistory).not.toHaveBeenCalled();
+  });
+
+  it.each([
     false,
     true,
   ])('renders exactly one selectable heading with session counts, not terminal rows (kit: %s)', async (themed) => {
@@ -331,6 +401,54 @@ describe('idle retained section summaries', () => {
 });
 
 describe('collapsed section navigation', () => {
+  it.each([
+    'collapsed history',
+    'running work',
+  ])('releases focus when the last selectable %s disappears', async (kind) => {
+    const session = uiSession();
+    bindSession(session);
+    let items = kind === 'running work' ? [row('live', 'running')] : [];
+    let completed = kind === 'collapsed history' ? 1 : 0;
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...retained([]),
+        listRows: () => items,
+        summary: () => ({ completed, failed: 0 }),
+        onVisibleChanged(callback) {
+          notify = callback;
+          return () => {};
+        },
+        openHistory: vi.fn(),
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.key('\x1b[D')).toEqual({ consume: true });
+    expect(session.render().some((line: string) => line.startsWith('› '))).toBe(
+      true,
+    );
+    items = [];
+    completed = 0;
+    notify();
+    expect(session.render()).toEqual([]);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      undefined,
+    );
+    for (const key of ['\x1b[D', '\x1b[A', '\x1b[B', '\r', 'x', '\x1b'])
+      expect(session.key(key)).toBeUndefined();
+    items = [row('new live', 'running')];
+    notify();
+    expect(session.render()).toEqual([
+      '◆ Agents · 1 items',
+      '  ◐ new live',
+      '← interact',
+    ]);
+    expect(session.key('\x1b[A')).toBeUndefined();
+    expect(session.key('\x1b[D')).toEqual({ consume: true });
+    expect(session.render()).toContain('› ◐ new live');
+  });
+
   it('moves one selection across summary lines and item rows and opens the selected history with suspension', async () => {
     const session = uiSession();
     bindSession(session);
@@ -399,12 +517,15 @@ describe('collapsed section navigation', () => {
     const session = uiSession();
     bindSession(session);
     cleanups.push(
-      registerWorkPanelProvider(session.ctx, retained([])),
+      registerWorkPanelProvider(
+        session.ctx,
+        retained([row('old', 'done', 10)]),
+      ),
       await ensureWorkPanel(session.ctx),
     );
     session.key('\x1b[D');
     expect(session.render()).toEqual([
-      '› ◆ Agents · 0 done · 0 failed',
+      '› ◆ Agents · 1 done · 0 failed',
       'Esc back',
     ]);
     expect(session.key('\r')).toBeUndefined();
@@ -421,7 +542,10 @@ describe('collapsed section navigation', () => {
     bindSession(session);
     const openHistory = vi.fn();
     cleanups.push(
-      registerWorkPanelProvider(session.ctx, { ...retained([]), openHistory }),
+      registerWorkPanelProvider(session.ctx, {
+        ...retained([row('old', 'done', 10)]),
+        openHistory,
+      }),
       await ensureWorkPanel(session.ctx),
     );
     session.key('\x1b[D');
@@ -442,7 +566,7 @@ describe('collapsed section navigation', () => {
     ] as const)
       cleanups.push(
         registerWorkPanelProvider(session.ctx, {
-          ...retained([]),
+          ...retained([row(`${id}-old`, 'done', 10)]),
           id,
           label,
           priority,
@@ -455,7 +579,7 @@ describe('collapsed section navigation', () => {
     );
     session.tui.terminal.rows = 6;
     expect(session.render()).toEqual([
-      '◆ Agents · 0 done · 0 failed',
+      '◆ Agents · 1 done · 0 failed',
       '← interact',
     ]);
     session.key('\x1b[D');

@@ -32,6 +32,10 @@ function createExtensionManagerFake() {
     cancelRunning: vi.fn(),
     onTaskUpdate: vi.fn((_listener: () => void) => () => undefined),
     listActiveSessionTasks: vi.fn(() => [] as SubagentTask[]),
+    snapshotSessionTaskCounts: vi.fn(() => ({
+      counts: {},
+      statusesById: new Map(),
+    })),
     listSessionTasks: vi.fn(() => [] as SubagentTask[]),
     getTask: vi.fn((_id: string) => undefined as SubagentTask | undefined),
     cancel: vi.fn(),

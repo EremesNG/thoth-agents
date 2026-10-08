@@ -25,7 +25,10 @@ import {
   normalizeErrorMetadata,
   SubagentStructuredError,
 } from './error-metadata.js';
-import { SubagentHistoryStore } from './history.js';
+import {
+  SubagentHistoryStore,
+  type SubagentSessionTaskCounts,
+} from './history.js';
 import type {
   SubagentInteractionRequest,
   SubagentInteractionResponse,
@@ -635,6 +638,15 @@ export class SubagentManager {
           (!sessionId || task.session_id === sessionId),
       )
       .sort(compareTasksByRecentActivity);
+  }
+
+  snapshotSessionTaskCounts(
+    cwd: string,
+    sessionId?: string,
+  ): SubagentSessionTaskCounts {
+    return sessionId
+      ? this.history.snapshotSessionTaskCounts(cwd, sessionId)
+      : { counts: {}, statusesById: new Map() };
   }
 
   listSessionTasks(cwd?: string, sessionId?: string) {

@@ -77,6 +77,11 @@ function parseSnapshotJson(text: unknown): SubagentThreadSnapshot | undefined {
 }
 type HistoryReadOptions = { includeSnapshots?: boolean };
 
+export type SubagentSessionTaskCounts = {
+  counts: Partial<Record<SubagentTask['status'], number>>;
+  statusesById: ReadonlyMap<string, SubagentTask['status']>;
+};
+
 const SESSION_TASK_METADATA_COLUMNS = `
         id,
         display_name,
@@ -584,6 +589,32 @@ export class SubagentHistoryStore {
     `)
       .all(cwd, sessionId, limit)
       .map((row) => rowToTask(row, options));
+  }
+
+  /** Uncapped counts and overlap identities from the same persisted snapshot. */
+  snapshotSessionTaskCounts(
+    cwd: string,
+    sessionId: string,
+  ): SubagentSessionTaskCounts {
+    const rows = this.db(cwd)
+      .prepare(`
+      SELECT status, COUNT(*) AS count, json_group_array(id) AS ids
+      FROM subagent_tasks WHERE cwd = ? AND session_id = ?
+      GROUP BY status
+    `)
+      .all(cwd, sessionId) as Array<{
+      status: SubagentTask['status'];
+      count: number;
+      ids: string;
+    }>;
+    const counts: SubagentSessionTaskCounts['counts'] = {};
+    const statusesById = new Map<string, SubagentTask['status']>();
+    for (const row of rows) {
+      counts[row.status] = row.count;
+      for (const id of JSON.parse(row.ids) as string[])
+        statusesById.set(id, row.status);
+    }
+    return { counts, statusesById };
   }
 
   listSessionTaskMetadata(

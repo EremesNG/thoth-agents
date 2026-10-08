@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { parseFrontmatter as parseYamlFrontmatter } from '@earendil-works/pi-coding-agent';
+import {
+  getPackageDir,
+  parseFrontmatter as parseYamlFrontmatter,
+} from '@earendil-works/pi-coding-agent';
 import type {
   ModelRef,
   SubagentDefinition,
@@ -67,11 +70,19 @@ const DISALLOWED_TOOLS_ISSUE =
 const UNSUPPORTED_YAML_ISSUE =
   'agent frontmatter does not support YAML anchors, aliases, merge keys or tags';
 
-// Resolve the same YAML implementation as the SDK, including under pnpm's
-// isolated dependency layout; the package does not add its own parser dependency.
-const yaml = createRequire(
-  import.meta.resolve('@earendil-works/pi-coding-agent'),
-)('yaml') as typeof import('yaml');
+// Use the aliased host's package root, not native resolution relative to this
+// extension, so npm installs without a sibling SDK still use Pi's YAML parser.
+const yaml = (() => {
+  try {
+    return createRequire(path.join(getPackageDir(), 'package.json'))(
+      'yaml',
+    ) as typeof import('yaml');
+  } catch {
+    // Bundled hosts may not expose dependencies on disk. Fail closed only for
+    // definitions with frontmatter, without preventing the extension loading.
+    return undefined;
+  }
+})();
 
 function parseDisallowedTools(value: unknown): string[] | undefined {
   if (value === undefined || value === '') return [];
@@ -88,6 +99,10 @@ function parseDisallowedTools(value: unknown): string[] | undefined {
 }
 
 function parseYamlMapping(raw: string): Record<string, unknown> {
+  if (!yaml)
+    throw new Error(
+      'YAML frontmatter validation is unavailable: could not load the host Pi YAML parser; definitions with frontmatter are disabled',
+    );
   const document = yaml.parseDocument(raw);
   // Inspect all keys and values before conversion can resolve aliases or tags.
   yaml.visit(document, (_key, node) => {
@@ -193,7 +208,9 @@ function parseFrontmatterWithIssues(text: string): ParsedFrontmatter {
       data: {},
       body,
       issues: [
-        `YAML frontmatter must parse as a mapping with unique keys: ${message}. For a wildcard, quote it: tools: "*"; for values containing ": ", quote the value (e.g. description: "worker: x")`,
+        yaml
+          ? `YAML frontmatter must parse as a mapping with unique keys: ${message}. For a wildcard, quote it: tools: "*"; for values containing ": ", quote the value (e.g. description: "worker: x")`
+          : message,
       ],
     };
   }

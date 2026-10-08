@@ -27,7 +27,8 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 
 ## Selection rules
 
-- Start with tests colocated with the changed behavior.
+- Start with touched-package/area typechecks and TDD tests colocated with the
+  changed behavior.
 - Add harness/writer tests when generated output or public compatibility changes.
 - Add CLI and harness tests together when installation consumes a changed artifact.
 - Add `src/harness/core/sdd.test.ts` and `sdd-protocol.test.ts` when route,
@@ -37,7 +38,7 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 - Do not report a command as successful if it was not run.
 - Distinguish pre-existing failures from regressions introduced by the change.
 
-## CI, release, and pre-merge
+## CI and release
 
 `.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
 `pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
@@ -81,16 +82,36 @@ checkout through `THOTH_PLUGINS_ROOT`; it validates the publisher locally but
 does not claim that the live GitHub App installation or cross-repository push
 has succeeded. That outcome is established by a real tag release.
 
-For large changes and before a PR, the preserved local pre-merge order is:
+## Local closeout gate
 
-1. `pnpm run check:ci`
-2. `pnpm run typecheck`
-3. `pnpm run build`
-4. `pnpm test`
+This is repository-specific policy, not a change to shipped generic workflow
+skills under `skills/`.
 
-Use the combination applicable to the scope; the absence of build in `ci.yml`
-does not remove the human obligation to validate the build when appropriate.
-Pi verification requires Pi `>=0.99.0` and Node.js `>=22.19.0`.
+1. Run typechecks and the TDD tests for the touched packages/areas.
+2. Run repository `pnpm run check:ci` and `pnpm run typecheck`.
+3. Add `pnpm run build` when the change affects built/runtime output or packaging.
+
+Release/packaging tooling tests (for example publish-marketplace,
+generate-release-notes, setup-codex-local, and packed real-SDK tests) are required
+locally only when the change touches their inputs:
+
+- release scripts;
+- plugin manifests;
+- `skills/`;
+- published `package.json` fields or package `files` allowlists;
+- marketplace/plugin packaging.
+
+Select tooling tests for the affected inputs; unrelated release/packaging suites
+do not block product-change closeout. Full `pnpm test` is the safety net after
+push/PR in Linux CI, alongside the `pi-packages-windows` job; it does not block
+local closeout. Report unrelated environment failures (such as Windows timing)
+with evidence, rather than treating them as change failures. Failures caused by
+the change must still be fixed before closeout.
+
+## Packed Pi verification
+
+When packed Pi verification is in scope, it requires Pi `>=0.99.0` and Node.js
+`>=22.19.0`.
 Every real Pi observation must set `PI_CODING_AGENT_DIR` to a disposable
 directory and use `--no-extensions` plus the installed and observer extensions
 explicitly. Never aim a package smoke at the operator's real Pi home.

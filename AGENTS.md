@@ -212,24 +212,18 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
    work stays artifact-free; delegation alone does not require persistence.
 3. Resolve the two applicable planning choices, then implement within ownership,
    keeping useful checkpoints for recovery.
-4. Run focused checks, then verification proportional to risk.
+4. Apply the proportional local-closeout gate below.
 5. Review the diff for unrelated changes, generated drift and accidental secrets.
 6. Update routed documentation for durable facts and independently verify.
 
-The current `.github/workflows/ci.yml` installs with
-`pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
-`pnpm run typecheck`, and `pnpm test` on Node `22.19`/pnpm `11.2.2`; it does not
-run the build. A separate `windows-latest` job runs only the nine `pi-packages/*`
-typechecks and offline tests (`test:unit` for the Claude bridge). These include
-`@thoth-agents/pi-core`, a library of typed, versioned `pi.events` channels, and
-`@thoth-agents/pi-todo`, a first-party `@juicesharp/rpiv-todo` `2.12.0` fork with
-state publication through pi-core and open-task reinjection, plus
-`@thoth-agents/pi-questions-user`, the first-party `ask_user_question` extension
-with typed questions and structured per-id answers. The release workflow
-waits for that CI and then runs `pnpm run build` and the focused test for the built
-runtime. For large changes and before a PR, keep this applicable local pre-merge
-order:
-`pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm test`.
+To close locally, run touched-package/area typechecks and TDD tests, plus
+`pnpm run check:ci` and `pnpm run typecheck`. Add `pnpm run build` for built/runtime
+output or packaging changes. Release/packaging tooling tests are required only
+when their inputs change; see the [verification guide](docs/agent/testing.md#local-closeout-gate)
+for triggers and CI/release details. Full `pnpm test` is the post-push/PR CI safety
+net (Linux CI plus `pi-packages-windows`), not a local closeout blocker. Report
+unrelated environment failures, such as Windows timing, rather than treating them
+as change failures.
 
 ## Pull requests and sharp edges
 
@@ -259,7 +253,8 @@ search transcripts.
 ## Definition of done
 
 - The requested result is complete and in scope.
-- Relevant checks pass or their failures are reported with evidence.
+- The proportional local-closeout gate passes; unrelated environment failures
+  are reported with evidence, not treated as change failures.
 - Public contracts, work/memory governance, and harness differences are preserved.
 - The diff contains no unrelated, generated, or secret changes.
 - Any unrun validation and remaining uncertainty are declared.

@@ -290,7 +290,11 @@ reconcile step creates the tags and releases for the bootstrap 0.1.0 versions.
 
 ## Verification
 
-Run focused adapter/generator tests, `pnpm run integration:sync`, and
-`pnpm run integration:verify`. Use `pnpm run build` followed by
-`pnpm run verify:pi-package` for the packed manifest, inventory, and
-unrelated-directory extension-load contract.
+Select focused adapter/generator tests for the touched output. When generated
+integration artifacts change, run `pnpm run integration:sync` and
+`pnpm run integration:verify`. Packaging changes require `pnpm run build`; add
+`pnpm run verify:pi-package` when the packed Pi manifest, inventory, or
+unrelated-directory extension-load contract is affected. Apply the
+[local-closeout gate](testing.md#local-closeout-gate) for repository checks and
+release-tooling input triggers; unrelated tooling suites do not block local
+product-change closeout.

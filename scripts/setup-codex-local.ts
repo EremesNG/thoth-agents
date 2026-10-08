@@ -38,6 +38,7 @@ export interface SyncCodexLocalSetupOptions {
   cachebuster?: string;
   inspectPluginState?: boolean;
   pluginStateExecutor?: CodexCommandExecutor;
+  rename?: typeof renameSync;
 }
 
 export interface SyncCodexLocalSetupResult {
@@ -70,6 +71,30 @@ function writeJson(path: string, value: JsonRecord): void {
 
 function defaultCachebuster(): string {
   return new Date().toISOString().replace(/[-:.]/gu, '');
+}
+
+function renameWithRetry(
+  source: string,
+  destination: string,
+  rename = renameSync,
+): void {
+  // Windows scanners can briefly hold plugin directories open during replacement.
+  const delay = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const code = isRecord(error) ? error.code : undefined;
+      if (
+        attempt === 9 ||
+        (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY')
+      ) {
+        throw error;
+      }
+      Atomics.wait(delay, 0, 0, 20 * (attempt + 1));
+    }
+  }
 }
 
 function strictDescendant(base: string, candidate: string): boolean {
@@ -315,10 +340,10 @@ export function syncCodexLocalSetup(
     cpSync(checkout.pluginSource, stagingRoot, { recursive: true });
     rewritePluginVersion(stagingRoot, localVersion);
     if (existsSync(pluginTarget)) {
-      renameSync(pluginTarget, backupRoot);
+      renameWithRetry(pluginTarget, backupRoot, options.rename);
       movedExistingTarget = true;
     }
-    renameSync(stagingRoot, pluginTarget);
+    renameWithRetry(stagingRoot, pluginTarget, options.rename);
     installedStagedTarget = true;
 
     const applied = applyCodexSetup(plan);

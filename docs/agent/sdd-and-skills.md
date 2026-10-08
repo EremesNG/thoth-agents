@@ -121,7 +121,10 @@ for the end-to-end lifecycle.
 
 ## Verification
 
-Run focused `src/harness/core/sdd*.test.ts`, `src/harness/sdd-*.test.ts`,
-prompt/adapter/bundle/CLI initialization tests, then applicable CI checks in
-`docs/agent/testing.md`. Tests show rendered guidance and structural behavior,
-not automatic model compliance or provenance of claimed independent review.
+For changed SDD contracts or skills, select relevant `src/harness/core/sdd*.test.ts`,
+`src/harness/sdd-*.test.ts`, and prompt/adapter/bundle/CLI initialization tests.
+Apply the repository-specific [local-closeout gate](testing.md#local-closeout-gate)
+for touched-area typechecks/tests, repository checks, and conditional build or
+release-tooling tests; the full suite is the post-push/PR CI safety net, not a
+local blocker. Tests show rendered guidance and structural behavior, not automatic
+model compliance or provenance of claimed independent review.

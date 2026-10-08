@@ -162,16 +162,16 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 4bb4aefaa3e428768e23e491f9672587892b04409ad9ad89cb9abd355ea66f97
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+- AC-1: PASS | write-free rebuild and packed-file checks | all eight bundles match fresh esbuild output; packages ship dist/index.ts and assets, omit sources, inlined deps dev-only; claude-agent-sdk stays a runtime dependency (commit c7ad412)
+- AC-2: PASS | packed Pi-loader test (test:pi-extensions 11/11) plus T1 probes D7-D9 | eight bundles activate without sibling SDK copies with host SDK identity; background job helper, Claude executable discovery, subagents SQLite/SDK import, antigravity resolution/status exercised
+- AC-3: PASS | pi-core tests 458/458 | isolated copies in both activation orders for compatible, incompatible and legacy-layout contracts: one widget and listener, incompatible copy excluded, malformed registry fallback (commit 0f7df24)
+- AC-4: PASS | loader test 11/11 including missing-bundle rejection; parsed workflow ordering | both CI jobs build bundles before the load test; release builds and runs it before Pi publication (commit eadaa76)
+- AC-5: PASS | RPC readiness timing and pre-merge checks | bundles 2023-2120 ms warm vs sources 9594-12610 ms and base ~370 ms; check:ci, typecheck, build pass; pnpm test 1584/1584 with CODEX_HOME unset (46 src/cli Codex failures only under Orca's symlinked CODEX_HOME, environment, src/ untouched); test:pi-extensions pass
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:c7a07346085230856a0c7c5dbb804def51ff7ac7156ebcd304f41427e4863959
 - Source: .thoth/specs/release-publishing/spec.md | sha256:49bc3bc8d19fbbebf25069d7136d7a400d070e5d65b8c6cb780c49ef04112d26
 
@@ -179,4 +179,4 @@ exactly one SHA field line; put notes on separate lines below the fields.
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

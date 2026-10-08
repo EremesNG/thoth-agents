@@ -61,6 +61,7 @@
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:pi-extensions": "node --test --test-timeout=110000 scripts/pi-extension-bundles.test.mjs",
     "lint": "biome lint .",
     "format": "biome format . --write",
     "check": "biome check --write .",

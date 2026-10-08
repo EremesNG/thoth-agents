@@ -118,11 +118,16 @@ jobs:
         id: install
         run: pnpm install --frozen-lockfile
 
+      # The root build also generates all eight Pi extension bundles.
       - name: Build package
         run: pnpm run build
 
       - name: Check built plugin runtime
         run: pnpm exec vitest run src/plugin-node-runtime.test.ts
+
+      - name: Load Pi bundles and verify packed contents
+        timeout-minutes: 2
+        run: pnpm run test:pi-extensions
 
       - name: Publish Pi packages
         id: pi-publish

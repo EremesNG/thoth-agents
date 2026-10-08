@@ -472,7 +472,15 @@ function formatCommit(commit: Commit): string {
       ? ` (@${commit.author})`
       : '';
 
-  return `- \`${commit.hash.slice(0, 7)}\` ${commit.subject}${author}`;
+  return `- \`${commit.hash.slice(0, 7)}\` ${quoteSubjectHandles(commit.subject)}${author}`;
+}
+
+function quoteSubjectHandles(subject: string): string {
+  // Preserve code spans, including delimiters made of multiple backticks.
+  return subject.replace(
+    /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)|(?<!\w)@[\w-]+(?:\/[\w-]+(?:\.[\w-]+)*)?/g,
+    (token) => (token.startsWith('`') ? token : `\`${token}\``),
+  );
 }
 
 function communityContributors(commits: Commit[]): string[] {
@@ -504,7 +512,7 @@ function communityContributors(commits: Commit[]): string[] {
     lines.push(`- @${author}:`);
 
     for (const subject of subjects) {
-      lines.push(`  - ${subject}`);
+      lines.push(`  - ${quoteSubjectHandles(subject)}`);
     }
   }
 

@@ -7,6 +7,7 @@ import {
   generateReleaseNotes,
   normalizeRef,
   parseArgs,
+  renderReleaseNotes,
 } from '../../scripts/generate-release-notes';
 
 let dir: string;
@@ -149,6 +150,90 @@ describe('generate-release-notes', () => {
       '@thoth-agents/pi-subagents@0.1.1',
     );
     expect(normalizeRef('1.2.3')).toBe('v1.2.3');
+  });
+});
+
+describe('release-note commit subjects', () => {
+  test('quotes subject handles without suppressing external-author mentions', () => {
+    const notes = renderReleaseNotes(
+      [
+        {
+          hash: 'd8c0d3c',
+          subject:
+            'feat(pi-subagents)!: make * the active-tools selector and remove @active',
+          author: 'external-author',
+          files: ['pi-packages/pi-subagents/index.ts'],
+        },
+      ],
+      undefined,
+      'HEAD',
+    );
+
+    expect(notes).toBe(
+      [
+        '## Core',
+        '### Improvements',
+        '',
+        '- `d8c0d3c` feat(pi-subagents)!: make * the active-tools selector and remove `@active` (@external-author)',
+        '',
+        '## Community Contributors Input',
+        '',
+        '**Thank you to 1 community contributor:**',
+        '- @external-author:',
+        '  - feat(pi-subagents)!: make * the active-tools selector and remove `@active`',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  test.each([
+    [
+      'scoped packages',
+      'integrate @thoth-agents/pi-core',
+      'integrate `@thoth-agents/pi-core`',
+    ],
+    [
+      'existing inline code and hyphenated handles',
+      'keep `@active` and `@thoth-agents/pi-core` but remove @user-name',
+      'keep `@active` and `@thoth-agents/pi-core` but remove `@user-name`',
+    ],
+    [
+      'multi-backtick code spans',
+      'keep ``code ``` literal ` and @active`` but remove @user-name',
+      'keep ``code ``` literal ` and @active`` but remove `@user-name`',
+    ],
+    [
+      'handles next to punctuation',
+      'use (@active), @user-name and @thoth-agents/pi-core.',
+      'use (`@active`), `@user-name` and `@thoth-agents/pi-core`.',
+    ],
+    [
+      'emails and handles preceded by word characters',
+      'contact a@b.com, first.last@example.com or prefix@active',
+      'contact a@b.com, first.last@example.com or prefix@active',
+    ],
+    [
+      'handles inside longer code spans',
+      'keep `selector = @active` but remove @active',
+      'keep `selector = @active` but remove `@active`',
+    ],
+  ])('renders %s safely in commit subjects', (_case, subject, expected) => {
+    const notes = renderReleaseNotes(
+      [
+        {
+          hash: 'abcdef0',
+          subject: `feat: ${subject}`,
+          author: undefined,
+          files: ['src/core.ts'],
+        },
+      ],
+      undefined,
+      'HEAD',
+    );
+
+    expect(notes).toBe(
+      `## Core\n### Improvements\n\n- \`abcdef0\` feat: ${expected}\n`,
+    );
   });
 });
 

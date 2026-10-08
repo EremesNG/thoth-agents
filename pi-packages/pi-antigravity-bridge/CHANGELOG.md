@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Removed
+
+- Removed the unused legacy Pi dist restoration command, startup notice, and notice flag. Normal bridge startup and runtime commands are unchanged.
+
 ## [1.7.8] - 2026-09-30
 
 ### Fixed

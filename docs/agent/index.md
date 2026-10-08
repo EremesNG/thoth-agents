@@ -27,7 +27,7 @@ linked document.
 | Concern | Load when | Evidence |
 | --- | --- | --- |
 | Architecture | A change crosses two routes or plugin composition | [`architecture.md`](architecture.md) |
-| Verification | Selecting CI/build/test scope | [`testing.md`](testing.md) |
+| Verification | Selecting proportional local-closeout checks, release-tooling triggers, or CI/build/test scope | [`testing.md`](testing.md) |
 | Public compatibility | CLI, schema, generated package, or published docs change | README, public docs, schema, writer tests |
 | Zod | A schema under `.agents/skills/zod/` changes | Its local `AGENTS.md` only |
 

@@ -247,8 +247,10 @@ Trusted publishing can only be configured for packages that already exist on npm
 so the first versions (0.1.0) are published manually.
 
 Prerequisites: npm >= 11.15.0 (`npm i -g npm@latest`), `npm login`, account 2FA
-enabled, ownership of the `@thoth-agents` npm scope/org (create it on npmjs.com if
-missing), and a clean checkout of the merged commit with
+enabled, ownership of the `@thoth-agents` npm organization (a scope must be a
+user or an organization; without it `PUT` returns `E404`; create it at
+npmjs.com/org/create), a fresh `pnpm login` after creating it (older tokens may
+lack write access to the new scope and also yield `E404`), and a clean checkout of the merged commit with
 `pnpm install --frozen-lockfile`.
 
 Publish in dependency order, each from its own directory (pnpm rewrites
@@ -262,6 +264,12 @@ npm view @thoth-agents/<pkg> version
 
 Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
 pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme.
+
+New packages can take a few minutes to appear in public registry reads
+(`npm view` returns `E404` meanwhile; `npm access list packages @thoth-agents`
+already lists them). Wait until all versions are visible before cutting the root
+release: the release decides what to publish from registry reads, and republishing
+an existing version fails the run before the root is published.
 
 Then, per package:
 

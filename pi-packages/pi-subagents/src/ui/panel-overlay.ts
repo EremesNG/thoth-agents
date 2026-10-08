@@ -1,6 +1,7 @@
 import {
   getPublishedToolDefinition,
   getRenderKit,
+  openOwnedOverlay,
 } from '@thoth-agents/pi-core';
 import { readSubagentsConfig } from '../config.js';
 import type { SubagentManager } from '../manager.js';
@@ -208,8 +209,9 @@ export async function showSubagentsPanel(input: {
   let refresh: NodeJS.Timeout | undefined;
   let disposePanel: (() => void) | undefined;
   try {
-    await ctx.ui.custom(
-      (tui: any, theme: any, _keybindings: any, done: () => void) => {
+    await openOwnedOverlay<void>(
+      ctx,
+      (tui: any, theme: any, _keybindings: any, closeOverlay: () => void) => {
         setMouseTracking(tui, true);
         const config = readSubagentsConfig(cwd);
         const renderLogger = createSubagentsRenderLogger({
@@ -224,7 +226,7 @@ export async function showSubagentsPanel(input: {
           if (refresh) clearInterval(refresh);
           renderLogger.log({ event: 'panel_disposed' });
           setMouseTracking(tui, false);
-          done();
+          closeOverlay();
         };
         const baseMatchesKey = createSubagentsPanelKeyMatcher(_keybindings);
         const panel = new SubagentsHistoryPanel(
@@ -356,7 +358,6 @@ export async function showSubagentsPanel(input: {
         };
       },
       {
-        overlay: true,
         overlayOptions: {
           anchor: 'top-left',
           width: '100%',

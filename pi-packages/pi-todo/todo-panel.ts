@@ -1,6 +1,10 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { wrapTextWithAnsi } from '@earendil-works/pi-tui';
-import { getRenderKit, resolveIcon } from '@thoth-agents/pi-core';
+import {
+  getRenderKit,
+  openOwnedOverlay,
+  resolveIcon,
+} from '@thoth-agents/pi-core';
 import {
   createHistoryPanelKeyMatcher,
   HistoryPanel,
@@ -146,8 +150,9 @@ export async function showTodoPanel(
   let panel: TodoPanel | undefined;
   let releaseMouse: (() => void) | undefined;
   try {
-    await ctx.ui.custom<void>(
-      (tui, theme, keybindings, done) => {
+    await openOwnedOverlay<void>(
+      ctx,
+      (tui, theme, keybindings, close) => {
         // Fullscreen Pi owns mouse tracking; never disable its terminal mode.
         if (tui.mode !== 'fullscreen') {
           tui.terminal.write('\x1b[?1000h\x1b[?1006h');
@@ -155,7 +160,7 @@ export async function showTodoPanel(
         }
         panel = new TodoPanel(() => listCurrentTasks(ctx), {
           theme,
-          onClose: done,
+          onClose: close,
           initialSelectedId: selectedTaskId,
           matchesKey: createHistoryPanelKeyMatcher({
             matches: (data, key) =>
@@ -170,7 +175,6 @@ export async function showTodoPanel(
         return panel;
       },
       {
-        overlay: true,
         overlayOptions: {
           anchor: 'top-left',
           width: '100%',

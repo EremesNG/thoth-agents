@@ -353,19 +353,30 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: fd2acb34fb45a6e50f120ba8bf366d04da8c19e58356a605669dd5b88022bc96
+
+Gate-only fresh Oracle PASS AC-1..AC-10: merge 4f63a56 tree equals reviewed branch 3e87952; CI run 37796504283 green at merge SHA.
 
 Round 1 fresh Oracle FAIL (AC-2/5/6/8/9 findings) repaired; round 2 fresh Oracle: AC-1..AC-9 PASS, AC-10 FAIL only on repository test gate (reviewed pre-Authorization SHA-256 fd2acb34fb45a6e50f120ba8bf366d04da8c19e58356a605669dd5b88022bc96).
 Local Windows `pnpm test` red only on unrelated unchanged src/harness tests (git timeouts; reproducible EPERM in setup-codex-local.test.ts:185). User decision: close AC-10 with GitHub CI (Linux) green run on push/PR, then gate-only fresh Oracle, closeout and archive.
 
-- AC-1: PENDING | check | evidence
+- AC-1: PASS | pi-core work-panel-retention fake-clock tests | 10 s done and epoch-or-30 s failed boundaries, scheduled refreshes (Oracle round 2)
+- AC-2: PASS | pi-core retention tests busy and idle | collapse to selectable history when nothing runs or lingers; newest-three cap kept (Oracle round 2)
+- AC-3: PASS | pi-subagents and pi-background-tasks provider/history tests | terminal dismissal hides widget row only; cancel/stop kept (Oracle round 2)
+- AC-4: PASS | provider tests | cancelled counted as failed in both; timed-out failed (Oracle round 2)
+- AC-5: PASS | pi-todo widget tests | completed marked, done/total counter, exact `+10 done` at budget 3 (Oracle round 2)
+- AC-6: PASS | todo-panel tests 20 tasks at 120x24, todo.command tests | description visible on open and selection change; /todos panel and text fallback (Oracle round 2)
+- AC-7: PASS | todo-work-panel lifecycle tests with real bindWorkPanelLifecycle | hidden after recognized prompt, state untouched (Oracle round 2)
+- AC-8: PASS | semantic-icons, history-panel ASCII-kit and no-kit tests | no literal glyphs in widget/panel surfaces incl. history shell (Oracle round 2)
+- AC-9: PASS | pi-thoth-theme config/icon-modes/icons tests | nerd default, unicode with agent ⚙ substitution, ascii; README matches (Oracle round 2)
+- AC-10: PASS | GitHub CI run 37796504283 on merge 4f63a56 | jobs test (22.19) and pi-packages-windows succeeded (check:ci, typecheck, test; Pi package typechecks/tests); local check:ci, typecheck, build passed
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:857c33772cfc4b86fff3bae07118f3efc6dca578933a76bf68654dee4c0a9d67
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

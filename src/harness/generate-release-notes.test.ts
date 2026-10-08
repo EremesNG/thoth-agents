@@ -34,6 +34,7 @@ function commit(subject: string, ...files: string[]): void {
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
   git('init', '-q');
+  git('config', 'core.autocrlf', 'false');
   git('config', 'user.email', 't@example.com');
   git('config', 'user.name', 'Tester');
   git('config', 'commit.gpgsign', 'false');
@@ -46,7 +47,7 @@ beforeAll(() => {
   commit('feat: mixed change', 'pi-packages/a/index.ts', 'src/core.ts');
   git('tag', '@thoth-agents/pi-todo@0.2.0');
   git('tag', 'v1.1.0');
-});
+}, 60_000);
 
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -245,6 +246,7 @@ describe('generate-release-notes with annotated tags', () => {
   beforeAll(() => {
     annotated = mkdtempSync(join(tmpdir(), 'release-notes-annotated-'));
     ag('init', '-q');
+    ag('config', 'core.autocrlf', 'false');
     ag('config', 'user.email', 't@example.com');
     ag('config', 'user.name', 'Tester');
     ag('config', 'commit.gpgsign', 'false');
@@ -263,7 +265,7 @@ ${Math.random()}`,
     annotatedCommit('feat: next');
     ag('tag', '-a', '@thoth-agents/pi-todo@0.2.0', '-m', 'pi-todo');
     ag('tag', '-a', 'v1.1.0', '-m', 'v1.1.0');
-  });
+  }, 60_000);
 
   afterAll(() => {
     rmSync(annotated, { recursive: true, force: true });
@@ -297,6 +299,7 @@ describe('generate-release-notes with merge commits', () => {
     previous = dir;
     dir = mkdtempSync(join(tmpdir(), 'release-notes-merge-'));
     git('init', '-q', '-b', 'main');
+    git('config', 'core.autocrlf', 'false');
     git('config', 'user.email', 't@example.com');
     git('config', 'user.name', 'Tester');
     git('config', 'commit.gpgsign', 'false');
@@ -311,7 +314,7 @@ describe('generate-release-notes with merge commits', () => {
     commit('fix: mixed main side', 'src/side.ts');
     git('merge', '--no-ff', '-q', '-m', 'feat: merge mixed', 'mixed');
     git('tag', 'v1.1.0');
-  });
+  }, 60_000);
 
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });

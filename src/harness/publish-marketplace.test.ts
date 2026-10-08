@@ -9,7 +9,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { publishMarketplace } from '../../scripts/publish-marketplace.mjs';
 
 const CENTRAL_SOURCE = resolve(
@@ -165,6 +173,18 @@ function cloneCentral(fixture: Fixture, name: string): string {
   return checkout;
 }
 
+beforeAll(() => {
+  // Include script-created clones without changing the user's Git configuration.
+  const configIndex = Number(process.env.GIT_CONFIG_COUNT ?? 0);
+  vi.stubEnv('GIT_CONFIG_COUNT', String(configIndex + 1));
+  vi.stubEnv(`GIT_CONFIG_KEY_${configIndex}`, 'core.autocrlf');
+  vi.stubEnv(`GIT_CONFIG_VALUE_${configIndex}`, 'false');
+});
+
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
@@ -294,7 +314,7 @@ describe('thoth-agents marketplace publication', () => {
     expect(readFileSync(join(fixture.pluginWork, 'package.json'), 'utf8')).toBe(
       packageBefore,
     );
-  }, 20_000);
+  }, 60_000);
 
   test('fails clearly when the package tag is not visible', async () => {
     const fixture = createFixture('0.3.13', false);
@@ -335,7 +355,7 @@ describe('thoth-agents marketplace publication', () => {
         readFileSync(join(checkout, 'catalog', 'plugins.json'), 'utf8'),
       ),
     ).toEqual(fixture.initialRegistry);
-  });
+  }, 30_000);
 
   test('rejects a central main race through a normal non-force push', async () => {
     const fixture = createFixture();

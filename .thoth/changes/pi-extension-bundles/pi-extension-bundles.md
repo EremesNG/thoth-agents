@@ -49,6 +49,9 @@ Each first-party Pi extension package (`pi-subagents`, the task-list package, `p
 - D3: One shared product build script at the repository root drives esbuild (added as an explicit root devDependency) for all eight packages, with per-package configuration for entry, extra externals and assets to copy beside the bundle; each package gains a `build` script delegating to it.
 - D4: Relocated asset references are fixed by copying the assets next to the bundle (background-tasks `.ps1`/`.cs`) or by source changes that keep resolution host-anchored, chosen per T1 evidence.
 - D5: pi-core stays published unchanged; consuming packages move it to `devDependencies`.
+- D7 (T1 evidence): the only per-package external exception is `@anthropic-ai/claude-agent-sdk` in pi-claude-bridge (inlined, its native binary discovery returns null; external 0.3.286 resolves `claude-agent-sdk-win32-x64/claude.exe` and the bundle activates). It stays in `dependencies`.
+- D8 (T1 evidence): pi-background-tasks ships `windows-job-helper.ps1` and `windows-job-helper.cs` copied beside `dist/index.ts`; without them the helper exits 64, with them a real job launch/query/termination succeeds. No source fix is needed for pi-subagents (SQLite history round trip, computed SDK import and thread-view host resolution succeed from the bundle) or pi-antigravity-bridge (`import.meta.resolve` fails from an install but the existing argv fallback finds the host; patch status reads host files). AC-2 antigravity coverage is that read-only resolution/status path; destructive patch restoration is not exercised because it mutates the host install.
+- D9 (T1 evidence): with an npm-style install and no sibling SDK, CPU profiles across activation and feature probes showed 45 distinct `@earendil-works` module URLs, all inside the global Pi installation.
 - D6: Version skew is handled in pi-core, not by forcing synchronized installs. Render-kit and tool-definition registries use contract-versioned keys plus shape tolerance. The work panel and its lifecycle keep one version-independent `globalThis` slot so the canonical one-widget/one-listener-per-UI-session invariant holds across copies; the slot record carries the work-panel contract version, compatible copies share the host, and an incompatible copy stays out (no host, no section). Backward compatibility with the old unversioned key layout is not required beyond not creating a second host (Oracle plan review B1).
 
 ## Durable deltas
@@ -79,7 +82,7 @@ Risks: SDK native executable discovery after inlining (mitigated by external exc
 
 ## Tasks
 
-- [ ] AC-2: Spike real bundles in Pi and settle externals and relocation fixes
+- [x] AC-2: Spike real bundles in Pi and settle externals and relocation fixes
   - Outcome: per-package evidence of which modules must stay external and which source or asset fixes the bundles need
   - Known entrypoints and skill paths: `pi-packages/*/package.json` `pi.extensions`; `pi-background-tasks/src/windows-job-client.ts`; `pi-claude-bridge/src/index.ts`; `pi-antigravity-bridge/src/patch-cleanup.ts`; `pi-subagents/src/history.ts`, `src/thread-view.ts`, `src/runner/pi-sdk-module.ts`
   - Inputs: Exploration facts above
@@ -91,7 +94,7 @@ Risks: SDK native executable discovery after inlining (mitigated by external exc
   - Focused check and PASS evidence: each bundle loads in `pi --mode rpc -ne --no-session -e <bundle>` from an npm-style temp install with no load error, and each relocation-sensitive feature is exercised with its result recorded
   - Return milestone: all eight packages characterized
   - Stop / reassessment: a feature that cannot be exercised headlessly is returned with the exact gap
-- [ ] AC-1: Implement bundle build and bundle-based package manifests
+- [x] AC-1: Implement bundle build and bundle-based package manifests
   - Outcome: `pnpm` build produces `dist/index.ts` for all eight packages, manifests point at it, inlined deps are dev-only, assets ship beside the bundle
   - Known entrypoints and skill paths: root `package.json`, new root bundle script, `pi-packages/*/package.json`, `pi-subagents/scripts/verify-package-files.mjs`, the task-list package `test/packed-real-sdk.test.ts`; skills `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`, `C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md`
   - Inputs: accepted T1 output and Decisions D1-D5
@@ -103,7 +106,7 @@ Risks: SDK native executable discovery after inlining (mitigated by external exc
   - Focused check and PASS evidence: bundle build succeeds for all eight; package typechecks/offline tests pass; `npm pack --dry-run` per package lists the bundle and assets
   - Return milestone: all eight bundles built and packed lists verified
   - Stop / reassessment: a package whose bundle cannot be made equivalent without behavior change
-- [ ] AC-3: Make pi-core registries tolerate mixed pi-core copies with one work-panel host
+- [x] AC-3: Make pi-core registries tolerate mixed pi-core copies with one work-panel host
   - Outcome: versioned render-kit/tool-registry keys with shape-tolerant consumers, and a single version-independent work-panel ownership slot
   - Known entrypoints and skill paths: `pi-packages/pi-core/src/render-kit.ts`, `tool-registry.ts`, `work-panel.ts`, `work-panel-lifecycle.ts`, `work-panel-host.ts`; canonical `.thoth/specs/pi-ecosystem/spec.md` Thoth Pi work panel; skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration pi-core facts; D6
@@ -115,7 +118,7 @@ Risks: SDK native executable discovery after inlining (mitigated by external exc
   - Focused check and PASS evidence: new tests load two isolated pi-core copies (same and incompatible contract versions, plus a pre-change unversioned-layout record) into one simulated UI session and assert exactly one widget and one input listener, shared sections for compatible copies, no section and no throw for the incompatible copy, and fallback on malformed render-kit/tool-registry records; pi-core and consumer package tests pass
   - Return milestone: tests green
   - Stop / reassessment: a consumer requiring an export signature change
-- [ ] AC-4: Add bundle load test, CI build and release build step
+- [x] AC-4: Add bundle load test, CI build and release build step
   - Outcome: automated loader test over built bundles, CI and release run the build
   - Known entrypoints and skill paths: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, T2 build script
   - Inputs: accepted T2 output
@@ -127,7 +130,7 @@ Risks: SDK native executable discovery after inlining (mitigated by external exc
   - Focused check and PASS evidence: load test passes locally for all eight bundles and fails when an entry points to a missing bundle; workflow YAML validated by reading the job order
   - Return milestone: test green locally
   - Stop / reassessment: Pi loader not reachable from tests without the global install
-- [ ] AC-5: Measure startup and run full pre-merge checks
+- [x] AC-5: Measure startup and run full pre-merge checks
   - Outcome: recorded warm startup time and full check results
   - Known entrypoints and skill paths: operator's `C:\DEV\Proyectos\Webstorm\thoth-agents` layout is not used; measure bundles built in this worktree
   - Inputs: accepted T2, T3, T4

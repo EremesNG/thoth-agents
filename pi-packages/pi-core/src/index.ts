@@ -1,3 +1,18 @@
+export type {
+  BackgroundCounts,
+  BackgroundSnapshot,
+  BackgroundStateRequest,
+  BackgroundTaskKind,
+  BackgroundTaskStatus,
+  BackgroundTaskSummary,
+} from './background.js';
+export {
+  BACKGROUND_PROGRESS_MAX_LENGTH,
+  BACKGROUND_STATE_CHANNEL,
+  BACKGROUND_STATE_REQUEST,
+  isBackgroundSnapshot,
+  isBackgroundStateRequest,
+} from './background.js';
 export type { Channel, EventBus, ThothEnvelope } from './channels.js';
 export {
   defineChannel,
@@ -42,6 +57,30 @@ export {
   resolveStatusGlyph,
   withdrawRenderKit,
 } from './render-kit.js';
+export type {
+  SubagentEffort,
+  SubagentMode,
+  SubagentStatus,
+  SubagentsCounts,
+  SubagentsSnapshot,
+  SubagentsStateRequest,
+  SubagentsTotals,
+  SubagentsUsageRequest,
+  SubagentsUsageSnapshot,
+  SubagentTaskSummary,
+  SubagentTaskUsage,
+} from './subagents.js';
+export {
+  isSubagentsSnapshot,
+  isSubagentsStateRequest,
+  isSubagentsUsageRequest,
+  isSubagentsUsageSnapshot,
+  SUBAGENT_PREVIEW_MAX_LENGTH,
+  SUBAGENTS_STATE_CHANNEL,
+  SUBAGENTS_STATE_REQUEST,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+} from './subagents.js';
 export type {
   TodoCounts,
   TodoSnapshot,

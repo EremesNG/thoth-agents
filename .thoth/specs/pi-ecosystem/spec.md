@@ -235,3 +235,13 @@ pi-subagents and pi-background-tasks MUST publish current-session task summary s
 - **GIVEN** a session running subagents and background tasks
 - **WHEN** a task changes state or a consumer requests snapshots
 - **THEN** both packages publish envelope snapshots for that session with summary fields only, and the status line shows cumulative subagent cost from the usage channel
+
+### Requirement: Discoverable work-panel registry
+
+pi-core MUST let consumers other than the host list registered work-panel sources with id, label, priority, contract version and a per-source monotonic revision that increases on registration and every provider change, subscribe to registration, removal and source changes, read each source's rows as data-only values bounded by a requested maximum and the source row cap, and invoke a source's open, history and close actions by source and row id; work-panel rows MUST contain no functions, and the work-panel contract version MUST be 2.
+
+#### Scenario: Discoverable work-panel registry
+
+- **GIVEN** the subagents, background-tasks and task-list sources registered
+- **WHEN** a consumer lists sources, subscribes and a subagent finishes
+- **THEN** it sees three sources, receives a change for the subagents source with a higher revision, reads that source's rows as plain data within its bound, and can open the item through the action API

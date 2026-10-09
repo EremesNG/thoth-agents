@@ -14,6 +14,7 @@ import {
   renderPanelCard,
   renderWorkPanelRow,
   truncatePanelText,
+  workPanelRenderStatus,
 } from '@thoth-agents/pi-core/panel';
 import type { SidebarConfig } from '../config.js';
 import type { WorkspaceSnapshot } from './workspace.js';
@@ -104,6 +105,7 @@ interface PanelData {
   title: string;
   rows: string[];
   blocks?: string[][];
+  animated?: boolean[];
   priority: number;
   source: boolean;
   height: number;
@@ -117,6 +119,7 @@ export interface SidebarPanelsOptions {
   subagentCost(): number;
   workspace(): WorkspaceSnapshot;
   height(): number;
+  resizeWidth?(): number | undefined;
 }
 export class SidebarPanels implements Component {
   constructor(private readonly options: SidebarPanelsOptions) {}
@@ -125,6 +128,21 @@ export class SidebarPanels implements Component {
     const options = this.options;
     const sources = listWorkPanelSources();
     const panels: PanelData[] = [];
+    const resizeWidth = options.resizeWidth?.();
+    if (resizeWidth !== undefined)
+      panels.push({
+        id: 'resize',
+        title: 'Resize',
+        rows: [
+          `width ${resizeWidth} (28–72)`,
+          '←/→ move divider · Shift 4',
+          'Enter confirm · Esc revert',
+        ],
+        priority: -1,
+        source: false,
+        height: 5,
+      });
+    const now = Date.now();
     for (const preference of options.config.panels) {
       if (!preference.visible) continue;
       if (preference.id === 'session')
@@ -167,7 +185,7 @@ export class SidebarPanels implements Component {
         const blocks = items.map((row, index) =>
           renderWorkPanelRow(row, {
             width: Math.max(1, width - 4),
-            now: Date.now(),
+            now,
             theme: options.theme,
             clip: truncatePanelText,
             measure: panelVisibleWidth,
@@ -180,6 +198,11 @@ export class SidebarPanels implements Component {
           title: clean(source.label),
           rows: rows.length ? rows : ['No items'],
           blocks: rows.length ? blocks : undefined,
+          animated: items.map(
+            (row) =>
+              !row.summary &&
+              ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
+          ),
           priority: source.priority,
           source: true,
           height: Math.max(1, rows.length) + 2,
@@ -217,6 +240,18 @@ export class SidebarPanels implements Component {
       .filter((panel) => panel.source && panel.height >= 3)
       .map((panel) => panel.id);
   }
+  hasAnimation(width = 44): boolean {
+    return this.plan(this.options.height(), width).some((panel) => {
+      if (!panel.blocks || panel.height < 3) return false;
+      const budget = panel.height - 2;
+      const overflow = panel.blocks.flat().length > budget;
+      let used = 0;
+      return panel.blocks.some((block, index) => {
+        used += block.length;
+        return used <= budget - (overflow ? 1 : 0) && panel.animated?.[index];
+      });
+    });
+  }
   render(width: number): string[] {
     return this.renderAt(width, this.options.height());
   }
@@ -227,7 +262,10 @@ export class SidebarPanels implements Component {
         panel.height < 3
           ? [truncatePanelText(panel.title, width)]
           : renderPanelCard({
-              title: panel.title,
+              title:
+                panel.id === 'resize'
+                  ? this.options.theme.fg('warning', panel.title)
+                  : panel.title,
               body: () =>
                 panel.blocks
                   ? boundedBody(panel.blocks, panel.height - 2)

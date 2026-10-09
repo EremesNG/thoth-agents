@@ -153,7 +153,8 @@ export interface WorkPanelProvider {
   retention?: 'prompt';
   /** Advisory provider count; host cues and focus use selectable section rows instead. */
   visibleCount(): number;
-  listRows(now: number): WorkPanelRow[];
+  /** History is opt-in for uncapped discovery; the host never requests it. */
+  listRows(now: number, options?: { includeHistory?: boolean }): WorkPanelRow[];
   detail(
     id: string,
     now: number,
@@ -254,8 +255,10 @@ export function getWorkPanelSourceRows(
   return limit
     ? safely(
         () =>
-          provider
-            .listRows(Date.now())
+          (options.respectRowCap === false
+            ? provider.listRows(Date.now(), { includeHistory: true })
+            : provider.listRows(Date.now())
+          )
             .slice(0, limit)
             .map((row) => {
               // Discard legacy render callbacks and executable top-level members at this public boundary.

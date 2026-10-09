@@ -5,14 +5,19 @@ import {
   WORK_PANEL_VERSION,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
+import {
+  renderWorkPanelRow,
+  truncatePanelText,
+} from '@thoth-agents/pi-core/panel';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import type { SidebarConfig } from '../src/config.js';
 import { SidebarPanels, sessionRows } from '../src/panels/sidebar.js';
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
   for (const off of disposers.splice(0).reverse()) off();
+  vi.useRealTimers();
 });
 const theme = { fg: (_role: string, value: string) => value };
 function context() {
@@ -309,4 +314,124 @@ it('counts hidden retained items, not metric continuation lines or discarded his
   expect(rendered).toContain('task 7');
   expect(rendered).toContain('+4 more');
   expect(rendered).not.toContain('+7 more');
+});
+
+it('shows resumed Agent history and uses the exact host clock frame for animated rows', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1200);
+  const row = {
+    id: 'active',
+    primary: 'work',
+    status: 'running',
+    statusGlyph: 'running' as const,
+  };
+  disposers.push(
+    registerWorkPanelProvider({ on() {} } as any, {
+      version: WORK_PANEL_VERSION,
+      id: 'resumed',
+      label: 'Agents',
+      priority: 10,
+      visibleCount: () => 1,
+      listRows: (_now, options) =>
+        options?.includeHistory
+          ? [
+              row,
+              {
+                id: 'old',
+                primary: 'Resumed finished',
+                status: 'completed',
+                state: 'done',
+                endedAt: 1000,
+              },
+            ]
+          : [row],
+      detail: () => null,
+      armCloseLabel: () => '',
+      close: () => {},
+    }),
+  );
+  const panel = new SidebarPanels({
+    config: { startup: 'auto', panels: [{ id: 'resumed', visible: true }] },
+    context,
+    theme,
+    thinking: () => 'off',
+    subscriptionProviders: [],
+    subagentCost: () => 0,
+    workspace: () => ({ cwd: '/project', status: 'Clean' }),
+    height: () => 30,
+  });
+  const lines = panel.render(44).join(String.fromCharCode(10));
+  expect(lines).toContain('Resumed finished');
+  expect(lines).toContain(
+    renderWorkPanelRow(row, {
+      width: 40,
+      now: 1200,
+      theme,
+      clip: truncatePanelText,
+    })[0].trim(),
+  );
+});
+
+it.each<{
+  label: string;
+  status: Partial<import('@thoth-agents/pi-core').WorkPanelRow>;
+  animated: boolean;
+}>([
+  {
+    label: 'semantic in_progress override',
+    status: { status: 'pending', statusGlyph: 'in_progress' },
+    animated: true,
+  },
+  {
+    label: 'running tone',
+    status: { status: 'pending', statusTone: 'running' },
+    animated: true,
+  },
+  {
+    label: 'running state and status',
+    status: { state: 'running', status: 'running' },
+    animated: true,
+  },
+  {
+    label: 'running state alone is not presentation',
+    status: { state: 'running' },
+    animated: false,
+  },
+  {
+    label: 'queued live row',
+    status: { state: 'running', status: 'queued' },
+    animated: false,
+  },
+  {
+    label: 'stopping live row',
+    status: { state: 'running', status: 'stopping' },
+    animated: false,
+  },
+  {
+    label: 'static semantic override beats running tone',
+    status: {
+      state: 'running',
+      status: 'running',
+      statusTone: 'running',
+      statusGlyph: 'queued',
+    },
+    animated: false,
+  },
+  {
+    label: 'completed row',
+    status: { state: 'done', status: 'completed' },
+    animated: false,
+  },
+  {
+    label: 'failed row',
+    status: { state: 'failed', status: 'failed' },
+    animated: false,
+  },
+  { label: 'cancelled row', status: { status: 'cancelled' }, animated: false },
+])('ticks only for animated host presentation: $label', ({
+  status,
+  animated,
+}) => {
+  const panel = sourcePanel([{ id: 'one', primary: 'work', ...status }]);
+  expect(panel.hasAnimation()).toBe(animated);
 });

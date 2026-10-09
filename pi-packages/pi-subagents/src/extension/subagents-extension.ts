@@ -207,6 +207,7 @@ export default function subagentsExtension(pi: any): void {
       ctx,
       createSubagentsWorkPanelProvider({
         listTasks: () => manager.listActiveSessionTasks(cwd, sessionId),
+        listSessionTasks: () => manager.listSessionTasks(cwd, sessionId),
         persistedCounts: manager.snapshotSessionTaskCounts(cwd, sessionId),
         providerLimits,
         onTaskUpdate: (notify) => manager.onTaskUpdate(notify),

@@ -373,6 +373,10 @@ its consumers on first publication; later bumps follow the root release flow.
 
 ## Panel primitives and list editor
 
+The `./panel` entry also exports `WORK_PANEL_ANIMATION_INTERVAL_MS` (100 ms),
+the shared clock cadence for animated work rows. `workPanelRenderStatus(row)`
+exposes the host's presentation classification; only `running` and `in_progress` animate.
+
 Import TUI panels from `@thoth-agents/pi-core/panel`, like the existing
 `/history-panel` subpath. This entry needs the optional `pi-tui` peer; the root
 entry remains importable without runtime Pi peers. No runtime coding-agent
@@ -571,7 +575,8 @@ invokeWorkPanelAction(ctx: ExtensionContext, id: string,
 
 Discovery defaults to the provider's display row cap. Read-only consumers with
 their own retention policy can pass `respectRowCap: false`; `maxRows` still
-bounds the returned data. Session scoping and completion timestamps remain
+bounds the returned data. Uncapped discovery also requests `listRows(now, { includeHistory: true })`;
+the host and capped discovery never request history. Providers may ignore this optional argument. Session scoping and completion timestamps remain
 provider-owned.
 
 

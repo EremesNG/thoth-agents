@@ -34,6 +34,31 @@ const agentRow: WorkPanelRow = {
 };
 
 describe('data-only work panel rendering', () => {
+  it('requests history only for uncapped discovery, never for host rendering', async () => {
+    const session = uiSession();
+    const listRows = vi.fn((_now, options) =>
+      options?.includeHistory ? [agentRow] : [],
+    );
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('history-opt'),
+        listRows,
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.render();
+    expect(listRows.mock.calls.every((call) => call[1] === undefined)).toBe(
+      true,
+    );
+    expect(getWorkPanelSourceRows('history-opt', { maxRows: 100 })).toEqual([]);
+    expect(
+      getWorkPanelSourceRows('history-opt', {
+        maxRows: 100,
+        respectRowCap: false,
+      }),
+    ).toEqual([agentRow]);
+  });
+
   it.each([
     false,
     true,

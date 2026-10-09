@@ -37,6 +37,7 @@ import {
   registerSubagentsPanelOpener,
   showSubagentsPanel,
 } from '../ui/panel-overlay.js';
+import { SubagentProviderLimitCache } from '../ui/provider-limit-cache.js';
 import { createSubagentsWorkPanelProvider } from '../ui/work-panel-provider.js';
 import { SubagentUsageEvents } from '../usage-events.js';
 
@@ -56,6 +57,8 @@ function isStaleContextError(error: unknown): boolean {
 }
 
 export default function subagentsExtension(pi: any): void {
+  // Capture is extension-owned, never gated by UI readiness or row subscriptions.
+  const providerLimits = new SubagentProviderLimitCache();
   const definitions: ToolDefinitionLike[] = [];
   let publication: ToolDefinitionHandle | undefined;
   const originalRegisterTool =
@@ -152,6 +155,7 @@ export default function subagentsExtension(pi: any): void {
       pi,
       manager,
       selectedTaskId,
+      providerLimits,
       setActivePanelCancelSelected: (fn) => {
         activePanelCancelSelected = fn;
       },
@@ -204,6 +208,7 @@ export default function subagentsExtension(pi: any): void {
       createSubagentsWorkPanelProvider({
         listTasks: () => manager.listActiveSessionTasks(cwd, sessionId),
         persistedCounts: manager.snapshotSessionTaskCounts(cwd, sessionId),
+        providerLimits,
         onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
         cancel: (id, reason) => manager.cancel(id, reason),
         open: (id, liveCtx) => openPanel(liveCtx, id),
@@ -236,6 +241,8 @@ export default function subagentsExtension(pi: any): void {
         error,
       );
     } finally {
+      // Keep capture installed through the final child report during shutdown.
+      providerLimits.dispose();
       usageEvents?.dispose();
     }
   });

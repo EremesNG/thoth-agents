@@ -13,6 +13,7 @@ import {
   classifySubagentsPanelInput,
   createSubagentsPanelKeyMatcher,
 } from './panel-input.js';
+import type { SubagentProviderLimitCache } from './provider-limit-cache.js';
 import { SubagentsHistoryPanel } from './subagents-history-panel.js';
 
 function currentSessionId(ctx: any): string | undefined {
@@ -193,6 +194,7 @@ export async function showSubagentsPanel(input: {
   pi: any;
   manager: SubagentManager;
   selectedTaskId?: string;
+  providerLimits?: Pick<SubagentProviderLimitCache, 'warningText' | 'onChange'>;
   setActivePanelCancelSelected: (fn: (() => void) | undefined) => void;
   setActivePanelRequestRender: (fn: (() => void) | undefined) => void;
 }) {
@@ -201,6 +203,7 @@ export async function showSubagentsPanel(input: {
     pi,
     manager,
     selectedTaskId,
+    providerLimits,
     setActivePanelCancelSelected,
     setActivePanelRequestRender,
   } = input;
@@ -267,13 +270,20 @@ export async function showSubagentsPanel(input: {
             manager.cancel(id, 'cancelled from subagents detail view'),
           config.detail_cancel_shortcut ?? 'x',
           {
+            providerLimits,
             timeoutMs: config.timeout_ms,
             stallTimeoutMs: config.stall_timeout_ms,
             contextWindowForTask: (task: SubagentTask) =>
               contextWindowForTask(ctx, task),
           },
         );
-        disposePanel = () => panel.dispose();
+        const unsubscribeLimits = providerLimits?.onChange(() =>
+          tui.requestRender?.(),
+        );
+        disposePanel = () => {
+          unsubscribeLimits?.();
+          panel.dispose();
+        };
         renderLogger.log({ event: 'panel_created' });
         renderLogger.log({
           event: 'render_requested',

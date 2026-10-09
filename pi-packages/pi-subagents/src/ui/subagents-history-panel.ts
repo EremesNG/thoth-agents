@@ -19,6 +19,7 @@ import type {
   SubagentThreadSnapshot,
   UsageStats,
 } from '../types.js';
+import type { SubagentProviderLimitCache } from './provider-limit-cache.js';
 import {
   agentIcon,
   BOX_CHARS,
@@ -111,6 +112,7 @@ function formatUsage(usage?: UsageStats, contextWindow?: number): string {
 }
 
 type SubagentsHistoryPanelDisplayOptions = {
+  providerLimits?: Pick<SubagentProviderLimitCache, 'warningText'>;
   timeoutMs?: number;
   stallTimeoutMs?: number;
   contextWindowForTask?: (task: SubagentTask) => number | undefined;
@@ -297,6 +299,12 @@ export class SubagentsHistoryPanel {
     try {
       contextWindow = this.displayOptions.contextWindowForTask?.(currentTask);
     } catch {}
+    const limitWarning = this.displayOptions.providerLimits?.warningText(
+      currentTask.id,
+    );
+    const limitField = limitWarning
+      ? `limit: ${themeFg(th, 'warning', limitWarning)}`
+      : undefined;
     const usage = formatUsage(currentTask.usage, contextWindow);
     const duration = formatTaskDuration(currentTask);
     const timeout = formatTimeout(this.displayOptions.timeoutMs);
@@ -334,6 +342,7 @@ export class SubagentsHistoryPanel {
         ? `task: ${accent(taskText)}`
         : undefined;
     const narrowDetails = [
+      limitField,
       titlePart,
       currentTask.model ? `model: ${dim(currentTask.model)}` : undefined,
     ]
@@ -358,6 +367,7 @@ export class SubagentsHistoryPanel {
           .filter(Boolean)
           .join(separator),
         [
+          limitField,
           usage ? `usage: ${usage}` : undefined,
           lastActivity ? `last: ${lastActivity}` : undefined,
           displayName ? `name: ${accent(displayName)}` : undefined,

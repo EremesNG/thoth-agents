@@ -205,9 +205,9 @@ describe('Pi operations', () => {
         }),
         expect.objectContaining({
           kind: 'package',
-          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          path: 'npm:@thoth-agents/pi-todo@>=0.3.0',
           state: 'installed',
-          observed: '0.1.0',
+          observed: '0.3.0',
         }),
         expect.objectContaining({
           kind: 'file',
@@ -1012,7 +1012,7 @@ describe('Pi operations', () => {
     expect(report.targets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          path: 'npm:@thoth-agents/pi-todo@>=0.3.0',
           state: 'missing',
         }),
         expect.objectContaining({

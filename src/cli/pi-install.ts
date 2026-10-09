@@ -88,9 +88,9 @@ export const PI_PACKAGE_SPECS = [
   },
   {
     id: 'todo',
-    source: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+    source: 'npm:@thoth-agents/pi-todo@>=0.3.0',
     packageName: '@thoth-agents/pi-todo',
-    version: '0.1.0',
+    version: '0.3.0',
   },
   {
     id: 'theme',

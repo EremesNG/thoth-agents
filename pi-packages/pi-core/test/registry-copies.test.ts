@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import type { ProviderLimitEntry } from '../src/index.js';
 import { createTestRenderKit } from '../src/testing.js';
 import { isolatedCore } from './isolated-core-fixture.js';
 
@@ -85,5 +86,79 @@ describe('isolated render-kit/tool-definition contracts', () => {
     );
     expect(first.core.getToolDefinitionRegistryVersion()).toBe(1);
     expect(different.core.getToolDefinitionRegistryVersion()).toBe(1);
+  });
+});
+
+describe('isolated provider-limit contracts', () => {
+  const key = Symbol.for('thoth.pi-core.provider-limits.v1');
+  afterEach(() => {
+    delete shared[key];
+  });
+
+  it.each([
+    false,
+    true,
+  ])('shares reports, expiry reads, and subscriptions across copies (other first: %s)', (reverse) => {
+    const [owner, other] = reverse
+      ? [same.core, first.core]
+      : [first.core, same.core];
+    expect(owner.reportProviderLimit).not.toBe(other.reportProviderLimit);
+    const entry = {
+      provider: 'claude-bridge',
+      window: 'five_hour',
+      status: 'allowed_warning' as const,
+      utilization: 0.95,
+      resetsAt: 20_000,
+      observedAt: 10_000,
+      sessionId: 'child-session',
+    };
+    const captured: ProviderLimitEntry[] = [];
+    const off = other.subscribeProviderLimits((value) => {
+      captured.push(value);
+    });
+    cleanups.push(off);
+    expect(owner.reportProviderLimit(entry)).toBe(true);
+    expect(captured).toEqual([entry]);
+    expect(other.listProviderLimits(10_000)).toEqual([entry]);
+    expect(other.listProviderLimits(20_000)).toEqual([
+      {
+        provider: 'claude-bridge',
+        window: 'five_hour',
+        status: 'allowed',
+        resetsAt: 20_000,
+        observedAt: 10_000,
+        sessionId: 'child-session',
+      },
+    ]);
+    const replacement = { ...entry, sessionId: 'root-session' };
+    expect(other.reportProviderLimit(replacement)).toBe(true);
+    expect(owner.listProviderLimits(10_000)).toEqual([replacement]);
+    expect(captured).toEqual([entry, replacement]);
+    off();
+    off();
+    owner.reportProviderLimit(entry);
+    expect(captured).toEqual([entry, replacement]);
+  });
+
+  it('lets both copies ignore an incompatible owner without replacing it', () => {
+    const foreign = { version: 2, entries: new Map(), listeners: new Set() };
+    shared[key] = foreign;
+    for (const core of [first.core, same.core]) {
+      const off = core.subscribeProviderLimits(() => {
+        throw new Error('must not be called');
+      });
+      expect(
+        core.reportProviderLimit({
+          provider: 'claude-bridge',
+          window: 'five_hour',
+          status: 'rejected',
+          observedAt: 10_000,
+          sessionId: 'child-session',
+        }),
+      ).toBe(false);
+      expect(core.listProviderLimits()).toEqual([]);
+      expect(() => off()).not.toThrow();
+      expect(shared[key]).toBe(foreign);
+    }
   });
 });

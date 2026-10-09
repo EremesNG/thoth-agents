@@ -4,6 +4,7 @@ import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
+import { getUIPreferences, subscribeUIPreferences } from './ui-preferences.js';
 import type {
   WorkPanelAction,
   WorkPanelActionResult,
@@ -38,6 +39,7 @@ type EditorFactory = NonNullable<
 >;
 
 export interface WorkPanelHost {
+  readonly supportsUIPreferences?: true;
   sessionId: string;
   holders: number;
   ready: Promise<void>;
@@ -115,8 +117,16 @@ export function createWorkPanelHost(
       return primitives.padPanelText(clipped, width);
     return clipped + ' '.repeat(Math.max(0, width - cells));
   };
-  const sections = () =>
-    panelSections(providers(), Date.now(), getWorkPanelLifecycle(ctx));
+  const sections = () => {
+    // Reevaluate UI owner liveness for every render, selection and focus check;
+    // a foreign root can remove the owner's own render observer entirely.
+    const absorbed = new Set(getUIPreferences().absorbedWorkPanelSources);
+    return panelSections(
+      providers().filter((provider) => !absorbed.has(provider.id)),
+      Date.now(),
+      getWorkPanelLifecycle(ctx),
+    );
+  };
   function rows(): PanelRow[] {
     const current = sections();
     const overflow = current.some(({ provider }) => provider.selectableSummary)
@@ -388,6 +398,7 @@ export function createWorkPanelHost(
   }
 
   const host: WorkPanelHost = {
+    supportsUIPreferences: true,
     sessionId: ctx.sessionManager.getSessionId(),
     holders: 0,
     ready: Promise.resolve(),
@@ -453,6 +464,7 @@ export function createWorkPanelHost(
       dismissDetail?.();
       slot?.dispose();
       removeLifecycle?.();
+      removePreferences();
       if (installed) {
         ctx.ui.setStatus(WIDGET_KEY, undefined);
       }
@@ -521,6 +533,7 @@ export function createWorkPanelHost(
     tui = slot.tui;
     installed = true;
   }
+  const removePreferences = subscribeUIPreferences(() => host.refresh());
   removeLifecycle = onWorkPanelLifecycleChanged(ctx, () => host.refresh());
   host.ready = (async () => {
     [agent, toolkit, primitives] = await Promise.all([

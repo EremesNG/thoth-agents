@@ -1,4 +1,5 @@
 import type { Component, Focusable } from '@earendil-works/pi-tui';
+import { renderPanelCard } from './panel-frame.js';
 import {
   getRenderKit,
   type RenderKitTheme,
@@ -53,6 +54,7 @@ interface DetailOptions {
   height(): number;
   width(): number;
   clip(text: string, width: number): string;
+  pad(text: string, width: number): string;
   wrap(text: string, width: number): string[];
   measure(text: string): number;
   matches(
@@ -244,7 +246,11 @@ export function createWorkPanelDetail(
       ]),
     ),
   );
-  const kitAtOpening = getRenderKit();
+  const frameText = {
+    clip: options.clip,
+    pad: options.pad,
+    measure: options.measure,
+  };
   const openingHeight = Math.min(
     heightCap,
     Math.max(
@@ -254,13 +260,13 @@ export function createWorkPanelDetail(
           ...expandedBody(detail, entry, innerWidth),
           hintFor(entry, false),
         ];
-        return kitAtOpening
-          ? kitAtOpening.card(
-              options.theme,
-              { title: singleLine(detail.title), body },
-              openingWidth,
-            ).length
-          : body(Math.max(1, openingWidth - 4)).length + 2;
+        return renderPanelCard({
+          title: singleLine(detail.title),
+          body,
+          width: openingWidth,
+          theme: options.theme,
+          text: frameText,
+        }).length;
       }),
     ),
   );
@@ -370,43 +376,14 @@ export function createWorkPanelDetail(
           fg('dim', hint),
         ];
       };
-      const pad = (text: string, available: number) => {
-        const clipped = options.clip(text, available);
-        return (
-          clipped +
-          ' '.repeat(Math.max(0, available - options.measure(clipped)))
-        );
-      };
-      if (kit)
-        return kit
-          .card(
-            options.theme,
-            {
-              title: singleLine(detail.title),
-              body,
-            },
-            width,
-          )
-          .slice(0, budget)
-          .map((line) => pad(line, width));
-      const nativeBody = body(Math.max(1, width - 4));
-      const title = options.clip(
-        ` ${singleLine(detail.title)} `,
-        Math.max(0, width - 3),
-      );
-      return [
-        fg(
-          'accent',
-          `╭─${title}${'─'.repeat(Math.max(0, width - 3 - options.measure(title)))}╮`,
-        ),
-        ...nativeBody.map(
-          (line) =>
-            `${fg('accent', '│')} ${pad(line, Math.max(0, width - 4))} ${fg('accent', '│')}`,
-        ),
-        fg('accent', `╰${'─'.repeat(Math.max(0, width - 2))}╯`),
-      ]
-        .slice(0, budget)
-        .map((line) => pad(line, width));
+      return renderPanelCard({
+        title: singleLine(detail.title),
+        body,
+        width,
+        maxHeight: budget,
+        theme: options.theme,
+        text: frameText,
+      });
     },
     handleInput(data) {
       if (closed) return;

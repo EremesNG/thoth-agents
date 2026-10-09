@@ -1,8 +1,13 @@
 import { appendFileSync, rmSync, writeFileSync } from 'node:fs';
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { Component, OverlayHandle } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { describe, expect, it } from 'vitest';
-import { BackgroundTasksHistoryPanel } from './history-panel.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  BackgroundTasksHistoryPanel,
+  showBackgroundTasksHistory,
+} from './history-panel.js';
 import { logPathFor, taskDir, writeMeta } from './registry.js';
 import { lifecycleHost } from './test-support/lifecycle-harness.js';
 import type { BackgroundTaskMeta } from './types.js';
@@ -46,6 +51,152 @@ function panelFor(
     { onClose() {}, maxLines: 42, initialSelectedId: selectedTaskId },
   );
 }
+
+// Model Pi 1.0.2's top-pop completion while supplying owner-scoped handles.
+function overlayHost(mode: 'inline' | 'fullscreen' = 'inline') {
+  const editor: Component = { render: () => [], invalidate() {} };
+  let focused = editor;
+  const stack: Array<{ component: Component; preFocus: Component }> = [];
+  const hideOwned = vi.fn();
+  const tui = {
+    mode,
+    terminal: { rows: 50, columns: 120, write: vi.fn() },
+    children: [editor],
+    overlayStack: stack,
+    requestRender: vi.fn(),
+    getFocusedComponent: () => focused,
+    setFocus: (component: Component) => { focused = component; },
+    hideOverlay: vi.fn(() => {
+      const removed = stack.pop();
+      if (removed) focused = removed.preFocus;
+    }),
+  };
+  const custom = vi.fn((
+    factory: Parameters<ExtensionContext['ui']['custom']>[0],
+    options?: Parameters<ExtensionContext['ui']['custom']>[1],
+  ) =>
+    new Promise((resolve) => {
+      const done = (result: unknown) => {
+        tui.hideOverlay();
+        resolve(result);
+      };
+      const component = factory(
+        tui as unknown as Parameters<typeof factory>[0],
+        { fg: (_role: string, text: string) => text } as Parameters<typeof factory>[1],
+        { matches: (data: string, key: string) => data === 'dismiss-history' && key === 'app.interrupt' } as unknown as Parameters<typeof factory>[2],
+        done,
+      ) as Component;
+      const entry = { component, preFocus: focused };
+      stack.push(entry);
+      focused = component;
+      options?.onHandle?.({
+        hide: () => {
+          hideOwned();
+          const index = stack.indexOf(entry);
+          if (index < 0) return;
+          stack.splice(index, 1);
+          for (const newer of stack)
+            if (newer.preFocus === component) newer.preFocus = entry.preFocus;
+          if (focused === component) focused = entry.preFocus;
+        },
+      } as OverlayHandle);
+    }),
+  );
+  const ctx = { hasUI: true, mode: 'tui', ui: { custom } } as unknown as ExtensionContext;
+  return { ctx, tui, editor, stack, hideOwned, custom };
+}
+
+describe('Background history overlay ownership', () => {
+  it.each(['inline', 'fullscreen'] as const)('preserves full-terminal placement, bound close keys and mouse lifecycle in %s mode', async (mode) => {
+    const host = lifecycleHost(`history-overlay-${mode}`);
+    const overlay = overlayHost(mode);
+    const opened = showBackgroundTasksHistory(host.pi, overlay.ctx, {
+      cwd: host.ctx.cwd,
+      sessionId: host.ctx.sessionManager.getSessionId(),
+    });
+    const panel = overlay.stack[0].component as BackgroundTasksHistoryPanel;
+    try {
+      expect(overlay.custom.mock.calls[0][1]).toMatchObject({
+        overlay: true,
+        overlayOptions: {
+          anchor: 'top-left', width: '100%', maxHeight: '100%', margin: 0,
+        },
+        onHandle: expect.any(Function),
+      });
+      expect(panel.render(120)).toHaveLength(50);
+      expect(overlay.tui.terminal.write.mock.calls).toEqual(
+        mode === 'fullscreen' ? [] : [['\x1b[?1000h\x1b[?1006h']],
+      );
+      panel.handleInput('dismiss-history');
+      await opened;
+      expect(overlay.hideOwned).toHaveBeenCalledOnce();
+      expect(overlay.tui.getFocusedComponent()).toBe(overlay.editor);
+      expect(overlay.tui.terminal.write.mock.calls).toEqual(
+        mode === 'fullscreen' ? [] : [
+          ['\x1b[?1000h\x1b[?1006h'], ['\x1b[?1006l\x1b[?1000l'],
+        ],
+      );
+      const renders = overlay.tui.requestRender.mock.calls.length;
+      panel.handleInput('q');
+      expect(overlay.tui.requestRender).toHaveBeenCalledTimes(renders);
+    } finally {
+      panel.dismiss();
+      await opened;
+    }
+  });
+
+  it('closes only history beneath a newer foreign overlay and leaves its focus intact', async () => {
+    const host = lifecycleHost('history-overlay-foreign');
+    const overlay = overlayHost();
+    const opened = showBackgroundTasksHistory(host.pi, overlay.ctx, {
+      cwd: host.ctx.cwd,
+      sessionId: host.ctx.sessionManager.getSessionId(),
+    });
+    const panel = overlay.stack[0].component as BackgroundTasksHistoryPanel;
+    const foreign: Component = { render: () => ['Question'], invalidate() {} };
+    overlay.stack.push({ component: foreign, preFocus: panel });
+    overlay.tui.setFocus(foreign);
+    try {
+      panel.dismiss();
+      await opened;
+      expect(overlay.hideOwned).toHaveBeenCalledOnce();
+      expect(overlay.stack.map((entry) => entry.component)).toEqual([foreign]);
+      expect(overlay.tui.getFocusedComponent()).toBe(foreign);
+      overlay.tui.hideOverlay();
+      expect(overlay.tui.getFocusedComponent()).toBe(overlay.editor);
+    } finally {
+      panel.dismiss();
+      await opened;
+    }
+  });
+
+  it('disposes history and disables its mouse tracking when custom rejects after creation', async () => {
+    const host = lifecycleHost('history-overlay-rejection');
+    let panel: BackgroundTasksHistoryPanel | undefined;
+    const write = vi.fn();
+    const requestRender = vi.fn();
+    const custom: ExtensionContext['ui']['custom'] = (factory) => {
+      panel = factory(
+        { mode: 'inline', terminal: { rows: 50, write }, requestRender } as unknown as Parameters<typeof factory>[0],
+        { fg: (_role, text) => text } as Parameters<typeof factory>[1],
+        { matches: () => false } as unknown as Parameters<typeof factory>[2],
+        () => {},
+      ) as BackgroundTasksHistoryPanel;
+      return Promise.reject(new Error('overlay failed'));
+    };
+    await expect(showBackgroundTasksHistory(host.pi, {
+      hasUI: true, mode: 'tui', ui: { custom },
+    } as ExtensionContext, {
+      cwd: host.ctx.cwd,
+      sessionId: host.ctx.sessionManager.getSessionId(),
+    })).rejects.toThrow('overlay failed');
+    expect(write.mock.calls).toEqual([
+      ['\x1b[?1000h\x1b[?1006h'], ['\x1b[?1006l\x1b[?1000l'],
+    ]);
+    panel?.handleInput('q');
+    expect(requestRender).not.toHaveBeenCalled();
+  });
+});
 
 describe('Background task history', () => {
   it('/bg and summary Enter open full session history; row Enter selects that task', async () => {

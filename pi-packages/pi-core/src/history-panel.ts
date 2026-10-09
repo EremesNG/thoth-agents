@@ -1,10 +1,17 @@
-import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { truncateToWidth } from '@earendil-works/pi-tui';
+import { createHistoryPanelKeyMatcher } from './history-panel-input.js';
+import { createPanelFrame } from './panel-frame.js';
 import {
-  createHistoryPanelKeyMatcher,
-  type HistoryPanelMouseEvent,
-  historyPanelMouseClick,
-  historyPanelMouseWheelDelta,
-} from './history-panel-input.js';
+  type PanelMouseEvent as HistoryPanelMouseEvent,
+  panelMouseClick,
+  panelMouseWheelDelta,
+} from './panel-input.js';
+import {
+  padPanelText,
+  panelFg,
+  panelVisibleWidth,
+  truncatePanelText,
+} from './panel-primitives.js';
 import {
   getRenderKit,
   type RenderKitTheme,
@@ -169,8 +176,7 @@ export class HistoryPanel<T> {
   }
 
   private fg(role: Parameters<RenderKitTheme['fg']>[0], text: string): string {
-    const theme = this.options.theme ?? plainTheme;
-    return getRenderKit()?.fg(theme, role, text) ?? theme.fg(role, text);
+    return panelFg(this.options.theme ?? plainTheme, role, text);
   }
   private measure(text: string): number {
     try {
@@ -178,22 +184,24 @@ export class HistoryPanel<T> {
       if (measured !== undefined && Number.isFinite(measured) && measured >= 0)
         return measured;
     } catch {}
-    return visibleWidth(text);
+    return panelVisibleWidth(text);
   }
   private clip(text: string, width: number): string {
     if (width <= 0) return '';
     const normalized = text.replace(/\r?\n|\r/g, ' ').replace(/\t/g, '  ');
     if (this.measure(normalized) <= width) return normalized;
-    const ellipsis = resolveIcon('ellipsis', '…');
     const clipped =
       !getRenderKit()?.icon && this.options.truncateToWidth
         ? this.options.truncateToWidth(normalized, width)
-        : truncateToWidth(normalized, width, ellipsis);
+        : truncatePanelText(normalized, width);
     return this.measure(clipped) <= width
       ? clipped
-      : truncateToWidth(clipped, width, ellipsis);
+      : truncateToWidth(clipped, width, resolveIcon('ellipsis', '…'));
   }
   private pad(text: string, width: number): string {
+    // Embedding helpers may measure non-ANSI styling or retain legacy clipping.
+    if (!this.options.visibleWidth && !this.options.truncateToWidth)
+      return padPanelText(text, width);
     const clipped = this.clip(text, width);
     return clipped + ' '.repeat(Math.max(0, width - this.measure(clipped)));
   }
@@ -295,12 +303,12 @@ export class HistoryPanel<T> {
       return;
     }
     this.closeArm = undefined;
-    const wheel = historyPanelMouseWheelDelta(data);
+    const wheel = panelMouseWheelDelta(data);
     if (wheel !== undefined) {
       this.scrollBy(wheel);
       return;
     }
-    const click = historyPanelMouseClick(data);
+    const click = panelMouseClick(data);
     if (click) {
       this.applyMouse(click);
       return;
@@ -503,27 +511,28 @@ export class HistoryPanel<T> {
     );
     const leftTitle = `${b(this.options.titleIcon?.() ?? resolveIcon('agent', '󰣇'))} ${title}`;
     const close = this.fg('error', `[${resolveIcon('close')} Cerrar]`);
-    const BOX = {
-      topLeft: resolveIcon('boxTopLeft'),
-      topRight: resolveIcon('boxTopRight'),
-      bottomLeft: resolveIcon('boxBottomLeft'),
-      bottomRight: resolveIcon('boxBottomRight'),
-      horizontal: resolveIcon('boxHorizontal'),
-      vertical: resolveIcon('boxVertical'),
-      tDown: resolveIcon('boxTDown'),
-      tUp: resolveIcon('boxTUp'),
-      tRight: resolveIcon('boxTRight'),
-      tLeft: resolveIcon('boxTLeft'),
-      cross: resolveIcon('boxCross'),
-    };
+    const frame = createPanelFrame({
+      theme: this.options.theme ?? plainTheme,
+      borderTone: 'accent',
+      text: {
+        clip: (text, width) => this.clip(text, width),
+        pad: (text, width) => this.pad(text, width),
+        measure: (text) => this.measure(text),
+      },
+    });
     const closeWidth = this.measure(close);
     const rows: string[] = [];
     const top = () => {
       const label = this.clip(leftTitle, Math.max(4, w - closeWidth - 8));
-      return `${b(BOX.topLeft + BOX.horizontal)} ${label} ${b(BOX.horizontal.repeat(Math.max(0, w - this.measure(label) - closeWidth - 8)))} ${close} ${b(BOX.horizontal + BOX.topRight)}`;
+      return frame.line(
+        ['topLeft', 'horizontal'],
+        ` ${label} `,
+        [{ horizontal: Math.max(0, w - this.measure(label) - closeWidth - 8) }],
+        ` ${close} `,
+        ['horizontal', 'topRight'],
+      );
     };
-    const cell = (text: string) =>
-      `${b(BOX.vertical)} ${this.pad(text, rightWidth)} ${b(BOX.vertical)}`;
+    const cell = (text: string) => frame.cells([{ text, width: rightWidth }]);
     const item = items[this.selected];
     const itemId = item === undefined ? undefined : this.adapter.id(item);
     if (
@@ -535,12 +544,24 @@ export class HistoryPanel<T> {
     if (item === undefined) {
       rows.push(
         top(),
-        `${b(BOX.vertical)} ${this.pad(dim(this.options.emptyText ?? 'No items recorded in this session yet.'), w - 4)} ${b(BOX.vertical)}`,
+        frame.cells([
+          {
+            text: dim(
+              this.options.emptyText ??
+                'No items recorded in this session yet.',
+            ),
+            width: w - 4,
+          },
+        ]),
       );
       while (rows.length < maxLines - 1)
-        rows.push(`${b(BOX.vertical)}${' '.repeat(w - 2)}${b(BOX.vertical)}`);
+        rows.push(frame.cells([{ text: '', width: w - 4 }]));
       rows.push(
-        `${b(BOX.bottomLeft + BOX.horizontal.repeat(Math.max(0, w - closeWidth - 5)))} ${close} ${b(BOX.horizontal + BOX.bottomRight)}`,
+        frame.line(
+          ['bottomLeft', { horizontal: Math.max(0, w - closeWidth - 5) }],
+          ` ${close} `,
+          ['horizontal', 'bottomRight'],
+        ),
       );
       return this.finishRender(rows, outputWidth, maxLines, maxLines - 2);
     }
@@ -556,7 +577,12 @@ export class HistoryPanel<T> {
         0,
         sidebarWidth + 2 - this.measure(leftTitle) - 3,
       );
-      const leftTop = `${b(BOX.topLeft + BOX.horizontal)} ${leftTitle} ${b(BOX.horizontal.repeat(fillLeft))}${b(BOX.tDown)}`;
+      const leftTop = frame.line(
+        ['topLeft', 'horizontal'],
+        ` ${leftTitle} `,
+        [{ horizontal: fillLeft }],
+        ['tDown'],
+      );
       const badge = `${b(`${this.selected + 1}/${items.length}`)}${header.badge ? ` ${header.badge}` : ''}`;
       const headerItems = `${header.shortcuts ?? ''}${close}`;
       const clippedBadge = this.clip(
@@ -568,10 +594,20 @@ export class HistoryPanel<T> {
         rightWidth - 4 - this.measure(clippedBadge) - this.measure(headerItems),
       );
       rows.push(
-        `${leftTop}${b(BOX.horizontal)} ${clippedBadge} ${b(BOX.horizontal.repeat(fill))} ${headerItems} ${b(BOX.horizontal + BOX.topRight)}`,
+        frame.line(
+          leftTop,
+          ['horizontal'],
+          ` ${clippedBadge} `,
+          [{ horizontal: fill }],
+          ` ${headerItems} `,
+          ['horizontal', 'topRight'],
+        ),
       );
       const splitCell = (left: string, right: string) =>
-        `${b(BOX.vertical)} ${this.pad(left, sidebarWidth)} ${b(BOX.vertical)} ${this.pad(right, rightWidth)} ${b(BOX.vertical)}`;
+        frame.cells([
+          { text: left, width: sidebarWidth },
+          { text: right, width: rightWidth },
+        ]);
       rows.push(
         splitCell(
           `${b(`${listLabel} 1-${items.length}/${items.length}`)} `,
@@ -579,15 +615,7 @@ export class HistoryPanel<T> {
         ),
       );
       rows.push(splitCell('', header.wideRows?.[1] ?? ''));
-      rows.push(
-        b(
-          BOX.tRight +
-            BOX.horizontal.repeat(sidebarWidth + 2) +
-            BOX.cross +
-            BOX.horizontal.repeat(rightWidth + 2) +
-            BOX.tLeft,
-        ),
-      );
+      rows.push(frame.rule([sidebarWidth, rightWidth]));
       const height = Math.max(5, maxLines - rows.length - 1);
       bodyHeight = height;
       this.keepSelectionVisible(items.length, height);
@@ -621,15 +649,20 @@ export class HistoryPanel<T> {
         rightWidth - 4 - this.measure(bottomItems) - closeWidth,
       );
       rows.push(
-        `${b(BOX.bottomLeft + BOX.horizontal.repeat(sidebarWidth + 2) + BOX.tUp)}${b(BOX.horizontal.repeat(bottomFill))} ${bottomItems} ${b(BOX.horizontal)} ${close} ${b(BOX.horizontal + BOX.bottomRight)}`,
+        frame.line(
+          ['bottomLeft', { horizontal: sidebarWidth + 2 }, 'tUp'],
+          [{ horizontal: bottomFill }],
+          ` ${bottomItems} `,
+          ['horizontal'],
+          ` ${close} `,
+          ['horizontal', 'bottomRight'],
+        ),
       );
     } else {
       rows.push(top());
       for (const metadata of (header.narrowRows ?? []).slice(0, 2))
         rows.push(cell(metadata));
-      rows.push(
-        b(BOX.tRight + BOX.horizontal.repeat(rightWidth + 2) + BOX.tLeft),
-      );
+      rows.push(frame.rule([rightWidth]));
       const available = Math.max(4, maxLines - rows.length - 2);
       const listHeight = Math.min(
         items.length,
@@ -651,7 +684,10 @@ export class HistoryPanel<T> {
           : '';
       const label = `${listLabel} ${listPosition}${arrows}`;
       rows.push(
-        `${b(BOX.tRight + BOX.horizontal)} ${dim(label)} ${b(BOX.horizontal.repeat(Math.max(0, w - this.measure(label) - 5)) + BOX.tLeft)}`,
+        frame.line(['tRight', 'horizontal'], ` ${dim(label)} `, [
+          { horizontal: Math.max(0, w - this.measure(label) - 5) },
+          'tLeft',
+        ]),
       );
       this.lastListStartRow = rows.length;
       for (let i = 0; i < listHeight; i++)
@@ -677,7 +713,13 @@ export class HistoryPanel<T> {
       );
       const fill = Math.max(0, w - this.measure(shortcuts) - closeWidth - 8);
       rows.push(
-        `${b(BOX.bottomLeft + BOX.horizontal)} ${dim(shortcuts)} ${b(BOX.horizontal.repeat(fill))} ${close} ${b(BOX.horizontal + BOX.bottomRight)}`,
+        frame.line(
+          ['bottomLeft', 'horizontal'],
+          ` ${dim(shortcuts)} `,
+          [{ horizontal: fill }],
+          ` ${close} `,
+          ['horizontal', 'bottomRight'],
+        ),
       );
     }
     return this.finishRender(rows, outputWidth, maxLines, bodyHeight);

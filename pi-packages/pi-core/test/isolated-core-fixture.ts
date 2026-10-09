@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 /** Native, independently evaluated module graphs, as with separately bundled cores. */
-export async function isolatedCore(workPanelVersion = 1, registryVersion = 1) {
+export async function isolatedCore(workPanelVersion = 2, registryVersion = 1) {
   const directory = await mkdtemp(join(tmpdir(), 'pi-core-copy-'));
   try {
     const sourceDirectory = new URL('../src/', import.meta.url);
@@ -13,7 +13,7 @@ export async function isolatedCore(workPanelVersion = 1, registryVersion = 1) {
       if (!name.endsWith('.ts')) continue;
       const source = (await readFile(new URL(name, sourceDirectory), 'utf8'))
         .replace(
-          /export const WORK_PANEL_VERSION = 1 as const;/g,
+          /export const WORK_PANEL_VERSION = \d+ as const;/g,
           `export const WORK_PANEL_VERSION = ${workPanelVersion} as const;`,
         )
         .replace(

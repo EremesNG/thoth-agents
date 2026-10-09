@@ -10,7 +10,7 @@ const shared = globalThis as typeof globalThis & Record<symbol, unknown>;
 beforeAll(async () => {
   first = await isolatedCore();
   same = await isolatedCore();
-  different = await isolatedCore(2, 2);
+  different = await isolatedCore(1, 2);
 });
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();

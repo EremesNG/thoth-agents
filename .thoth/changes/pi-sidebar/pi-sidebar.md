@@ -32,7 +32,7 @@ Ship `@thoth-agents/pi-sidebar`, a read-only right sidebar modeled on pi-atelier
 - AC-2: in fullscreen the sidebar renders as a right column through an owner-guarded layout-root adapter (private `layoutRoot` read only when it has the expected shape; otherwise the sidebar disables itself with one diagnostic and Pi keeps working), the transcript wraps at the remaining width, PgUp/PgDn and wheel over the transcript still scroll it, the original root is restored on dispose only while the sidebar still owns it.
 - AC-3: in regular mode the sidebar reserves right columns by patching the main-screen render width through the renderer proxy and draws a top-right non-capturing full-height overlay; the editor keeps focus, centered overlays and the question dock keep working, and the original render is restored on dispose; unsupported renderers fall back to no sidebar with one diagnostic.
 - AC-4: controls follow pi-atelier: `/sidebar` toggles, `/sidebar auto|manual|on|off`; default width 44 within 28..72 with main column at least 64; manual hides below 92 columns, auto collapses below 80 + width and reopens 8 columns later; Ctrl+Shift+R resize mode (←/→ 1, Shift 4, Enter confirm, Esc revert) and divider drag in fullscreen; panel order and visibility persisted in `~/.pi/agent/thoth-sidebar.json`; mode, width and visibility per session; a command lists, shows/hides and reorders panels.
-- AC-5: panels: Session (model, thinking level, context usage, session cost plus subagent cost with `(sub)`, using a shared pi-core cost helper also used by the theme status line with identical output, including current-provider `(sub)` classification and cumulative replacement of subagent snapshots), Workspace (cwd, branch and git working-tree status read by the sidebar's own git reader on session start, turn end and after write/bash tools with debounce, no periodic timer, working with or without the theme), and Todos, Subagents, Background rendered generically from the work-panel discovery API with bounded rows.
+- AC-5: panels: Session (model, thinking level, context usage, session cost plus subagent cost with `(sub)`, using a shared pi-core cost helper also used by the theme status line with identical output, including current-provider `(sub)` classification and cumulative replacement of subagent snapshots), Workspace (cwd, branch and git working-tree status read by the sidebar's own git reader on session start, turn end and after write/bash tools with debounce, no periodic timer, working with or without the theme), and Todos, Subagents, Background rendered generically from the work-panel discovery API with bounded rows; work-source panels show running items plus at most the 5 most recent finished items of the session (newest first by end time; sources whose rows carry no end time, such as the task list, keep provider order), and render each row exactly as the work panel does (status glyphs for every status, task-list in-progress glyph and dim strikethrough for completed items).
 - AC-6: pi-core exports a process-wide UI-preferences registry through which the sidebar declares which work-panel sources it absorbs; the work-panel host neither renders nor selects nor focuses absorbed sections, and everything returns when the sidebar hides, is disposed or the panel is hidden. pi-core also lets an owner mark an overlay as decorative, and the editor-slot input guards and `isWorkPanelRootEditorInputActive` ignore decorative overlays while still yielding to every other overlay, so ← navigation of retained sections, question focus and foreign-overlay focus keep working with the regular-mode sidebar visible.
 - AC-7: the installer manages `@thoth-agents/pi-sidebar` with a version floor and user-copy preservation like the theme.
 - AC-8: docs, specs and the local closeout gate (touched package tests and typechecks, `pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm run test:pi-extensions`) pass, followed by a live user check in both Pi modes.
@@ -47,6 +47,7 @@ Ship `@thoth-agents/pi-sidebar`, a read-only right sidebar modeled on pi-atelier
 - Workspace git (user, 2026-10-09): event-driven with debounce.
 - Installer (user, 2026-10-09): managed like the theme.
 - Controls (user, 2026-10-09): pi-atelier style.
+- Finished items in work-source panels (user, 2026-10-09, live check): show running items plus a bounded set of recent finished items (5), instead of every row or the work panel's linger rules.
 
 ## Decisions
 
@@ -214,7 +215,9 @@ exactly one SHA field line; put notes on separate lines below the fields.
 **Reviewer**: oracle
 **Independent from implementer**: Yes
 **Verdict**: PASS
-**Reviewed record SHA-256**: 88c4dcf90946b04cab75f7306356efcbcc9c3952a7443c382319c8a2ebc3c66f
+**Reviewed record SHA-256**: e7c8946e074973fec57c6ae1cfd46ed030802cd3ffd581770a81dde98b111ed6
+
+After round 3, a live check led to an AC-5 revision (running items plus the 5 most recent finished, rendered through the shared pi-core row renderer); round 4 FAIL (untimestamped provider order) repaired; round 5 fresh Oracle PASS on 2026-10-09.
 
 Round 1 FAIL (AC-6 absorption on control visibility) and round 2 FAIL (AC-6 fullscreen render-time residual) repaired; round 3 fresh Oracle PASS on 2026-10-09 against sources and rebuilt bundles. Round-3 repair scope: pi-core README.md, src/ui-preferences.ts, src/work-panel-host.ts, test/ui-preferences.test.ts; pi-sidebar src/session.ts, src/layout/fullscreen-adapter.ts, test/session.test.ts, test/layout/fullscreen-adapter.test.ts. Live user check in both Pi modes outstanding before archive.
 
@@ -222,7 +225,7 @@ Round 1 FAIL (AC-6 absorption on control visibility) and round 2 FAIL (AC-6 full
 - AC-2: PASS | real Pi 1.0.2 fullscreen tests and replay | width split, scrolling, guarded root read, owner-checked restore, foreign root preserved, fallback
 - AC-3: PASS | real proxy inline tests and replay | width patch, viewport composition, editor and question focus, decorative registration refusal fallback, restore
 - AC-4: PASS | controls/config tests | thresholds with hysteresis, resize keys and revert, divider drag, atomic config preserving unknown keys
-- AC-5: PASS | panel tests + theme suite (1079) | bounded panels, cost parity with current-provider (sub) and cumulative replacement, event-driven git reader
+- AC-5: PASS | sidebar suite (64), core (944), theme (1079), round-5 replays | bounded panels with running + 5 recent finished, provider order for untimestamped sources, shared renderWorkPanelRow glyph/style parity, cost parity with current-provider (sub), event-driven git reader
 - AC-6: PASS | pi-core (942) and pi-sidebar (54) suites, four independent replays | absorption hides render/selection/focus, restored on release and at the first render after takeover; isolated liveness predicates
 - AC-7: PASS | installer tests (294 root) | sidebar managed >=0.3.0 with preservation, below-floor block, ambiguity fail-closed, dry-run
 - AC-8: PASS | check:ci, typecheck, build, test:pi-extensions, seven package suites | all pass; docs incl. first-publish bootstrap

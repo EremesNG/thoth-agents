@@ -48,3 +48,8 @@ export {
   renderPanelRow,
   truncatePanelText,
 } from './panel-primitives.js';
+
+export {
+  renderWorkPanelRow,
+  type WorkPanelRowRenderOptions,
+} from './work-panel-render.js';

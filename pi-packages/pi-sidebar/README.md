@@ -45,8 +45,13 @@ session-only. Startup defaults to `auto`.
 
 Panels stack in configured order. Height reduction first shortens lower-priority
 panels, then removes them; Session has the highest priority and Workspace the
-lowest. Terminal rows and per-source row caps bound rendering. Rendering samples
-the current pi-core render kit, with native frames when no theme supplies a kit.
+lowest. Terminal height bounds rendering; work sources retain active/pending items plus
+at most five terminal items. Timestamped sources put active/pending items first,
+then terminal items newest completion timestamp first. Untimestamped sources keep
+provider order across all retained rows; without a recency contract, earlier
+provider positions are dropped first, keeping the last five terminal items in
+provider order. Rendering samples the current pi-core render kit, with native
+frames when no theme supplies a kit.
 
 - **Session**: current provider/model, thinking level, context percent/tokens,
   session cost plus the latest cumulative subagent cost. Subscription providers
@@ -57,7 +62,11 @@ the current pi-core render kit, with native frames when no theme supplies a kit.
   session start, turn end, and write/edit/bash/powershell tool results, debounced
   150 ms without polling. Non-git directories and unavailable git are tolerated.
 - **Work sources**: one panel per pi-core discovered source, including Todos,
-  Subagents and Background. Registry notifications refresh the sidebar. Only
+  Subagents and Background. Rows use the work-panel host's shared data renderer
+  at the card body width (including status glyphs, metric continuations and
+  completed strikethrough). Height overflow counts only hidden retained items,
+  not discarded older history or continuation lines. Registry notifications
+  refresh the sidebar. Only
   sources actually displayed are declared absorbed: their work-panel sections
   return when hidden, height-reduced away, too narrow or disposed. A failed mount
   declares no absorption. Regular-mode overlays are registered decorative so
@@ -114,6 +123,9 @@ pnpm --filter @thoth-agents/pi-sidebar build
   Thoth extensions together and `/reload`; a declared version floor alone does
   not upgrade already-loaded closures. Old work-panel hosts may not honor
   absorption in fullscreen either.
+- Source providers own session scoping and history availability. Untimestamped
+  sources keep provider order; a provider that hides completed lists cannot
+  supply those rows to the sidebar.
 - Panels are bounded read-only summaries, not history views or interactive rows.
   Use existing source commands or restore the Work panel with `/sidebar off`
   for actions. There is no dedicated Cost or quota panel.

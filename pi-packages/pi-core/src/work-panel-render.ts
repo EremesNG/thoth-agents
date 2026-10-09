@@ -519,8 +519,8 @@ function responsiveContent(
 
 function panelContentReader(width: number, measure = defaultMeasure) {
   const kit = getRenderKit();
-  const contents = new Map<PanelRow, WorkPanelRowContent>();
-  function contentFor(entry: PanelRow) {
+  const contents = new Map<Pick<PanelRow, 'row'>, WorkPanelRowContent>();
+  function contentFor(entry: Pick<PanelRow, 'row'>) {
     let content = contents.get(entry);
     if (!content) {
       content =
@@ -741,25 +741,14 @@ export function panelOverflowEntries(
   );
 }
 
-export function renderPanel(
-  sections: PanelSection[],
-  width: number,
-  now: number,
+function segmentStyler(
   theme: RenderKitTheme,
   clip: (text: string, width: number) => string,
-  options: {
-    selectedKey?: string;
-    hint?: string;
-    budget?: number;
-    measure?: (text: string) => number;
-  } = {},
-): string[] {
-  if (!(width > 0)) return [];
-  width = Math.floor(width);
+  measure: Measure,
+) {
   const kit = getRenderKit();
   const fg = (role: Parameters<RenderKitTheme['fg']>[0], text: string) =>
     kit ? kit.fg(theme, role, text) : theme.fg(role, text);
-  const measure = options.measure ?? defaultMeasure;
   const styleSegments = (
     segments: readonly WorkPanelSegment[],
     available = Infinity,
@@ -790,6 +779,105 @@ export function renderPanel(
       })
       .join('');
   };
+  return styleSegments;
+}
+
+export interface WorkPanelRowRenderOptions {
+  width: number;
+  now: number;
+  theme: RenderKitTheme;
+  clip(text: string, width: number): string;
+  measure?: Measure;
+  selected?: boolean;
+  last?: boolean;
+}
+
+/** The same responsive data-row rendering used by the work-panel host. */
+export function renderWorkPanelRow(
+  row: WorkPanelRow,
+  options: WorkPanelRowRenderOptions,
+): string[] {
+  const { width, now, theme, clip } = options;
+  if (!(width > 0)) return [];
+  const kit = getRenderKit();
+  const measure = options.measure ?? defaultMeasure;
+  const fg = (role: Parameters<RenderKitTheme['fg']>[0], text: string) =>
+    kit ? kit.fg(theme, role, text) : theme.fg(role, text);
+  const styleSegments = segmentStyler(theme, clip, measure);
+  const contentFor = panelContentReader(width, measure);
+  const entry = { row };
+  const status = workPanelRenderStatus(row);
+  const indicator = !row.summary
+    ? kit?.indicator(theme, undefined, {
+        status,
+        frame: Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS),
+      })
+    : undefined;
+  const semanticGlyph = workPanelStatusGlyph(row);
+  const running = status === 'running' || status === 'in_progress';
+  const frames = resolveFrames('spinnerFrames');
+  const native =
+    semanticGlyph && running
+      ? frames[
+          Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS) % frames.length
+        ]
+      : nativeGlyphs[status];
+  const glyph =
+    semanticGlyph === 'taskInProgress'
+      ? resolveIcon('taskInProgress', '◇')
+      : running
+        ? (indicator?.glyph ?? native)
+        : resolveStatusGlyph(status, native);
+  const content = contentFor(entry);
+  const body = content.segments
+    ? styleSegments(content.segments, Math.max(0, width - (kit ? 7 : 4)))
+    : singleLine(content.text);
+  const styledGlyph = row.summary
+    ? ''
+    : `${fg(segmentRoles[glyphRole(row, status)], glyph)} `;
+  return [
+    kit
+      ? kit.treeRow(
+          theme,
+          {
+            text: `${styledGlyph}${body}`,
+            selected: options.selected === true,
+            depth: 0,
+            last: options.last === true,
+          },
+          width,
+        )
+      : `${options.selected === true ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
+    ...(content.extraRows ?? [])
+      .filter((extra) => extra.trim())
+      .map((extra, index) =>
+        content.extraSegments?.[index]
+          ? `${kit ? '       ' : '    '}${styleSegments(content.extraSegments[index])}`
+          : fg('dim', `${kit ? '       ' : '    '}${singleLine(extra)}`),
+      ),
+  ].map((line) => clip(line, width));
+}
+
+export function renderPanel(
+  sections: PanelSection[],
+  width: number,
+  now: number,
+  theme: RenderKitTheme,
+  clip: (text: string, width: number) => string,
+  options: {
+    selectedKey?: string;
+    hint?: string;
+    budget?: number;
+    measure?: (text: string) => number;
+  } = {},
+): string[] {
+  if (!(width > 0)) return [];
+  width = Math.floor(width);
+  const kit = getRenderKit();
+  const fg = (role: Parameters<RenderKitTheme['fg']>[0], text: string) =>
+    kit ? kit.fg(theme, role, text) : theme.fg(role, text);
+  const measure = options.measure ?? defaultMeasure;
+  const styleSegments = segmentStyler(theme, clip, measure);
   const hint = sections.some((section) =>
     section.rows.some(isSelectablePanelRow),
   )
@@ -815,60 +903,17 @@ export function renderPanel(
     );
     const entries = [...chosen, ...plan.summaries];
     const blocks = entries.map((entry, index) => {
-      const { row, key } = entry;
-      const status = workPanelRenderStatus(row);
-      const indicator = !row.summary
-        ? kit?.indicator(theme, undefined, {
-            status,
-            frame: Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS),
-          })
-        : undefined;
-      const semanticGlyph = workPanelStatusGlyph(row);
-      const running = status === 'running' || status === 'in_progress';
-      const frames = resolveFrames('spinnerFrames');
-      const native =
-        semanticGlyph && running
-          ? frames[
-              Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS) % frames.length
-            ]
-          : nativeGlyphs[status];
-      const glyph =
-        semanticGlyph === 'taskInProgress'
-          ? resolveIcon('taskInProgress', '◇')
-          : running
-            ? (indicator?.glyph ?? native)
-            : resolveStatusGlyph(status, native);
-      const content = contentFor(entry);
-      const body = content.segments
-        ? styleSegments(content.segments, Math.max(0, width - (kit ? 7 : 4)))
-        : singleLine(content.text);
-      const styledGlyph = row.summary
-        ? ''
-        : `${fg(segmentRoles[glyphRole(row, status)], glyph)} `;
-      return [
-        kit
-          ? kit.treeRow(
-              theme,
-              {
-                text: `${styledGlyph}${body}`,
-                selected:
-                  isSelectablePanelRow(entry) && options.selectedKey === key,
-                depth: 0,
-                last:
-                  index === entries.length - 1 &&
-                  chosen.length === plan.items.length,
-              },
-              width,
-            )
-          : `${options.selectedKey === key && isSelectablePanelRow(entry) ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
-        ...(content.extraRows ?? [])
-          .filter((extra) => extra.trim())
-          .map((extra, index) =>
-            content.extraSegments?.[index]
-              ? `${kit ? '       ' : '    '}${styleSegments(content.extraSegments[index])}`
-              : fg('dim', `${kit ? '       ' : '    '}${singleLine(extra)}`),
-          ),
-      ];
+      return renderWorkPanelRow(entry.row, {
+        width,
+        now,
+        theme,
+        clip,
+        measure,
+        selected:
+          isSelectablePanelRow(entry) && options.selectedKey === entry.key,
+        last:
+          index === entries.length - 1 && chosen.length === plan.items.length,
+      });
     });
     const title = singleLine(provider.label).replace(/\b\p{L}/gu, (letter) =>
       letter.toUpperCase(),

@@ -3,18 +3,16 @@ import type { Component } from '@earendil-works/pi-tui';
 import {
   combineSessionAndSubagentCost,
   computeSessionCost,
-  getRenderKit,
   getWorkPanelSourceRows,
   listWorkPanelSources,
   type RenderKitTheme,
-  resolveStatusGlyph,
   type WorkPanelRow,
-  type WorkPanelSegment,
 } from '@thoth-agents/pi-core';
 import {
   padPanelText,
   panelVisibleWidth,
   renderPanelCard,
+  renderWorkPanelRow,
   truncatePanelText,
 } from '@thoth-agents/pi-core/panel';
 import type { SidebarConfig } from '../config.js';
@@ -51,68 +49,61 @@ function clean(value: string): string {
     return code < 32 || (code >= 127 && code <= 159) ? ' ' : character;
   }).join('');
 }
-function segmentsText(
-  segments: readonly WorkPanelSegment[],
-  theme: RenderKitTheme,
-): string {
-  const kit = getRenderKit();
-  return segments
-    .map((segment) => {
-      const role = segment.role;
-      const tone =
-        role === 'primary'
-          ? 'text'
-          : role === 'secondary' || role === 'meta' || role === 'completed'
-            ? 'dim'
-            : role;
-      const text = clean(segment.text);
-      return kit?.fg(theme, tone, text) ?? theme.fg(tone, text);
-    })
-    .join('');
-}
-function sourceRows(row: WorkPanelRow, theme: RenderKitTheme): string[] {
-  const text = row.identity
-    ? segmentsText(row.identity, theme)
-    : row.segments
-      ? segmentsText(row.segments, theme)
-      : clean(row.primary);
-  const status =
-    row.statusGlyph === 'taskInProgress'
-      ? 'in_progress'
-      : (row.statusGlyph ?? row.status);
-  const glyph =
-    status &&
+/** Keep all active/pending work and at most five terminal items per source. */
+function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
+  const items = rows.filter((row) => !row.summary);
+  const terminal = (row: WorkPanelRow) =>
+    row.state === 'done' ||
+    row.state === 'failed' ||
     [
-      'pending',
-      'queued',
-      'in_progress',
-      'running',
       'completed',
+      'succeeded',
       'failed',
+      'timed_out',
       'cancelled',
       'interrupted',
-      'stopping',
       'deleted',
-      'blocked',
-      'unknown',
-    ].includes(status)
-      ? resolveStatusGlyph(status as Parameters<typeof resolveStatusGlyph>[0])
-      : '';
-  const metrics = row.metrics
-    ?.map((group) => segmentsText(group.segments, theme))
-    .join(' · ');
+    ].includes(row.status ?? '') ||
+    ['completed', 'failed', 'cancelled', 'interrupted', 'deleted'].includes(
+      row.statusGlyph ?? '',
+    );
+  const finished = items.filter(terminal);
+  if (!finished.some((row) => Number.isFinite(row.endedAt))) {
+    // No recency contract: earlier provider positions are discarded first.
+    // Keep the last five finished rows without regrouping the retained sequence.
+    let excess = Math.max(0, finished.length - 5);
+    return items.filter((row) => !terminal(row) || excess-- <= 0);
+  }
   return [
-    `${glyph ? `${glyph} ` : ''}${text}${metrics ? ` · ${metrics}` : ''}`,
-    ...(row.extraSegments
-      ? row.extraSegments.map((segments) => segmentsText(segments, theme))
-      : (row.extraRows?.map(clean) ?? [])),
+    ...items.filter((row) => !terminal(row)),
+    ...finished
+      .sort(
+        (a, b) =>
+          (Number.isFinite(b.endedAt) ? (b.endedAt ?? 0) : 0) -
+          (Number.isFinite(a.endedAt) ? (a.endedAt ?? 0) : 0),
+      )
+      .slice(0, 5),
   ];
+}
+
+/** Height overflow counts retained items, never continuation lines or discarded history. */
+function boundedBody(blocks: string[][], budget: number): string[] {
+  if (blocks.flat().length <= budget) return blocks.flat();
+  const lines: string[] = [];
+  let shown = 0;
+  for (const block of blocks) {
+    if (lines.length + block.length > budget - 1) break;
+    lines.push(...block);
+    shown++;
+  }
+  return budget > 0 ? [...lines, `+${blocks.length - shown} more`] : [];
 }
 
 interface PanelData {
   id: string;
   title: string;
   rows: string[];
+  blocks?: string[][];
   priority: number;
   source: boolean;
   height: number;
@@ -130,7 +121,7 @@ export interface SidebarPanelsOptions {
 export class SidebarPanels implements Component {
   constructor(private readonly options: SidebarPanelsOptions) {}
   invalidate(): void {} // Data and kit are sampled on every render; no stale cache.
-  private plan(height: number): PanelData[] {
+  private plan(height: number, width = 44): PanelData[] {
     const options = this.options;
     const sources = listWorkPanelSources();
     const panels: PanelData[] = [];
@@ -167,13 +158,28 @@ export class SidebarPanels implements Component {
       } else {
         const source = sources.find((source) => source.id === preference.id);
         if (!source) continue;
-        const rows = getWorkPanelSourceRows(source.id, { maxRows: 6 })
-          .flatMap((row) => sourceRows(row, options.theme))
-          .slice(0, 6);
+        const items = retainedRows(
+          getWorkPanelSourceRows(source.id, {
+            maxRows: 100_000,
+            respectRowCap: false,
+          }),
+        );
+        const blocks = items.map((row, index) =>
+          renderWorkPanelRow(row, {
+            width: Math.max(1, width - 4),
+            now: Date.now(),
+            theme: options.theme,
+            clip: truncatePanelText,
+            measure: panelVisibleWidth,
+            last: index === items.length - 1,
+          }),
+        );
+        const rows = blocks.flat();
         panels.push({
           id: source.id,
           title: clean(source.label),
           rows: rows.length ? rows : ['No items'],
+          blocks: rows.length ? blocks : undefined,
           priority: source.priority,
           source: true,
           height: Math.max(1, rows.length) + 2,
@@ -206,8 +212,8 @@ export class SidebarPanels implements Component {
     }
     return panels.filter((panel) => panel.height > 0);
   }
-  sourceIds(): string[] {
-    return this.plan(this.options.height())
+  sourceIds(width = 44): string[] {
+    return this.plan(this.options.height(), width)
       .filter((panel) => panel.source && panel.height >= 3)
       .map((panel) => panel.id);
   }
@@ -216,13 +222,16 @@ export class SidebarPanels implements Component {
   }
   renderAt(width: number, height: number): string[] {
     if (width <= 0 || height <= 0) return [];
-    return this.plan(height)
+    return this.plan(height, width)
       .flatMap((panel) =>
         panel.height < 3
           ? [truncatePanelText(panel.title, width)]
           : renderPanelCard({
               title: panel.title,
-              body: () => panel.rows.slice(0, panel.height - 2),
+              body: () =>
+                panel.blocks
+                  ? boundedBody(panel.blocks, panel.height - 2)
+                  : panel.rows.slice(0, panel.height - 2),
               width,
               maxHeight: panel.height,
               theme: this.options.theme,

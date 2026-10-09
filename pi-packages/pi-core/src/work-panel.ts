@@ -243,11 +243,12 @@ export function listWorkPanelSources(): WorkPanelSource[] {
 /** Provider-ordered rows, independent of host visibility/retention and height budgets. */
 export function getWorkPanelSourceRows(
   id: string,
-  options: { maxRows: number },
+  options: { maxRows: number; respectRowCap?: boolean },
 ): WorkPanelRow[] {
   const provider = workPanelRegistry(false)?.providers.get(id)?.provider;
   if (!provider || !Number.isFinite(options.maxRows)) return [];
-  const cap = provider.rowCap ?? 3;
+  const cap =
+    options.respectRowCap === false ? options.maxRows : (provider.rowCap ?? 3);
   if (!Number.isFinite(cap)) return [];
   const limit = Math.max(0, Math.floor(Math.min(options.maxRows, cap)));
   return limit

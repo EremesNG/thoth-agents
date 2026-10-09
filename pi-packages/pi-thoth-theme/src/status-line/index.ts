@@ -3,6 +3,7 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import {
+  computeSessionCost,
   request,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
@@ -14,7 +15,6 @@ import {
 } from '../input-box/decorate.ts';
 import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
-import { calculateSessionCost } from './cost.ts';
 import { type ActiveThemeLike, formatCwd, renderStatusLine } from './layout.ts';
 import type { StatusSnapshot, StatusSnapshotProvider } from './snapshot.ts';
 import { createThroughputTracker } from './throughput.ts';
@@ -45,6 +45,7 @@ export function registerStatusLine(
 ): void {
   const subscriptionProviders = config.statusLine.subscriptionProviders ?? [
     'claude-bridge',
+    'antigravity',
   ];
   const inputBoxEnabled = config.inputBox?.enabled !== false;
   ctx.ui.setFooter((tui, theme, footerData) => {
@@ -91,13 +92,13 @@ export function registerStatusLine(
 
     function readSession() {
       const usage = ctx.getContextUsage?.();
-      const provider = ctx.model?.provider;
       const entries = ctx.sessionManager.getEntries();
       return {
-        cost: calculateSessionCost(entries),
+        ...computeSessionCost(entries, {
+          subscriptionProviders,
+          providerOf: () => ctx.model?.provider,
+        }),
         tokenTotals: calculateSessionTokens(entries),
-        isSubscription:
-          provider !== undefined && subscriptionProviders.includes(provider),
         contextTokens: usage?.tokens ?? null,
         contextPercent: usage?.percent ?? null,
         contextWindow: usage?.contextWindow,

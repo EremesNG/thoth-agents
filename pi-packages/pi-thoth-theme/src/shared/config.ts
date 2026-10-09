@@ -42,7 +42,7 @@ function parseSubscriptionProviders(value: unknown): string[] {
         typeof item === 'string' && item.trim().length > 0,
     );
   }
-  return ['claude-bridge'];
+  return ['claude-bridge', 'antigravity'];
 }
 
 function parseRespectPackages(value: unknown): string[] {

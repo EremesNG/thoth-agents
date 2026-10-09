@@ -1,5 +1,6 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { combineSessionAndSubagentCost } from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
 import { icon } from '../shared/icons.ts';
 import type { SessionTokenTotals } from './tokens.ts';
@@ -225,7 +226,7 @@ export function renderStatusLine(
   const segments: string[] = [];
 
   if (data.cost !== undefined) {
-    const total = data.cost + (data.subagentCost ?? 0);
+    const total = combineSessionAndSubagentCost(data.cost, data.subagentCost);
     segments.push(
       themeFg(
         theme,

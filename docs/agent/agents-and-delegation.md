@@ -196,9 +196,13 @@ independent judgment.
 
 Globs, including `*`, are manual advanced selections over all registered root
 tools (active and inactive), minus native `subagent_*` exclusions and the
-role's `disallowed_tools`. `/subagents-tools` edits registered exact names only,
-shows a child-provided `ask_orchestrator` note, and preserves globs and
-unrecognized names read-only, even through defaults reset or partial-save retry.
+role's `disallowed_tools`. pi-subagents owns `/subagents-tools`, editing the
+resolved global/project definitions through pi-core's shared list-editor shell.
+It edits registered exact names only, shows a child-provided `ask_orchestrator`
+note, and preserves globs and unrecognized names read-only on normal save and
+partial-save retry. Explicit reset replaces the selection with adapter defaults;
+without supplied defaults, reset is unavailable. Thoth's adapter validates only
+its managed global specialists; other definitions use generic tools-only writes.
 Edit `disallowed_tools` manually for injected tools absent from the panel and to
 trim glob results (for example, denying root interaction/progress tools when
 using `*`). It accepts a comma-separated string or YAML list of exact names;

@@ -1,6 +1,7 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
 import { openOwnedOverlay } from './owned-overlay.js';
+import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
 import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
@@ -48,6 +49,7 @@ export function createWorkPanelHost(
 ): WorkPanelHost {
   let agent: typeof import('@earendil-works/pi-coding-agent') | undefined;
   let toolkit: typeof import('@earendil-works/pi-tui') | undefined;
+  let primitives: typeof import('./panel-primitives.js') | undefined;
   let loaded = false;
   let disposed = false;
   let installed = false;
@@ -94,6 +96,18 @@ export function createWorkPanelHost(
       Math.max(0, width),
       resolveIcon('ellipsis', '...'),
     ) ?? [...text].slice(0, Math.max(0, width)).join('');
+  const measure = (text: string) =>
+    primitives?.panelVisibleWidth(text) ??
+    toolkit?.visibleWidth(text) ??
+    [...text].length;
+  const pad = (text: string, width: number) => {
+    // Clip first to retain the work panel's native '...' ellipsis.
+    const clipped = clip(text, width);
+    const cells = measure(clipped);
+    if (primitives && cells <= width && !/[\r\n\t]/.test(clipped))
+      return primitives.padPanelText(clipped, width);
+    return clipped + ' '.repeat(Math.max(0, width - cells));
+  };
   const sections = () =>
     panelSections(providers(), Date.now(), getWorkPanelLifecycle(ctx));
   function rows(): PanelRow[] {
@@ -161,16 +175,10 @@ export function createWorkPanelHost(
     closeTimer.unref?.();
   }
 
-  const keyCodes = {
-    left: '\x1b[D',
-    right: '\x1b[C',
-    up: '\x1b[A',
-    down: '\x1b[B',
-    enter: '\r',
-    escape: '\x1b',
-  };
-  const matches = (data: string, key: keyof typeof keyCodes) =>
-    toolkit?.matchesKey(data, key) ?? data === keyCodes[key];
+  const matches = (
+    data: string,
+    key: 'left' | 'right' | 'up' | 'down' | 'enter' | 'escape',
+  ) => matchesPanelKey(data, key, toolkit?.matchesKey);
   function open(entry: PanelRow): void {
     if (suspended || (entry.sectionSummary && !entry.provider.openHistory))
       return;
@@ -222,10 +230,11 @@ export function createWorkPanelHost(
             width: () =>
               Math.min(100, Math.floor(detailTui.terminal.columns * 0.9)),
             clip,
+            pad,
             wrap: (text, width) =>
               toolkit?.wrapTextWithAnsi(text, Math.max(1, width)) ??
               text.split(/\r?\n/),
-            measure: (text) => toolkit?.visibleWidth(text) ?? [...text].length,
+            measure,
             matches,
           });
           detailComponent = component;
@@ -416,7 +425,7 @@ export function createWorkPanelHost(
             const entry = selected();
             const label = panelCloseLabel(entry);
             return renderPanel(sections(), width, Date.now(), theme, clip, {
-              measure: toolkit?.visibleWidth,
+              measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
               selectedKey: focused ? selectedKey : undefined,
               budget: panelBudget(),
               hint: focused
@@ -449,9 +458,10 @@ export function createWorkPanelHost(
   }
   removeLifecycle = onWorkPanelLifecycleChanged(ctx, () => host.refresh());
   host.ready = (async () => {
-    [agent, toolkit] = await Promise.all([
+    [agent, toolkit, primitives] = await Promise.all([
       import('@earendil-works/pi-coding-agent').catch(() => undefined),
       import('@earendil-works/pi-tui').catch(() => undefined),
+      import('./panel-primitives.js').catch(() => undefined),
     ]);
     loaded = true;
     host.refresh();

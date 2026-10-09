@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.1.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -213,8 +213,8 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `npm:@thoth-agents/pi-subagents@>=0.1.0` for native direct specialist
-   execution and task-ID lifecycle control (package version `0.1.0`; local
+2. `npm:@thoth-agents/pi-subagents@>=0.3.0` for native direct specialist
+   execution, task-ID lifecycle control and `/subagents-tools` ownership (local
    development can provide the fork path through `--local-pi-runtime-root`);
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
@@ -431,17 +431,27 @@ configuration scope that owns its definition: global profiles go in
 project profiles go in `.pi/subagents.json`. Resolution for each model and effort
 field is `model_profiles` first, then definition frontmatter, then the matching
 configuration default, then the parent value. Reload Pi after updating the
-`@thoth-agents/pi-subagents` runtime to register the command.
+`@thoth-agents/pi-subagents` runtime to register the command. It uses pi-core's
+shared list-editor shell with selectedBg rows, a cursor-centered, height-aware
+viewport, wheel navigation and dirty-discard confirmation; the wide model table
+starts at 102 columns. Profile scope and model filtering are unchanged.
+Both list editors recognize native CSI-u/kitty Enter, Escape and navigation keys
+as well as legacy terminal sequences. Wheel navigation works in regular and
+fullscreen TUI mode; the shared host restores its regular-mode mouse reporting
+when the panel closes.
 
 ### Configure specialist tools inside Pi
 
-Run `/subagents-tools` in Pi's interactive TUI to configure the **global** five
-specialists. The panel discovers registered tools from your current Pi environment,
-including tools supplied by user extensions and MCP integrations; Thoth does not
-maintain a fixed catalog of those tools.
+Pi-subagents owns `/subagents-tools` from `0.3.0`; Thoth supplies an optional
+adapter, not the command. Run it in Pi's interactive TUI to configure the
+resolved global or project definitions, including the five Thoth specialists
+unless shadowed by project definitions. It uses the same list-editor shell as
+`/subagents-model`, with a wide table at 84 columns. The panel discovers
+registered tools from your current Pi environment, including user extensions
+and MCP integrations; Thoth does not maintain a fixed catalog of those tools.
 
-- Use ↑/↓ and Enter to choose a specialist. In its tool list, use Space to toggle
-  a selection. Enter or Escape returns to the overview.
+- Use ↑/↓, j/k or the wheel and Enter to choose a definition. In its tool list,
+  use Space to toggle a selection. Enter or Escape returns to the overview.
 - Checkboxes edit registered exact names only. Inactive tools are labeled
   `(inactive)` and can be selected; they reach the child even while inactive in
   the root. The child-provided `ask_orchestrator` channel is an informational
@@ -452,10 +462,11 @@ maintain a fixed catalog of those tools.
   retries retain these entries unchanged unless defaults reset replaces the
   selection with exactly the role's packaged defaults; no `*` hotkey or dynamic
   mode is offered.
-- Press `r` to restore that role's packaged explicit defaults: `read, bash,
-  grep, find, ls` for Explorer and Oracle; `read, bash, edit, write, grep, find,
-  ls` for Designer and Worker; the read-only list plus research tools for
-  Librarian. Unregistered defaults are shown read-only.
+- For Thoth-managed global specialists, press `r` to restore that role's
+  packaged explicit defaults: `read, bash, grep, find, ls` for Explorer and
+  Oracle; `read, bash, edit, write, grep, find, ls` for Designer and Worker; the
+  read-only list plus research tools for Librarian. Unregistered defaults are
+  shown read-only. Reset is unavailable when no adapter supplies defaults.
 - Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
   before discarding a dirty draft. Draft edits do not write files.
 - Selections must contain at least one tool name or retained glob. `@active`
@@ -464,16 +475,26 @@ maintain a fixed catalog of those tools.
   Empty panel selections are rejected because the runtime can substitute default
   tools. Generated lists omit `ask_user_question`, `todo` and third-party
   delegation tools; these names are not a shared runtime denylist.
-- Saved lists remain in `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent
-  directory), survive synchronization/reinstallation and model-panel saves, and
-  do not change models, effort, mode or the parent's active tools. Project-local
-  definitions may shadow these global definitions. Running children are unchanged.
+- Saving changes only `tools` in the selected definition, preserving unrelated
+  frontmatter, `disallowed_tools` and body bytes. Thoth-managed lists remain in
+  `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent directory) and survive
+  synchronization/reinstallation and model-panel saves. Project overrides are
+  edited in their project files. Models, effort, mode, running children and the
+  parent's active tools are unchanged.
 - Discovery refreshes when the panel is reopened. Explicit lists stay fixed;
   manual globs resolve against the registered inventory at each child launch.
-- Ownership, safe-path, stale-file and recoverable per-file write checks match
-  the models panel. Unsupported overrides, including the removed selector, are
-  preserved unchanged with diagnostics during synchronization, without resetting
-  them to broader defaults. Fix those definitions explicitly before using them.
+- Stale files and pre-write races fail safely; partial saves report changed
+  definitions and support retry. Thoth's adapter adds ownership/provenance
+  validation only for its marked canonical global `agents/thoth-*.md` files;
+  project and unmanaged definitions use generic persistence. Unsupported
+  overrides remain unchanged with diagnostics during synchronization. Fix
+  those definitions explicitly before using them.
+
+The optional adapter is registered through the versioned process-wide
+`Symbol.for('thoth-agents.pi-subagents.tools-panel.v1')` registry. Without it,
+the command still works generically. Upgrade thoth-agents and pi-subagents
+together and `/reload`: new Thoth warns once when command ownership is missing,
+and new pi-subagents warns about duplicate owners exposed by Pi's command registry.
 
 For advanced selections, edit `tools` in the definition frontmatter manually,
 for example `tools: "read, agent_browser_*"`. Every glob, including `*`, selects

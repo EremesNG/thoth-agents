@@ -451,3 +451,47 @@ export function savePiToolConfig(
     };
   }
 }
+
+/** Structural pi-subagents v1 adapter; root has no dependency on its runtime. */
+export function createPiToolsPanelAdapter(piRoot: string) {
+  type Target = { role: string; filePath: string; scope: 'global' | 'project' };
+  const root = resolve(piRoot);
+  const managedRole = (target: Target): PiSpecialistRole | undefined => {
+    if (target.scope !== 'global') return undefined;
+    return PI_SPECIALIST_ROLES.find(
+      (role) =>
+        target.role === piSpecialistName(role) &&
+        resolve(target.filePath) ===
+          join(root, 'agents', `${piSpecialistName(role)}.md`),
+    );
+  };
+  const validatedRole = (target: Target, content: string): PiSpecialistRole => {
+    const role = managedRole(target);
+    if (!role)
+      throw new Error(
+        `Not a managed global Thoth specialist: ${target.filePath}`,
+      );
+    const current = readOwnedPiSpecialistDefinition(root, role);
+    readPiSpecialistToolOverrides(current);
+    if (current !== content)
+      throw new Error(
+        `Thoth specialist changed during validation: ${target.role}. Reopen the editor.`,
+      );
+    return role;
+  };
+  return {
+    version: 1 as const,
+    appliesTo(target: Target, content: string): boolean {
+      if (!managedRole(target)) return false;
+      return (
+        parseFrontmatter(content).mapping.get('managed-by') === 'thoth-agents'
+      );
+    },
+    validate(target: Target, content: string): void {
+      validatedRole(target, content);
+    },
+    defaultTools(target: Target, content: string): string[] {
+      return getPiSpecialistDefaultTools(validatedRole(target, content));
+    },
+  };
+}

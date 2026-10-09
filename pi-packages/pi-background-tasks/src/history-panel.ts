@@ -4,6 +4,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { wrapTextWithAnsi } from '@earendil-works/pi-tui';
 import { resolveIcon } from '@thoth-agents/pi-core';
+import { openPanelOverlay } from '@thoth-agents/pi-core/panel';
 import {
   createHistoryPanelKeyMatcher,
   HistoryPanel,
@@ -34,15 +35,10 @@ export async function showBackgroundTasksHistory(
 ): Promise<void> {
   if (!ctx.hasUI || ctx.mode !== 'tui') return;
   let panel: BackgroundTasksHistoryPanel | undefined;
-  let releaseMouse: (() => void) | undefined;
   try {
-    await ctx.ui.custom<void>(
+    await openPanelOverlay<void>(
+      ctx,
       (tui, theme, keybindings, done) => {
-        // Fullscreen Pi owns mouse tracking; never disable its terminal mode.
-        if (tui.mode !== 'fullscreen') {
-          tui.terminal.write('\x1b[?1000h\x1b[?1006h');
-          releaseMouse = () => tui.terminal.write('\x1b[?1006l\x1b[?1000l');
-        }
         panel = new BackgroundTasksHistoryPanel(pi, origin, {
           theme,
           onClose: done,
@@ -60,7 +56,6 @@ export async function showBackgroundTasksHistory(
         return panel;
       },
       {
-        overlay: true,
         overlayOptions: {
           anchor: 'top-left',
           width: '100%',
@@ -71,7 +66,6 @@ export async function showBackgroundTasksHistory(
     );
   } finally {
     panel?.dispose();
-    releaseMouse?.();
   }
 }
 

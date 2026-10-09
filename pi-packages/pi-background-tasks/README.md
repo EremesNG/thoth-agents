@@ -55,6 +55,8 @@ metadata and retained logs are shown in bounded pages of up to 64 KiB, with
 visible capture/retention loss notices. ←/→ selects a task, ↑/↓, PgUp/PgDn,
 Home/End and the mouse wheel scroll the current page; `[`/`]` pages the log.
 Press `x` twice to stop a running task; Esc, `q` or Ctrl+C closes history.
+The shared pi-core overlay host enables mouse reporting in regular TUI mode and
+releases it on close, rejection or disposal; fullscreen-owned tracking is untouched.
 Dismissing a terminal Work-panel row does not remove it from history or totals.
 Registry retention is unchanged: maintenance removes terminal artifacts after
 seven days.

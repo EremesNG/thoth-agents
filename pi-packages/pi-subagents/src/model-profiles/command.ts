@@ -4,6 +4,14 @@ import {
   type Model,
 } from '@earendil-works/pi-ai';
 import { resolveIcon } from '@thoth-agents/pi-core';
+import {
+  createListEditor,
+  type ListEditorContext,
+  type ListEditorRow,
+  openPanelOverlay,
+  type PanelTheme,
+  padPanelText,
+} from '@thoth-agents/pi-core/panel';
 import { loadSubagents, readSubagentsConfig } from '../config.js';
 import type {
   ModelRef,
@@ -12,12 +20,7 @@ import type {
   SubagentModelProfiles,
   ThinkingEffort,
 } from '../types.js';
-import {
-  themeAccent,
-  themeDim,
-  themeTitle,
-  themeWarning,
-} from '../ui/theme.js';
+import { themeAccent, themeDim } from '../ui/theme.js';
 import type { ModelProfileRow } from './data.js';
 import {
   buildModelProfileRows,
@@ -31,14 +34,7 @@ import {
 } from './editor.js';
 import {
   buildNoChangesModelProfilesMessage,
-  constrainLines,
-  frameModal,
-  normalizeModalKey,
-  padToVisibleWidth,
-  pendingLabel,
   profileLabel,
-  truncateToVisibleWidth,
-  visibleWidth,
 } from './formatting.js';
 
 const FALLBACK_EFFORT_CHOICES: Array<ThinkingEffort | 'inherit'> = [
@@ -117,8 +113,6 @@ export type SubagentModelProfilesModalResult =
   | { action: 'save'; dirtyProfiles: SubagentModelProfiles }
   | { action: 'cancel' };
 
-type ModalView = 'main' | 'model-provider' | 'model-model' | 'effort';
-
 type ModalComponent = {
   render(width: number): string[];
   handleInput(data: string): void;
@@ -130,7 +124,8 @@ type ModalInput = {
   availableModels?: any[];
   modelContext?: ModelContext;
   tui?: { requestRender?: () => void };
-  theme?: any;
+  theme?: PanelTheme;
+  maxHeight?: () => number;
   done: (result: SubagentModelProfilesModalResult) => void;
 };
 
@@ -160,81 +155,26 @@ export function createSubagentModelProfilesModal(
     input.availableModels ?? [],
   );
   const providerNames = Object.keys(availableByProvider);
+  const rowKey = (row: ModelProfileRow): string =>
+    row.name.trim().toLowerCase();
   const baseProfiles: SubagentModelProfiles = Object.fromEntries(
-    rows.map((row) => [
-      row.name.trim().toLowerCase(),
-      cloneProfile(row.explicitProfile),
-    ]),
+    rows.map((row) => [rowKey(row), cloneProfile(row.explicitProfile)]),
   );
-  let selectedIndex = 0;
-  let scrollOffset = 0;
-  let view: ModalView = 'main';
-  let pickerIndex = 0;
-  let pickerScrollOffset = 0;
-  let modelSearch = '';
-  let selectedProvider: string | undefined;
   let dirtyProfiles: SubagentModelProfiles = {};
-  let completed = false;
+  const hasDirtyProfileFor = (row: ModelProfileRow): boolean =>
+    Object.hasOwn(dirtyProfiles, rowKey(row));
+  const dirtyProfileFor = (
+    row: ModelProfileRow,
+  ): SubagentModelProfile | undefined => dirtyProfiles[rowKey(row)];
 
-  const selectedRow = () =>
-    rows[Math.min(Math.max(selectedIndex, 0), Math.max(0, rows.length - 1))];
-  const requestRender = () => input.tui?.requestRender?.();
-
-  const finish = (result: SubagentModelProfilesModalResult) => {
-    if (completed) return;
-    completed = true;
-    input.done(
-      result.action === 'save'
-        ? { action: 'save', dirtyProfiles: cloneProfiles(result.dirtyProfiles) }
-        : result,
-    );
-  };
-
-  const clampSelection = () => {
-    selectedIndex = Math.min(
-      Math.max(selectedIndex, 0),
-      Math.max(0, rows.length - 1),
-    );
-    if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-    const maxVisibleRows = 10;
-    if (selectedIndex >= scrollOffset + maxVisibleRows)
-      scrollOffset = selectedIndex - maxVisibleRows + 1;
-    scrollOffset = Math.max(
-      0,
-      Math.min(scrollOffset, Math.max(0, rows.length - 1)),
-    );
-  };
-
-  const resetPickerPosition = () => {
-    pickerIndex = 0;
-    pickerScrollOffset = 0;
-  };
-
-  const openPicker = (nextView: ModalView) => {
-    view = nextView;
-    resetPickerPosition();
-    modelSearch = '';
-    selectedProvider = undefined;
-    if (nextView === 'effort') {
-      const row = selectedRow();
-      const current =
-        row && (dirtyProfileFor(row) ?? row.explicitProfile).effort;
-      pickerIndex = Math.max(
-        0,
-        effortChoicesForRow().findIndex(
-          (choice) => choice.value === (current ?? 'inherit'),
-        ),
-      );
-    }
-  };
-
-  const applyEdit = (edit: {
-    model?: ModelRef;
-    effort?: ThinkingEffort;
-    reset?: 'model' | 'effort' | 'row';
-  }) => {
-    const row = selectedRow();
-    if (!row) return;
+  const applyEdit = (
+    row: ModelProfileRow,
+    edit: {
+      model?: ModelRef;
+      effort?: ThinkingEffort;
+      reset?: 'model' | 'effort' | 'row';
+    },
+  ) => {
     dirtyProfiles = applyDirtyProfileEdit({
       baseProfiles,
       dirtyProfiles,
@@ -242,328 +182,232 @@ export function createSubagentModelProfilesModal(
     });
   };
 
-  const rowKey = (row: ModelProfileRow): string =>
-    row.name.trim().toLowerCase();
-  const rowScope = (row: ModelProfileRow): SubagentDefinitionScope =>
-    row.scope ?? 'global';
-  const dim = (text: string): string => themeDim(input.theme, text);
-  const scopedName = (row: ModelProfileRow): string =>
-    `${row.name} ${dim(rowScope(row) === 'project' ? '(local)' : '(global)')}`;
-  const hasDirtyProfileFor = (row: ModelProfileRow): boolean =>
-    Object.prototype.hasOwnProperty.call(dirtyProfiles, rowKey(row));
-  const dirtyProfileFor = (
-    row: ModelProfileRow,
-  ): SubagentModelProfile | undefined => dirtyProfiles[rowKey(row)];
-
-  const effortChoicesForRow = (): EffortChoice[] => {
-    const row = selectedRow();
-    const profile = row && (dirtyProfileFor(row) ?? row.explicitProfile);
-    return buildEffortChoices(
+  const effortChoicesForRow = (row: ModelProfileRow) =>
+    buildEffortChoices(
       row,
-      profile,
+      dirtyProfileFor(row) ?? row.explicitProfile,
       input.availableModels ?? [],
       input.modelContext,
     );
-  };
 
-  const rowModelText = (row: ModelProfileRow): string => {
-    if (!hasDirtyProfileFor(row)) return row.modelLabel;
-    const dirty = dirtyProfileFor(row);
-    const label = profileLabel(dirty, 'model');
+  const scopedName = (row: ModelProfileRow): string =>
+    `${row.name} ${themeDim(input.theme, row.scope === 'project' ? '(local)' : '(global)')}`;
+  const rowProfileText = (
+    row: ModelProfileRow,
+    field: 'model' | 'effort',
+  ): string => {
+    const current = field === 'model' ? row.modelLabel : row.effortLabel;
+    if (!hasDirtyProfileFor(row)) return current;
+    const label = profileLabel(dirtyProfileFor(row), field);
     if (label) return `staged: ${label}`;
-    return baseProfiles[rowKey(row)]?.model
-      ? `staged: inherit/reset model (was ${row.modelLabel})`
-      : row.modelLabel;
+    return baseProfiles[rowKey(row)]?.[field]
+      ? `staged: inherit/reset ${field} (was ${current})`
+      : current;
   };
 
-  const rowEffortText = (row: ModelProfileRow): string => {
-    if (!hasDirtyProfileFor(row)) return row.effortLabel;
-    const dirty = dirtyProfileFor(row);
-    const label = profileLabel(dirty, 'effort');
-    if (label) return `staged: ${label}`;
-    return baseProfiles[rowKey(row)]?.effort
-      ? `staged: inherit/reset effort (was ${row.effortLabel})`
-      : row.effortLabel;
+  const tableColumns = (context: ListEditorContext) => ({
+    name: 28,
+    model: Math.max(24, context.width - 28 - 24 - 4),
+    effort: 24,
+  });
+  const moveHint = () =>
+    `${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')}/j/k move`;
+  const separator = () => ` ${resolveIcon('separator', '·')} `;
+  const modelPicker = (row: ModelProfileRow, provider: string) => {
+    const models = availableByProvider[provider] ?? [];
+    const modelsById = new Map(
+      models.map((model) => [`${model.provider}/${model.id}`, model]),
+    );
+    const searchText = (id: string) =>
+      `${modelsById.get(id)?.label ?? ''} ${id}`;
+    editor.openPicker({
+      title: 'Choose model',
+      maxVisibleRows: 10,
+      hints: () =>
+        [
+          moveHint(),
+          'type search',
+          'backspace clear',
+          'enter select',
+          'esc back',
+        ].join(separator()),
+      filter: {
+        placeholder: '(type to filter)',
+        text: (choice) => searchText(choice.id),
+      },
+      rows: () =>
+        models.map((model) => ({
+          id: `${model.provider}/${model.id}`,
+          label: `${model.label} (${model.provider}/${model.id})`,
+        })),
+      header: ({ filter }) => {
+        const query = filter.trim().toLowerCase();
+        const count = [...modelsById.keys()].filter((id) =>
+          searchText(id).toLowerCase().includes(query),
+        ).length;
+        return [
+          `Select ${provider} model for ${row.name}`,
+          `provider: ${provider}${separator()}${filter ? `${count}/${models.length} match${count === 1 ? '' : 'es'}` : `${models.length} model${models.length === 1 ? '' : 's'}`}`,
+        ];
+      },
+      onAction: (key, choice) => {
+        if (key !== 'enter') return false;
+        const model = choice && modelsById.get(choice.id);
+        if (model)
+          applyEdit(row, {
+            model: { provider: model.provider, id: model.id },
+          });
+        editor.showOverview();
+        return true;
+      },
+    });
   };
-
-  const selectedSummaryLine = (): string => {
-    const row = selectedRow();
-    if (!row) return 'selected: (none)';
-    const availability = row.modelLabel.includes('(unavailable)')
-      ? ` ${resolveIcon('separator', '·')} unavailable model`
-      : '';
-    return `selected: ${themeAccent(input.theme, row.name)}${availability} ${resolveIcon('separator', '·')} model: ${rowModelText(row)} ${resolveIcon('separator', '·')} effort: ${rowEffortText(row)}`;
+  const providerPicker = (row: ModelProfileRow) => {
+    editor.openPicker({
+      title: 'Choose model provider',
+      maxVisibleRows: 10,
+      hints: () =>
+        ['choose provider', 'enter: select', 'esc/q: back'].join(separator()),
+      header: () => [
+        `Select model provider for ${row.name}`,
+        ...(!providerNames.length
+          ? ['No available models found; reset remains available.']
+          : []),
+      ],
+      rows: () => [
+        { id: 'reset', label: 'inherit/reset model' },
+        ...providerNames.map((provider) => ({
+          id: `provider:${provider}`,
+          label: provider,
+        })),
+      ],
+      onAction: (key, choice) => {
+        if (key !== 'enter') return false;
+        if (choice?.id === 'reset') {
+          applyEdit(row, { reset: 'model' });
+          editor.showOverview();
+        } else if (choice)
+          modelPicker(row, choice.id.slice('provider:'.length));
+        return true;
+      },
+    });
   };
-
-  const rowListLines = (width: number): string[] => {
-    const innerWidth = Math.max(1, Math.floor(width || 1) - 2);
-    const visibleRows = rows.slice(scrollOffset, scrollOffset + 10);
-    if (innerWidth >= 100) {
-      const nameWidth = 32;
-      const effortWidth = 24;
-      const modelWidth = Math.max(24, innerWidth - nameWidth - effortWidth - 6);
-      const lines = [
-        `${padToVisibleWidth('agent', nameWidth)}  ${padToVisibleWidth('model', modelWidth)}  ${padToVisibleWidth('effort', effortWidth)}`,
-      ];
-      for (const [offset, item] of visibleRows.entries()) {
-        const index = scrollOffset + offset;
-        const marker =
-          index === selectedIndex
-            ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
-            : ' ';
-        const dirty = hasDirtyProfileFor(item)
-          ? themeWarning(input.theme, '*')
-          : ' ';
-        lines.push(
-          `${marker} ${dirty} ${padToVisibleWidth(scopedName(item), nameWidth - 4)}  ${padToVisibleWidth(rowModelText(item), modelWidth)}  ${padToVisibleWidth(rowEffortText(item), effortWidth)}`,
-        );
-      }
-      return lines;
-    }
-    const lines = [
-      `agent ${resolveIcon('separator', '·')} model ${resolveIcon('separator', '·')} effort`,
-    ];
-    for (const [offset, item] of visibleRows.entries()) {
-      const index = scrollOffset + offset;
-      const marker =
-        index === selectedIndex
-          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
-          : ' ';
-      const dirty = hasDirtyProfileFor(item)
-        ? themeWarning(input.theme, '*')
-        : ' ';
-      lines.push(
-        `${marker} ${dirty} ${scopedName(item)} ${resolveIcon('separator', '·')} ${rowModelText(item)} ${resolveIcon('separator', '·')} ${rowEffortText(item)}`,
-      );
-    }
-    return lines;
-  };
-
-  const renderMain = (width: number): string[] => {
-    const dirtyCount = Object.keys(dirtyProfiles).length;
-    const body = [
-      `target: local/global by subagent scope ${resolveIcon('separator', '·')} ${pendingLabel(dirtyCount, input.theme)}`,
-      `${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')}/j/k move ${resolveIcon('separator', '·')} enter/m model ${resolveIcon('separator', '·')} e effort ${resolveIcon('separator', '·')} M/E/r reset ${resolveIcon('separator', '·')} s save ${resolveIcon('separator', '·')} esc/q cancel`,
-      '',
-      ...rowListLines(width),
-      '',
-      selectedSummaryLine(),
-    ];
-    return frameModal('Subagent model profiles', body, width, input.theme);
-  };
-
-  const renderProviderPicker = (width: number): string[] => {
-    const row = selectedRow();
-    const lines = [
-      `Select model provider for ${row?.name ?? '(none)'}`,
-      `choose provider ${resolveIcon('separator', '·')} enter: select ${resolveIcon('separator', '·')} esc/q: back`,
-      '',
-    ];
-    const items = ['inherit/reset model', ...providerNames];
-    if (!providerNames.length)
-      lines.push('No available models found; reset remains available.');
-    for (const [index, item] of items.entries()) {
-      const marker =
-        index === pickerIndex
-          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
-          : ' ';
-      lines.push(`${marker} ${item}`);
-    }
-    return frameModal('Choose model provider', lines, width, input.theme);
-  };
-
-  const filteredProviderModels = (): any[] => {
-    const models = selectedProvider
-      ? (availableByProvider[selectedProvider] ?? [])
-      : [];
-    const query = modelSearch.trim().toLowerCase();
-    if (!query) return models;
-    return models.filter((model) =>
-      `${model.label} ${model.provider}/${model.id}`
-        .toLowerCase()
-        .includes(query),
+  const effortPicker = (row: ModelProfileRow) => {
+    const choices = effortChoicesForRow(row);
+    const current =
+      (dirtyProfileFor(row) ?? row.explicitProfile).effort ?? 'inherit';
+    editor.openPicker(
+      {
+        title: 'Choose effort',
+        hints: () =>
+          ['choose effort', 'enter: select', 'esc/q: back'].join(separator()),
+        header: () => [`row: ${row.name}`],
+        rows: () =>
+          choices.map((choice) => ({
+            id: choice.value,
+            label:
+              choice.value === 'inherit'
+                ? 'inherit/reset effort'
+                : choice.label,
+          })),
+        onAction: (key, choice) => {
+          if (key !== 'enter') return false;
+          const effort = choices.find(
+            (item) => item.value === choice?.id,
+          )?.value;
+          if (effort === 'inherit') applyEdit(row, { reset: 'effort' });
+          else if (effort) applyEdit(row, { effort });
+          editor.showOverview();
+          return true;
+        },
+      },
+      Math.max(
+        0,
+        choices.findIndex((choice) => choice.value === current),
+      ),
     );
   };
 
-  const modelPickerVisibleRows = (): number => 10;
-
-  const clampPickerScroll = (length: number) => {
-    pickerIndex = Math.min(Math.max(pickerIndex, 0), Math.max(0, length - 1));
-    if (pickerIndex < pickerScrollOffset) pickerScrollOffset = pickerIndex;
-    const visibleRows = modelPickerVisibleRows();
-    if (pickerIndex >= pickerScrollOffset + visibleRows)
-      pickerScrollOffset = pickerIndex - visibleRows + 1;
-    pickerScrollOffset = Math.max(
-      0,
-      Math.min(pickerScrollOffset, Math.max(0, length - 1)),
-    );
-  };
-
-  const renderModelPicker = (width: number): string[] => {
-    const row = selectedRow();
-    const allModels = selectedProvider
-      ? (availableByProvider[selectedProvider] ?? [])
-      : [];
-    const models = filteredProviderModels();
-    clampPickerScroll(models.length);
-    const visibleRows = modelPickerVisibleRows();
-    const visibleModels = models.slice(
-      pickerScrollOffset,
-      pickerScrollOffset + visibleRows,
-    );
-    const rangeEnd = Math.min(models.length, pickerScrollOffset + visibleRows);
-    const countText = modelSearch
-      ? `${models.length}/${allModels.length} match${models.length === 1 ? '' : 'es'}`
-      : `${models.length} model${models.length === 1 ? '' : 's'}`;
-    const lines = [
-      `Select ${selectedProvider ?? ''} model for ${row?.name ?? '(none)'}`,
-      `provider: ${selectedProvider ?? '(none)'} ${resolveIcon('separator', '·')} ${countText}${models.length > visibleRows ? ` ${resolveIcon('separator', '·')} showing ${pickerScrollOffset + 1}-${rangeEnd}` : ''}`,
-      `search: ${modelSearch || '(type to filter)'}`,
-      `${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')}/j/k move ${resolveIcon('separator', '·')} type search ${resolveIcon('separator', '·')} backspace clear ${resolveIcon('separator', '·')} enter select ${resolveIcon('separator', '·')} esc back`,
-      '',
-    ];
-    if (!allModels.length) lines.push('No models available for this provider.');
-    else if (!models.length) lines.push('No models match the current search.');
-    for (const [offset, model] of visibleModels.entries()) {
-      const index = pickerScrollOffset + offset;
-      const marker =
-        index === pickerIndex
-          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
-          : ' ';
-      lines.push(`${marker} ${model.label} (${model.provider}/${model.id})`);
-    }
-    return frameModal('Choose model', lines, width, input.theme);
-  };
-
-  const renderEffortPicker = (width: number): string[] => {
-    const row = selectedRow();
-    const lines = [
-      `row: ${row?.name ?? '(none)'}`,
-      `choose effort ${resolveIcon('separator', '·')} enter: select ${resolveIcon('separator', '·')} esc/q: back`,
-      '',
-    ];
-    const items = effortChoicesForRow().map((choice) =>
-      choice.value === 'inherit' ? 'inherit/reset effort' : choice.label,
-    );
-    for (const [index, item] of items.entries()) {
-      const marker =
-        index === pickerIndex
-          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
-          : ' ';
-      lines.push(`${marker} ${item}`);
-    }
-    return frameModal('Choose effort', lines, width, input.theme);
-  };
-
-  const movePicker = (delta: number) => {
-    const length =
-      view === 'model-provider'
-        ? 1 + providerNames.length
-        : view === 'model-model'
-          ? filteredProviderModels().length
-          : effortChoicesForRow().length;
-    pickerIndex = Math.min(
-      Math.max(pickerIndex + delta, 0),
-      Math.max(0, length - 1),
-    );
-    if (view === 'model-model') clampPickerScroll(length);
-  };
-
-  const updateModelSearch = (nextSearch: string) => {
-    modelSearch = nextSearch;
-    resetPickerPosition();
-  };
-
-  const isPrintableSearchInput = (key: string): boolean =>
-    key.length === 1 && key >= ' ' && key !== '\u007f';
-
-  const chooseProvider = () => {
-    if (pickerIndex === 0) {
-      applyEdit({ reset: 'model' });
-      view = 'main';
-      return;
-    }
-    selectedProvider = providerNames[pickerIndex - 1];
-    resetPickerPosition();
-    modelSearch = '';
-    view = 'model-model';
-  };
-
-  const chooseModel = () => {
-    const model = filteredProviderModels()[pickerIndex];
-    if (model) applyEdit({ model: { provider: model.provider, id: model.id } });
-    view = 'main';
-  };
-
-  const chooseEffort = () => {
-    const effort = effortChoicesForRow()[pickerIndex]?.value;
-    if (effort === 'inherit') applyEdit({ reset: 'effort' });
-    else if (effort) applyEdit({ effort });
-    view = 'main';
-  };
-
-  clampSelection();
+  const editor = createListEditor({
+    wideBreakpoint: 102,
+    maxHeight: input.maxHeight,
+    theme: input.theme,
+    pendingCount: () => Object.keys(dirtyProfiles).length,
+    requestRender: () => input.tui?.requestRender?.(),
+    overview: {
+      title: 'Subagent model profiles',
+      maxVisibleRows: 10,
+      hints: () =>
+        [
+          moveHint(),
+          'enter/m model',
+          'e effort',
+          'M/E/r reset',
+          's save',
+          'esc/q cancel',
+        ].join(separator()),
+      header: (context) => {
+        const columns = tableColumns(context);
+        return [
+          'target: local/global by subagent scope',
+          context.layout === 'wide'
+            ? `    ${padPanelText('agent', columns.name)}  ${padPanelText('model', columns.model)}  ${padPanelText('effort', columns.effort)}`
+            : `agent ${resolveIcon('separator', '·')} model ${resolveIcon('separator', '·')} effort`,
+        ];
+      },
+      rows: (): ListEditorRow[] =>
+        rows.map((row) => ({
+          id: rowKey(row),
+          dirty: hasDirtyProfileFor(row),
+          label: (context) => {
+            if (context.layout === 'compact')
+              return `${scopedName(row)}${separator()}${rowProfileText(row, 'model')}${separator()}${rowProfileText(row, 'effort')}`;
+            const columns = tableColumns(context);
+            return `${padPanelText(scopedName(row), columns.name)}  ${padPanelText(rowProfileText(row, 'model'), columns.model)}  ${padPanelText(rowProfileText(row, 'effort'), columns.effort)}`;
+          },
+        })),
+      footer: ({ index }) => {
+        const row = rows[index];
+        if (!row) return ['selected: (none)'];
+        const availability = row.modelLabel.includes('(unavailable)')
+          ? ` ${resolveIcon('separator', '·')} unavailable model`
+          : '';
+        return [
+          `selected: ${themeAccent(input.theme, row.name)}${availability}${separator()}model: ${rowProfileText(row, 'model')}${separator()}effort: ${rowProfileText(row, 'effort')}`,
+        ];
+      },
+      onAction: (key, choice) => {
+        const row = rows.find((item) => rowKey(item) === choice?.id);
+        if (!row) return false;
+        if (key === 'enter' || key === 'm') providerPicker(row);
+        else if (key === 'e') effortPicker(row);
+        else if (key === 'M') applyEdit(row, { reset: 'model' });
+        else if (key === 'E') applyEdit(row, { reset: 'effort' });
+        else if (key === 'r') applyEdit(row, { reset: 'row' });
+        else return false;
+        return true;
+      },
+    },
+    onSave: () => ({ success: true }),
+    onSaved: () =>
+      input.done({
+        action: 'save',
+        dirtyProfiles: cloneProfiles(dirtyProfiles),
+      }),
+    onCancel: () => input.done({ action: 'cancel' }),
+  });
 
   return {
-    render(width: number): string[] {
-      if (view === 'model-provider')
-        return constrainLines(renderProviderPicker(width), width);
-      if (view === 'model-model')
-        return constrainLines(renderModelPicker(width), width);
-      if (view === 'effort')
-        return constrainLines(renderEffortPicker(width), width);
-      return constrainLines(renderMain(width), width);
-    },
-    handleInput(data: string): void {
-      if (completed) return;
-      const key = normalizeModalKey(data);
-      if (view !== 'main') {
-        if (key === 'esc' || (key === 'q' && view !== 'model-model'))
-          view = 'main';
-        else if (view === 'model-model' && (key === '\u007f' || key === '\b'))
-          updateModelSearch(modelSearch.slice(0, -1));
-        else if (view === 'model-model' && key === '\u0015')
-          updateModelSearch('');
-        else if (key === 'up' || key === 'k') movePicker(-1);
-        else if (key === 'down' || key === 'j') movePicker(1);
-        else if (
-          view === 'model-model' &&
-          modelSearch &&
-          isPrintableSearchInput(key)
-        )
-          updateModelSearch(`${modelSearch}${key}`);
-        else if (key === 'home' || key === 'g') {
-          pickerIndex = 0;
-          if (view === 'model-model')
-            clampPickerScroll(filteredProviderModels().length);
-        } else if (key === 'end' || key === 'G')
-          movePicker(Number.MAX_SAFE_INTEGER);
-        else if (key === 'enter') {
-          if (view === 'model-provider') chooseProvider();
-          else if (view === 'model-model') chooseModel();
-          else chooseEffort();
-        } else if (view === 'model-model' && isPrintableSearchInput(key))
-          updateModelSearch(`${modelSearch}${key}`);
-        requestRender();
-        return;
-      }
-      if (key === 'up' || key === 'k') selectedIndex -= 1;
-      else if (key === 'down' || key === 'j') selectedIndex += 1;
-      else if (key === 'home' || key === 'g') selectedIndex = 0;
-      else if (key === 'end' || key === 'G') selectedIndex = rows.length - 1;
-      else if (key === 'enter' || key === 'm') openPicker('model-provider');
-      else if (key === 'e') openPicker('effort');
-      else if (key === 'M') applyEdit({ reset: 'model' });
-      else if (key === 'E') applyEdit({ reset: 'effort' });
-      else if (key === 'r') applyEdit({ reset: 'row' });
-      else if (key === 's') finish({ action: 'save', dirtyProfiles });
-      else if (key === 'esc' || key === 'q') finish({ action: 'cancel' });
-      clampSelection();
-      requestRender();
-    },
-    invalidate(): void {
-      requestRender();
-    },
+    render: (width) => editor.render(width),
+    handleInput: (data) =>
+      editor.handleInput(
+        data === 'enter'
+          ? '\r'
+          : data === 'esc' || data === 'escape'
+            ? '\u001b'
+            : data,
+      ),
+    invalidate: () => editor.invalidate(),
   };
 }
 
@@ -632,31 +476,19 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
     );
 
   if (hasCustomUi) {
-    const result = (await ctx.ui.custom(
-      (
-        tui: any,
-        theme: any,
-        _keybindings: any,
-        done: (result: SubagentModelProfilesModalResult) => void,
-      ) =>
+    const result = await openPanelOverlay<SubagentModelProfilesModalResult>(
+      ctx,
+      (tui, theme, _keybindings, done, host) =>
         createSubagentModelProfilesModal({
           rows,
           availableModels,
           modelContext: ctx,
           tui,
           theme,
+          maxHeight: host.maxHeight,
           done,
         }),
-      {
-        overlay: true,
-        overlayOptions: {
-          anchor: 'center',
-          width: '96%',
-          maxHeight: '90%',
-          minWidth: 96,
-        },
-      },
-    )) as SubagentModelProfilesModalResult | undefined;
+    );
 
     if (result?.action === 'save') {
       const hasDirtyRows = Object.keys(result.dirtyProfiles).length > 0;

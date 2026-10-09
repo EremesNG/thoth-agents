@@ -424,11 +424,11 @@ describe('subagents smoke', () => {
 
     expect(capturedOptions).toEqual({
       overlay: true,
+      onHandle: expect.any(Function),
       overlayOptions: {
         anchor: 'center',
         width: '96%',
         maxHeight: '90%',
-        minWidth: 96,
       },
     });
     expect(message).toBe(

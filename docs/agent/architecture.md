@@ -33,12 +33,15 @@ persistence, receipts, state, and recovery remain outside this package.
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
    six selected packages, including
-   `npm:@thoth-agents/pi-subagents@>=0.1.0` and
+   `npm:@thoth-agents/pi-subagents@>=0.3.0` and
    `npm:@thoth-agents/pi-todo@>=0.1.0`, plus four external skills. Published
    installs also invoke provider-owned thoth-mem; an
    explicit local Pi package install leaves thoth-mem to its separate local
    installer. Pi and the separate `@thoth-agents/pi-subagents` runtime retain
-   delegation execution and task lifecycle ownership.
+   delegation execution and task lifecycle ownership. pi-subagents registers
+   `/subagents-model` and `/subagents-tools` on pi-core's shared list-editor
+   shell; thoth-agents registers only the optional managed-specialist tools
+   adapter, not the tools command.
 
 ## Boundaries
 

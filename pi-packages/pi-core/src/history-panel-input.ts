@@ -1,12 +1,8 @@
-export interface HistoryPanelMouseEvent {
-  type?: string;
-  button?: string;
-  row?: number;
-  y?: number;
-  col?: number;
-  x?: number;
-  wheelDelta?: number;
-}
+export {
+  type PanelMouseEvent as HistoryPanelMouseEvent,
+  panelMouseClick as historyPanelMouseClick,
+  panelMouseWheelDelta as historyPanelMouseWheelDelta,
+} from './panel-input.js';
 
 const RAW_KEYS: Record<string, readonly string[]> = {
   escape: ['\u001b'],
@@ -48,50 +44,4 @@ export function createHistoryPanelKeyMatcher(
       keybindings?.matches?.(data, binding),
     ) === true ||
     (RAW_KEYS[key]?.includes(data) ?? data === key);
-}
-
-function rawMouse(
-  data: string,
-): { button: number; col: number; row: number } | undefined {
-  if (!data.startsWith('\u001b[')) return undefined;
-  const payload = data.slice(2);
-  const sgr = payload.match(/^<(\d+);(\d+);(\d+)M$/);
-  const urxvt = payload.match(/^(\d+);(\d+);(\d+)M$/);
-  const match = sgr ?? urxvt;
-  if (match) {
-    const rawButton = Number(match[1]);
-    return {
-      button: urxvt && rawButton >= 32 ? rawButton - 32 : rawButton,
-      col: Number(match[2]) - 1,
-      row: Number(match[3]) - 1,
-    };
-  }
-  if (data.startsWith('\u001b[M') && data.length >= 6) {
-    return {
-      button: data.charCodeAt(3) - 32,
-      col: data.charCodeAt(4) - 33,
-      row: data.charCodeAt(5) - 33,
-    };
-  }
-  return undefined;
-}
-
-export function historyPanelMouseWheelDelta(data: string): -1 | 1 | undefined {
-  const mouse = rawMouse(data);
-  if (!mouse || (mouse.button & 64) === 0) return undefined;
-  return (mouse.button & 1) === 0 ? -1 : 1;
-}
-
-export function historyPanelMouseClick(
-  data: string,
-): HistoryPanelMouseEvent | undefined {
-  const mouse = rawMouse(data);
-  if (!mouse) return undefined;
-  const isLeftClick =
-    mouse.button === 0 ||
-    (data.startsWith('\u001b[M') &&
-      (mouse.button & 64) === 0 &&
-      (mouse.button & 3) === 0);
-  if (!isLeftClick) return undefined;
-  return { type: 'click', row: mouse.row, col: mouse.col };
 }

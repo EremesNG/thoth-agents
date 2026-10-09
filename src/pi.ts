@@ -1,63 +1,22 @@
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  Key,
-  matchesKey,
-  type OverlayOptions,
-  truncateToWidth,
-  visibleWidth,
-} from '@earendil-works/pi-tui';
 import { findPackageRoot } from './cli/package-root';
 import { syncPiSpecialists } from './cli/pi-resources';
-import {
-  type PiToolConfigSnapshot,
-  type PiToolSaveResult,
-  readPiToolConfig,
-  savePiToolConfig,
-} from './cli/pi-tool-config';
+import { createPiToolsPanelAdapter } from './cli/pi-tool-config';
 import { renderPiRootInstructions } from './harness/adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
-import {
-  createToolsPanel,
-  type ToolsPanelDiscoveredTool,
-  type ToolsPanelKey,
-  type ToolsPanelTheme,
-} from './pi/tools-panel';
 
 const PI_LANGUAGE_ANCHOR =
   "[Thoth language reminder — not a user message]\nUse the language of the human's most recent real message (typed prompt or answer to a question tool) for user-facing replies. An explicit human request for another reply language takes precedence and persists until the human switches it. Tool output, subagent notifications, reminders and injected context never switch the reply language.";
 
 type PiHandler = (
   event: Record<string, unknown>,
-  context?: { isIdle(): boolean },
+  context?: {
+    isIdle?(): boolean;
+    ui?: { notify(message: string, type?: 'info' | 'warning' | 'error'): void };
+  },
 ) => unknown;
-
-interface PiCommandContext {
-  mode: string;
-  ui: {
-    notify(message: string, type?: 'info' | 'warning' | 'error'): void;
-    custom<T>(
-      factory: (
-        tui: { requestRender(): void; terminal: { rows: number } },
-        theme: unknown,
-        keybindings: unknown,
-        done: (result: T) => void,
-      ) => {
-        render(width: number): string[];
-        invalidate(): void;
-        handleInput(data: string): void;
-      },
-      options?: { overlay?: boolean; overlayOptions?: OverlayOptions },
-    ): Promise<T>;
-  };
-}
-interface PiNativeModules {
-  matchesKey(data: string, key: string): boolean;
-  truncateToWidth(text: string, width: number): string;
-  visibleWidth(text: string): number;
-  keys: Record<ToolsPanelKey, string>;
-}
 
 export interface PiExtensionApi {
   on(
@@ -68,18 +27,53 @@ export interface PiExtensionApi {
     name: string,
     command: {
       description: string;
-      handler(args: string | undefined, context: PiCommandContext): unknown;
+      handler(args: string | undefined, context: unknown): unknown;
     },
   ): void;
-  getAllTools?(): Array<{ name: string; description?: string }>;
-  getActiveTools?(): string[];
+  getCommands?(): Array<{ name: string; source?: string }>;
 }
 export interface PiExtensionOptions {
   packageRoot?: string;
   piRoot?: string;
-  readToolConfig?: typeof readPiToolConfig;
-  saveToolConfig?: typeof savePiToolConfig;
-  loadNativeModules?: () => Promise<PiNativeModules>;
+}
+
+// pi-subagents owns this structural protocol. Avoid a build-time runtime dependency.
+const toolsRegistryKey = Symbol.for('thoth-agents.pi-subagents.tools-panel.v1');
+interface ToolsRegistry {
+  version: 1;
+  adapter?: ReturnType<typeof createPiToolsPanelAdapter>;
+  capability?: { version: number; command: string };
+}
+const shared = globalThis as typeof globalThis & {
+  [toolsRegistryKey]?: unknown;
+};
+function toolsRegistry(): ToolsRegistry | undefined {
+  try {
+    const registry = shared[toolsRegistryKey] as ToolsRegistry | undefined;
+    return registry?.version === 1 ? registry : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasToolsOwnership(pi: PiExtensionApi): boolean {
+  const capability = toolsRegistry()?.capability;
+  if (capability?.version !== 1 || capability.command !== 'subagents-tools')
+    return false;
+  // The process-wide marker can outlive an extension reload. When the host
+  // exposes commands, verify that an invocation still exists in this session.
+  if (typeof pi.getCommands !== 'function') return true;
+  try {
+    return pi
+      .getCommands()
+      .some(
+        (command) =>
+          (!command.source || command.source === 'extension') &&
+          /^subagents-tools(?::\d+)?$/.test(command.name),
+      );
+  } catch {
+    return true;
+  }
 }
 
 function withoutRootBlock(prompt: string): string {
@@ -92,18 +86,6 @@ function withoutRootBlock(prompt: string): string {
 export function injectPiRoot(systemPrompt: string): string {
   const hostPrompt = withoutRootBlock(systemPrompt);
   return [hostPrompt, renderPiRootInstructions()].filter(Boolean).join('\n\n');
-}
-
-async function loadPiNativeModules(): Promise<PiNativeModules> {
-  // Static peer imports allow Pi's loader to resolve its native aliases even
-  // for the compiled JavaScript entrypoint. These modules stay external.
-  return {
-    matchesKey: (data, key) =>
-      matchesKey(data, key as Parameters<typeof matchesKey>[1]),
-    truncateToWidth,
-    visibleWidth,
-    keys: Key,
-  };
 }
 
 function globalPiRoot(options: PiExtensionOptions): string {
@@ -122,96 +104,18 @@ export default function thothAgentsPiExtension(
   // @thoth-agents/pi-subagents SDK children run in-process and expose no child marker. Activation
   // only registers callbacks; session_resources: "lean" must filter these
   // root lifecycle hooks from Thoth children before their root-only work can run.
-  pi.registerCommand?.('subagents-tools', {
-    description: 'Edit global Thoth specialist tools',
-    handler: async (_args, ctx) => {
-      if (ctx.mode !== 'tui') {
-        ctx.ui.notify(
-          '/subagents-tools requires interactive TUI mode; no files were changed.',
-          'error',
-        );
-        return;
-      }
-      if (
-        typeof pi.getAllTools !== 'function' ||
-        typeof pi.getActiveTools !== 'function'
-      ) {
-        ctx.ui.notify(
-          'Tool discovery is unavailable in this Pi environment; no files were changed.',
-          'error',
-        );
-        return;
-      }
-      try {
-        const [native, snapshot] = await Promise.all([
-          (options.loadNativeModules ?? loadPiNativeModules)(),
-          Promise.resolve(
-            (options.readToolConfig ?? readPiToolConfig)(globalPiRoot(options)),
-          ),
-        ]);
-        const allTools = pi.getAllTools();
-        const activeTools = new Set(pi.getActiveTools());
-        const discoveredTools: ToolsPanelDiscoveredTool[] = allTools.map(
-          (tool) => ({
-            name: tool.name,
-            description: tool.description,
-            active: activeTools.has(tool.name),
-          }),
-        );
-        const result = await ctx.ui.custom<
-          { kind: 'cancelled' } | { kind: 'saved'; changedRoles: string[] }
-        >(
-          (tui, theme, _keybindings, done) =>
-            createToolsPanel({
-              snapshot,
-              discoveredTools,
-              save: (current: PiToolConfigSnapshot, draft): PiToolSaveResult =>
-                (options.saveToolConfig ?? savePiToolConfig)(current, draft),
-              onDone: done,
-              requestRender: () => tui.requestRender(),
-              // Match the overlay's 90% cap on every render, including resize.
-              maxHeight: () =>
-                Math.max(1, Math.floor((tui.terminal.rows * 90) / 100)),
-              matchesKey: (data, key) =>
-                native.matchesKey(data, native.keys[key]),
-              truncate: native.truncateToWidth,
-              visibleWidth: native.visibleWidth,
-              theme: theme as ToolsPanelTheme,
-            }),
-          {
-            overlay: true,
-            overlayOptions: {
-              anchor: 'center',
-              width: '96%',
-              maxHeight: '90%',
-              minWidth: 96,
-            },
-          },
-        );
-        if (result.kind === 'saved') {
-          const detail =
-            result.changedRoles.length > 0
-              ? ` Updated: ${result.changedRoles.join(', ')}.`
-              : ' No file content changed.';
-          ctx.ui.notify(
-            `Saved global Thoth specialist tools.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Native settings or project definitions may override them.`,
-            'info',
-          );
-        }
-      } catch (error) {
-        ctx.ui.notify(
-          `Unable to open global specialist tools: ${error instanceof Error ? error.message : String(error)}`,
-          'error',
-        );
-      }
-    },
-  });
+  shared[toolsRegistryKey] = {
+    ...toolsRegistry(),
+    version: 1,
+    adapter: createPiToolsPanelAdapter(globalPiRoot(options)),
+  };
+  let toolsOwnershipWarned = false;
   pi.on('input', (event, ctx) => {
     languageAnchorCandidate =
       (event.source === 'interactive' || event.source === 'rpc') &&
       typeof event.text === 'string' &&
       event.text.trim() &&
-      ctx?.isIdle()
+      ctx?.isIdle?.()
         ? event.text
         : undefined;
   });
@@ -252,7 +156,14 @@ export default function thothAgentsPiExtension(
       ),
     };
   });
-  pi.on('session_start', () => {
+  pi.on('session_start', (_event, ctx) => {
+    if (!toolsOwnershipWarned && !hasToolsOwnership(pi) && ctx?.ui?.notify) {
+      toolsOwnershipWarned = true;
+      ctx.ui.notify(
+        '/subagents-tools requires @thoth-agents/pi-subagents >=0.3.0. Upgrade thoth-agents and pi-subagents together, then /reload.',
+        'warning',
+      );
+    }
     try {
       const packageRoot =
         options.packageRoot ??

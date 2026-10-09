@@ -29,7 +29,7 @@
   the five owned skills from the manifest, while the shared synchronizer
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
-  `npm:@thoth-agents/pi-subagents@>=0.1.0`.
+  `npm:@thoth-agents/pi-subagents@>=0.3.0`.
   The root package and all nine `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
@@ -72,13 +72,23 @@
   `/subagents-model` command edits model profiles for global or project
   definitions in their matching config scope. `model_profiles` takes precedence
   over definition fields, configuration defaults, and the parent model/effort.
-  `/subagents-tools` edits per-role global tool selections. The CLI keeps
-  using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
-  stale snapshots, and partial-write recovery. `/subagents-tools` discovers
-  registered tools (active and inactive) and edits exact per-role names only.
-  Globs and unrecognized names are shown read-only and retained unchanged on
-  save, including through role-default reset and partial-save retry. There is
-  no `*` control or dynamic mode. A child-provided `ask_orchestrator` note
+  pi-subagents registers both `/subagents-model` and `/subagents-tools`; the
+  tools command lives in `pi-packages/pi-subagents/src/tools-panel/`, not the
+  root extension. It edits the resolved global/project definitions, changing
+  only `tools` while preserving unrelated frontmatter and body bytes, with
+  stale-write detection and partial-save retry. The root registers an optional
+  Thoth adapter through `Symbol.for('thoth-agents.pi-subagents.tools-panel.v1')`.
+  Its `appliesTo`/`validate` checks and optional `defaultTools` apply only to
+  marked canonical global `agents/thoth-*.md` specialists; project and unmanaged
+  definitions use generic persistence. Reset is unavailable without adapter
+  defaults. `/subagents-tools` discovers registered tools (active and inactive)
+  and edits exact names only. Globs and unrecognized names are shown read-only
+  and retained on normal save and retry; explicit defaults reset replaces them.
+  There is no `*` control or dynamic mode. The registry also publishes command
+  ownership: new Thoth warns once at session start when it is absent, and new
+  pi-subagents warns about duplicate owners exposed by Pi's command registry.
+  Upgrade both packages together and `/reload`; `0.3.0` is the first
+  command-owning pi-subagents release. A child-provided `ask_orchestrator` note
   describes the channel as subject to `enable_ask_orchestrator` and
   `disallowed_tools`; it is not a checkbox. The panel does not read runtime
   configuration or edit denials.
@@ -103,8 +113,9 @@
   unavailable, children use their return contract's `openQuestions`, not a user
   dialog or delegation.
   Tool filtering is not a sandbox: shell and MCP tools can still launch agents
-  indirectly. `src/cli/pi-tool-config.ts` owns validation and safe persistence;
-  synchronization preserves operator tools (including `*` and other globs),
+  indirectly. `src/cli/pi-tool-config.ts` supplies the Thoth adapter's
+  managed-file validation and defaults; pi-subagents owns panel persistence.
+  Synchronization preserves operator tools (including `*` and other globs),
   modes, model, effort and operator-set `disallowed_tools` (including explicit
   empty). Otherwise package values apply even with custom tools; malformed
   definitions remain unchanged with diagnostics. `@active` is rejected with a
@@ -180,8 +191,9 @@
 ## Pi Render KIT and workspace releases
 
 `@thoth-agents/pi-core` defines `ThothRenderKit` v1 and the process-wide
-`registerRenderKit` / `getRenderKit` / `withdrawRenderKit` registry. It has no
-runtime UI dependencies. `@thoth-agents/pi-thoth-theme` implements the kit's
+`registerRenderKit` / `getRenderKit` / `withdrawRenderKit` registry. Its root
+entry remains importable without runtime Pi peers; the opt-in `./panel` entry
+uses the optional pi-tui peer. `@thoth-agents/pi-thoth-theme` implements the kit's
 cards, collapse hints, per-width caching, working/elapsed indicators, status
 glyphs and widget primitives. It registers on `session_start` only for its
 interactive UI session while `tools.enabled` is true, and withdraws only its own
@@ -201,6 +213,20 @@ it. Each render draws either the KIT frame or native output equivalent to the
 SDK's default pi-tui `Box(1, 1, bg)`, with `toolPendingBg`, `toolSuccessBg` or
 `toolErrorBg`, without nested frames. Message/widget fallbacks retain native
 presentation. See [pi-core's KIT contract](../../pi-packages/pi-core/README.md#render-kit-v1).
+
+The `@thoth-agents/pi-core/panel` subpath exports titled frames, terminal-cell
+width helpers, key normalization, SGR/urxvt/X10 mouse and wheel parsing,
+cursor-centered viewports, selectedBg rows, hints, dirty-discard confirmation,
+and a list-editor shell. Both list editors use that shell with height-aware
+viewports (tools wide at 84 columns, models at 102). History panels and Work
+detail use the primitives without changing navigation, scrolling or folding.
+Panel overlays open through `openOwnedOverlay`, including background history.
+The list editors and background history use its shared `openPanelOverlay` host,
+which enables mouse reporting in regular TUI mode and balances cleanup on close,
+rejection or disposal without touching fullscreen-owned tracking. Shared keyboard
+normalization recognizes Pi-native CSI-u/kitty control keys by default as well
+as legacy terminal sequences.
+See [the panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor).
 
 Pi packages are versioned and published independently of the root package.
 Use `pnpm pack` / `pnpm publish` to convert `workspace:^` dependencies to semver

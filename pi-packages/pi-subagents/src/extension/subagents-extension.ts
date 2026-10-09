@@ -30,6 +30,7 @@ import {
   registerSubagentTools,
   triggerClaudeBackgroundHandoff,
 } from '../tools.js';
+import { registerToolsCommand } from '../tools-panel/command.js';
 import {
   registerSubagentsPanelOpener,
   showSubagentsPanel,
@@ -167,6 +168,7 @@ export default function subagentsExtension(pi: any): void {
   };
 
   pi.on?.('session_start', async (_event: unknown, ctx: any) => {
+    checkToolsOwnership(ctx);
     if (ctx.hasUI && !publication)
       publication = publishToolDefinitions(definitions);
     void preloadPiComponentsForSubagentRendering();
@@ -270,4 +272,5 @@ export default function subagentsExtension(pi: any): void {
     handler: async (_args: string, ctx: any) =>
       runSubagentModelsCommand({ ...ctx, pi }),
   });
+  const checkToolsOwnership = registerToolsCommand(pi);
 }

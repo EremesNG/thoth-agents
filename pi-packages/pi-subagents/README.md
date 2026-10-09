@@ -19,7 +19,7 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - Task-to-background handoff via `ctrl+h` by default, configurable in `subagents.json`.
 - Automatic background completion/failure notifications that start or queue a parent-orchestrator response; no polling is needed just to wait.
 - TUI execution rendering can expand/collapse tool and rendered component output with `ctrl+o`, show/hide assistant thinking blocks with `ctrl+t`, and display queued/consumed steering messages in the owning task detail timeline.
-- Model profile UI via `/subagents-model`.
+- Model profile UI via `/subagents-model` and definition tool editor via `/subagents-tools`, both on pi-core's shared list-editor shell.
 - Per-agent/default model and thinking-effort configuration.
 - Tool allowlist filtering that prevents subagents from delegating to other subagents.
 - Generic subagent-to-parent interaction handoff so human decisions happen on the main thread.
@@ -41,18 +41,18 @@ history, not panel rows. Once the parent is idle with no live subagents, Agents
 collapses to one selectable line with session done/failed totals; Enter opens the
 same history panel as `/subagents` or `ctrl+,`. Prompt boundaries use pi-core's
 observed-text heuristic for idle interactive/RPC submissions, not queued steering
-or completion wake-ups. The history view shares pi-core's frame, navigation and
-scrolling shell while retaining subagent content, display toggles and cancellation.
+or completion wake-ups. The history view and Work detail use pi-core's shared
+panel primitives without changing navigation, scrolling, folding, display toggles
+or cancellation. Panel overlays open through `openOwnedOverlay`.
 
 ## Install as a Pi package
 
-This fork is an installable Pi package named `@thoth-agents/pi-subagents`,
-version `0.1.0`.
-
-Thoth-managed public setup uses this npm source:
+This fork is an installable Pi package named `@thoth-agents/pi-subagents`.
+Thoth-managed public setup requires `>=0.3.0`, the first release owning
+`/subagents-tools`, and uses this npm source:
 
 ```bash
-pi install 'npm:@thoth-agents/pi-subagents@>=0.1.0'
+pi install 'npm:@thoth-agents/pi-subagents@>=0.3.0'
 ```
 
 For local development in this monorepo, use the checkout directly:
@@ -66,7 +66,7 @@ publishing the local package to npm. To configure Pi directly, use the same
 scoped source and add `-l` to install for one project instead of globally:
 
 ```bash
-pi install -l 'npm:@thoth-agents/pi-subagents@>=0.1.0'
+pi install -l 'npm:@thoth-agents/pi-subagents@>=0.3.0'
 ```
 
 The package manifest exposes:
@@ -146,6 +146,45 @@ Supported frontmatter:
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
+
+### `/subagents-tools`
+
+Pi-subagents owns `/subagents-tools` (from `0.3.0`). In interactive TUI mode it
+opens the shared pi-core list-editor shell: arrows/j/k, g/G or wheel navigate;
+enter/e edits a definition, space toggles an exact tool, enter/esc/q returns,
+s saves, and esc/q cancels with dirty-draft discard confirmation. The wide table
+starts at 84 columns and the cursor-centered viewport follows terminal height.
+
+The editor targets the global/project definitions currently resolved by this
+extension, including project overrides. It discovers all registered root tools
+(active and inactive) on each open and identifies the child-provided
+`ask_orchestrator` separately. Native `subagent_*` controls are not selectable.
+There is no dynamic `*` mode, and `@active` is rejected. Existing globs and
+unrecognized names remain read-only and are preserved on normal save.
+
+Saving edits only the definition's `tools` field, preserving unrelated
+frontmatter, `disallowed_tools` and body bytes. Stale files and pre-write races
+fail safely; partial saves report already-changed definitions and allow retry
+with the original draft. Running children and ambient root tools are unchanged.
+
+An optional host adapter supplies reset defaults and managed-file validation.
+Without one, the command works generically and `r defaults` is unavailable.
+Thoth's adapter applies only to its marked, canonical global `agents/thoth-*.md`
+specialists; project and unmanaged definitions stay generic. Explicit reset may
+remove manual entries in favor of the adapter's defaults.
+
+The structural protocol uses
+`Symbol.for('thoth-agents.pi-subagents.tools-panel.v1')`: a registry with
+`version: 1`, an optional `adapter` (`version: 1`, `appliesTo(target, content)`,
+`validate(target, content)`, optional `defaultTools(target, content)`), and a
+command-ownership `capability` (`version: 1`, `command: 'subagents-tools'`).
+Targets contain `role`, `filePath`, and `scope`. Preserve other registry fields
+when registering. Incompatible versions are ignored; adapters are discovered
+on open and managed validation stays bound across save retries.
+
+Upgrade Thoth and pi-subagents together and `/reload`. New Thoth warns once at
+session start when command ownership is absent; new pi-subagents warns when Pi's
+registered commands expose duplicate owners from an older Thoth extension.
 
 ### Tool allowlist formats
 
@@ -548,6 +587,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 |---|---|
 | `/subagents` | Open the session-focused TUI subagent history panel. |
 | `/subagents-model` | Configure model profiles for global or project subagent definitions. |
+| `/subagents-tools` | Edit tools in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
 | `x` | Cancel the currently selected queued/running subagent from the open history/detail panel by default. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
 | `ctrl+h` | Send the running task-mode subagent task to the background by default. Configurable via `background_handoff_shortcut` in `subagents.json`. |
@@ -556,7 +596,15 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 
 `/subagents-model` writes profile changes to the config that matches each selected definition: project-local subagents write to `.pi/subagents.json`, while global subagents write to `~/.pi/agent/subagents.json` or `$PI_CODING_AGENT_DIR/subagents.json` when `PI_CODING_AGENT_DIR` is set.
 
-In non-TUI environments, edit `model_profiles` manually in the matching local or global JSON file.
+Both list editors use selectedBg rows, terminal-cell width handling,
+cursor-centered height-aware viewports, wheel navigation and dirty-discard
+confirmation. Model tables switch to wide layout at 102 columns (tools at 84);
+model search and profile persistence keep their existing behavior. Native
+CSI-u/kitty Enter, Escape and navigation keys work without per-panel bindings.
+The shared overlay host enables wheel reporting in regular TUI mode and releases
+it on close, rejection or disposal; fullscreen-owned mouse tracking is unchanged.
+
+In non-TUI environments, edit `model_profiles` manually in the matching local or global JSON file, or `tools` in the selected Markdown definition.
 
 ## Task history
 

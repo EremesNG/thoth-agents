@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension, {
   completionMessage,
@@ -122,6 +123,11 @@ function statusSnapshot(text: string) {
   };
 }
 
+const modalTheme = { fg: (_role: string, text: string) => text };
+function modalTui() {
+  return { terminal: { rows: 40 }, requestRender() {} };
+}
+
 function stripAnsi(text: string): string {
   return text
     .replace(/\u001b\[[0-9;]*m/g, '')
@@ -165,6 +171,70 @@ function readJsonl(file: string): any[] {
 }
 
 describe('model profiles ui', () => {
+  it.each([
+    '\x1b[99;5u',
+    '\x1b[99;5:1u',
+  ])('modal handles native Ctrl-C for clean cancel, picker back and dirty discard (%j)', (data) => {
+    const done = vi.fn();
+    const create = () =>
+      createSubagentModelProfilesModal({
+        rows: [
+          {
+            name: 'analyst',
+            description: 'analysis agent',
+            modelLabel: 'unresolved',
+            effortLabel: 'profile: high',
+            explicitProfile: { effort: 'high' },
+          },
+        ],
+        done,
+      });
+    const clean = create();
+    clean.handleInput(data);
+    expect(done).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
+    done.mockClear();
+
+    const dirty = create();
+    dirty.handleInput('E');
+    dirty.handleInput('e');
+    expect(dirty.render(100).join('\n')).toContain('Choose effort');
+    dirty.handleInput(data);
+    expect(dirty.render(100).join('\n')).toContain('Subagent model profiles');
+    expect(dirty.render(100).join('\n')).toContain('pending: 1 change');
+    expect(done).not.toHaveBeenCalled();
+    dirty.handleInput(data);
+    expect(dirty.render(100).join('\n')).toContain('Discard unsaved draft?');
+    expect(done).not.toHaveBeenCalled();
+    dirty.handleInput('d');
+    expect(done).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
+  });
+
+  it('modal handles native CSI-u arrows, Enter and Escape without per-panel key wiring', () => {
+    const done = vi.fn();
+    const modal = createSubagentModelProfilesModal({
+      rows: ['analyst', 'reviewer'].map((name) => ({
+        name,
+        description: name,
+        modelLabel: 'unresolved model',
+        effortLabel: 'unresolved effort',
+        explicitProfile: {},
+      })),
+      availableModels: [{ provider: 'openai', id: 'model' }],
+      done,
+    });
+    modal.handleInput('\x1b[57420u');
+    expect(modal.render(100).join('\n')).toMatch(/›\s+reviewer/);
+    modal.handleInput('\x1b[13u');
+    expect(modal.render(100).join('\n')).toContain(
+      'Select model provider for reviewer',
+    );
+    modal.handleInput('\x1b[27u');
+    expect(modal.render(100).join('\n')).toContain('Subagent model profiles');
+    expect(done).not.toHaveBeenCalled();
+    modal.handleInput('\x1b[27u');
+    expect(done).toHaveBeenCalledWith({ action: 'cancel' });
+  });
+
   it('keeps project model_profiles precedence while scalar config precedence is unchanged', () => {
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });
@@ -909,11 +979,13 @@ describe('model profiles ui', () => {
     modal.handleInput('m');
     modal.handleInput('down');
     modal.handleInput('enter');
-    expect(stripAnsi(modal.render(120).join('\n'))).toContain('showing 1-10');
+    expect(stripAnsi(modal.render(120).join('\n'))).toContain(
+      'Showing 1–10 of 15',
+    );
 
     for (let i = 0; i < 11; i += 1) modal.handleInput('down');
     const scrolled = stripAnsi(modal.render(120).join('\n'));
-    expect(scrolled).toContain('showing 3-12');
+    expect(scrolled).toContain('Showing 6–15 of 15');
     expect(scrolled).not.toContain('Model 01');
     expect(scrolled).toMatch(/›\s+Model 12/);
 
@@ -931,6 +1003,23 @@ describe('model profiles ui', () => {
     modal.handleInput('\u007f');
     modal.handleInput('\u007f');
     for (const char of 'target') modal.handleInput(char);
+    modal.handleInput('\u0015');
+    expect(stripAnsi(modal.render(120).join('\n'))).toContain('15 models');
+    modal.handleInput('q');
+    modal.handleInput('g');
+    filtered = stripAnsi(modal.render(120).join('\n'));
+    expect(filtered).toContain('search: qg');
+    expect(filtered).toContain('0/15 matches');
+    expect(filtered).toContain('No matching rows');
+    modal.handleInput('\u0015');
+    modal.handleInput('G');
+    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Target Model/);
+    modal.handleInput('g');
+    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Model 01/);
+    modal.handleInput('\u001b[<65;1;1M');
+    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Model 02/);
+    modal.handleInput('\u001b[<64;1;1M');
+    for (const char of 'target') modal.handleInput(char);
     filtered = stripAnsi(modal.render(120).join('\n'));
     expect(filtered).toContain('1/15 match');
     expect(filtered).toContain('search: target');
@@ -946,6 +1035,80 @@ describe('model profiles ui', () => {
         },
       },
     ]);
+  });
+
+  it('modal centers a height-budgeted cursor with selectedBg and scrolls by wheel', () => {
+    let maxHeight = 13;
+    const results: any[] = [];
+    const modal = createSubagentModelProfilesModal({
+      rows: Array.from({ length: 20 }, (_, index) => ({
+        name: `agent-${String(index).padStart(2, '0')}`,
+        description: '',
+        modelLabel: 'unresolved',
+        effortLabel: 'unresolved',
+        explicitProfile: {},
+      })),
+      maxHeight: () => maxHeight,
+      theme: {
+        ...modalTheme,
+        bg: (_role: string, text: string) => `\u001b[44m${text}\u001b[0m`,
+      },
+      done: (result) => results.push(result),
+    });
+
+    for (let index = 0; index < 10; index += 1) modal.handleInput('j');
+    const centered = modal.render(102);
+    expect(centered).toHaveLength(13);
+    expect(stripAnsi(centered.join('\n'))).toContain('Showing 8–13 of 20');
+    expect(centered.join('\n')).toContain('\u001b[44m›   agent-10');
+    expect(centered.every((line) => panelVisibleWidth(line) === 102)).toBe(
+      true,
+    );
+    modal.handleInput('\u001b[<65;1;1M');
+    const scrolled = modal.render(102);
+    expect(scrolled.join('\n')).toContain('\u001b[44m›   agent-11');
+    expect(stripAnsi(scrolled.join('\n'))).toContain('Showing 9–14 of 20');
+    maxHeight = 7;
+    const short = modal.render(42);
+    expect(short).toHaveLength(7);
+    expect(short.join('\n')).toContain('\u001b[44m›   agent-11');
+    modal.handleInput('e');
+    modal.handleInput('end');
+    expect(stripAnsi(modal.render(42).join('\n'))).toMatch(/›\s+max/);
+    modal.handleInput('enter');
+    modal.handleInput('s');
+    expect(results).toEqual([
+      { action: 'save', dirtyProfiles: { 'agent-11': { effort: 'max' } } },
+    ]);
+  });
+
+  it('modal switches to a cell-aligned wide table exactly at width 102', () => {
+    const modal = createSubagentModelProfilesModal({
+      rows: [
+        {
+          name: '界 analyst',
+          description: '',
+          scope: 'project',
+          modelLabel: 'custom/模型',
+          effortLabel: 'high',
+          explicitProfile: {},
+        },
+      ],
+      done: () => {},
+    });
+
+    const compact = stripAnsi(modal.render(101).join('\n'));
+    expect(compact).toContain('界 analyst (local) · custom/模型 · high');
+    const wide = modal.render(102);
+    const wideRow = wide.find((line) => line.includes('›')) ?? '';
+    expect(wideRow).not.toContain(' · ');
+    expect(
+      panelVisibleWidth(wideRow.slice(0, wideRow.indexOf('custom/模型'))),
+    ).toBe(36);
+    for (const width of [1, 3, 20, 42, 101, 102, 120])
+      expect(
+        modal.render(width).every((line) => panelVisibleWidth(line) <= width),
+      ).toBe(true);
   });
 
   it('modal offers and saves max when the effective model supports it', () => {
@@ -1042,7 +1205,7 @@ describe('model profiles ui', () => {
       ui: {
         custom: async (factory: any) => {
           let result: any;
-          const modal = factory({}, {}, {}, (value: any) => {
+          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
             result = value;
           });
           modal.handleInput('e');
@@ -1099,7 +1262,7 @@ describe('model profiles ui', () => {
       ui: {
         custom: async (factory: any) => {
           let result: any;
-          const modal = factory({}, {}, {}, (value: any) => {
+          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
             result = value;
           });
           modal.handleInput('e');
@@ -1196,7 +1359,7 @@ describe('model profiles ui', () => {
       ui: {
         custom: async (factory: any) => {
           let result: any;
-          const modal = factory({}, {}, {}, (value: any) => {
+          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
             result = value;
           });
           modal.handleInput('E');
@@ -1214,6 +1377,51 @@ describe('model profiles ui', () => {
     expect(
       readSubagentsConfig(tmp).project_model_profiles?.analyst?.effort,
     ).toBeUndefined();
+  });
+
+  it('modal confirms discarding dirty edits and can resume before saving', () => {
+    const results: any[] = [];
+    const rows = [
+      {
+        name: 'analyst',
+        description: 'analysis agent',
+        modelLabel: 'unresolved',
+        effortLabel: 'profile: high',
+        explicitProfile: { effort: 'high' as const },
+      },
+    ];
+    const modal = createSubagentModelProfilesModal({
+      rows,
+      done: (result) => results.push(result),
+    });
+
+    modal.handleInput('E');
+    modal.handleInput('q');
+    expect(results).toEqual([]);
+    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
+      'Discard unsaved draft?',
+    );
+    modal.handleInput('esc');
+    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
+      'pending: 1 change',
+    );
+    modal.handleInput('s');
+    expect(results).toEqual([
+      { action: 'save', dirtyProfiles: { analyst: {} } },
+    ]);
+
+    const discard = createSubagentModelProfilesModal({
+      rows,
+      done: (result) => results.push(result),
+    });
+    discard.handleInput('r');
+    discard.handleInput('esc');
+    discard.handleInput('d');
+    discard.handleInput('s');
+    expect(results).toEqual([
+      { action: 'save', dirtyProfiles: { analyst: {} } },
+      { action: 'cancel' },
+    ]);
   });
 
   it('modal handles main reset hotkeys, effort picker values, nested back, save, and cancel', () => {
@@ -1520,6 +1728,93 @@ describe('model profiles ui', () => {
     );
   });
 
+  it.each([
+    'inline',
+    'fullscreen',
+  ])('model command hosts native keys and balanced mouse reporting in %s mode', async (mode) => {
+    writeAgent('analyst');
+    const write = vi.fn();
+    await runSubagentModelsCommand({
+      cwd: tmp,
+      ui: {
+        custom: async (factory: any) => {
+          let result: unknown;
+          const modal = factory(
+            { mode, terminal: { rows: 40, write }, requestRender() {} },
+            { fg: (_role: string, text: string) => text },
+            {},
+            (value: unknown) => {
+              result = value;
+            },
+          );
+          expect(write.mock.calls).toEqual(
+            mode === 'fullscreen' ? [] : [['\x1b[?1000h\x1b[?1006h']],
+          );
+          modal.handleInput('\x1b[13u');
+          expect(modal.render(100).join('\n')).toContain(
+            'Select model provider for analyst',
+          );
+          modal.handleInput('\x1b[27u');
+          modal.handleInput('\x1b[27u');
+          return result;
+        },
+      },
+    });
+    expect(write.mock.calls).toEqual(
+      mode === 'fullscreen'
+        ? []
+        : [['\x1b[?1000h\x1b[?1006h'], ['\x1b[?1006l\x1b[?1000l']],
+    );
+  });
+
+  it('subagent models command closes only its owned overlay and follows terminal height', async () => {
+    for (let index = 0; index < 20; index += 1)
+      writeAgent(`agent-${String(index).padStart(2, '0')}`);
+    let foreignHides = 0;
+    let ownedHides = 0;
+    const tui = {
+      terminal: { rows: 14 },
+      requestRender() {},
+      hideOverlay: () => {
+        foreignHides += 1;
+      },
+    };
+
+    const message = await runSubagentModelsCommand({
+      cwd: tmp,
+      ui: {
+        custom: async (factory: any, options: any) => {
+          let result: any;
+          const modal = factory(
+            tui,
+            { fg: (_role: string, text: string) => text },
+            {},
+            (value: any) => {
+              tui.hideOverlay();
+              result = value;
+            },
+          );
+          options.onHandle?.({
+            hide: () => {
+              ownedHides += 1;
+            },
+          });
+          modal.handleInput('G');
+          expect(modal.render(120).length).toBeLessThanOrEqual(12);
+          expect(stripAnsi(modal.render(120).join('\n'))).toContain('agent-19');
+          tui.terminal.rows = 8;
+          expect(modal.render(120).length).toBeLessThanOrEqual(7);
+          modal.handleInput('s');
+          return result;
+        },
+      },
+    });
+
+    expect(message).toContain('No subagent model profile changes');
+    expect(ownedHides).toBe(1);
+    expect(foreignHides).toBe(0);
+  });
+
   it('subagent models command custom Save All with no dirty rows writes nothing and notifies exact no-op message', async () => {
     writeAgent('analyst');
     const agentDir = path.join(tmp, 'global-agent');
@@ -1543,8 +1838,8 @@ describe('model profiles ui', () => {
           custom: async (factory: any) => {
             let result: any;
             const component = factory(
-              { requestRender() {} },
-              {},
+              modalTui(),
+              modalTheme,
               {},
               (value: any) => {
                 result = value;
@@ -1591,8 +1886,8 @@ describe('model profiles ui', () => {
           custom: async (factory: any) => {
             let result: any;
             const component = factory(
-              { requestRender() {} },
-              {},
+              modalTui(),
+              modalTheme,
               {},
               (value: any) => {
                 result = value;
@@ -1602,6 +1897,11 @@ describe('model profiles ui', () => {
             component.handleInput('down');
             component.handleInput('enter');
             component.handleInput('q');
+            expect(result).toBeUndefined();
+            expect(stripAnsi(component.render(120).join('\n'))).toContain(
+              'Discard unsaved draft?',
+            );
+            component.handleInput('d');
             return result;
           },
           notify: (text: string, level?: string) =>

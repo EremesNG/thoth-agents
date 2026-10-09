@@ -235,6 +235,76 @@ by the root `v*.*.*` tag release workflow (`.github/workflows/release.yml`)
 through npm trusted publishing, before the root package. Publish pi-core before
 its consumers on first publication; later bumps follow the root release flow.
 
+## Panel primitives and list editor
+
+Import TUI panels from `@thoth-agents/pi-core/panel`, like the existing
+`/history-panel` subpath. This entry needs the optional `pi-tui` peer; the root
+entry remains importable without runtime Pi peers. No runtime coding-agent
+import is added.
+
+- `panelVisibleWidth(text)`, `truncatePanelText(text, width)` and
+  `padPanelText(text, width)` use terminal cells and preserve ANSI/OSC styling.
+- `renderPanelFrame({ title, rows, width, maxHeight?, theme? })` draws the titled
+  rounded frame using current render-kit glyphs and tones, with a native fallback
+  and tiny-size degradation. `PanelRow` is `{ text, selected?, tone? }`;
+  `renderPanelRow(row, width, theme?)` fills selected rows with `selectedBg` after
+  padding, and `panelHintRow(text)` creates a muted hint.
+  `createPanelFrame({ theme?, text, borderTone? })` composes styled border spans,
+  side content, multi-column cells and junction/divider rows; `text` supplies
+  clipping, padding and measurement for legacy-compatible output.
+  `renderPanelCard({ title, body, width, maxHeight?, theme, text })` selects a
+  semantic render-kit card or the native frame through the same primitive.
+- `normalizePanelKey(data, matchesKey?)` recognizes terminal/application arrows,
+  home/end, enter, escape, backspace, space and Ctrl-U, including Pi's native
+  CSI-u/kitty encodings by default; Ctrl-C is escape. `matchesPanelKey` exposes
+  native Pi matching without list-editor aliases. Literal
+  terminal controls take precedence over custom bindings; ordinary input keeps
+  its case. `panelMouseClick(data)` and `panelMouseWheelDelta(data)` parse
+  SGR/urxvt/X10 input, preserving the history helpers' behavior and exports.
+- `panelViewport(count, cursor, budget, maxRows?)` returns `{ start, end, notice? }`
+  with an exclusive end and cursor-centered window. The budget includes a range
+  notice; `maxRows` caps only choices. `PanelDiscardConfirmation` provides
+  `request(dirty)`, `active`, `handleInput(data)` and `rows()`: d discards, k/esc
+  resumes.
+- `openPanelOverlay<T>(ctx, factory, options?)` wraps `openOwnedOverlay` with
+  centered 96% width / 90% maximum height by default; owned-overlay options can
+  override geometry. The factory receives `(tui, theme, keys, close, host)`;
+  pass `host.maxHeight` and `host.requestRender` to the shell. Height is resolved
+  from terminal rows on every render. In regular TUI mode, the host enables
+  mouse reporting for wheel navigation and releases it on close, rejection or
+  disposal (nested panels share a terminal lease). Fullscreen-owned tracking is
+  left untouched.
+
+`createListEditor(options)` returns a `ListEditor` component (`render`,
+`handleInput`, `invalidate`, `getState`) with `openPicker(view, initialIndex?)`
+and `showOverview()`. Options include `overview`, `wideBreakpoint` (outer width,
+84 by default; use 102 for models), `maxHeight`, `theme`, `matchesKey`, optional
+`pendingCount`, `onSave`, `onSaved`, `onCancel` and `requestRender`.
+
+A view supplies `title`, `rows()` and optional `hints`, `header(context)`,
+`footer(context)`, `maxVisibleRows`, `navigation: 'clamp' | 'wrap'` and `filter`.
+Rows are `{ id, label, dirty? }`; labels may be functions of
+`{ layout: 'wide' | 'compact', width, index, selected, filter }`. The width excludes
+frame padding and selection/dirty markers. Domain drafts and persistence stay in
+the adapter. `onAction(key, row, editor)` returns true to consume custom actions
+(e.g. opening another picker, toggling tools or resetting a profile).
+
+Navigation and typed filters precede custom actions. Arrows/j/k move; home/end
+and g/G jump (g/G become text once a filter is nonempty). Filter views consume
+other printable text, including q/s; backspace removes one code point and Ctrl-U
+clears. Filters can supply `text(row)` or `matches(row, lowercaseQuery)`.
+Opening/replacing a picker resets its filter/cursor; returning to overview restores
+its cursor. Wheel input moves selection without wrapping. An unhandled picker
+enter/esc/q returns to overview; an unhandled overview s saves and esc/q cancels.
+
+`onSave` returns `{ success, error?, warning? }` (or a promise), or undefined for
+success. Failures remain editable and retain discard protection even after a
+partial save clears dirty rows. Thrown persistence errors become visible failures.
+Save/cancel input is blocked while an asynchronous save is pending; completion
+callbacks fire once. Dirty cancellation asks for d discard or k/esc resume.
+Height fitting prioritizes save messages, hints and the selected row over metadata
+and footers; a terminal too short for a frame shows only its title.
+
 ## Development
 
 From the repository root:

@@ -144,7 +144,7 @@ export class SidebarSession {
     this.setResizeStatus(this.controls.resizing);
     this.adapter.setVisible(visible);
     const displayed = this.adapter.isDisplayed();
-    const ids = displayed ? this.panels.sourceIds() : [];
+    const ids = displayed ? this.panels.sourceIds(width) : [];
     const key = JSON.stringify(ids);
     if (!displayed || ids.length === 0) {
       if (this.preference) withdrawUIPreferences(this.preference);

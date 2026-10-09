@@ -164,10 +164,13 @@ Fresh independent Oracle PASS on 2026-10-09 (first final round). Live user check
 - AC-3: PASS | real SDK ToolExecutionComponent tests | shared state + invalidate update the row without onUpdate; indicator clears on expand/complete
 - AC-4: PASS | real SDK focus regressions | unfocus({target}) + setFocus prevents recapture; close restores question/editor; foreign overlay focus preserved
 - AC-5: PASS | check:ci, typecheck, test:pi-extensions, package suites | pi-core 812, pi-questions-user 245, pi-subagents 1385/1 skipped; docs match
-- Source: .thoth/specs/pi-ecosystem/spec.md | sha256:71ad5c74b483c4f83097262c26556ff84ef532c9664b1205367cbf9f08953803
+- Source: .thoth/specs/pi-ecosystem/spec.md | sha256:e25dc939f5b7a0f80f28ab01008b719679f9199fc22bc46f6f181e5c849ef1c5
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY
+
+Live user check passed on 2026-10-09: chat visible and scrollable, Ctrl+] collapse/expand, collapsed indicator, focus after closing /subagents and /bg, question arriving while /subagents is open.
+Source baseline refreshed after archiving pi-task-channels, which changed only the unrelated requirements "Shared Pi ecosystem contract package" and "Pi task state channels".

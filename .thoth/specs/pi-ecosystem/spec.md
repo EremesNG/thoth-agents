@@ -8,7 +8,7 @@ Durable behavior for pi-ecosystem.
 
 ### Requirement: Shared Pi ecosystem contract package
 
-`@thoth-agents/pi-core` MUST define the name, version and payload type of every cross-package Thoth Pi channel introduced through it (the pre-existing subagent-usage channels owned by pi-subagents are exempt until a separately authorized migration), MUST wrap payloads in an envelope carrying version, source package, session ID, timestamp and data, and its subscribe helper MUST ignore payloads with an unsupported version, foreign session filter mismatch or invalid shape instead of throwing; producers MUST publish complete snapshots after each state change and in answer to a request for their session.
+`@thoth-agents/pi-core` MUST define the name, version and payload type of every cross-package Thoth Pi channel introduced through it, including subagent usage, MUST wrap payloads in an envelope carrying version, source package, session ID, timestamp and data, and its subscribe helper MUST ignore payloads with an unsupported version, foreign session filter mismatch or invalid shape instead of throwing; producers MUST publish complete snapshots after each state change and in answer to a request for their session.
 
 #### Scenario: Shared Pi ecosystem contract package
 
@@ -208,13 +208,13 @@ pi-core render-kit and tool-definition registries stored on `globalThis` MUST us
 
 ### Requirement: Pi question focus over panel overlays
 
-The `ask_user_question` TUI MUST open as its own overlay and keep keyboard input while the subagents or task-list history overlay is open; the questionnaire, the subagents history overlay, the task-list history overlay and the work-panel detail card MUST close only their own overlay handle, so that closing one never removes, hides or unfocuses another, and when the focus target restored on close is no longer mounted they MUST focus the currently mounted root editor.
+The `ask_user_question` TUI MUST occupy the editor area without covering the chat, MUST keep keyboard input while expanded even when the subagents, task-list or background history overlay or the work-panel detail card is opened and closed, MUST collapse with Ctrl+] to a one-line dock that returns keyboard input to the root editor and re-expand with Ctrl+] while open, and MUST mark its tool-call card as collapsed while collapsed; the subagents history overlay, the task-list history overlay and the work-panel detail card MUST close only their own overlay handle, so that closing one never removes, hides or unfocuses another, and when the focus target restored on close is no longer mounted they MUST focus the expanded questionnaire or otherwise the currently mounted root editor; collapsing, answering or cancelling the question MUST NOT take focus from a still-visible foreign overlay.
 
 #### Scenario: Pi question focus over panel overlays
 
 - **GIVEN** the subagents or task-list history overlay is open
-- **WHEN** the root agent asks a question and the user then closes the history overlay
-- **THEN** the questionnaire stays visible, receives keyboard input and returns the user's answer
+- **WHEN** the root agent asks a question, the user closes the history overlay, collapses the question, types in the editor and expands it again
+- **THEN** the chat stays uncovered and scrollable, the questionnaire receives keyboard input when expanded, the editor receives it when collapsed, the tool-call card shows the collapsed state, and the user's answer is returned
 
 ### Requirement: Shared Pi panel shell
 
@@ -225,3 +225,13 @@ pi-core MUST export panel primitives (titled frame, cell-width truncation, keybo
 - **GIVEN** the tools, model, history and work-detail panels
 - **WHEN** each renders and receives keyboard or wheel input
 - **THEN** they share the primitives' frame, width handling and input parsing, the list editors share the shell, and every panel overlay opens through `openOwnedOverlay`
+
+### Requirement: Pi task state channels
+
+pi-subagents and pi-background-tasks MUST publish current-session task summary snapshots on versioned pi-core channels after each change and on request, containing only identity, status, agent/model/effort or kind, lifecycle times, usage/cost, exit and short preview fields, never prompts, transcripts, results, commands, environment or logs; subagent usage MUST be published only on the pi-core usage channel and the Thoth status line MUST consume it from there.
+
+#### Scenario: Pi task state channels
+
+- **GIVEN** a session running subagents and background tasks
+- **WHEN** a task changes state or a consumer requests snapshots
+- **THEN** both packages publish envelope snapshots for that session with summary fields only, and the status line shows cumulative subagent cost from the usage channel

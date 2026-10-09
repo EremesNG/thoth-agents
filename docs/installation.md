@@ -234,8 +234,8 @@ The CLI installs and verifies these Pi packages in order:
 
 The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
 Session, Workspace and discovered work-source panels. `/sidebar` toggles it;
-`/sidebar panels` lists ids for show/hide/up/down commands; Ctrl+Shift+R resizes
-(and fullscreen supports divider drag). Panel order/visibility and startup mode
+`/sidebar panels` lists ids for show/hide/up/down commands; `/sidebar resize` resizes
+(← grows width, → shrinks; fullscreen also supports divider drag). Panel order/visibility and startup mode
 persist in `~/.pi/agent/thoth-sidebar.json`; width and current mode do not.
 Only displayed source panels absorb their Work sections; hiding/auto-collapse
 restores them. Private layout seams use guarded fallback. Regular mode supports

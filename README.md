@@ -301,7 +301,7 @@ installs. Task-summary channels and Render KIT remain v1.
 The [Pi sidebar](pi-packages/pi-sidebar/README.md) adds read-only Session,
 Workspace and discovered Todos/Subagents/Background panels in fullscreen and
 regular mode. `/sidebar` toggles, `/sidebar panels` lists ids for show/hide/order
-commands, and Ctrl+Shift+R resizes. Only displayed source panels absorb their
+commands, and `/sidebar resize` resizes. Only displayed source panels absorb their
 Work sections; hiding the sidebar restores them. Panel order/visibility and
 startup policy live in `~/.pi/agent/thoth-sidebar.json`. Private Pi layout seams
 have guarded fallback; regular mode covers the live viewport, not historical

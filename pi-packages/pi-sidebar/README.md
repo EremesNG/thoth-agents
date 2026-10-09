@@ -29,9 +29,11 @@ are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
 - `/sidebar panels` lists panel ids in order, including unavailable saved ids.
 - `/sidebar panels show|hide|up|down <id>` changes panel visibility or order.
 - `/sidebar startup auto|manual|off` saves the next session's startup preference.
-- **Ctrl+Shift+R** starts resizing: **←** grows left, **→** shrinks, **Shift** steps
-  four columns, **Enter** confirms and **Esc** restores the original width.
-  Pi 1.0.2 has no default Ctrl+Shift+R binding; custom keybindings may conflict.
+- `/sidebar resize` starts resizing when the sidebar is visible and mounted:
+  **←** moves the divider left (grows width), **→** moves it right (shrinks width), **Shift** steps four columns, **Enter** confirms
+  for the session and **Esc** restores the original width. Status text shows the
+  current width and bounds as you resize. No keyboard shortcut is registered.
+  If hidden, use `/sidebar on` first or widen the terminal.
 - In fullscreen, drag within one column of the divider to resize. Input yields
   to blocking overlays and focused work-panel controls.
 

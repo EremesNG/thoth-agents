@@ -56,9 +56,13 @@
   distinguishes queued, extension-handled, rejected, and model-consumed input.
   Its responsibility remains LLM subagent delegation; non-LLM shell jobs belong to
   the vendored `@thoth-agents/pi-background-tasks` (`pi-packages/pi-background-tasks`,
-  a trimmed local-jobs fork of pi-better-background-tasks), which the operator adds
-  to Pi settings; jobs survive `/reload` of their session and stop on any other
-  shutdown, including subagent teardown.
+  a trimmed local-jobs fork of pi-better-background-tasks), installed and verified
+  by the CLI at `>=0.3.0` along with `@thoth-agents/pi-thoth-theme@>=0.3.0` as the
+  seventh and eighth selected packages (theme, then background tasks). Existing
+  compatible copies from any source are preserved and verified without
+  reinstalling; older copies remain untouched and block completion with manual
+  upgrade guidance, and ambiguous identity fails closed. Jobs survive `/reload`
+  of their session and stop on any other shutdown, including subagent teardown.
   The workspace `@thoth-agents/pi-openai-fast` (`pi-packages/pi-openai-fast`,
   operator-installed, not in `PI_PACKAGE_SPECS`) adds `<id>-fast` virtual models
   under every provider with `openai-responses`/`openai-codex-responses` models
@@ -187,6 +191,73 @@
   Only root and librarian receive `web_search`, `fetch_content`,
   `get_search_content`, and `source_check` guidance, and package presence remains
   distinct from live UI/provider availability.
+
+## Pi question dock and editor slot
+
+`ask_user_question` replaces the editor while expanded; it never mounts a question
+overlay or covers the chat. Inline mode retains native scrollback, and fullscreen
+`PageUp`/`PageDown` scroll the transcript. `Ctrl+]` collapses the questionnaire to
+a one-line dock above the restored editor (default hint: `Ctrl+] expand`); typing
+and `Enter` belong to the editor, and during an active run `Enter` queues a
+steering message without answering the question. `Ctrl+]` from the editor or a
+history/detail overlay expands the same questionnaire with its answers, cursor,
+tab, scroll positions and drafts intact. The open tool-call card marks collapsed
+state until expansion or completion. While the question is open, this terminal
+binding shadows the editor's `jumpForward`; when collapsed, `Esc` belongs to the
+editor or focused overlay, not question cancellation.
+
+pi-core's `./panel` entrypoint exports `registerEditorSlot`: a shared owner installs
+one editor factory and terminal-input listener per session, retaining editor
+callbacks and app actions. Work-panel rows and routing are slot contributions;
+the question contributes an editor replacement or collapsed dock. Expanded
+questions acquire focus through owned-overlay handles so a visible history
+panel cannot recapture the next key. History/detail panels close only their own
+handle; close repair targets the expanded question or otherwise the mounted
+root editor. Collapsing, answering, cancelling, aborting and teardown preserve
+focus held by a still-visible foreign overlay. No polling is used.
+
+See [question controls and lifecycle](../../pi-packages/pi-questions-user/README.md#custom-ui-seam-and-lifecycle),
+[panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor),
+and [verification scope](testing.md#local-closeout-gate).
+
+## Pi task channels
+
+pi-core defines these channels and their validators, all v1, using
+`{ v, source, sessionId, at, data }` envelopes (`at` is Unix milliseconds):
+
+| Snapshot | Request | Producer |
+| --- | --- | --- |
+| `thoth:subagents:state` | `thoth:subagents:state:request` | `@thoth-agents/pi-subagents` |
+| `thoth:background:state` | `thoth:background:state:request` | `@thoth-agents/pi-background-tasks` |
+| `thoth:subagents:usage` | `thoth:subagents:usage:request` | `@thoth-agents/pi-subagents` |
+
+Subagent snapshots contain current-session in-memory task identity, agent/display
+name, mode/status, model/effort, lifecycle times, token usage/cost and an output
+preview of at most 800 UTF-16 code units, plus status counts and persisted totals.
+Background snapshots contain current cwd/session-origin task identity/name,
+kind/status, lifecycle times, exit code/signal and dismissal, plus counts. The
+contract permits numeric or short-text progress (at most 200 code units); the
+publisher currently omits it. Payloads exclude prompts, context, transcripts,
+results, questions, commands, argv, environment, stdout/stderr and logs/log paths.
+Usage data contains only cumulative `totalCost` and `runCount` for the parent
+session identified by the envelope.
+
+Consumers subscribe before requesting with `data: {}` and the target session ID
+in the envelope. Producers answer with complete snapshots, not deltas; requests
+before readiness are answered once by the readiness publication. State is also
+published after changes and session readiness/replay. Subagent activity uses the
+manager's 150 ms coalescing. Background publication uses fresh metadata reads,
+filesystem change notifications for cross-process writes (no polling timers),
+and watch disposal/rebinding on session switch and shutdown. These channels do
+not provide task detail, history, bus replay caching or child/parent bus sharing.
+Invalid, unsupported-version or foreign-session envelopes are ignored by filtered
+subscriptions. See [pi-core's exact payload contracts](../../pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+
+The raw `thoth:subagent-usage` bus event and raw request handler are removed;
+only its checkpoint custom-entry discriminator is retained. The status line
+subscribes to the usage envelope and requests it on session start. Upgrade
+pi-subagents and pi-thoth-theme to `>=0.3.0` together and `/reload`; mixed old/new
+versions lose the subagent cost display. No dual publication is provided.
 
 ## Pi Render KIT and workspace releases
 

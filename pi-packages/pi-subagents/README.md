@@ -24,6 +24,33 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - Tool allowlist filtering that prevents subagents from delegating to other subagents.
 - Generic subagent-to-parent interaction handoff so human decisions happen on the main thread.
 
+## Task summary and usage channels
+
+Publishes complete snapshots on pi-core's v1 `thoth:subagents:state` channel with
+source `@thoth-agents/pi-subagents` and envelope
+`{ v, source, sessionId, at, data }` (`at` is Unix milliseconds). Data contains
+active-session in-memory task summaries: id, agent/display name, mode/status,
+model/effort, lifecycle times, input/output token usage and cost, and an output
+preview bounded to 800 UTF-16 code units, plus status counts and persisted totals.
+It contains no prompts, context, transcripts, results, thread snapshots or
+questions; persisted history contributes totals, not task details.
+
+Snapshots are published after task changes (activity uses the manager's 150 ms
+coalescing), on session start/switch/tree/compact, and in response to
+`thoth:subagents:state:request`. Subscribe before requesting with `data: {}` and
+the target session ID in the envelope. Pre-readiness requests are answered once
+by the session readiness snapshot; consumers replace state rather than merge
+deltas. There is no replay cache or shared child/parent event bus.
+
+Cumulative parent-session `totalCost` and `runCount` are published on v1
+`thoth:subagents:usage`, requested through `thoth:subagents:usage:request` with the
+same envelope/empty-data contract. The raw `thoth:subagent-usage` bus event and
+raw request handler are removed, with no dual publication. Its checkpoint
+custom-entry type remains unchanged, including restore and replay-duplicate
+suppression. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together and
+`/reload` to retain status-line subagent cost display. See
+[pi-core's exact contracts](../pi-core/README.md#task-summary-and-usage-channels-v1).
+
 ## Rendering
 
 Tool calls/results, completion/question messages and the shared above-editor
@@ -74,7 +101,7 @@ The package manifest exposes:
 ```json
 {
   "pi": {
-    "extensions": ["./index.ts"],
+    "extensions": ["./dist/index.ts"],
     "skills": ["./skills"]
   }
 }

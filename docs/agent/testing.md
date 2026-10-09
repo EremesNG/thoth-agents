@@ -21,6 +21,7 @@ snapshot does not run by itself.
 | Biome CI check | `pnpm run check:ci` | root | `package.json`, `ci.yml` |
 | typecheck | `pnpm run typecheck` | root | `package.json`, `ci.yml` |
 | build | `pnpm run build` | root | `package.json`, `release.yml` |
+| built Pi extension bundles | `pnpm run test:pi-extensions` | root after build | `scripts/pi-extension-bundles.test.mjs` |
 | packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing five specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
 
 Replace `path/to/test` with a real test; do not literally run the placeholder.
@@ -89,7 +90,28 @@ skills under `skills/`.
 
 1. Run typechecks and the TDD tests for the touched packages/areas.
 2. Run repository `pnpm run check:ci` and `pnpm run typecheck`.
-3. Add `pnpm run build` when the change affects built/runtime output or packaging.
+3. Add `pnpm run build` when the change affects built/runtime output or packaging;
+   use `pnpm run test:pi-extensions` for changed Pi extension bundles.
+
+For Pi task-channel changes, run the full offline tests and typechecks for
+pi-core, pi-subagents, pi-background-tasks and pi-thoth-theme, plus affected
+`src/cli/pi-install*.test.ts`, operation tests and `src/pi.test.ts` when the
+managed inventory changes. The channel tests cover exact summary-only key
+allow-lists and bounds, session/readiness requests, fresh cross-process metadata,
+and the usage envelope/status-line migration (including checkpoint replay).
+Rerun a failing Windows timing check once to distinguish a transient failure
+from a repeatable regression; report both outcomes.
+
+For Pi question-dock/editor-slot changes, run full offline tests and typechecks
+for pi-core, pi-questions-user and pi-subagents (including `test/ui`), plus the
+repository checks, build and built-extension bundle tests above. Focus checks
+must include real SDK/TUI 1.0.2 coverage of overlay focus recapture, expanded and
+collapsed close repair, foreign-overlay preservation, editor submission,
+fullscreen transcript scrolling and open-tool-card invalidation. Follow with a
+live check of uncovered/scrollable chat, collapsed editor input, state-preserving
+re-expansion and focus after each history/detail overlay closes. Rerun a failing
+Windows timing check once and report both outcomes; automated checks do not
+replace the live check.
 
 Release/packaging tooling tests (for example publish-marketplace,
 generate-release-notes, setup-codex-local, and packed real-SDK tests) are required

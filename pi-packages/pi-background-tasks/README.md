@@ -10,7 +10,22 @@ The manifest follows the existing vendored packages' conventions (scoped name, s
 
 ## Use
 
-Install/select this package explicitly in Pi settings, then restart Pi. Pi loads `./src/index.ts` directly; no build step is needed.
+Thoth's complete Pi Install and applied Update install and individually verify
+`npm:@thoth-agents/pi-background-tasks@>=0.3.0`. An existing copy from any source
+at or above that floor is preserved without reinstalling; an older copy remains
+untouched and blocks completion with manual upgrade guidance. Ambiguous identity
+fails closed. Upgrade a local/Git checkout in place, or review ownership before
+switching its configured source with Pi's native remove/install commands; verify
+the installed manifest and rerun setup. Dry-run performs no mutation.
+
+For a standalone install:
+
+```sh
+pi install 'npm:@thoth-agents/pi-background-tasks@>=0.3.0'
+```
+
+Restart Pi after installation. The manifest loads the compiled `./dist/index.ts`
+entry; workspace development builds it with `pnpm run build:pi-extensions`.
 
 ```json
 {
@@ -65,6 +80,27 @@ Tool calls/results, completion/failure messages and the Work panel's Background
 section render through the theme's Render KIT when present, discovered through
 `@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
 rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
+
+## Task summary channel
+
+Publishes complete current cwd/session-origin snapshots on pi-core's v1
+`thoth:background:state` channel, with source
+`@thoth-agents/pi-background-tasks` and envelope
+`{ v, source, sessionId, at, data }` (`at` is Unix milliseconds). Data contains
+only task id/name, kind/status, lifecycle times, exit code/signal and dismissal,
+plus status counts; dismissed tasks remain included. The contract permits numeric
+or short-text progress (at most 200 UTF-16 code units), currently omitted by this
+publisher. Commands, argv, environment, results, stdout/stderr, logs and log paths
+are never published.
+
+Subscribe before requesting on `thoth:background:state:request` with `data: {}`
+and the target session ID in the envelope. Requests before readiness are answered
+once by the readiness snapshot. Publications use fresh metadata reads after
+registry changes, including filesystem notifications for another process's
+writes (no polling timers), and on session start/switch. Watches are disposed and
+rebound across session switches and disposed on shutdown. Consumers replace the
+full snapshot; this channel does not change work-panel/history providers or
+retention. See [pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels-v1).
 
 ## Lifecycle and limits
 

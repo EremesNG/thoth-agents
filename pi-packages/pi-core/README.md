@@ -48,6 +48,12 @@ onRequest<T>(events: EventBus, requestChannel: Channel<T>, options: {
 }): () => void;
 isTodoSnapshot(value: unknown): value is TodoSnapshot;
 isTodoStateRequest(value: unknown): value is TodoStateRequest;
+isSubagentsSnapshot(value: unknown): value is SubagentsSnapshot;
+isSubagentsStateRequest(value: unknown): value is SubagentsStateRequest;
+isSubagentsUsageSnapshot(value: unknown): value is SubagentsUsageSnapshot;
+isSubagentsUsageRequest(value: unknown): value is SubagentsUsageRequest;
+isBackgroundSnapshot(value: unknown): value is BackgroundSnapshot;
+isBackgroundStateRequest(value: unknown): value is BackgroundStateRequest;
 ```
 
 `publish` and `request` add the channel version and current timestamp to typed
@@ -116,6 +122,80 @@ request(pi.events, TODO_STATE_REQUEST, {
 
 Transport is within one Pi session runtime. Cross-process delivery, child/parent
 bus sharing and persistence are not provided by this package.
+
+## Task summary and usage channels v1
+
+All definitions, payload types and validators below are exported from the root
+entry, with no runtime Pi/TUI dependency. Each state publication is a complete,
+read-only snapshot, not a delta. Session identity belongs to the envelope.
+
+| Definition | Channel | Data |
+| --- | --- | --- |
+| `SUBAGENTS_STATE_CHANNEL` | `thoth:subagents:state` | `SubagentsSnapshot` |
+| `SUBAGENTS_STATE_REQUEST` | `thoth:subagents:state:request` | `SubagentsStateRequest` |
+| `BACKGROUND_STATE_CHANNEL` | `thoth:background:state` | `BackgroundSnapshot` |
+| `BACKGROUND_STATE_REQUEST` | `thoth:background:state:request` | `BackgroundStateRequest` |
+| `SUBAGENTS_USAGE_CHANNEL` | `thoth:subagents:usage` | `SubagentsUsageSnapshot` |
+| `SUBAGENTS_USAGE_REQUEST` | `thoth:subagents:usage:request` | `SubagentsUsageRequest` |
+
+Every definition has version 1. Producer sources are
+`@thoth-agents/pi-subagents` and `@thoth-agents/pi-background-tasks` respectively;
+request sources identify the consumer package. All three request types are
+`Record<string, never>` and accept only empty plain or null-prototype objects.
+Subscribe before requesting with `data: {}`, as in the task-list example above.
+
+### Subagents
+
+- `SubagentStatus`: `queued | running | stopping | completed | failed |
+  cancelled | interrupted`.
+- `SubagentMode`: `task | background`.
+- `SubagentEffort`: `off | minimal | low | medium | high | xhigh | max`.
+- `SubagentTaskSummary`: required `id`, `agent`, `mode`, `status`, `createdAt`;
+  optional `displayName`, `model`, `effort`, `startedAt`, `endedAt`,
+  `lastActivityAt`, `usage`, `preview`. IDs and agent names are non-empty strings.
+- `SubagentTaskUsage`: optional `input` and `output` token counts and `cost`.
+  Token counts are non-negative safe integers; cost is finite and non-negative.
+- `SubagentsSnapshot`: `tasks: SubagentTaskSummary[]`, `counts: SubagentsCounts`,
+  `totals: SubagentsTotals`. Tasks are the active session's in-memory tasks;
+  totals carry persisted session counts without history task details or IDs.
+- `SubagentsCounts`: all seven status keys, each a non-negative safe integer.
+  `SubagentsTotals`: the same keys plus required non-negative safe integer `total`.
+  Producers normalize missing persisted status counts to zero.
+- `preview` is a string of at most `SUBAGENT_PREVIEW_MAX_LENGTH` (800) UTF-16
+  code units; producers truncate before publication.
+- `SubagentsUsageSnapshot`: exactly `totalCost` (finite non-negative number) and
+  `runCount` (non-negative safe integer), cumulative for the envelope's parent
+  session. There is no `parentSessionId` in data. This channel replaces the raw
+  `thoth:subagent-usage` bus event; the persistence discriminator is unchanged.
+
+### Background tasks
+
+- `BackgroundTaskStatus`: `running | succeeded | failed | cancelled | timed_out`.
+- `BackgroundTaskKind`: `process | command_watch`.
+- `BackgroundTaskSummary`: required `id`, `kind`, `status`, `createdAt`,
+  `startedAt`; optional string `name`, lifecycle times `endedAt`, `deadlineAt`,
+  `lastCheckedAt`, `lastProgressAt`, `stopRequestedAt`, `dismissedAt`, and
+  `exitCode`, `signal`, `progress`, `dismissed`. IDs are non-empty strings.
+  Metadata without a separate creation time uses its `startedAt` as `createdAt`.
+- `exitCode` is a signed safe integer or null; `signal` is a non-empty string or
+  null. `dismissed` is boolean. `progress` is a finite number or a string of at
+  most `BACKGROUND_PROGRESS_MAX_LENGTH` (200) UTF-16 code units, not structured
+  state or command output.
+- `BackgroundSnapshot`: `tasks: BackgroundTaskSummary[]`, `counts:
+  BackgroundCounts`, for the current cwd/session origin, including dismissed
+  tasks. `BackgroundCounts` requires all five status keys as non-negative safe
+  integers.
+
+All lifecycle times in both summaries are non-negative safe integers in Unix
+milliseconds, matching envelope `at`; subagent producers convert ISO timestamps.
+Optional fields may be absent or undefined, but not null except exit code/signal.
+Unlike the task-list contract, these validators reject **every unknown own key**
+on snapshots, task entries, counts, totals and usage, including symbol and
+non-enumerable keys; custom-prototype objects are also rejected. Prompts, context,
+transcripts, results, thread snapshots, questions, commands, argv, environment,
+stdout/stderr and log paths have no place in these payloads. Validators check
+shape and bounds, not count/task consistency, timestamp ordering or lifecycle
+transition rules, and return false on throwing accessors or proxies.
 
 ## Render KIT v1
 
@@ -242,6 +322,12 @@ Import TUI panels from `@thoth-agents/pi-core/panel`, like the existing
 entry remains importable without runtime Pi peers. No runtime coding-agent
 import is added.
 
+The `./panel` entrypoint exports `registerEditorSlot` for shared above-editor
+rows, active editor replacements, and terminal-input routing. Contributions
+retain editor callbacks and app actions. Expanded questions acquire focus through
+owned-overlay handles; collapsed questions return input to the editor, and
+teardown preserves visible foreign-overlay focus.
+
 - `panelVisibleWidth(text)`, `truncatePanelText(text, width)` and
   `padPanelText(text, width)` use terminal cells and preserve ANSI/OSC styling.
 - `renderPanelFrame({ title, rows, width, maxHeight?, theme? })` draws the titled
@@ -339,8 +425,9 @@ Return an empty close label for items with no close action.
 
 The process-wide `Symbol.for('thoth.pi-core.work-panel')` registry shares providers
 and in-flight installations across bundled copies. Each session manager/session
-id has one above-editor widget and one terminal-input listener. Await `ensure`
-in session-start handlers; each call returns an idempotent, reference-counted
+id contributes one above-editor widget and input routing through the shared
+editor-slot owner, which installs one editor factory and terminal-input listener
+per session. Await `ensure` in session-start handlers; each call returns an idempotent, reference-counted
 release. The final release or final provider unregister tears down the host.
 Registering with `pi` also hooks session shutdown automatically. **Context-only
 callers must release on shutdown themselves.** Provider unregister is token-owned,

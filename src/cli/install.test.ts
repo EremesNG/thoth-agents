@@ -217,6 +217,7 @@ describe('install', () => {
       'package:npm:@thoth-agents/pi-todo@>=0.3.0',
       'package:npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'package:npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      'package:npm:@thoth-agents/pi-sidebar@>=0.3.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',

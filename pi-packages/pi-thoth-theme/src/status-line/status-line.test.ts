@@ -179,6 +179,45 @@ describe('registerStatusLine', () => {
     };
   }
 
+  it.each([
+    {
+      mode: 'ascii' as const,
+      before: '$1.000 (sub) | ^10 v10 | cache 0% | — tok/s',
+      after: '$0.500 | ^10 v10 | cache 0% | — tok/s',
+      narrow: '$0.500',
+    },
+    {
+      mode: 'nerd' as const,
+      before:
+        '\uf155 1.000 (sub) · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
+      after:
+        '\uf155 0.500 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
+      narrow: '\uf155 0.500',
+    },
+  ])('preserves literal footer bytes across current-provider changes and cumulative snapshot replacement ($mode)', ({
+    mode,
+    before,
+    after,
+    narrow,
+  }) => {
+    const mocks = createMocks('claude-bridge');
+    const component = createFooter(mocks, { ...defaultConfig, icons: mode });
+    try {
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
+      expect(component.render(120)).toEqual([before]);
+      publishUsage(mocks.events, 'parent-session', 0.2, 2);
+      const currentModel = mocks.ctx.model;
+      if (!currentModel) throw new Error('Missing fixture model');
+      mocks.ctx.model = { ...currentModel, provider: 'anthropic' };
+      for (const handler of mocks.eventHandlers.get('model_select') ?? [])
+        handler();
+      expect(component.render(120)).toEqual([after]);
+      expect(component.render(9)).toEqual([narrow]);
+    } finally {
+      component.dispose();
+    }
+  });
+
   it('sets the footer without registering an editor factory', () => {
     const mocks = createMocks();
     registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
@@ -816,6 +855,11 @@ describe('registerStatusLine', () => {
       providers: undefined,
       expected: '\uf155 1.000 (sub)',
     },
+    {
+      provider: 'antigravity',
+      providers: undefined,
+      expected: '\uf155 1.000 (sub)',
+    },
     { provider: 'anthropic', providers: undefined, expected: '\uf155 1.000' },
     {
       provider: 'custom-subscription',
@@ -823,6 +867,12 @@ describe('registerStatusLine', () => {
       expected: '\uf155 1.000 (sub)',
     },
     { provider: 'claude-bridge', providers: [], expected: '\uf155 1.000' },
+    { provider: 'antigravity', providers: [], expected: '\uf155 1.000' },
+    {
+      provider: 'antigravity',
+      providers: ['claude-bridge'],
+      expected: '\uf155 1.000',
+    },
   ])('marks cost for provider $provider with configured providers $providers', ({
     provider,
     providers,

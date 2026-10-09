@@ -15,6 +15,7 @@ import {
 } from '../render/tools/formatting.js';
 import type { SubagentTask } from '../types.js';
 import { formatTaskSummary } from './background-widget.js';
+import type { SubagentProviderLimitCache } from './provider-limit-cache.js';
 
 function taskState(task: SubagentTask): WorkPanelItemState {
   if (['queued', 'stopping', 'running'].includes(task.status)) return 'running';
@@ -31,7 +32,11 @@ function finiteNonnegative(value: number | undefined): value is number {
 }
 
 /** Snapshot domain metrics here; the host owns styling, animation and width. */
-function taskRow(task: SubagentTask, now: number): WorkPanelRow {
+function taskRow(
+  task: SubagentTask,
+  now: number,
+  limitWarning?: string,
+): WorkPanelRow {
   const summary = formatTaskSummary(task);
   const separator = ` ${resolveIcon('separator', '·')} `;
   const metrics = task.runtime_metrics;
@@ -68,6 +73,9 @@ function taskRow(task: SubagentTask, now: number): WorkPanelRow {
       ...(warning
         ? [{ text: `${separator}${warning}`, role: 'warning' as const }]
         : []),
+      ...(limitWarning
+        ? [{ text: `${separator}${limitWarning}`, role: 'warning' as const }]
+        : []),
     ],
     metrics: parts.map((text) => ({ segments: [{ text, role: 'meta' }] })),
   };
@@ -76,6 +84,7 @@ function taskRow(task: SubagentTask, now: number): WorkPanelRow {
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
   persistedCounts?: SubagentSessionTaskCounts;
+  providerLimits?: Pick<SubagentProviderLimitCache, 'warningText' | 'onChange'>;
   onTaskUpdate(notify: () => void): () => void;
   cancel(id: string, reason: string): unknown;
   open: NonNullable<WorkPanelProvider['open']>;
@@ -158,7 +167,9 @@ export function createSubagentsWorkPanelProvider(source: {
               Buffer.from(a.id, 'utf8'),
             ),
         )
-        .map((task) => taskRow(task, now)),
+        .map((task) =>
+          taskRow(task, now, source.providerLimits?.warningText(task.id, now)),
+        ),
     detail: () => null,
     armCloseLabel: (row) => {
       const task = taskById(row.id);
@@ -183,8 +194,10 @@ export function createSubagentsWorkPanelProvider(source: {
     onVisibleChanged: (notify) => {
       listeners.add(notify);
       const unsubscribe = source.onTaskUpdate(notify);
+      const unsubscribeLimits = source.providerLimits?.onChange(notify);
       return () => {
         listeners.delete(notify);
+        unsubscribeLimits?.();
         unsubscribe();
       };
     },

@@ -32,19 +32,20 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   eight selected packages, including
+   nine selected packages, including
    `npm:@thoth-agents/pi-subagents@>=0.3.0`,
    `npm:@thoth-agents/pi-todo@>=0.3.0`,
    `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and
-   `npm:@thoth-agents/pi-background-tasks@>=0.3.0`, plus four external skills.
+   `npm:@thoth-agents/pi-background-tasks@>=0.3.0` and
+   `npm:@thoth-agents/pi-sidebar@>=0.3.0`, plus four external skills.
    Published installs also invoke provider-owned thoth-mem; an
    explicit local Pi package install leaves thoth-mem to its separate local
    installer. Pi and the separate `@thoth-agents/pi-subagents` runtime retain
    delegation execution and task lifecycle ownership. pi-subagents registers
    `/subagents-model` and `/subagents-tools` on pi-core's shared list-editor
    shell; thoth-agents registers only the optional managed-specialist tools
-   adapter, not the tools command. Compatible user copies of theme and background
-   tasks from any source are preserved and verified; older or ambiguous copies
+   adapter, not the tools command. Compatible user copies of theme, background
+   tasks and sidebar from any source are preserved and verified; older or ambiguous copies
    block completion rather than being replaced.
 
 Pi task summaries cross package boundaries as snapshots on pi-core's
@@ -55,6 +56,21 @@ cumulative cost/run count on `thoth:subagents:usage` and requests it through
 `thoth:subagents:usage:request`. The raw `thoth:subagent-usage` bus event is removed
 (the checkpoint type stays); upgrade pi-subagents and pi-thoth-theme to `>=0.3.0`
 together. See [channel contracts and request semantics](harness-packaging.md#pi-task-channels).
+
+## Pi provider observations
+
+Provider limits use pi-core's process-wide versioned `Symbol.for` registry, not
+an EventBus channel: in-process children share `globalThis` but have isolated
+buses. Limits are account-wide, with the observing query's session id attached.
+Claude SDK events report from root and child queries; pi-subagents captures live
+child attribution in a bounded per-task cache so row/detail warnings survive
+teardown and later account-wide replacement without changing task status.
+Quota remains on demand through experimental `/claude quota` and `/agy quota`,
+never periodic or sidebar quota state. Antigravity's explicit catalog mapping
+reports API-equivalent cost into message/session/subagent totals; the theme's
+default subscription list includes `antigravity`, with existing `(sub)` logic.
+The bridges and pi-openai-fast remain operator-installed, not CLI-managed. See
+[contracts, commands and pricing](harness-packaging.md#pi-provider-status-and-subscription-cost).
 
 ## Pi editor-area UI
 
@@ -81,6 +97,24 @@ to the expanded questionnaire or otherwise the mounted root editor. Acquisition
 uses owned-overlay handles to prevent focus recapture; collapse and teardown do
 not steal focus from a still-visible foreign overlay. See
 [the dock and focus contract](harness-packaging.md#pi-question-dock-and-editor-slot).
+
+## Pi sidebar
+
+pi-sidebar owns guarded, owner-restored layout adapters: a fullscreen right
+HStack column and a regular-mode reduced main render plus decorative overlay.
+It is read-only, leaves editor/footer ownership unchanged, and falls back to no
+sidebar on unsupported private Pi seams. Only the regular live viewport is
+supported, not historical scrollback. Built-in Session/Workspace panels coexist
+with bounded discovered work-source panels; Workspace's own git reader is
+event-driven and works without the theme.
+
+pi-core's process-wide UI-preferences registry unions owner-declared absorbed
+work sources. The host excludes them from rendering, selection and focus until
+released. Decorative overlay registration lets editor-slot/Work guards ignore
+the sidebar without ignoring foreign dialogs. Old first-owner closures cannot
+be patched in place; detected old owners disable the regular mount. Both the
+theme status line and Session panel share core cost arithmetic and current-provider
+subscription classification. See [controls and compatibility](harness-packaging.md#pi-sidebar-and-ui-coordination).
 
 ## Boundaries
 

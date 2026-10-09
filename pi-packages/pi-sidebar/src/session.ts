@@ -1,0 +1,310 @@
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from '@earendil-works/pi-coding-agent';
+import type { TUI } from '@earendil-works/pi-tui';
+import {
+  hasBlockingOverlay,
+  isWorkPanelRootEditorInputActive,
+  listWorkPanelSources,
+  type RenderKitTheme,
+  registerUIPreferences,
+  request,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+  subscribe,
+  subscribeWorkPanelRegistry,
+  updateUIPreferences,
+  withdrawUIPreferences,
+} from '@thoth-agents/pi-core';
+import {
+  changePanel,
+  loadConfig,
+  loadSubscriptionProviders,
+  reconcilePanels,
+  type SidebarConfig,
+  saveConfig,
+} from './config.js';
+import { SidebarControls } from './controls.js';
+import {
+  createFullscreenAdapter,
+  createInlineAdapter,
+  type LayoutAdapter,
+} from './layout/index.js';
+import { concreteRenderer } from './layout/renderer.js';
+import { SidebarPanels } from './panels/sidebar.js';
+import { WorkspaceReader, type WorkspaceSnapshot } from './panels/workspace.js';
+
+export class SidebarSession {
+  private context: ExtensionContext;
+  private readonly config: SidebarConfig;
+  private readonly controls: SidebarControls;
+  private readonly adapter: LayoutAdapter;
+  private readonly panels: SidebarPanels;
+  private readonly workspaceReader: WorkspaceReader;
+  private workspace: WorkspaceSnapshot;
+  private subagentCost = 0;
+  private preference: symbol | undefined;
+  private absorbed = '';
+  private appliedWidth = 44;
+  private resizeStatus = false;
+  private mounted = false;
+  private disposed = false;
+  private readonly releases: Array<() => void> = [];
+
+  constructor(
+    pi: ExtensionAPI,
+    ctx: ExtensionContext,
+    private readonly tui: TUI,
+    theme: RenderKitTheme,
+  ) {
+    this.context = ctx;
+    this.config = loadConfig();
+    this.controls = new SidebarControls(this.config.startup);
+    this.workspace = { cwd: ctx.cwd, status: 'Reading git status…' };
+    this.workspaceReader = new WorkspaceReader(ctx.cwd, (snapshot) => {
+      this.workspace = snapshot;
+      this.refresh();
+    });
+    this.discover();
+    this.panels = new SidebarPanels({
+      config: this.config,
+      context: () => this.context,
+      theme,
+      thinking: () => pi.getThinkingLevel(),
+      subscriptionProviders: loadSubscriptionProviders(),
+      subagentCost: () => this.subagentCost,
+      workspace: () => this.workspace,
+      height: () => tui.terminal.rows,
+    });
+    const diagnostic = (message: string) => ctx.ui.notify(message, 'warning');
+    this.adapter =
+      tui.mode === 'fullscreen'
+        ? createFullscreenAdapter(tui, diagnostic, () => this.sync())
+        : createInlineAdapter(tui, diagnostic, () => this.sync());
+    // Set visibility before mounting to avoid a briefly visible overlay at startup off.
+    this.adapter.setVisible(this.controls.sync(tui.terminal.columns));
+    this.appliedWidth = this.controls.effectiveWidth(tui.terminal.columns);
+    this.mounted = this.adapter.mount(this.panels, this.appliedWidth);
+    if (!this.mounted) return;
+    this.releases.push(
+      subscribeWorkPanelRegistry(() => {
+        this.discover();
+        this.refresh();
+      }),
+    );
+    this.releases.push(
+      subscribe(pi.events, SUBAGENTS_USAGE_CHANNEL, {
+        sessionId: ctx.sessionManager.getSessionId(),
+        onSnapshot: ({ data }) => {
+          this.subagentCost = data.totalCost;
+          this.refresh();
+        },
+      }),
+    );
+    const input = (data: string) => this.input(data);
+    this.releases.push(ctx.ui.onTerminalInput(input));
+    if (tui.mode === 'fullscreen') {
+      // Pi's viewport selection listener otherwise consumes divider mouse input.
+      // Only reorder our own registration; deleting it restores foreign ordering.
+      const listeners: unknown = (
+        concreteRenderer(tui) as TUI & { inputListeners?: unknown }
+      ).inputListeners;
+      if (listeners instanceof Set && listeners.delete(input)) {
+        const existing = [...listeners];
+        listeners.clear();
+        listeners.add(input);
+        for (const listener of existing) listeners.add(listener);
+      }
+    }
+    this.sync();
+    request(pi.events, SUBAGENTS_USAGE_REQUEST, {
+      sessionId: ctx.sessionManager.getSessionId(),
+      source: '@thoth-agents/pi-sidebar',
+      data: {},
+    });
+    this.workspaceReader.refresh();
+  }
+  private discover(): void {
+    reconcilePanels(this.config, [
+      'session',
+      'workspace',
+      ...listWorkPanelSources().map((source) => source.id),
+    ]);
+  }
+  /** Called by a zero-row widget on every main render, including when hidden. */
+  sync(): void {
+    if (this.disposed || !this.mounted) return;
+    const visible = this.controls.sync(this.tui.terminal.columns);
+    const width = this.controls.effectiveWidth(this.tui.terminal.columns);
+    if (this.appliedWidth !== width) {
+      this.appliedWidth = width;
+      this.adapter.setWidth(width);
+    }
+    this.setResizeStatus(this.controls.resizing);
+    this.adapter.setVisible(visible);
+    const displayed = this.adapter.isDisplayed();
+    const ids = displayed ? this.panels.sourceIds() : [];
+    const key = JSON.stringify(ids);
+    if (!displayed || ids.length === 0) {
+      if (this.preference) withdrawUIPreferences(this.preference);
+      this.preference = undefined;
+      this.absorbed = '';
+    } else if (!this.preference) {
+      this.preference = registerUIPreferences({
+        absorbedWorkPanelSources: ids,
+        isActive: () => this.adapter.isDisplayed(),
+      });
+      this.absorbed = key;
+    } else if (this.absorbed !== key) {
+      updateUIPreferences(this.preference, {
+        absorbedWorkPanelSources: ids,
+        isActive: () => this.adapter.isDisplayed(),
+      });
+      this.absorbed = key;
+    }
+  }
+  refresh(ctx?: ExtensionContext, workspace = false): void {
+    if (this.disposed) return;
+    if (ctx) this.context = ctx;
+    if (workspace) this.workspaceReader.refresh();
+    this.sync();
+    this.tui.requestRender();
+  }
+  private inputActive(): boolean {
+    return (
+      !hasBlockingOverlay(this.tui) &&
+      isWorkPanelRootEditorInputActive(this.context) !== false
+    );
+  }
+  private setResizeStatus(active: boolean): void {
+    if (active === this.resizeStatus) return;
+    this.resizeStatus = active;
+    this.context.ui.setStatus(
+      'thoth-sidebar-resize',
+      active
+        ? 'Sidebar width: ←/→ · Shift 4 · Enter confirm · Esc revert'
+        : undefined,
+    );
+  }
+  beginResize(ctx: ExtensionContext): void {
+    this.context = ctx;
+    this.sync();
+    if (!this.mounted || !this.inputActive() || !this.controls.beginResize())
+      return;
+    this.setResizeStatus(true);
+    this.tui.requestRender();
+  }
+  private input(data: string): { consume: true } | undefined {
+    if (this.disposed || !this.mounted) return;
+    this.sync();
+    if (!this.inputActive()) {
+      const resizing = this.controls.resizing;
+      this.controls.cancelResize();
+      this.setResizeStatus(false);
+      if (resizing) this.refresh();
+      return;
+    }
+    if (this.controls.key(data, this.tui.terminal.columns)) {
+      this.setResizeStatus(this.controls.resizing);
+      this.refresh();
+      return { consume: true };
+    }
+    // SGR coordinates are one-based. Read raw input before the layout routes it,
+    // so the one-column hit target also covers the main side of the divider.
+    if (this.tui.mode === 'fullscreen' && data.startsWith('\x1b[<')) {
+      const mouse = data.slice(3).match(/^(\d+);(\d+);(\d+)([Mm])$/);
+      if (mouse) {
+        const button = Number(mouse[1]);
+        if (
+          Number.isSafeInteger(button) &&
+          Number.isSafeInteger(Number(mouse[2])) &&
+          Number(mouse[2]) > 0 &&
+          Number.isSafeInteger(Number(mouse[3])) &&
+          Number(mouse[3]) > 0 &&
+          (button & 64) === 0 &&
+          (button & 3) === 0
+        ) {
+          const type =
+            mouse[4] === 'm' ? 'release' : button & 32 ? 'drag' : 'press';
+          if (
+            this.controls.mouse(
+              type,
+              Number(mouse[2]) - 1,
+              this.tui.terminal.columns,
+            )
+          ) {
+            this.refresh();
+            return { consume: true };
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+  command(args: string, ctx: ExtensionContext): void {
+    this.context = ctx;
+    this.sync();
+    const [command = '', action, id, ...extra] = args.trim().split(/\s+/);
+    if (command === 'panels') {
+      this.discover();
+      if (!action) {
+        const sources = listWorkPanelSources();
+        ctx.ui.notify(
+          this.config.panels
+            .map(
+              (panel) =>
+                `${panel.visible ? 'on ' : 'off'} ${panel.id}${!['session', 'workspace'].includes(panel.id) && !sources.some((source) => source.id === panel.id) ? ' (unavailable)' : ''}`,
+            )
+            .join('\n'),
+          'info',
+        );
+        return;
+      }
+      if (!id || extra.length || !changePanel(this.config, action, id)) {
+        this.help(ctx);
+        return;
+      }
+      this.persist(ctx);
+    } else if (
+      command === 'startup' &&
+      !id &&
+      (action === 'auto' || action === 'manual' || action === 'off')
+    ) {
+      this.config.startup = action;
+      this.persist(ctx);
+    } else if (!action && this.controls.command(command)) {
+      this.setResizeStatus(this.controls.resizing);
+    } else {
+      this.help(ctx);
+      return;
+    }
+    this.refresh();
+  }
+  private help(ctx: ExtensionContext): void {
+    ctx.ui.notify(
+      '/sidebar [auto|manual|on|off] · panels [show|hide|up|down <id>] · startup auto|manual|off',
+      'info',
+    );
+  }
+  private persist(ctx: ExtensionContext): void {
+    try {
+      saveConfig(this.config);
+    } catch (error) {
+      ctx.ui.notify(
+        `Sidebar preferences were not saved: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+      );
+    }
+  }
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.workspaceReader.dispose();
+    for (const off of this.releases.splice(0).reverse()) off();
+    if (this.preference) withdrawUIPreferences(this.preference);
+    this.preference = undefined;
+    this.setResizeStatus(false);
+    this.adapter.dispose();
+  }
+}

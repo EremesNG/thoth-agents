@@ -197,6 +197,62 @@ stdout/stderr and log paths have no place in these payloads. Validators check
 shape and bounds, not count/task consistency, timestamp ordering or lifecycle
 transition rules, and return false on throwing accessors or proxies.
 
+## Provider limits v1
+
+Account-wide rate-limit observations are shared across in-process root and child
+sessions, including separately loaded pi-core copies. This registry has no event
+bus, UI, runtime Pi/TUI dependency, persistence, quota fetching, or timers.
+
+```ts
+import {
+  reportProviderLimit, listProviderLimits, subscribeProviderLimits,
+  type ProviderLimitEntry,
+} from '@thoth-agents/pi-core';
+
+reportProviderLimit({
+  provider: 'claude-bridge', window: 'five_hour', status: 'allowed_warning',
+  utilization: 0.9, resetsAt: Date.now() + 60_000, observedAt: Date.now(),
+  windowType: 'five_hour', sessionId: observingSessionId,
+});
+const off = subscribeProviderLimits((entry) => {
+  // Capture entry.sessionId attribution here, before the child session tears down.
+});
+const limits = listProviderLimits(); // Optional now argument in Unix milliseconds.
+off(); // Idempotent; releases only this subscription.
+```
+
+- `reportProviderLimit(entry: unknown): boolean` accepts only a valid
+  `ProviderLimitEntry`; invalid reports return `false`, are ignored, and never
+  throw. The latest report replaces the previous value for that provider/window,
+  even if observed by another session.
+- Required fields: non-empty strings `provider`, `window`, `sessionId`; `status`
+  (`allowed | allowed_warning | rejected`); `observedAt` (Unix milliseconds).
+- Optional fields: `utilization` (finite 0..1 fraction), `resetsAt` (Unix
+  milliseconds), `windowType` (non-empty string), and boolean `overageInUse`,
+  `overageEnabled`, `isUsingOverage`. Window keys/types are open strings, including
+  `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, and `overage`.
+  Times are non-negative safe integers. Optional fields may be absent or
+  undefined, not null. Plain and null-prototype objects are accepted; every
+  unknown own key (including symbol/non-enumerable keys), custom prototype, or
+  malformed field is rejected. Throwing accessors/proxies are ignored.
+- `listProviderLimits(now?: number): ProviderLimitEntry[]` returns immutable
+  observation snapshots in insertion order. When `resetsAt <= now`, that entry
+  reads as `allowed` with no `utilization` field; the stored observation is not
+  changed and listeners are not notified by reads. Other metadata is retained.
+- `subscribeProviderLimits(listener: ProviderLimitListener): () => void` runs
+  listeners synchronously with the immutable **reported entry**, not an expiry
+  projection or a later replacement. Throwing listeners are isolated. There is
+  no initial replay; subscribe before reporting when attribution matters.
+  Each subscription is independent, even for the same callback. New listeners
+  join the next report (including nested reports); disposal stops delivery.
+
+The versioned ownership slot is
+`globalThis[Symbol.for('thoth.pi-core.provider-limits.v1')]`. Incompatible or
+malformed owners are left untouched: reporting returns `false`, listing returns
+`[]`, and subscriptions return inert disposers. Consumers needing per-task
+history must capture reports themselves because registry replacement is
+account-wide, not session-scoped.
+
 ## Render KIT v1
 
 `ThothRenderKit` describes the theme-owned visual language. The render-kit
@@ -585,3 +641,56 @@ Summary lines share the single cursor with item rows: left focuses, up/down move
 Enter invokes `openHistory(ctx)`, Esc/right release. They have no close action;
 the hint advertises history only when an opener exists. Like `open`, asynchronous
 `openHistory` must resolve only once its UI closes so host input stays suspended.
+
+### Sidebar UI preferences and decorative overlays
+
+`registerUIPreferences({ absorbedWorkPanelSources: ['agents'] })` returns an
+owner token. `updateUIPreferences(token, preferences)` replaces that owner's
+preferences; `withdrawUIPreferences(token)` releases them idempotently.
+`getUIPreferences()` returns an isolated snapshot of the union of all owners;
+`subscribeUIPreferences(listener: () => void)` returns an unsubscribe function.
+Registration and updates copy the supplied source list; stale tokens cannot
+update or withdraw another owner. Notifications are synchronous and isolate
+throwing listeners; subscription has no initial replay. These preferences are process-wide, shared
+across bundles under `Symbol.for('thoth.pi-core.ui-preferences.v1')`. Hosts refresh
+immediately on changes: absorbed sources neither render nor participate in
+selection or left-arrow focus. Releasing the last absorbing owner restores them.
+An owner may supply `isActive?: () => boolean` with its preferences. Each
+`getUIPreferences()` collection evaluates it; false or throwing predicates exclude
+only that owner's sources. The host collects on every render, selection and
+left-arrow focus check, so a foreign UI takeover restores rows without a separate
+refresh tick or polling. Owners should check their actual display ownership and
+still withdraw preferences when they detect display loss. Updates replace the
+predicate as well as the source list; omission means always active. This optional
+field retains the v1 registry key and shape compatibility: old hosts ignore it
+and still rely on explicit withdrawal; no mixed-version host upgrade is implied.
+Discovery and explicit source actions remain available to read-only consumers.
+
+`registerDecorativeOverlay(tui, component)` marks a component for that TUI and
+returns an idempotent disposer. Register **before** mounting a non-capturing
+sidebar overlay. An `undefined` result means unsupported private overlay shape
+or a pre-feature first-owner editor/work-panel host: disable the regular-mode
+sidebar with a diagnostic, without mounting the overlay. Existing ownership
+slots are never upgraded in place; update related extensions and `/reload`.
+`hasBlockingOverlay(tui)` ignores registered decorative components, but yields
+to every other visible overlay, including non-capturing ones. Visibility uses
+`hidden` and `options.visible(columns, rows)`, not rendered bounds; unsupported
+stacks fall back to `hasOverlay()` conservatively. Disposing a registration does
+not hide its overlay, so callers must also release the Pi overlay handle.
+
+### Shared session cost
+
+These helpers are exported from the package root, with no runtime Pi/TUI
+imports. The theme status line and sidebar Session panel use the same arithmetic.
+
+`computeSessionCost(entries, { subscriptionProviders, providerOf } = {})` returns
+`{ cost, isSubscription }`. It sums assistant/tool-result usage plus compaction,
+branch-summary and usage entries. `providerOf: () => ctx.model?.provider` samples
+the **current** provider for subscription classification; historical providers
+are not used. The caller supplies its configured subscription provider list.
+
+`combineSessionAndSubagentCost(sessionCost: number, latestSubagentCost = 0)`
+returns the combined numeric cost (pass the result's `cost`, not the object). The subagent usage channel publishes cumulative snapshots:
+replace the previous snapshot with `data.totalCost`, never accumulate snapshots,
+and reset it when changing sessions. These helpers do not format output or
+subscribe to lifecycle events.

@@ -33,6 +33,8 @@ import { formatDuration } from "@thoth-agents/pi-core";
 import { createAskClaudeRenderers } from "./askclaude-render.js";
 import { AppendInstructions } from "./append-instructions.js";
 import { createPublishedToolRegistrar } from "./tool-publication.js";
+import { reportClaudeProviderLimit } from "./provider-limits.js";
+import { fetchClaudeQuota } from "./quota.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -58,6 +60,15 @@ const CC_CHILD_ENV = {
 	ENABLE_CLAUDEAI_MCP_SERVERS: "0",
 	DISABLE_AUTO_COMPACT: "1",
 } as const;
+
+function claudeChildOptions(cwd = process.cwd()) {
+	const executable = providerSettings.pathToClaudeCodeExecutable;
+	return {
+		cwd,
+		env: { ...process.env, ...CC_CHILD_ENV },
+		...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
+	};
+}
 
 // Pi owns context files on the provider path, so Claude Code must not load its
 // own on top: otherwise a project CLAUDE.md arrives twice, and the user's
@@ -553,6 +564,12 @@ function isolatedStreamFn(model: Model<any>, context: Context, options?: SimpleS
 	return stream;
 }
 
+// Pi's summarizers may generate a synthetic routing id; takeovers must use the
+// event session, captured before either summary in a split turn starts.
+function isolatedStreamForSession(sessionId: string | undefined): typeof isolatedStreamFn {
+	return (model, context, options) => isolatedStreamFn(model, context, { ...options, sessionId });
+}
+
 async function runIsolatedSummary(
 	model: Model<any>,
 	context: Context,
@@ -564,6 +581,7 @@ async function runIsolatedSummary(
 	// (issue #106). toBridgeContext restores the prompt/tools fields the extraction
 	// assertion below assumes; the summarization prompt still reaches CC as its systemPrompt.
 	context = toBridgeContext(context);
+	const piSessionId = options?.sessionId;
 	let sdkQuery: ReturnType<typeof query> | undefined;
 	let wasAborted = false;
 	const onAbort = () => {
@@ -589,7 +607,7 @@ async function runIsolatedSummary(
 		const cliModel = claudeCodeModelId(model, longContextSettings);
 		debug(`compact summary: spawn model=${cliModel} registeredModel=${model.id} promptLen=${promptText.length}`);
 
-		sdkQuery = query({
+		sdkQuery = auxiliaryQueryImpl({
 			prompt: promptText,
 			options: {
 				cwd,
@@ -619,6 +637,7 @@ async function runIsolatedSummary(
 		let firstEventLogged = false;
 
 		for await (const message of sdkQuery) {
+			reportClaudeProviderLimit(message, piSessionId);
 			if (!firstEventLogged) {
 				debug(`compact summary: first event type=${message.type}`);
 				firstEventLogged = true;
@@ -868,16 +887,20 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 	return { sessionId: session.sessionId };
 }
 
-// The SDK's query(), or a test double (see setQuery). The compact/summary
-// path calls the real query() directly — its subprocess must never be swapped
-// out from under a real compaction.
+// Provider doubles must not swap out the isolated summary / AskClaude subprocesses.
 let queryImpl: typeof query = query;
+let auxiliaryQueryImpl: typeof query = query;
 
 // @internal
 export const __test = {
 	setQuery(fn: typeof query | null) {
 		queryImpl = fn ?? query;
 	},
+	setAuxiliaryQuery(fn: typeof query | null) {
+		auxiliaryQueryImpl = fn ?? query;
+	},
+	isolatedStreamFn,
+	promptAndWait,
 	resetSharedSession(piSessionId?: string | null) {
 		// No id: full reset (the pre-map semantics — tests start from a blank slate).
 		if (piSessionId === undefined) {
@@ -1508,10 +1531,12 @@ async function consumeQuery(
 	wasAborted: () => boolean,
 	queryCtx: QueryContext,
 	recordingAppend?: string,
+	piSessionId = queryCtx.piSessionId,
 ): Promise<{ capturedSessionId?: string }> {
 	let capturedSessionId: string | undefined;
 
 	for await (const message of sdkQuery) {
+		reportClaudeProviderLimit(message, piSessionId);
 		if (RECORD_STREAM_PATH) appendFileSync(RECORD_STREAM_PATH, `${JSON.stringify(message)}\n`);
 		if (wasAborted()) break;
 		// Everything below the currentPiStream guard is content, which there is
@@ -2029,7 +2054,6 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// programmatically and ignore filesystem MCP entries — applied unconditionally because
 	// settingSources is left at CC's default, which loads all sources.
 	const strictMcpConfigEnabled = providerSettings.strictMcpConfig !== false;
-	const claudeExecutable = providerSettings.pathToClaudeCodeExecutable;
 
 	// Prefer the model's own thinkingLevelMap (per-model overrides — e.g. a map can
 	// route xhigh→xhigh where the generic table maps xhigh→max). pi-ai's catalog
@@ -2062,7 +2086,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// also autocompact would double-flush the prompt cache and races pi's
 	// threshold with CC's, including CC's anti-thrashing guard (issue #8).
 	// Manual /compact in CC still works (we never invoke it).
-	const childEnv = { ...process.env, ...CC_CHILD_ENV };
+	const childOptions = claudeChildOptions(cwd);
 	// Test-only control for the opt-in recording probe; not a user configuration.
 	const appendRefreshEnabled = process.env.CLAUDE_BRIDGE_TESTING_DISABLE_APPEND_REFRESH !== "1";
 	let appendRefreshActive = true;
@@ -2071,8 +2095,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		: undefined;
 	debug(`append-refresh: enabled=${appendRefreshEnabled} registered=${Boolean(appendRefreshHooks)} sessionId=${resumeSessionId ?? "none"}`);
 	const queryOptions: NonNullable<Parameters<typeof query>[0]["options"]> = {
-		cwd,
-		env: childEnv,
+		...childOptions,
 		tools: [],
 		permissionMode: "bypassPermissions",
 		includePartialMessages: true,
@@ -2099,7 +2122,6 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		...(mcpServers ? { mcpServers } : {}),
 		...(resumeSessionId ? { resume: resumeSessionId } : {}),
 		...(appendRefreshHooks ? { hooks: appendRefreshHooks } : {}),
-		...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
 		...makeCliDebugOptions("provider"),
 	};
 
@@ -2171,7 +2193,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	};
 
 	// Background consumer — runs until query ends
-	initializeHooks().then(() => consumeQuery(sdkQuery, customToolNameToPi, model, () => wasAborted, queryCtx, systemPromptAppend ?? ""))
+	initializeHooks().then(() => consumeQuery(sdkQuery, customToolNameToPi, model, () => wasAborted, queryCtx, systemPromptAppend ?? "", piSessionId))
 		.then(async ({ capturedSessionId }) => {
 			debug(`provider: consumeQuery completed, stopReason=${queryCtx.turnOutput?.stopReason}, error=${queryCtx.turnOutput?.errorMessage}, aborted=${wasAborted}`);
 
@@ -2378,7 +2400,7 @@ async function promptAndWait(
 	// removes the Skill tool and the listing with it — but AskClaude runs on CC's native
 	// tools, so it has to be asked for. Pi-side skills still arrive via skillsBlock below,
 	// which is meant to be the only channel.
-	const sdkQuery = query({
+	const sdkQuery = auxiliaryQueryImpl({
 		prompt,
 		options: {
 			cwd,
@@ -2417,6 +2439,7 @@ async function promptAndWait(
 
 	try {
 		for await (const message of sdkQuery) {
+			reportClaudeProviderLimit(message, askClaudeSessionId);
 			if (wasAborted) break;
 			sdkMessageCount++;
 
@@ -2512,6 +2535,25 @@ export default function (pi: ExtensionAPI) {
 			forceTwoHundredK,
 		};
 	}
+	const quotaDescription = "Show Claude plan quota (experimental SDK usage API)";
+	let quotaConflictNotified = false;
+	pi.registerCommand?.("claude", {
+		description: quotaDescription,
+		handler: async (args, ctx) => {
+			if (args.trim() !== "quota") {
+				ctx.ui.notify("Usage: /claude quota", "info");
+				return;
+			}
+			const output = await fetchClaudeQuota(auxiliaryQueryImpl, {
+				...claudeChildOptions(),
+				settings: { ...claudeCodeSettings(providerSettings), claudeMdExcludes: CLAUDE_MD_EXCLUDES, includeGitInstructions: false },
+				permissionMode: "bypassPermissions",
+				strictMcpConfig: true,
+				...makeCliDebugOptions("quota"),
+			}, ctx.sessionManager.getSessionId());
+			ctx.ui.notify(output, output.startsWith("Claude quota failed:") ? "error" : "info");
+		},
+	});
 	const registeredModels = applyLongContext(MODELS, longContextSettings);
 	if (registeredModels.length === 0) {
 		console.error("claude-bridge: no models available from pi-ai's anthropic catalog — update @earendil-works/pi-ai (requires >=0.99.0)");
@@ -2534,6 +2576,15 @@ export default function (pi: ExtensionAPI) {
 		historyRewrittenBySession.delete(piSessionId);
 	};
 	pi.on("session_start", (event, ctx) => {
+		// getCommands is unavailable at activation. Pi may suffix duplicate names
+		// (claude:1) or older hosts may shadow our command; warn, never auto-rename.
+		const commands = (pi.getCommands?.() ?? []).filter((command) => /^claude(?::\d+)?$/.test(command.name));
+		const others = commands.filter((command) => command.description !== quotaDescription);
+		if (!quotaConflictNotified && (others.length > 0 || commands.length > 1)) {
+			const conflicts = (others.length ? others : commands).map((command) => `/${command.name} (${command.sourceInfo?.path ?? command.description ?? "unknown extension"})`);
+			ctx.ui?.notify(`Claude command conflict: ${conflicts.join(", ")}. Resolve duplicate extension commands to restore /claude quota; the bridge command still works when invoked.`, "warning");
+			quotaConflictNotified = true;
+		}
 		piUI = ctx.ui;
 		piMode = ctx.mode;
 		const sessionId = ctx.sessionManager?.getSessionId() ?? null;
@@ -2626,6 +2677,7 @@ export default function (pi: ExtensionAPI) {
 		);
 		try {
 			reinjectPriorCompactionFileOps(event.branchEntries, event.preparation);
+			const summaryStream = isolatedStreamForSession(ctx.sessionManager?.getSessionId());
 			const compaction = await compact(
 				event.preparation,
 				ctx.model,
@@ -2634,7 +2686,7 @@ export default function (pi: ExtensionAPI) {
 				event.customInstructions,
 				event.signal,
 				undefined,
-				isolatedStreamFn,
+				summaryStream,
 				undefined,
 			);
 			debug(`session_before_compact: takeover complete summaryLen=${compaction.summary.length}`);
@@ -2684,12 +2736,13 @@ export default function (pi: ExtensionAPI) {
 		if (!userWantsSummary || entriesToSummarize.length === 0) return undefined;
 		debug(`session_before_tree: takeover entries=${entriesToSummarize.length} target=${event.preparation.targetId.slice(0, 8)}`);
 		try {
+			const summaryStream = isolatedStreamForSession(ctx.sessionManager?.getSessionId());
 			const result = await generateBranchSummary(entriesToSummarize, {
 				model: ctx.model,
 				signal: event.signal,
 				customInstructions,
 				replaceInstructions,
-				streamFn: isolatedStreamFn,
+				streamFn: summaryStream,
 			});
 			return branchSummaryOutcome(result);
 		} catch (err) {

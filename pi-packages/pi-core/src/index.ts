@@ -21,12 +21,25 @@ export {
   request,
   subscribe,
 } from './channels.js';
+export {
+  hasBlockingOverlay,
+  registerDecorativeOverlay,
+} from './decorative-overlay.js';
 export { formatDuration } from './duration.js';
 export type {
   OwnedOverlayFactory,
   OwnedOverlayOptions,
 } from './owned-overlay.js';
 export { openOwnedOverlay } from './owned-overlay.js';
+export type {
+  ProviderLimitEntry,
+  ProviderLimitListener,
+} from './provider-limits.js';
+export {
+  listProviderLimits,
+  reportProviderLimit,
+  subscribeProviderLimits,
+} from './provider-limits.js';
 export type {
   RenderCardOptions,
   RenderCardSection,
@@ -57,6 +70,15 @@ export {
   resolveStatusGlyph,
   withdrawRenderKit,
 } from './render-kit.js';
+export type {
+  SessionCost,
+  SessionCostEntry,
+  SessionCostOptions,
+} from './session-cost.js';
+export {
+  combineSessionAndSubagentCost,
+  computeSessionCost,
+} from './session-cost.js';
 export type {
   SubagentEffort,
   SubagentMode,
@@ -104,6 +126,14 @@ export {
   getToolDefinitionRegistryVersion,
   publishToolDefinitions,
 } from './tool-registry.js';
+export type { UIPreferences, UIPreferencesToken } from './ui-preferences.js';
+export {
+  getUIPreferences,
+  registerUIPreferences,
+  subscribeUIPreferences,
+  updateUIPreferences,
+  withdrawUIPreferences,
+} from './ui-preferences.js';
 export type {
   WorkPanelAction,
   WorkPanelActionResult,

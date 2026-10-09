@@ -21,6 +21,8 @@ Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/
 pi install npm:@thoth-agents/pi-claude-bridge
 ```
 
+Install this bridge manually; the Thoth installer does not manage it.
+
 Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
 dependencies are pinned to `1.0.2` in the root workspace lockfile.
 
@@ -41,6 +43,33 @@ Claude Code 2.1.286 persists each hook `additionalContext` value **over 10,000 J
 The model list comes from pi-ai's Anthropic catalog automatically — when pi-ai adds a new Claude model, it appears in `/model` after updating the package, no bridge update needed. Dated snapshot ids (e.g. `claude-opus-4-5-20251101`) are not shown.
 
 **1M Context:** Fable 5/5.1, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 get 1M context. Opus 4.6 gets 1M only on a Max plan or with Extra Usage, and Sonnet 4.6 only with Extra Usage — set `provider.plan` and/or `provider.longContextExtraUsage` as described in [Configuration](#configuration).
+
+### Rate limits and `/claude quota`
+
+Claude SDK rate-limit events are reported synchronously to the process-wide
+`@thoth-agents/pi-core` provider-limits registry as `claude-bridge` observations.
+Each report carries the producing query's Pi session id (including child sessions,
+AskClaude and summaries), utilization as a 0..1 fraction and reset time in Unix
+milliseconds. Existing warning notifications are unchanged.
+
+Run `/claude quota` to show current plan usage: 5-hour and weekly windows,
+Opus/Sonnet and model-specific windows when available, plus extra usage.
+Percentages are shown directly from the response's 0–100 scale; reset times are
+shown in your local timezone. The command reuses the bridge's working directory,
+child environment and configured Claude Code executable, sends **no prompt**,
+enables no tools and closes its short-lived CLI query on every exit path. It times
+out after 30 seconds. Nothing is fetched periodically or added to sidebar quota
+state.
+
+**Experimental:** this uses the SDK's
+`usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })`
+control request. Its API and response shape may change. If the method is missing,
+update the Claude Agent SDK and Claude Code. Plan data is unavailable for API-key,
+Bedrock and Vertex authentication (or missing Claude profile scope); the command
+explains this instead of showing zero usage. Timeout and request failures are also
+reported explicitly. If another extension registers `/claude`, startup warns once
+with its command/source; resolve the duplicate rather than relying on Pi's
+suffixed or shadowed command names.
 
 ### Opt-in live append-refresh test
 

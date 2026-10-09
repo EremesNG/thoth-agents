@@ -179,12 +179,13 @@ describe('Pi setup', () => {
     'pinned',
     'git',
     'npm-alias',
-  ])('preserves and verifies compatible user theme and background copies from %s sources', (sourceKind) => {
+  ])('preserves and verifies compatible user theme, background and sidebar copies from %s sources', (sourceKind) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
     const manifests = [
       '@thoth-agents/pi-thoth-theme',
       '@thoth-agents/pi-background-tasks',
+      '@thoth-agents/pi-sidebar',
     ].map((name) => {
       const version = sourceKind === 'local' ? '0.3.0' : '0.4.0';
       const source =
@@ -208,11 +209,13 @@ describe('Pi setup', () => {
       expect.arrayContaining([
         'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
         'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+        'npm:@thoth-agents/pi-sidebar@>=0.3.0',
       ]),
     );
     for (const source of [
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      'npm:@thoth-agents/pi-sidebar@>=0.3.0',
     ])
       expect(native.mutations.flat()).not.toContain(source);
     expect(manifests.map(({ path }) => readFileSync(path, 'utf8'))).toEqual(
@@ -224,6 +227,7 @@ describe('Pi setup', () => {
   test.each([
     '@thoth-agents/pi-thoth-theme',
     '@thoth-agents/pi-background-tasks',
+    '@thoth-agents/pi-sidebar',
   ])('leaves below-floor user copy %s untouched and blocks completion with native upgrade guidance', (name) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
@@ -258,11 +262,14 @@ describe('Pi setup', () => {
     ['git:https://example.test/operator/renamed.git', 'malformed'],
     ['npm:@thoth-agents/pi-background-tasks@0.3.0', 'nameless'],
     ['./renamed-background', 'directory'],
+    ['npm:@thoth-agents/pi-sidebar@0.3.0', 'nameless'],
   ])('fails closed for unreadable or missing manifest identity (%s, %s)', (source, problem) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
     const installedPath = native.seed(
-      '@thoth-agents/pi-background-tasks',
+      source.includes('pi-sidebar')
+        ? '@thoth-agents/pi-sidebar'
+        : '@thoth-agents/pi-background-tasks',
       source,
       '0.3.0',
     );
@@ -290,14 +297,13 @@ describe('Pi setup', () => {
     expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
   });
 
-  test('dry-run blocks a configured below-floor checkout without commands or filesystem mutation', () => {
+  test.each([
+    '@thoth-agents/pi-thoth-theme',
+    '@thoth-agents/pi-sidebar',
+  ])('dry-run blocks a configured below-floor %s checkout without commands or filesystem mutation', (name) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
-    const installedPath = native.seed(
-      '@thoth-agents/pi-thoth-theme',
-      './placeholder',
-      '0.2.9',
-    );
+    const installedPath = native.seed(name, './placeholder', '0.2.9');
     const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
     mkdirSync(dirname(settingsPath), { recursive: true });
     const settings = JSON.stringify({
@@ -321,7 +327,7 @@ describe('Pi setup', () => {
       `pi remove ${installedPath} --no-approve`,
     );
     expect(plan.blockers.join('\n')).toContain(
-      'pi install npm:@thoth-agents/pi-thoth-theme@>=0.3.0 --no-approve',
+      `pi install npm:${name}@>=0.3.0 --no-approve`,
     );
     expect(applyPiSetup(plan)).toMatchObject({ success: false, changed: [] });
     expect(commands).toEqual([]);
@@ -333,7 +339,7 @@ describe('Pi setup', () => {
     expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
   });
 
-  test('fresh installation verifies both new packages and reruns preserve them idempotently', () => {
+  test('fresh installation verifies theme, background tasks and sidebar, then preserves them idempotently', () => {
     const paths = fixture();
     paths.packageRoot = join(paths.homeDir, 'root-package');
     mkdirSync(join(paths.packageRoot, 'pi', 'agents'), { recursive: true });
@@ -359,6 +365,7 @@ describe('Pi setup', () => {
         '@thoth-agents/pi-background-tasks',
         'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
       ],
+      ['@thoth-agents/pi-sidebar', 'npm:@thoth-agents/pi-sidebar@>=0.3.0'],
     ]) {
       expect(first.installedPackages).toContain(source);
       expect(native.mutations).toContainEqual([
@@ -387,17 +394,24 @@ describe('Pi setup', () => {
     expect(readPiPackageReceipt(paths.receiptOptions)).toEqual(receipt);
   });
 
-  test.each([
-    'duplicate',
-    'project',
-    'invalid-version',
-    'prerelease',
-    'wrong-name',
-  ])('leaves ambiguous or invalid user copies untouched (%s)', (problem) => {
+  test.each(
+    ['@thoth-agents/pi-thoth-theme', '@thoth-agents/pi-sidebar'].flatMap(
+      (name) =>
+        [
+          'duplicate',
+          'project',
+          'invalid-version',
+          'prerelease',
+          'wrong-name',
+        ].map((problem) => ({ name, problem })),
+    ),
+  )('leaves ambiguous or invalid user copies untouched ($name, $problem)', ({
+    name,
+    problem,
+  }) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
-    const name = '@thoth-agents/pi-thoth-theme';
-    const source = 'npm:@thoth-agents/pi-thoth-theme@0.3.0';
+    const source = `npm:${name}@0.3.0`;
     const installedPath = native.seed(
       name,
       source,
@@ -410,12 +424,12 @@ describe('Pi setup', () => {
     if (problem === 'wrong-name')
       writeFileSync(
         join(installedPath, 'package.json'),
-        '{"name":"@operator/not-the-theme","version":"9.0.0"}',
+        '{"name":"@operator/not-the-preserved-package","version":"9.0.0"}',
       );
     if (problem === 'duplicate' || problem === 'project')
       native.extraPackages.push(
         ...(problem === 'project' ? ['Project packages:'] : []),
-        '  git:https://example.test/operator/theme.git',
+        `  git:https://example.test/operator/${name.split('/')[1]}.git`,
         `    ${installedPath}`,
       );
     const before = readFileSync(join(installedPath, 'package.json'), 'utf8');
@@ -527,6 +541,7 @@ describe('Pi setup', () => {
     const packagePaths = [
       '@thoth-agents/pi-thoth-theme',
       '@thoth-agents/pi-background-tasks',
+      '@thoth-agents/pi-sidebar',
     ].map((name) => {
       const installedPath = native.seed(name, './placeholder', '0.3.0');
       native.packages.set(name, { source: installedPath, installedPath });
@@ -566,6 +581,7 @@ describe('Pi setup', () => {
     for (const source of [
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      'npm:@thoth-agents/pi-sidebar@>=0.3.0',
     ]) {
       expect(result.installedPackages).toContain(source);
       expect(native.mutations.flat()).not.toContain(source);
@@ -576,6 +592,7 @@ describe('Pi setup', () => {
   test.each([
     'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
     'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+    'npm:@thoth-agents/pi-sidebar@>=0.3.0',
   ])('fresh install requires individual verification of %s before managed completion', (source) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
@@ -888,10 +905,11 @@ describe('Pi setup', () => {
       'npm:@thoth-agents/pi-todo@>=0.3.0',
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      'npm:@thoth-agents/pi-sidebar@>=0.3.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('0.99.0');
     expect(plan.items[0]?.description).toContain('Pi >=0.99.0');
-    expect(PI_PACKAGE_SPECS).toHaveLength(8);
+    expect(PI_PACKAGE_SPECS).toHaveLength(9);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
         'npm:@feniix/pi-exa@5.1.1',
@@ -900,6 +918,7 @@ describe('Pi setup', () => {
     );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
+      'package',
       'package',
       'package',
       'package',

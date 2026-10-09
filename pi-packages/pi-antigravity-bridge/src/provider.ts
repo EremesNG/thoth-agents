@@ -1079,6 +1079,7 @@ export interface ActivityFeatures {
 	engine?: "stream-json" | "acp";
 	onNativeEvent?: (event: NativeDisplayEvent) => void;
 	roster?: SubagentRoster;
+	log?: DriverDeps["log"];
 }
 
 /** Process-wide counter: round-trip ids must never repeat across turns in
@@ -1143,7 +1144,7 @@ export function consumeActivity(
 			}
 			return "continue";
 		case "usage":
-			toPiUsage(activity.usage, partial.usage);
+			toPiUsage(activity.usage, partial.usage, partial.model, feats.log);
 			return "continue";
 		case "tool_start":
 			// Transient status while Antigravity executes; no Pi tool call or
@@ -1469,6 +1470,7 @@ async function runTurnDriver(
 			engine: deps.engine,
 			onNativeEvent: deps.onNativeEvent,
 			roster: deps.roster,
+			log: deps.log,
 		};
 
 		// A rejected outcome must also interrupt an outstanding next() wait.

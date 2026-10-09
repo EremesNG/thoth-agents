@@ -4,6 +4,7 @@ import type {
   Theme,
 } from '@earendil-works/pi-coding-agent';
 import type { Component, EditorComponent, TUI } from '@earendil-works/pi-tui';
+import { hasBlockingOverlay } from './decorative-overlay.js';
 import {
   acquireEditorSlotFocus,
   focusedForeignOverlay,
@@ -35,6 +36,7 @@ export interface EditorSlotHandle {
 }
 
 interface Owner {
+  supportsDecorativeOverlays?: true;
   register(contribution: EditorSlotContribution): EditorSlotHandle;
   focusTarget(): Component | undefined;
 }
@@ -64,6 +66,14 @@ function registry(): Registry | undefined {
     // A foreign record/accessor must not break extension activation.
   }
   return undefined;
+}
+
+/** Do not upgrade old first-owner closures merely because their registry is compatible. */
+export function editorSlotSupportsDecorativeOverlays(tui: TUI): boolean {
+  const state = registry();
+  if (!state) return false;
+  const owner = state.tuis.get(tui);
+  return !owner || owner.supportsDecorativeOverlays === true;
 }
 
 /** Used by owned-overlay close repair, including independently bundled copies. */
@@ -146,6 +156,7 @@ export function registerEditorSlot(
   const { tui, keybindings, mounted } = runtime;
   const active = () => ui.getEditorComponent() === factory && invocations === 1;
   const owner: Owner = {
+    supportsDecorativeOverlays: true,
     focusTarget: () => (active() ? mounted : undefined),
     register(entry) {
       if (contributions.has(entry.key))
@@ -171,7 +182,7 @@ export function registerEditorSlot(
           (
             tui as TUI & { getFocusedComponent?(): Component | null }
           ).getFocusedComponent?.() === mounted &&
-          tui.hasOverlay?.() === false,
+          !hasBlockingOverlay(tui),
         dispose() {
           if (disposed) return;
           disposed = true;
@@ -211,6 +222,7 @@ export function registerEditorSlot(
       const result = entry.handleInput?.(data);
       if (result?.consume || result?.data !== undefined) return result;
     }
+    return undefined;
   });
   return owner.register(contribution);
 }

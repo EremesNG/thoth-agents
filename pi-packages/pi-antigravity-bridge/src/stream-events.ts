@@ -7,11 +7,15 @@
 // {kind:"unknown"} so a future agy release degrades instead of crashing the
 // reader loop.
 
+import type { Usage } from "@earendil-works/pi-ai";
+import { priceUsage, type PricingLog } from "./pricing.js";
+
 export interface AgyUsage {
 	input_tokens?: number;
 	output_tokens?: number;
 	thinking_tokens?: number;
 	cache_read_tokens?: number;
+	cache_write_tokens?: number;
 	total_tokens?: number;
 }
 
@@ -104,22 +108,19 @@ function isUsage(u: unknown): u is AgyUsage {
 	return typeof u === "object" && u !== null;
 }
 
-/** Map agy usage onto pi-ai's Usage (cost stays zero: subscription quota). */
+/** Map usage and recompute API-equivalent cost before either engine emits it. */
 export function toPiUsage(
 	u: AgyUsage | undefined,
-	piUsage: {
-		input: number;
-		output: number;
-		cacheRead: number;
-		cacheWrite: number;
-		totalTokens: number;
-		cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
-	},
+	piUsage: Usage,
+	modelId: string = "",
+	log?: PricingLog,
 ): void {
 	if (!u) return;
 	piUsage.input = u.input_tokens ?? piUsage.input;
 	piUsage.output = u.output_tokens ?? piUsage.output;
 	piUsage.cacheRead = u.cache_read_tokens ?? piUsage.cacheRead;
+	piUsage.cacheWrite = u.cache_write_tokens ?? piUsage.cacheWrite;
 	// agy's total_tokens excludes cached tokens; Pi's context total must include them.
 	piUsage.totalTokens = piUsage.input + piUsage.output + piUsage.cacheRead + piUsage.cacheWrite;
+	priceUsage(modelId, piUsage, log);
 }

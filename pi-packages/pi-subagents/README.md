@@ -81,6 +81,24 @@ or completion wake-ups. The history view and Work detail use pi-core's shared
 panel primitives without changing navigation, scrolling, folding, display toggles
 or cancellation. Panel overlays open through `openOwnedOverlay`.
 
+### Child rate-limit warnings
+
+The Agents Work panel row and `/subagents` detail show a warning-role field for
+`allowed_warning` (`rate limit warning`) or `rejected` (`rate limited`)
+observations reported by that task's live child session through pi-core's
+provider-limits registry. The text identifies the provider/window and shows
+`reset HH:MM` in local 24-hour time when supplied. Task status is unchanged.
+Warnings clear at reset without further task activity, or when the same task
+reports `allowed` for that window; an unknown reset remains visible until a
+replacement or cache eviction.
+
+Capture starts when the extension loads, before child queries or UI subscriptions.
+An in-memory UI cache retains the 512 most recently reported task/provider/window
+observations, independently of row visibility, child teardown, and account-window
+replacement by other sessions. Detail opened after child teardown reads the same
+cache. This is not persisted history, replay of the account-wide registry, or
+quota fetching; extension shutdown/reload discards the cache.
+
 ## Install as a Pi package
 
 This fork is an installable Pi package named `@thoth-agents/pi-subagents`.

@@ -30,14 +30,15 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
-  The root package and all nine `pi-packages/*` members declare Pi SDK peers
+  The root package and all ten `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
   typed, versioned `pi.events` channels, session-state publish/request/subscribe
   helpers, the Render KIT contract/registry, the discoverable Work panel v2
-  registry and pure `formatDuration`, not a standalone extension. The first-party
+  registry, UI-preferences/decorative-overlay coordination, shared session cost
+  helpers and pure `formatDuration`, not a standalone extension. The first-party
   `@thoth-agents/pi-todo` (`pi-packages/pi-todo`) is a fork of
   `@juicesharp/rpiv-todo` `2.12.0`, providing the `todo` tool, `/todos`, and a
   current-session Todos section in the shared Work panel. It replays branch state,
@@ -59,7 +60,9 @@
   the vendored `@thoth-agents/pi-background-tasks` (`pi-packages/pi-background-tasks`,
   a trimmed local-jobs fork of pi-better-background-tasks), installed and verified
   by the CLI at `>=0.3.0` along with `@thoth-agents/pi-thoth-theme@>=0.3.0` as the
-  seventh and eighth selected packages (theme, then background tasks). Existing
+  seventh and eighth selected packages (theme, then background tasks).
+  `@thoth-agents/pi-sidebar@>=0.3.0` is the ninth selected package, a read-only
+  right sidebar with guarded fullscreen/regular adapters. Existing
   compatible copies from any source are preserved and verified without
   reinstalling; older copies remain untouched and block completion with manual
   upgrade guidance, and ambiguous identity fails closed. Jobs survive `/reload`
@@ -252,6 +255,106 @@ discovery, so mixed versions hide incompatible sections regardless of load order
 The task-summary channels and Render KIT remain v1. See
 [the provider and discovery API](../../pi-packages/pi-core/README.md#work-panel-v2).
 
+## Pi sidebar and UI coordination
+
+`@thoth-agents/pi-sidebar` mounts only in interactive TUI sessions and never
+replaces the editor/footer. Fullscreen reads the private layout root after shape
+checks, wraps it in an HStack and restores it only while owned. Regular mode
+patches the concrete main-screen render width through Pi's forwarding proxy and
+mounts a top-right, full-height non-capturing overlay. Unsupported seams disable
+the mount with one diagnostic. Pi 1.0.2 is tested; regular mode covers the live
+viewport, not historical terminal scrollback.
+
+`/sidebar` toggles; `auto|manual|on|off` controls session policy/enabled state.
+Width defaults to 44 (28–72), leaving at least 64 columns for the main pane.
+Manual hides below 92; auto collapses below `80 + preferred width` and reopens
+8 columns later. Ctrl+Shift+R enters resize (arrows 1, Shift 4, Enter confirm,
+Esc revert); fullscreen also supports divider drag. `/sidebar panels` lists ids;
+`panels show|hide|up|down <id>` persists visibility/order, and
+`startup auto|manual|off` persists next-session policy in
+`~/.pi/agent/thoth-sidebar.json`. Current width/mode/enabled state are session-only.
+
+Session uses pi-core's `computeSessionCost` and
+`combineSessionAndSubagentCost`, shared with the theme; cumulative subagent
+snapshots replace rather than add to earlier snapshots, and `(sub)` classifies
+the current provider. Workspace reads its own git branch/status (including
+worktrees) on session start, turn end and write/edit/bash/powershell results,
+debounced without periodic polling. Discovered work-source panels read bounded
+data rows and use the current render kit with native fallback.
+
+The process-wide, owner-tokened `registerUIPreferences` / `updateUIPreferences` /
+`withdrawUIPreferences` registry merges `absorbedWorkPanelSources`. The host
+omits absorbed sources from rendering, selection and left-arrow focus, while
+discovery/actions remain available. The sidebar absorbs only source panels
+actually displayed, releasing preferences on hiding, height omission, failed
+mount or disposal. `registerDecorativeOverlay(tui, component)` returns a disposer
+or `undefined`; `hasBlockingOverlay(tui)` ignores registered decorative
+components but yields to every other visible overlay, including non-capturing
+ones. Visibility uses hidden/options.visible, not rendered bounds. Unknown
+stack shapes conservatively use `hasOverlay()`.
+
+Unversioned editor-slot/work-panel ownership remains first-owner-wins. Old
+closures cannot be upgraded in place: the regular adapter refuses detected
+pre-feature owners instead of blocking editor input; old fullscreen hosts may
+not honor absorption. Upgrade related extensions together and `/reload`.
+See [controls, config schema and limitations](../../pi-packages/pi-sidebar/README.md),
+[core APIs](../../pi-packages/pi-core/README.md#sidebar-ui-preferences-and-decorative-overlays)
+and [closeout checks](testing.md#local-closeout-gate). A dedicated Cost/quota
+panel and sidebar row actions are not part of this package.
+
+## Pi provider status and subscription cost
+
+pi-core's root exports `reportProviderLimit`, `listProviderLimits` and
+`subscribeProviderLimits`. The versioned
+`globalThis[Symbol.for('thoth.pi-core.provider-limits.v1')]` registry is
+process-wide, including separately loaded library copies and in-process child
+sessions; it is **not** a `pi.events` bus channel. Limits are account-wide: the
+latest report replaces the entry for its provider/window, while `sessionId`
+identifies the observing query, not the scope of the limit. Validated entries
+contain only status, utilization (0..1), reset/observation times (Unix ms), window
+type, overage flags and observing session identity. Reads project expired windows
+as `allowed` without utilization; there is no persistence, polling or quota
+fetching. Synchronous isolated listeners receive reports, with no initial replay.
+See [the exact registry contract](../../pi-packages/pi-core/README.md#provider-limits-v1).
+
+The Claude bridge reports every SDK `rate_limit_event`, including root queries,
+subagent children, AskClaude and summaries, with per-query session attribution;
+existing notifications remain unchanged. pi-subagents captures reports while the
+child is live in a bounded per-task UI cache. Active warning/rejected observations
+appear on the Agents Work row and `/subagents` detail with reset time when known,
+without changing task status. They survive child teardown and another session's
+replacement of the account-wide entry, and clear at reset without task activity.
+
+Quota is on demand only: `/claude quota` uses the **experimental** SDK usage
+control request for available 5-hour, weekly, Opus/Sonnet/model and extra-usage
+windows. It sends no prompt, enables no tools, reuses the bridge's cwd/environment/
+executable options, times out after 30 seconds and closes its CLI query on all
+paths. Missing API/plan data is reported explicitly; nothing periodically fetches
+quota or puts it in sidebar state. `/agy quota` remains the Antigravity command.
+agy 1.3.2 starts configured global MCP servers even in print-mode `/usage`, despite
+custom-agent MCP exclusions. On Windows their `.cmd` shims may flash; prefer
+native executables or `node.exe` with the server's actual JS entrypoint where
+supported. This is upstream process startup, not a bridge spawn-option change;
+a visible flash and this workaround still need live validation. See
+[Claude quota](../../pi-packages/pi-claude-bridge/README.md#rate-limits-and-claude-quota)
+and [Windows quota diagnosis](../../pi-packages/pi-antigravity-bridge/README.md#windows-quota-console-diagnosis).
+
+Antigravity messages use API-equivalent `calculateCost` prices from pi-ai's
+`compat` catalog via an explicit normalized-model mapping: Gemini Flash versions
+to matching Google entries, Gemini 3.1 Pro to `google/gemini-3.1-pro-preview`,
+Claude Sonnet 4.6 to Anthropic, and GPT-OSS 120B variants to Groq. Unmapped/missing
+catalog models stay at $0 and log once as unpriced. Both engines feed these costs
+into session and subagent totals; ACP token estimates remain estimates and exact
+usage replaces them with recomputed cost. This is not subscription billing.
+The theme defaults `statusLine.subscriptionProviders` to
+`["claude-bridge", "antigravity"]`; explicit user lists remain unchanged. `(sub)`
+retains its current-provider classification of the displayed total, not a
+per-message billing split.
+
+The Claude/Antigravity bridges and pi-openai-fast are **manual installs**, not
+installer-managed packages. See [manual Pi provider installation](../installation.md#manual-pi-provider-extensions)
+for the three `pi install` commands and authentication requirements.
+
 ## Pi task channels
 
 pi-core defines these channels and their validators, all v1, using
@@ -375,7 +478,8 @@ when a Pi package changed without a version bump; when skipped it emits a
 ### One-time bootstrap
 
 Trusted publishing can only be configured for packages that already exist on npm,
-so the first versions (0.1.0) are published manually.
+so each new package's first version is published manually. The original packages
+bootstrapped at 0.1.0; pi-sidebar starts at 0.3.0.
 
 Prerequisites: npm >= 11.15.0 (`npm i -g npm@latest`), `npm login`, account 2FA
 enabled, ownership of the `@thoth-agents` npm organization (a scope must be a
@@ -394,7 +498,7 @@ npm view @thoth-agents/<pkg> version
 ```
 
 Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
-pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme.
+pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme, pi-sidebar.
 
 New packages can take a few minutes to appear in public registry reads
 (`npm view` returns `E404` meanwhile; `npm access list packages @thoth-agents`
@@ -416,8 +520,22 @@ default to stage-publish only, so `--allow-publish` is needed for direct
 publishing. The root `thoth-agents` trusted publisher must also reference
 `release.yml` (already in use).
 
-Finally run `pnpm release:minor` (0.5.0). It tags and triggers `release.yml`; the
-reconcile step creates the tags and releases for the bootstrap 0.1.0 versions.
+For the new sidebar specifically, from a clean merged checkout after the frozen
+install and build (pi-core must already be published at a compatible version):
+
+```sh
+cd pi-packages/pi-sidebar
+pnpm publish --access public --no-git-checks
+npm view @thoth-agents/pi-sidebar@0.3.0 version
+npm trust github @thoth-agents/pi-sidebar --file release.yml --repository EremesNG/thoth-agents --yes --allow-publish
+```
+
+Confirm the sidebar's npm Settings → Trusted publishing references this
+repository and `release.yml` with direct publishing enabled. Wait until registry
+reads see 0.3.0 before cutting the next approved root release. Do not republish an
+existing version or bump versions merely to run the local gate. The next root
+tag triggers `release.yml`; reconciliation creates missing package tags/releases
+for manually bootstrapped versions, and later versions use trusted publishing.
 
 ## Verification
 

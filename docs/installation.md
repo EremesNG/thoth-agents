@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and `npm:@thoth-agents/pi-background-tasks@>=0.3.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0`, `npm:@thoth-agents/pi-background-tasks@>=0.3.0` and `npm:@thoth-agents/pi-sidebar@>=0.3.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -228,7 +228,20 @@ The CLI installs and verifies these Pi packages in order:
    the `todo` tool, `/todos`, and Todos section in the shared Work panel;
 8. `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` for the theme, Render KIT and status
    line (selecting the `thoth` color theme remains an operator choice);
-9. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs.
+9. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs;
+10. `npm:@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right
+    sidebar in fullscreen and regular Pi modes.
+
+The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
+Session, Workspace and discovered work-source panels. `/sidebar` toggles it;
+`/sidebar panels` lists ids for show/hide/up/down commands; Ctrl+Shift+R resizes
+(and fullscreen supports divider drag). Panel order/visibility and startup mode
+persist in `~/.pi/agent/thoth-sidebar.json`; width and current mode do not.
+Only displayed source panels absorb their Work sections; hiding/auto-collapse
+restores them. Private layout seams use guarded fallback. Regular mode supports
+the live viewport only, not historical scrollback; update related extensions
+and `/reload` to avoid old first-owner input/absorption closures. See the package
+README for width thresholds, config schema and limitations.
 
 The shared Work panel uses pi-core's v2 provider contract. Upgrade pi-subagents,
 pi-background-tasks and pi-todo together to `>=0.3.0`, then `/reload`. Its
@@ -251,23 +264,81 @@ returns input to the expanded question or otherwise the editor. Collapse and
 question teardown never take focus from a still-visible foreign overlay. See
 [the question controls](../pi-packages/pi-questions-user/README.md#keyboard-controls).
 
-These are eight selected packages after root-package verification. The task-list
+These are nine selected packages after root-package verification. The task-list
 extension remains the sixth selected package. Install and applied Update install and individually verify it;
 status reports it as a managed target. Progress tracking never replaces native
 delegation or `.thoth/` change records. Unrelated task extensions remain
 operator-owned and untouched.
 
-Install and applied Update individually verify the theme and background-tasks
-packages. An existing copy of either from any source (npm, local or Git) at or
-above `0.3.0` is preserved without reinstalling. A below-floor copy is left
+Install and applied Update individually verify the theme, background-tasks and
+sidebar packages. An existing copy of any of these from any source (npm, local or
+Git) at or above `0.3.0` is preserved without reinstalling. A below-floor copy is left
 untouched and blocks completion with manual upgrade guidance; missing identity
 or an ambiguous source fails closed. Upgrade the existing checkout/source in
 place, or review its ownership before using Pi's native remove/install commands
 to switch sources. Verify with `pi list --no-approve` and the installed manifest,
 then rerun the complete installer or apply Update. Preview and dry-run perform
-no package mutation. This preservation policy applies only to these two new
+no package mutation. This preservation policy applies only to these three
 entries; other selected packages retain their existing source-migration policy.
-The Claude/Antigravity bridges and pi-openai-fast remain operator-installed.
+The Claude/Antigravity bridges and pi-openai-fast remain operator-installed; see
+[manual provider extensions](#manual-pi-provider-extensions).
+
+### Manual Pi provider extensions
+
+The installer and applied Update do **not** install or manage these packages.
+Use Pi's native package manager for whichever providers you want:
+
+```bash
+pi install npm:@thoth-agents/pi-claude-bridge
+pi install npm:@thoth-agents/pi-antigravity-bridge
+pi install npm:@thoth-agents/pi-openai-fast
+```
+
+Restart Pi after installation. Authenticate Claude Code separately for the Claude
+bridge; install/authenticate the `agy` CLI for Antigravity's default stream-json
+engine (the optional ACP engine has its own setup). pi-openai-fast adds priority
+model variants to existing OpenAI Responses/Codex providers; it does not provide
+credentials or Codex quota reporting. See the package READMEs for
+[Claude](../pi-packages/pi-claude-bridge/README.md#install),
+[Antigravity](../pi-packages/pi-antigravity-bridge/README.md#install) and
+[OpenAI priority variants](../pi-packages/pi-openai-fast/README.md#install).
+
+Claude SDK rate-limit events from root and in-process child sessions report to
+pi-core's process-wide provider-limits registry, **not** a bus channel. Limits
+are account-wide; the observing query's session id enables attribution. The
+Agents Work panel rows and `/subagents` detail show active warnings/rejections
+and reset time when supplied, without changing task status. A bounded per-task
+cache retains warnings after child teardown or another session's registry
+replacement; warnings clear at reset without further task activity.
+
+Quota commands fetch only on demand, never periodically or into sidebar quota
+state:
+
+- `/claude quota` shows available 5-hour, weekly, Opus/Sonnet/model-specific and
+  extra-usage plan windows with percentages and local reset times. It uses the
+  **experimental** SDK usage control request, sends no prompt, enables no tools,
+  reuses the bridge's cwd/environment/executable options, times out after 30
+  seconds and closes its CLI query on all paths. Missing API/plan data produces
+  an explicit message (for example API-key/Bedrock/Vertex accounts).
+- `/agy quota` shows Antigravity usage. agy 1.3.2 starts configured global MCP
+  servers even in print-mode `/usage`, despite custom-agent exclusions. On Windows,
+  their `.cmd` shims may flash; where supported, configure a native executable or
+  `node.exe` plus the installed server's actual JS entrypoint instead. The bridge
+  does not edit global MCP configuration. This upstream startup was traced, but a
+  visible flash and the workaround remain unvalidated. See
+  [Windows quota diagnosis](../pi-packages/pi-antigravity-bridge/README.md#windows-quota-console-diagnosis).
+
+Antigravity message, session and subagent costs are **API-equivalent estimates**,
+not subscription billing: an explicit model mapping uses pi-ai catalog prices;
+unmapped models remain $0 and log once as unpriced. ACP token estimates remain
+estimates and exact usage replaces them with recomputed cost. The theme defaults
+`statusLine.subscriptionProviders` to `["claude-bridge", "antigravity"]` and
+marks the displayed total `(sub)` based on the current provider, not a per-message
+billing split. Explicit user lists remain unchanged. See
+[pricing mappings](../pi-packages/pi-antigravity-bridge/README.md#what-it-cannot-do)
+and [the registry contract](../pi-packages/pi-core/README.md#provider-limits-v1).
+
+### Pi session-state integrations
 
 Subagents and background tasks publish current-session summary-only v1 snapshots
 on `thoth:subagents:state` and `thoth:background:state`, each with a `:request`
@@ -666,7 +737,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, five specialist synchronization, eight minimum-constrained selected packages (including task list, theme and background tasks), exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, nine minimum-constrained selected packages (including task list, theme, background tasks and sidebar), exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

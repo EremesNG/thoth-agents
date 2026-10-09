@@ -42,21 +42,23 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 ## CI and release
 
 `.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
-`pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
-build step. The repository is a pnpm workspace: the root install also installs
-all nine `pi-packages/*` members, and CI then runs each package's `typecheck`
+`pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. Both jobs build
+and test the Pi extension bundles; CI does not run the full root build. The
+repository is a pnpm workspace: the root install also installs all ten
+`pi-packages/*` members, and CI then runs each package's `typecheck`
 plus offline tests through `pnpm --filter` (`test` for `@thoth-agents/pi-core`,
 `@thoth-agents/pi-todo`, `@thoth-agents/pi-questions-user`, `@thoth-agents/pi-subagents`,
 `@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`,
-`@thoth-agents/pi-openai-fast` and `@thoth-agents/pi-thoth-theme`,
+`@thoth-agents/pi-openai-fast`, `@thoth-agents/pi-thoth-theme` and
+`@thoth-agents/pi-sidebar`,
 `test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
 Pi-core provides typed, versioned `pi.events` channels. Pi-todo is a first-party
 fork of `@juicesharp/rpiv-todo` `2.12.0` with session-state publication through
 pi-core and open-task reinjection. Pi-questions-user is the first-party
 `ask_user_question` extension with typed questions and structured per-id answers.
 A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
-install), runs only those nine package typechecks and offline tests, one step per
-command so a failure cannot be masked; the root suite runs only on Ubuntu.
+install), runs those ten package typechecks, offline tests and bundle checks,
+one step per command so a failure cannot be masked; the root suite runs only on Ubuntu.
 Its vitest steps pass `--retry=2` so an isolated slow-runner failure does not block
 a release, while a consistent failure still fails; fix flakes at their cause
 rather than relying on retries. `workflow_dispatch` allows manual CI runs (for
@@ -101,6 +103,44 @@ allow-lists and bounds, session/readiness requests, fresh cross-process metadata
 and the usage envelope/status-line migration (including checkpoint replay).
 Rerun a failing Windows timing check once to distinguish a transient failure
 from a repeatable regression; report both outcomes.
+
+For Pi sidebar/layout/UI-preference changes, run full tests and typechecks for
+pi-sidebar, pi-core, pi-thoth-theme, pi-subagents, pi-questions-user,
+pi-background-tasks and pi-todo. Run each Vitest package separately with
+`--maxWorkers=2` on Windows (split if a command would exceed about four minutes).
+When installer inventory changes, also run:
+
+```sh
+pnpm exec vitest run src/cli/pi-install.test.ts src/cli/install.test.ts src/cli/operations/pi.test.ts src/pi.test.ts --maxWorkers=2
+```
+
+Add `pnpm install --frozen-lockfile`, repository checks, full build,
+`test:pi-extensions` and `git diff --check`. Cover owner-guarded root/render
+restoration and foreign ownership, real TUI fullscreen scroll/wheel, regular
+viewport/differential rendering, decorative versus blocking overlays, editor/
+question focus, mixed old first-owner fallback, absorption hide/restore and
+selection exclusion, width hysteresis, keys/drag, config round trips,
+event-driven git worktrees and theme cost parity. Rerun a Windows timing failure
+once and report both outcomes. Follow with a live user check in **both** Pi modes:
+transcript wrapping/scrolling, resize/drag/auto-hide, question and foreign-overlay
+focus, retained-section ← interaction, restored Work sections and regular-mode
+scrollback artifacts. Automated viewport tests do not prove artifact-free native
+scrollback or replace the live check.
+
+For Pi provider-status changes, run full offline tests and typechecks for
+pi-core, pi-subagents, pi-thoth-theme, pi-antigravity-bridge and
+pi-claude-bridge (`test:unit`, not its live `test`). Run each package separately;
+on Windows use `--maxWorkers=2` for Vitest and split commands if needed to keep
+each under about four minutes. Cover duplicate-core registry sharing/validation/
+expiry, per-query Claude event attribution across query-consumer paths, no-prompt
+quota success/unavailability/timeout/close, explicit Antigravity model pricing and
+ACP exact-usage replacement, subscription defaults, and task warning retention/
+replacement/reset after child teardown. Add repository checks, build,
+`test:pi-extensions` and `git diff --check`; rerun a failing Windows timing check
+once and report both outcomes. Follow with a live user check of quota commands,
+subscription cost and child warning/reset display. An agy process trace proves
+upstream global MCP startup, not by itself a visible console flash; keep that
+uncertainty and any unvalidated workaround explicit.
 
 For Pi work-panel registry/provider changes, run full tests and typechecks for
 pi-core, pi-subagents, pi-background-tasks and pi-todo serially on Windows, plus

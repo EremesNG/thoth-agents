@@ -1,4 +1,5 @@
 import type { SessionEntry } from '@earendil-works/pi-coding-agent';
+import { computeSessionCost } from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
 import { icon } from '../shared/icons.ts';
 
@@ -21,30 +22,7 @@ export function calculateSessionCost(
       ? (source as SessionEntriesSource).getEntries()
       : [];
 
-  let totalCost = 0;
-  for (const entry of entries) {
-    if (!entry) continue;
-    if (entry.type === 'message') {
-      const msg = entry.message;
-      if (
-        (msg?.role === 'assistant' || msg?.role === 'toolResult') &&
-        'usage' in msg &&
-        msg.usage?.cost?.total
-      ) {
-        totalCost += msg.usage.cost.total;
-      }
-    } else if (
-      (entry.type === 'branch_summary' ||
-        entry.type === 'compaction' ||
-        entry.type === 'usage') &&
-      'usage' in entry &&
-      entry.usage?.cost?.total
-    ) {
-      totalCost += entry.usage.cost.total;
-    }
-  }
-
-  return totalCost;
+  return computeSessionCost(entries).cost;
 }
 
 /**

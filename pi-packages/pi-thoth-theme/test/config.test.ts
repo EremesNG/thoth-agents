@@ -8,7 +8,10 @@ import { loadConfig } from '../src/shared/config.ts';
 
 const defaults = {
   icons: 'nerd',
-  statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
+  statusLine: {
+    enabled: true,
+    subscriptionProviders: ['claude-bridge', 'antigravity'],
+  },
   tools: {
     enabled: true,
     respectPackages: ['thoth-agents', '@thoth-agents/*', 'thoth-mem'],
@@ -96,6 +99,7 @@ describe('loadConfig', () => {
   it('returns independent defaults for each load', () => {
     const config = loadConfig(configPath);
     config.statusLine.enabled = false;
+    config.statusLine.subscriptionProviders?.push('custom-provider');
     config.tools.respectPackages?.push('custom-package');
     expect(loadConfig(configPath)).toEqual(defaults);
   });
@@ -112,7 +116,7 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath)).toEqual({
       icons: 'ascii',
-      statusLine: { enabled: false, subscriptionProviders: ['claude-bridge'] },
+      statusLine: { ...defaults.statusLine, enabled: false },
       tools: { ...defaults.tools, enabled: false },
       welcome: { enabled: false },
     });
@@ -191,7 +195,7 @@ describe('loadConfig', () => {
       'custom',
     ]);
 
-    // Non-array falls back to default ['claude-bridge']
+    // Non-array falls back to the default subscription providers
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -200,6 +204,7 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([
       'claude-bridge',
+      'antigravity',
     ]);
   });
 });

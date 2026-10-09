@@ -106,6 +106,13 @@ export const PI_PACKAGE_SPECS = [
     version: '0.3.0',
     preserveUserCopy: true,
   },
+  {
+    id: 'sidebar',
+    source: 'npm:@thoth-agents/pi-sidebar@>=0.3.0',
+    packageName: '@thoth-agents/pi-sidebar',
+    version: '0.3.0',
+    preserveUserCopy: true,
+  },
 ] as const;
 
 export const PI_GREP_MCP_ENTRY = {

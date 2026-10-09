@@ -51,9 +51,9 @@ export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export const PI_PACKAGE_SPECS = [
   {
     id: 'delegation',
-    source: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
+    source: 'npm:@thoth-agents/pi-subagents@>=0.3.0',
     packageName: '@thoth-agents/pi-subagents',
-    version: '0.1.0',
+    version: '0.3.0',
   },
   {
     id: 'context7',

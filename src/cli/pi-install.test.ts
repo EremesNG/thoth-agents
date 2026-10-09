@@ -359,7 +359,7 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:@thoth-agents/pi-subagents@>=0.1.0',
+      'npm:@thoth-agents/pi-subagents@>=0.3.0',
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
@@ -2582,7 +2582,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:pi-web-access@>=0.27.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=0.1.0',
+        'npm:@thoth-agents/pi-subagents@>=0.3.0',
         'npm:@upstash/context7-pi@>=0.1.2',
       ],
     },
@@ -2591,7 +2591,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=0.1.0',
+        'npm:@thoth-agents/pi-subagents@>=0.3.0',
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
@@ -2602,7 +2602,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:@thoth-agents/pi-todo@>=0.1.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=0.1.0',
+        'npm:@thoth-agents/pi-subagents@>=0.3.0',
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
@@ -3077,5 +3077,14 @@ describe('Pi setup', () => {
       manualRecovery: 'pi remove npm:thoth-agents@0.3.12 --no-approve',
     });
     expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+});
+
+test('installer requires the first pi-subagents release owning tools configuration', () => {
+  expect(
+    PI_PACKAGE_SPECS.find((spec) => spec.id === 'delegation'),
+  ).toMatchObject({
+    source: 'npm:@thoth-agents/pi-subagents@>=0.3.0',
+    version: '0.3.0',
   });
 });

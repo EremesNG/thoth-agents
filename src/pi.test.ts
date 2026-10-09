@@ -452,7 +452,7 @@ describe('native Pi extension', () => {
         'before_agent_start',
         'session_start',
       ]);
-      expect(registerCommand).toHaveBeenCalled();
+      expect(registerCommand).not.toHaveBeenCalled();
       expect(
         dispatchLeanEvent('input', {
           source: 'interactive',
@@ -469,5 +469,90 @@ describe('native Pi extension', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('tools command ownership handoff', () => {
+  const key = Symbol.for('thoth-agents.pi-subagents.tools-panel.v1');
+  const shared = globalThis as typeof globalThis & { [key]?: any };
+  afterEach(() => {
+    delete shared[key];
+  });
+  test('root registers only the optional adapter, not the tools command', () => {
+    const registerCommand = vi.fn();
+    piExtension({ on: vi.fn(), registerCommand });
+    expect(registerCommand).not.toHaveBeenCalled();
+    expect(shared[key]).toMatchObject({
+      version: 1,
+      adapter: {
+        version: 1,
+        appliesTo: expect.any(Function),
+        validate: expect.any(Function),
+        defaultTools: expect.any(Function),
+      },
+    });
+  });
+  test('new root diagnoses absent or unsupported command ownership once with upgrade guidance', () => {
+    delete shared[key];
+    const handlers = capturePiHandlers();
+    const notify = vi.fn();
+    handlers.get('session_start')?.({}, { isIdle: () => true, ui: { notify } });
+    handlers.get('session_start')?.({}, { isIdle: () => true, ui: { notify } });
+    expect(notify).toHaveBeenCalledOnce();
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining('@thoth-agents/pi-subagents >=0.3.0'),
+      'warning',
+    );
+  });
+  test.each([
+    'root-first',
+    'subagents-first',
+  ])('new pair shares adapter and ownership in either load order (%s)', (order) => {
+    delete shared[key];
+    const handlers = new Map<string, PiHandler>();
+    const publish = () => {
+      shared[key] = {
+        ...shared[key],
+        version: 1,
+        capability: { version: 1, command: 'subagents-tools' },
+      };
+    };
+    if (order === 'subagents-first') publish();
+    piExtension({
+      on: (name, handler) => handlers.set(name, handler),
+      getCommands: () => [{ name: 'subagents-tools', source: 'extension' }],
+    });
+    if (order === 'root-first') publish();
+    const notify = vi.fn();
+    handlers.get('session_start')?.({}, { isIdle: () => true, ui: { notify } });
+    expect(shared[key]?.adapter?.version).toBe(1);
+    expect(notify).not.toHaveBeenCalled();
+  });
+  test('a stale ownership marker after reload cannot hide live command loss', () => {
+    shared[key] = {
+      version: 1,
+      capability: { version: 1, command: 'subagents-tools' },
+    };
+    const handlers = new Map<string, PiHandler>();
+    piExtension({
+      on: (name, handler) => handlers.set(name, handler),
+      getCommands: () => [],
+    });
+    const notify = vi.fn();
+    handlers.get('session_start')?.({}, { isIdle: () => true, ui: { notify } });
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining('@thoth-agents/pi-subagents >=0.3.0'),
+      'warning',
+    );
+  });
+  test('root tolerates incompatible registry versions without accepting their capability', () => {
+    shared[key] = {
+      version: 2,
+      capability: { version: 2, command: 'subagents-tools' },
+    };
+    const handlers = capturePiHandlers();
+    const notify = vi.fn();
+    handlers.get('session_start')?.({}, { isIdle: () => true, ui: { notify } });
+    expect(notify).toHaveBeenCalledOnce();
   });
 });

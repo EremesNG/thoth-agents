@@ -1,15 +1,15 @@
-import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, test, vi } from 'vitest';
 import type {
-  PiToolConfigSnapshot,
-  PiToolSaveResult,
-} from '../cli/pi-tool-config';
-import { validatePiSpecialistTools } from '../cli/pi-tool-config';
+  ToolsConfigSnapshot as PiToolConfigSnapshot,
+  ToolsSaveResult as PiToolSaveResult,
+} from '../../src/tools-panel/config.js';
+import { validateTools as validatePiSpecialistTools } from '../../src/tools-panel/frontmatter.js';
 import {
   createToolsPanel,
   isEligibleTool,
   type ToolsPanelDiscoveredTool,
-} from './tools-panel';
+} from '../../src/tools-panel/panel.js';
 
 const roles = [
   'explorer',
@@ -21,9 +21,12 @@ const roles = [
 
 function sampleSnapshot(): PiToolConfigSnapshot {
   return {
+    cwd: '/project',
     piRoot: '/global/.pi/agent',
     roles: roles.map((role) => ({
       role,
+      filePath: `/global/.pi/agent/agents/${role}.md`,
+      scope: 'global',
       tools: ['read', 'write'],
       defaultTools: ['read', 'write'],
       disallowedTools: role === 'oracle' ? ['ask_orchestrator'] : [],
@@ -109,10 +112,64 @@ describe('isEligibleTool', () => {
 });
 
 describe('global Pi tools panel', () => {
+  test.each([
+    '\x1b[99;5u',
+    '\x1b[99;5:1u',
+  ])('handles native Ctrl-C for clean cancel, picker back and dirty discard (%j)', (data) => {
+    const save = vi.fn();
+    const onDone = vi.fn();
+    const create = () =>
+      createToolsPanel({
+        snapshot: sampleSnapshot(),
+        discoveredTools: sampleDiscovered,
+        save,
+        onDone,
+      });
+    const clean = create();
+    clean.handleInput(data);
+    expect(onDone).toHaveBeenCalledExactlyOnceWith({ kind: 'cancelled' });
+    onDone.mockClear();
+
+    const dirty = create();
+    dirty.handleInput('\r');
+    dirty.handleInput(' ');
+    dirty.handleInput(data);
+    expect(dirty.render(110).join('\n')).toContain('Subagent tools');
+    expect(dirty.getState().draft[0]?.tools).toEqual(['write']);
+    expect(onDone).not.toHaveBeenCalled();
+    dirty.handleInput(data);
+    expect(dirty.render(110).join('\n')).toContain('Discard unsaved draft?');
+    expect(onDone).not.toHaveBeenCalled();
+    dirty.handleInput('d');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith({ kind: 'cancelled' });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  test('handles native CSI-u navigation, Enter and Escape without per-panel key wiring', () => {
+    const onDone = vi.fn();
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone,
+    });
+    panel.handleInput('\x1b[57420u');
+    expect(panel.render(110).join('\n')).toContain('selected: librarian');
+    panel.handleInput('\x1b[13u');
+    expect(panel.render(110).join('\n')).toContain('Choose tools · librarian');
+    panel.handleInput('\x1b[27u');
+    expect(panel.render(110).join('\n')).toContain('Subagent tools');
+    expect(onDone).not.toHaveBeenCalled();
+    panel.handleInput('\x1b[27u');
+    expect(onDone).toHaveBeenCalledWith({ kind: 'cancelled' });
+  });
+
   test('edits registered exact names only and retains manual entries through normal save', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
+      filePath: '/global/.pi/agent/agents/explorer.md',
+      scope: 'global',
       tools: ['*', 'agent_browser_*', 'retired_tool', 'read'],
       defaultTools: ['read', 'bash'],
       disallowedTools: [],
@@ -163,7 +220,7 @@ describe('global Pi tools panel', () => {
       onDone: vi.fn(),
     });
     const text = panel.render(100).join('\n');
-    expect(text).toContain('Global specialist tools');
+    expect(text).toContain('Subagent tools');
     expect(text).toContain('/global/.pi/agent');
     for (const role of roles) expect(text).toContain(role);
     expect(text).toContain('Ambient root tools are unchanged');
@@ -187,11 +244,9 @@ describe('global Pi tools panel', () => {
       save: vi.fn(),
       onDone: vi.fn(),
       theme,
-      truncate: truncateToWidth,
-      visibleWidth,
     });
     const initial = panel.render(80);
-    expect(initial[0]).toContain('Global specialist tools');
+    expect(initial[0]).toContain('Subagent tools');
     expect(initial[0]).toContain('╭');
     expect(initial.at(-1)).toContain('╰');
     expect(initial.find((line) => line.includes('explorer'))).toContain(
@@ -231,13 +286,15 @@ describe('global Pi tools panel', () => {
     panel.handleInput('j');
     expect(panel.render(80).join('\n')).toContain('selected: write');
     panel.handleInput('q');
-    expect(panel.render(80).join('\n')).toContain('Global specialist tools');
+    expect(panel.render(80).join('\n')).toContain('Subagent tools');
   });
 
   test('keeps lines within terminal columns for narrow terminals and long tool lists', () => {
     const wideSnapshot = sampleSnapshot();
     wideSnapshot.roles[0] = {
       role: 'explorer',
+      filePath: '/global/.pi/agent/agents/explorer.md',
+      scope: 'global',
       tools: [
         'very_long_tool_identifier_one',
         'very_long_tool_identifier_two',
@@ -256,8 +313,6 @@ describe('global Pi tools panel', () => {
         fg: (_color, text) => `\x1b[36m${text}\x1b[39m`,
         bg: (_color, text) => `\x1b[44m${text}\x1b[49m`,
       },
-      truncate: truncateToWidth,
-      visibleWidth,
     });
     const lines = panel.render(30);
     expect(lines.length).toBeGreaterThan(6);
@@ -289,28 +344,28 @@ describe('global Pi tools panel', () => {
       return lines.join('\n');
     };
 
-    expect(render()).toContain('› explorer');
+    expect(render()).toContain('›   explorer');
     panel.handleInput('G');
-    expect(render()).toContain('› worker');
+    expect(render()).toContain('›   worker');
     expect(render()).toContain('s save');
     panel.handleInput('\r');
     panel.handleInput('G');
-    expect(render()).toContain('› [ ] tool_29');
+    expect(render()).toContain('›   [ ] tool_29');
     expect(render()).toContain('space toggle');
     panel.handleInput(' ');
-    expect(render()).toContain('› [x] tool_29');
+    expect(render()).toContain('›   [x] tool_29');
     panel.handleInput('g');
-    expect(render()).toContain('› [ ] tool_00');
+    expect(render()).toContain('›   [ ] tool_00');
 
     maxHeight = 5;
     panel.handleInput('G');
-    expect(render()).toContain('› [x] tool_29');
+    expect(render()).toContain('›   [x] tool_29');
     panel.handleInput('q');
-    expect(render()).toContain('› worker *');
+    expect(render()).toContain('› * worker');
     panel.handleInput('\x1b');
     expect(render()).toContain('d discard and close · k or esc keep editing');
     panel.handleInput('k');
-    expect(render()).toContain('› worker *');
+    expect(render()).toContain('› * worker');
     maxHeight = 21;
     expect(render()).toContain('Ambient root tools are unchanged');
   });
@@ -356,6 +411,8 @@ describe('global Pi tools panel', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
+      filePath: '/global/.pi/agent/agents/explorer.md',
+      scope: 'global',
       tools: ['read'],
       defaultTools: ['read', 'default_extension'],
       disallowedTools: [],
@@ -381,6 +438,8 @@ describe('global Pi tools panel', () => {
     const snapshotWithUnavailable = sampleSnapshot();
     snapshotWithUnavailable.roles[0] = {
       role: 'explorer',
+      filePath: '/global/.pi/agent/agents/explorer.md',
+      scope: 'global',
       tools: ['read', 'write', 'legacy_mcp_tool'],
       defaultTools: ['read', 'write'],
       disallowedTools: [],
@@ -495,7 +554,7 @@ describe('global Pi tools panel', () => {
     expect(panel.render(80).join('\n')).toContain('Discard unsaved draft?');
 
     panel.handleInput('k'); // keep editing
-    expect(panel.render(80).join('\n')).toContain('Global specialist tools');
+    expect(panel.render(80).join('\n')).toContain('Subagent tools');
     expect(done).not.toHaveBeenCalled();
 
     panel.handleInput('\x1b'); // escape again
@@ -551,6 +610,8 @@ describe('global Pi tools panel', () => {
     retry.contents.explorer = 'explorer-v2';
     retry.roles[0] = {
       role: 'explorer',
+      filePath: '/global/.pi/agent/agents/explorer.md',
+      scope: 'global',
       tools: ['read', 'write', '*', 'agent_browser_*', 'retired_tool', 'bash'],
       defaultTools: ['read', 'write'],
       disallowedTools: [],

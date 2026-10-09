@@ -135,7 +135,11 @@ describe('compatibility smoke', () => {
         });
       }
       expect(shortcuts).toEqual(expect.arrayContaining(['ctrl+,', 'ctrl+h']));
-      expect(commands).toEqual(['subagents', 'subagents-model']);
+      expect(commands).toEqual([
+        'subagents',
+        'subagents-model',
+        'subagents-tools',
+      ]);
     });
   });
 

@@ -214,4 +214,14 @@ The `ask_user_question` TUI MUST open as its own overlay and keep keyboard input
 
 - **GIVEN** the subagents or task-list history overlay is open
 - **WHEN** the root agent asks a question and the user then closes the history overlay
-- **THEN** the questionnaire stays visible, receives keyboard input and returns the user's answer 
+- **THEN** the questionnaire stays visible, receives keyboard input and returns the user's answer
+
+### Requirement: Shared Pi panel shell
+
+pi-core MUST export panel primitives (titled frame, cell-width truncation, keyboard plus SGR/urxvt/X10 mouse and wheel parsing, cursor-centered viewport, selectedBg row, hint rows, dirty-discard confirmation, owned-overlay host) and a list-editor shell; Pi list editors MUST render through the shell, and history panels and the work-panel detail card MUST use the primitives without changing their interaction model.
+
+#### Scenario: Shared Pi panel shell
+
+- **GIVEN** the tools, model, history and work-detail panels
+- **WHEN** each renders and receives keyboard or wheel input
+- **THEN** they share the primitives' frame, width handling and input parsing, the list editors share the shell, and every panel overlay opens through `openOwnedOverlay`

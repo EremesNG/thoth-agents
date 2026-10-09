@@ -885,7 +885,7 @@ describe('Pi setup', () => {
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
       'npm:@thoth-agents/pi-questions-user@>=0.1.0',
-      'npm:@thoth-agents/pi-todo@>=0.1.0',
+      'npm:@thoth-agents/pi-todo@>=0.3.0',
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
     ]);
@@ -3124,7 +3124,7 @@ describe('Pi setup', () => {
     },
     {
       id: 'todo' as const,
-      failedSource: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+      failedSource: 'npm:@thoth-agents/pi-todo@>=0.3.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
         'npm:@thoth-agents/pi-subagents@>=0.3.0',
@@ -3611,5 +3611,29 @@ test('installer requires the first pi-subagents release owning tools configurati
   ).toMatchObject({
     source: 'npm:@thoth-agents/pi-subagents@>=0.3.0',
     version: '0.3.0',
+  });
+});
+
+test('installer requires the pi-todo release using work-panel contract v2', () => {
+  expect(PI_PACKAGE_SPECS.find((spec) => spec.id === 'todo')).toMatchObject({
+    source: 'npm:@thoth-agents/pi-todo@>=0.3.0',
+    packageName: '@thoth-agents/pi-todo',
+    version: '0.3.0',
+  });
+});
+
+test.each([
+  ['0.2.9', 'drift'],
+  ['0.3.0-beta.1', 'drift'],
+  ['0.3.0', 'installed'],
+  ['0.4.0', 'installed'],
+])('installer verifies pi-todo version %s as %s', (version, state) => {
+  const spec = PI_PACKAGE_SPECS.find((spec) => spec.id === 'todo');
+  if (!spec) throw new Error('Missing pi-todo installer specification');
+  const { candidate } = externalPackageFixture(spec.packageName, version);
+  candidate.source = spec.source;
+  expect(inspectPiExternalPackage([candidate], spec)).toMatchObject({
+    state,
+    version,
   });
 });

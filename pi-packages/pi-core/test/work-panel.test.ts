@@ -748,7 +748,9 @@ describe('work panel compact budget', () => {
     expect(session.render(width).length).toBeLessThanOrEqual(6);
   });
 
-  it('gives providers body width for inline metrics or narrow-width continuation rows', async () => {
+  it('lays out data groups within body width for inline metrics or narrow-width continuation rows', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
     const session = uiSession();
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
@@ -758,11 +760,19 @@ describe('work panel compact budget', () => {
           Array.from({ length: 4 }, (_, index) => ({
             id: `agent-${index}`,
             primary: 'Task label',
-            statusGlyph: '⠋',
-            render: (width: number) =>
-              width >= 40
-                ? { text: 'Agent · task · 4 tools · 2k tok · 20%' }
-                : { text: 'Agent · task', extraRows: ['4 tools · 2k · 20%'] },
+            statusGlyph: 'running' as const,
+            identity: [
+              { text: 'Agent', role: 'primary' as const },
+              { text: ' · task', role: 'secondary' as const },
+            ],
+            metrics: [
+              { segments: [{ text: '4 tools', role: 'meta' as const }] },
+              {
+                segments: [{ text: '2k tok', role: 'meta' as const }],
+                continuation: [{ text: '2k', role: 'meta' as const }],
+              },
+              { segments: [{ text: '20%', role: 'meta' as const }] },
+            ],
           })),
       }),
     );
@@ -1222,6 +1232,8 @@ it('stops a running detail refresh when its last item disappears between overlay
 
 describe('work panel semantic hierarchy', () => {
   it('styles segments, overridden state glyphs and failure counters without coloring the whole row', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
     const session = uiSession();
     const styled: Array<[string, string]> = [];
     session.ui.theme.fg = (role, text) => {
@@ -1247,7 +1259,7 @@ describe('work panel semantic hierarchy', () => {
             id: 'one',
             primary: 'fallback',
             status: 'running',
-            statusGlyph: '⠋',
+            statusGlyph: 'running',
             segments: [
               { text: 'worker', role: 'primary' },
               { text: ' · inspect', role: 'secondary' },

@@ -1,5 +1,12 @@
 import { rmSync } from "node:fs";
-import { getWorkPanelLifecycle } from '@thoth-agents/pi-core';
+import {
+  getWorkPanelLifecycle,
+  getWorkPanelSourceRows,
+  listWorkPanelSources,
+  registerRenderKit,
+  withdrawRenderKit,
+} from "@thoth-agents/pi-core";
+import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { logPathFor, readMeta, taskDir, writeMeta } from "./registry.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
@@ -20,6 +27,81 @@ function task(host: ReturnType<typeof lifecycleHost>, id: string, status: Backgr
 }
 
 describe("Background Work panel provider", () => {
+  it.each([
+    false,
+    true,
+  ])('registers v2 plain-data rows and matches the v1 native/themed status golden (render kit: %s)', async (themed) => {
+    const host = lifecycleHost('panel-v2-golden', true);
+    const now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const metas: BackgroundTaskMeta[] = [];
+    let token: ReturnType<typeof registerRenderKit> | undefined;
+    try {
+      const statuses = ['running', 'succeeded', 'failed', 'timed_out', 'cancelled'] as const;
+      for (const [index, status] of statuses.entries()) {
+        const meta = task(host, `bg_panel_golden_${status}`, status);
+        metas.push(meta);
+        writeMeta({ ...meta, name: status, startedAt: now - (index + 1) * 1000 });
+      }
+      if (themed) token = registerRenderKit(createTestRenderKit(), {});
+      await host.emit('session_start');
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      expect(provider.version).toBe(2);
+      expect(listWorkPanelSources()).toContainEqual(
+        expect.objectContaining({ id: 'background-tasks', version: 2 }),
+      );
+      const rows = provider.listRows(now);
+      expect(structuredClone(rows)).toEqual(rows);
+      expect(JSON.stringify(rows)).not.toContain('\\u001b');
+      expect(getWorkPanelSourceRows('background-tasks', { maxRows: 10 })).toEqual(
+        rows.slice(0, 3),
+      );
+
+      // Captured through the HEAD v1 renderer before migration, covering every runtime status.
+      expect(host.panel.render(100)).toEqual(
+        themed
+        ? [
+            'Background · 1 running · 3 failed',
+            '  ├─ ⠋ running · process running · 1s',
+            '  ├─ ✓ succeeded · completed · 2s',
+            '  ├─ ✗ failed · failed, inspect log · 3s',
+            '  ├─ ✗ timed_out · failed, inspect log · 4s',
+            '  └─ ■ cancelled · cancelled · 5s',
+            '← interact',
+          ]
+        : [
+            '◆ Background · 1 running · 3 failed',
+            '  ◐ running · process running · 1s',
+            '  ✓ succeeded · completed · 2s',
+            '  ✗ failed · failed, inspect log · 3s',
+            '  ✗ timed_out · failed, inspect log · 4s',
+            '  ■ cancelled · cancelled · 5s',
+            '← interact',
+          ],
+      );
+      if (token) {
+        withdrawRenderKit(token);
+        token = registerRenderKit(
+          {
+            ...createTestRenderKit(),
+            fg: (_theme, _role, text) => `\u001b[31m${text}\u001b[39m`,
+          },
+          {},
+        );
+        expect(provider.listRows(now)).toEqual(rows);
+        expect(getWorkPanelSourceRows('background-tasks', { maxRows: 3 })).toEqual(
+          rows.slice(0, 3),
+        );
+      }
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      if (token) withdrawRenderKit(token);
+      clock.mockRestore();
+      for (const meta of metas)
+        rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
   it('binds prompt lifecycle, lingers idle outcomes before collapse, and disposes across switch/shutdown', async () => {
     const host = lifecycleHost('panel-lifecycle', true);
     const metas: BackgroundTaskMeta[] = [];

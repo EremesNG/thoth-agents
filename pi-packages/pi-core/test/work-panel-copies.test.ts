@@ -24,7 +24,7 @@ let second: Awaited<ReturnType<typeof isolatedCore>>;
 let compatible: Awaited<ReturnType<typeof isolatedCore>>;
 beforeAll(async () => {
   first = await isolatedCore();
-  second = await isolatedCore(2);
+  second = await isolatedCore(1);
   compatible = await isolatedCore();
 });
 afterEach(() => {
@@ -87,6 +87,7 @@ describe('mixed work-panel contracts', () => {
     expect(
       first.core.isWorkPanelRootEditorInputActive(session.ctx),
     ).toBeUndefined();
+    expect(first.core.listWorkPanelSources()).toEqual([]);
     expect(shared[ownershipKey]).toBeUndefined();
   });
 
@@ -108,6 +109,22 @@ describe('mixed work-panel contracts', () => {
     expect(session.ui.setWidget).toHaveBeenCalledTimes(1);
     expect(session.ui.onTerminalInput).toHaveBeenCalledTimes(1);
     expect(session.listenerCount()).toBe(1);
+    expect(other.listWorkPanelSources().map(({ id }) => id)).toEqual([
+      'Other',
+      'Owner',
+    ]);
+    const changed: string[] = [];
+    cleanups.push(other.subscribeWorkPanelRegistry((id) => changed.push(id)));
+    cleanups.push(
+      owner.registerWorkPanelProvider(session.ctx, {
+        ...provider('Discovered'),
+        version: owner.WORK_PANEL_VERSION,
+      }),
+    );
+    expect(changed).toEqual(['Discovered']);
+    expect(
+      other.getWorkPanelSourceRows('Discovered', { maxRows: 1 }),
+    ).toMatchObject([{ id: 'Discovered-1' }]);
     expect(
       session.on.mock.calls.filter(([event]) => event === 'input'),
     ).toHaveLength(1);
@@ -139,6 +156,7 @@ describe('mixed work-panel contracts', () => {
       expect(session.render().join('\n')).not.toContain('First');
       expect(session.render().join('\n')).not.toContain('Second');
       expect(session.on).not.toHaveBeenCalled();
+      expect(first.core.listWorkPanelSources()).toEqual([]);
       expect(
         first.core.isWorkPanelRootEditorInputActive(session.ctx),
       ).toBeUndefined();
@@ -156,13 +174,15 @@ describe('mixed work-panel contracts', () => {
     true,
   ])('keeps the first contract as sole owner (v2 first: %s)', async (reverse) => {
     const [owner, incompatible] = reverse
-      ? [second.core, first.core]
-      : [first.core, second.core];
+      ? [first.core, second.core]
+      : [second.core, first.core];
     expect(owner.ensureWorkPanel).not.toBe(incompatible.ensureWorkPanel);
     expect(incompatible.WORK_PANEL_VERSION).not.toBe(owner.WORK_PANEL_VERSION);
     const session = activationSession();
     await activate(owner, session, 'Owner');
     const subscriptions = session.on.mock.calls.length;
+    const registryListener = vi.fn();
+    cleanups.push(incompatible.subscribeWorkPanelRegistry(registryListener));
     await expect(
       activate(incompatible, session, 'Incompatible'),
     ).resolves.not.toThrow();
@@ -172,6 +192,22 @@ describe('mixed work-panel contracts', () => {
     expect(session.ui.onTerminalInput).toHaveBeenCalledTimes(1);
     expect(session.listenerCount()).toBe(1);
     expect(session.on).toHaveBeenCalledTimes(subscriptions);
+    expect(owner.listWorkPanelSources()).toMatchObject([
+      { id: 'Owner', revision: 1 },
+    ]);
+    expect(incompatible.listWorkPanelSources()).toEqual([]);
+    expect(
+      incompatible.getWorkPanelSourceRows('Owner', { maxRows: 3 }),
+    ).toEqual([]);
+    expect(
+      await incompatible.invokeWorkPanelAction(
+        session.ctx,
+        'Owner',
+        'Owner-1',
+        'open',
+      ),
+    ).toBe('missing');
+    expect(registryListener).not.toHaveBeenCalled();
     expect(
       incompatible.isWorkPanelRootEditorInputActive(session.ctx),
     ).toBeUndefined();

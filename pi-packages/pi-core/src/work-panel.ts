@@ -2,8 +2,13 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import type { RenderStatus } from './render-kit.js';
 import { createWorkPanelHost } from './work-panel-host.js';
-import { safely } from './work-panel-render.js';
+import {
+  safely,
+  workPanelRenderStatus,
+  workPanelStatusGlyph,
+} from './work-panel-render.js';
 import {
   type Registration,
   WORK_PANEL_VERSION,
@@ -32,14 +37,15 @@ export type WorkPanelSegmentRole =
   | 'warning'
   | 'error'
   | 'success'
-  | 'muted';
+  | 'muted'
+  | 'completed';
 
 export interface WorkPanelSegment {
   text: string;
   role: WorkPanelSegmentRole;
 }
 
-/** Provider-owned formatting gets the body width, excluding selection/tree/status gutters. */
+/** Data-only rendered body and continuations, excluding selection/tree/status gutters. */
 export interface WorkPanelRowContent {
   text: string;
   /** Styled counterpart of text; separators belong to the segments. */
@@ -50,10 +56,22 @@ export interface WorkPanelRowContent {
   extraRows?: readonly string[];
 }
 
+export interface WorkPanelMetricGroup {
+  segments: readonly WorkPanelSegment[];
+  /** Optional compact counterpart when metrics move below the identity line. */
+  continuation?: readonly WorkPanelSegment[];
+}
+
+export type WorkPanelStatusGlyph = RenderStatus | 'taskInProgress';
+
 export interface WorkPanelRow {
   id: string;
   primary: string;
   segments?: readonly WorkPanelSegment[];
+  /** Responsive identity: labels shrink before names; warning/error attention is protected. */
+  identity?: readonly WorkPanelSegment[];
+  /** Atomic groups joined with the semantic separator, inline or in wrapped continuations. */
+  metrics?: readonly WorkPanelMetricGroup[];
   /** Section summary; excluded from item caps and overflow counts. Informational by default. */
   summary?: boolean;
   /** Prefer dropping this item before other items when the panel exceeds its height budget. */
@@ -68,10 +86,10 @@ export interface WorkPanelRow {
   statusTone?: WorkPanelStatusTone;
   /** Override the state-derived color, e.g. pending Todos use normal text. */
   statusGlyphRole?: WorkPanelSegmentRole;
-  /** Overrides the host indicator, including producer-owned animated glyphs. */
-  statusGlyph?: string | ((now: number) => string);
-  render?: (width: number, now: number) => WorkPanelRowContent;
+  /** Semantic override, never a literal glyph or callback. Running overrides animate natively. */
+  statusGlyph?: WorkPanelStatusGlyph;
   extraRows?: readonly string[];
+  extraSegments?: readonly (readonly WorkPanelSegment[])[];
   secondary?: string;
   elapsed?: string;
   kind?: string;
@@ -131,7 +149,7 @@ export interface WorkPanelProvider {
   id: string;
   label: string;
   priority: number;
-  /** Additive v1 opt-in: linger terminal outcomes, then collapse idle sections to history. */
+  /** Linger terminal outcomes, then collapse idle sections to history. */
   retention?: 'prompt';
   /** Advisory provider count; host cues and focus use selectable section rows instead. */
   visibleCount(): number;
@@ -168,6 +186,113 @@ export interface WorkPanelProvider {
   rowCap?: number;
 }
 
+export type WorkPanelAction = 'open' | 'history' | 'close';
+export type WorkPanelActionResult = 'ok' | 'unavailable' | 'missing';
+
+/** Actions require a live context bound to an installed host in the same session. */
+export async function invokeWorkPanelAction(
+  ctx: ExtensionContext,
+  id: string,
+  rowId: string | undefined,
+  action: WorkPanelAction,
+): Promise<WorkPanelActionResult> {
+  const state = workPanelRegistry(false);
+  const provider = state?.providers.get(id)?.provider;
+  if (!provider) return 'missing';
+  const host = safely(() => {
+    const current = state.hosts.get(ctx.sessionManager);
+    return current?.sessionId === ctx.sessionManager.getSessionId()
+      ? current
+      : undefined;
+  }, undefined);
+  try {
+    return await (host?.invokeAction?.(ctx, provider, rowId, action) ??
+      'unavailable');
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export interface WorkPanelSource {
+  id: string;
+  label: string;
+  priority: number;
+  version: typeof WORK_PANEL_VERSION;
+  revision: number;
+  selectableHeading: boolean;
+  selectableSummary: boolean;
+  rowCap: number;
+}
+
+/** Discovery never claims the ownership slot or installs UI. */
+export function listWorkPanelSources(): WorkPanelSource[] {
+  return [...(workPanelRegistry(false)?.providers.values() ?? [])]
+    .map(({ provider, revision }) => ({
+      id: provider.id,
+      label: provider.label,
+      priority: provider.priority,
+      version: provider.version,
+      revision,
+      selectableHeading: provider.selectableHeading === true,
+      selectableSummary: provider.selectableSummary === true,
+      rowCap: provider.rowCap ?? 3,
+    }))
+    .sort((a, b) => a.priority - b.priority || a.label.localeCompare(b.label));
+}
+
+/** Provider-ordered rows, independent of host visibility/retention and height budgets. */
+export function getWorkPanelSourceRows(
+  id: string,
+  options: { maxRows: number },
+): WorkPanelRow[] {
+  const provider = workPanelRegistry(false)?.providers.get(id)?.provider;
+  if (!provider || !Number.isFinite(options.maxRows)) return [];
+  const cap = provider.rowCap ?? 3;
+  if (!Number.isFinite(cap)) return [];
+  const limit = Math.max(0, Math.floor(Math.min(options.maxRows, cap)));
+  return limit
+    ? safely(
+        () =>
+          provider
+            .listRows(Date.now())
+            .slice(0, limit)
+            .map((row) => {
+              // Discard legacy render callbacks and executable top-level members at this public boundary.
+              const data = Object.fromEntries(
+                Object.entries(row).filter(
+                  ([key, value]) =>
+                    key !== 'render' && typeof value !== 'function',
+                ),
+              ) as unknown as WorkPanelRow;
+              if (
+                row.statusGlyph !== undefined &&
+                workPanelStatusGlyph(row) === undefined
+              )
+                data.statusGlyph = workPanelRenderStatus(row);
+              return data;
+            }),
+        [],
+      )
+    : [];
+}
+
+/** Synchronous post-mutation notifications; one listener cannot break another. */
+export function subscribeWorkPanelRegistry(
+  listener: (id: string) => void,
+): () => void {
+  const state = workPanelRegistry();
+  if (!state) return () => {};
+  state.listeners.add(listener);
+  return () => {
+    state.listeners.delete(listener);
+  };
+}
+
+function notifyRegistry(id: string): void {
+  for (const listener of [...(workPanelRegistry(false)?.listeners ?? [])])
+    safely(() => listener(id), undefined);
+}
+
 function refresh(): void {
   for (const host of workPanelRegistry()?.hosts.values() ?? []) host.refresh();
 }
@@ -201,7 +326,9 @@ export function registerWorkPanelProvider(
   const previous = state.providers.get(provider.id);
   safely(() => previous?.unsubscribe?.(), undefined);
   safely(() => previous?.removeShutdown?.(), undefined);
-  const registration: Registration = { provider };
+  const revision = (state.revisions.get(provider.id) ?? 0) + 1;
+  state.revisions.set(provider.id, revision);
+  const registration: Registration = { provider, revision };
   state.providers.set(provider.id, registration);
   if ('on' in owner) {
     registration.removeShutdown = owner.on(
@@ -212,10 +339,23 @@ export function registerWorkPanelProvider(
       },
     );
   }
+  notifyRegistry(provider.id);
+  if (state.providers.get(provider.id) !== registration) return () => {};
   registration.unsubscribe = safely(
-    () => provider.onVisibleChanged?.(refresh),
+    () =>
+      provider.onVisibleChanged?.(() => {
+        if (state.providers.get(provider.id) !== registration) return;
+        registration.revision += 1;
+        state.revisions.set(provider.id, registration.revision);
+        notifyRegistry(provider.id);
+        refresh();
+      }),
     undefined,
   );
+  if (state.providers.get(provider.id) !== registration) {
+    safely(() => registration.unsubscribe?.(), undefined);
+    return () => {};
+  }
   refresh();
   let removed = false;
   return () => {
@@ -225,6 +365,7 @@ export function registerWorkPanelProvider(
     state.providers.delete(provider.id);
     safely(() => registration.unsubscribe?.(), undefined);
     safely(() => registration.removeShutdown?.(), undefined);
+    notifyRegistry(provider.id);
     if (!state.providers.size) {
       for (const host of [...state.hosts.values()]) host.dispose();
     } else refresh();

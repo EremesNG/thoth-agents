@@ -2,10 +2,11 @@ import type { WorkPanelProvider } from './work-panel.js';
 import type { WorkPanelHost } from './work-panel-host.js';
 import type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 
-export const WORK_PANEL_VERSION = 1 as const;
+export const WORK_PANEL_VERSION = 2 as const;
 
 export interface Registration {
   provider: WorkPanelProvider;
+  revision: number;
   unsubscribe?: () => void;
   removeShutdown?: () => void;
 }
@@ -19,6 +20,8 @@ interface Registry {
   version: typeof WORK_PANEL_VERSION;
   providers: Map<string, Registration>;
   hosts: Map<object, WorkPanelHost>;
+  revisions: Map<string, number>;
+  listeners: Set<(id: string) => void>;
   lifecycle: {
     sessions: WeakMap<object, Lifecycle>;
     listeners: WeakMap<object, Set<() => void>>;
@@ -38,6 +41,8 @@ export function workPanelRegistry(create = true): Registry | undefined {
         version: WORK_PANEL_VERSION,
         providers: new Map(),
         hosts: new Map(),
+        revisions: new Map(),
+        listeners: new Set(),
         lifecycle: { sessions: new WeakMap(), listeners: new WeakMap() },
       };
     }
@@ -46,6 +51,8 @@ export function workPanelRegistry(create = true): Registry | undefined {
       state?.version === WORK_PANEL_VERSION &&
       state.providers instanceof Map &&
       state.hosts instanceof Map &&
+      state.revisions instanceof Map &&
+      state.listeners instanceof Set &&
       state.lifecycle?.sessions instanceof WeakMap &&
       state.lifecycle.listeners instanceof WeakMap
     )

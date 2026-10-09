@@ -105,21 +105,30 @@ export {
   publishToolDefinitions,
 } from './tool-registry.js';
 export type {
+  WorkPanelAction,
+  WorkPanelActionResult,
   WorkPanelCloseOutcome,
   WorkPanelDetail,
   WorkPanelItemState,
+  WorkPanelMetricGroup,
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,
   WorkPanelSegment,
   WorkPanelSegmentRole,
+  WorkPanelSource,
+  WorkPanelStatusGlyph,
   WorkPanelStatusTone,
   WorkPanelSummary,
 } from './work-panel.js';
 export {
   ensureWorkPanel,
+  getWorkPanelSourceRows,
+  invokeWorkPanelAction,
   isWorkPanelRootEditorInputActive,
+  listWorkPanelSources,
   registerWorkPanelProvider,
+  subscribeWorkPanelRegistry,
   WORK_PANEL_VERSION,
 } from './work-panel.js';
 export type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';

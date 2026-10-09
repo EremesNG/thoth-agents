@@ -856,7 +856,7 @@ describe('explicit operation commands', () => {
     try {
       const status = await captureCommand(['status', '--harness=pi'], services);
       expect(status.code).toBe(0);
-      expect(status.output).toContain('npm:@thoth-agents/pi-todo@>=0.1.0');
+      expect(status.output).toContain('npm:@thoth-agents/pi-todo@>=0.3.0');
       expect(status.output).toContain('[pi-incumbent-todo-conflict]');
       const preview = await captureCommand(
         ['update', '--harness=pi', '--dry-run'],

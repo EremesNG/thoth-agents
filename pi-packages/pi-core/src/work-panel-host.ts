@@ -4,7 +4,11 @@ import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
-import type { WorkPanelProvider } from './work-panel.js';
+import type {
+  WorkPanelAction,
+  WorkPanelActionResult,
+  WorkPanelProvider,
+} from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
 import {
   getWorkPanelLifecycle,
@@ -38,6 +42,12 @@ export interface WorkPanelHost {
   holders: number;
   ready: Promise<void>;
   isRootEditorInputActive(): boolean | undefined;
+  invokeAction?(
+    ctx: ExtensionContext,
+    provider: WorkPanelProvider,
+    rowId: string | undefined,
+    action: WorkPanelAction,
+  ): Promise<WorkPanelActionResult>;
   refresh(): void;
   dispose(): void;
 }
@@ -119,6 +129,7 @@ export function createWorkPanelHost(
           Date.now(),
           panelBudget(),
           focused ? selectedKey : undefined,
+          measure,
         )
       : new Map<string, PanelRow[]>();
     const all = current
@@ -176,16 +187,43 @@ export function createWorkPanelHost(
     data: string,
     key: 'left' | 'right' | 'up' | 'down' | 'enter' | 'escape',
   ) => matchesPanelKey(data, key, toolkit?.matchesKey);
-  function open(entry: PanelRow): void {
-    if (suspended || (entry.sectionSummary && !entry.provider.openHistory))
-      return;
+  function sourceRows(provider: WorkPanelProvider): PanelRow[] {
+    const now = Date.now();
+    const parent = safely(() => provider.parentRow?.(now), undefined);
+    return [
+      ...(parent ? [{ row: parent, parent: true }] : []),
+      ...safely(() => provider.listRows(now), []).map((row) => ({
+        row,
+        parent: false,
+      })),
+    ].map((entry) => ({
+      ...entry,
+      provider,
+      key: JSON.stringify([provider.id, entry.row.id]),
+      sectionSummary: entry.row.summary && provider.selectableSummary,
+    }));
+  }
+
+  function open(
+    entry: PanelRow,
+    liveCtx = ctx,
+    includeHidden = false,
+  ): Promise<WorkPanelActionResult> {
+    if (
+      disposed ||
+      !installed ||
+      suspended ||
+      (entry.sectionSummary && !entry.provider.openHistory)
+    )
+      return Promise.resolve('unavailable');
     suspended = true;
-    releaseFocus();
-    host.refresh();
     const sectionRows = () =>
-      rows().filter(
-        (row) => row.provider.id === entry.provider.id && !row.sectionSummary,
-      );
+      includeHidden
+        ? sourceRows(entry.provider).filter((entry) => !entry.row.summary)
+        : rows().filter(
+            (row) =>
+              row.provider.id === entry.provider.id && !row.sectionSummary,
+          );
     const sectionSelected = () => {
       const all = sectionRows();
       const current = all.find((row) => row.key === selectedKey) ?? all[0];
@@ -195,10 +233,11 @@ export function createWorkPanelHost(
     let detailComponent: ReturnType<typeof createWorkPanelDetail> | undefined;
     let detailFinished = false;
     const show = () => {
-      if (entry.sectionSummary) return entry.provider.openHistory?.(ctx);
-      if (entry.provider.open) return entry.provider.open(entry.row.id, ctx);
+      if (entry.sectionSummary) return entry.provider.openHistory?.(liveCtx);
+      if (entry.provider.open)
+        return entry.provider.open(entry.row.id, liveCtx);
       return openOwnedOverlay<void>(
-        ctx,
+        liveCtx,
         (detailTui, theme, _keybindings, close) => {
           const component = createWorkPanelDetail({
             rows: sectionRows,
@@ -252,13 +291,25 @@ export function createWorkPanelHost(
       detailFinished = true;
       suspended = false;
       dismissDetail = undefined;
-      releaseFocus();
-      host.refresh();
+      safely(releaseFocus, undefined);
+      safely(() => host.refresh(), undefined);
     };
     try {
-      void Promise.resolve(show()).then(finished, finished);
+      releaseFocus();
+      host.refresh();
+      return Promise.resolve(show()).then(
+        () => {
+          finished();
+          return 'ok';
+        },
+        () => {
+          finished();
+          return 'unavailable';
+        },
+      );
     } catch {
       finished();
+      return Promise.resolve('unavailable');
     }
   }
 
@@ -295,7 +346,7 @@ export function createWorkPanelHost(
       const entry = selected();
       if (entry?.sectionSummary && !entry.provider.openHistory)
         return undefined;
-      if (entry) open(entry);
+      if (entry) void open(entry);
     } else if (data === 'x' || data === 'X') {
       const entry = selected();
       if (entry?.sectionSummary) return undefined;
@@ -342,6 +393,49 @@ export function createWorkPanelHost(
     ready: Promise.resolve(),
     isRootEditorInputActive: () =>
       installed ? rootEditorInputActive() : undefined,
+    invokeAction(liveCtx, provider, rowId, action) {
+      if (
+        disposed ||
+        !installed ||
+        suspended ||
+        !safely(
+          () =>
+            action === 'close' ||
+            (liveCtx.hasUI &&
+              liveCtx.mode === 'tui' &&
+              typeof liveCtx.ui.custom === 'function'),
+          false,
+        )
+      )
+        return Promise.resolve('unavailable');
+      if (action === 'history') {
+        return open(
+          {
+            provider,
+            row: { id: 'history', primary: provider.label, summary: true },
+            key: JSON.stringify([provider.id, null]),
+            sectionSummary: true,
+          },
+          liveCtx,
+        );
+      }
+      const entry = sourceRows(provider).find(({ row }) => row.id === rowId);
+      if (!entry) return Promise.resolve('missing');
+      if (!isSelectablePanelRow(entry)) return Promise.resolve('unavailable');
+      if (action === 'open') {
+        selectedKey = entry.key;
+        return open(entry, liveCtx, true);
+      }
+      if (action !== 'close' || !panelCloseLabel(entry))
+        return Promise.resolve('unavailable');
+      clearCloseArm();
+      const result = safely(() => {
+        provider.close(entry.row.id);
+        return 'ok' as const;
+      }, 'unavailable' as WorkPanelActionResult);
+      host.refresh();
+      return Promise.resolve(result);
+    },
     refresh() {
       if (disposed) return;
       if (!installed && loaded && providers().length) install();

@@ -2,6 +2,7 @@ import {
   getRenderKit,
   type RenderKitTheme,
   type RenderStatus,
+  resolveFrames,
   resolveIcon,
   resolveStatusGlyph,
 } from './render-kit.js';
@@ -315,6 +316,7 @@ const segmentRoles = {
   error: 'error',
   success: 'success',
   muted: 'muted',
+  completed: 'dim',
 } as const;
 
 function glyphRole(
@@ -346,44 +348,218 @@ const nativeGlyphs = {
   unknown: '?',
 };
 
-function panelContentReader(width: number, now: number) {
+const shrinkOrder: readonly WorkPanelSegmentRole[] = [
+  'secondary',
+  'primary',
+  'dim',
+  'completed',
+  'muted',
+  'meta',
+  'accent',
+  'success',
+  'warning',
+  'error',
+];
+const segmentText = (segments: readonly WorkPanelSegment[]) =>
+  segments.map(({ text }) => text).join('');
+
+type Measure = (text: string) => number;
+const defaultMeasure: Measure = (text) =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: optional-peer fallback measures ANSI-styled headings.
+  [...text.replace(/\x1b\[[0-9;]*m/g, '')].length;
+
+function truncateData(
+  text: string,
+  width: number,
+  measure: Measure,
+  ellipsis = resolveIcon('ellipsis', '…'),
+): string {
+  if (measure(text) <= width) return text;
+  if (width <= 0) return '';
+  let prefix = '';
+  const suffix = measure(ellipsis) <= width ? ellipsis : '';
+  for (const character of text) {
+    if (measure(prefix + character + suffix) > width) break;
+    prefix += character;
+  }
+  return prefix + suffix;
+}
+
+function fitIdentity(
+  segments: readonly WorkPanelSegment[],
+  width: number,
+  measure: Measure,
+): WorkPanelSegment[] {
+  const parts = segments.map((segment) => ({ ...segment }));
+  const attention = parts.filter(
+    ({ role }) => role === 'warning' || role === 'error',
+  );
+  if (attention.length && width <= measure(segmentText(attention))) {
+    const text = segmentText(attention);
+    const separator = ` ${resolveIcon('separator', '·')} `;
+    const label = text.startsWith(separator)
+      ? text.slice(separator.length)
+      : text.trimStart();
+    return [
+      {
+        text: truncateData(label, width, measure, ''),
+        role: attention[0].role,
+      },
+    ];
+  }
+  let excess = measure(segmentText(parts)) - width;
+  for (const role of shrinkOrder) {
+    for (const part of parts) {
+      if (excess <= 0) break;
+      if (part.role !== role) continue;
+      const before = measure(part.text);
+      part.text = truncateData(
+        part.text,
+        Math.max(0, before - excess),
+        measure,
+      );
+      excess -= before - measure(part.text);
+    }
+  }
+  return parts;
+}
+
+/** Wrap plain semantic segments at whitespace, retaining roles and cell boundaries. */
+function wrapSegments(
+  segments: readonly WorkPanelSegment[],
+  width: number,
+  measure: Measure,
+): WorkPanelSegment[][] {
+  if (width <= 0) return [];
+  type Cell = { text: string; role: WorkPanelSegmentRole };
+  const lines: Cell[][] = [];
+  let current: Cell[] = [];
+  for (const segment of segments) {
+    for (const text of segment.text) {
+      if (measure(current.map((cell) => cell.text).join('') + text) > width) {
+        let space = current.length - 1;
+        while (space >= 0 && !/\s/u.test(current[space].text)) space -= 1;
+        if (space >= 0) {
+          lines.push(current.slice(0, space));
+          current = current.slice(space + 1);
+        } else {
+          lines.push(current);
+          current = [];
+        }
+      }
+      if (current.length || !/\s/u.test(text))
+        current.push({ text, role: segment.role });
+    }
+  }
+  if (current.length) lines.push(current);
+  return lines
+    .filter((line) => line.length)
+    .map((line) => {
+      while (line.length && /\s/u.test(line.at(-1)?.text ?? '')) line.pop();
+      const parts: WorkPanelSegment[] = [];
+      for (const cell of line) {
+        const previous = parts.at(-1);
+        if (previous?.role === cell.role) previous.text += cell.text;
+        else parts.push({ ...cell });
+      }
+      return parts;
+    });
+}
+
+function responsiveContent(
+  row: WorkPanelRow,
+  width: number,
+  measure: Measure,
+): WorkPanelRowContent {
+  const identity: readonly WorkPanelSegment[] = row.identity ??
+    row.segments ?? [{ text: row.primary, role: 'primary' }];
+  const separator: WorkPanelSegment = {
+    text: ` ${resolveIcon('separator', '·')} `,
+    role: 'meta',
+  };
+  const joinGroups = (groups: readonly (readonly WorkPanelSegment[])[]) =>
+    groups.flatMap((group, index) =>
+      index ? [separator, ...group] : [...group],
+    );
+  const metrics = (row.metrics ?? []).map(({ segments }) => segments);
+  const metricSegments = joinGroups(metrics);
+  const inlineWidth =
+    width - measure(segmentText(metricSegments)) - measure(separator.text);
+  const minIdentity =
+    identity
+      .filter(({ role }) => role !== 'secondary')
+      .reduce((sum, { text }) => sum + measure(text), 0) +
+    (identity.some(({ role, text }) => role === 'secondary' && text)
+      ? measure(separator.text) + 1
+      : 0);
+  const inline = metrics.length > 0 && inlineWidth >= minIdentity;
+  const segments = fitIdentity(identity, inline ? inlineWidth : width, measure);
+  if (inline) segments.push(separator, ...metricSegments);
+  const continuations: WorkPanelSegment[][] = [];
+  if (!inline) {
+    for (const group of row.metrics ?? []) {
+      const parts = group.continuation ?? group.segments;
+      const previous = continuations.at(-1);
+      const joined = previous ? [...previous, separator, ...parts] : [...parts];
+      if (previous && measure(segmentText(joined)) <= width)
+        continuations[continuations.length - 1] = joined;
+      else continuations.push([...parts]);
+    }
+  }
+  const extraSegments = continuations.flatMap((parts) =>
+    wrapSegments(parts, width, measure),
+  );
+  return {
+    text: segmentText(segments),
+    segments,
+    extraRows: extraSegments.map(segmentText),
+    extraSegments,
+  };
+}
+
+function panelContentReader(width: number, measure = defaultMeasure) {
   const kit = getRenderKit();
   const contents = new Map<PanelRow, WorkPanelRowContent>();
   function contentFor(entry: PanelRow) {
     let content = contents.get(entry);
     if (!content) {
-      content = safely(
-        () => entry.row.render?.(Math.max(0, width - (kit ? 7 : 4)), now),
-        undefined,
-      ) ?? {
-        text: [entry.row.name, entry.row.primary, entry.row.elapsed]
-          .filter(Boolean)
-          .join(` ${resolveIcon('separator', '·')} `),
-        segments: entry.row.segments ?? [
-          ...(entry.row.name
-            ? [
-                { text: entry.row.name, role: 'primary' as const },
+      content =
+        entry.row.identity || entry.row.metrics
+          ? responsiveContent(
+              entry.row,
+              Math.max(0, width - (kit ? 7 : 4)),
+              measure,
+            )
+          : {
+              text: [entry.row.name, entry.row.primary, entry.row.elapsed]
+                .filter(Boolean)
+                .join(` ${resolveIcon('separator', '·')} `),
+              segments: entry.row.segments ?? [
+                ...(entry.row.name
+                  ? [
+                      { text: entry.row.name, role: 'primary' as const },
+                      {
+                        text: ` ${resolveIcon('separator', '·')} `,
+                        role: 'meta' as const,
+                      },
+                    ]
+                  : []),
                 {
-                  text: ` ${resolveIcon('separator', '·')} `,
-                  role: 'meta' as const,
+                  text: entry.row.primary,
+                  role: entry.row.name ? 'secondary' : 'primary',
                 },
-              ]
-            : []),
-          {
-            text: entry.row.primary,
-            role: entry.row.name ? 'secondary' : 'primary',
-          },
-          ...(entry.row.elapsed
-            ? [
-                {
-                  text: ` ${resolveIcon('separator', '·')} ${entry.row.elapsed}`,
-                  role: 'meta' as const,
-                },
-              ]
-            : []),
-        ],
-        extraRows: entry.row.extraRows,
-      };
+                ...(entry.row.elapsed
+                  ? [
+                      {
+                        text: ` ${resolveIcon('separator', '·')} ${entry.row.elapsed}`,
+                        role: 'meta' as const,
+                      },
+                    ]
+                  : []),
+              ],
+              extraRows: entry.row.extraRows,
+              extraSegments: entry.row.extraSegments,
+            };
       contents.set(entry, content);
     }
     return content;
@@ -545,11 +721,12 @@ function planPanelSections(
 export function panelOverflowEntries(
   sections: PanelSection[],
   width: number,
-  now: number,
+  _now: number,
   budget: number,
   selectedKey?: string,
+  measure = defaultMeasure,
 ): Map<string, PanelRow[]> {
-  const contentFor = panelContentReader(width, now);
+  const contentFor = panelContentReader(width, measure);
   const blockCost = (entry: PanelRow) =>
     1 +
     (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
@@ -582,10 +759,7 @@ export function renderPanel(
   const kit = getRenderKit();
   const fg = (role: Parameters<RenderKitTheme['fg']>[0], text: string) =>
     kit ? kit.fg(theme, role, text) : theme.fg(role, text);
-  const measure =
-    options.measure ??
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: optional-peer fallback measures ANSI-styled headings.
-    ((text: string) => [...text.replace(/\x1b\[[0-9;]*m/g, '')].length);
+  const measure = options.measure ?? defaultMeasure;
   const styleSegments = (
     segments: readonly WorkPanelSegment[],
     available = Infinity,
@@ -596,17 +770,6 @@ export function renderPanel(
     });
     let excess = parts.reduce((sum, part) => sum + part.width, 0) - available;
     // Labels shrink first; metrics and attention stay visible until width is exhausted.
-    const shrinkOrder: WorkPanelSegmentRole[] = [
-      'secondary',
-      'primary',
-      'dim',
-      'muted',
-      'meta',
-      'accent',
-      'success',
-      'warning',
-      'error',
-    ];
     for (const role of shrinkOrder) {
       for (const part of parts) {
         if (excess <= 0) break;
@@ -621,6 +784,8 @@ export function renderPanel(
         const clipped =
           partWidth < measure(text) ? clip(text, partWidth) : text;
         const styled = fg(segmentRoles[role], clipped);
+        if (role === 'completed')
+          return theme.strikethrough?.(styled) ?? styled;
         return role === 'primary' && theme.bold ? theme.bold(styled) : styled;
       })
       .join('');
@@ -632,7 +797,7 @@ export function renderPanel(
     : undefined;
   const budget = Math.max(0, Math.floor(options.budget ?? 12));
   const remaining = Math.max(0, budget - (hint ? 1 : 0));
-  const contentFor = panelContentReader(width, now);
+  const contentFor = panelContentReader(width, measure);
   const blockCost = (entry: PanelRow) =>
     1 +
     (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
@@ -658,19 +823,21 @@ export function renderPanel(
             frame: Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS),
           })
         : undefined;
-      const glyph = safely(
-        () =>
-          typeof row.statusGlyph === 'function'
-            ? row.statusGlyph(now)
-            : (row.statusGlyph ??
-              (status === 'running'
-                ? (indicator?.glyph ?? nativeGlyphs[status])
-                : resolveStatusGlyph(
-                    status,
-                    indicator?.glyph ?? nativeGlyphs[status],
-                  ))),
-        nativeGlyphs[status],
-      );
+      const semanticGlyph = workPanelStatusGlyph(row);
+      const running = status === 'running' || status === 'in_progress';
+      const frames = resolveFrames('spinnerFrames');
+      const native =
+        semanticGlyph && running
+          ? frames[
+              Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS) % frames.length
+            ]
+          : nativeGlyphs[status];
+      const glyph =
+        semanticGlyph === 'taskInProgress'
+          ? resolveIcon('taskInProgress', '◇')
+          : running
+            ? (indicator?.glyph ?? native)
+            : resolveStatusGlyph(status, native);
       const content = contentFor(entry);
       const body = content.segments
         ? styleSegments(content.segments, Math.max(0, width - (kit ? 7 : 4)))
@@ -764,27 +931,40 @@ export function renderPanel(
 
 /** Shared status mapping for providers whose runtime has additional terminal states. */
 export function workPanelRenderStatus(
-  row: Pick<WorkPanelRow, 'status' | 'statusTone'>,
+  row: Pick<WorkPanelRow, 'status' | 'statusTone' | 'statusGlyph'>,
 ): RenderStatus {
+  const semanticGlyph = workPanelStatusGlyph(row);
+  if (semanticGlyph && semanticGlyph !== 'taskInProgress') return semanticGlyph;
   if (row.statusTone === 'running') return 'running';
   if (row.statusTone === 'success') return 'completed';
   if (row.statusTone === 'failed') return 'failed';
   if (row.statusTone === 'warning') return 'blocked';
-  const statuses: readonly string[] = [
-    'pending',
-    'queued',
-    'in_progress',
-    'running',
-    'completed',
-    'failed',
-    'cancelled',
-    'interrupted',
-    'stopping',
-    'deleted',
-    'blocked',
-    'unknown',
-  ];
-  return statuses.includes(row.status ?? '')
+  return renderStatuses.includes(row.status ?? '')
     ? (row.status as RenderStatus)
     : 'unknown';
+}
+
+const renderStatuses: readonly string[] = [
+  'pending',
+  'queued',
+  'in_progress',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'stopping',
+  'deleted',
+  'blocked',
+  'unknown',
+];
+
+/** Invalid semantic overrides fall back to the row's status without executing code. */
+export function workPanelStatusGlyph(
+  row: Pick<WorkPanelRow, 'statusGlyph'>,
+): WorkPanelRow['statusGlyph'] {
+  const glyph = row.statusGlyph;
+  return glyph === 'taskInProgress' || renderStatuses.includes(glyph ?? '')
+    ? glyph
+    : undefined;
 }

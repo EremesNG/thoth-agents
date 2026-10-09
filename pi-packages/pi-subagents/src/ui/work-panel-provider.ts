@@ -1,20 +1,20 @@
 import {
-  getRenderKit,
   type RenderKitTheme,
   resolveIcon,
-  resolveStatusGlyph,
   WORK_PANEL_VERSION,
   type WorkPanelItemState,
   type WorkPanelProvider,
+  type WorkPanelRow,
   type WorkPanelSegment,
 } from '@thoth-agents/pi-core';
 import type { SubagentSessionTaskCounts } from '../history.js';
-import { statusGlyph } from '../render/tools/progress.js';
-import type { SubagentTask } from '../types.js';
 import {
-  formatTaskSummary,
-  renderSubagentWorkRow,
-} from './background-widget.js';
+  formatDuration,
+  formatTokens,
+  generationSpeed,
+} from '../render/tools/formatting.js';
+import type { SubagentTask } from '../types.js';
+import { formatTaskSummary } from './background-widget.js';
 
 function taskState(task: SubagentTask): WorkPanelItemState {
   if (['queued', 'stopping', 'running'].includes(task.status)) return 'running';
@@ -24,6 +24,53 @@ function taskState(task: SubagentTask): WorkPanelItemState {
 function completionTime(task: SubagentTask): number | undefined {
   const endedAt = task.ended_at ? Date.parse(task.ended_at) : NaN;
   return Number.isFinite(endedAt) ? endedAt : undefined;
+}
+
+function finiteNonnegative(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** Snapshot domain metrics here; the host owns styling, animation and width. */
+function taskRow(task: SubagentTask, now: number): WorkPanelRow {
+  const summary = formatTaskSummary(task);
+  const separator = ` ${resolveIcon('separator', '·')} `;
+  const metrics = task.runtime_metrics;
+  const speed = generationSpeed(metrics);
+  const started = task.started_at ? Date.parse(task.started_at) : NaN;
+  const ended = task.ended_at ? Date.parse(task.ended_at) : NaN;
+  const end =
+    task.status === 'running' || task.status === 'stopping' ? now : ended;
+  const parts = [
+    `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
+    `${resolveIcon('tokensIn', '↑')}${finiteNonnegative(task.usage?.input) ? formatTokens(task.usage.input) : '?'} ${resolveIcon('tokensOut', '↓')}${finiteNonnegative(task.usage?.output) ? formatTokens(task.usage.output) : '?'}`,
+    `ctx ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
+    `${speed !== undefined ? Math.round(speed) : '?'} tok/s`,
+    `elapsed ${Number.isFinite(started) && Number.isFinite(end) ? formatDuration(Math.floor(Math.max(0, end - started) / 1000) * 1000) : '?'}`,
+  ];
+  const warning =
+    (task.status === 'running' || task.status === 'queued') &&
+    task.dropped_tools?.length
+      ? `${resolveIcon('warning', '⚠')} ${task.dropped_tools.length} dropped`
+      : '';
+  return {
+    id: task.id,
+    name: task.agent,
+    primary: summary,
+    status: task.status,
+    state: taskState(task),
+    endedAt: completionTime(task),
+    statusGlyph: task.status,
+    identity: [
+      { text: task.agent.replace(/\s+/g, ' ').trim(), role: 'primary' },
+      ...(summary
+        ? [{ text: `${separator}${summary}`, role: 'secondary' as const }]
+        : []),
+      ...(warning
+        ? [{ text: `${separator}${warning}`, role: 'warning' as const }]
+        : []),
+    ],
+    metrics: parts.map((text) => ({ segments: [{ text, role: 'meta' }] })),
+  };
 }
 
 export function createSubagentsWorkPanelProvider(source: {
@@ -97,7 +144,7 @@ export function createSubagentsWorkPanelProvider(source: {
         total: Object.values(counts).reduce((sum, total) => sum + total, 0),
       };
     },
-    listRows: () =>
+    listRows: (now) =>
       visibleTasks()
         .sort(
           (a, b) =>
@@ -111,33 +158,7 @@ export function createSubagentsWorkPanelProvider(source: {
               Buffer.from(a.id, 'utf8'),
             ),
         )
-        .map((task) => ({
-          id: task.id,
-          name: task.agent,
-          primary: formatTaskSummary(task),
-          status: task.status,
-          state: taskState(task),
-          endedAt: completionTime(task),
-          statusGlyph: (now) => {
-            const frame = Math.floor(now / 100);
-            if (task.status === 'running') {
-              const kit = getRenderKit();
-              return kit
-                ? kit.indicator(
-                    source.theme?.() ?? { fg: (_role, text) => text },
-                    undefined,
-                    { status: 'running', frame },
-                  ).glyph
-                : statusGlyph('running', frame);
-            }
-            return resolveStatusGlyph(
-              task.status,
-              statusGlyph(task.status, 0, false),
-            );
-          },
-          render: (width, now) =>
-            renderSubagentWorkRow(task, width, now, source.theme?.()),
-        })),
+        .map((task) => taskRow(task, now)),
     detail: () => null,
     armCloseLabel: (row) => {
       const task = taskById(row.id);

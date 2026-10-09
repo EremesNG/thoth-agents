@@ -1,6 +1,11 @@
-import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import {
+  ensureWorkPanel,
+  registerRenderKit,
+  registerWorkPanelProvider,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { expect, it, onTestFinished } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import { completionMessage } from '../../src/render/completion-message.js';
 import { visibleWidth } from '../../src/render/text-width.js';
 import {
@@ -13,6 +18,7 @@ import {
 import { progressText, statusGlyph } from '../../src/render/tools/progress.js';
 import type { SubagentTask } from '../../src/types.js';
 import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provider.js';
+import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
 const task: SubagentTask = {
   id: 'icons',
@@ -99,18 +105,29 @@ it('resolves status and spinner frames while raw progress and tool payloads stay
   expect(payloads()).toEqual(native);
 });
 
-it('retained producer rows consult the kit before native glyphs and re-resolve after withdrawal', () => {
+it('retained producer rows consult the kit before native glyphs and re-resolve after withdrawal', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const provider = createSubagentsWorkPanelProvider({
-    listTasks: () => [task],
+    listTasks: () => [{ ...task, ended_at: new Date(0).toISOString() }],
     onTaskUpdate: () => () => {},
     cancel: () => {},
     open: async () => {},
   });
   const row = provider.listRows(0)[0]!;
-  const glyph = () =>
-    typeof row.statusGlyph === 'function'
-      ? row.statusGlyph(0)
-      : row.statusGlyph;
+  expect(row.statusGlyph).toBe('completed');
+  const session = workPanelSession(process.cwd());
+  onTestFinished(
+    registerWorkPanelProvider(session.ctx as never, {
+      ...provider,
+      listRows: () => [row],
+    }),
+  );
+  onTestFinished(await ensureWorkPanel(session.ctx as never));
+  const glyph = () => session.render(200)[1]?.match(/(\S) worker/u)?.[1];
   expect(glyph()).toBe('✓');
   const token = registerRenderKit(asciiKit(), {});
   onTestFinished(() => withdrawRenderKit(token));
@@ -266,18 +283,33 @@ import { formatTaskListRender } from '../../src/render/tools/formatting.js';
 import { createSubagentResultTool } from '../../src/tools/subagent-result.js';
 import { createSubagentStatusTool } from '../../src/tools/subagent-status.js';
 
-it('retained running producer rows use kit indicator frames instead of static in-progress glyphs', () => {
+it('retained running producer rows use kit indicator frames instead of static in-progress glyphs', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const running: SubagentTask = { ...task, status: 'running' };
-  const row = createSubagentsWorkPanelProvider({
+  const provider = createSubagentsWorkPanelProvider({
     listTasks: () => [running],
     onTaskUpdate: () => () => {},
     cancel: () => {},
     open: async () => {},
-  }).listRows(0)[0]!;
-  const glyph = (at: number) =>
-    typeof row.statusGlyph === 'function'
-      ? row.statusGlyph(at)
-      : row.statusGlyph;
+  });
+  const row = provider.listRows(0)[0]!;
+  expect(row.statusGlyph).toBe('running');
+  const session = workPanelSession(process.cwd());
+  onTestFinished(
+    registerWorkPanelProvider(session.ctx as never, {
+      ...provider,
+      listRows: () => [row],
+    }),
+  );
+  onTestFinished(await ensureWorkPanel(session.ctx as never));
+  const glyph = (at: number) => {
+    vi.setSystemTime(at);
+    return session.render(200)[1]?.match(/(\S) worker/u)?.[1];
+  };
   const kit = asciiKit();
   const indicator = kit.indicator;
   kit.indicator = (theme, context, options) => ({

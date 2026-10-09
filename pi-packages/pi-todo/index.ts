@@ -86,10 +86,7 @@ export default function (pi: ExtensionAPI) {
     forgetCompletedList(id);
     unregisterProvider ??= registerWorkPanelProvider(
       ctx,
-      createTodoWorkPanelProvider({
-        ctx,
-        strikethrough: (text) => ctx.ui.theme.strikethrough(text),
-      }),
+      createTodoWorkPanelProvider({ ctx }),
     );
     const release = await ensureWorkPanel(ctx);
     if (generation !== lifecycleGeneration) {

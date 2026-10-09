@@ -22,7 +22,7 @@ Open-task reinjection uses the append-only approach demonstrated by
 
 - No configuration or localization dependencies: English text and upstream
   default tool guidance are fixed. Pi's tool-output expansion support is retained.
-- Registers a versioned Work panel provider (priority 20, label `Todos`) with
+- Registers a v2 data-only Work panel provider (priority 20, label `Todos`) with
   a `completed/total done` counter. Every non-deleted task is listed; completed
   tasks are marked (completed glyph, dim, strikethrough) and are dropped first
   on overflow with an exact `+N done` line. Enter on any row, the heading or a
@@ -60,6 +60,19 @@ Open-task reinjection uses the append-only approach demonstrated by
   Unsupported hosts degrade without throwing. This never returns a replacement
   system prompt, preserving Pi/Claude bridge prompt sections. Repeated hooks
   replace the extension's own block instead of duplicating it.
+
+## Work-panel compatibility and discovery
+
+Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
+`/reload`. The shared registry remains first-owner-wins; mixed v1/v2 copies hide
+incompatible sections. Todo rows contain semantic status and unstyled segments;
+the host renders the `completed` role dim with theme strikethrough. There are no
+row render callbacks or pre-styled glyphs/text.
+
+pi-core's [discovery/action API](../pi-core/README.md#discovery-and-actions) lists
+sources, subscribes to revisions, reads bounded rows and invokes same-session
+open/history/close actions. Todos supports open/history, not close. The separate
+task-state channel remains v1.
 
 ## Tool
 

@@ -81,7 +81,7 @@ execution does not.
   selected sources as `npm:@thoth-agents/pi-subagents@>=0.3.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
   `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`,
-  `@thoth-agents/pi-todo@>=0.1.0`, `@thoth-agents/pi-thoth-theme@>=0.3.0`, and
+  `@thoth-agents/pi-todo@>=0.3.0`, `@thoth-agents/pi-thoth-theme@>=0.3.0`, and
   `@thoth-agents/pi-background-tasks@>=0.3.0`. Theme and background tasks opt into
   `preserveUserCopy`: an existing copy from any source at or above the floor is
   preserved and individually verified without reinstalling; an older copy is

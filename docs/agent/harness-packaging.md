@@ -36,10 +36,11 @@
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
   typed, versioned `pi.events` channels, session-state publish/request/subscribe
-  helpers, the Render KIT contract/registry and pure `formatDuration`, not a
-  standalone extension. The first-party `@thoth-agents/pi-todo`
-  (`pi-packages/pi-todo`) is a fork of `@juicesharp/rpiv-todo` `2.12.0`, providing
-  the `todo` tool, `/todos`, and a current-session widget. It replays branch state,
+  helpers, the Render KIT contract/registry, the discoverable Work panel v2
+  registry and pure `formatDuration`, not a standalone extension. The first-party
+  `@thoth-agents/pi-todo` (`pi-packages/pi-todo`) is a fork of
+  `@juicesharp/rpiv-todo` `2.12.0`, providing the `todo` tool, `/todos`, and a
+  current-session Todos section in the shared Work panel. It replays branch state,
   publishes full task snapshots through pi-core, and reinjects open tasks before
   agent start, including after compaction. The CLI installs pi-todo as its sixth
   selected Pi package; pi-core is its library dependency. The first-party
@@ -219,6 +220,37 @@ focus held by a still-visible foreign overlay. No polling is used.
 See [question controls and lifecycle](../../pi-packages/pi-questions-user/README.md#custom-ui-seam-and-lifecycle),
 [panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor),
 and [verification scope](testing.md#local-closeout-gate).
+
+## Pi work-panel registry v2
+
+pi-core's root exports `listWorkPanelSources()`,
+`subscribeWorkPanelRegistry(listener)`, `getWorkPanelSourceRows(id, { maxRows })`
+and `invokeWorkPanelAction(ctx, id, rowId, action)` for `open`, `history` and
+`close`. Listing and reading need neither a TUI import nor an installed host.
+Sources expose identity, ordering, contract version, selectable flags, row cap
+and per-source monotonic revision; revisions increase on registration and every
+provider change, continuing across re-registration. Synchronous, failure-isolated
+listeners receive the affected source id on registration, removal and changes;
+the returned disposer unsubscribes. Reads preserve provider ordering and are
+bounded by both the requested maximum and source cap, not host retention or
+height budgets. Actions require the caller's live context for an installed
+same-session host; open/history also require interactive UI and suspend panel
+input until the UI closes. Results are `ok`, `unavailable` or `missing`; consumers
+never receive provider closures.
+
+`WORK_PANEL_VERSION` is `2`. Rows are unstyled data: semantic segments,
+responsive `identity` and `metrics`/`continuation` groups, and optional
+`extraRows`/`extraSegments`. `statusGlyph` is `RenderStatus | 'taskInProgress'`,
+not a function or literal glyph; the host owns animation and glyph resolution.
+The `completed` role gives task-list rows dim/strikethrough styling in the host.
+Retention, layout, selection, focus and keys are unchanged.
+
+Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
+`/reload`. The version-independent ownership slot remains first-owner-wins:
+incompatible v1/v2 copies install no host, register no section and expose no
+discovery, so mixed versions hide incompatible sections regardless of load order.
+The task-summary channels and Render KIT remain v1. See
+[the provider and discovery API](../../pi-packages/pi-core/README.md#work-panel-v2).
 
 ## Pi task channels
 

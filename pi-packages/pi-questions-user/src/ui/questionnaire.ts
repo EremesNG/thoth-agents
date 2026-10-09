@@ -324,13 +324,11 @@ export class QuestionnaireComponent implements Component {
     if (matchesKey(data, 'ctrl+]')) {
       if (isKeyRelease(data) || isKeyRepeat(data)) return;
       this.collapsed = !this.collapsed;
+      this.session.onCollapseChange?.(this.collapsed);
       this.tui.requestRender();
       return;
     }
-    if (this.collapsed) {
-      if (matchesKey(data, 'escape')) this.finish(true);
-      return;
-    }
+    if (this.collapsed) return;
     if (matchesKey(data, 'alt+up') || matchesKey(data, 'alt+down')) {
       if (this.scrollPrompt(matchesKey(data, 'alt+up') ? -1 : 1)) return;
     }
@@ -684,10 +682,7 @@ export class QuestionnaireComponent implements Component {
       return [
         this.theme.fg(
           'dim',
-          truncateToWidth(
-            ` ${title} · Ctrl+] ${this.labels.expand} · Esc ${this.labels.cancel.toLowerCase()}`,
-            width,
-          ),
+          truncateToWidth(` ${title} · Ctrl+] ${this.labels.expand}`, width),
         ),
       ];
     }

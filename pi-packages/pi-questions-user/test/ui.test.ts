@@ -250,7 +250,7 @@ describe('questionnaire UI', () => {
       const host = setup({ ...two, title });
       host.send(KEY.collapse);
       const frame = host.component.render(80);
-      expect(frame).toEqual([' Planning Details · Ctrl+] expand · Esc cancel']);
+      expect(frame).toEqual([' Planning Details · Ctrl+] expand']);
       expect(physicalRows(frame)).toHaveLength(1);
       expectRows(frame, 80);
     });
@@ -1108,7 +1108,7 @@ describe('questionnaire UI', () => {
     host.requestRender.mockClear();
     host.send(KEY.collapse);
     const collapsed = host.component.render(80);
-    expect(collapsed).toEqual([' Planning · Ctrl+] expand · Esc cancel']);
+    expect(collapsed).toEqual([' Planning · Ctrl+] expand']);
     expect(visibleWidth(host.component.render(20)[0])).toBeLessThanOrEqual(20);
     host.send(
       KEY.down,
@@ -1135,9 +1135,14 @@ describe('questionnaire UI', () => {
     expect(host.component.render(80).length).toBeGreaterThan(1);
   });
 
-  it('Esc cancels while collapsed even when an editor was active', () => {
+  it('leaves collapsed Esc to the editor; expanded Esc keeps a draft before cancelling', () => {
     const host = setup(two);
     host.send('1', 'N', 'draft', KEY.collapse, KEY.esc);
+    expect(host.results).toEqual([]);
+    host.send(KEY.collapse, KEY.esc);
+    expect(host.results).toEqual([]);
+    expect(host.session.state.answers.b.note).toBe('draft');
+    host.send(KEY.esc);
     expect(host.results[0]?.details.cancelled).toBe(true);
     expect(host.results[0]?.details.answers.a.values).toEqual(['v1']);
     expect(host.results).toHaveLength(1);
@@ -1847,7 +1852,7 @@ describe('questionnaire UI', () => {
       expect(host.text()).toContain('Ctrl+] replegar');
       host.send(KEY.collapse);
       expect(host.component.render(80)).toEqual([
-        ' Ask user · Ctrl+] desplegar · Esc cancelar',
+        ' Ask user · Ctrl+] desplegar',
       ]);
       host.send(KEY.collapse, KEY.tab, KEY.down);
       expect(host.text()).toContain('Preview · ★ Recomendado');

@@ -11,6 +11,8 @@ export interface QuestionUISession {
   signal?: AbortSignal;
   /** Report recorded answers after transitions so an abort can preserve them. */
   onStateChange(state: AnswerState): void;
+  /** Host hands focus between the questionnaire and retained editor. */
+  onCollapseChange?(collapsed: boolean): void;
 }
 
 /** Undefined is reserved for UI unavailability; cancel with buildResult(state, {cancelled: true}). */

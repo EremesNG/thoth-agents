@@ -118,7 +118,528 @@ function fixture() {
   };
 }
 
+function nativeInstallerFixture(paths: ReturnType<typeof fixture>) {
+  const packages = new Map<string, { source: string; installedPath: string }>();
+  const mutations: string[][] = [];
+  const extraPackages: string[] = [];
+  function seed(packageName: string, source: string, version: string) {
+    const installedPath = join(
+      paths.homeDir,
+      'native-packages',
+      packageName.replaceAll('/', '-'),
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: packageName, version }),
+    );
+    packages.set(packageName, { source, installedPath });
+    return installedPath;
+  }
+  const commandExecutor = (command: string, args: readonly string[]) => {
+    if (command === 'node')
+      return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+    if (args[0] === '--version')
+      return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+    if (args[0] === 'install' || args[0] === 'remove')
+      mutations.push([...args]);
+    if (args[0] === 'install') {
+      const source = args[1] ?? '';
+      if (source === 'npm:thoth-agents@0.3.12')
+        packages.set('thoth-agents', {
+          source,
+          installedPath: paths.packageRoot,
+        });
+      else {
+        const spec = PI_PACKAGE_SPECS.find((pkg) => pkg.source === source);
+        if (spec) seed(spec.packageName, source, spec.version);
+      }
+    }
+    if (args[0] === 'list')
+      return {
+        exitCode: 0,
+        stdout: [
+          'User packages:',
+          ...[...packages.values()].flatMap(({ source, installedPath }) => [
+            `  ${source}`,
+            `    ${installedPath}`,
+          ]),
+          ...extraPackages,
+        ].join('\n'),
+        stderr: '',
+      };
+    return { exitCode: 0, stdout: '', stderr: '' };
+  };
+  return { seed, packages, extraPackages, mutations, commandExecutor };
+}
+
 describe('Pi setup', () => {
+  test.each([
+    'local',
+    'pinned',
+    'git',
+    'npm-alias',
+  ])('preserves and verifies compatible user theme and background copies from %s sources', (sourceKind) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const manifests = [
+      '@thoth-agents/pi-thoth-theme',
+      '@thoth-agents/pi-background-tasks',
+    ].map((name) => {
+      const version = sourceKind === 'local' ? '0.3.0' : '0.4.0';
+      const source =
+        sourceKind === 'pinned'
+          ? `npm:${name}@${version}`
+          : sourceKind === 'npm-alias'
+            ? `npm:operator-${name.split('/')[1]}@npm:${name}@${version}`
+            : sourceKind === 'git'
+              ? `git:https://example.test/operator/${name.split('/')[1]}.git`
+              : `./operator-${name.split('/')[1]}`;
+      const installedPath = native.seed(name, source, version);
+      return { path: join(installedPath, 'package.json'), source };
+    });
+    const before = manifests.map(({ path }) => readFileSync(path, 'utf8'));
+    const result = applyPiSetup(
+      buildPiSetupPlan({ ...paths, commandExecutor: native.commandExecutor }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.installedPackages).toEqual(
+      expect.arrayContaining([
+        'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+        'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      ]),
+    );
+    for (const source of [
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+      'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+    ])
+      expect(native.mutations.flat()).not.toContain(source);
+    expect(manifests.map(({ path }) => readFileSync(path, 'utf8'))).toEqual(
+      before,
+    );
+    for (const { source } of manifests)
+      expect(result.diagnostics.join('\n')).toContain(source);
+  });
+  test.each([
+    '@thoth-agents/pi-thoth-theme',
+    '@thoth-agents/pi-background-tasks',
+  ])('leaves below-floor user copy %s untouched and blocks completion with native upgrade guidance', (name) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const source = `npm:${name}@0.2.9`;
+    const installedPath = native.seed(name, source, '0.2.9');
+    const manifestPath = join(installedPath, 'package.json');
+    const before = readFileSync(manifestPath, 'utf8');
+    const result = applyPiSetup(
+      buildPiSetupPlan({ ...paths, commandExecutor: native.commandExecutor }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      changed: [],
+      installedPackages: [],
+      failedStep: 'preflight',
+      error: expect.stringContaining('>=0.3.0'),
+      manualRecovery: expect.stringContaining(
+        `pi remove ${source} --no-approve`,
+      ),
+    });
+    expect(result.manualRecovery).toContain(
+      `pi install npm:${name}@>=0.3.0 --no-approve`,
+    );
+    expect(native.mutations).toEqual([]);
+    expect(readFileSync(manifestPath, 'utf8')).toBe(before);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+
+  test.each([
+    ['./renamed-theme', 'missing'],
+    ['git:https://example.test/operator/renamed.git', 'malformed'],
+    ['npm:@thoth-agents/pi-background-tasks@0.3.0', 'nameless'],
+    ['./renamed-background', 'directory'],
+  ])('fails closed for unreadable or missing manifest identity (%s, %s)', (source, problem) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const installedPath = native.seed(
+      '@thoth-agents/pi-background-tasks',
+      source,
+      '0.3.0',
+    );
+    const manifestPath = join(installedPath, 'package.json');
+    if (problem === 'malformed') writeFileSync(manifestPath, '{');
+    else if (problem === 'nameless')
+      writeFileSync(manifestPath, '{"version":"0.3.0"}');
+    else {
+      rmSync(manifestPath);
+      if (problem === 'directory') mkdirSync(manifestPath);
+    }
+    const result = applyPiSetup(
+      buildPiSetupPlan({ ...paths, commandExecutor: native.commandExecutor }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+      error: expect.stringContaining('manifest identity'),
+    });
+    expect(result.error).toContain(source);
+    expect(native.mutations).toEqual([]);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+
+  test('dry-run blocks a configured below-floor checkout without commands or filesystem mutation', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const installedPath = native.seed(
+      '@thoth-agents/pi-thoth-theme',
+      './placeholder',
+      '0.2.9',
+    );
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({
+      packages: [installedPath],
+      theme: 'mine',
+    });
+    writeFileSync(settingsPath, settings);
+    const commands: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command, args) => {
+        commands.push([command, ...args]);
+        return native.commandExecutor(command, args);
+      },
+    });
+
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain('>=0.3.0');
+    expect(plan.blockers.join('\n')).toContain(
+      `pi remove ${installedPath} --no-approve`,
+    );
+    expect(plan.blockers.join('\n')).toContain(
+      'pi install npm:@thoth-agents/pi-thoth-theme@>=0.3.0 --no-approve',
+    );
+    expect(applyPiSetup(plan)).toMatchObject({ success: false, changed: [] });
+    expect(commands).toEqual([]);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    expect(
+      JSON.parse(readFileSync(join(installedPath, 'package.json'), 'utf8'))
+        .version,
+    ).toBe('0.2.9');
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+
+  test('fresh installation verifies both new packages and reruns preserve them idempotently', () => {
+    const paths = fixture();
+    paths.packageRoot = join(paths.homeDir, 'root-package');
+    mkdirSync(join(paths.packageRoot, 'pi', 'agents'), { recursive: true });
+    writeFileSync(
+      join(paths.packageRoot, 'package.json'),
+      '{"name":"thoth-agents","version":"0.3.12"}',
+    );
+    for (const name of PI_SPECIALIST_NAMES)
+      writeFileSync(
+        join(paths.packageRoot, 'pi', 'agents', `${name}.md`),
+        `---\nname: ${name}\nmanaged-by: thoth-agents\n---\n${name}\n`,
+      );
+    const native = nativeInstallerFixture(paths);
+    const options = { ...paths, commandExecutor: native.commandExecutor };
+    const first = applyPiSetup(buildPiSetupPlan(options));
+    expect(first.success).toBe(true);
+    for (const [name, source] of [
+      [
+        '@thoth-agents/pi-thoth-theme',
+        'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+      ],
+      [
+        '@thoth-agents/pi-background-tasks',
+        'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      ],
+    ]) {
+      expect(first.installedPackages).toContain(source);
+      expect(native.mutations).toContainEqual([
+        'install',
+        source,
+        '--no-approve',
+      ]);
+      const installedPath = native.packages.get(name)?.installedPath ?? '';
+      expect(
+        JSON.parse(readFileSync(join(installedPath, 'package.json'), 'utf8')),
+      ).toEqual({ name, version: '0.3.0' });
+    }
+    const before = first.changed.map((path) => readFileSync(path, 'utf8'));
+    const receipt = readPiPackageReceipt(paths.receiptOptions);
+    native.mutations.length = 0;
+    const second = applyPiSetup(buildPiSetupPlan(options));
+    expect(second.success).toBe(true);
+    expect(second.installedPackages).toEqual(first.installedPackages);
+    // Root receipt/reinstall behavior is intentionally unchanged.
+    expect(native.mutations).toEqual([
+      ['install', 'npm:thoth-agents@0.3.12', '--no-approve'],
+    ]);
+    expect(first.changed.map((path) => readFileSync(path, 'utf8'))).toEqual(
+      before,
+    );
+    expect(readPiPackageReceipt(paths.receiptOptions)).toEqual(receipt);
+  });
+
+  test.each([
+    'duplicate',
+    'project',
+    'invalid-version',
+    'prerelease',
+    'wrong-name',
+  ])('leaves ambiguous or invalid user copies untouched (%s)', (problem) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const name = '@thoth-agents/pi-thoth-theme';
+    const source = 'npm:@thoth-agents/pi-thoth-theme@0.3.0';
+    const installedPath = native.seed(
+      name,
+      source,
+      problem === 'invalid-version'
+        ? 'not-semver'
+        : problem === 'prerelease'
+          ? '0.4.0-beta.1'
+          : '0.3.0',
+    );
+    if (problem === 'wrong-name')
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        '{"name":"@operator/not-the-theme","version":"9.0.0"}',
+      );
+    if (problem === 'duplicate' || problem === 'project')
+      native.extraPackages.push(
+        ...(problem === 'project' ? ['Project packages:'] : []),
+        '  git:https://example.test/operator/theme.git',
+        `    ${installedPath}`,
+      );
+    const before = readFileSync(join(installedPath, 'package.json'), 'utf8');
+    const result = applyPiSetup(
+      buildPiSetupPlan({ ...paths, commandExecutor: native.commandExecutor }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+    });
+    expect(result.error).toContain(name);
+    expect(native.mutations).toEqual([]);
+    expect(readFileSync(join(installedPath, 'package.json'), 'utf8')).toBe(
+      before,
+    );
+  });
+
+  test.each([
+    'missing',
+    'below-floor',
+  ])('individually re-verifies a preserved copy without reinstalling when its manifest changes (%s)', (problem) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const source = 'npm:@thoth-agents/pi-thoth-theme@0.3.0';
+    const installedPath = native.seed(
+      '@thoth-agents/pi-thoth-theme',
+      source,
+      '0.3.0',
+    );
+    let afterTodoLists = 0;
+    const result = applyPiSetup(
+      buildPiSetupPlan({
+        ...paths,
+        commandExecutor: (command, args) => {
+          if (
+            args[0] === 'list' &&
+            native.packages.has('@thoth-agents/pi-todo')
+          ) {
+            afterTodoLists += 1;
+            if (afterTodoLists === 3) {
+              if (problem === 'missing')
+                rmSync(join(installedPath, 'package.json'));
+              else native.seed('@thoth-agents/pi-thoth-theme', source, '0.2.9');
+            }
+          }
+          return native.commandExecutor(command, args);
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'package',
+      error: expect.stringContaining(
+        problem === 'missing' ? 'manifest identity' : '>=0.3.0',
+      ),
+      receiptCommitted: true,
+    });
+    expect(result.installedPackages).not.toContain(
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+    );
+    expect(native.mutations.flat()).not.toContain(
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+    );
+    expect(existsSync(join(installedPath, 'package.json'))).toBe(
+      problem !== 'missing',
+    );
+    if (problem === 'below-floor')
+      expect(result.manualRecovery).toContain(
+        `pi remove ${source} --no-approve`,
+      );
+    expect(
+      existsSync(join(paths.homeDir, '.pi', 'agent', 'subagents.json')),
+    ).toBe(false);
+  });
+
+  test('preservation remains opt-in: an existing pinned delegation copy keeps managed reinstall behavior', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    native.seed(
+      '@thoth-agents/pi-subagents',
+      'npm:@thoth-agents/pi-subagents@0.3.0',
+      '0.3.0',
+    );
+    const result = applyPiSetup(
+      buildPiSetupPlan({
+        ...paths,
+        commandExecutor: native.commandExecutor,
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(native.mutations).toContainEqual([
+      'install',
+      'npm:@thoth-agents/pi-subagents@>=0.3.0',
+      '--no-approve',
+    ]);
+    expect(result.diagnostics.join('\n')).not.toContain(
+      'Preserved and verified @thoth-agents/pi-subagents',
+    );
+  });
+
+  test('preserves configured local copies using resolved directories when pi list omits their paths', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const packagePaths = [
+      '@thoth-agents/pi-thoth-theme',
+      '@thoth-agents/pi-background-tasks',
+    ].map((name) => {
+      const installedPath = native.seed(name, './placeholder', '0.3.0');
+      native.packages.set(name, { source: installedPath, installedPath });
+      return installedPath;
+    });
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({ packages: packagePaths, theme: 'mine' });
+    writeFileSync(settingsPath, settings);
+    const commandExecutor = (command: string, args: readonly string[]) => {
+      const result = native.commandExecutor(command, args);
+      return args[0] === 'list'
+        ? {
+            ...result,
+            stdout: result.stdout
+              .split('\n')
+              .filter(
+                (line) => !packagePaths.some((path) => line === `    ${path}`),
+              )
+              .join('\n'),
+          }
+        : result;
+    };
+    const dryRun = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor,
+    });
+    expect(dryRun.ready).toBe(true);
+    expect(applyPiSetup(dryRun)).toMatchObject({ success: true, changed: [] });
+    expect(native.mutations).toEqual([]);
+    const result = applyPiSetup(
+      buildPiSetupPlan({ ...paths, commandExecutor }),
+    );
+
+    expect(result.success).toBe(true);
+    for (const source of [
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+      'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+    ]) {
+      expect(result.installedPackages).toContain(source);
+      expect(native.mutations.flat()).not.toContain(source);
+    }
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
+  test.each([
+    'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+    'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+  ])('fresh install requires individual verification of %s before managed completion', (source) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const result = applyPiSetup(
+      buildPiSetupPlan({
+        ...paths,
+        commandExecutor: (command, args) => {
+          const result = native.commandExecutor(command, args);
+          if (args[0] === 'install' && args[1] === source) {
+            const name = source.slice(4).replace(/@>=.*$/, '');
+            native.seed(name, source, '0.2.9');
+          }
+          return result;
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'package',
+      error: expect.stringContaining(`Pi did not verify ${source}`),
+      receiptCommitted: true,
+    });
+    expect(result.installedPackages).not.toContain(source);
+    expect(native.mutations).toContainEqual([
+      'install',
+      source,
+      '--no-approve',
+    ]);
+    expect(
+      existsSync(join(paths.homeDir, '.pi', 'agent', 'subagents.json')),
+    ).toBe(false);
+  });
+
+  test('fails closed when a configured user copy disappears from pi list after preview', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const name = '@thoth-agents/pi-thoth-theme';
+    const installedPath = native.seed(name, './placeholder', '0.3.0');
+    native.packages.set(name, { source: installedPath, installedPath });
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({ packages: [installedPath] }));
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    expect(plan.ready).toBe(true);
+    rmSync(join(installedPath, 'package.json'));
+    native.packages.delete(name);
+    const result = applyPiSetup(plan);
+
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+      error: expect.stringContaining('manifest identity'),
+    });
+    expect(native.mutations).toEqual([]);
+    expect(existsSync(join(installedPath, 'package.json'))).toBe(false);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+
   test('validates external package scope, identity, and stable minimum version from its manifest', () => {
     const spec = {
       source: 'npm:@scope/example@>=1.2.3',
@@ -365,10 +886,12 @@ describe('Pi setup', () => {
       'npm:pi-mcp-adapter@>=2.32.1',
       'npm:@thoth-agents/pi-questions-user@>=0.1.0',
       'npm:@thoth-agents/pi-todo@>=0.1.0',
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+      'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('0.99.0');
     expect(plan.items[0]?.description).toContain('Pi >=0.99.0');
-    expect(PI_PACKAGE_SPECS).toHaveLength(6);
+    expect(PI_PACKAGE_SPECS).toHaveLength(8);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
         'npm:@feniix/pi-exa@5.1.1',
@@ -377,6 +900,8 @@ describe('Pi setup', () => {
     );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
+      'package',
+      'package',
       'package',
       'package',
       'package',

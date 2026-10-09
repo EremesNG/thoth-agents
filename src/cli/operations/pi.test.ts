@@ -13,7 +13,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
 import { getShippedModelRoles } from '../model-defaults';
-import { PI_PACKAGE_SPECS } from '../pi-install';
+import { buildPiSetupPlan, PI_PACKAGE_SPECS } from '../pi-install';
 import {
   getPiPackageReceiptPath,
   writePiPackageReceipt,
@@ -28,6 +28,7 @@ import {
   buildPiUpdatePlan,
   defaultPiModelRoles,
   getPiStatus,
+  type PiOperationContext,
 } from './pi';
 
 const roots: string[] = [];
@@ -140,7 +141,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('npm:@thoth-agents/pi-subagents@>=0.1.0'),
+        preview?.includes('npm:@thoth-agents/pi-subagents@>=0.3.0'),
       ),
     ).toBe(true);
     expect(
@@ -198,9 +199,9 @@ describe('Pi operations', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'package',
-          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
+          path: 'npm:@thoth-agents/pi-subagents@>=0.3.0',
           state: 'installed',
-          observed: '0.1.0',
+          observed: '0.3.0',
         }),
         expect.objectContaining({
           kind: 'package',
@@ -234,7 +235,7 @@ describe('Pi operations', () => {
     mkdirSync(localRuntimeRoot, { recursive: true });
     writeFileSync(
       join(localRuntimeRoot, 'package.json'),
-      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '0.1.0' }),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '0.3.0' }),
     );
     const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
       const installedPath = join(homeDir, 'external', spec.id);
@@ -264,9 +265,9 @@ describe('Pi operations', () => {
     expect(report.targets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
+          path: 'npm:@thoth-agents/pi-subagents@>=0.3.0',
           state: 'installed',
-          observed: '0.1.0',
+          observed: '0.3.0',
         }),
       ]),
     );
@@ -280,10 +281,160 @@ describe('Pi operations', () => {
         expect.objectContaining({
           path: localRuntimeRoot,
           state: 'installed',
-          observed: '0.1.0',
+          observed: '0.3.0',
         }),
       ]),
     );
+  });
+
+  test.each([
+    ['local', '0.3.0', 'installed'],
+    ['pinned', '0.4.0', 'installed'],
+    ['git', '0.2.9', 'drift'],
+    ['unreadable', '0.3.0', 'drift'],
+  ])('status reports preserved theme and background copies (%s, %s)', (sourceKind, version, state) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-preserved-status-'));
+    roots.push(homeDir);
+    const runtime = installedRuntime(homeDir);
+    const packageList = runtime('pi', ['list']).stdout.split('\n');
+    for (const [id, name] of [
+      ['theme', '@thoth-agents/pi-thoth-theme'],
+      ['background-tasks', '@thoth-agents/pi-background-tasks'],
+    ]) {
+      const installedPath = join(homeDir, 'external', id);
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        sourceKind === 'unreadable' ? '{' : JSON.stringify({ name, version }),
+      );
+      const index = packageList.findIndex((line) =>
+        line.trim().startsWith(`npm:${name}@`),
+      );
+      packageList[index] = `  ${
+        sourceKind === 'pinned'
+          ? `npm:${name}@${version}`
+          : sourceKind === 'git'
+            ? `git:https://example.test/operator/${id}.git`
+            : installedPath
+      }`;
+    }
+    const report = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command, args) =>
+        args[0] === 'list'
+          ? { exitCode: 0, stdout: packageList.join('\n'), stderr: '' }
+          : runtime(command, args),
+    });
+
+    for (const name of [
+      '@thoth-agents/pi-thoth-theme',
+      '@thoth-agents/pi-background-tasks',
+    ]) {
+      const target = report.targets.find(
+        ({ path }) => path === `npm:${name}@>=0.3.0`,
+      );
+      expect(target).toMatchObject({ kind: 'package', state });
+      if (state === 'installed') expect(target?.observed).toBe(version);
+      if (sourceKind === 'unreadable')
+        expect(target?.observed).toContain('manifest identity');
+    }
+  });
+
+  test('applied Update preserves a compatible theme and blocks completion when fresh background installation cannot be verified', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-update-preserved-'));
+    roots.push(homeDir);
+    const runtime = installedRuntime(homeDir);
+    const existingPackages = runtime('pi', ['list']).stdout.split('\n');
+    const themeIndex = existingPackages.findIndex((line) =>
+      line.includes('npm:@thoth-agents/pi-thoth-theme@'),
+    );
+    existingPackages[themeIndex] = '  npm:@thoth-agents/pi-thoth-theme@0.3.0';
+    const backgroundIndex = existingPackages.findIndex((line) =>
+      line.includes('npm:@thoth-agents/pi-background-tasks@'),
+    );
+    const backgroundLines = existingPackages.splice(backgroundIndex, 2);
+    const backgroundPath = join(homeDir, 'external', 'background-tasks');
+    let rootSource: string | undefined;
+    let backgroundInstalled = false;
+    const mutations: string[][] = [];
+    const context: PiOperationContext = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      buildPiSetupPlan: (options) =>
+        buildPiSetupPlan({
+          ...options,
+          verifyFirstParty: (input) => ({
+            success: true,
+            receipt: {
+              schemaVersion: 1,
+              owner: 'thoth-agents',
+              scope: 'user',
+              packageName: 'thoth-agents',
+              source: input.source,
+              installSource: input.installSource,
+              version: input.version,
+              manifestSha256: 'a'.repeat(64),
+              extensionSha256: 'b'.repeat(64),
+            },
+          }),
+        }),
+      piCommandExecutor: (command, args) => {
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              'User packages:',
+              ...(rootSource
+                ? [`  ${rootSource}`, `    ${process.cwd()}`]
+                : []),
+              ...existingPackages,
+              ...(backgroundInstalled ? backgroundLines : []),
+            ].join('\n'),
+            stderr: '',
+          };
+        if (args[0] === 'install' || args[0] === 'remove') {
+          mutations.push([...args]);
+          if (args[1]?.startsWith('npm:thoth-agents@')) rootSource = args[1];
+          if (args[1] === 'npm:@thoth-agents/pi-background-tasks@>=0.3.0') {
+            backgroundInstalled = true;
+            writeFileSync(
+              join(backgroundPath, 'package.json'),
+              '{"name":"@thoth-agents/pi-background-tasks","version":"0.2.9"}',
+            );
+          }
+        }
+        return runtime(command, args);
+      },
+      installRequiredSkill: () => {
+        throw new Error('Completion must be blocked before external skills');
+      },
+      runThothMemSetup: () => {
+        throw new Error('Completion must be blocked before provider setup');
+      },
+    };
+    const plan = buildPiUpdatePlan(context);
+    expect(plan.canApply).toBe(true);
+    const result = applyPiPlan(plan);
+
+    expect(result.applied).toBe(false);
+    expect(result.summary).toContain(
+      'Pi did not verify npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+    );
+    expect(mutations).toContainEqual([
+      'install',
+      'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      '--no-approve',
+    ]);
+    expect(mutations.flat()).not.toContain(
+      'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+    );
+    expect(
+      existsSync(
+        join(homeDir, '.config', 'thoth-agents', 'install-state.json'),
+      ),
+    ).toBe(false);
   });
 
   test('reports and blocks an incumbent delegation runtime seen in Pi package state', () => {

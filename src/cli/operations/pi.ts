@@ -27,7 +27,6 @@ import {
 } from '../owned-skills';
 import { resolveExecutingPackageVersion } from '../package-version';
 import { resolvePiEffort } from '../pi-effort';
-import { inspectPiExternalPackage } from '../pi-external-package';
 import {
   applyPiSetup,
   buildPiSetupPlan,
@@ -36,6 +35,7 @@ import {
   getPiExternalPackageSpecs,
   getPiFirstPartyPackages,
   hasExactInstalledPiPackage,
+  inspectPiSetupPackage,
   isVersionAtLeast,
   PI_MINIMUM_VERSION,
   PI_NODE_MINIMUM,
@@ -47,6 +47,7 @@ import {
   parsePiPackageList,
   piIncumbentDelegationRecovery,
   piIncumbentTodoRecovery,
+  resolvePiPreservationPackages,
   writePiManagedText,
 } from '../pi-install';
 import { migrateLegacyPiResources } from '../pi-migration';
@@ -424,6 +425,19 @@ function statusFromPlan(
     ...(plan.projectIncumbentTodos ?? []),
   ];
   const packageSpecs = getPiExternalPackageSpecs(plan.options);
+  let preservationPackages = configuredPackages;
+  let preservationError: string | undefined;
+  if (packages.exitCode === 0) {
+    try {
+      preservationPackages = resolvePiPreservationPackages(packages.stdout, {
+        ...plan.options,
+        commandExecutor: execute,
+      });
+    } catch (error) {
+      preservationError =
+        error instanceof Error ? error.message : String(error);
+    }
+  }
   for (const target of targets.filter(
     (candidate) =>
       candidate.kind === 'package' &&
@@ -436,8 +450,14 @@ function statusFromPlan(
       target.state = 'unknown';
       target.observed = packages.stderr.trim() || 'pi list unavailable';
     } else if (externalSpec) {
-      const inspected = inspectPiExternalPackage(
-        configuredPackages,
+      const preserveUserCopy = externalSpec.preserveUserCopy === true;
+      if (preserveUserCopy && preservationError) {
+        target.state = 'drift';
+        target.observed = preservationError;
+        continue;
+      }
+      const inspected = inspectPiSetupPackage(
+        preserveUserCopy ? preservationPackages : configuredPackages,
         externalSpec,
         externalSpec.id !== 'delegation' ||
           plan.options.runtimePackageRoot !== undefined,

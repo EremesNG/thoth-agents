@@ -28,7 +28,7 @@ it('registers a Todos section for the foreground and removes the old collapse sh
   for (const handler of captured.events.get('session_start') ?? [])
     await handler({} as never, ctx as never);
   expect(panel.registrations[0]?.provider).toMatchObject({
-    version: 1,
+    version: 2,
     label: 'Todos',
     priority: 20,
   });

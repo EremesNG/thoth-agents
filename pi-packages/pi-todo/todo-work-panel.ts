@@ -15,13 +15,10 @@ import {
 import { showTodoPanel } from './todo-panel.js';
 import { currentEpoch, isCompletedListHidden } from './todo-visibility.js';
 import { sanitizeTerminalText } from './tool/sanitize.js';
-import { taskGlyph } from './view/task-glyphs.js';
 
 export interface TodoWorkPanelOptions {
   /** Session whose prompt epoch hides a fully completed list. */
   ctx?: ExtensionContext;
-  /** Theme strikethrough for completed rows. */
-  strikethrough?: (text: string) => string;
 }
 
 /** The provider reads only the foreground session's local store, never the bus. */
@@ -36,13 +33,6 @@ export function createTodoWorkPanelProvider(
       getRenderState(),
       epoch,
     );
-  };
-  const strike = (text: string) => {
-    try {
-      return options.strikethrough?.(text) ?? text;
-    } catch {
-      return text;
-    }
   };
   return {
     version: WORK_PANEL_VERSION,
@@ -66,7 +56,10 @@ export function createTodoWorkPanelProvider(
         const base = {
           id: String(task.id),
           status: task.status,
-          statusGlyph: taskGlyph(task.status),
+          statusGlyph:
+            task.status === 'in_progress'
+              ? ('taskInProgress' as const)
+              : task.status,
         };
         if (task.status === 'completed')
           return {
@@ -74,7 +67,7 @@ export function createTodoWorkPanelProvider(
             primary: subject,
             dropFirst: true,
             statusGlyphRole: 'success',
-            segments: [{ text: strike(subject), role: 'dim' }],
+            segments: [{ text: subject, role: 'completed' }],
           };
         const activeForm =
           task.status === 'in_progress' && task.activeForm

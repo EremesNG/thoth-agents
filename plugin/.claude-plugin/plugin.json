@@ -1,6 +1,6 @@
 {
   "name": "thoth-agents",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.",
   "author": {
     "name": "thoth-agents"

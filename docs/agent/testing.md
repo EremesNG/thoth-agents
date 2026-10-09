@@ -102,6 +102,16 @@ and the usage envelope/status-line migration (including checkpoint replay).
 Rerun a failing Windows timing check once to distinguish a transient failure
 from a repeatable regression; report both outcomes.
 
+For Pi work-panel registry/provider changes, run full tests and typechecks for
+pi-core, pi-subagents, pi-background-tasks and pi-todo serially on Windows, plus
+affected installer/operation tests and `src/pi.test.ts`. Cover v2 discovery,
+bounds, revisions, action-context guards and both mixed-version ownership orders;
+data-only native/themed golden rows must preserve the existing work-panel,
+retention, lifecycle and focus assertions. Add the repository checks, build and
+built-extension bundle tests above. Rerun a failing Windows timing check once
+and report both outcomes. Follow with a live work-panel check; automated tests
+do not replace it.
+
 For Pi question-dock/editor-slot changes, run full offline tests and typechecks
 for pi-core, pi-questions-user and pi-subagents (including `test/ui`), plus the
 repository checks, build and built-extension bundle tests above. Focus checks

@@ -54,6 +54,14 @@ Completion callbacks are session-origin scoped and delivered as Pi follow-ups. C
 
 ### Work panel and history
 
+The Background provider uses pi-core's v2 data-only Work panel contract: rows
+carry unstyled text and semantic status, with rendering owned by the host.
+pi-core's [discovery/action API](../pi-core/README.md#discovery-and-actions) lists
+sources, subscribes to revisions, reads bounded rows and invokes same-session
+open/history/close actions. Upgrade pi-subagents, pi-background-tasks and pi-todo
+together to `>=0.3.0`, then `/reload`: first-owner arbitration hides incompatible
+sections in mixed v1/v2 installs.
+
 The Background section shows running work and current-prompt outcomes while the
 agent is busy (all failures/timeouts and at most three recent completed tasks).
 When idle with no running tasks, it collapses to one selectable summary with

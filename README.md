@@ -270,6 +270,12 @@ The status line uses `thoth:subagents:usage`, not the removed raw
 `>=0.3.0` together and `/reload` to retain subagent cost display; the usage
 checkpoint discriminator is unchanged.
 
+The shared Pi Work panel uses pi-core's v2 data-only provider contract and
+[discovery/action API](pi-packages/pi-core/README.md#discovery-and-actions).
+Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
+`/reload`; first-owner arbitration hides incompatible sections in mixed v1/v2
+installs. Task-summary channels and Render KIT remain v1.
+
 Pi's question UI replaces the editor without covering chat. `Ctrl+]` collapses it
 to a one-line dock and returns input to the editor; during an active run, `Enter`
 queues a steering message without answering the question. `Ctrl+]` re-expands

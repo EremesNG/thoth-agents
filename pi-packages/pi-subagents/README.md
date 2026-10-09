@@ -58,6 +58,15 @@ Work panel render through the theme's Render KIT when present, discovered throug
 `@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
 rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
 
+The Agents provider uses pi-core's v2 data-only Work panel contract. Rows carry
+semantic status, identity segments and responsive metric/continuation groups;
+the host owns glyph animation and styling, not row callbacks. pi-core's
+[discovery/action API](../pi-core/README.md#discovery-and-actions) lists sources,
+subscribes to revisions, reads bounded rows and invokes same-session actions.
+Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
+`/reload`: first-owner arbitration hides incompatible sections in mixed v1/v2
+installs.
+
 The visual palette uses theme roles instead of hardcoded neon colors or RGB
 cycling. Agents retain animated braille status while running; the shared host
 owns input interception and refreshes only while a child runs. While the parent

@@ -224,11 +224,19 @@ The CLI installs and verifies these Pi packages in order:
    `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
    recommendations, previews, notes and structured per-id answers; no fixed
    maximum on questions or options;
-7. `npm:@thoth-agents/pi-todo@>=0.1.0` for the first-party session task list:
-   the `todo` tool, `/todos`, and current-session editor widget;
+7. `npm:@thoth-agents/pi-todo@>=0.3.0` for the first-party session task list:
+   the `todo` tool, `/todos`, and Todos section in the shared Work panel;
 8. `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` for the theme, Render KIT and status
    line (selecting the `thoth` color theme remains an operator choice);
 9. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs.
+
+The shared Work panel uses pi-core's v2 provider contract. Upgrade pi-subagents,
+pi-background-tasks and pi-todo together to `>=0.3.0`, then `/reload`. Its
+version-independent registry is first-owner-wins: mixed v1/v2 copies hide
+incompatible sections rather than installing another host. Rows are data-only;
+pi-core exposes source discovery, change subscriptions, bounded row reads and
+same-session open/history/close actions. See
+[the Work panel API](../pi-packages/pi-core/README.md#work-panel-v2).
 
 The question UI replaces the editor while expanded, leaving chat visible and
 scrollable. `Ctrl+]` collapses it to a one-line dock (default hint: `Ctrl+] expand`)

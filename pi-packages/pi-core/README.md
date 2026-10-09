@@ -402,7 +402,7 @@ pnpm --filter @thoth-agents/pi-core run test
 
 MIT; copyright thoth-agents contributors.
 
-## Work panel v1
+## Work panel v2
 
 ```ts
 registerWorkPanelProvider(pi: ExtensionAPI | ExtensionContext,
@@ -413,7 +413,7 @@ bindWorkPanelLifecycle(pi: ExtensionAPI, ctx: ExtensionContext): () => void;
 getWorkPanelLifecycle(ctx: ExtensionContext): WorkPanelLifecycleState;
 ```
 
-`WORK_PANEL_VERSION` is `1`. Providers carry `version`, `id`, `label`, `priority`,
+`WORK_PANEL_VERSION` is `2`. Providers carry `version`, `id`, `label`, `priority`,
 `visibleCount`, `listRows(now)`, `detail(id, now, { logTailLines? })`,
 `armCloseLabel(row)` and `close(id)`. Optional methods are `summary`, `open`,
 `showSection`, `parentRow` and `onVisibleChanged`. Use priorities 10/20/30 for
@@ -434,11 +434,25 @@ callers must release on shutdown themselves.** Provider unregister is token-owne
 so a stale disposer cannot remove a replacement registration. Session shutdown
 removes the host, not providers; extension owners unregister providers on unload.
 
-Rows need `id` and `primary`, with optional name, status/tone, elapsed and legacy
-navigator metadata. `row.render(bodyWidth, now)` returns `{ text, extraRows? }`:
-truncate the task label before metrics, and put metrics in a continuation only
-when they cannot fit inline. Continuations and `summary: true` rows are not
-selectable. `statusGlyph` may be a string or `(now) => string`.
+Rows are plain data: `id` and `primary`, with optional name, status/tone, elapsed
+and navigator metadata. `segments` carry unstyled text and semantic roles.
+For responsive rows, `identity` carries the name, secondary label and attention
+segments; `metrics` is an array of `{ segments, continuation? }` groups. The host
+shrinks secondary labels before names, protects warning/error attention, joins
+metrics with the semantic separator, and moves them into wrapped continuations
+when they cannot fit inline. Each group's optional `continuation` supplies a
+compact counterpart. Fixed `extraRows` / `extraSegments` are also data.
+Continuations and informational `summary: true` rows are not selectable.
+The `completed` segment role renders dim text with the current theme's
+strikethrough (plain dim text if unavailable); providers must not pre-style rows.
+There is no `row.render` or other row callback.
+
+`statusGlyph` is a closed semantic union: `RenderStatus | 'taskInProgress'`, never
+a literal glyph or function. `running` / `in_progress` resolve through the kit's
+`indicator(..., { frame })`; explicit running overrides use native spinner frames
+without a kit. Terminal statuses use `resolveStatusGlyph`; `taskInProgress` uses
+the semantic task icon (native `◇`). Rows without an override retain the host's
+native status fallback. Invalid overrides fall back to the row status.
 Set `refreshIntervalMs` to request ticks (minimum 100ms); the host ticks only while that provider has running/in-progress rows.
 Notify through `onVisibleChanged` for all state changes; transient `expiresAt`
 rows also request a one-shot expiry render. Timers stop on teardown.
@@ -480,7 +494,52 @@ It returns `true` only when the installed host's root editor is input-active,
 `false` when guarded, and `undefined` when the session has no installed host.
 Separate task-mode controls can reuse it; callers own their no-host fallback.
 
-### Prompt retention (additive v1 opt-in)
+### Discovery and actions
+
+All discovery exports live at the package root; no TUI import or installed host
+is needed to list or read sources.
+
+```ts
+listWorkPanelSources(): WorkPanelSource[];
+subscribeWorkPanelRegistry(listener: (id: string) => void): () => void;
+getWorkPanelSourceRows(id: string, options: { maxRows: number }): WorkPanelRow[];
+invokeWorkPanelAction(ctx: ExtensionContext, id: string,
+  rowId: string | undefined, action: 'open' | 'history' | 'close'):
+  Promise<'ok' | 'unavailable' | 'missing'>;
+```
+
+Sources report `id`, `label`, `priority`, `version`, `revision`,
+`selectableHeading`, `selectableSummary` and `rowCap` (default 3), sorted like the
+host sections. Revisions increase per source on registration and every provider
+change, and continue across replacement/unregister/re-registration. Registry
+listeners run synchronously on register, unregister and provider change, receive
+the affected id, are isolated from failures, and stop after disposal. Subscription
+can claim an empty ownership slot but never installs UI; listing and reading do
+not claim it.
+
+Reads retain provider ordering and data values, bounded by both the finite,
+floored requested maximum and the source cap. Missing/failed sources or invalid
+bounds return `[]`. Reads do not apply host retention or height budgets; legacy
+render callbacks and executable top-level row members are discarded.
+
+Actions require the caller's live same-session context, verified against the
+installed host's session-manager identity and session id. Open/history also
+require a UI-capable TUI context; stale, throwing, missing, uninstalled or disposed
+contexts/hosts fail closed without invoking providers. Pass `undefined` for the
+history row id. Open uses the provider UI or the host's generic detail card;
+open/history suspend host input until resolution or rejection. Close is an
+explicit invocation (the caller owns confirmation); unavailable close labels,
+parents and informational rows cannot close. `missing` means no source/item,
+`unavailable` means no usable host/context/action or an action failed, and `ok`
+means the action completed. Neither discovery nor actions expose provider closures.
+
+The version-independent ownership slot remains first-owner-wins. Incompatible
+v1/v2 copies install no host, register no section and expose no discovery.
+Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
+`/reload`; mixed versions hide incompatible sections whichever contract owns
+the slot. The task-summary channels and Render KIT remain v1.
+
+### Prompt retention
 
 Providers may set `retention: 'prompt'`, supply each item's
 `state: 'running' | 'failed' | 'done'` and terminal `endedAt` (Unix milliseconds),

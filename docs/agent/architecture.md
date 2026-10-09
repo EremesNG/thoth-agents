@@ -34,7 +34,7 @@ persistence, receipts, state, and recovery remain outside this package.
    the five owned skills from the package manifest. The CLI then installs the
    eight selected packages, including
    `npm:@thoth-agents/pi-subagents@>=0.3.0`,
-   `npm:@thoth-agents/pi-todo@>=0.1.0`,
+   `npm:@thoth-agents/pi-todo@>=0.3.0`,
    `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and
    `npm:@thoth-agents/pi-background-tasks@>=0.3.0`, plus four external skills.
    Published installs also invoke provider-owned thoth-mem; an
@@ -47,7 +47,7 @@ persistence, receipts, state, and recovery remain outside this package.
    tasks from any source are preserved and verified; older or ambiguous copies
    block completion rather than being replaced.
 
-Pi task state crosses package boundaries only as summary snapshots on pi-core's
+Pi task summaries cross package boundaries as snapshots on pi-core's
 v1 `thoth:subagents:state` and `thoth:background:state` envelope channels, each
 with a `:request` channel. They cover the active subagent session or current
 cwd/session background origin, not task detail or history. The theme consumes
@@ -57,6 +57,14 @@ cumulative cost/run count on `thoth:subagents:usage` and requests it through
 together. See [channel contracts and request semantics](harness-packaging.md#pi-task-channels).
 
 ## Pi editor-area UI
+
+pi-core owns the discoverable Work panel v2 registry. Root exports list sources,
+subscribe to per-source changes/revisions, read bounded data-only rows and invoke
+open/history/close with a live same-session context. The shared host renders
+semantic segments, responsive metrics and status values; providers expose no row
+render callbacks or pre-styled text. Upgrade pi-subagents, pi-background-tasks and
+pi-todo together to `>=0.3.0`: first-owner arbitration hides incompatible v1/v2
+sections. See [the registry contract](harness-packaging.md#pi-work-panel-registry-v2).
 
 pi-core's shared `registerEditorSlot` owner (exported from `./panel`) composes
 work-panel rows, editor replacements and terminal-input routing without chaining

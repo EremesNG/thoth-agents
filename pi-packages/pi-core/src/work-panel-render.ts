@@ -16,6 +16,8 @@ import type {
 } from './work-panel.js';
 import type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 
+export const WORK_PANEL_ANIMATION_INTERVAL_MS = 100;
+
 const DONE_LINGER_MS = 10_000;
 const FAILED_MIN_LINGER_MS = 30_000;
 
@@ -653,7 +655,7 @@ export function renderPanel(
       const indicator = !row.summary
         ? kit?.indicator(theme, undefined, {
             status,
-            frame: Math.floor(now / 100),
+            frame: Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS),
           })
         : undefined;
       const glyph = safely(

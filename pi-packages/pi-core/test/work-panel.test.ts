@@ -827,21 +827,23 @@ describe('work panel render kit', () => {
 });
 
 describe('work panel updates and animation lifecycle', () => {
-  it('requests periodic renders only for providers with running items and cleans up notifications and timers', async () => {
+  it('animates running background items every 100ms despite a 1000ms provider interval and stops when idle', async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const token = registerRenderKit(createTestRenderKit(), {});
+    cleanups.push(() => withdrawRenderKit(token));
     const session = uiSession();
     let running = true;
     let notify = () => {};
     const unsubscribe = vi.fn();
     const unregister = registerWorkPanelProvider(session.ctx, {
-      ...provider(),
-      refreshIntervalMs: 100,
+      ...provider('background', 'Background', 30),
+      refreshIntervalMs: 1000,
       listRows: () => [
         {
           id: 'animated',
-          primary: 'Animated agent',
+          primary: 'Background task',
           status: running ? 'running' : 'completed',
-          statusGlyph: (now) => (now % 200 < 100 ? '⠋' : '⠙'),
         },
       ],
       onVisibleChanged: (listener) => {
@@ -850,13 +852,19 @@ describe('work panel updates and animation lifecycle', () => {
       },
     });
     cleanups.push(unregister, await ensureWorkPanel(session.ctx));
-    const first = session.render()[1];
+    expect(session.render()[1]).toBe('  └─ ⠋ Background task');
     session.tui.requestRender.mockClear();
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(99);
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
-    expect(session.render()[1]).not.toBe(first);
+    expect(session.render()[1]).toBe('  └─ ⠙ Background task');
+    vi.advanceTimersByTime(100);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(2);
+    expect(session.render()[1]).toBe('  └─ ⠹ Background task');
     running = false;
     notify();
+    expect(vi.getTimerCount()).toBe(0);
     session.tui.requestRender.mockClear();
     vi.advanceTimersByTime(1000);
     expect(session.tui.requestRender).not.toHaveBeenCalled();
@@ -867,6 +875,34 @@ describe('work panel updates and animation lifecycle', () => {
     unregister();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('redraws in-progress items without a provider interval and leaves initially idle items untimed', async () => {
+    vi.useFakeTimers();
+    const session = uiSession();
+    let status = 'completed';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'item', primary: 'Task', status }],
+        onVisibleChanged: (listener) => {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(vi.getTimerCount()).toBe(0);
+    session.tui.requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+
+    status = 'in_progress';
+    notify();
+    session.tui.requestRender.mockClear();
+    vi.advanceTimersByTime(100);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
   });
 
   it('expires transient items once and resets close confirmation after timeout or selection changes', async () => {
@@ -1123,7 +1159,8 @@ describe('work panel detail actions', () => {
     session.customKey(keys.right);
     await Promise.resolve();
     expect(session.key(keys.up)).toBeUndefined();
-    expect(vi.getTimerCount()).toBe(0);
+    // The remaining running row still owns the panel animation timer.
+    expect(vi.getTimerCount()).toBe(1);
     session.key(keys.left);
     session.key(keys.enter);
     unregister();

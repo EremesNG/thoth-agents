@@ -18,6 +18,7 @@ import {
   renderPanel,
   safely,
   singleLine,
+  WORK_PANEL_ANIMATION_INTERVAL_MS,
   workPanelRenderStatus,
 } from './work-panel-render.js';
 import { workPanelRegistry } from './work-panel-state.js';
@@ -315,16 +316,12 @@ export function createWorkPanelHost(
     const now = Date.now();
     let delay = Infinity;
     for (const { provider, rows } of sections()) {
-      const interval = provider.refreshIntervalMs;
       if (
-        interval !== undefined &&
-        Number.isFinite(interval) &&
-        interval > 0 &&
         rows.some(({ row }) =>
           ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
         )
       ) {
-        delay = Math.min(delay, Math.max(100, interval));
+        delay = Math.min(delay, WORK_PANEL_ANIMATION_INTERVAL_MS);
       }
       for (const { row } of rows) {
         const expiresAt =

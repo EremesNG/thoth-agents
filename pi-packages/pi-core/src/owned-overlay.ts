@@ -1,5 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, OverlayHandle, TUI } from '@earendil-works/pi-tui';
+import { editorSlotFocusTarget } from './editor-slot.js';
 
 type CustomFactory = Parameters<ExtensionContext['ui']['custom']>[0];
 type FactoryArgs = Parameters<CustomFactory>;
@@ -16,7 +17,30 @@ export type OwnedOverlayOptions = Omit<
   'overlay'
 >;
 
-type OverlayEntry = { component: Component; preFocus: Component | null };
+type OverlayEntry = {
+  component: Component;
+  preFocus: Component | null;
+  hidden?: boolean;
+};
+
+const handlesKey = Symbol.for('thoth.pi-core.owned-overlay-handles');
+const shared = globalThis as typeof globalThis & { [handlesKey]?: unknown };
+function ownedHandles():
+  | WeakMap<TUI, Map<Component, OverlayHandle>>
+  | undefined {
+  try {
+    shared[handlesKey] ??= { version: 1, tuis: new WeakMap() };
+    const value = shared[handlesKey] as {
+      version?: unknown;
+      tuis?: unknown;
+    } | null;
+    if (value?.version === 1 && value.tuis instanceof WeakMap)
+      return value.tuis;
+  } catch {
+    // Incompatible bundled owners are left untouched.
+  }
+  return undefined;
+}
 
 function isComponent(value: unknown): value is Component {
   return (
@@ -133,6 +157,53 @@ function retainEditorSlot(
   }
 }
 
+function visible(tui: TUI, entry: OverlayEntry): boolean {
+  const runtime = tui as TUI & {
+    isOverlayVisible?(entry: OverlayEntry): boolean;
+  };
+  return runtime.isOverlayVisible?.(entry) ?? entry.hidden !== true;
+}
+
+/** An explicit unfocus disables SDK 1.0.2's eligible/blocked next-key recapture. */
+export function acquireEditorSlotFocus(tui: TUI, target: Component): void {
+  const handles = ownedHandles()?.get(tui);
+  for (const entry of (readTuiFocus(tui).overlays ?? []).slice().reverse()) {
+    if (visible(tui, entry)) handles?.get(entry.component)?.unfocus({ target });
+  }
+  // In the blocked branch unfocus only changes the resume target, not focus itself.
+  tui.setFocus?.(target);
+}
+
+export function focusedForeignOverlay(tui: TUI): Component | undefined {
+  const { focused, overlays } = readTuiFocus(tui);
+  return focused &&
+    overlays?.some(
+      (entry) =>
+        visible(tui, entry) &&
+        (entry.component === focused || parentOf(entry.component, focused)),
+    )
+    ? focused
+    : undefined;
+}
+
+/** SDK factory teardown itself focuses the editor; preserve a visible foreign owner. */
+export function preservingOverlayFocus(tui: TUI, action: () => void): void {
+  const focused = focusedForeignOverlay(tui);
+  try {
+    action();
+  } finally {
+    if (
+      focused &&
+      readTuiFocus(tui).overlays?.some(
+        (entry) =>
+          visible(tui, entry) &&
+          (entry.component === focused || parentOf(entry.component, focused)),
+      )
+    )
+      tui.setFocus(focused);
+  }
+}
+
 function repairFocus(tui: TUI, editorSlot: Component | undefined): void {
   const { focused, overlays } = readTuiFocus(tui);
   if (
@@ -146,6 +217,11 @@ function repairFocus(tui: TUI, editorSlot: Component | undefined): void {
     )
   )
     return;
+  const target = editorSlotFocusTarget(tui);
+  if (target) {
+    acquireEditorSlotFocus(tui, target);
+    return;
+  }
   const candidates = children(editorSlot).filter(
     (component) => typeof component.handleInput === 'function',
   );
@@ -162,13 +238,17 @@ export function openOwnedOverlay<T>(
   let handle: OverlayHandle | undefined;
   let closed = false;
   let hidden = false;
+  let liveTui: TUI | undefined;
+  let liveComponent: Component | undefined;
   let hideOwned = () => {};
   return ctx.ui.custom<T>(
     (tui, theme, keybindings, done) => {
+      liveTui = tui;
       const editorSlot = editorSlotAtOpen(tui);
       hideOwned = () => {
         if (!handle || hidden) return;
         hidden = true;
+        if (liveComponent) ownedHandles()?.get(tui)?.delete(liveComponent);
         try {
           handle.hide();
         } finally {
@@ -190,6 +270,7 @@ export function openOwnedOverlay<T>(
         }
       });
       const retain = (component: Component & { dispose?(): void }) => {
+        liveComponent = component;
         retainEditorSlot(component, tui, editorSlot);
         return component;
       };
@@ -200,6 +281,17 @@ export function openOwnedOverlay<T>(
       overlay: true,
       onHandle(ownedHandle) {
         handle = ownedHandle;
+        if (liveTui && liveComponent) {
+          const registry = ownedHandles();
+          if (registry) {
+            let handles = registry.get(liveTui);
+            if (!handles) {
+              handles = new Map();
+              registry.set(liveTui, handles);
+            }
+            handles.set(liveComponent, ownedHandle);
+          }
+        }
         if (closed) hideOwned();
         options?.onHandle?.(handle);
       },

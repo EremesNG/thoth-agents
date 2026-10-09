@@ -12,6 +12,8 @@ any of them. Selecting a fast variant sends the request to the physical
 
 ## Install
 
+Install manually; the Thoth installer does not manage this extension.
+
 ```sh
 pi install npm:@thoth-agents/pi-openai-fast
 ```

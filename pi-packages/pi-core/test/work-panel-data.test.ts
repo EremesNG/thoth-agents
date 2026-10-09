@@ -274,3 +274,55 @@ describe('data-only work panel rendering', () => {
     expect(render).not.toHaveBeenCalled();
   });
 });
+
+it('exports the host data-row renderer with task glyph and completed styling', async () => {
+  const { renderWorkPanelRow } = await import('../src/panel.js');
+  const theme = {
+    fg: (_role: string, text: string) => text,
+    strikethrough: (text: string) => `~${text}~`,
+  };
+  const options = { width: 40, now: 0, theme, clip: (text: string) => text };
+  expect(
+    renderWorkPanelRow(
+      {
+        id: 'task',
+        primary: 'working',
+        status: 'in_progress',
+        statusGlyph: 'taskInProgress',
+      },
+      options,
+    ),
+  ).toEqual(['  ◇ working']);
+  expect(
+    renderWorkPanelRow(
+      {
+        id: 'done',
+        primary: 'done',
+        status: 'completed',
+        segments: [{ text: 'done', role: 'completed' }],
+      },
+      options,
+    ),
+  ).toEqual(['  ✓ ~done~']);
+});
+
+it('can discover rows beyond the provider display cap without changing the default', () => {
+  const rows = Array.from({ length: 8 }, (_, i) => ({
+    id: String(i),
+    primary: String(i),
+  }));
+  cleanups.push(
+    registerWorkPanelProvider(uiSession().ctx, {
+      ...provider('uncapped'),
+      rowCap: 2,
+      listRows: () => rows,
+    }),
+  );
+  expect(getWorkPanelSourceRows('uncapped', { maxRows: 8 })).toHaveLength(2);
+  expect(
+    getWorkPanelSourceRows('uncapped', { maxRows: 8, respectRowCap: false }),
+  ).toHaveLength(8);
+  expect(
+    getWorkPanelSourceRows('uncapped', { maxRows: 4, respectRowCap: false }),
+  ).toHaveLength(4);
+});

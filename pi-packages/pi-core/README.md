@@ -384,6 +384,11 @@ retain editor callbacks and app actions. Expanded questions acquire focus throug
 owned-overlay handles; collapsed questions return input to the editor, and
 teardown preserves visible foreign-overlay focus.
 
+- `renderWorkPanelRow(row, { width, now, theme, clip, measure?, selected?, last? })`
+  renders the same data-row block as the host: semantic status glyphs, responsive
+  identity/metric continuations, extra segments and completed strikethrough.
+  Width is the available body width; returned lines include tree gutters and
+  are clipped to that width. It does not apply retention, headings or row caps.
 - `panelVisibleWidth(text)`, `truncatePanelText(text, width)` and
   `padPanelText(text, width)` use terminal cells and preserve ANSI/OSC styling.
 - `renderPanelFrame({ title, rows, width, maxHeight?, theme? })` draws the titled
@@ -558,11 +563,17 @@ is needed to list or read sources.
 ```ts
 listWorkPanelSources(): WorkPanelSource[];
 subscribeWorkPanelRegistry(listener: (id: string) => void): () => void;
-getWorkPanelSourceRows(id: string, options: { maxRows: number }): WorkPanelRow[];
+getWorkPanelSourceRows(id: string, options: { maxRows: number; respectRowCap?: boolean }): WorkPanelRow[];
 invokeWorkPanelAction(ctx: ExtensionContext, id: string,
   rowId: string | undefined, action: 'open' | 'history' | 'close'):
   Promise<'ok' | 'unavailable' | 'missing'>;
 ```
+
+Discovery defaults to the provider's display row cap. Read-only consumers with
+their own retention policy can pass `respectRowCap: false`; `maxRows` still
+bounds the returned data. Session scoping and completion timestamps remain
+provider-owned.
+
 
 Sources report `id`, `label`, `priority`, `version`, `revision`,
 `selectableHeading`, `selectableSummary` and `rowCap` (default 3), sorted like the

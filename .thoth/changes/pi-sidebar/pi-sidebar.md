@@ -219,6 +219,7 @@ exactly one SHA field line; put notes on separate lines below the fields.
 **Reviewed record SHA-256**: a37a2f8e80a9135d72c1207e31e9e5f66582dbb1541cef8033db0031ca628aad
 
 A second live check removed the Ctrl+Shift+R shortcut in favor of `/sidebar resize` (AC-4 revised); round 6 FAIL (inline arrow priority, stale docs) and round 7 FAIL (one stale README line) repaired; round 8 fresh Oracle PASS on 2026-10-09.
+A third live check (resumed-session history, animation tick, invisible resize status) led to repairs; round 9 FAIL (animation predicate) and round 10 FAIL (missing scope baseline) were closed by round 11, a fresh Oracle reviewing the full 16-file delta against bb699f2 with a frozen hash manifest: PASS on 2026-10-09.
 
 After round 3, a live check led to an AC-5 revision (running items plus the 5 most recent finished, rendered through the shared pi-core row renderer); round 4 FAIL (untimestamped provider order) repaired; round 5 fresh Oracle PASS on 2026-10-09.
 

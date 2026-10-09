@@ -7,6 +7,7 @@ import { afterEach, test, vi } from "vitest";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { checkAgyCliVersion, resetAgyVersionCache } from "../src/agy-version.js";
 import { spawnAgyModelsRaw } from "../src/models.js";
+import { fetchAgyQuota } from "../src/usage.js";
 
 // Observe the OS launch boundary without opening real consoles during the
 // regression's red phase. Keep real tool registration and execution.
@@ -48,6 +49,19 @@ test("the CLI version probe hides its console", async () => {
 	const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => fakeChild("1.2.14"));
 	assert.equal((await checkAgyCliVersion("offline-agy")).status, "ok");
 	assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
+});
+
+test("quota uses a hidden direct spawn, without a Windows detached console or shell", async () => {
+	const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => fakeChild(JSON.stringify({
+		status: "SUCCESS", command: { name: "usage", data: { groups: [{ name: "Gemini", buckets: [] }] } },
+	})));
+	assert.ok(await fetchAgyQuota("C:\\agy\\agy.exe"));
+	assert.equal(spawn.mock.calls[0][0], "C:\\agy\\agy.exe");
+	assert.deepEqual(spawn.mock.calls[0][1], ["--print", "/usage", "--output-format", "json", "--print-timeout", "30s"]);
+	assert.deepEqual(spawn.mock.calls[0][2], {
+		stdio: ["ignore", "pipe", "ignore"], shell: false,
+		detached: process.platform !== "win32", windowsHide: true,
+	});
 });
 
 test("the model catalog probe hides its console", async () => {

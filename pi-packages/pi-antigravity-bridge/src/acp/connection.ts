@@ -594,6 +594,7 @@ export function parseAcpTurnUsage(value: unknown): AgyUsage | undefined {
 	const total = count(u.totalTokens);
 	const thought = count(u.thoughtTokens);
 	const cacheRead = count(u.cachedReadTokens);
+	const cacheWrite = count(u.cachedWriteTokens);
 	if (input === undefined || output === undefined || total === undefined) return undefined;
 	return {
 		input_tokens: input,
@@ -601,6 +602,7 @@ export function parseAcpTurnUsage(value: unknown): AgyUsage | undefined {
 		total_tokens: total,
 		...(thought === undefined ? {} : { thinking_tokens: thought }),
 		...(cacheRead === undefined ? {} : { cache_read_tokens: cacheRead }),
+		...(cacheWrite === undefined ? {} : { cache_write_tokens: cacheWrite }),
 	};
 }
 

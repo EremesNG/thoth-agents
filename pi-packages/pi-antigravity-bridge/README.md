@@ -32,7 +32,19 @@ Residual limits (with or without the bridge):
 
 - agy's own edits still land directly on disk; pi's inline diff review does not engage for them.
 - agy commands run without per-action approval by default, same as every other tool in pi. The [Approval gate](docs/APPROVAL-GATE.md) can put pi-side review in front of agy's mutating native tools (off by default; `auto` enables it only when a pi permission extension is installed). See also [Permissions](#permissions) below.
-- No cost accounting: cost stays zero because agy runs on your subscription quota. Token usage is live.
+- **API-equivalent cost estimate**: messages, session totals, and subagent costs use pi-ai catalog prices, not Antigravity subscription billing. Both engines price input/output/cache-read/cache-write tokens before emitting usage; ACP's client-side token estimates remain estimates and real per-turn usage replaces them with recomputed cost. Unmapped models stay at $0 and log `usage-unpriced` once per model (visible in the debug log with `AGY_DEBUG=1`).
+
+The explicit price mapping uses normalized Pi model ids (not the CLI's dotted model slugs):
+
+| Antigravity Pi model id | pi-ai catalog entry |
+| --- | --- |
+| `gemini-3-6-flash` | `google/gemini-3.6-flash` |
+| `gemini-3-7-flash` | `google/gemini-3.7-flash` |
+| `gemini-3-1-pro` | `google/gemini-3.1-pro-preview` |
+| `claude-sonnet-4-6` | `anthropic/claude-sonnet-4-6` |
+| `gpt-oss-120b`, `gpt-oss-120b-low`, `gpt-oss-120b-medium`, `gpt-oss-120b-high` | `groq/openai/gpt-oss-120b` |
+
+New model versions require an explicit mapping and tests; no price is guessed from the model name.
 
 ## MCP tool bridge (agy uses pi's tools)
 
@@ -94,7 +106,7 @@ Full mechanics, configuration, and a sample gate extension: [docs/APPROVAL-GATE.
 
 > The bridge runs on pi's public APIs; the extension never edits your pi install.
 
-Install with pi's package manager:
+Install manually with pi's package manager; the Thoth installer does not manage this bridge:
 
 ```bash
 pi install npm:@thoth-agents/pi-antigravity-bridge
@@ -181,6 +193,18 @@ Because agy runs non-interactively under this provider (nothing can answer a `y/
 Plan mode never receives the flag: the flag auto-approves every permission request, including plan mode's own approval gate, which would silently turn review-only into full write access inside the `--add-dir` grant (probed 2026-09-25: with the flag a plan run wrote files; without it, file and command attempts end the run quickly with a "confirm plan" message). So `/agy mode plan` (and `AskAntigravity` with `mode: "plan"`) genuinely executes nothing. Do not combine `--sandbox` with skip-permissions ([#36](https://github.com/google-antigravity/antigravity-cli/issues/36)).
 
 For per-action review of agy's mutating native tools (`run_command`, `create_file`, `edit_file`, ...), see the [Approval gate](docs/APPROVAL-GATE.md): with it on, the call must pass a pi-side approval (your permission extension, or the built-in ask/allow/deny fallback) before agy executes it.
+
+### Windows quota console diagnosis
+
+`/agy quota` calls the CLI directly with `--print /usage --output-format json --print-timeout 30s`, piped output, `shell: false`, `windowsHide: true`, and `detached: false` on Windows. It does not run the configured ACP server. Prefer a real `agy.exe` in `AGY_BIN`: `.cmd`/`.bat` shims need a shell on Windows and are not supported by this direct-spawn path.
+
+A Windows reproduction using the actual `fetchAgyQuota` helper resolved `AGY_BIN` and PATH to a real `agy.exe` (not a shim). Two calls returned quota successfully in approximately 2.4–3.1 seconds. `Get-CimInstance Win32_Process` sampling observed an agy-associated `conhost.exe` and traced several `cmd.exe /c` launchers for configured MCP servers (`npx` and `codegraph`) with agy as their parent, even for this quota-only request. The MCP launches are inside agy, not the bridge's spawn helper; a `conhost.exe` alone is not evidence of a visible console. A second trace also sampled `EnumWindows`/`IsWindowVisible` but captured no visible windows; the reported flash was **not reproduced**, so a specific visible-window cause is still unconfirmed. `windowsHide` on the bridge spawn does not establish that descendants launched by agy are hidden. No speculative spawn change was made. A live desktop reproduction/trace is still needed before attributing the flash to a particular upstream child; the quota spawn-options regression protects the existing direct, hidden Windows launch.
+
+A follow-up probe on **agy 1.3.2** reused the bridge's temporary reviewer agent with `--agent`, `inheritMcp: false`, `inheritCustomizations: false`, `excludeDefaultComponents: true`, and `mcpServers: []`. `Get-CimInstance Win32_Process` polling still observed **four global MCP `cmd.exe` launchers directly parented by agy**, both with and without the custom agent: three `npx` commands and `codegraph serve --mcp`. Including their descendants, the baseline captured 5 `cmd.exe` / 6 `node.exe` processes, versus 7 / 8 with the agent (sampling can miss short-lived children). Both quota calls parsed two groups with two buckets each, in **2237 ms** and **2671 ms** respectively. The temporary agent was removed and no traced descendants remained. Thus the agent's MCP exclusions do **not** prevent global MCP process startup for `/usage` in this version; the ineffective change was reverted, preserving the current quota invocation. `agy --help` exposes no per-print invocation flag to disable MCP (`agy mcp disable` changes global configuration instead).
+
+**Live desktop capture (agy 1.3.2).** While the user ran `/agy quota` repeatedly, a 125-second capture polled top-level windows every ~25 ms and process creations. Two agy launches were confirmed, each starting its four global MCP `cmd.exe` launchers; **no window from that process ancestry was ever visible**, and the user saw no flash. All short-lived windows in the interval (an `msrdc` helper, a `conhost` IME window and a 280 ms `cmd` console) stayed invisible. The earlier flash was therefore not reproduced and is most likely unrelated to `/agy quota` (another process on the desktop, such as the terminal host); `/agy quota` itself shows no visible window.
+
+**If you do see console flashes:** inspect your own `~/.gemini/config/mcp_config.json`. On Windows, MCP commands resolving to `.cmd` shims (such as `npx` or an npm-installed `codegraph`) can create console windows. Where the server supports it, use the actual `node.exe` executable with the installed server's JavaScript entry point in `args`, or a native `.exe`, rather than the shim. This was not needed in the capture above. The bridge does not edit or disable your global MCP configuration.
 
 ### Run pi inside a sandbox
 

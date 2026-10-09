@@ -388,6 +388,18 @@ async function streamPrompt() {
     }
     return;
   }
+  if (scenario === "exact-usage") {
+    notifyChunk("estimated answer");
+    await sleep(20);
+    if (pendingPromptId !== null) {
+      result(pendingPromptId, { stopReason: "end_turn", usage: {
+        inputTokens: 1000, outputTokens: 2000, totalTokens: 10000,
+        cachedReadTokens: 3000, cachedWriteTokens: 4000,
+      } });
+      pendingPromptId = null;
+    }
+    return;
+  }
   // happy / permission
   notifyChunk(scenario === "permission" ? "PER" : "HE");
   await sleep(20);

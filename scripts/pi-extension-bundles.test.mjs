@@ -30,6 +30,7 @@ const packages = {
   'pi-claude-bridge': { provider: 'claude-bridge' },
   'pi-openai-fast': { event: 'before_provider_request' },
   'pi-thoth-theme': { event: 'session_start' },
+  'pi-sidebar': { command: 'sidebar', event: 'session_start' },
 };
 const hostPackages = ['pi-coding-agent', 'pi-agent-core', 'pi-ai', 'pi-tui'];
 
@@ -199,11 +200,29 @@ test(
               discoverAndLoadExtensions,
             );
             try {
-              assert.ok(
-                observedHostModules.size > 0,
-                `${name}: host SDK module resolution was observed`,
-              );
               const extension = result.extensions[0];
+              if (expected.noop) {
+                for (const registrations of [
+                  extension.tools,
+                  extension.commands,
+                  extension.handlers,
+                  extension.flags,
+                  extension.shortcuts,
+                  extension.messageRenderers,
+                ]) {
+                  assert.equal(registrations.size, 0, name);
+                }
+                assert.equal(
+                  result.runtime.pendingProviderRegistrations.length,
+                  0,
+                  name,
+                );
+              } else {
+                assert.ok(
+                  observedHostModules.size > 0,
+                  `${name}: host SDK module resolution was observed`,
+                );
+              }
               if (expected.tool)
                 assert.ok(extension.tools.has(expected.tool), name);
               if (expected.command)

@@ -1,0 +1,70 @@
+import { expect, it } from 'vitest';
+import { SidebarControls } from '../src/controls.js';
+
+it('auto collapses at 80 + width and reopens only eight columns later; manual protects the main pane', () => {
+  const controls = new SidebarControls('auto');
+  expect(controls.sync(124)).toBe(true);
+  expect(controls.sync(123)).toBe(false);
+  expect(controls.sync(131)).toBe(false);
+  expect(controls.sync(132)).toBe(true);
+  controls.command('manual');
+  expect(controls.sync(108)).toBe(true);
+  expect(controls.sync(107)).toBe(true);
+  expect(controls.effectiveWidth(107)).toBe(43);
+  expect(controls.effectiveWidth(92)).toBe(28);
+  controls.setWidth(28);
+  expect(controls.sync(92)).toBe(true);
+  expect(controls.sync(91)).toBe(false);
+  controls.command('off');
+  expect(controls.sync(200)).toBe(false);
+  controls.command('');
+  expect(controls.sync(200)).toBe(true);
+});
+
+it('resizes by one or four cells, confirms, reverts and clamps; drag only starts beside divider', () => {
+  const controls = new SidebarControls('manual');
+  controls.sync(160);
+  expect(controls.key('\x1b[D')).toBe(false);
+  expect(controls.beginResize()).toBe(true);
+  controls.key('\x1b[C');
+  controls.key('\x1b[1;2D');
+  expect(controls.width).toBe(47);
+  controls.key('\x1b');
+  expect(controls.width).toBe(44);
+  expect(controls.resizing).toBe(false);
+  controls.beginResize();
+  controls.key('\x1b[1;2C');
+  controls.key('\r');
+  expect(controls.width).toBe(40);
+  expect(controls.mouse('press', 100, 160)).toBe(false);
+  expect(controls.mouse('drag', 90, 160)).toBe(false);
+  expect(controls.mouse('press', 119, 160)).toBe(true);
+  controls.mouse('drag', 80, 160);
+  expect(controls.width).toBe(72);
+  controls.mouse('release', 80, 160);
+  expect(controls.mouse('drag', 130, 160)).toBe(false);
+  controls.setWidth(2);
+  expect(controls.width).toBe(28);
+  controls.command('off');
+  controls.sync(160);
+  expect(controls.beginResize()).toBe(false);
+});
+
+it('clamps resize steps to the effective width, preserves preferred width across terminal narrowing and resets auto history when reenabled', () => {
+  const controls = new SidebarControls('manual');
+  controls.sync(92);
+  controls.beginResize();
+  controls.key('\x1b[D', 92);
+  expect(controls.width).toBe(28);
+  controls.key('\x1b');
+  expect(controls.width).toBe(44);
+  expect(controls.effectiveWidth(160)).toBe(44);
+  controls.command('auto');
+  controls.sync(123);
+  controls.command('off');
+  controls.sync(100);
+  controls.command('on');
+  expect(controls.sync(124)).toBe(true);
+  expect(controls.sync(NaN)).toBe(false);
+  expect(controls.sync(124)).toBe(true);
+});

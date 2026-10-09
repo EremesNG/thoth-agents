@@ -115,6 +115,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
           pnpm --filter @thoth-agents/pi-thoth-theme run test
 
+      - name: Check pi-sidebar
+        run: |
+          pnpm --filter @thoth-agents/pi-sidebar run typecheck
+          pnpm --filter @thoth-agents/pi-sidebar run test
+
       # Offline unit tests only; the package `test` script runs live Claude integrations.
       - name: Check pi-claude-bridge
         run: |
@@ -206,6 +211,12 @@ jobs:
 
       - name: Test pi-thoth-theme
         run: pnpm --filter @thoth-agents/pi-thoth-theme run test --retry=2
+
+      - name: Typecheck pi-sidebar
+        run: pnpm --filter @thoth-agents/pi-sidebar run typecheck
+
+      - name: Test pi-sidebar
+        run: pnpm --filter @thoth-agents/pi-sidebar run test --retry=2
 
       - name: Typecheck pi-claude-bridge
         run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck

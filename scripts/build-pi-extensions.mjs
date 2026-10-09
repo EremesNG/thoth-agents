@@ -21,6 +21,7 @@ const packages = {
   },
   'pi-openai-fast': { entry: 'src/index.ts' },
   'pi-thoth-theme': { entry: 'src/index.ts' },
+  'pi-sidebar': { entry: 'src/index.ts' },
 };
 
 const requested = process.argv.slice(2);

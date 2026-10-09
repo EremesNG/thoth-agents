@@ -40,6 +40,48 @@ function waitForTerminalTask(
 }
 
 describe('Agents persisted session totals', () => {
+  it('merges cached history with live tasks without duplicates, caps outcomes and refreshes on completion only', () => {
+    let live = [persistedTask({ id: 'live', status: 'running' })];
+    let updates = () => {};
+    let reads = 0;
+    const history = Array.from({ length: 8 }, (_, i) =>
+      persistedTask({
+        id: `old-${i}`,
+        ended_at: new Date(1000 + i).toISOString(),
+      }),
+    );
+    const agents = createSubagentsWorkPanelProvider({
+      listTasks: () => live,
+      listSessionTasks: () => {
+        reads++;
+        return [...live, ...history];
+      },
+      onTaskUpdate: (notify) => {
+        updates = notify;
+        return () => {};
+      },
+      cancel: () => {},
+      open: () => {},
+    });
+    const unsubscribe = agents.onVisibleChanged?.(() => {});
+    for (let frame = 0; frame < 3; frame++)
+      expect(
+        agents.listRows(frame, { includeHistory: true }).map((row) => row.id),
+      ).toEqual(['live', 'old-7', 'old-6', 'old-5', 'old-4', 'old-3']);
+    updates();
+    expect(reads).toBe(1);
+    live = [
+      persistedTask({ id: 'live', ended_at: new Date(2000).toISOString() }),
+    ];
+    updates();
+    expect(reads).toBe(2);
+    expect(
+      agents.listRows(2000, { includeHistory: true }).map((row) => row.id),
+    ).toEqual(['live', 'old-7', 'old-6', 'old-5', 'old-4']);
+    expect(agents.listRows(2000).map((row) => row.id)).toEqual(['live']);
+    unsubscribe?.();
+  });
+
   it('adds persisted-only totals without counting live terminal tasks twice or reading history during rendering', async () => {
     env.writeAgent('worker');
     const history = env.createHistoryStore();

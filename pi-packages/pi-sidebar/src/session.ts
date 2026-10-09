@@ -17,6 +17,7 @@ import {
   updateUIPreferences,
   withdrawUIPreferences,
 } from '@thoth-agents/pi-core';
+import { WORK_PANEL_ANIMATION_INTERVAL_MS } from '@thoth-agents/pi-core/panel';
 import {
   changePanel,
   loadConfig,
@@ -49,6 +50,7 @@ export class SidebarSession {
   private appliedWidth = 44;
   private resizeStatus: string | undefined;
   private resizeInputRelease: (() => void) | undefined;
+  private animationTimer: ReturnType<typeof setTimeout> | undefined;
   private mounted = false;
   private disposed = false;
   private readonly releases: Array<() => void> = [];
@@ -77,6 +79,10 @@ export class SidebarSession {
       subagentCost: () => this.subagentCost,
       workspace: () => this.workspace,
       height: () => tui.terminal.rows,
+      resizeWidth: () =>
+        this.controls.resizing
+          ? this.controls.effectiveWidth(tui.terminal.columns)
+          : undefined,
     });
     const diagnostic = (message: string) => ctx.ui.notify(message, 'warning');
     this.adapter =
@@ -137,6 +143,7 @@ export class SidebarSession {
     this.setResizeStatus(this.controls.resizing);
     this.adapter.setVisible(visible);
     const displayed = this.adapter.isDisplayed();
+    this.syncAnimation(displayed && this.panels.hasAnimation(width));
     const ids = displayed ? this.panels.sourceIds(width) : [];
     const key = JSON.stringify(ids);
     if (!displayed || ids.length === 0) {
@@ -155,6 +162,17 @@ export class SidebarSession {
         isActive: () => this.adapter.isDisplayed(),
       });
       this.absorbed = key;
+    }
+  }
+  private syncAnimation(active: boolean): void {
+    if (!active) {
+      if (this.animationTimer !== undefined) clearTimeout(this.animationTimer);
+      this.animationTimer = undefined;
+    } else if (this.animationTimer === undefined) {
+      this.animationTimer = setTimeout(() => {
+        this.animationTimer = undefined;
+        this.refresh();
+      }, WORK_PANEL_ANIMATION_INTERVAL_MS);
     }
   }
   refresh(ctx?: ExtensionContext, workspace = false): void {
@@ -332,6 +350,8 @@ export class SidebarSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.syncAnimation(false);
+    this.controls.cancelResize();
     this.workspaceReader.dispose();
     for (const off of this.releases.splice(0).reverse()) off();
     if (this.preference) withdrawUIPreferences(this.preference);

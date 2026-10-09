@@ -1,3 +1,4 @@
+import { getWorkPanelSourceRows } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
@@ -57,6 +58,49 @@ describe('Agents work-panel session lifecycle', () => {
       expect(session.render().join('\n')).toContain('125 done · 17 failed');
     } finally {
       await resumed.emit('session_shutdown', session);
+    }
+  });
+
+  it('discovers the five newest resumed outcomes while even recent history stays collapsed in the host', async () => {
+    const history = env.createHistoryStore();
+    const now = Date.now();
+    for (let index = 0; index < 8; index++)
+      history.upsertTask(env.tmp, {
+        id: `recent-${index}`,
+        session_id: 'parent-a',
+        status: index % 2 ? 'failed' : 'completed',
+        agent: 'worker',
+        mode: 'task',
+        task: `resumed task ${index}`,
+        created_at: new Date(now - 1000).toISOString(),
+        ended_at: new Date(now - index).toISOString(),
+      });
+    await history.close();
+    const host = extensionHost();
+    const session = workPanelSession(env.tmp, 'parent-a');
+    try {
+      await host.emit('session_start', session, { reason: 'resume' });
+      expect(session.render().join('\n')).toContain('4 done · 4 failed');
+      expect(session.render().join('\n')).not.toContain('resumed task');
+      expect(getWorkPanelSourceRows('subagents', { maxRows: 100 })).toEqual([]);
+      const rows = getWorkPanelSourceRows('subagents', {
+        maxRows: 100,
+        respectRowCap: false,
+      });
+      expect(rows.map((row) => row.id)).toEqual([
+        'recent-0',
+        'recent-1',
+        'recent-2',
+        'recent-3',
+        'recent-4',
+      ]);
+      expect(rows[0]).toMatchObject({
+        state: 'done',
+        endedAt: now,
+        name: 'worker',
+      });
+    } finally {
+      await host.emit('session_shutdown', session);
     }
   });
 

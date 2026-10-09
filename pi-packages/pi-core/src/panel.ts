@@ -51,5 +51,7 @@ export {
 
 export {
   renderWorkPanelRow,
+  WORK_PANEL_ANIMATION_INTERVAL_MS,
   type WorkPanelRowRenderOptions,
+  workPanelRenderStatus,
 } from './work-panel-render.js';

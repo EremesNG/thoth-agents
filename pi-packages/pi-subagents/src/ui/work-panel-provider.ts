@@ -83,6 +83,8 @@ function taskRow(
 
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
+  /** Bounded session metadata read, cached here outside the render path. */
+  listSessionTasks?(): SubagentTask[];
   persistedCounts?: SubagentSessionTaskCounts;
   providerLimits?: Pick<SubagentProviderLimitCache, 'warningText' | 'onChange'>;
   onTaskUpdate(notify: () => void): () => void;
@@ -91,6 +93,21 @@ export function createSubagentsWorkPanelProvider(source: {
   openHistory?: WorkPanelProvider['openHistory'];
   theme?: () => RenderKitTheme;
 }): WorkPanelProvider {
+  let historyTasks = source.listSessionTasks?.() ?? [];
+  const terminalSignature = () =>
+    JSON.stringify(
+      source
+        .listTasks()
+        .filter((task) => taskState(task) !== 'running')
+        .map((task) => [task.id, task.status, task.ended_at]),
+    );
+  let lastTerminalSignature = terminalSignature();
+  const refreshHistory = () => {
+    const signature = terminalSignature();
+    if (signature === lastTerminalSignature) return;
+    lastTerminalSignature = signature;
+    historyTasks = source.listSessionTasks?.() ?? [];
+  };
   const dismissed = new Set<string>();
   const listeners = new Set<() => void>();
   const taskById = (id: string) =>
@@ -101,6 +118,30 @@ export function createSubagentsWorkPanelProvider(source: {
       if (taskState(task) === 'running') dismissed.delete(task.id);
       return !dismissed.has(task.id);
     });
+  const discoveryTasks = () => {
+    const live = visibleTasks();
+    const liveIds = new Set(source.listTasks().map((task) => task.id));
+    const merged = [
+      ...live,
+      ...historyTasks.filter(
+        (task) =>
+          !liveIds.has(task.id) &&
+          !dismissed.has(task.id) &&
+          taskState(task) !== 'running',
+      ),
+    ];
+    return [
+      ...merged.filter((task) => taskState(task) === 'running'),
+      ...merged
+        .filter((task) => taskState(task) !== 'running')
+        .sort(
+          (a, b) =>
+            (completionTime(b) ?? 0) - (completionTime(a) ?? 0) ||
+            b.id.localeCompare(a.id),
+        )
+        .slice(0, 5),
+    ];
+  };
   const rank = (task: SubagentTask) =>
     task.status === 'running' ? 0 : task.status === 'queued' ? 1 : 2;
   return {
@@ -153,23 +194,24 @@ export function createSubagentsWorkPanelProvider(source: {
         total: Object.values(counts).reduce((sum, total) => sum + total, 0),
       };
     },
-    listRows: (now) =>
-      visibleTasks()
-        .sort(
-          (a, b) =>
-            rank(a) - rank(b) ||
-            Buffer.compare(
-              Buffer.from(b.created_at ?? '', 'utf8'),
-              Buffer.from(a.created_at ?? '', 'utf8'),
-            ) ||
-            Buffer.compare(
-              Buffer.from(b.id, 'utf8'),
-              Buffer.from(a.id, 'utf8'),
-            ),
-        )
-        .map((task) =>
-          taskRow(task, now, source.providerLimits?.warningText(task.id, now)),
-        ),
+    listRows: (now, options) =>
+      (options?.includeHistory
+        ? discoveryTasks()
+        : visibleTasks().sort(
+            (a, b) =>
+              rank(a) - rank(b) ||
+              Buffer.compare(
+                Buffer.from(b.created_at ?? '', 'utf8'),
+                Buffer.from(a.created_at ?? '', 'utf8'),
+              ) ||
+              Buffer.compare(
+                Buffer.from(b.id, 'utf8'),
+                Buffer.from(a.id, 'utf8'),
+              ),
+          )
+      ).map((task) =>
+        taskRow(task, now, source.providerLimits?.warningText(task.id, now)),
+      ),
     detail: () => null,
     armCloseLabel: (row) => {
       const task = taskById(row.id);
@@ -193,7 +235,10 @@ export function createSubagentsWorkPanelProvider(source: {
     openHistory: source.openHistory,
     onVisibleChanged: (notify) => {
       listeners.add(notify);
-      const unsubscribe = source.onTaskUpdate(notify);
+      const unsubscribe = source.onTaskUpdate(() => {
+        refreshHistory();
+        notify();
+      });
       const unsubscribeLimits = source.providerLimits?.onChange(notify);
       return () => {
         listeners.delete(notify);

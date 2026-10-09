@@ -589,3 +589,77 @@ it.each([
     'info',
   );
 });
+
+it('renders resize guidance inside the sidebar and removes it on confirm and revert', () => {
+  const app = setup();
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  app.commands.get('sidebar').handler('resize', app.ctx);
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('Resize');
+  expect(app.screen()).toContain('width 44');
+  app.input('\x1b[D');
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('width 45');
+  app.input(String.fromCharCode(13));
+  app.tui.renderNow(true);
+  expect(app.screen()).not.toContain('Resize');
+  app.commands.get('sidebar').handler('resize', app.ctx);
+  app.input('\x1b[D');
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('width 46');
+  app.input(String.fromCharCode(27));
+  app.tui.renderNow(true);
+  expect(app.screen()).not.toContain('Resize');
+});
+
+it('ticks animated visible work at the host cadence and stops on completion, hide and disposal', () => {
+  const app = setup();
+  let running = true;
+  let change = () => {};
+  cleanup.push(
+    registerWorkPanelProvider(app.ctx, {
+      version: WORK_PANEL_VERSION,
+      id: 'animated',
+      label: 'Animated',
+      priority: 10,
+      visibleCount: () => 1,
+      listRows: () => [
+        {
+          id: 'task',
+          primary: 'Animated task',
+          status: running ? 'running' : 'completed',
+          statusGlyph: running ? 'running' : 'completed',
+        },
+      ],
+      detail: () => null,
+      armCloseLabel: () => '',
+      close: () => {},
+      onVisibleChanged: (notify) => {
+        change = notify;
+        return () => {};
+      },
+    }),
+  );
+  app.handlers.get('session_start')?.({}, app.ctx);
+  const render = vi.spyOn(app.tui, 'requestRender');
+  render.mockClear();
+  vi.advanceTimersByTime(100);
+  expect(render).toHaveBeenCalled();
+  running = false;
+  change();
+  render.mockClear();
+  vi.advanceTimersByTime(300);
+  expect(render).not.toHaveBeenCalled();
+  running = true;
+  change();
+  app.commands.get('sidebar').handler('off', app.ctx);
+  render.mockClear();
+  vi.advanceTimersByTime(300);
+  expect(render).not.toHaveBeenCalled();
+  app.commands.get('sidebar').handler('on', app.ctx);
+  app.shutdown();
+  render.mockClear();
+  vi.advanceTimersByTime(300);
+  expect(render).not.toHaveBeenCalled();
+});

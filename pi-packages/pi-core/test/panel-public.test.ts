@@ -10,6 +10,7 @@ it('publishes the TUI panel subpath without a runtime coding-agent dependency', 
   expect(panel.normalizePanelKey('\u0003')).toBe('escape');
   expect(typeof panel.createListEditor).toBe('function');
   expect(typeof panel.openPanelOverlay).toBe('function');
+  expect(typeof panel.workPanelRenderStatus).toBe('function');
   const history = await import('@thoth-agents/pi-core/history-panel');
   expect(history.historyPanelMouseWheelDelta).toBe(panel.panelMouseWheelDelta);
 });

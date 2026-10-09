@@ -1,17 +1,46 @@
 import {
   ensureWorkPanel,
+  getRenderKit,
   registerRenderKit,
   registerWorkPanelProvider,
+  type WorkPanelProvider,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { visibleWidth } from '../../src/render/text-width.js';
 import type { SubagentTask } from '../../src/types.js';
 import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provider.js';
 import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
 const now = Date.parse('2026-01-01T00:00:12Z');
+const cleanups: Array<() => void> = [];
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(now);
+});
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  vi.useRealTimers();
+});
+
+async function mount(agents: WorkPanelProvider) {
+  const session = workPanelSession(process.cwd());
+  cleanups.push(registerWorkPanelProvider(session.ctx as never, agents));
+  cleanups.push(await ensureWorkPanel(session.ctx as never));
+  return session;
+}
+
+/** Compare the former row-body assertions through the real host, excluding gutters. */
+function renderBody(session: Awaited<ReturnType<typeof mount>>, width: number) {
+  vi.setSystemTime(now);
+  const gutter = getRenderKit() ? 7 : 4;
+  const lines = session.render(width + gutter);
+  return {
+    text: lines[1]?.slice(gutter) ?? '',
+    extraRows: lines.slice(2, -1).map((line: string) => line.slice(gutter)),
+  };
+}
 function task(overrides: Partial<SubagentTask> = {}): SubagentTask {
   return {
     id: 'agent-1',
@@ -115,7 +144,7 @@ describe('Agents work-panel rows', () => {
       onTaskUpdate: () => () => {},
       open: async () => {},
     });
-    expect(agents).toMatchObject({ version: 1, label: 'Agents', priority: 10 });
+    expect(agents).toMatchObject({ version: 2, label: 'Agents', priority: 10 });
     expect(agents.visibleCount()).toBe(3);
     expect(agents.summary!()).toMatchObject({ text: '2 running · 1 queued' });
     expect(agents.listRows(now).map((row) => row.id)).toEqual([
@@ -205,53 +234,64 @@ describe('Agents work-panel rows', () => {
     });
   });
 
-  it('animates only running rows and distinguishes queue, completion, cancellation and failure', () => {
-    const rows = provider(
+  it('animates only running rows and distinguishes queue, completion, cancellation and failure', async () => {
+    const agents = provider(
       ['running', 'queued', 'completed', 'cancelled', 'failed'].map(
         (status, index) =>
-          task({ id: `${index}`, status: status as SubagentTask['status'] }),
+          task({
+            id: `${index}`,
+            agent: `worker-${index}`,
+            status: status as SubagentTask['status'],
+            ended_at: '2026-01-01T00:00:09Z',
+          }),
       ),
-    ).listRows(now);
-    const glyph = (index: number, at: number) => {
-      const value = rows.find((row) => row.id === `${index}`)!.statusGlyph;
-      return typeof value === 'function' ? value(at) : value;
+    );
+    expect(
+      agents
+        .listRows(now)
+        .map((row) => row.statusGlyph)
+        .sort(),
+    ).toEqual(['cancelled', 'completed', 'failed', 'queued', 'running']);
+    const session = await mount(agents);
+    const glyphs = (at: number) => {
+      vi.setSystemTime(at);
+      const lines = session.render(200);
+      return [0, 1, 2, 3, 4].map((index) =>
+        lines
+          .find((line: string) => line.includes(`worker-${index}`))
+          ?.slice(2, 3),
+      );
     };
-    expect(glyph(0, 0)).toBe('⠋');
-    expect(glyph(0, 100)).toBe('⠙');
-    expect([1, 2, 3, 4].map((index) => glyph(index, 0))).toEqual([
-      '○',
-      '✓',
-      '■',
-      '✗',
-    ]);
-    for (const index of [1, 2, 3, 4])
-      expect(glyph(index, 100)).toBe(glyph(index, 0));
-    expect(provider([]).refreshIntervalMs).toBe(100);
+    expect(glyphs(now)).toEqual(['⠋', '○', '✓', '■', '✗']);
+    expect(glyphs(now + 100)).toEqual(['⠙', '○', '✓', '■', '✗']);
+    expect(agents.refreshIntervalMs).toBe(100);
   });
   it.each([
     undefined,
     -1,
     NaN,
     Infinity,
-  ])('marks missing or invalid metrics rather than inventing zero (%s)', (value) => {
-    const row = provider([
-      task({
-        started_at: 'invalid',
-        usage: { input: value, output: value } as SubagentTask['usage'],
-        runtime_metrics: {
-          toolUses: value,
-          contextPercent: value,
-          generationOutputTokens: value,
-          generationMs: 1000,
-        },
-      }),
-    ]).listRows(now)[0]!;
-    expect(row.render!(100, now).text).toContain(
+  ])('marks missing or invalid metrics rather than inventing zero (%s)', async (value) => {
+    const session = await mount(
+      provider([
+        task({
+          started_at: 'invalid',
+          usage: { input: value, output: value } as SubagentTask['usage'],
+          runtime_metrics: {
+            toolUses: value,
+            contextPercent: value,
+            generationOutputTokens: value,
+            generationMs: 1000,
+          },
+        }),
+      ]),
+    );
+    expect(renderBody(session, 100).text).toContain(
       'tools ? · ↑? ↓? · ctx ? · ? tok/s · elapsed ?',
     );
   });
 
-  it('preserves measured zeroes, excludes caches and uses average generation time, not wall time or lifetime output', () => {
+  it('preserves measured zeroes, excludes caches and uses average generation time, not wall time or lifetime output', async () => {
     const zero = task({
       usage: {
         input: 0,
@@ -266,59 +306,66 @@ describe('Agents work-panel rows', () => {
         generationMs: 1000,
       },
     });
-    expect(provider([zero]).listRows(now)[0]!.render!(100, now).text).toContain(
+    const zeroSession = await mount(provider([zero]));
+    expect(renderBody(zeroSession, 100).text).toContain(
       'tools 0 · ↑0 ↓0 · ctx 0.0% · 0 tok/s · elapsed 12s',
     );
     const measured = task({
       runtime_metrics: { generationOutputTokens: 300, generationMs: 4000 },
     });
-    const content = provider([measured]).listRows(now)[0]!.render!(
-      100,
-      now,
-    ).text;
+    const measuredSession = await mount(provider([measured]));
+    const content = renderBody(measuredSession, 100).text;
     expect(content).toContain('↑20k ↓10k');
     expect(content).toContain('75 tok/s');
     expect(content).not.toContain('90k');
     expect(content).not.toContain('3.8k');
     measured.runtime_metrics!.generationMs = 0;
-    expect(
-      provider([measured]).listRows(now)[0]!.render!(100, now).text,
-    ).toContain('? tok/s');
+    expect(renderBody(measuredSession, 100).text).toContain('? tok/s');
   });
 
-  it('freezes terminal elapsed at the recorded end and leaves an unstarted queue unknown', () => {
+  it('freezes terminal elapsed at the recorded end and leaves an unstarted queue unknown', async () => {
     const ended = task({
       status: 'completed',
       ended_at: '2026-01-01T00:00:09Z',
     });
-    const row = provider([ended]).listRows(now)[0]!;
-    expect(row.render!(100, now).text).toContain('elapsed 9s');
-    expect(row.render!(100, now + 100000).text).toContain('elapsed 9s');
+    const agents = provider([ended]);
+    const session = await mount(agents);
+    expect(renderBody(session, 100).text).toContain('elapsed 9s');
+    expect(agents.listRows(now + 100000)[0]?.metrics?.at(-1)?.segments).toEqual(
+      [{ text: 'elapsed 9s', role: 'meta' }],
+    );
     ended.ended_at = undefined;
-    expect(row.render!(100, now).text).toContain('elapsed ?');
+    expect(agents.listRows(now)[0]?.metrics?.at(-1)?.segments).toEqual([
+      { text: 'elapsed ?', role: 'meta' },
+    ]);
     const queue = task({
       status: 'queued',
       started_at: undefined,
       runtime_metrics: undefined,
       usage: undefined,
     });
-    expect(
-      provider([queue]).listRows(now)[0]!.render!(100, now).text,
-    ).toContain('tools ? · ↑? ↓? · ctx ? · ? tok/s · elapsed ?');
+    const queueSession = await mount(provider([queue]));
+    expect(renderBody(queueSession, 100).text).toContain(
+      'tools ? · ↑? ↓? · ctx ? · ? tok/s · elapsed ?',
+    );
   });
 
-  it('keeps Unicode task labels cell-bounded at tiny widths and prefers the display name to a delegated prompt', () => {
-    const row = provider([
-      task({
-        agent: 'worker-🚀',
-        display_name: '日本語\n👩‍💻 e\u0301\t review',
-        task: '# delegated task\n' + 'A'.repeat(500),
-      }),
-    ]).listRows(now)[0]!;
-    expect(row.render!(200, now).text).toContain('日本語 👩‍💻 e\u0301 review');
-    expect(row.render!(200, now).text).not.toContain('AAA');
+  it('keeps Unicode task labels cell-bounded at tiny widths and prefers the display name to a delegated prompt', async () => {
+    const session = await mount(
+      provider([
+        task({
+          agent: 'worker-🚀',
+          display_name: '日本語\n👩‍💻 e\u0301\t review',
+          task: '# delegated task\n' + 'A'.repeat(500),
+        }),
+      ]),
+    );
+    expect(renderBody(session, 200).text).toContain(
+      '日本語 👩‍💻 e\u0301 review',
+    );
+    expect(renderBody(session, 200).text).not.toContain('AAA');
     for (const width of [50, 24, 12, 1, 0]) {
-      const content = row.render!(width, now);
+      const content = renderBody(session, width);
       for (const line of [content.text, ...(content.extraRows ?? [])]) {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
         expect(line).not.toMatch(/[\uD800-\uDBFF]$/u);
@@ -329,12 +376,14 @@ describe('Agents work-panel rows', () => {
   it.each([
     'running',
     'queued',
-  ] as const)('keeps a compact dropped-tools warning on %s rows without displacing metrics', (status) => {
-    const row = provider([
-      task({ status, dropped_tools: ['unavailable_read', 'missing_search'] }),
-    ]).listRows(now)[0]!;
+  ] as const)('keeps a compact dropped-tools warning on %s rows without displacing metrics', async (status) => {
+    const session = await mount(
+      provider([
+        task({ status, dropped_tools: ['unavailable_read', 'missing_search'] }),
+      ]),
+    );
     for (const width of [100, 80, 70, 50, 35, 24]) {
-      const content = row.render!(width, now);
+      const content = renderBody(session, width);
       expect(content.text).toContain('⚠ 2 dropped');
       expect(content.text).not.toContain('unavailable_read');
       expect(content.text).not.toContain('missing_search');
@@ -357,7 +406,7 @@ describe('Agents work-panel rows', () => {
     }
   });
 
-  it('uses the current theme warning color and protects the warning before a long agent or task label', () => {
+  it('uses the current theme warning color and protects the warning before a long agent or task label', async () => {
     const fg = vi.fn((_role: string, text: string) => `\x1b[33m${text}\x1b[0m`);
     const currentTheme: { fg: (role: string, text: string) => string } = { fg };
     const item = task({
@@ -372,24 +421,38 @@ describe('Agents work-panel rows', () => {
       theme: () => currentTheme,
     });
     const row = agents.listRows(now)[0]!;
+    expect(JSON.stringify(row)).not.toContain('\\u001b');
+    const session = await mount(agents);
+    session.theme.fg = (role, text) => currentTheme.fg(role, text);
     for (const width of [200, 80, 24, 12]) {
-      const content = row.render!(width, now);
-      expect(content.text).toContain('\x1b[33m⚠ 1 dropped\x1b[0m');
-      expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
+      const line = session.render(width + 4)[1]!;
+      expect(line).toContain(
+        width === 12
+          ? '\x1b[33m⚠ 1 dropped\x1b[0m'
+          : '\x1b[33m · ⚠ 1 dropped\x1b[0m',
+      );
+      expect(visibleWidth(line)).toBeLessThanOrEqual(width + 4);
     }
-    expect(fg).toHaveBeenCalledWith('warning', '⚠ 1 dropped');
+    expect(fg).toHaveBeenCalledWith('warning', ' · ⚠ 1 dropped');
     currentTheme.fg = (_role, text) => `\x1b[93m${text}\x1b[0m`;
-    expect(row.render!(200, now).text).toContain('\x1b[93m⚠ 1 dropped\x1b[0m');
-    expect(row.render!(1, now).text).toContain('⚠');
-    expect(row.render!(0, now)).toEqual({ text: '' });
+    expect(session.render(204)[1]).toContain('\x1b[93m · ⚠ 1 dropped\x1b[0m');
+    expect(session.render(5)[1]).toContain('⚠');
+    expect(session.render(0)).toEqual([]);
     item.status = 'completed';
-    expect(row.render!(200, now).text).not.toContain('dropped');
+    expect(agents.listRows(now)[0]?.identity).not.toContainEqual({
+      text: ' · ⚠ 1 dropped',
+      role: 'warning',
+    });
     item.status = 'running';
     item.dropped_tools = [];
-    expect(row.render!(200, now).text).not.toContain('dropped');
+    expect(session.render(204)[1]).not.toContain('dropped');
+    expect(row.identity).toContainEqual({
+      text: ' · ⚠ 1 dropped',
+      role: 'warning',
+    });
   });
 
-  it('keeps an unstyled warning when no producer theme is supplied, even with a render kit registered', () => {
+  it('keeps data unstyled when no producer theme is supplied, even with a render kit registered', async () => {
     const token = registerRenderKit(
       {
         ...createTestRenderKit(),
@@ -398,17 +461,22 @@ describe('Agents work-panel rows', () => {
       {},
     );
     try {
-      const row = provider([
-        task({ dropped_tools: ['missing_read'] }),
-      ]).listRows(now)[0]!;
-      expect(row.render!(100, now).text).toContain('⚠ 1 dropped');
+      const agents = provider([task({ dropped_tools: ['missing_read'] })]);
+      const row = agents.listRows(now)[0]!;
+      expect(row.identity).toContainEqual({
+        text: ' · ⚠ 1 dropped',
+        role: 'warning',
+      });
+      expect(JSON.stringify(row)).not.toContain('\\u001b');
+      const session = await mount(agents);
+      expect(session.render(107)[1]).toContain('⚠ 1 dropped');
     } finally {
       withdrawRenderKit(token);
     }
   });
 
-  it('truncates the task before metrics and uses continuations only when metrics cannot fit inline', () => {
-    const row = provider([task()]).listRows(now)[0]!;
+  it('truncates the task before metrics and uses continuations only when metrics cannot fit inline', async () => {
+    const session = await mount(provider([task()]));
     const metrics = [
       'tools 5',
       '↑20k ↓10k',
@@ -417,7 +485,7 @@ describe('Agents work-panel rows', () => {
       'elapsed 12s',
     ];
     for (const width of [100, 80, 70]) {
-      const content = row.render!(width, now);
+      const content = renderBody(session, width);
       expect(content.extraRows ?? []).toEqual([]);
       for (const metric of metrics) expect(content.text).toContain(metric);
       expect(content.text).toContain('worker');
@@ -425,12 +493,12 @@ describe('Agents work-panel rows', () => {
       expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
     }
     for (const width of [50, 35, 24]) {
-      const content = row.render!(width, now);
+      const content = renderBody(session, width);
       expect(content.extraRows?.length).toBeGreaterThan(0);
       expect(content.text).toContain('worker');
       for (const metric of metrics)
-        expect(content.extraRows!.join(' · ')).toContain(metric);
-      for (const line of [content.text, ...content.extraRows!])
+        expect(content.extraRows.join(' · ')).toContain(metric);
+      for (const line of [content.text, ...content.extraRows])
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
   });

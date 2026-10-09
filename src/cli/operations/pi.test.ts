@@ -139,11 +139,13 @@ describe('Pi operations', () => {
     expect(install.items.map(({ title }) => title)).toEqual(
       update.items.map(({ title }) => title),
     );
-    expect(
-      install.items.some(({ preview }) =>
-        preview?.includes('npm:@thoth-agents/pi-subagents@>=0.3.0'),
-      ),
-    ).toBe(true);
+    for (const source of [
+      'npm:@thoth-agents/pi-subagents@>=0.3.0',
+      'npm:@thoth-agents/pi-sidebar@>=0.3.0',
+    ])
+      expect(
+        install.items.some(({ preview }) => preview?.includes(source)),
+      ).toBe(true);
     expect(
       install.items.some(
         ({ preview }) =>
@@ -292,7 +294,7 @@ describe('Pi operations', () => {
     ['pinned', '0.4.0', 'installed'],
     ['git', '0.2.9', 'drift'],
     ['unreadable', '0.3.0', 'drift'],
-  ])('status reports preserved theme and background copies (%s, %s)', (sourceKind, version, state) => {
+  ])('status reports preserved theme, background and sidebar copies (%s, %s)', (sourceKind, version, state) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-preserved-status-'));
     roots.push(homeDir);
     const runtime = installedRuntime(homeDir);
@@ -300,6 +302,7 @@ describe('Pi operations', () => {
     for (const [id, name] of [
       ['theme', '@thoth-agents/pi-thoth-theme'],
       ['background-tasks', '@thoth-agents/pi-background-tasks'],
+      ['sidebar', '@thoth-agents/pi-sidebar'],
     ]) {
       const installedPath = join(homeDir, 'external', id);
       writeFileSync(
@@ -330,6 +333,7 @@ describe('Pi operations', () => {
     for (const name of [
       '@thoth-agents/pi-thoth-theme',
       '@thoth-agents/pi-background-tasks',
+      '@thoth-agents/pi-sidebar',
     ]) {
       const target = report.targets.find(
         ({ path }) => path === `npm:${name}@>=0.3.0`,
@@ -341,7 +345,10 @@ describe('Pi operations', () => {
     }
   });
 
-  test('applied Update preserves a compatible theme and blocks completion when fresh background installation cannot be verified', () => {
+  test.each([
+    ['background-tasks', '@thoth-agents/pi-background-tasks'],
+    ['sidebar', '@thoth-agents/pi-sidebar'],
+  ])('applied Update preserves a compatible theme and blocks completion when fresh %s installation cannot be verified', (id, name) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-update-preserved-'));
     roots.push(homeDir);
     const runtime = installedRuntime(homeDir);
@@ -350,13 +357,13 @@ describe('Pi operations', () => {
       line.includes('npm:@thoth-agents/pi-thoth-theme@'),
     );
     existingPackages[themeIndex] = '  npm:@thoth-agents/pi-thoth-theme@0.3.0';
-    const backgroundIndex = existingPackages.findIndex((line) =>
-      line.includes('npm:@thoth-agents/pi-background-tasks@'),
+    const packageIndex = existingPackages.findIndex((line) =>
+      line.includes(`npm:${name}@`),
     );
-    const backgroundLines = existingPackages.splice(backgroundIndex, 2);
-    const backgroundPath = join(homeDir, 'external', 'background-tasks');
+    const packageLines = existingPackages.splice(packageIndex, 2);
+    const packagePath = join(homeDir, 'external', id);
     let rootSource: string | undefined;
-    let backgroundInstalled = false;
+    let packageInstalled = false;
     const mutations: string[][] = [];
     const context: PiOperationContext = {
       cwd: homeDir,
@@ -390,18 +397,18 @@ describe('Pi operations', () => {
                 ? [`  ${rootSource}`, `    ${process.cwd()}`]
                 : []),
               ...existingPackages,
-              ...(backgroundInstalled ? backgroundLines : []),
+              ...(packageInstalled ? packageLines : []),
             ].join('\n'),
             stderr: '',
           };
         if (args[0] === 'install' || args[0] === 'remove') {
           mutations.push([...args]);
           if (args[1]?.startsWith('npm:thoth-agents@')) rootSource = args[1];
-          if (args[1] === 'npm:@thoth-agents/pi-background-tasks@>=0.3.0') {
-            backgroundInstalled = true;
+          if (args[1] === `npm:${name}@>=0.3.0`) {
+            packageInstalled = true;
             writeFileSync(
-              join(backgroundPath, 'package.json'),
-              '{"name":"@thoth-agents/pi-background-tasks","version":"0.2.9"}',
+              join(packagePath, 'package.json'),
+              JSON.stringify({ name, version: '0.2.9' }),
             );
           }
         }
@@ -419,12 +426,10 @@ describe('Pi operations', () => {
     const result = applyPiPlan(plan);
 
     expect(result.applied).toBe(false);
-    expect(result.summary).toContain(
-      'Pi did not verify npm:@thoth-agents/pi-background-tasks@>=0.3.0',
-    );
+    expect(result.summary).toContain(`Pi did not verify npm:${name}@>=0.3.0`);
     expect(mutations).toContainEqual([
       'install',
-      'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+      `npm:${name}@>=0.3.0`,
       '--no-approve',
     ]);
     expect(mutations.flat()).not.toContain(

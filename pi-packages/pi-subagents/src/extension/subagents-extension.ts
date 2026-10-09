@@ -1,3 +1,4 @@
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import {
   bindWorkPanelLifecycle,
   ensureWorkPanel,
@@ -22,6 +23,7 @@ import {
   renderSubagentQuestionMessage,
   sendSubagentQuestionMessage,
 } from '../render/question-message.js';
+import { SubagentsStatePublisher } from '../task-state-events.js';
 import {
   preloadPiComponentsForSubagentRendering,
   registerSubagentExternalToolDefinition,
@@ -128,6 +130,9 @@ export default function subagentsExtension(pi: any): void {
     },
   );
   registerSubagentTools(pi, manager, process.cwd());
+  const taskStateEvents = pi.events
+    ? new SubagentsStatePublisher(pi.events, manager)
+    : undefined;
 
   let panelCtx: any;
   let unregisterWorkPanel: (() => void) | undefined;
@@ -184,6 +189,7 @@ export default function subagentsExtension(pi: any): void {
     );
     const cwd = ctx?.cwd ?? process.cwd();
     manager.reconcileOrphanedTasks(cwd);
+    taskStateEvents?.startSession(cwd, sessionId);
     for (const warning of subagentSourceWarnings(cwd))
       ctx?.ui?.notify?.(warning, 'warning');
     panelCtx = ctx;
@@ -221,6 +227,7 @@ export default function subagentsExtension(pi: any): void {
     activeSessionOwner = undefined;
     registerSubagentsPanelOpener(undefined);
     clearWorkPanel();
+    taskStateEvents?.dispose();
     try {
       await manager.close();
     } catch (error) {
@@ -232,6 +239,16 @@ export default function subagentsExtension(pi: any): void {
       usageEvents?.dispose();
     }
   });
+
+  if (taskStateEvents) {
+    for (const event of ['session_tree', 'session_compact'])
+      pi.on?.(event, (_event: unknown, ctx: ExtensionContext) => {
+        taskStateEvents.startSession(
+          ctx?.cwd ?? process.cwd(),
+          currentSessionId(ctx),
+        );
+      });
+  }
 
   const historyPanelShortcut =
     readSubagentsConfig(process.cwd()).history_panel_shortcut ?? 'ctrl+,';

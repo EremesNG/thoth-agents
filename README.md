@@ -83,8 +83,11 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 
 Inside Pi, use `/subagents-model` to edit model and effort profiles for global
 and project subagent definitions. See [subagent profile configuration](docs/installation.md#configure-subagent-model-profiles-inside-pi).
-Use `/subagents-tools` to edit each specialist's explicit tool list, including
-registered active and inactive extension and MCP tools. Globs (including `*`) are
+Both commands are registered by pi-subagents on pi-core's shared list-editor
+shell, with native CSI-u/kitty and legacy navigation keys and wheel support in
+regular and fullscreen TUI mode. Use `/subagents-tools` to edit resolved global/project definitions' tool
+lists, including registered active and inactive extension and MCP tools. Thoth
+supplies managed-specialist validation and reset defaults through an optional adapter. Globs (including `*`) are
 manual advanced selections over all registered root tools; the panel preserves
 them read-only. Edit `disallowed_tools` manually for injected tools and trimming
 globs; only Oracle denies `ask_orchestrator` by default. See
@@ -93,8 +96,10 @@ globs; only Oracle denies `ask_orchestrator` by default. See
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,
 existing-package conflicts, and recovery. Thoth manages its separate Pi
-delegation runtime as package `@thoth-agents/pi-subagents` (`0.1.0`) through
-`npm:@thoth-agents/pi-subagents@>=0.1.0`. Existing `pi-subagents` and
+delegation runtime as package `@thoth-agents/pi-subagents` through
+`npm:@thoth-agents/pi-subagents@>=0.3.0`, the first release owning
+`/subagents-tools`. Upgrade both packages together and `/reload` if Pi reports
+missing or duplicate command ownership. Existing `pi-subagents` and
 `pi-subagents-j0k3r` installs need manual recovery through Pi's package manager
 before setup. Local checkout development uses `pnpm run setup:pi:local`, which
 points Pi at the fork under `pi-packages/pi-subagents`; publishing the fork is

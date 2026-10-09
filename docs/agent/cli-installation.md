@@ -78,10 +78,12 @@ execution does not.
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
   then may it migrate attributable legacy root/skill copies and install the six
-  selected sources as `npm:@thoth-agents/pi-subagents@>=0.1.0`,
+  selected sources as `npm:@thoth-agents/pi-subagents@>=0.3.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
   `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`, and
-  `@thoth-agents/pi-todo@>=0.1.0`. The first-party question extension supplies
+  `@thoth-agents/pi-todo@>=0.1.0`. The pi-subagents floor is the first release
+  owning `/subagents-tools`; upgrade it and thoth-agents together to avoid
+  missing or duplicate command owners. The first-party question extension supplies
   root-owned `ask_user_question` with stable ids, single/multi/text/confirm types,
   previews, recommendations and structured answers. Setup and applied Update
   remove an installed user-scope `@juicesharp/rpiv-ask-user-question` through

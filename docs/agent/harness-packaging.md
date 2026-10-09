@@ -215,7 +215,9 @@ ranges.
 2. **Reconcile Pi releases**: create the per-package tag `<name>@<version>` and a
    GitHub release for each published version, with notes from commits touching
    that package directory. Reconciliation is idempotent; rerunning the workflow
-   fills in whatever is missing.
+   fills in whatever is missing. After a successful Pi publish, reconciliation
+   waits up to five shared minutes for npm propagation and fails if any expected
+   version remains missing.
 3. **Root notes** exclude Pi-only commits and list the released Pi versions
    (`scripts/generate-release-notes.ts` flags `--tag-prefix`, `--path`,
    `--exclude-path`, `--package-tags`).

@@ -137,9 +137,12 @@ jobs:
         if: ${{ always() && steps.install.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          PI_PUBLISH_OUTCOME: ${{ steps.pi-publish.outcome }}
         run: |
           set -uo pipefail
           failed=0
+          # Share one propagation deadline across all Pi packages.
+          publish_deadline=$((SECONDS + ${PI_PUBLISH_WAIT_SECONDS:-300}))
           notes_file="$(mktemp)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -150,9 +153,37 @@ jobs:
             version="$(node -p "require('./${manifest}').version")"
             tag="${name}@${version}"
 
-            published="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+            published=""
+            while true; do
+              npm_timeout=10
+              if [ "$PI_PUBLISH_OUTCOME" = "success" ]; then
+                remaining=$((publish_deadline - SECONDS))
+                # Once expired, skip checks for all remaining packages (no extra waits).
+                if [ "$remaining" -le 0 ]; then break; fi
+                if [ "$remaining" -lt "$npm_timeout" ]; then npm_timeout=$remaining; fi
+              fi
+              # Bound the whole npm process, with 1s grace for TERM-resistant hangs.
+              published="$(timeout --kill-after=1s "${npm_timeout}s" npm view "${name}@${version}" version --prefer-online --fetch-retries=0 --fetch-timeout=10000 2>/dev/null || true)"
+              if [ "$published" = "$version" ] ||
+                [ "$PI_PUBLISH_OUTCOME" != "success" ]; then
+                break
+              fi
+
+              remaining=$((publish_deadline - SECONDS))
+              if [ "$remaining" -le 0 ]; then break; fi
+              sleep_seconds=10
+              if [ "$remaining" -lt "$sleep_seconds" ]; then sleep_seconds=$remaining; fi
+              echo "Waiting for ${tag}: npm registry propagation."
+              sleep "$sleep_seconds"
+            done
+
             if [ "$published" != "$version" ]; then
-              echo "Skipping ${tag}: not published to npm."
+              if [ "$PI_PUBLISH_OUTCOME" = "success" ]; then
+                echo "Timed out waiting for ${tag}: not visible on npm within the shared 5-minute deadline after successful Pi publish."
+                failed=1
+              else
+                echo "Skipping ${tag}: not published to npm."
+              fi
               continue
             fi
 

@@ -202,4 +202,6 @@ A first final reviewer stalled on a long command without a verdict; root reran t
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY
+
+Live user check passed on 2026-10-09: subagents spinner and completion, background statuses, todo diamond and completed strikethrough look as before.

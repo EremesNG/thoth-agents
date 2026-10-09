@@ -24,7 +24,7 @@ describe('Pi ecosystem package manifests', () => {
     ] as const) {
       expect(pkg).toMatchObject({
         name,
-        version: '0.1.0',
+        version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
         type: 'module',
         license: 'MIT',
         engines: { node: '>=22.19.0' },

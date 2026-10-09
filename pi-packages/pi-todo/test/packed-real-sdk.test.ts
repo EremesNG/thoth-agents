@@ -11,6 +11,12 @@ import { expect, it } from 'vitest';
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 
+function manifestVersion(relativePath: string): string {
+  return JSON.parse(
+    fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8'),
+  ).version;
+}
+
 function run(command: string, args: string[], cwd: string): string {
   // Package managers use .cmd shims on Windows; quote paths for that shell.
   const commandArgs =
@@ -35,7 +41,10 @@ it('loads the packed todo bundle without a runtime core dependency through Pi SD
       fs.mkdirSync(directory);
     run('pnpm', ['run', 'build'], packageRoot);
     run('pnpm', ['pack', '--pack-destination', tarballs], packageRoot);
-    const todoTar = path.join(tarballs, 'thoth-agents-pi-todo-0.1.0.tgz');
+    const todoTar = path.join(
+      tarballs,
+      `thoth-agents-pi-todo-${manifestVersion('../package.json')}.tgz`,
+    );
     fs.writeFileSync(
       path.join(install, 'package.json'),
       JSON.stringify({ name: 'packed-fixture', private: true, type: 'module' }),
@@ -94,7 +103,9 @@ it('loads the packed todo bundle without a runtime core dependency through Pi SD
     expect(sdkManifest.version).toBe('1.0.2');
     expect(manifest.pi.extensions).toEqual(['./dist/index.ts']);
     expect(manifest.dependencies?.['@thoth-agents/pi-core']).toBeUndefined();
-    expect(manifest.devDependencies['@thoth-agents/pi-core']).toBe('^0.1.0');
+    expect(manifest.devDependencies['@thoth-agents/pi-core']).toBe(
+      `^${manifestVersion('../../pi-core/package.json')}`,
+    );
     expect(fs.existsSync(installedCore)).toBe(false);
     expect(fs.lstatSync(installedTodo).isSymbolicLink()).toBe(false);
     const shipped = fs

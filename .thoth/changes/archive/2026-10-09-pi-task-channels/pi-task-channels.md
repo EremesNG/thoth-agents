@@ -197,4 +197,6 @@ Round 1 FAIL (AC-3: cancelable session_before_switch unbound the active session)
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY
+
+Live user check passed on 2026-10-09: subagent cost shown in the status line from the usage channel.

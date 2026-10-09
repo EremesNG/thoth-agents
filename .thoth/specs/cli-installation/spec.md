@@ -495,3 +495,13 @@ Complete Pi installation and applied Update MUST install and individually verify
 - **GIVEN** a Pi installation containing the juicesharp rpiv task-list package
 - **WHEN** the operator runs Install
 - **THEN** preflight fails with its `pi remove` instruction and no Pi state changes, while an installation without it receives and verifies the Thoth Pi task-list package
+
+### Requirement: Install the first-party Pi theme and background-tasks extensions
+
+Complete Pi installation and applied Update MUST install and individually verify `@thoth-agents/pi-thoth-theme` and `@thoth-agents/pi-background-tasks` at their configured minimum versions as additional selected Pi packages after root-package verification; an existing copy of either at or above the minimum from any source MUST be preserved and verified without reinstalling, a copy below the minimum MUST be left untouched and block completion with manual upgrade guidance, and an ambiguous source MUST fail closed; dry-run MUST remain mutation-free. This requirement extends the selected inventory of "Install selected Pi interaction and web extensions" without changing its other guarantees.
+
+#### Scenario: Install the first-party Pi theme and background-tasks extensions
+
+- **GIVEN** a Pi profile with a user-installed pi-thoth-theme at the minimum version and no pi-background-tasks
+- **WHEN** Install or applied Update runs
+- **THEN** the theme copy is preserved and verified, pi-background-tasks is installed and verified, and a dry-run performs no mutation

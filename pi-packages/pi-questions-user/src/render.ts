@@ -35,6 +35,46 @@ interface RenderState {
   isError: boolean;
   /** Final affirmative outcome; shared so the call part matches the result part. */
   isSuccess: boolean;
+  collapsed: boolean;
+}
+
+/** Execute and the SDK's shared row state meet by toolCallId, not partial results. */
+export function createQuestionRenderBridge() {
+  type Row = {
+    collapsed: boolean;
+    closed?: boolean;
+    state?: RenderState;
+    invalidate?: () => void;
+  };
+  const rows = new Map<string, Row>();
+  return {
+    bind(context: RenderContext | undefined, state: RenderState) {
+      if (!context?.toolCallId || state.hasResult) return;
+      const row: Row = rows.get(context.toolCallId) ?? { collapsed: false };
+      if (row.closed) return;
+      state.collapsed = row.collapsed;
+      row.state = state;
+      row.invalidate = context.invalidate;
+      rows.set(context.toolCallId, row);
+    },
+    setCollapsed(toolCallId: string, collapsed: boolean) {
+      const row: Row = rows.get(toolCallId) ?? { collapsed: false };
+      rows.set(toolCallId, row);
+      if (row.collapsed === collapsed) return;
+      row.collapsed = collapsed;
+      if (row.state) row.state.collapsed = collapsed;
+      row.invalidate?.();
+    },
+    finish(toolCallId: string) {
+      const row = rows.get(toolCallId);
+      if (!row || row.closed) return;
+      // invalidate() synchronously renders again; do not rebind a completing row.
+      row.closed = true;
+      if (row.state) row.state.collapsed = false;
+      row.invalidate?.();
+      rows.delete(toolCallId);
+    },
+  };
 }
 
 interface Summary {
@@ -55,6 +95,7 @@ function renderState(context: RenderContext | undefined): RenderState {
     isPartial: context?.isPartial ?? true,
     isError: context?.isError ?? false,
     isSuccess: false,
+    collapsed: false,
   };
   if (!state) return fresh;
   state.questionRendering ??= fresh;
@@ -199,16 +240,24 @@ function component(
   };
 }
 
-export function createQuestionRenderers(): QuestionRenderers {
+export function createQuestionRenderers(
+  bridge = createQuestionRenderBridge(),
+): QuestionRenderers {
   return {
     renderShell: 'self',
     renderCall(args, theme, context) {
       const state = renderState(context);
+      bridge.bind(context, state);
       state.isPartial = context?.isPartial ?? true;
       state.isError = state.hasResult
         ? state.isError
         : (context?.isError ?? false);
-      const rows = callRows(args);
+      const rows = [
+        ...callRows(args),
+        ...(state.collapsed && !state.hasResult
+          ? ['collapsed · Ctrl+] expand']
+          : []),
+      ];
       const text = [
         theme.fg('toolTitle', theme.bold('Ask user')),
         ...rows.map((row) => theme.fg('muted', row)),
@@ -241,6 +290,8 @@ export function createQuestionRenderers(): QuestionRenderers {
     renderResult(result, { expanded, isPartial }, theme, context) {
       const state = renderState(context);
       state.hasResult = true;
+      state.collapsed = false;
+      if (context?.toolCallId) bridge.finish(context.toolCallId);
       state.isPartial = isPartial;
       const first = result.content[0];
       const raw = first?.type === 'text' ? first.text : '';

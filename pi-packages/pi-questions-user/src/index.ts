@@ -3,19 +3,16 @@ import type {
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import {
-  openOwnedOverlay,
   publishToolDefinitions,
   type ToolDefinitionHandle,
 } from '@thoth-agents/pi-core';
-import { waitForUI } from './abort.js';
-import {
-  buildResult,
-  createState,
-  type QuestionDetails,
-  type QuestionResult,
-} from './answers.js';
+import { buildResult, createState, type QuestionDetails } from './answers.js';
 import { getQuestionUIFactory, type QuestionUIHook } from './custom-ui.js';
-import { createQuestionRenderers } from './render.js';
+import { openQuestionDock } from './question-dock.js';
+import {
+  createQuestionRenderBridge,
+  createQuestionRenderers,
+} from './render.js';
 import { runRpcQuestions } from './rpc.js';
 import { questionParameters } from './schema.js';
 import { validateQuestions } from './validate.js';
@@ -25,6 +22,7 @@ export const TOOL_NAME = 'ask_user_question';
 export function createQuestionTool(
   uiHook: QuestionUIHook = getQuestionUIFactory,
 ): ToolDefinition<typeof questionParameters, QuestionDetails> {
+  const rendering = createQuestionRenderBridge();
   return {
     name: TOOL_NAME,
     label: 'Ask User Question',
@@ -34,8 +32,8 @@ export function createQuestionTool(
       "When the user does not write in English, pass `labels` with the fixed UI strings (yes, no, typeSomething, submit, backToEdit, cancel, review, skip, done, hints…) translated to the user's language; also write headers, prompts and option labels in that language. Option values and ids stay stable.",
     ],
     parameters: questionParameters,
-    ...createQuestionRenderers(),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    ...createQuestionRenderers(rendering),
+    async execute(toolCallId, params, signal, _onUpdate, ctx) {
       const validated = validateQuestions(params);
       let state = createState(
         validated.valid ? validated.value : { questions: [] },
@@ -49,52 +47,28 @@ export function createQuestionTool(
         });
       try {
         signal?.throwIfAborted();
-        if (typeof ctx.ui.custom === 'function') {
-          const factory = uiHook({
+        const customResult = await openQuestionDock(
+          ctx,
+          toolCallId,
+          uiHook,
+          {
             state,
             signal,
             onStateChange: (updated) => {
               state = updated;
             },
-          });
-          if (factory) {
-            let abortOverlay: (() => void) | undefined;
-            const customResult = await waitForUI(
-              () =>
-                openOwnedOverlay<QuestionResult | undefined>(
-                  ctx,
-                  (tui, theme, keys, close) => {
-                    // Hooks may ignore signals; abort must still close the owned overlay.
-                    abortOverlay = () =>
-                      close(
-                        buildResult(state, {
-                          cancelled: true,
-                          error: 'aborted',
-                        }),
-                      );
-                    signal?.addEventListener('abort', abortOverlay, {
-                      once: true,
-                    });
-                    if (signal?.aborted) abortOverlay();
-                    return factory(tui, theme, keys, close);
-                  },
-                  {
-                    overlayOptions: { width: '100%', anchor: 'bottom-center' },
-                  },
-                ),
-              signal,
-            ).finally(() => {
-              if (abortOverlay)
-                signal?.removeEventListener('abort', abortOverlay);
-            });
-            // RPC's undefined sentinel is not a user cancellation.
-            if (customResult !== undefined) return customResult;
-          }
-        }
+          },
+          () => buildResult(state, { cancelled: true, error: 'aborted' }),
+          (collapsed) => rendering.setCollapsed(toolCallId, collapsed),
+        );
+        // Undefined is UI unavailability (including RPC), not cancellation.
+        if (customResult !== undefined) return customResult;
         return await runRpcQuestions(state, ctx.ui, signal);
       } catch (error) {
         if (!signal?.aborted) throw error;
         return buildResult(state, { cancelled: true, error: 'aborted' });
+      } finally {
+        rendering.finish(toolCallId);
       }
     },
   };

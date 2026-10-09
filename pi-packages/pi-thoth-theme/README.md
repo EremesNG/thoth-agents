@@ -7,11 +7,22 @@ dependencies are pinned to `1.0.2` in the root workspace lockfile.
 
 ## Install
 
-From the thoth-agents repository root:
+Thoth's complete Pi Install and applied Update install and individually verify
+`npm:@thoth-agents/pi-thoth-theme@>=0.3.0`. An existing copy from any source at or
+above that floor is preserved without reinstalling; an older copy remains
+untouched and blocks completion with manual upgrade guidance. Ambiguous identity
+fails closed. Upgrade a local/Git checkout in place, or review ownership before
+switching its configured source with Pi's native remove/install commands; verify
+the installed manifest and rerun setup. Dry-run performs no mutation.
+
+For a standalone install:
 
 ```sh
-pi install ./pi-packages/pi-thoth-theme
+pi install 'npm:@thoth-agents/pi-thoth-theme@>=0.3.0'
 ```
+
+For workspace development, build first and run `pi install ./pi-packages/pi-thoth-theme`
+from the repository root. Restart Pi after installation.
 
 Select the `thoth` theme in Pi's theme settings. Theme selection is independent
 of the module toggles below.
@@ -40,6 +51,24 @@ of the module toggles below.
 - **Welcome**: a header with the Thoth logo, Pi version, loaded resources and
   tool providers, and recent sessions. Resource and session details load
   best-effort through public APIs.
+
+## Subagent usage channel
+
+The status line subscribes to pi-core's v1 `thoth:subagents:usage` channel and
+requests a snapshot on `thoth:subagents:usage:request` at session start, after
+subscribing, using `data: {}`. The producer is `@thoth-agents/pi-subagents`;
+envelopes are `{ v, source, sessionId, at, data }`, with the parent session ID
+in the envelope, Unix-millisecond `at`, and only cumulative `totalCost` and
+`runCount` in data. Pre-readiness requests are answered once after usage restore.
+Invalid, unsupported-version and foreign-session envelopes are ignored; no task
+prompts, results, transcripts or logs are consumed.
+
+The raw `thoth:subagent-usage` bus event/request is removed with no fallback or
+dual publication. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together
+and `/reload`; mixed old/new versions lose subagent cost display. The persisted
+usage checkpoint custom-entry type remains `thoth:subagent-usage`, so checkpoint
+restore and replay-duplicate suppression are unchanged. See
+[pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels-v1).
 
 ## Render KIT
 

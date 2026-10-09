@@ -3,22 +3,16 @@ import type {
   ExtensionContext,
   ExtensionToolContext,
   ExtensionUIContext,
-  KeybindingsManager,
   Theme,
 } from '@earendil-works/pi-coding-agent';
 import { initTheme } from '@earendil-works/pi-coding-agent';
-import type { TUI } from '@earendil-works/pi-tui';
+import type { Component, TUI } from '@earendil-works/pi-tui';
 import {
   getPublishedToolDefinition,
   getToolDefinitionRegistryVersion,
 } from '@thoth-agents/pi-core';
 import { expect, it, vi } from 'vitest';
-import {
-  buildResult,
-  type QuestionResult,
-  selectOption,
-} from '../src/answers.js';
-import type { QuestionUIFactory } from '../src/custom-ui.js';
+import { buildResult, selectOption } from '../src/answers.js';
 import registerQuestions, { createQuestionTool } from '../src/index.js';
 
 const params = {
@@ -47,15 +41,72 @@ function context(
   } as unknown as ExtensionToolContext;
 }
 
-const custom: ExtensionUIContext['custom'] = async (factory) =>
-  new Promise((resolve) => {
-    factory(
-      { hideOverlay() {} } as unknown as TUI,
-      undefined as never,
-      undefined as never,
-      resolve,
-    );
+function questionContext(
+  keys: string[] = [],
+  onRender?: (text: string) => void,
+): ExtensionToolContext {
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as Theme;
+  let focused: Component | undefined;
+  let factory: ExtensionUIContext['getEditorComponent'] extends () => infer R
+    ? R
+    : never;
+  let text = '';
+  const baseFactory = () => ({
+    render: () => ['Editor'],
+    invalidate() {},
+    handleInput() {},
+    getText: () => text,
+    setText: (value: string) => {
+      text = value;
+    },
   });
+  factory = baseFactory;
+  const listeners = new Set<
+    Parameters<ExtensionUIContext['onTerminalInput']>[0]
+  >();
+  let sent = false;
+  const tui = {
+    terminal: { rows: 40, columns: 120 },
+    hasOverlay: () => false,
+    getFocusedComponent: () => focused,
+    setFocus: (component: Component) => {
+      focused = component;
+    },
+    requestRender() {
+      if (sent || !keys.length) return;
+      sent = true;
+      queueMicrotask(() => {
+        onRender?.(focused?.render(100).join('\n') ?? '');
+        for (const key of keys) {
+          const consumed = [...listeners].some(
+            (listener) => listener(key)?.consume,
+          );
+          if (!consumed) focused?.handleInput?.(key);
+        }
+      });
+    },
+  } as unknown as TUI;
+  return context(true, {
+    theme,
+    custom: vi.fn(),
+    getEditorComponent: () => factory,
+    setEditorComponent(next) {
+      factory = next;
+      focused = next?.(tui, theme as never, {} as never);
+    },
+    setWidget() {},
+    onTerminalInput(handler) {
+      listeners.add(handler);
+      return () => {
+        listeners.delete(handler);
+      };
+    },
+  });
+}
 
 function extensionHost() {
   let tool: ReturnType<typeof createQuestionTool> | undefined;
@@ -94,31 +145,8 @@ function extensionHost() {
   };
 }
 
-function questionnaireHost(...keys: string[]) {
-  return vi.fn(async (factory: QuestionUIFactory) => {
-    let result: QuestionResult | undefined;
-    const component = await factory(
-      { requestRender() {}, terminal: { rows: 40 } } as unknown as TUI,
-      {
-        fg: (_color: string, text: string) => text,
-        bg: (_color: string, text: string) => text,
-        bold: (text: string) => text,
-      } as Theme,
-      {} as KeybindingsManager,
-      (value) => {
-        result = value;
-      },
-    );
-    for (const key of keys) component.handleInput?.(key);
-    return result;
-  });
-}
-
-it('the default questionnaire submits through the custom UI without RPC dialogs', async () => {
-  const host = questionnaireHost('1');
-  const ctx = context(true, {
-    custom: host as ExtensionUIContext['custom'],
-  });
+it('the default questionnaire submits through the editor slot without RPC dialogs', async () => {
+  const ctx = questionContext(['1']);
   const result = await extensionHost().tool.execute(
     'call',
     params,
@@ -126,7 +154,7 @@ it('the default questionnaire submits through the custom UI without RPC dialogs'
     undefined,
     ctx,
   );
-  expect(host).toHaveBeenCalled();
+  expect(ctx.ui.custom).not.toHaveBeenCalled();
   expect(result.details).toMatchObject({
     cancelled: false,
     answers: {
@@ -273,7 +301,7 @@ it('before_agent_start removes only the question tool without UI and preserves o
   expect(host.activeTools).toEqual(['read', 'bash']);
 });
 
-it('custom undefined is an unavailable sentinel and runs fallback', async () => {
+it('missing editor-slot hooks run the RPC fallback without opening custom UI', async () => {
   const custom = vi.fn(async () => undefined);
   const ctx = context(true, { custom: custom as ExtensionUIContext['custom'] });
   const result = await createQuestionTool().execute(
@@ -283,11 +311,7 @@ it('custom undefined is an unavailable sentinel and runs fallback', async () => 
     undefined,
     ctx,
   );
-  expect(custom).toHaveBeenCalledWith(expect.any(Function), {
-    overlay: true,
-    overlayOptions: { width: '100%', anchor: 'bottom-center' },
-    onHandle: expect.any(Function),
-  });
+  expect(custom).not.toHaveBeenCalled();
   expect(result.details).toMatchObject({
     cancelled: false,
     answers: { plan: { values: ['safe'] } },
@@ -303,7 +327,7 @@ it('custom cancellation is explicit, retains answers, and never starts fallback'
       return { render: () => [], invalidate: () => {} };
     };
   });
-  const ctx = context(true, { custom });
+  const ctx = questionContext();
   const result = await initial.execute(
     'call',
     params,
@@ -323,7 +347,7 @@ it('custom submission returns its structured result without re-asking', async ()
     done(buildResult(selectOption(session.state, 'plan', 'safe')));
     return { render: () => [], invalidate: () => {} };
   });
-  const ctx = context(true, { custom });
+  const ctx = questionContext();
   const result = await tool.execute('call', params, undefined, undefined, ctx);
   expect(result.details).toMatchObject({
     cancelled: false,
@@ -333,9 +357,7 @@ it('custom submission returns its structured result without re-asking', async ()
 });
 
 it('Esc in the default questionnaire cancels with recorded answers and never starts RPC', async () => {
-  const ctx = context(true, {
-    custom: questionnaireHost('1', '\x1b') as ExtensionUIContext['custom'],
-  });
+  const ctx = questionContext(['1', '\x1b']);
   const result = await createQuestionTool().execute(
     'call',
     {
@@ -384,7 +406,7 @@ it('an aborted custom dialog settles and keeps progress reported through the hoo
     controller.abort();
     return { render: () => [], invalidate: () => {} };
   });
-  const ctx = context(true, { custom });
+  const ctx = questionContext();
   const result = await tool.execute(
     'call',
     params,
@@ -402,19 +424,14 @@ it('an aborted custom dialog settles and keeps progress reported through the hoo
   expect(ctx.ui.select).not.toHaveBeenCalled();
 }, 200);
 
-it('unrelated custom host errors are not silently converted into fallback', async () => {
-  const tool = createQuestionTool(() => () => ({
-    render: () => [],
-    invalidate: () => {},
-  }));
-  const ctx = context(true, {
-    custom: vi.fn(async () => {
-      throw new Error('Custom host failure');
-    }),
+it('unrelated UI factory errors are not silently converted into fallback', async () => {
+  const tool = createQuestionTool(() => () => {
+    throw new Error('UI factory failure');
   });
+  const ctx = questionContext();
   await expect(
     tool.execute('call', params, undefined, undefined, ctx),
-  ).rejects.toThrow('Custom host failure');
+  ).rejects.toThrow('UI factory failure');
   expect(ctx.ui.select).not.toHaveBeenCalled();
 });
 
@@ -452,30 +469,14 @@ const confirmWithLabels = {
 it('applies labels end to end through the native questionnaire', async () => {
   initTheme('dark');
   let rendered = '';
-  const host = vi.fn(async (factory: QuestionUIFactory) => {
-    let result: QuestionResult | undefined;
-    const component = await factory(
-      { requestRender() {}, terminal: { rows: 40 } } as unknown as TUI,
-      {
-        fg: (_color: string, text: string) => text,
-        bg: (_color: string, text: string) => text,
-        bold: (text: string) => text,
-      } as Theme,
-      {} as KeybindingsManager,
-      (value) => {
-        result = value;
-      },
-    );
-    rendered = component.render(100).join('\n');
-    component.handleInput?.('1');
-    return result;
-  });
   const result = await extensionHost().tool.execute(
     'call',
     confirmWithLabels as never,
     undefined,
     undefined,
-    context(true, { custom: host as ExtensionUIContext['custom'] }),
+    questionContext(['1'], (text) => {
+      rendered = text;
+    }),
   );
   expect(rendered).toContain('Sí');
   expect(rendered).toContain('No, gracias');

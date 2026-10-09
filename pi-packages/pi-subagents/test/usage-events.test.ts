@@ -5,14 +5,18 @@ import {
   createEventBus,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
+import {
+  request,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+  type SubagentsUsageSnapshot,
+  subscribe,
+} from '@thoth-agents/pi-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import subagentsExtension from '../src/extension/subagents-extension.js';
 import { SubagentManager } from '../src/manager.js';
 import type { SubagentRunner } from '../src/types.js';
-import {
-  SubagentUsageEvents,
-  type SubagentUsageSnapshot,
-} from '../src/usage-events.js';
+import { SubagentUsageEvents } from '../src/usage-events.js';
 
 type UsageSessionEntry = {
   type: 'custom';
@@ -34,16 +38,80 @@ function usageSession(entries: UsageSessionEntry[] = []) {
 }
 
 function collectUsageEvents(events = createEventBus()) {
-  const snapshots: SubagentUsageSnapshot[] = [];
-  events.on('thoth:subagent-usage', (data) => {
-    snapshots.push(data as SubagentUsageSnapshot);
+  const snapshots: Array<SubagentsUsageSnapshot & { sessionId: string }> = [];
+  subscribe(events, SUBAGENTS_USAGE_CHANNEL, {
+    onSnapshot: ({ sessionId, data }) => snapshots.push({ sessionId, ...data }),
   });
   return { events, snapshots };
+}
+
+function requestUsage(
+  events: ReturnType<typeof createEventBus>,
+  sessionId: string,
+) {
+  request(events, SUBAGENTS_USAGE_REQUEST, {
+    source: 'test-consumer',
+    sessionId,
+    data: {},
+  });
 }
 
 describe('subagent usage events', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('publishes usage only as a parent-session envelope while retaining the checkpoint discriminator', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const events = createEventBus();
+    const envelopes: unknown[] = [];
+    const rawUsage = vi.fn();
+    events.on('thoth:subagents:usage', (snapshot) => envelopes.push(snapshot));
+    events.on('thoth:subagent-usage', rawUsage);
+    const session = usageSession();
+    const usage = new SubagentUsageEvents(events, session.appendEntry);
+    usage.startSession('parent-a', session.entries);
+    envelopes.length = 0;
+
+    usage.recordAssistantMessage('parent-a', 'child-a', {
+      role: 'assistant',
+      id: 'message-a',
+      usage: { cost: { total: 0.125 } },
+    });
+    usage.dispose();
+
+    expect(envelopes).toEqual([
+      {
+        v: 1,
+        source: '@thoth-agents/pi-subagents',
+        sessionId: 'parent-a',
+        at: 1_000,
+        data: { totalCost: 0.125, runCount: 1 },
+      },
+    ]);
+    expect(rawUsage).not.toHaveBeenCalled();
+    expect(session.entries).toEqual([
+      {
+        type: 'custom',
+        customType: 'thoth:subagent-usage',
+        data: {
+          version: 1,
+          parentSessionId: 'parent-a',
+          totalCost: 0.125,
+          runCount: 1,
+          runs: [
+            {
+              runId: 'child-a',
+              totalCost: 0.125,
+              throughTimestamp: null,
+              throughKeys: [],
+              untimedKeys: ['id:message-a'],
+            },
+          ],
+        },
+      },
+    ]);
   });
 
   it('restores the latest session snapshot after restart and answers requests with it', () => {
@@ -69,14 +137,56 @@ describe('subagent usage events', () => {
     const resumed = new SubagentUsageEvents(events, session.appendEntry);
     resumed.startSession('parent-a', session.entries);
     snapshots.length = 0;
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
+    requestUsage(events, 'parent-a');
     resumed.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 2 },
     ]);
+  });
+
+  it('queues early envelope requests once per parent until checkpoint restoration is ready', () => {
+    const session = usageSession([
+      {
+        type: 'custom',
+        customType: 'thoth:subagent-usage',
+        data: {
+          version: 1,
+          parentSessionId: 'parent-a',
+          totalCost: 0.375,
+          runCount: 1,
+          runs: [
+            {
+              runId: 'child-a',
+              totalCost: 0.375,
+              throughTimestamp: 100,
+              throughKeys: ['id:message-a'],
+              untimedKeys: [],
+            },
+          ],
+        },
+      },
+    ]);
+    const { events, snapshots } = collectUsageEvents();
+    const usage = new SubagentUsageEvents(events, session.appendEntry);
+
+    requestUsage(events, 'parent-a');
+    requestUsage(events, 'parent-a');
+    requestUsage(events, 'parent-b');
+    requestUsage(events, 'parent-b');
+    expect(snapshots).toEqual([]);
+
+    usage.startSession('parent-a', session.entries);
+    expect(snapshots).toEqual([
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 0, runCount: 0 },
+    ]);
+    snapshots.length = 0;
+    usage.startSession('parent-a', session.entries);
+    expect(snapshots).toEqual([
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+    ]);
+    usage.dispose();
   });
 
   it('adds new child messages after restore without charging replayed messages or runs again', () => {
@@ -121,9 +231,9 @@ describe('subagent usage events', () => {
     resumed.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.5, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.75, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.875, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0.5, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.75, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.875, runCount: 2 },
     ]);
   });
 
@@ -171,7 +281,7 @@ describe('subagent usage events', () => {
     resumed.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.875, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.875, runCount: 1 },
     ]);
   });
 
@@ -188,9 +298,7 @@ describe('subagent usage events', () => {
         timestamp,
         usage: { cost: { total: 0.125 } },
       });
-      events.emit('thoth:subagent-usage:request', {
-        parentSessionId: 'parent-a',
-      });
+      requestUsage(events, 'parent-a');
     }
     expect(session.entries).toHaveLength(1);
 
@@ -255,13 +363,11 @@ describe('subagent usage events', () => {
     const resumed = new SubagentUsageEvents(events, session.appendEntry);
     resumed.startSession('parent-a', session.entries);
     snapshots.length = 0;
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
+    requestUsage(events, 'parent-a');
     resumed.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
     ]);
   });
 
@@ -302,15 +408,13 @@ describe('subagent usage events', () => {
       usage: { cost: { total: 1 } },
     });
     vi.advanceTimersByTime(5_000);
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-b',
-    });
+    requestUsage(events, 'parent-b');
     usage.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.875, runCount: 1 },
-      { parentSessionId: 'parent-b', totalCost: 1, runCount: 1 },
-      { parentSessionId: 'parent-b', totalCost: 1, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.875, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 1, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 1, runCount: 1 },
     ]);
     expect(parentB.entries).toHaveLength(1);
     expect(parentB.entries[0].data).toMatchObject({
@@ -349,9 +453,7 @@ describe('subagent usage events', () => {
     failAppend = true;
     expect(() => usage.dispose()).toThrow('disk full');
     snapshots.length = 0;
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
+    requestUsage(events, 'parent-a');
     failAppend = false;
     vi.advanceTimersByTime(5_000);
 
@@ -370,7 +472,7 @@ describe('subagent usage events', () => {
     });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
     ]);
   });
 
@@ -395,9 +497,9 @@ describe('subagent usage events', () => {
     });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.875, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.875, runCount: 2 },
     ]);
   });
 
@@ -423,9 +525,9 @@ describe('subagent usage events', () => {
     usage.recordAssistantMessage('parent-a', 'child-b', first);
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.5, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.5, runCount: 2 },
     ]);
   });
 
@@ -455,9 +557,9 @@ describe('subagent usage events', () => {
     });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.5, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.5, runCount: 1 },
     ]);
   });
 
@@ -482,9 +584,9 @@ describe('subagent usage events', () => {
     });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-b', totalCost: 0.5, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 0.5, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 2 },
     ]);
   });
 
@@ -503,43 +605,50 @@ describe('subagent usage events', () => {
     });
     const { snapshots } = collectUsageEvents(events);
 
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-b',
-    });
+    requestUsage(events, 'parent-a');
+    requestUsage(events, 'parent-a');
+    requestUsage(events, 'parent-b');
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-b', totalCost: 1, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 1, runCount: 1 },
     ]);
   });
 
-  it('returns zero usage for an unseen parent and ignores malformed requests', () => {
+  it('returns zero usage for an unseen parent and ignores malformed or raw requests', () => {
     const { events, snapshots } = collectUsageEvents();
     new SubagentUsageEvents(events);
+    const validRequest = {
+      v: 1,
+      source: 'test-consumer',
+      sessionId: 'parent-a',
+      at: 0,
+      data: {},
+    };
 
-    for (const request of [
+    for (const invalidRequest of [
       undefined,
       null,
       'parent-a',
       {},
-      { parentSessionId: 123 },
-      { parentSessionId: '' },
+      { ...validRequest, v: 2 },
+      { ...validRequest, source: '' },
+      { ...validRequest, sessionId: 123 },
+      { ...validRequest, sessionId: '' },
+      { ...validRequest, at: Number.NaN },
+      { ...validRequest, data: { parentSessionId: 'parent-a' } },
     ]) {
-      events.emit('thoth:subagent-usage:request', request);
+      events.emit(SUBAGENTS_USAGE_REQUEST.name, invalidRequest);
     }
     events.emit('thoth:subagent-usage:request', {
       parentSessionId: 'parent-a',
     });
+    expect(snapshots).toEqual([]);
+    requestUsage(events, 'parent-a');
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0, runCount: 0 },
+      { sessionId: 'parent-a', totalCost: 0, runCount: 0 },
     ]);
   });
 
@@ -557,8 +666,8 @@ describe('subagent usage events', () => {
     usage.recordAssistantMessage('parent-a', 'child-a', { ...message });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.25, runCount: 1 },
     ]);
   });
 
@@ -568,9 +677,7 @@ describe('subagent usage events', () => {
 
     usage.dispose();
     usage.dispose();
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
+    requestUsage(events, 'parent-a');
 
     expect(snapshots).toEqual([]);
   });
@@ -597,8 +704,8 @@ describe('subagent usage events', () => {
     });
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.25, runCount: 2 },
+      { sessionId: 'parent-a', totalCost: 0, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.25, runCount: 2 },
     ]);
   });
 });
@@ -686,8 +793,8 @@ describe('subagent usage accounting integration', () => {
     await manager.run({ agent: 'analyst', task: 'second', mode: 'task' }, ctx);
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-b', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-b', totalCost: 0.125, runCount: 1 },
     ]);
   });
 
@@ -739,8 +846,8 @@ describe('subagent usage accounting integration', () => {
     );
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
-      { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.125, runCount: 1 },
+      { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
     ]);
   });
 
@@ -775,11 +882,11 @@ describe('subagent usage accounting integration', () => {
     resumed.startSession(reopened.getSessionId(), reopened.getEntries());
     snapshots.length = 0;
     resumed.recordAssistantMessage(parentSessionId, 'child-a', message);
-    events.emit('thoth:subagent-usage:request', { parentSessionId });
+    requestUsage(events, parentSessionId);
     resumed.dispose();
 
     expect(snapshots).toEqual([
-      { parentSessionId, totalCost: 0.375, runCount: 2 },
+      { sessionId: parentSessionId, totalCost: 0.375, runCount: 2 },
     ]);
   });
 
@@ -826,20 +933,16 @@ describe('subagent usage accounting integration', () => {
 
     try {
       // Another extension's session_start may request usage before ours runs.
-      events.emit('thoth:subagent-usage:request', {
-        parentSessionId: 'parent-a',
-      });
+      requestUsage(events, 'parent-a');
       expect(snapshots).toEqual([]);
       await handlers.get('session_start')?.({ reason }, ctx);
       expect(snapshots).toEqual([
-        { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+        { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
       ]);
       snapshots.length = 0;
-      events.emit('thoth:subagent-usage:request', {
-        parentSessionId: 'parent-a',
-      });
+      requestUsage(events, 'parent-a');
       expect(snapshots).toEqual([
-        { parentSessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
+        { sessionId: 'parent-a', totalCost: 0.375, runCount: 1 },
       ]);
     } finally {
       await handlers.get('session_shutdown')?.({}, ctx);
@@ -858,18 +961,14 @@ describe('subagent usage accounting integration', () => {
     });
 
     try {
-      events.emit('thoth:subagent-usage:request', {
-        parentSessionId: 'parent-a',
-      });
+      requestUsage(events, 'parent-a');
     } finally {
       await shutdown?.();
     }
-    events.emit('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-a',
-    });
+    requestUsage(events, 'parent-a');
 
     expect(snapshots).toEqual([
-      { parentSessionId: 'parent-a', totalCost: 0, runCount: 0 },
+      { sessionId: 'parent-a', totalCost: 0, runCount: 0 },
     ]);
   });
 });

@@ -65,7 +65,7 @@ The commands below install at **global/user scope**.
 | <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | Native plugin, agent team, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=opencode` |
 | <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
 | <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. **Run the prerequisites below first.** | `npx thoth-agents@latest install --agent=claude` |
-| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation and research extensions, workflow skills, and memory setup. **Recommended for the best experience.** | `npx thoth-agents@latest install --agent=pi` |
+| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation, research, theme and background-task extensions, workflow skills, and memory setup. **Recommended for the best experience.** | `npx thoth-agents@latest install --agent=pi` |
 
 ### Claude Code prerequisites
 
@@ -250,13 +250,34 @@ do not prove those other pieces are current. Use `status` to inspect the last
 complete CLI-managed installation and follow any reported recovery actions.
 
 For Pi, the first-party `thoth-agents` package remains exact and receipt-verified.
-The five mandatory external extensions use stable minimum-only `>=` ranges, so
+The eight selected extensions use stable minimum-only `>=` ranges, so
 Pi's native package manager can update them independently without waiting for a
-Thoth release. Status validates each installed manifest's package name and
-SemVer floor; newer stable versions are healthy, while prerelease, malformed,
+Thoth release. Install and applied Update now include
+`@thoth-agents/pi-thoth-theme` and `@thoth-agents/pi-background-tasks` at `>=0.3.0`.
+Existing copies of these two packages from any source are preserved and verified
+without reinstalling when compatible; older copies are left untouched and block
+completion with manual upgrade guidance. Ambiguous sources fail closed. Status
+validates each installed manifest's package name and SemVer floor; newer stable
+versions are healthy, while prerelease, malformed,
 missing, or older versions are not. Re-running Install or applying Update
-migrates legacy exact external sources through Pi while preserving package
-resource filters and unrelated settings.
+migrates legacy exact sources for the other selected extensions through Pi while
+preserving package resource filters and unrelated settings.
+
+Subagents and background tasks publish summary-only v1 snapshots through
+[pi-core's task channels](pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+The status line uses `thoth:subagents:usage`, not the removed raw
+`thoth:subagent-usage` bus event. Upgrade pi-subagents and pi-thoth-theme to
+`>=0.3.0` together and `/reload` to retain subagent cost display; the usage
+checkpoint discriminator is unchanged.
+
+Pi's question UI replaces the editor without covering chat. `Ctrl+]` collapses it
+to a one-line dock and returns input to the editor; during an active run, `Enter`
+queues a steering message without answering the question. `Ctrl+]` re-expands
+with answers and drafts preserved, and the open tool-call card shows collapsed
+state. While open, `Ctrl+]` shadows editor `jumpForward`; collapsed `Esc` belongs
+to the editor or focused overlay. History/detail overlays close back to the
+expanded question or otherwise the editor; collapse and teardown preserve
+visible foreign-overlay focus. See [question controls](pi-packages/pi-questions-user/README.md#keyboard-controls).
 
 ## Documentation
 

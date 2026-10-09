@@ -1,5 +1,11 @@
 /** TUI-only public entrypoint; the root entry remains importable without Pi peers. */
 
+export type {
+  EditorSlotContribution,
+  EditorSlotHandle,
+} from './editor-slot.js';
+export { registerEditorSlot } from './editor-slot.js';
+
 export { PanelDiscardConfirmation } from './panel-discard.js';
 export type {
   PanelFrameBorderPart,

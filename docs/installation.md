@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and `npm:@thoth-agents/pi-background-tasks@>=0.3.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -216,22 +216,63 @@ The CLI installs and verifies these Pi packages in order:
 2. `npm:@thoth-agents/pi-subagents@>=0.3.0` for native direct specialist
    execution, task-ID lifecycle control and `/subagents-tools` ownership (local
    development can provide the fork path through `--local-pi-runtime-root`);
-3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
-4. `pi-web-access@0.27.0` as the native web extension exposing the default
+3. `npm:@upstash/context7-pi@>=0.1.2` as a native Context7 extension;
+4. `npm:pi-web-access@>=0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
-5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
+5. `npm:pi-mcp-adapter@>=2.32.1` only for the anonymous grep.app MCP endpoint;
 6. `npm:@thoth-agents/pi-questions-user@>=0.1.0` for the root's interactive
    `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
    recommendations, previews, notes and structured per-id answers; no fixed
    maximum on questions or options;
 7. `npm:@thoth-agents/pi-todo@>=0.1.0` for the first-party session task list:
-   the `todo` tool, `/todos`, and current-session editor widget.
+   the `todo` tool, `/todos`, and current-session editor widget;
+8. `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` for the theme, Render KIT and status
+   line (selecting the `thoth` color theme remains an operator choice);
+9. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs.
 
-The task-list extension is the sixth selected package after first-party
-verification. Install and applied Update install and individually verify it;
+The question UI replaces the editor while expanded, leaving chat visible and
+scrollable. `Ctrl+]` collapses it to a one-line dock (default hint: `Ctrl+] expand`)
+and returns input to the editor; typing and `Enter` work normally. During an
+active run, `Enter` queues a steering message and leaves the question open.
+`Ctrl+]` from the editor or a history/detail overlay re-expands with answers and
+drafts preserved; the open tool-call card shows collapsed state. While a question
+is open, `Ctrl+]` shadows the editor's `jumpForward`. Collapsed `Esc` belongs to
+the editor or focused overlay; expand first to cancel the question with `Esc`.
+Closing subagents, task-list or background history, or a work-panel detail card,
+returns input to the expanded question or otherwise the editor. Collapse and
+question teardown never take focus from a still-visible foreign overlay. See
+[the question controls](../pi-packages/pi-questions-user/README.md#keyboard-controls).
+
+These are eight selected packages after root-package verification. The task-list
+extension remains the sixth selected package. Install and applied Update install and individually verify it;
 status reports it as a managed target. Progress tracking never replaces native
 delegation or `.thoth/` change records. Unrelated task extensions remain
 operator-owned and untouched.
+
+Install and applied Update individually verify the theme and background-tasks
+packages. An existing copy of either from any source (npm, local or Git) at or
+above `0.3.0` is preserved without reinstalling. A below-floor copy is left
+untouched and blocks completion with manual upgrade guidance; missing identity
+or an ambiguous source fails closed. Upgrade the existing checkout/source in
+place, or review its ownership before using Pi's native remove/install commands
+to switch sources. Verify with `pi list --no-approve` and the installed manifest,
+then rerun the complete installer or apply Update. Preview and dry-run perform
+no package mutation. This preservation policy applies only to these two new
+entries; other selected packages retain their existing source-migration policy.
+The Claude/Antigravity bridges and pi-openai-fast remain operator-installed.
+
+Subagents and background tasks publish current-session summary-only v1 snapshots
+on `thoth:subagents:state` and `thoth:background:state`, each with a `:request`
+channel. They carry identity/status, lifecycle and short usage/exit/preview fields
+plus counts, never prompts, results, commands, environment or logs. Requests use
+an empty data object and a target session ID in the pi-core envelope; subscribe
+first, then request a complete snapshot (pre-readiness requests are answered at
+readiness). See [the exact contracts](../pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+The status line consumes cumulative cost/run count from `thoth:subagents:usage`
+and requests it through `thoth:subagents:usage:request` on session start. The raw
+`thoth:subagent-usage` bus event/request is removed; its checkpoint discriminator
+stays unchanged. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together
+and `/reload` to retain subagent cost display; there is no old-event fallback.
 
 Install and applied Update individually verify the first-party question package
 at its configured minimum after root-package verification. An installed
@@ -617,7 +658,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, five specialist synchronization, six minimum-constrained selected packages (including the first-party task list), exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, eight minimum-constrained selected packages (including task list, theme and background tasks), exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

@@ -25,6 +25,8 @@ import {
 import { findPackageRoot } from './package-root';
 import {
   inspectPiExternalPackage,
+  type PiExternalPackageEvidence,
+  type PiExternalPackageSpec,
   piExternalSourceMatches,
 } from './pi-external-package';
 import { projectGitPackagePath } from './pi-git-source';
@@ -48,6 +50,11 @@ import { syncPiSpecialists } from './pi-resources';
 export const PI_MINIMUM_VERSION = '0.99.0';
 export const PI_NODE_MINIMUM = '22.19.0';
 export const PI_COMMAND_TIMEOUT_MS = 120_000;
+export interface PiSetupPackageSpec extends PiExternalPackageSpec {
+  id: string;
+  preserveUserCopy?: boolean;
+}
+
 export const PI_PACKAGE_SPECS = [
   {
     id: 'delegation',
@@ -84,6 +91,20 @@ export const PI_PACKAGE_SPECS = [
     source: 'npm:@thoth-agents/pi-todo@>=0.1.0',
     packageName: '@thoth-agents/pi-todo',
     version: '0.1.0',
+  },
+  {
+    id: 'theme',
+    source: 'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+    packageName: '@thoth-agents/pi-thoth-theme',
+    version: '0.3.0',
+    preserveUserCopy: true,
+  },
+  {
+    id: 'background-tasks',
+    source: 'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
+    packageName: '@thoth-agents/pi-background-tasks',
+    version: '0.3.0',
+    preserveUserCopy: true,
   },
 ] as const;
 
@@ -309,12 +330,78 @@ export function isPiIncumbentDelegationSource(source: string): boolean {
 
 export function getPiExternalPackageSpecs(
   options: Pick<PiSetupOptions, 'runtimePackageRoot'> = {},
-) {
+): readonly PiSetupPackageSpec[] {
   const runtimePackageRoot = options.runtimePackageRoot;
   if (!runtimePackageRoot) return PI_PACKAGE_SPECS;
   return PI_PACKAGE_SPECS.map((spec) =>
     spec.id === 'delegation' ? { ...spec, source: runtimePackageRoot } : spec,
   );
+}
+
+function sourceHintsAtPackage(
+  source: string,
+  spec: PiSetupPackageSpec,
+): boolean {
+  return source.includes(
+    spec.packageName.split('/').at(-1) ?? spec.packageName,
+  );
+}
+
+function hasPiResourceSelection(value: Record<string, unknown>): boolean {
+  return ['prompts', 'skills', 'themes'].some(
+    (key) => Array.isArray(value[key]) && value[key].length > 0,
+  );
+}
+
+export function inspectPiSetupPackage(
+  packages: readonly PiConfiguredPackage[],
+  spec: PiSetupPackageSpec,
+  requireManagedSource = true,
+): PiExternalPackageEvidence {
+  if (spec.preserveUserCopy) {
+    // An unidentified configured copy could be this package under any local,
+    // git, or aliased npm source. Never turn unreadable identity into absence.
+    const unidentified = packages.find((candidate) => {
+      const manifest = configuredPackageManifest(candidate);
+      if (typeof manifest?.name === 'string' && manifest.name.trim())
+        return false;
+      const pi = manifest?.pi;
+      const manifestIsResourceOnly =
+        isRecord(pi) &&
+        (pi.extensions === undefined ||
+          (Array.isArray(pi.extensions) && pi.extensions.length === 0)) &&
+        hasPiResourceSelection(pi);
+      // Preserve the existing resource-only contract, but a target-like source
+      // still needs a readable package identity even when extensions are filtered.
+      return (
+        sourceHintsAtPackage(candidate.source, spec) ||
+        (!candidate.resourceOnly && !manifestIsResourceOnly)
+      );
+    });
+    if (unidentified)
+      return {
+        state: 'drift',
+        source: unidentified.source,
+        installedPath: unidentified.installedPath,
+        reason: `installed manifest identity is unavailable for ${unidentified.source}${unidentified.installedPath ? ` at ${unidentified.installedPath}` : ''}`,
+      };
+  }
+  return inspectPiExternalPackage(
+    packages,
+    spec,
+    requireManagedSource && !spec.preserveUserCopy,
+  );
+}
+
+function piPreservedPackageRecovery(
+  spec: PiSetupPackageSpec,
+  evidence: PiExternalPackageEvidence,
+): string | undefined {
+  if (!spec.preserveUserCopy || evidence.state !== 'drift') return undefined;
+  const diagnostic = `Cannot preserve and verify ${spec.packageName}: ${evidence.reason}. Existing copies are left untouched.`;
+  if (evidence.version && evidence.source)
+    return `${diagnostic} Upgrade this copy to >=${spec.version} (for local/git sources, upgrade the checkout), or review its ownership and switch with: pi remove ${evidence.source} --no-approve, then pi install ${spec.source} --no-approve. Verify with pi list --no-approve and the installed manifest, then rerun setup.`;
+  return `${diagnostic} Inspect pi list --no-approve and the configured package manifests; resolve the package identity or source ambiguity, then rerun setup.`;
 }
 
 const PI_INCUMBENT_TODO_NAME = '@juicesharp/rpiv-todo';
@@ -574,6 +661,18 @@ function resolvePiPackage(
   options: PiSetupOptions,
   userSettings: Record<string, unknown>,
 ): PiConfiguredPackage {
+  const declaration = Array.isArray(userSettings.packages)
+    ? userSettings.packages.find(
+        (entry: unknown) =>
+          isRecord(entry) && entry.source === candidate.source,
+      )
+    : undefined;
+  const resourceOnly =
+    isRecord(declaration) &&
+    Array.isArray(declaration.extensions) &&
+    declaration.extensions.length === 0 &&
+    hasPiResourceSelection(declaration);
+  candidate = { ...candidate, resourceOnly };
   // pi list reports paths from DefaultPackageManager.getInstalledPath. Reuse
   // that native resolution when present, but reread its manifest on every
   // inspection; settings-only planning uses the same SDK algorithm below.
@@ -643,9 +742,15 @@ function resolvePiListedPackages(
         `Pi package manifest identity cannot be verified: malformed pi list source ${source}. Rerun pi list --no-approve and inspect the configured sources before setup.`,
       );
   }
-  return packages.map((candidate) =>
-    resolvePiPackage(candidate, options, settings),
-  );
+  return packages.map((candidate) => {
+    if (candidate.scope === 'project')
+      projectSettings ??= readJsonObject(join(projectRoot, 'settings.json'));
+    return resolvePiPackage(
+      candidate,
+      options,
+      candidate.scope === 'project' ? (projectSettings ?? {}) : settings,
+    );
+  });
 }
 
 function readPiProjectPackages(options: PiPathOptions): PiConfiguredPackage[] {
@@ -655,6 +760,34 @@ function readPiProjectPackages(options: PiPathOptions): PiConfiguredPackage[] {
     'project',
     options,
   );
+}
+
+export function resolvePiPreservationPackages(
+  output: string,
+  options: PiSetupOptions,
+): PiConfiguredPackage[] {
+  const listed = resolvePiListedPackages(output, options);
+  const paths = resolvePiPaths(options);
+  const configured = [
+    ...resolvePiConfiguredPackages(
+      readJsonObject(paths.settingsPath),
+      'user',
+      options,
+    ),
+    ...readPiProjectPackages(options),
+  ];
+  // pi list may omit a broken configured source. Retain scoped declarations
+  // so a disappeared/unreadable copy cannot be misclassified as absent.
+  return [
+    ...listed,
+    ...configured.filter(
+      (candidate) =>
+        !listed.some(
+          ({ scope, source }) =>
+            scope === candidate.scope && source === candidate.source,
+        ),
+    ),
+  ];
 }
 
 function scanPiProjectInstalledIncumbents(
@@ -861,6 +994,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       );
     }
   }
+  let userPackages: PiConfiguredPackage[] = [];
   let plannedQuestionRemovals: PiConfiguredPackage[] = [];
   let subagentsConfigContent: string | undefined;
   let mcpContent: string | undefined;
@@ -885,11 +1019,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       );
     if (incumbentBlockers.length > 0)
       throw new Error(incumbentBlockers.join('\n'));
-    const userPackages = resolvePiConfiguredPackages(
-      userSettings,
-      'user',
-      options,
-    );
+    userPackages = resolvePiConfiguredPackages(userSettings, 'user', options);
     blockers.push(...piQuestionIdentityBlockers(userPackages));
     plannedQuestionRemovals = findPiIncumbentQuestions(userPackages);
     subagentsConfigContent = `${JSON.stringify(
@@ -926,6 +1056,22 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     blockers.push(error instanceof Error ? error.message : String(error));
   }
   blockers.push(...piQuestionIdentityBlockers(projectPackages));
+  // Preview inspects installed directories and target-source hints; the
+  // authoritative apply-time inspection also retains unresolved declarations.
+  for (const pkg of getPiExternalPackageSpecs(options)) {
+    if (!pkg.preserveUserCopy) continue;
+    const recovery = piPreservedPackageRecovery(
+      pkg,
+      inspectPiSetupPackage(
+        [...userPackages, ...projectPackages].filter(
+          ({ source, installedPath }) =>
+            installedPath !== undefined || sourceHintsAtPackage(source, pkg),
+        ),
+        pkg,
+      ),
+    );
+    if (recovery) blockers.push(recovery);
+  }
   const projectIncumbentTodos = findPiIncumbentTodos(projectPackages);
   for (const incumbent of projectIncumbentTodos) {
     const location = incumbent.unmappedSource
@@ -982,7 +1128,9 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     })),
     ...getPiExternalPackageSpecs(options).map((pkg) => ({
       kind: 'package' as const,
-      description: `Install and verify Pi package ${pkg.source}`,
+      description: pkg.preserveUserCopy
+        ? `Install Pi package ${pkg.source} if absent; otherwise preserve and verify its user copy`
+        : `Install and verify Pi package ${pkg.source}`,
       target: pkg.source,
       command: { command: 'pi', args: ['install', pkg.source, '--no-approve'] },
     })),
@@ -1077,6 +1225,8 @@ export interface PiConfiguredPackage {
   packageName?: string;
   packageVersion?: string;
   identityLimitation?: string;
+  /** Scoped settings explicitly disable extensions and select only resources. */
+  resourceOnly?: boolean;
   /** Directory-only evidence; source is a display path, not a removal source. */
   unmappedSource?: boolean;
 }
@@ -1517,6 +1667,26 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         manualRecovery: identityRecovery,
       };
 
+    const preservationPackages = resolvePiPreservationPackages(
+      before.stdout,
+      plan.options,
+    );
+    for (const pkg of getPiExternalPackageSpecs(plan.options)) {
+      if (!pkg.preserveUserCopy) continue;
+      const evidence = inspectPiSetupPackage(preservationPackages, pkg, false);
+      const recovery = piPreservedPackageRecovery(pkg, evidence);
+      if (recovery)
+        return {
+          success: false,
+          changed,
+          diagnostics,
+          error: recovery,
+          failedStep: 'preflight',
+          installedPackages,
+          manualRecovery: recovery,
+        };
+    }
+
     const installed = execute('pi', ['install', desiredSource, '--no-approve']);
     if (installed.exitCode !== 0)
       throw new Error(
@@ -1729,16 +1899,24 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     }
 
     for (const pkg of getPiExternalPackageSpecs(plan.options)) {
+      const preserveUserCopy = pkg.preserveUserCopy === true;
       const beforeInstall = execute('pi', ['list', '--no-approve']);
       if (beforeInstall.exitCode !== 0)
         throw new Error(
           `Unable to inspect ${pkg.packageName} before installation: ${beforeInstall.stderr.trim() || 'pi list unavailable'}`,
         );
-      const prior = inspectPiExternalPackage(
-        parsePiPackageList(beforeInstall.stdout),
+      const prior = inspectPiSetupPackage(
+        preserveUserCopy
+          ? resolvePiPreservationPackages(beforeInstall.stdout, plan.options)
+          : parsePiPackageList(beforeInstall.stdout),
         pkg,
         false,
       );
+      const recovery = piPreservedPackageRecovery(pkg, prior);
+      if (recovery) {
+        manualRecovery = recovery;
+        throw new Error(recovery);
+      }
       const priorSourceMatches =
         prior.state === 'installed' &&
         prior.source !== undefined &&
@@ -1751,7 +1929,8 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
           },
           pkg.source,
         );
-      if (!priorSourceMatches) {
+      const preserving = preserveUserCopy && prior.state === 'installed';
+      if (!preserving && !priorSourceMatches) {
         const result = execute('pi', ['install', pkg.source, '--no-approve']);
         if (result.exitCode !== 0)
           throw new Error(
@@ -1761,13 +1940,19 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
       const listed = execute('pi', ['list', '--no-approve']);
       const verified =
         listed.exitCode === 0
-          ? inspectPiExternalPackage(parsePiPackageList(listed.stdout), pkg)
+          ? inspectPiSetupPackage(
+              preserveUserCopy
+                ? resolvePiPreservationPackages(listed.stdout, plan.options)
+                : parsePiPackageList(listed.stdout),
+              pkg,
+            )
           : {
               state: 'drift' as const,
               version: undefined,
               reason: listed.stderr.trim() || 'pi list unavailable',
             };
       if (
+        !preserveUserCopy &&
         prior.state === 'installed' &&
         verified.version !== undefined &&
         lt(verified.version, prior.version)
@@ -1798,8 +1983,24 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
           `Pi attempted to downgrade ${pkg.packageName} from ${prior.version} to ${verified.version}; exact-version recovery ${recoverySucceeded ? 'verified' : 'failed or unverifiable'}. ${recoveryGuidance}`,
         );
       }
-      if (verified.state !== 'installed')
-        throw new Error(`Pi did not verify ${pkg.source}: ${verified.reason}.`);
+      if (verified.state !== 'installed') {
+        manualRecovery = piPreservedPackageRecovery(pkg, verified);
+        throw new Error(
+          `Pi did not verify ${pkg.source}: ${verified.reason}.${manualRecovery ? ` ${manualRecovery}` : ''}`,
+        );
+      }
+      if (preserving) {
+        if (
+          verified.source !== prior.source ||
+          !piPackagePathsEqual(verified.installedPath, prior.installedPath)
+        )
+          throw new Error(
+            `Preserved Pi package ${pkg.packageName} changed source or directory during verification; inspect pi list --no-approve, then rerun setup.`,
+          );
+        diagnostics.push(
+          `Preserved and verified ${pkg.packageName}@${verified.version} from ${verified.source}; no reinstall.`,
+        );
+      }
       installedPackages.push(pkg.source);
     }
     for (const item of plan.items.filter(

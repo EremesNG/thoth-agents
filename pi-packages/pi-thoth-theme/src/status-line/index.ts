@@ -3,6 +3,12 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import {
+  request,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+  subscribe,
+} from '@thoth-agents/pi-core';
+import {
   decorateEditor,
   type EditorDecoration,
 } from '../input-box/decorate.ts';
@@ -116,33 +122,30 @@ export function registerStatusLine(
       invalidateRender();
     };
 
-    unsubs.push(
-      pi.events.on('thoth:subagent-usage', (data) => {
-        if (disposed || !data || typeof data !== 'object') return;
-        const { parentSessionId, totalCost } = data as {
-          parentSessionId?: unknown;
-          totalCost?: unknown;
-        };
-        if (
-          parentSessionId !== ctx.sessionManager.getSessionId() ||
-          typeof totalCost !== 'number' ||
-          !Number.isFinite(totalCost) ||
-          totalCost < 0
-        )
-          return;
-        // The publisher sends a cumulative snapshot, not a delta.
-        subagentCost = totalCost;
-        requestRender();
-      }),
-    );
+    let offSubagentUsage: (() => void) | undefined;
+    unsubs.push(() => offSubagentUsage?.());
 
     if (footerData?.onBranchChange) {
       unsubs.push(footerData.onBranchChange(invalidateRender));
     }
 
-    const requestSubagentUsage = () => {
-      pi.events.emit('thoth:subagent-usage:request', {
-        parentSessionId: ctx.sessionManager.getSessionId(),
+    const subscribeAndRequestSubagentUsage = () => {
+      const sessionId = ctx.sessionManager.getSessionId();
+      // Rebind first: a request responder can publish synchronously.
+      offSubagentUsage?.();
+      offSubagentUsage = subscribe(pi.events, SUBAGENTS_USAGE_CHANNEL, {
+        sessionId,
+        onSnapshot: ({ data }) => {
+          if (disposed) return;
+          // The publisher sends a cumulative snapshot, not a delta.
+          subagentCost = data.totalCost;
+          requestRender();
+        },
+      });
+      request(pi.events, SUBAGENTS_USAGE_REQUEST, {
+        source: '@thoth-agents/pi-thoth-theme',
+        sessionId,
+        data: {},
       });
     };
 
@@ -154,7 +157,7 @@ export function registerStatusLine(
           throughput.reset();
           if (inputBoxEnabled) working.end();
           refreshSession();
-          requestSubagentUsage();
+          subscribeAndRequestSubagentUsage();
         }),
       );
       if (inputBoxEnabled) {
@@ -180,8 +183,7 @@ export function registerStatusLine(
       unsubs.push(pi.on('thinking_level_select', invalidateRender));
     }
 
-    // Subscribe first: a request responder can publish synchronously.
-    requestSubagentUsage();
+    subscribeAndRequestSubagentUsage();
 
     return {
       getStatusSnapshot,

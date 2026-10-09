@@ -12,6 +12,12 @@ import {
   type TUI,
   visibleWidth,
 } from '@earendil-works/pi-tui';
+import {
+  onRequest,
+  publish,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+} from '@thoth-agents/pi-core';
 import { describe, expect, it, vi } from 'vitest';
 import { decorateEditor } from '../input-box/decorate.ts';
 import { createWorkingState } from '../input-box/state.ts';
@@ -149,6 +155,19 @@ describe('registerStatusLine', () => {
     const factory = mocks.getFooterFactory();
     if (!factory) throw new Error('Footer factory was not registered');
     return factory(mocks.tui, mocks.theme, mocks.footerData);
+  }
+
+  function publishUsage(
+    events: ReturnType<typeof createEventBus>,
+    sessionId: string,
+    totalCost: number,
+    runCount: number,
+  ) {
+    publish(events, SUBAGENTS_USAGE_CHANNEL, {
+      source: '@thoth-agents/pi-subagents',
+      sessionId,
+      data: { totalCost, runCount },
+    });
   }
 
   /** Plain top/bottom borders of a decorated editor at `width`. */
@@ -480,10 +499,7 @@ describe('registerStatusLine', () => {
       expect(component.render(120)).toBe(initialFooter);
       expect(component.render(120)).toBe(initialFooter);
 
-      mocks.events.emit('thoth:subagent-usage', {
-        parentSessionId: 'parent-session',
-        totalCost: 0.7,
-      });
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
       expect(editor.render(120)[2]).toBe(box[2]);
       expect(component.render(120)).toEqual([
         '\uf155 1.000 · \uf06210 \uf06310 · \u{f01bc} 0% · \u{f04c5} — tok/s',
@@ -624,64 +640,51 @@ describe('registerStatusLine', () => {
   it('adds the latest cumulative subagent snapshot to session cost, replacing earlier snapshots', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
-    expect(component.render(120)[0]).toContain('\uf155 0.300');
+    try {
+      expect(component.render(120)[0]).toContain('\uf155 0.300');
 
-    mocks.tui.requestRender.mockClear();
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
-    expect(component.render(120)[0]).toContain('\uf155 1.000');
-    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+      mocks.tui.requestRender.mockClear();
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
+      expect(component.render(120)[0]).toContain('\uf155 1.000');
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 1.2,
-      runCount: 2,
-    });
-    expect(component.render(120)[0]).toContain('\uf155 1.500');
-    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+      publishUsage(mocks.events, 'parent-session', 1.2, 2);
+      expect(component.render(120)[0]).toContain('\uf155 1.500');
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
 
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0,
-      runCount: 0,
-    });
-    expect(component.render(120)[0]).toContain('\uf155 0.300');
+      publishUsage(mocks.events, 'parent-session', 0, 0);
+      expect(component.render(120)[0]).toContain('\uf155 0.300');
+    } finally {
+      component.dispose();
+    }
   });
 
   it('ignores subagent snapshots from other parent sessions', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     const current = component.render(120);
     mocks.tui.requestRender.mockClear();
 
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'other-session',
-      totalCost: 99,
-      runCount: 5,
-    });
+    publishUsage(mocks.events, 'other-session', 99, 5);
     expect(component.render(120)).toBe(current);
     expect(mocks.tui.requestRender).not.toHaveBeenCalled();
   });
 
-  it('ignores malformed, non-finite, and negative cost snapshots', () => {
+  it('ignores malformed envelopes, unsupported versions, and raw usage snapshots', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     const current = component.render(120);
     mocks.tui.requestRender.mockClear();
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const validEnvelope = {
+      v: 1,
+      source: '@thoth-agents/pi-subagents',
+      sessionId: 'parent-session',
+      at: 0,
+      data: { totalCost: 2, runCount: 1 },
+    };
 
     try {
       for (const snapshot of [
@@ -689,51 +692,69 @@ describe('registerStatusLine', () => {
         undefined,
         'not a snapshot',
         {},
-        { parentSessionId: 'parent-session', totalCost: '2' },
-        { parentSessionId: 'parent-session', totalCost: Number.NaN },
-        {
-          parentSessionId: 'parent-session',
-          totalCost: Number.POSITIVE_INFINITY,
-        },
-        { parentSessionId: 'parent-session', totalCost: -1 },
+        { ...validEnvelope, v: 2 },
+        { ...validEnvelope, source: '' },
+        { ...validEnvelope, sessionId: '' },
+        { ...validEnvelope, at: Number.NaN },
+        ...[
+          { totalCost: '2', runCount: 1 },
+          { totalCost: Number.NaN, runCount: 1 },
+          { totalCost: Number.POSITIVE_INFINITY, runCount: 1 },
+          { totalCost: -1, runCount: 1 },
+          { totalCost: 2 },
+          { totalCost: 2, runCount: -1 },
+          { totalCost: 2, runCount: 1.5 },
+          { totalCost: 2, runCount: 1, parentSessionId: 'parent-session' },
+        ].map((data) => ({ ...validEnvelope, data })),
       ]) {
-        mocks.events.emit('thoth:subagent-usage', snapshot);
+        mocks.events.emit(SUBAGENTS_USAGE_CHANNEL.name, snapshot);
         expect(component.render(120)).toBe(current);
       }
+      mocks.events.emit('thoth:subagent-usage', {
+        parentSessionId: 'parent-session',
+        totalCost: 99,
+        runCount: 5,
+      });
+      expect(component.render(120)).toBe(current);
       expect(mocks.tui.requestRender).not.toHaveBeenCalled();
       expect(errors).not.toHaveBeenCalled();
     } finally {
       errors.mockRestore();
+      component.dispose();
     }
   });
 
-  it('requests a snapshot after subscribing when the footer is created, recovering prior usage', () => {
+  it('requests an envelope after subscribing when the footer is created, recovering prior usage', () => {
     const mocks = createMocks();
-    const snapshot = {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    };
-    mocks.events.emit('thoth:subagent-usage', snapshot);
-    mocks.events.on('thoth:subagent-usage:request', () => {
-      mocks.events.emit('thoth:subagent-usage', snapshot);
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
+    const offRequest = onRequest(mocks.events, SUBAGENTS_USAGE_REQUEST, {
+      sessionId: 'parent-session',
+      onRequest: () => publishUsage(mocks.events, 'parent-session', 0.7, 1),
     });
     const component = createFooter(mocks);
 
-    expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
-      parentSessionId: 'parent-session',
-    });
-    expect(component.render(120)[0]).toContain('\uf155 1.000');
+    try {
+      expect(mocks.emit).toHaveBeenCalledWith('thoth:subagents:usage:request', {
+        v: 1,
+        source: '@thoth-agents/pi-thoth-theme',
+        sessionId: 'parent-session',
+        at: expect.any(Number),
+        data: {},
+      });
+      expect(component.render(120)[0]).toContain('\uf155 1.000');
+      expect(mocks.emit.mock.calls.map(([channel]) => channel)).not.toContain(
+        'thoth:subagent-usage:request',
+      );
+    } finally {
+      component.dispose();
+      offRequest();
+    }
   });
 
   it('resets cost and requests the current session snapshot on session start', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     expect(component.render(120)[0]).toContain('\uf155 1.000');
 
     mocks.sessionManager.getSessionId.mockReturnValue('next-session');
@@ -742,22 +763,51 @@ describe('registerStatusLine', () => {
     for (const handler of mocks.eventHandlers.get('session_start') ?? [])
       handler();
 
-    expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
-      parentSessionId: 'next-session',
+    expect(mocks.emit).toHaveBeenCalledWith('thoth:subagents:usage:request', {
+      v: 1,
+      source: '@thoth-agents/pi-thoth-theme',
+      sessionId: 'next-session',
+      at: expect.any(Number),
+      data: {},
     });
     expect(component.render(120)[0]).toContain('\uf155 0.000');
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 10,
-      runCount: 2,
-    });
+    publishUsage(mocks.events, 'parent-session', 10, 2);
     expect(component.render(120)[0]).toContain('\uf155 0.000');
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'next-session',
-      totalCost: 0.2,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'next-session', 0.2, 1);
     expect(component.render(120)[0]).toContain('\uf155 0.200');
+  });
+
+  it('rebinds before requesting a synchronous usage response on session start', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    const offRequest = onRequest(mocks.events, SUBAGENTS_USAGE_REQUEST, {
+      sessionId: 'next-session',
+      onRequest: () => publishUsage(mocks.events, 'next-session', 0.2, 1),
+    });
+
+    try {
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
+      expect(component.getStatusSnapshot().subagentCost).toBe(0.7);
+      mocks.sessionManager.getSessionId.mockReturnValue('next-session');
+      mocks.sessionManager.getEntries.mockReturnValue([]);
+      for (const handler of mocks.eventHandlers.get('session_start') ?? [])
+        handler();
+
+      expect(component.getStatusSnapshot().subagentCost).toBe(0.2);
+      expect(component.render(120)[0]).toContain('\uf155 0.200');
+      mocks.tui.requestRender.mockClear();
+      publishUsage(mocks.events, 'parent-session', 99, 5);
+      expect(component.getStatusSnapshot().subagentCost).toBe(0.2);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+
+      component.dispose();
+      publishUsage(mocks.events, 'next-session', 1, 2);
+      expect(component.getStatusSnapshot().subagentCost).toBe(0.2);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+    } finally {
+      component.dispose();
+      offRequest();
+    }
   });
 
   it.each([
@@ -783,11 +833,7 @@ describe('registerStatusLine', () => {
       ...defaultConfig,
       statusLine: { enabled: true, subscriptionProviders: providers },
     });
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
 
     expect(component.render(120)[0].split(' · ')[0]).toBe(expected);
   });
@@ -847,11 +893,7 @@ describe('registerStatusLine', () => {
     const mocks = createMocks('claude-bridge');
     const component = createFooter(mocks);
 
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     const first = component.render(120);
     expect(first[0]).toContain('\uf155 1.000 (sub)');
     const fgCalls = mocks.theme.fg.mock.calls.length;
@@ -868,11 +910,7 @@ describe('registerStatusLine', () => {
     expect(fgCalls).toBeGreaterThan(0);
     expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
 
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 2,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 2);
     expect(component.render(120)).toBe(first);
     expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
   });
@@ -910,14 +948,7 @@ describe('registerStatusLine', () => {
         tokenTotals: { input: 20, output: 20, cacheRead: 80, cacheWrite: 20 },
         tokensPerSecond: 40,
       });
-      mocks.events.emit('thoth:subagent-usage', {
-        parentSessionId: 'parent-session',
-        totalCost: 0.7,
-        input: 999,
-        output: 999,
-        cacheRead: 999,
-        cacheWrite: 999,
-      });
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
       expect(component.getStatusSnapshot()).toMatchObject({
         cost: 0.6,
         subagentCost: 0.7,
@@ -1087,11 +1118,7 @@ describe('registerStatusLine', () => {
     mocks.tui.getFocusedComponent.mockReturnValue(editor);
     const component = createFooter(mocks);
     expect(component.render(120)[0]).toContain('\uf155 0.300');
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     expect(component.render(120)[0]).toContain('\uf155 1.000');
     expect(borders(editor, 120).bottom).toContain('25% 50K/200K');
 
@@ -1163,21 +1190,13 @@ describe('registerStatusLine', () => {
     const component = createFooter(mocks);
 
     expect(mocks.branchUnsub).not.toHaveBeenCalled();
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 0.7,
-      runCount: 1,
-    });
+    publishUsage(mocks.events, 'parent-session', 0.7, 1);
     const current = component.render(120);
 
     component.dispose();
     component.dispose();
     mocks.tui.requestRender.mockClear();
-    mocks.events.emit('thoth:subagent-usage', {
-      parentSessionId: 'parent-session',
-      totalCost: 2,
-      runCount: 2,
-    });
+    publishUsage(mocks.events, 'parent-session', 2, 2);
     expect(component.render(120)).toBe(current);
     expect(mocks.tui.requestRender).not.toHaveBeenCalled();
 

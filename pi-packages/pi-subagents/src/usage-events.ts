@@ -1,7 +1,13 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
+import {
+  onRequest,
+  publish,
+  SUBAGENTS_USAGE_CHANNEL,
+  SUBAGENTS_USAGE_REQUEST,
+} from '@thoth-agents/pi-core';
 import type { SubagentAssistantAccountingMessage } from './types.js';
 
-/** Cumulative snapshot: consumers replace previous values, never add them. */
+/** Session checkpoint totals; the bus payload is defined by pi-core. */
 export type SubagentUsageSnapshot = {
   parentSessionId: string;
   totalCost: number;
@@ -39,6 +45,7 @@ function messageTimestamp(
     : undefined;
 }
 
+// Keep this persisted discriminator stable; it is not a bus channel.
 const usageEntryType = 'thoth:subagent-usage';
 const persistIntervalMs = 5_000;
 
@@ -126,12 +133,11 @@ export class SubagentUsageEvents {
     private readonly appendEntry?: (customType: string, data: unknown) => void,
   ) {
     this.sessionReady = !appendEntry;
-    this.offRequest = events.on('thoth:subagent-usage:request', (data) => {
-      if (!data || typeof data !== 'object') return;
-      const { parentSessionId } = data as { parentSessionId?: unknown };
-      if (typeof parentSessionId !== 'string' || !parentSessionId) return;
-      if (this.sessionReady) this.publish(parentSessionId);
-      else this.pendingRequests.add(parentSessionId);
+    this.offRequest = onRequest(events, SUBAGENTS_USAGE_REQUEST, {
+      onRequest: ({ sessionId }) => {
+        if (this.sessionReady) this.publish(sessionId);
+        else this.pendingRequests.add(sessionId);
+      },
     });
   }
 
@@ -288,10 +294,13 @@ export class SubagentUsageEvents {
 
   private publish(parentSessionId: string): void {
     const parent = this.parents.get(parentSessionId);
-    this.events.emit('thoth:subagent-usage', {
-      parentSessionId,
-      totalCost: parent?.totalCost ?? 0,
-      runCount: parent?.runs.size ?? 0,
-    } satisfies SubagentUsageSnapshot);
+    publish(this.events, SUBAGENTS_USAGE_CHANNEL, {
+      source: '@thoth-agents/pi-subagents',
+      sessionId: parentSessionId,
+      data: {
+        totalCost: parent?.totalCost ?? 0,
+        runCount: parent?.runs.size ?? 0,
+      },
+    });
   }
 }

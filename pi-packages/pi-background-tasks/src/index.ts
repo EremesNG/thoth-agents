@@ -10,8 +10,10 @@ import { listOwnedTaskIdsForOrigin, resumeScheduledWork, stopTask, suspendSchedu
 import { listMetasForOrigin } from "./registry.js";
 import { COMPLETION_BATCH_TYPE, renderBackgroundMessage, TASK_FAILURE_TYPE } from "./render/messages.js";
 import { registerTools } from "./tools.js";
+import { registerBackgroundTaskStateEvents } from "./task-state-events.js";
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
+  registerBackgroundTaskStateEvents(pi);
   const definitions: ToolDefinitionLike[] = [];
   let publication: ToolDefinitionHandle | undefined;
   let releaseLifecycle: (() => void) | undefined;

@@ -1,5 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
+import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
@@ -54,13 +55,9 @@ export function createWorkPanelHost(
   let disposed = false;
   let installed = false;
   let requestRender: (() => void) | undefined;
-  let removeInput: (() => void) | undefined;
+  let slot: EditorSlotHandle | undefined;
   let removeLifecycle: (() => void) | undefined;
-  let previousFactory: EditorFactory | undefined;
-  let factory: EditorFactory | undefined;
-  let editor: Component | undefined;
   let tui: FocusTUI | undefined;
-  let editorInvocations = 0;
   let focused = false;
   let selectedKey: string | undefined;
   let closeArm: { key: string; at: number } | undefined;
@@ -266,15 +263,7 @@ export function createWorkPanelHost(
   }
 
   function rootEditorInputActive(): boolean {
-    return (
-      !disposed &&
-      !suspended &&
-      editorInvocations === 1 &&
-      editor !== undefined &&
-      ctx.ui.getEditorComponent?.() === factory &&
-      tui?.getFocusedComponent?.() === editor &&
-      tui?.hasOverlay?.() === false
-    );
+    return !disposed && !suspended && slot?.isRootEditorInputActive() === true;
   }
 
   function handleInput(data: string): { consume: true } | undefined {
@@ -368,14 +357,11 @@ export function createWorkPanelHost(
       releaseFocus();
       stopRenderTimer();
       dismissDetail?.();
-      removeInput?.();
+      slot?.dispose();
       removeLifecycle?.();
       if (installed) {
-        ctx.ui.setWidget(WIDGET_KEY, undefined);
         ctx.ui.setStatus(WIDGET_KEY, undefined);
       }
-      if (factory && ctx.ui.getEditorComponent() === factory)
-        ctx.ui.setEditorComponent(previousFactory);
       onDispose();
     },
   };
@@ -386,74 +372,59 @@ export function createWorkPanelHost(
       !providers().length
     )
       return;
-    previousFactory = ctx.ui.getEditorComponent?.();
-    if (
-      typeof ctx.ui.setWidget !== 'function' ||
-      typeof ctx.ui.onTerminalInput !== 'function' ||
-      typeof ctx.ui.setEditorComponent !== 'function' ||
-      typeof ctx.ui.getEditorComponent !== 'function' ||
-      (!previousFactory && !agent?.CustomEditor)
-    )
-      return;
     const DefaultEditor = agent?.CustomEditor;
-    const baseFactory: EditorFactory | undefined =
-      previousFactory ??
-      (DefaultEditor
-        ? (liveTui, theme, keybindings) =>
-            new DefaultEditor(liveTui, theme, keybindings, {
-              embedWorkingStatus: true,
-            })
-        : undefined);
-    if (!baseFactory) return;
-    factory = (liveTui, theme, keybindings) => {
-      tui = liveTui;
-      editorInvocations += 1;
-      const instance = baseFactory(liveTui, theme, keybindings);
-      if (editorInvocations === 1) editor = instance;
-      return instance;
-    };
-    ctx.ui.setEditorComponent(factory);
-    ctx.ui.setWidget(
-      WIDGET_KEY,
-      (widgetTui, theme) => {
-        panelTui = widgetTui;
-        requestRender = () => widgetTui.requestRender();
-        return {
-          render(width) {
-            panelWidth = width;
-            refreshStatusCue(rows().length);
-            const entry = selected();
-            const label = panelCloseLabel(entry);
-            return renderPanel(sections(), width, Date.now(), theme, clip, {
-              measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
-              selectedKey: focused ? selectedKey : undefined,
-              budget: panelBudget(),
-              hint: focused
-                ? [
-                    !entry?.sectionSummary || rows().length > 1
-                      ? `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`
-                      : '',
-                    entry?.sectionSummary
-                      ? entry.provider.openHistory
-                        ? entry.provider.retention === 'prompt'
-                          ? 'Enter history'
-                          : 'Enter open'
-                        : ''
-                      : 'Enter open',
-                    label ? `x ${label}` : '',
-                    'Esc back',
-                  ]
-                    .filter(Boolean)
-                    .join(` ${resolveIcon('separator', '·')} `)
-                : `${resolveIcon('arrowLeft', '←')} interact`,
-            });
-          },
-          invalidate() {},
-        };
+    const defaultFactory: EditorFactory | undefined = DefaultEditor
+      ? (liveTui, theme, keybindings) =>
+          new DefaultEditor(liveTui, theme, keybindings, {
+            embedWorkingStatus: true,
+          })
+      : undefined;
+    slot = registerEditorSlot(
+      ctx,
+      {
+        key: WIDGET_KEY,
+        handleInput,
+        aboveEditor: (widgetTui, theme) => {
+          panelTui = widgetTui;
+          requestRender = () => widgetTui.requestRender();
+          return {
+            render(width) {
+              panelWidth = width;
+              refreshStatusCue(rows().length);
+              const entry = selected();
+              const label = panelCloseLabel(entry);
+              return renderPanel(sections(), width, Date.now(), theme, clip, {
+                measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
+                selectedKey: focused ? selectedKey : undefined,
+                budget: panelBudget(),
+                hint: focused
+                  ? [
+                      !entry?.sectionSummary || rows().length > 1
+                        ? `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`
+                        : '',
+                      entry?.sectionSummary
+                        ? entry.provider.openHistory
+                          ? entry.provider.retention === 'prompt'
+                            ? 'Enter history'
+                            : 'Enter open'
+                          : ''
+                        : 'Enter open',
+                      label ? `x ${label}` : '',
+                      'Esc back',
+                    ]
+                      .filter(Boolean)
+                      .join(` ${resolveIcon('separator', '·')} `)
+                  : `${resolveIcon('arrowLeft', '←')} interact`,
+              });
+            },
+            invalidate() {},
+          };
+        },
       },
-      { placement: 'aboveEditor' },
+      defaultFactory,
     );
-    removeInput = ctx.ui.onTerminalInput(handleInput);
+    if (!slot) return;
+    tui = slot.tui;
     installed = true;
   }
   removeLifecycle = onWorkPanelLifecycleChanged(ctx, () => host.refresh());

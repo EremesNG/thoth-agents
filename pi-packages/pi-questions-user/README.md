@@ -151,8 +151,19 @@ cap and selected option. Wide terminals (100+ columns) wrap labels within the
 list column beside the scrolling preview. Active editors reserve their native
 borders and at least the cursor line before the prompt; tall drafts clip around
 the cursor. In tiny terminals the editor label yields to that minimum.
-`Ctrl+]` collapses the non-overlay panel to one dim row; expanding restores its
-tab, cursor, scroll positions and editor drafts.
+The expanded questionnaire replaces the editor through pi-core's shared editor
+slot; it is not an overlay and does not cover the chat. Native scrollback works in
+inline mode; fullscreen `PageUp`/`PageDown` continue scrolling the transcript.
+`Ctrl+]` collapses it to a one-line dock above the restored editor and returns
+keyboard input to the editor. Typing and `Enter` work normally there (`Enter`
+during an active run queues a steering message; it does not answer the question).
+`Ctrl+]` from the editor or a history/detail overlay expands it again, restoring
+its answers, tab, cursor, scroll positions and editor drafts. The open tool-call
+card marks the question as collapsed until it is expanded or completed.
+
+Closing subagents, task-list or background history, or the work-panel detail card,
+returns input to the expanded question or otherwise the editor. Collapsing,
+answering, cancelling or aborting never takes focus from a visible foreign overlay.
 
 The registered tool includes call/result renderers using the pi-core render kit
 when available, with native Pi rendering as fallback. The call and result parts
@@ -163,7 +174,8 @@ tool definition to the pi-core tool registry on `session_start`; shutdown withdr
 only that session's publication. Headless sessions do not publish it.
 
 `QuestionUIHook(session: QuestionUISession): QuestionUIFactory | undefined` receives
-initial `state`, optional `signal` and `onStateChange(state)`. The component should
+initial `state`, optional `signal`, `onStateChange(state)` and the optional
+`onCollapseChange(collapsed)` focus/presentation callback. The component should
 report recorded state after each transition to preserve answers if aborted, and
 listen to the signal to complete native teardown. `QuestionUIFactory` uses Pi's
 native `(tui, theme, keybindings, done)` signature and returns a component (or promise).
@@ -174,8 +186,8 @@ component calls `done` at most once to restore Pi's editor, keeps recorded answe
 and removes its abort listener on completion/disposal.
 
 **Undefined means custom UI unavailable, not user cancellation.** A UI hook
-returning no factory, missing `ctx.ui.custom`, or its undefined sentinel (as in RPC
-mode) runs the sequential select/input fallback. Unexpected host errors propagate
+returning no factory, unavailable editor-slot hooks (as in RPC mode), or its
+undefined completion sentinel runs the sequential select/input fallback. Unexpected host errors propagate
 rather than masquerading as user cancellation. Dialogs receive the abort signal and
 are raced against it so the tool settles even when a host ignores cancellation.
 
@@ -206,8 +218,12 @@ Questionnaire navigation/action bindings are fixed and **not user-rebindable**:
 - `Alt+Up` / `Alt+Down`: scroll an overflowing prompt by a line; its indicator
   shows hidden rows. The hint appears only when a prompt overflows; switching tabs
   resets prompt scroll.
-- `Ctrl+]`: collapse/expand from any state, including editors. While collapsed,
-  only `Ctrl+]` (expand) and `Esc` (cancel) are handled.
+- `Ctrl+]`: collapse/expand while a question is open, from the editor, questionnaire
+  or a history/detail overlay. This terminal-input binding shadows the editor's
+  `jumpForward` binding only while the question is open. Kitty repeats/releases
+  do not toggle again.
+- While collapsed, all other input (including `Esc`) belongs to the editor or
+  focused overlay. To cancel the question, expand it with `Ctrl+]`, then use `Esc`.
 - `Esc` outside an editor: cancel, retaining recorded answers.
 
 Text/note editors use Pi's native editor for typing and editing (`Enter` saves,
@@ -222,4 +238,5 @@ pnpm --filter @thoth-agents/pi-questions-user run test
 pnpm exec biome ci pi-packages/pi-questions-user
 ```
 
-Tests use Vitest's terminating offline Node runner and fake native UI boundaries.
+Tests use Vitest's terminating offline Node runner, fake native UI boundaries,
+and real SDK/TUI 1.0.2 focus and open-tool-row invalidation regressions.

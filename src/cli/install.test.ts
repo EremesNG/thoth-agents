@@ -209,12 +209,14 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:@thoth-agents/pi-subagents@>=0.1.0',
+      'package:npm:@thoth-agents/pi-subagents@>=0.3.0',
       'package:npm:@upstash/context7-pi@>=0.1.2',
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
       'package:npm:@thoth-agents/pi-questions-user@>=0.1.0',
       'package:npm:@thoth-agents/pi-todo@>=0.1.0',
+      'package:npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
+      'package:npm:@thoth-agents/pi-background-tasks@>=0.3.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',
@@ -369,7 +371,12 @@ describe('install', () => {
   test('Pi dry-run plans the explicit local package root', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-plan-'));
     const localPackageRoot = process.cwd();
-    const localPiRuntimeRoot = resolve('pi-packages/pi-subagents');
+    const localPiRuntimeRoot = join(homeDir, 'local-pi-subagents');
+    mkdirSync(localPiRuntimeRoot);
+    writeFileSync(
+      join(localPiRuntimeRoot, 'package.json'),
+      '{"name":"@thoth-agents/pi-subagents","version":"0.3.0"}',
+    );
     const runProvider = vi.fn(({ harness }) => providerResult(harness));
     const lines: string[] = [];
     const originalLog = console.log;

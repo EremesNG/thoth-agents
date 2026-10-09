@@ -32,16 +32,47 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   six selected packages, including
-   `npm:@thoth-agents/pi-subagents@>=0.3.0` and
-   `npm:@thoth-agents/pi-todo@>=0.1.0`, plus four external skills. Published
-   installs also invoke provider-owned thoth-mem; an
+   eight selected packages, including
+   `npm:@thoth-agents/pi-subagents@>=0.3.0`,
+   `npm:@thoth-agents/pi-todo@>=0.1.0`,
+   `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and
+   `npm:@thoth-agents/pi-background-tasks@>=0.3.0`, plus four external skills.
+   Published installs also invoke provider-owned thoth-mem; an
    explicit local Pi package install leaves thoth-mem to its separate local
    installer. Pi and the separate `@thoth-agents/pi-subagents` runtime retain
    delegation execution and task lifecycle ownership. pi-subagents registers
    `/subagents-model` and `/subagents-tools` on pi-core's shared list-editor
    shell; thoth-agents registers only the optional managed-specialist tools
-   adapter, not the tools command.
+   adapter, not the tools command. Compatible user copies of theme and background
+   tasks from any source are preserved and verified; older or ambiguous copies
+   block completion rather than being replaced.
+
+Pi task state crosses package boundaries only as summary snapshots on pi-core's
+v1 `thoth:subagents:state` and `thoth:background:state` envelope channels, each
+with a `:request` channel. They cover the active subagent session or current
+cwd/session background origin, not task detail or history. The theme consumes
+cumulative cost/run count on `thoth:subagents:usage` and requests it through
+`thoth:subagents:usage:request`. The raw `thoth:subagent-usage` bus event is removed
+(the checkpoint type stays); upgrade pi-subagents and pi-thoth-theme to `>=0.3.0`
+together. See [channel contracts and request semantics](harness-packaging.md#pi-task-channels).
+
+## Pi editor-area UI
+
+pi-core's shared `registerEditorSlot` owner (exported from `./panel`) composes
+work-panel rows, editor replacements and terminal-input routing without chaining
+SDK editor factories. It preserves the retained editor's callbacks and app
+actions. pi-questions-user replaces the editor while expanded, without a chat
+overlay, and collapses with `Ctrl+]` to a one-line dock above the restored editor.
+Collapsed input, including `Enter` and `Esc`, belongs to the editor or focused
+overlay; `Enter` during an active run steers the agent without resolving the
+question. `Ctrl+]` re-expands while open and shadows editor `jumpForward` only
+for that lifetime; the open tool-call card indicates collapsed state.
+
+Owned history/detail overlays close only their own handles. Focus repair returns
+to the expanded questionnaire or otherwise the mounted root editor. Acquisition
+uses owned-overlay handles to prevent focus recapture; collapse and teardown do
+not steal focus from a still-visible foreign overlay. See
+[the dock and focus contract](harness-packaging.md#pi-question-dock-and-editor-slot).
 
 ## Boundaries
 

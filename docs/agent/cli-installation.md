@@ -29,7 +29,7 @@ execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh; Pi installs the exact executing first-party package before six
+  refresh; Pi installs the exact executing first-party package before eight
   minimum-constrained selected packages and attributable resources. Every
   harness then installs required external skills. Published installs require provider-complete
   evidence before recording CLI completion last; an explicit local Pi package
@@ -77,15 +77,32 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill copies and install the six
+  then may it migrate attributable legacy root/skill copies and install the eight
   selected sources as `npm:@thoth-agents/pi-subagents@>=0.3.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
-  `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`, and
-  `@thoth-agents/pi-todo@>=0.1.0`. The pi-subagents floor is the first release
+  `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`,
+  `@thoth-agents/pi-todo@>=0.1.0`, `@thoth-agents/pi-thoth-theme@>=0.3.0`, and
+  `@thoth-agents/pi-background-tasks@>=0.3.0`. Theme and background tasks opt into
+  `preserveUserCopy`: an existing copy from any source at or above the floor is
+  preserved and individually verified without reinstalling; an older copy is
+  left untouched and blocks completion with manual upgrade guidance. Unreadable
+  identity or ambiguous sources fail closed. Upgrade local/Git checkouts in
+  place, or review ownership before switching the configured source through
+  Pi's native remove/install commands; verify the installed manifest and rerun
+  the complete flow. Dry-run performs no mutation. Other selected packages keep
+  their existing source-migration policy; the Claude/Antigravity bridges and
+  pi-openai-fast remain unmanaged. The pi-subagents floor is the first release
   owning `/subagents-tools`; upgrade it and thoth-agents together to avoid
-  missing or duplicate command owners. The first-party question extension supplies
-  root-owned `ask_user_question` with stable ids, single/multi/text/confirm types,
-  previews, recommendations and structured answers. Setup and applied Update
+  missing or duplicate command owners. Upgrade pi-subagents and pi-thoth-theme
+  to `>=0.3.0` together and `/reload`: the status line now uses the v1 pi-core
+  `thoth:subagents:usage` envelope, not the removed raw `thoth:subagent-usage` bus
+  event (the checkpoint discriminator remains unchanged). The first-party
+  question extension supplies root-owned `ask_user_question` with stable ids,
+  single/multi/text/confirm types, previews, recommendations and structured
+  answers. Its expanded questionnaire replaces the editor without covering chat;
+  `Ctrl+]` collapses to an editor-input dock and re-expands while open. See the
+  [dock and focus contract](harness-packaging.md#pi-question-dock-and-editor-slot).
+  Setup and applied Update
   remove an installed user-scope `@juicesharp/rpiv-ask-user-question` through
   native `pi remove <configured-source> --no-approve` after root-package
   verification and before selected-package installation. Removal is verified;
@@ -101,7 +118,8 @@ execution does not.
   these open-ended stable ranges. Setup validates
   each resolved package manifest's exact name and SemVer floor, accepts newer
   stable versions, and does not reinstall an already satisfying managed range.
-  Legacy exact sources are migrated through Pi's native install command so
+  Legacy exact sources for packages without `preserveUserCopy` are migrated
+  through Pi's native install command so
   object-form resource filters and unrelated settings survive; a detected
   downgrade fails setup and triggers restoration, verified against a fresh
   listing and manifest; unverifiable recovery exposes manual guidance. The

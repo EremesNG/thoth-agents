@@ -34,7 +34,7 @@ function expectBorderTone(lines: string[], tone: keyof typeof colors) {
     const first = chunks[0];
     const last = chunks.at(-1);
     expect(first?.[2], line).toMatch(/^(?:[╭├╰]─+(?:[╮┤╯])?|│ )$/);
-    expect(last?.[2], line).toMatch(/^(?:[╭╰]─+[╮╯]| │|─*[╮┤╯])$/);
+    expect(last?.[2], line).toMatch(/^(?:[╭├╰]─+[╮┤╯]| │|─*[╮┤╯])$/);
     expect([Number(first?.[1]), Number(last?.[1])], line).toEqual([
       colors[tone],
       colors[tone],

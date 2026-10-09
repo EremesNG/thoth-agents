@@ -86,6 +86,33 @@ describe('theme render kit', () => {
     }
   });
 
+  it.each([
+    5, 6, 8, 24, 80, 100, 140,
+  ])('draws continuous full-width untitled section dividers at %i columns', (width) => {
+    const ansiTheme: RenderKitTheme = {
+      fg: (_role, text) => `\x1b[33m${text}\x1b[39m`,
+    };
+    for (const renderTheme of [theme, ansiTheme]) {
+      for (const title of ['', undefined]) {
+        const frame = kit
+          .card(
+            renderTheme,
+            {
+              body: ['Question'],
+              sections: [{ title, rows: ['Hints'] }],
+            },
+            width,
+          )
+          .map(stripTerminalSequences);
+        const divider = frame.find((line) => line.startsWith('├'));
+        expect(divider).toMatch(/^├─+┤$/);
+        expect(visibleWidth(divider ?? '')).toBe(width);
+        expect(divider?.length).toBe(frame.at(-1)?.length);
+        expect(frame).toHaveLength(5);
+      }
+    }
+  });
+
   it('joins split tool frames without nested borders and wraps at the body width', () => {
     const start = kit.card(
       theme,

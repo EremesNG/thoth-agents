@@ -112,6 +112,15 @@ export function renderFrameDivider(
     return [truncateToWidth(title, safeWidth)];
   }
 
+  if (!title) {
+    return [
+      theme.fg(
+        borderColor,
+        `${FRAME_DIVIDER_LEFT}${FRAME_HORIZONTAL.repeat(safeWidth - 2)}${FRAME_DIVIDER_RIGHT}`,
+      ),
+    ];
+  }
+
   const innerWidth = Math.max(1, safeWidth - 2);
   const rawTitle = ` ${title} `;
   const maxTitleWidth = Math.max(1, innerWidth - 4);

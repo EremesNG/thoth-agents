@@ -6,12 +6,14 @@ import { initTheme } from '@earendil-works/pi-coding-agent';
 import {
   CURSOR_MARKER,
   getKeybindings,
+  stripTerminalSequences,
   type TUI,
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createRenderKit } from '../../pi-thoth-theme/src/render-kit/index.ts';
 import {
   type AnswerState,
   createState,
@@ -64,6 +66,7 @@ function setup(
   rows = 40,
   signal?: AbortSignal,
   state = createState(questionnaire),
+  renderTheme = theme,
 ) {
   const session: QuestionUISession = {
     state,
@@ -79,7 +82,7 @@ function setup(
   const tui = { requestRender, terminal: { rows } } as unknown as TUI;
   const ui = createQuestionnaireUI(session)(
     tui,
-    theme,
+    renderTheme,
     {} as KeybindingsManager,
     (r) => {
       results.push(r);
@@ -113,6 +116,26 @@ function setup(
       return mounted;
     },
   };
+}
+
+/** Foreground seen by the terminal, not merely the presence of an opening SGR. */
+function foregroundCells(line: string): { char: string; color?: number }[] {
+  const cells: { char: string; color?: number }[] = [];
+  const sgr = new RegExp(`${String.fromCharCode(27)}\\[([\\d;]*)m`, 'g');
+  let color: number | undefined;
+  let offset = 0;
+  for (const match of line.matchAll(sgr)) {
+    for (const char of line.slice(offset, match.index))
+      cells.push({ char, color });
+    for (const code of match[1].split(';').map(Number)) {
+      if (code === 0 || code === 39) color = undefined;
+      else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97))
+        color = code;
+    }
+    offset = match.index + match[0].length;
+  }
+  for (const char of line.slice(offset)) cells.push({ char, color });
+  return cells;
 }
 
 const two: Questionnaire = {
@@ -555,6 +578,84 @@ describe('questionnaire UI', () => {
         )
         .join(' ');
       expect(rendered).toBe(label);
+    }
+  });
+
+  it.each([
+    { width: 80, reset: 39 },
+    { width: 100, reset: 39 },
+    { width: 140, reset: 39 },
+    { width: 80, reset: 0 },
+    { width: 100, reset: 0 },
+    { width: 140, reset: 0 },
+  ])('colors every wrapped selected label line at $width columns with SGR $reset resets, keeping the recommendation star green', ({
+    width,
+    reset,
+  }) => {
+    const ansiTheme = {
+      ...theme,
+      fg: (color: string, text: string) =>
+        `\x1b[${color === 'accent' ? 33 : color === 'success' ? 32 : 90}m${text}\x1b[${reset}m`,
+    } as Theme;
+    const label =
+      'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega';
+    for (const recommended of [false, true]) {
+      const questionnaire: Questionnaire = {
+        questions: [
+          {
+            id: 'a',
+            header: 'Wrap',
+            prompt: 'Pick',
+            type: 'single',
+            options: [
+              {
+                value: 'a',
+                label,
+                recommended,
+                preview: 'Visible preview body',
+              },
+              { value: 'b', label: 'Other' },
+            ],
+          },
+        ],
+      };
+      const host = setup(
+        questionnaire,
+        40,
+        undefined,
+        createState(questionnaire),
+        ansiTheme,
+      );
+      const frame = host.component.render(width).map(foregroundCells);
+      const text = frame.map((cells) => cells.map(({ char }) => char).join(''));
+      const first = text.findIndex((line) => line.includes('alpha'));
+      const last = text.findIndex((line) => line.includes('omega'));
+      expect(first).toBeGreaterThanOrEqual(0);
+      expect(last).toBeGreaterThan(first);
+      expect(text.join('\n')).toContain('Visible preview body');
+      if (width >= 100) expect(text[first]).toContain('Preview');
+      for (const cells of frame.slice(first, last + 1)) {
+        const list = cells.slice(
+          2,
+          width >= 100
+            ? cells.findIndex(({ char }, index) => index > 1 && char === '│')
+            : -2,
+        );
+        const labelCells = list
+          .slice(recommended ? 9 : 7)
+          .filter(({ char }) => char !== ' ');
+        expect(labelCells.length).toBeGreaterThan(0);
+        expect(labelCells.every(({ color }) => color === 33)).toBe(true);
+      }
+      if (recommended)
+        expect(frame[first].find(({ char }) => char === '★')?.color).toBe(32);
+      host.send(KEY.down);
+      const unfocused = host.component
+        .render(width)
+        .map(foregroundCells)
+        .find((cells) => cells.some(({ char }) => char === '★'));
+      if (recommended)
+        expect(unfocused?.find(({ char }) => char === '★')?.color).toBe(32);
     }
   });
 
@@ -1616,6 +1717,21 @@ describe('questionnaire UI', () => {
       expect(out.some((l) => l.startsWith('├─ 0/2 answered'))).toBe(true);
       expect(out.at(-1)).toBe('╰─');
       expect(out.join('\n')).toContain('Esc cancel');
+    });
+
+    it.each([
+      5, 6, 8, 24, 80, 100, 140,
+    ])('spans the frame with the separator above hints at %i columns, natively and with the theme kit', (width) => {
+      for (const kit of [false, true]) {
+        if (kit) kitToken = registerRenderKit(createRenderKit({}), {});
+        const frame = setup(two)
+          .component.render(width)
+          .map(stripTerminalSequences);
+        const separator = frame.at(-4);
+        expect(separator).toMatch(/^├─+┤$/);
+        expect(visibleWidth(separator ?? '')).toBe(width);
+        expect(separator?.length).toBe(frame.at(-1)?.length);
+      }
     });
 
     it('falls back to a native rounded frame, dividers and a hint row without a kit', () => {

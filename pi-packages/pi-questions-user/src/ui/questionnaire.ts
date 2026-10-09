@@ -950,10 +950,13 @@ export class QuestionnaireComponent implements Component {
         indent === 9
           ? `${option?.recommended ? t.fg('success', '★') : ' '} `
           : '';
-      const prefix = `${focused ? '›' : ' '} ${number} ${mark} ${star}`;
+      const prefix = `${focused ? '›' : ' '} ${number} ${mark} `;
+      const color = (text: string) => (focused ? t.fg('accent', text) : text);
       for (const [row, label] of item.entries()) {
-        const text = `${row === 0 ? prefix : ' '.repeat(indent)}${label}`;
-        lines.push(focused ? t.fg('accent', text) : text);
+        // Color the label after the star so its reset cannot clear selection.
+        const leading =
+          row === 0 ? `${color(prefix)}${star}` : ' '.repeat(indent);
+        lines.push(`${leading}${color(label)}`);
       }
     }
     if (lines.length > body) {

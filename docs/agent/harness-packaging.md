@@ -268,7 +268,7 @@ viewport, not historical terminal scrollback.
 `/sidebar` toggles; `auto|manual|on|off` controls session policy/enabled state.
 Width defaults to 44 (28–72), leaving at least 64 columns for the main pane.
 Manual hides below 92; auto collapses below `80 + preferred width` and reopens
-8 columns later. Ctrl+Shift+R enters resize (arrows 1, Shift 4, Enter confirm,
+8 columns later. `/sidebar resize` enters resize (← grows, → shrinks by 1, Shift 4, Enter confirm,
 Esc revert); fullscreen also supports divider drag. `/sidebar panels` lists ids;
 `panels show|hide|up|down <id>` persists visibility/order, and
 `startup auto|manual|off` persists next-session policy in

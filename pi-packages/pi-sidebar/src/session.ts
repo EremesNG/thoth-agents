@@ -47,7 +47,8 @@ export class SidebarSession {
   private preference: symbol | undefined;
   private absorbed = '';
   private appliedWidth = 44;
-  private resizeStatus = false;
+  private resizeStatus: string | undefined;
+  private resizeInputRelease: (() => void) | undefined;
   private mounted = false;
   private disposed = false;
   private readonly releases: Array<() => void> = [];
@@ -107,15 +108,7 @@ export class SidebarSession {
     if (tui.mode === 'fullscreen') {
       // Pi's viewport selection listener otherwise consumes divider mouse input.
       // Only reorder our own registration; deleting it restores foreign ordering.
-      const listeners: unknown = (
-        concreteRenderer(tui) as TUI & { inputListeners?: unknown }
-      ).inputListeners;
-      if (listeners instanceof Set && listeners.delete(input)) {
-        const existing = [...listeners];
-        listeners.clear();
-        listeners.add(input);
-        for (const listener of existing) listeners.add(listener);
-      }
+      this.prioritizeInput(input);
     }
     this.sync();
     request(pi.events, SUBAGENTS_USAGE_REQUEST, {
@@ -177,21 +170,56 @@ export class SidebarSession {
       isWorkPanelRootEditorInputActive(this.context) !== false
     );
   }
+  private prioritizeInput(input: (data: string) => unknown): void {
+    const listeners: unknown = (
+      concreteRenderer(this.tui) as TUI & { inputListeners?: unknown }
+    ).inputListeners;
+    if (listeners instanceof Set && listeners.delete(input)) {
+      const existing = [...listeners];
+      listeners.clear();
+      listeners.add(input);
+      for (const listener of existing) listeners.add(listener);
+    }
+  }
   private setResizeStatus(active: boolean): void {
-    if (active === this.resizeStatus) return;
-    this.resizeStatus = active;
-    this.context.ui.setStatus(
-      'thoth-sidebar-resize',
-      active
-        ? 'Sidebar width: ←/→ · Shift 4 · Enter confirm · Esc revert'
-        : undefined,
-    );
+    if (active && !this.resizeInputRelease) {
+      // The retained work panel consumes arrows even in inline mode. Give this
+      // temporary registration priority, without changing foreign ordering.
+      const input = (data: string) => this.input(data);
+      this.resizeInputRelease = this.context.ui.onTerminalInput(input);
+      this.prioritizeInput(input);
+    } else if (!active && this.resizeInputRelease) {
+      this.resizeInputRelease();
+      this.resizeInputRelease = undefined;
+    }
+    const status = active
+      ? `Sidebar width ${this.controls.effectiveWidth(this.tui.terminal.columns)} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`
+      : undefined;
+    if (status === this.resizeStatus) return;
+    this.resizeStatus = status;
+    this.context.ui.setStatus('thoth-sidebar-resize', status);
   }
   beginResize(ctx: ExtensionContext): void {
     this.context = ctx;
     this.sync();
-    if (!this.mounted || !this.inputActive() || !this.controls.beginResize())
+    if (!this.mounted) {
+      ctx.ui.notify('Sidebar unavailable — renderer is not mounted.', 'info');
       return;
+    }
+    if (!this.controls.visible) {
+      ctx.ui.notify(
+        this.controls.enabled
+          ? 'Sidebar hidden — terminal too narrow.'
+          : 'Sidebar hidden — /sidebar on first.',
+        'info',
+      );
+      return;
+    }
+    if (!this.adapter.isDisplayed()) {
+      ctx.ui.notify('Sidebar unavailable — renderer is not mounted.', 'info');
+      return;
+    }
+    if (!this.inputActive() || !this.controls.beginResize()) return;
     this.setResizeStatus(true);
     this.tui.requestRender();
   }
@@ -246,6 +274,10 @@ export class SidebarSession {
     this.context = ctx;
     this.sync();
     const [command = '', action, id, ...extra] = args.trim().split(/\s+/);
+    if (command === 'resize' && !action) {
+      this.beginResize(ctx);
+      return;
+    }
     if (command === 'panels') {
       this.discover();
       if (!action) {
@@ -283,7 +315,7 @@ export class SidebarSession {
   }
   private help(ctx: ExtensionContext): void {
     ctx.ui.notify(
-      '/sidebar [auto|manual|on|off] · panels [show|hide|up|down <id>] · startup auto|manual|off',
+      '/sidebar [auto|manual|on|off|resize] · panels [show|hide|up|down <id>] · startup auto|manual|off',
       'info',
     );
   }

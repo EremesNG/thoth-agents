@@ -49,7 +49,11 @@ export default function sidebar(pi: ExtensionAPI): void {
   pi.on('model_select', (_event, ctx) => session?.refresh(ctx));
   pi.registerCommand('sidebar', {
     description:
-      'Toggle sidebar; auto/manual/on/off; panels show/hide/up/down <id>; startup auto/manual/off',
+      'Toggle sidebar; auto/manual/on/off/resize; panels show/hide/up/down <id>; startup auto/manual/off',
+    getArgumentCompletions: (prefix) =>
+      ['auto', 'manual', 'on', 'off', 'resize', 'panels', 'startup']
+        .filter((value) => value.startsWith(prefix))
+        .map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
       if (!session) {
         if (ctx.hasUI)
@@ -61,9 +65,5 @@ export default function sidebar(pi: ExtensionAPI): void {
       }
       session.command(args, ctx);
     },
-  });
-  pi.registerShortcut('ctrl+shift+r', {
-    description: 'Resize sidebar (arrows, Shift 4, Enter confirm, Esc revert)',
-    handler: async (ctx) => session?.beginResize(ctx),
   });
 }

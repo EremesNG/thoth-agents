@@ -56,16 +56,16 @@ function setup(regular = false) {
   const requests = vi.fn();
   events.on(SUBAGENTS_USAGE_REQUEST.name, requests);
   let observer: any;
-  let input: ((data: string) => any) | undefined;
+  const inputs = new Set<(data: string) => any>();
   const ui = {
     notify: vi.fn(),
     setStatus: vi.fn(),
     getEditorText: () => '',
     onTerminalInput(handler: (data: string) => any) {
-      input = handler;
+      inputs.add(handler);
       const off = fixture.proxy.addInputListener(handler);
       return () => {
-        input = undefined;
+        inputs.delete(handler);
         off();
       };
     },
@@ -126,7 +126,7 @@ function setup(regular = false) {
         ? fixture.tui.getScreenLines()
         : fixture.tui.render(fixture.terminal.columns)
       ).join('\n'),
-    input: (data: string) => input?.(data),
+    input: (data: string) => [...inputs].at(-1)?.(data),
     observe: () => observer?.render(160),
     shutdown: () => handlers.get('session_shutdown')?.({}, ctx),
   };
@@ -319,7 +319,7 @@ it('combines latest cumulative subagent usage without accumulating, guards forei
   send(20, 'foreign');
   app.tui.renderNow(true);
   expect(app.screen()).toContain('$2.000 (sub)');
-  app.shortcuts.get('ctrl+shift+r').handler(app.ctx);
+  app.commands.get('sidebar').handler('resize', app.ctx);
   expect(app.input('\x1b[C')).toEqual({ consume: true });
   app.tui.renderNow(true);
   expect(app.widths.at(-1)).toBe(117);
@@ -335,7 +335,7 @@ it('combines latest cumulative subagent usage without accumulating, guards forei
     render: () => ['Dialog'],
     invalidate() {},
   });
-  app.shortcuts.get('ctrl+shift+r').handler(app.ctx);
+  app.commands.get('sidebar').handler('resize', app.ctx);
   expect(app.input('\x1b[D')).toBeUndefined();
   overlay.hide();
 });
@@ -449,4 +449,143 @@ it('refreshes its independent git reader after write/edit/bash results and turn 
   await vi.waitFor(() => expect(screen()).toContain('3 staged'), {
     timeout: 3000,
   });
+});
+
+it.each([
+  false,
+  true,
+])('resizes from the submitted command with live width, confirms for the session and reverts (regular %s)', async (regular) => {
+  const app = setup(regular);
+  const work = uiSession(app.tui as unknown as TuiMainScreen);
+  cleanup.push(await ensureWorkPanel(work.ctx));
+  Object.assign(work.ctx.sessionManager, { getEntries: () => [] });
+  const ctx = { ...app.ctx, sessionManager: work.ctx.sessionManager };
+  app.handlers.get('session_start')?.({}, ctx);
+  const command = (text: string) =>
+    app.commands.get('sidebar').handler(text, ctx);
+  const status = (width: number) =>
+    expect(app.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-sidebar-resize',
+      `Sidebar width ${width} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
+    );
+  await command('resize');
+  status(44);
+  expect(app.input('\x1b[D')).toEqual({ consume: true });
+  status(45);
+  expect(app.input('\x1b[1;2C')).toEqual({ consume: true });
+  status(41);
+  expect(app.input('\r')).toEqual({ consume: true });
+  expect(app.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-sidebar-resize',
+    undefined,
+  );
+  await command('off');
+  await command('on');
+  await command('resize');
+  status(41);
+  app.input('\x1b[C');
+  app.input('\x1b');
+  await command('resize');
+  status(41);
+});
+
+it.each([
+  false,
+  true,
+])('prioritizes resize over a retained work panel through native terminal dispatch (regular %s)', async (regular) => {
+  const app = setup(regular);
+  source({ on() {} });
+  const work = uiSession(app.tui as unknown as TuiMainScreen);
+  cleanup.push(await ensureWorkPanel(work.ctx));
+  Object.assign(work.ctx.sessionManager, { getEntries: () => [] });
+  const ctx = { ...app.ctx, sessionManager: work.ctx.sessionManager };
+  app.handlers.get('session_start')?.({}, ctx);
+  const command = (text: string) =>
+    app.commands.get('sidebar').handler(text, ctx);
+  command('panels hide test-source');
+  expect(work.render().join('\n')).toContain('Task one');
+  expect(getUIPreferences().absorbedWorkPanelSources).not.toContain(
+    'test-source',
+  );
+  app.tui.start();
+  const inputListeners = (
+    app.tui as unknown as { inputListeners: Set<unknown> }
+  ).inputListeners;
+  const listenerCount = inputListeners.size;
+  const status = (width: number) =>
+    expect(app.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-sidebar-resize',
+      `Sidebar width ${width} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
+    );
+  command('resize');
+  expect(inputListeners.size).toBe(listenerCount + 1);
+  app.terminal.input('\x1b[D');
+  status(45);
+  app.terminal.input('\x1b[1;2D');
+  status(49);
+  app.terminal.input('\x1b[C');
+  status(48);
+  app.terminal.input('\x1b');
+  expect(inputListeners.size).toBe(listenerCount);
+  expect(app.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-sidebar-resize',
+    undefined,
+  );
+  command('resize');
+  status(44);
+  app.terminal.input('\r');
+  expect(inputListeners.size).toBe(listenerCount);
+  // After confirmation, the host receives Left again and focuses its row.
+  app.terminal.input('\x1b[D');
+  expect(work.render().join('\n')).toContain('›');
+  command('resize');
+  app.terminal.input('\x1b[C');
+  status(43);
+  app.shutdown();
+  expect(inputListeners.size).toBe(listenerCount - 1);
+  app.terminal.input('\x1b[C');
+  expect(work.render().join('\n')).not.toContain('›');
+});
+
+it.each([
+  false,
+  true,
+])('guards hidden, narrow, unmounted and blocking-overlay resize commands (regular %s)', async (regular) => {
+  const app = setup(regular);
+  app.handlers.get('session_start')?.({}, app.ctx);
+  const command = (text: string) =>
+    app.commands.get('sidebar').handler(text, app.ctx);
+  await command('off');
+  await command('resize');
+  expect(app.ui.notify).toHaveBeenLastCalledWith(
+    'Sidebar hidden — /sidebar on first.',
+    'info',
+  );
+  await command('on');
+  app.terminal.columns = 90;
+  await command('resize');
+  expect(app.ui.notify).toHaveBeenLastCalledWith(
+    'Sidebar hidden — terminal too narrow.',
+    'info',
+  );
+  app.terminal.columns = 160;
+  const overlay = app.tui.showOverlay({
+    render: () => ['Dialog'],
+    invalidate() {},
+  });
+  await command('resize');
+  expect(app.input('\x1b[D')).toBeUndefined();
+  expect(app.ui.setStatus).not.toHaveBeenCalled();
+  overlay.hide();
+  app.shutdown();
+  Object.defineProperty(app.tui, 'mode', {
+    value: 'unsupported',
+    configurable: true,
+  });
+  app.handlers.get('session_start')?.({}, app.ctx);
+  await command('resize');
+  expect(app.ui.notify).toHaveBeenLastCalledWith(
+    'Sidebar unavailable — renderer is not mounted.',
+    'info',
+  );
 });

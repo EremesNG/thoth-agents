@@ -1,4 +1,5 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { Color } from '@earendil-works/pi-tui';
 import type { RenderKitTheme } from '@thoth-agents/pi-core';
 import {
   normalizePanelKey,
@@ -51,23 +52,58 @@ export function curveSeries(
   });
 }
 
-const PALETTE: readonly PanelRole[] = [
+type SeriesPaint = PanelRole | { rgb: readonly [number, number, number] };
+
+/**
+ * Ten distinct hues. Theme roles that are hue-distinct in every shipped theme
+ * come first; the rest are fixed hues, since many themes alias their remaining
+ * roles to the same few colors (gold/amber/ochre collapse into one orange).
+ */
+export const SERIES_PALETTE: readonly SeriesPaint[] = [
+  'error',
   'warning',
   'success',
-  'mdLink',
   'mdCode',
-  'error',
-  'accent',
-  'syntaxNumber',
-  'thinkingHigh',
-  'toolDiffAdded',
-  'mdHeading',
+  'mdLink',
+  { rgb: [180, 142, 240] },
+  { rgb: [240, 110, 170] },
+  { rgb: [198, 224, 74] },
+  { rgb: [150, 98, 40] },
+  { rgb: [81, 72, 200] },
 ];
+
+/** Distinct per-series glyphs keep ascii and no-color output distinguishable. */
+export const ASCII_MARKERS = '1234567890';
+
+export function seriesMarker(index: number, ascii: boolean): string {
+  return ascii ? ASCII_MARKERS[index % ASCII_MARKERS.length] : '●';
+}
+
+/** Pi's Theme.style converts rgb to the theme's color mode (truecolor or 256). */
+interface StyleCapable {
+  style(text: string, options: { fg: Color }): string;
+}
+
+function paintSeries(
+  theme: RenderKitTheme,
+  index: number,
+  text: string,
+): string {
+  const paint = SERIES_PALETTE[index % SERIES_PALETTE.length];
+  if (typeof paint === 'string') return panelFg(theme, paint, text);
+  const [r, g, b] = paint.rgb;
+  const styled = (theme as Partial<StyleCapable>).style;
+  // Themes without a mode-aware style (plain test doubles) get truecolor SGR.
+  return typeof styled === 'function'
+    ? styled.call(theme, text, { fg: { kind: 'rgb', r, g, b } })
+    : `[38;2;${r};${g};${b}m${text}[39m`;
+}
 
 interface Cell {
   connections: number;
+  /** Owner of the color: end markers beat lines, then the later series wins. */
   series: number;
-  end?: boolean;
+  end: boolean;
 }
 
 const LEFT = 1;
@@ -119,8 +155,8 @@ export function renderCurvePlot(
 ): string[] {
   const ascii = isAsciiMode();
   const g = ascii
-    ? { h: '-', v: '|', up: '+', down: '+', rise: '+', fall: '+', end: '*' }
-    : { h: '─', v: '│', up: '╯', down: '╮', rise: '╭', fall: '╰', end: '●' };
+    ? { h: '-', v: '|', up: '+', down: '+', rise: '+', fall: '+' }
+    : { h: '─', v: '│', up: '╯', down: '╮', rise: '╭', fall: '╰' };
   const top = formatUsd(Math.max(...series.map((s) => s.cost), 0));
   const bottom = formatUsd(0);
   const margin = Math.max(top.length, bottom.length);
@@ -147,7 +183,10 @@ export function renderCurvePlot(
       // Union connectivity at crossings; never erase another curve's segments.
       if (cell) {
         cell.connections |= connections;
-        cell.end ||= end;
+        if (end || !cell.end) {
+          cell.series = index;
+          cell.end = end || cell.end;
+        }
       } else grid[row][col] = { connections, series: index, end };
     };
     const connect = (x: number, y: number, nx: number, ny: number) => {
@@ -188,10 +227,12 @@ export function renderCurvePlot(
   });
   const colored = (cell: Cell | undefined) =>
     cell
-      ? panelFg(
+      ? paintSeries(
           theme,
-          PALETTE[cell.series % PALETTE.length],
-          cell.end ? g.end : lineGlyph(cell.connections, ascii),
+          cell.series,
+          cell.end
+            ? seriesMarker(cell.series, ascii)
+            : lineGlyph(cell.connections, ascii),
         )
       : ' ';
   const rows = grid.map((cells, r) => {
@@ -227,10 +268,9 @@ export function renderCurvesView(
     );
     rows.push(...plot);
     series.slice(0, legend).forEach((line, index) => {
-      const marker = isAsciiMode() ? '*' : '●';
-      const color = PALETTE[index % PALETTE.length];
+      const marker = seriesMarker(index, isAsciiMode());
       rows.push(
-        `${panelFg(theme, color, marker)} ${padPanelText(line.label, Math.max(1, inner - 10))} ${formatUsd(line.cost).padStart(7)}`,
+        `${paintSeries(theme, index, marker)} ${padPanelText(line.label, Math.max(1, inner - 10))} ${formatUsd(line.cost).padStart(7)}`,
       );
     });
   }

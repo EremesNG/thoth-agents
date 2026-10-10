@@ -78,21 +78,76 @@ it.each([
     for (const width of [24, 40, 80]) {
       const rows = component.render(width).slice(1);
       const plain = rows.map(stripTerminalSequences);
-      expect(plain).toHaveLength(4);
+      const bodyRows = populated ? 2 : 1;
+      expect(plain).toHaveLength(bodyRows + 2);
       expect(plain[0]).toMatch(/^╭.*╮$/);
-      expect(plain[1]).toMatch(/^│ .*│$/);
-      expect(plain[2]).toBe(`│ ${glyph}${' '.repeat(width - 4)}│`);
-      expect(plain[3]).toContain(`${glyph} ${separator} 0s`);
-      expect(plain[3]).toMatch(/^╰.*╯$/);
-      expect(rows.map(visibleWidth)).toEqual([width, width, width, width]);
+      expect(plain[1]).toMatch(/^│ list.*│$/);
+      if (populated) {
+        expect(plain[2]).toContain(expanded ? 'write tests' : 'more lines');
+      } else {
+        expect(plain[1]).toContain('no tasks');
+      }
+      expect(plain.at(-1)).toContain(`${glyph} ${separator} 0s`);
+      expect(plain.at(-1)).toMatch(/^╰.*╯$/);
+      expect(rows.map(visibleWidth)).toEqual(rows.map(() => width));
       // These fixture rows contain only one-cell text in the operator's
       // terminal. Catch SDK/terminal disagreement, not just SDK self-consistency.
-      expect(plain.map((row) => row.length)).toEqual([
-        width,
-        width,
-        width,
-        width,
-      ]);
+      expect(plain.map((row) => row.length)).toEqual(rows.map(() => width));
     }
+  }
+});
+
+it.each([
+  { mode: 'nerd' as const, ok: '\uf00c' },
+  { mode: 'ascii' as const, ok: '+' },
+])('shows the failed footer and error tone for a missing id without the SDK error flag (mode=$mode)', async ({
+  mode,
+  ok,
+}) => {
+  vi.spyOn(Date, 'now').mockReturnValue(0);
+  token = registerRenderKit(createRenderKit({}, undefined, mode), {});
+  setActiveRenderSession('test-session');
+  const { pi, captured } = createMockPi();
+  registerTodoTool(pi);
+  const tool = captured.tools.get('todo');
+  if (!tool) throw new Error('missing todo tool');
+  const ctx = createMockCtx();
+  const mount = async (args: Record<string, unknown>, isError: boolean) => {
+    const component = new ToolExecutionComponent(
+      'todo',
+      'missing-call',
+      args,
+      {},
+      tool,
+      { requestRender() {} } as unknown as TUI,
+      '.',
+    );
+    component.markExecutionStarted();
+    component.setArgsComplete();
+    component.render(40);
+    const result = await tool.execute(
+      'missing-call',
+      args,
+      undefined,
+      undefined,
+      ctx,
+    );
+    expect(
+      (result.details as { error?: string } | undefined)?.error,
+    ).toBeTruthy();
+    component.updateResult({ ...result, isError });
+    return component.render(60);
+  };
+  for (const args of [
+    { action: 'get', id: 99 },
+    { action: 'update', id: 99, status: 'completed' },
+    { action: 'delete', id: 99 },
+  ]) {
+    const flagged = await mount(args, true);
+    const unflagged = await mount(args, false);
+    const footer = stripTerminalSequences(unflagged.at(-2) ?? '');
+    expect(footer).not.toContain(ok);
+    // Identical to the SDK-flagged error, including border/background tone.
+    expect(unflagged).toEqual(flagged);
   }
 });

@@ -90,7 +90,7 @@ describe('registerTodoTool — execute mutates module state', () => {
 });
 
 describe('registerTodoTool — renderCall', () => {
-  it("create action emits 'todo +' and includes the subject", () => {
+  it('create action emits the action word and includes the subject', () => {
     const { tool } = setup();
     const node = tool.renderCall?.(
       { action: 'create', subject: 'hello' } as never,
@@ -99,21 +99,11 @@ describe('registerTodoTool — renderCall', () => {
     );
     const text = node?.render(120).join(' ');
     expect(text).toContain('todo ');
-    expect(text).toContain('+');
+    expect(text).toContain('create');
     expect(text).toContain('hello');
   });
 
-  it("update action renders '#id' when the task has not been registered yet", () => {
-    const { tool } = setup();
-    const node = tool.renderCall?.(
-      { action: 'update', id: 42 } as never,
-      theme,
-      undefined as never,
-    );
-    expect(node?.render(120).join(' ')).toContain('#42');
-  });
-
-  it('update action renders the task subject when seeded', async () => {
+  it('update action renders the id even when seeded (subject comes from the result)', async () => {
     const { tool } = setup();
     await call(tool, { action: 'create', subject: 'seeded-subject' });
     const node = tool.renderCall?.(
@@ -121,115 +111,80 @@ describe('registerTodoTool — renderCall', () => {
       theme,
       undefined as never,
     );
-    expect(node?.render(120).join(' ')).toContain('seeded-subject');
+    const text = node?.render(120).join(' ');
+    expect(text).toContain('update #1');
+    expect(text).not.toContain('seeded-subject');
   });
 
-  it('list action with a status filter renders the humanized status label', () => {
+  it('list action with a status filter renders the status glyph', () => {
     const { tool } = setup();
     const node = tool.renderCall?.(
       { action: 'list', status: 'in_progress' } as never,
       theme,
       undefined as never,
     );
-    expect(node?.render(120).join(' ')).toContain('in progress');
+    expect(node?.render(120).join(' ')).toContain('list ◐');
   });
 
-  it('clear action renders only the base prefix + glyph', () => {
+  it('clear action renders only the action word', () => {
     const { tool } = setup();
     const node = tool.renderCall?.(
       { action: 'clear' } as never,
       theme,
       undefined as never,
     );
-    expect(node?.render(120).join(' ')).toContain('∅');
+    expect(node?.render(120).join(' ')).toMatch(/clear\s*$/);
   });
 });
 
 describe('registerTodoTool — renderResult', () => {
-  it("create renders the new task's status label (pending)", async () => {
+  async function summary(params: Record<string, unknown>, seed = true) {
     const { tool } = setup();
-    const r = await call(tool, { action: 'create', subject: 'a' });
+    if (seed) {
+      await call(tool, { action: 'create', subject: 'a' });
+      await call(tool, { action: 'create', subject: 'b' });
+    }
+    const r = await call(tool, params);
     const node = tool.renderResult?.(
       r as never,
       {} as never,
       theme,
       undefined as never,
     );
-    expect(node?.render(120).join(' ')).toContain('pending');
-    expect(node?.render(120).join(' ')).toContain('○');
+    return node?.render(120).join('\n') ?? '';
+  }
+
+  it('create renders id, status glyph and subject', async () => {
+    expect(await summary({ action: 'create', subject: 'c' })).toContain(
+      'create #3 ○ c',
+    );
   });
 
-  it('update renders the transitioned status (in progress)', async () => {
-    const { tool } = setup();
-    await call(tool, { action: 'create', subject: 'a' });
-    const r = await call(tool, {
+  it('update renders the old → new status and the resolved subject', async () => {
+    const text = await summary({
       action: 'update',
       id: 1,
       status: 'in_progress',
     });
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
-    const text = node?.render(120).join(' ');
-    expect(text).toContain('in progress');
-    expect(text).toContain('◐');
+    expect(text).toContain('update #1 ○ → ◐ a');
   });
 
-  it('delete renders the deleted-tombstone label', async () => {
-    const { tool } = setup();
-    await call(tool, { action: 'create', subject: 'a' });
-    const r = await call(tool, { action: 'delete', id: 1 });
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
-    const text = node?.render(120).join(' ');
-    expect(text).toContain('deleted');
-    expect(text).toContain('⊘');
+  it('delete renders id and subject', async () => {
+    expect(await summary({ action: 'delete', id: 2 })).toContain('delete #2 b');
   });
 
-  it("list renders the plain '✓' fallback (no status leakage)", async () => {
-    const { tool } = setup();
-    await call(tool, { action: 'create', subject: 'a' });
-    const r = await call(tool, { action: 'list' });
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
-    expect(node?.render(120).join(' ')).toContain('✓');
+  it('list renders status counts, hint on collapse', async () => {
+    const text = await summary({ action: 'list' });
+    expect(text).toContain('list · ○ 2');
+    expect(text).toContain('ctrl+o to expand');
   });
 
-  it("get renders the plain '✓' fallback", async () => {
-    const { tool } = setup();
-    await call(tool, { action: 'create', subject: 'a' });
-    const r = await call(tool, { action: 'get', id: 1 });
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
-    expect(node?.render(120).join(' ')).toContain('✓');
+  it('get renders id, glyph and subject', async () => {
+    expect(await summary({ action: 'get', id: 1 })).toContain('get #1 ○ a');
   });
 
-  it("clear renders the plain '✓' fallback", async () => {
-    const { tool } = setup();
-    await call(tool, { action: 'clear' });
-    const r = await call(tool, { action: 'clear' });
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
-    expect(node?.render(120).join(' ')).toContain('✓');
+  it('clear renders the removed count', async () => {
+    expect(await summary({ action: 'clear' })).toContain('clear · 2 removed');
   });
 
   it("missing details falls back to plain '✓'", () => {

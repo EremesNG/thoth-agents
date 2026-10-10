@@ -82,3 +82,45 @@ it('uses defaults for absent/invalid preferences and reads theme subscription se
   );
   expect(loadSubscriptionProviders(path)).toEqual([]);
 });
+
+it('slots newly discovered panels before Cost without rearranging a saved order', () => {
+  const config = loadConfig(fixture());
+  reconcilePanels(config, ['session', 'workspace', 'cost']);
+  reconcilePanels(config, ['subagents', 'todos', 'background-tasks']);
+  expect(config.panels.map((p) => p.id)).toEqual([
+    'session',
+    'workspace',
+    'subagents',
+    'todos',
+    'background-tasks',
+    'cost',
+  ]);
+  const saved: Parameters<typeof reconcilePanels>[0] = {
+    startup: 'auto',
+    panels: [
+      { id: 'workspace', visible: true },
+      { id: 'session', visible: false },
+    ],
+  };
+  reconcilePanels(saved, ['session', 'workspace', 'subagents', 'cost']);
+  expect(saved.panels.map((p) => `${p.id}:${p.visible}`)).toEqual([
+    'workspace:true',
+    'session:false',
+    'subagents:true',
+    'cost:true',
+  ]);
+});
+
+it('keeps a valid default width, clamped to 28..72, and ignores anything else', () => {
+  const path = fixture();
+  const load = (width: unknown) => {
+    writeFileSync(path, JSON.stringify({ width }));
+    return loadConfig(path);
+  };
+  expect(load(60).width).toBe(60);
+  expect(load(10).width).toBe(28);
+  expect(load(500).width).toBe(72);
+  expect('width' in load('wide')).toBe(false);
+  expect('width' in load(null)).toBe(false);
+  expect('width' in loadConfig(fixture())).toBe(false);
+});

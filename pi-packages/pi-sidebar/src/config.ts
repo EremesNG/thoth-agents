@@ -9,6 +9,9 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Startup } from './controls.js';
+import { sidebarWidth } from './layout/adapter.js';
+
+const isCost = (panel: PanelPreference) => panel.id === 'cost';
 
 export interface PanelPreference {
   id: string;
@@ -17,6 +20,8 @@ export interface PanelPreference {
 }
 export interface SidebarConfig {
   startup: Startup;
+  /** Preferred sidebar width in cells; absent means the built-in default. */
+  width?: number;
   panels: PanelPreference[];
   [key: string]: unknown;
 }
@@ -56,10 +61,14 @@ export function loadConfig(path = configPath()): SidebarConfig {
         visible: typeof panel.visible === 'boolean' ? panel.visible : true,
       });
     }
+  const { width, ...rest } = raw;
   return {
-    ...raw,
+    ...rest,
     startup:
       raw.startup === 'manual' || raw.startup === 'off' ? raw.startup : 'auto',
+    ...(typeof width === 'number' && Number.isFinite(width)
+      ? { width: sidebarWidth(width) }
+      : {}),
     panels,
   };
 }
@@ -83,7 +92,12 @@ export function reconcilePanels(
   const known = new Set(config.panels.map((panel) => panel.id));
   for (const id of ids)
     if (!known.has(id)) {
-      config.panels.push({ id, visible: true });
+      // Cost stays last by default, so panels discovered after it slot in before.
+      const cost = id === 'cost' ? -1 : config.panels.findIndex(isCost);
+      config.panels.splice(cost < 0 ? config.panels.length : cost, 0, {
+        id,
+        visible: true,
+      });
       known.add(id);
     }
 }

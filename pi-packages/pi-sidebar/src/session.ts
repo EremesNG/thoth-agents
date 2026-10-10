@@ -6,13 +6,18 @@ import type { TUI } from '@earendil-works/pi-tui';
 import {
   hasBlockingOverlay,
   isWorkPanelRootEditorInputActive,
+  listProviderLimits,
   listWorkPanelSources,
+  type ProviderLimitEntry,
   type RenderKitTheme,
   registerUIPreferences,
   request,
+  SUBAGENTS_STATE_CHANNEL,
+  SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
   subscribe,
+  subscribeProviderLimits,
   subscribeWorkPanelRegistry,
   updateUIPreferences,
   withdrawUIPreferences,
@@ -27,14 +32,17 @@ import {
   saveConfig,
 } from './config.js';
 import { SidebarControls } from './controls.js';
+import { openCostCurves } from './curves.js';
 import {
   createFullscreenAdapter,
   createInlineAdapter,
   type LayoutAdapter,
 } from './layout/index.js';
 import { concreteRenderer } from './layout/renderer.js';
+import { CostTracker } from './panels/cost.js';
 import { SidebarPanels } from './panels/sidebar.js';
 import { WorkspaceReader, type WorkspaceSnapshot } from './panels/workspace.js';
+import { openSettings } from './settings.js';
 
 export class SidebarSession {
   private context: ExtensionContext;
@@ -45,6 +53,8 @@ export class SidebarSession {
   private readonly workspaceReader: WorkspaceReader;
   private workspace: WorkspaceSnapshot;
   private subagentCost = 0;
+  private readonly costTracker = new CostTracker();
+  private limits: readonly ProviderLimitEntry[] = [];
   private preference: symbol | undefined;
   private absorbed = '';
   private renderedSignature = '';
@@ -65,7 +75,9 @@ export class SidebarSession {
     this.context = ctx;
     this.config = loadConfig();
     this.controls = new SidebarControls(this.config.startup);
-    this.workspace = { cwd: ctx.cwd, status: 'Reading git status…' };
+    if (this.config.width !== undefined)
+      this.controls.setWidth(this.config.width);
+    this.workspace = { cwd: ctx.cwd, note: 'Reading git status…' };
     this.workspaceReader = new WorkspaceReader(ctx.cwd, (snapshot) => {
       this.workspace = snapshot;
       this.refresh();
@@ -78,6 +90,8 @@ export class SidebarSession {
       thinking: () => pi.getThinkingLevel(),
       subscriptionProviders: loadSubscriptionProviders(),
       subagentCost: () => this.subagentCost,
+      cost: () => this.costTracker,
+      limits: () => this.limits,
       workspace: () => this.workspace,
       height: () => tui.terminal.rows,
       resizeWidth: () =>
@@ -101,12 +115,29 @@ export class SidebarSession {
         this.refresh();
       }),
     );
+    // Subscriptions replay nothing, so read the registry once at start.
+    this.limits = listProviderLimits();
+    this.releases.push(
+      subscribeProviderLimits(() => {
+        this.limits = listProviderLimits();
+        this.refresh();
+      }),
+    );
     this.releases.push(
       subscribe(pi.events, SUBAGENTS_USAGE_CHANNEL, {
         sessionId: ctx.sessionManager.getSessionId(),
         onSnapshot: ({ data }) => {
           this.subagentCost = data.totalCost;
           this.panels.refreshSessionCost();
+          this.refresh();
+        },
+      }),
+    );
+    this.releases.push(
+      subscribe(pi.events, SUBAGENTS_STATE_CHANNEL, {
+        sessionId: ctx.sessionManager.getSessionId(),
+        onSnapshot: ({ data, at }) => {
+          this.costTracker.update(data, at);
           this.refresh();
         },
       }),
@@ -125,6 +156,11 @@ export class SidebarSession {
       source: '@thoth-agents/pi-sidebar',
       data: {},
     });
+    request(pi.events, SUBAGENTS_STATE_REQUEST, {
+      sessionId: ctx.sessionManager.getSessionId(),
+      source: '@thoth-agents/pi-sidebar',
+      data: {},
+    });
     this.workspaceReader.refresh();
   }
   private discover(): void {
@@ -132,6 +168,7 @@ export class SidebarSession {
       'session',
       'workspace',
       ...listWorkPanelSources().map((source) => source.id),
+      'cost',
     ]);
   }
   /** Called by a zero-row widget on every main render, including when hidden. */
@@ -189,7 +226,11 @@ export class SidebarSession {
   refresh(ctx?: ExtensionContext, workspace = false, cost = false): void {
     if (this.disposed) return;
     if (ctx) this.context = ctx;
-    if (cost) this.panels.refreshSessionCost();
+    if (cost) {
+      this.panels.refreshSessionCost();
+      // Entries lapse at their reset time without an event.
+      this.limits = listProviderLimits();
+    }
     if (workspace) this.workspaceReader.refresh();
     this.sync();
     const signature = this.signature();
@@ -312,6 +353,14 @@ export class SidebarSession {
       this.beginResize(ctx);
       return;
     }
+    if (command === 'cost' && !action) {
+      this.fail(ctx, openCostCurves(ctx, this.costTracker));
+      return;
+    }
+    if (command === 'settings' && !action) {
+      this.fail(ctx, this.settings(ctx));
+      return;
+    }
     if (command === 'panels') {
       this.discover();
       if (!action) {
@@ -320,7 +369,7 @@ export class SidebarSession {
           this.config.panels
             .map(
               (panel) =>
-                `${panel.visible ? 'on ' : 'off'} ${panel.id}${!['session', 'workspace'].includes(panel.id) && !sources.some((source) => source.id === panel.id) ? ' (unavailable)' : ''}`,
+                `${panel.visible ? 'on ' : 'off'} ${panel.id}${!['session', 'workspace', 'cost'].includes(panel.id) && !sources.some((source) => source.id === panel.id) ? ' (unavailable)' : ''}`,
             )
             .join('\n'),
           'info',
@@ -347,9 +396,34 @@ export class SidebarSession {
     }
     this.refresh();
   }
+  private fail(ctx: ExtensionContext, work: Promise<unknown>): void {
+    work.catch((error) =>
+      ctx.ui.notify(
+        `Sidebar overlay failed: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+      ),
+    );
+  }
+  private async settings(ctx: ExtensionContext): Promise<void> {
+    const saved = await openSettings(ctx, {
+      panels: this.config.panels,
+      startup: this.config.startup,
+      width: this.config.width ?? 44,
+      unavailable: (id) =>
+        !['session', 'workspace', 'cost'].includes(id) &&
+        !listWorkPanelSources().some((source) => source.id === id),
+      save: (draft) => {
+        const next = { ...this.config, ...draft };
+        saveConfig(next);
+        Object.assign(this.config, next);
+        if (!this.controls.resizing) this.controls.setWidth(draft.width);
+      },
+    });
+    if (saved) this.refresh();
+  }
   private help(ctx: ExtensionContext): void {
     ctx.ui.notify(
-      '/sidebar [auto|manual|on|off|resize] · panels [show|hide|up|down <id>] · startup auto|manual|off',
+      '/sidebar [auto|manual|on|off|resize|cost|settings] · panels [show|hide|up|down <id>] · startup auto|manual|off',
       'info',
     );
   }

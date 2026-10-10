@@ -1,18 +1,20 @@
+import { homedir } from 'node:os';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
 import {
-  combineSessionAndSubagentCost,
   computeSessionCost,
   getRenderKit,
   getWorkPanelSourceRows,
   listWorkPanelSources,
+  type ProviderLimitEntry,
   type RenderKitTheme,
+  resolveIcon,
   type WorkPanelRow,
+  type WorkPanelSource,
 } from '@thoth-agents/pi-core';
 import {
-  padPanelText,
+  panelFg,
   panelVisibleWidth,
-  renderPanelCard,
   renderWorkPanelRow,
   truncatePanelText,
   WORK_PANEL_ANIMATION_INTERVAL_MS,
@@ -20,41 +22,22 @@ import {
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
 import type { SidebarConfig } from '../config.js';
+import {
+  iconSignature,
+  isAsciiMode,
+  type PanelRole,
+  renderChrome,
+} from './chrome.js';
+import { type CostTracker, formatUsd, renderCostRows } from './cost.js';
+import {
+  clean,
+  renderSessionRows,
+  renderWorkspaceRows,
+  type SessionView,
+  sessionView,
+} from './rows.js';
 import type { WorkspaceSnapshot } from './workspace.js';
 
-export function sessionRows(
-  ctx: ExtensionContext,
-  thinking: string,
-  subscriptionProviders: readonly string[],
-  subagentCost: number,
-  cost = computeSessionCost(ctx.sessionManager.getEntries(), {
-    subscriptionProviders,
-    providerOf: () => ctx.model?.provider,
-  }),
-  usage: ReturnType<
-    ExtensionContext['getContextUsage']
-  > | null = ctx.getContextUsage(),
-): string[] {
-  const number = (value: number) => value.toLocaleString('en-US');
-  const context =
-    usage?.tokens == null
-      ? `unknown${usage ? ` / ${number(usage.contextWindow)}` : ''}`
-      : `${usage.percent?.toFixed(1) ?? '?'}% · ${number(usage.tokens)} / ${number(usage.contextWindow)}`;
-  return [
-    `${ctx.model?.provider ?? 'No provider'} / ${ctx.model?.id ?? 'No model'}`,
-    `Thinking: ${ctx.thinkingLevel ?? thinking}`,
-    `Context: ${context}`,
-    `Cost: $${combineSessionAndSubagentCost(cost.cost, subagentCost).toFixed(3)}${cost.isSubscription ? ' (sub)' : ''}`,
-  ];
-}
-
-/** Provider text is data, not terminal control sequences. */
-function clean(value: string): string {
-  return Array.from(value, (character) => {
-    const code = character.codePointAt(0) ?? 0;
-    return code < 32 || (code >= 127 && code <= 159) ? ' ' : character;
-  }).join('');
-}
 /** Keep all active/pending work and at most five terminal items per source. */
 function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
   const items = rows.filter((row) => !row.summary);
@@ -92,17 +75,129 @@ function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
   ];
 }
 
+/** Detail command shown in each work panel footer and in the empty title line. */
+const DETAIL_COMMANDS: Record<string, string> = {
+  subagents: '/subagents',
+  todos: '/todos',
+  'background-tasks': '/bg',
+};
+const COST_COMMAND = '/sidebar cost';
+/** Below this width a panel cannot be read; the sidebar asks to be widened. */
+const MIN_PANEL_WIDTH = 24;
+export const WIDEN_HINT = 'widen: /sidebar resize';
+
+/** `active·done·failed` for agents and background tasks, `done/total` for todos. */
+function sourceSummary(source: WorkPanelSource): string | undefined {
+  const summary = source.summary;
+  if (!summary) return undefined;
+  const { running, completed, failed, total } = summary;
+  const sep = resolveIcon('separator', '·');
+  if (source.id === 'todos') {
+    return completed !== undefined && total !== undefined
+      ? `${completed}/${total}`
+      : undefined;
+  }
+  if (
+    source.id in DETAIL_COMMANDS &&
+    running !== undefined &&
+    completed !== undefined &&
+    failed !== undefined
+  )
+    return `${running}${sep}${completed}${sep}${failed}`;
+  return summary.text ? clean(summary.text) : undefined;
+}
+
 interface PanelData {
   id: string;
   title: string;
-  rows: string[];
+  summary?: string;
+  role?: PanelRole;
+  /** Lines per block; blocks are the unit that `+N more` counts. */
+  costs: number[];
+  block(index: number): string[];
+  /** Show `+N more` when blocks are cut by height. */
+  more: boolean;
+  footer?: string;
+  /** Title-only line regardless of height. */
+  empty: boolean;
   animated?: boolean[];
-  priority: number;
   source: boolean;
+  /** Allocated lines, assigned after budgeting. */
   height: number;
-  items?: WorkPanelRow[];
-  costs?: number[];
+  rows: string[];
 }
+
+function stateWord(snapshot: WorkspaceSnapshot): string | undefined {
+  const state = snapshot.git?.state;
+  return state === 'conflicts'
+    ? 'Conflicts'
+    : state === 'modified'
+      ? 'Modified'
+      : state === 'clean'
+        ? 'Clean'
+        : undefined;
+}
+
+function staticPanel(
+  id: string,
+  title: string,
+  rows: readonly string[],
+  extra: Partial<PanelData> = {},
+): PanelData {
+  return {
+    id,
+    title,
+    costs: rows.map(() => 1),
+    block: (index) => [rows[index]],
+    more: false,
+    empty: false,
+    source: false,
+    height: 0,
+    rows: [],
+    ...extra,
+  };
+}
+
+/** `/cmd ▸ detail`, right aligned and muted. */
+function footerRow(
+  command: string,
+  label: string,
+  width: number,
+  theme: RenderKitTheme,
+): string {
+  const arrow = isAsciiMode() ? '>' : '▸';
+  const text = truncatePanelText(`${command} ${arrow} ${label}`, width - 4);
+  return (
+    ' '.repeat(Math.max(0, width - 4 - panelVisibleWidth(text))) +
+    panelFg(theme, 'muted', text)
+  );
+}
+
+/** Blocks that fit in `budget` lines; `+N more` takes one line when shown. */
+function fitBlocks(
+  costs: readonly number[],
+  budget: number,
+  more: boolean,
+): { count: number; overflow: boolean } {
+  const within = (lines: number) => {
+    let used = 0;
+    let count = 0;
+    for (const cost of costs) {
+      if (used + cost > lines) break;
+      used += cost;
+      count++;
+    }
+    return count;
+  };
+  if (costs.reduce((sum, cost) => sum + cost, 0) <= budget)
+    return { count: costs.length, overflow: false };
+  if (!more) return { count: within(budget), overflow: false };
+  const count = within(budget - 1);
+  if (count > 0 || within(budget) === 0) return { count, overflow: true };
+  // A lone row beats a bare count.
+  return { count: within(budget), overflow: false };
+}
+
 export interface SidebarPanelsOptions {
   config: SidebarConfig;
   context(): ExtensionContext;
@@ -110,15 +205,23 @@ export interface SidebarPanelsOptions {
   thinking(): string;
   subscriptionProviders: readonly string[];
   subagentCost(): number;
+  /** Cached, event-driven provider-limit observations. */
+  limits?(): readonly ProviderLimitEntry[];
   workspace(): WorkspaceSnapshot;
+  /** Event-driven subagent cost data behind the Cost panel. */
+  cost?(): CostTracker;
+  /** Home directory for path abbreviation; defaults to the OS home. */
+  home?: string;
   height(): number;
   resizeWidth?(): number | undefined;
 }
+
 export class SidebarPanels implements Component {
   private cachedKey = '';
   private cachedPlan: PanelData[] = [];
   private cachedLines: string[] | undefined;
   private kit = getRenderKit();
+  private icons = iconSignature();
   private revision = 0;
   private animated = false;
   private cost: ReturnType<typeof computeSessionCost>;
@@ -158,26 +261,171 @@ export class SidebarPanels implements Component {
     this.revision++;
     this.cachedLines = undefined;
   }
-  private sessionRows(): string[] {
-    return sessionRows(
+  private sessionView(): SessionView {
+    return sessionView(
       this.options.context(),
       this.options.thinking(),
-      this.options.subscriptionProviders,
-      this.options.subagentCost(),
       this.cost,
+      this.options.subagentCost(),
       this.usage ?? null,
+      this.options.limits?.() ?? [],
     );
   }
+  /** Unbudgeted panels in configured order; cheap, cached data only. */
+  private build(
+    sources: readonly WorkPanelSource[],
+    frame: number,
+    width: number,
+  ): PanelData[] {
+    const options = this.options;
+    const inner = Math.max(1, width - 4);
+    const now = Date.now();
+    const panels: PanelData[] = [];
+    const resizeWidth = options.resizeWidth?.();
+    if (resizeWidth !== undefined)
+      panels.push(
+        staticPanel(
+          'resize',
+          'Resize',
+          [
+            `width ${resizeWidth} (28–72)`,
+            '←/→ move divider · Shift 4',
+            'Enter confirm · Esc revert',
+          ],
+          { role: 'warning' },
+        ),
+      );
+    for (const preference of options.config.panels) {
+      if (!preference.visible) continue;
+      if (preference.id === 'session') {
+        panels.push(
+          staticPanel(
+            'session',
+            'Session',
+            renderSessionRows(this.sessionView(), width, options.theme),
+          ),
+        );
+      } else if (preference.id === 'workspace') {
+        const workspace = options.workspace();
+        panels.push(
+          staticPanel(
+            'workspace',
+            'Workspace',
+            renderWorkspaceRows(
+              workspace,
+              width,
+              options.theme,
+              options.home ?? homedir(),
+              resolveIcon('branch'),
+            ),
+            { summary: stateWord(workspace) },
+          ),
+        );
+      } else if (preference.id === 'cost') {
+        const tracker = options.cost?.();
+        if (!tracker) continue;
+        const rows = renderCostRows(tracker.ranked(), width, options.theme);
+        panels.push(
+          staticPanel('cost', 'Cost', rows, {
+            more: true,
+            empty: rows.length === 0,
+            summary: rows.length
+              ? formatUsd(options.subagentCost() || tracker.total())
+              : COST_COMMAND,
+            footer: footerRow(COST_COMMAND, 'curves', width, options.theme),
+          }),
+        );
+      } else {
+        const source = sources.find((source) => source.id === preference.id);
+        if (!source) continue;
+        panels.push(this.sourcePanel(source, frame, inner, now));
+      }
+    }
+    return panels;
+  }
+  private sourcePanel(
+    source: WorkPanelSource,
+    frame: number,
+    inner: number,
+    now: number,
+  ): PanelData {
+    const options = this.options;
+    let snapshot = this.snapshots.get(source.id);
+    if (
+      !snapshot ||
+      snapshot.revision !== source.revision ||
+      (snapshot.animated && snapshot.frame !== frame)
+    ) {
+      snapshot = {
+        revision: source.revision,
+        frame,
+        items: retainedRows(
+          getWorkPanelSourceRows(source.id, {
+            // Exact retention/overflow counts require the complete snapshot.
+            maxRows: Number.MAX_SAFE_INTEGER,
+            respectRowCap: false,
+          }),
+        ),
+        animated: false,
+      };
+      this.snapshots.set(source.id, snapshot);
+    }
+    const items = snapshot.items;
+    const command = DETAIL_COMMANDS[source.id];
+    return {
+      id: source.id,
+      title: clean(source.label),
+      // An empty panel is one title line that carries the command.
+      summary: items.length === 0 && command ? command : sourceSummary(source),
+      costs: items.map((row) =>
+        workPanelRowLineCount(row, inner, panelVisibleWidth, {
+          metricLayout: 'columns',
+        }),
+      ),
+      block: (index) =>
+        renderWorkPanelRow(items[index], {
+          width: inner,
+          now,
+          theme: options.theme,
+          clip: truncatePanelText,
+          measure: panelVisibleWidth,
+          last: index === items.length - 1,
+          metricLayout: 'columns',
+        }),
+      more: true,
+      footer: command
+        ? footerRow(command, 'detail', inner + 4, options.theme)
+        : undefined,
+      empty: items.length === 0,
+      animated: items.map(
+        (row) =>
+          !row.summary &&
+          ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
+      ),
+      source: true,
+      height: 0,
+      rows: [],
+    };
+  }
   private plan(height: number, width = 44): PanelData[] {
+    if (width < MIN_PANEL_WIDTH) {
+      this.animated = false;
+      return [];
+    }
     this.readSession();
     const options = this.options;
     const sources = listWorkPanelSources();
     const kit = getRenderKit();
-    if (kit !== this.kit) {
+    const icons = iconSignature();
+    if (kit !== this.kit || icons !== this.icons) {
       this.kit = kit;
+      this.icons = icons;
+      // Providers bake kit-dependent labels into even terminal row snapshots.
+      this.snapshots.clear();
       this.invalidate();
     }
     const frame = Math.floor(Date.now() / WORK_PANEL_ANIMATION_INTERVAL_MS);
+    // Animation state is part of the key, so the key is re-read after planning.
     const makeKey = () =>
       JSON.stringify([
         sources,
@@ -187,151 +435,52 @@ export class SidebarPanels implements Component {
         this.animated ? frame : 0,
         options.config,
         options.workspace(),
+        options.cost?.().revision,
         options.resizeWidth?.(),
-        this.sessionRows(),
+        this.sessionView(),
+        icons,
+        options.home,
       ]);
     if (makeKey() === this.cachedKey) return this.cachedPlan;
     for (const id of this.snapshots.keys()) {
       if (!sources.some((source) => source.id === id))
         this.snapshots.delete(id);
     }
-    const panels: PanelData[] = [];
-    const resizeWidth = options.resizeWidth?.();
-    if (resizeWidth !== undefined)
-      panels.push({
-        id: 'resize',
-        title: 'Resize',
-        rows: [
-          `width ${resizeWidth} (28–72)`,
-          '←/→ move divider · Shift 4',
-          'Enter confirm · Esc revert',
-        ],
-        priority: -1,
-        source: false,
-        height: 5,
-      });
-    const now = Date.now();
-    for (const preference of options.config.panels) {
-      if (!preference.visible) continue;
-      if (preference.id === 'session')
-        panels.push({
-          id: 'session',
-          title: 'Session',
-          rows: this.sessionRows(),
-          priority: 0,
-          source: false,
-          height: 6,
-        });
-      else if (preference.id === 'workspace') {
-        const workspace = options.workspace();
-        panels.push({
-          id: 'workspace',
-          title: 'Workspace',
-          rows: [
-            clean(workspace.cwd),
-            clean(workspace.branch ?? 'No branch'),
-            workspace.status,
-          ],
-          priority: 1000,
-          source: false,
-          height: 5,
-        });
-      } else {
-        const source = sources.find((source) => source.id === preference.id);
-        if (!source) continue;
-        let snapshot = this.snapshots.get(source.id);
-        if (
-          !snapshot ||
-          snapshot.revision !== source.revision ||
-          (snapshot.animated && snapshot.frame !== frame)
-        ) {
-          snapshot = {
-            revision: source.revision,
-            frame,
-            items: retainedRows(
-              getWorkPanelSourceRows(source.id, {
-                // Exact retention/overflow counts require the complete snapshot.
-                maxRows: Number.MAX_SAFE_INTEGER,
-                respectRowCap: false,
-              }),
-            ),
-            animated: false,
-          };
-          this.snapshots.set(source.id, snapshot);
-        }
-        const items = snapshot.items;
-        const costs = items.map((row) =>
-          workPanelRowLineCount(row, Math.max(1, width - 4), panelVisibleWidth),
-        );
-        panels.push({
-          id: source.id,
-          title: clean(source.label),
-          rows: ['No items'],
-          items,
-          costs,
-          animated: items.map(
-            (row) =>
-              !row.summary &&
-              ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
-          ),
-          priority: source.priority,
-          source: true,
-          height:
-            Math.max(
-              1,
-              costs.reduce((sum, cost) => sum + cost, 0),
-            ) + 2,
-        });
-      }
+    const panels = this.build(sources, frame, width);
+    // Fill in order; a panel that cannot show a row (title + row + border)
+    // collapses to its title line, and later panels get what remains.
+    let remaining = Math.max(0, Math.floor(height));
+    const visible: PanelData[] = [];
+    for (const panel of panels) {
+      const room = remaining - (visible.length ? 1 : 0);
+      if (room < 1) break;
+      const full = panel.empty
+        ? 1
+        : panel.costs.reduce((sum, cost) => sum + cost, 0) +
+          (panel.footer ? 1 : 0) +
+          2;
+      panel.height = room >= full ? full : room >= 3 ? room : 1;
+      remaining -= panel.height + (visible.length ? 1 : 0);
+      visible.push(panel);
     }
-    const available = Math.max(0, Math.floor(height));
-    const reduction = [...panels].sort((a, b) => b.priority - a.priority);
-    let total = panels.reduce((sum, panel) => sum + panel.height, 0);
-    for (const panel of reduction) {
-      const removed = Math.min(
-        Math.max(0, total - available),
-        panel.height - 3,
-      );
-      panel.height -= removed;
-      total -= removed;
-    }
-    for (const panel of reduction) {
-      if (total <= available) break;
-      // Keep a heading for the final highest-priority panel in tiny viewports.
-      if (
-        panels.filter((panel) => panel.height > 0).length === 1 &&
-        available > 0
-      ) {
-        panel.height = available;
-        break;
-      }
-      total -= panel.height;
-      panel.height = 0;
-    }
-    const visible = panels.filter((panel) => panel.height > 0);
     this.animated = false;
     for (const panel of visible) {
-      if (!panel.items?.length || !panel.costs || panel.height < 3) continue;
-      const budget = panel.height - 2;
-      const overflow =
-        panel.costs.reduce((sum, cost) => sum + cost, 0) > budget;
-      let used = 0;
-      let shown = 0;
-      const blocks: string[][] = [];
+      if (panel.height < 3 || panel.empty) continue;
+      const total = panel.costs.reduce((sum, cost) => sum + cost, 0);
+      // Footers go before rows.
+      const footer = panel.footer && panel.height >= total + 3;
+      const { count, overflow } = fitBlocks(
+        panel.costs,
+        panel.height - 2 - (footer ? 1 : 0),
+        panel.more,
+      );
       const snapshot = this.snapshots.get(panel.id);
       // Refresh newly exposed animation before rendering. Replan because fresh
       // provider text can change row count and line costs as well.
-      let exposed = 0;
-      let exposedCost = 0;
-      for (const cost of panel.costs) {
-        if (exposedCost + cost > budget - (overflow ? 1 : 0)) break;
-        exposedCost += cost;
-        exposed++;
-      }
       if (
         snapshot &&
         snapshot.frame !== frame &&
-        panel.animated?.slice(0, exposed).some(Boolean)
+        panel.animated?.slice(0, count).some(Boolean)
       ) {
         snapshot.items = retainedRows(
           getWorkPanelSourceRows(panel.id, {
@@ -342,27 +491,14 @@ export class SidebarPanels implements Component {
         snapshot.frame = frame;
         return this.plan(height, width);
       }
-      for (let index = 0; index < panel.items.length; index++) {
-        const cost = panel.costs[index];
-        if (used + cost > budget - (overflow ? 1 : 0)) break;
-        blocks.push(
-          renderWorkPanelRow(panel.items[index], {
-            width: Math.max(1, width - 4),
-            now,
-            theme: options.theme,
-            clip: truncatePanelText,
-            measure: panelVisibleWidth,
-            last: index === panel.items.length - 1,
-          }),
-        );
-        used += cost;
-        shown++;
-      }
-      const active = panel.animated?.slice(0, shown).some(Boolean) ?? false;
+      panel.rows = Array.from({ length: count }, (_, index) =>
+        panel.block(index),
+      ).flat();
+      if (overflow) panel.rows.push(`+${panel.costs.length - count} more`);
+      if (footer && panel.footer) panel.rows.push(panel.footer);
+      const active = panel.animated?.slice(0, count).some(Boolean) ?? false;
       if (snapshot) snapshot.animated = active;
       this.animated ||= active;
-      panel.rows = blocks.flat();
-      if (overflow) panel.rows.push(`+${panel.items.length - shown} more`);
     }
     for (const [id, snapshot] of this.snapshots) {
       if (!visible.some((panel) => panel.id === id && panel.height >= 3))
@@ -388,28 +524,31 @@ export class SidebarPanels implements Component {
   }
   renderAt(width: number, height: number): string[] {
     if (width <= 0 || height <= 0) return [];
+    if (width < MIN_PANEL_WIDTH)
+      return [
+        panelFg(
+          this.options.theme,
+          'muted',
+          truncatePanelText(WIDEN_HINT, width),
+        ),
+      ];
     const plan = this.plan(height, width);
     if (this.cachedLines) return this.cachedLines;
+    const theme = this.options.theme;
     this.cachedLines = plan
-      .flatMap((panel) =>
-        panel.height < 3
-          ? [truncatePanelText(panel.title, width)]
-          : renderPanelCard({
-              title:
-                panel.id === 'resize'
-                  ? this.options.theme.fg('warning', panel.title)
-                  : panel.title,
-              body: () => panel.rows.slice(0, panel.height - 2),
-              width,
-              maxHeight: panel.height,
-              theme: this.options.theme,
-              text: {
-                clip: truncatePanelText,
-                pad: padPanelText,
-                measure: panelVisibleWidth,
-              },
-            }),
-      )
+      .flatMap((panel, index) => [
+        ...(index ? [''] : []),
+        ...renderChrome({
+          id: panel.id,
+          title: panel.title,
+          summary: panel.summary,
+          rows: panel.rows,
+          width,
+          height: panel.height,
+          theme,
+          role: panel.role,
+        }),
+      ])
       .slice(0, height);
     return this.cachedLines;
   }

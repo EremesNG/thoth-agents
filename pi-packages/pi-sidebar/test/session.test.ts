@@ -12,6 +12,9 @@ import {
   getUIPreferences,
   publish,
   registerWorkPanelProvider,
+  reportProviderLimit,
+  SUBAGENTS_STATE_CHANNEL,
+  SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
   WORK_PANEL_VERSION,
@@ -56,8 +59,28 @@ function setup(regular = false) {
   const requests = vi.fn();
   events.on(SUBAGENTS_USAGE_REQUEST.name, requests);
   let observer: any;
+  let overlay: any;
   const inputs = new Set<(data: string) => any>();
   const ui = {
+    custom: vi.fn(
+      (factory: any) =>
+        new Promise((resolve) => {
+          Promise.resolve(
+            factory(
+              {
+                mode: 'fullscreen',
+                terminal: { rows: 40, write() {} },
+                requestRender() {},
+              },
+              { fg: (_role: string, value: string) => value },
+              {},
+              resolve,
+            ),
+          ).then((component) => {
+            overlay = component;
+          });
+        }),
+    ),
     notify: vi.fn(),
     setStatus: vi.fn(),
     getEditorText: () => '',
@@ -128,6 +151,7 @@ function setup(regular = false) {
       ).join('\n'),
     input: (data: string) => [...inputs].at(-1)?.(data),
     observe: () => observer?.render(160),
+    overlay: () => overlay,
     shutdown: () => handlers.get('session_shutdown')?.({}, ctx),
   };
 }
@@ -318,7 +342,7 @@ it('combines latest cumulative subagent usage without accumulating, guards forei
   send(2);
   send(20, 'foreign');
   app.tui.renderNow(true);
-  expect(app.screen()).toContain('$2.000 (sub)');
+  expect(app.screen()).toMatch(/Cost\s+\$0\.000 \(sub\) \+\$2\.000/);
   app.commands.get('sidebar').handler('resize', app.ctx);
   expect(app.input('\x1b[C')).toEqual({ consume: true });
   app.tui.renderNow(true);
@@ -402,6 +426,55 @@ it('shrinks manual presentation to 28 at 92 columns, restores preferred width, a
   expect(app.requests).toHaveBeenCalledTimes(2);
 });
 
+it('shows provider limits from the registry at start and on report, and clears them when allowed', () => {
+  const base = {
+    provider: 'claude-bridge',
+    window: '5h',
+    observedAt: 1,
+    sessionId: 'limits',
+  };
+  // The registry has no replay: an entry reported before start must still show.
+  reportProviderLimit({ ...base, status: 'allowed_warning', utilization: 0.9 });
+  const app = setup();
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  expect(app.screen()).toMatch(/Limit\s+5h 90% · claude-bridge/);
+  reportProviderLimit({ ...base, status: 'rejected', utilization: 1 });
+  app.tui.renderNow(true);
+  expect(app.screen()).toMatch(/Limit\s+5h blocked/);
+  reportProviderLimit({ ...base, status: 'allowed' });
+  app.tui.renderNow(true);
+  expect(app.screen()).not.toContain('Limit');
+});
+
+it('refreshes the workspace at turn start and after any tool result', async () => {
+  const app = setup();
+  vi.useRealTimers();
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: app.dir, stdio: 'pipe' });
+  git('init', '-b', 'events-test');
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  const screen = () => {
+    app.tui.renderNow(true);
+    return app.screen();
+  };
+  await vi.waitFor(() => expect(screen()).toContain('Clean'), {
+    timeout: 3000,
+  });
+  writeFileSync(join(app.dir, 'later'), 'x');
+  app.handlers.get('turn_start')?.({}, app.ctx);
+  await vi.waitFor(() => expect(screen()).toMatch(/Untracked\s+1\b/), {
+    timeout: 3000,
+  });
+  writeFileSync(join(app.dir, 'read-side-effect'), 'x');
+  app.handlers.get('tool_result')?.({ toolName: 'read' }, app.ctx);
+  await vi.waitFor(() => expect(screen()).toMatch(/Untracked\s+2\b/), {
+    timeout: 3000,
+  });
+});
+
 it('discovers sources after activation and returns absorbed sources when height reduction removes their panel', () => {
   const app = setup();
   app.handlers.get('session_start')?.({}, app.ctx);
@@ -438,17 +511,22 @@ it('refreshes its independent git reader after write/edit/bash results and turn 
     app.handlers.get('tool_result')?.({ toolName }, app.ctx);
     await vi.waitFor(
       () =>
-        expect(screen()).toContain(
-          `${['write', 'edit', 'bash'].indexOf(toolName) + 1} untracked`,
+        expect(screen()).toMatch(
+          new RegExp(
+            `Untracked\\s+${['write', 'edit', 'bash'].indexOf(toolName) + 1}\\b`,
+          ),
         ),
       { timeout: 3000 },
     );
   }
   git('add', '.');
   app.handlers.get('turn_end')?.({}, app.ctx);
-  await vi.waitFor(() => expect(screen()).toContain('3 staged'), {
-    timeout: 3000,
-  });
+  await vi.waitFor(
+    () => expect(screen()).toMatch(/Changed\s+3 files \+3 [-−]0/),
+    {
+      timeout: 3000,
+    },
+  );
 });
 
 it.each([
@@ -596,21 +674,21 @@ it('renders resize guidance inside the sidebar and removes it on confirm and rev
   app.tui.start();
   app.commands.get('sidebar').handler('resize', app.ctx);
   app.tui.renderNow(true);
-  expect(app.screen()).toContain('Resize');
+  expect(app.screen()).toContain('RESIZE');
   expect(app.screen()).toContain('width 44');
   app.input('\x1b[D');
   app.tui.renderNow(true);
   expect(app.screen()).toContain('width 45');
   app.input(String.fromCharCode(13));
   app.tui.renderNow(true);
-  expect(app.screen()).not.toContain('Resize');
+  expect(app.screen()).not.toContain('RESIZE');
   app.commands.get('sidebar').handler('resize', app.ctx);
   app.input('\x1b[D');
   app.tui.renderNow(true);
   expect(app.screen()).toContain('width 46');
   app.input(String.fromCharCode(27));
   app.tui.renderNow(true);
-  expect(app.screen()).not.toContain('Resize');
+  expect(app.screen()).not.toContain('RESIZE');
 });
 
 it('ticks animated visible work at the host cadence and stops on completion, hide and disposal', () => {
@@ -690,4 +768,199 @@ it('does not request a render for unchanged refreshes or scan entries during mai
     app.handlers.get(event)?.({}, app.ctx);
     expect(entries).toHaveBeenCalledTimes(previous + 1);
   }
+});
+
+const stateSnapshot = (cost: number, endedAt?: number) => ({
+  tasks: [
+    {
+      id: 'live',
+      agent: 'worker',
+      displayName: 'Fix auth',
+      mode: 'task' as const,
+      status: 'running' as const,
+      createdAt: 0,
+      startedAt: 1,
+      usage: { cost },
+    },
+  ],
+  history: [
+    {
+      id: 'old',
+      agent: 'oracle',
+      displayName: 'Old review',
+      mode: 'task' as const,
+      status: 'completed' as const,
+      createdAt: 0,
+      endedAt: endedAt ?? 10,
+      usage: { cost: 2 },
+    },
+  ],
+  counts: {
+    queued: 0,
+    running: 1,
+    stopping: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    interrupted: 0,
+  },
+  totals: {
+    queued: 0,
+    running: 1,
+    stopping: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    interrupted: 0,
+    total: 1,
+  },
+});
+
+it('requests subagent state, ranks live and persisted cost from state snapshots and opens the curves overlay', async () => {
+  const app = setup();
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({ panels: [{ id: 'cost', visible: true }] }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  const requested = vi.fn();
+  app.events.on(SUBAGENTS_STATE_REQUEST.name, requested);
+  expect(app.listeners.get(SUBAGENTS_STATE_CHANNEL.name)?.size).toBe(1);
+  app.handlers.get('session_start')?.({ reason: 'new' }, app.ctx);
+  expect(requested).toHaveBeenCalledTimes(1);
+  publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+    sessionId: 'other-session',
+    source: 'test',
+    data: stateSnapshot(9),
+  });
+  app.tui.renderNow(true);
+  expect(app.screen()).not.toContain('Fix auth');
+  for (const cost of [0.5, 1])
+    publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+      sessionId: 'session',
+      source: 'test',
+      data: stateSnapshot(cost),
+    });
+  app.tui.renderNow(true);
+  const screen = app.screen();
+  expect(screen).toContain('COST');
+  expect(screen.indexOf('Old review')).toBeLessThan(screen.indexOf('Fix auth'));
+  expect(screen).toContain('/sidebar cost');
+  const done = app.commands.get('sidebar').handler('cost', app.ctx);
+  await vi.waitFor(() => expect(app.overlay()).toBeDefined());
+  const view = app.overlay().render(80).join('\n');
+  expect(view).toContain('Subagent cost curves');
+  expect(view).toContain('Fix auth');
+  app.overlay().handleInput('q');
+  await done;
+  app.shutdown();
+  expect(app.listeners.get(SUBAGENTS_STATE_CHANNEL.name)?.size).toBe(0);
+});
+
+it('lists Cost last and appends it to saved orders without rearranging them', () => {
+  const app = setup();
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({
+      panels: [
+        { id: 'workspace', visible: true },
+        { id: 'session', visible: false },
+      ],
+    }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  source({ on() {} });
+  app.commands.get('sidebar').handler('panels', app.ctx);
+  expect(app.ui.notify.mock.calls.at(-1)?.[0].split('\n')).toEqual([
+    'on  workspace',
+    'off session',
+    'on  test-source',
+    'on  cost',
+  ]);
+  // A panel discovered later still slots in before Cost.
+  const fresh = setup();
+  fresh.handlers.get('session_start')?.({ reason: 'startup' }, fresh.ctx);
+  source({ on() {} });
+  fresh.commands.get('sidebar').handler('panels', fresh.ctx);
+  expect(
+    fresh.ui.notify.mock.calls
+      .at(-1)?.[0]
+      .split('\n')
+      .map((l: string) => l.slice(4)),
+  ).toEqual(['session', 'workspace', 'test-source', 'cost']);
+});
+
+it('saves settings from the overlay with Enter, preserving unknown keys, and applies the width', async () => {
+  const app = setup();
+  const path = join(app.dir, 'thoth-sidebar.json');
+  writeFileSync(
+    path,
+    JSON.stringify({
+      future: { keep: true },
+      panels: [{ id: 'session', visible: true, extra: 1 }],
+    }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  const done = app.commands.get('sidebar').handler('settings', app.ctx);
+  await vi.waitFor(() => expect(app.overlay()).toBeDefined());
+  const overlay = app.overlay();
+  expect(overlay.render(80).join('\n')).toContain('[x] Session');
+  // Hide Session, move Workspace down, then set startup and a wider sidebar.
+  const DOWN = '\u001b[B';
+  const keys = [
+    ' ',
+    DOWN,
+    '\u001b[1;2B',
+    DOWN,
+    '\u001b[C',
+    DOWN,
+    ...Array(4).fill('\u001b[C'),
+    '\r',
+  ];
+  for (const key of keys) overlay.handleInput(key);
+  await done;
+  const saved = JSON.parse(readFileSync(path, 'utf8'));
+  expect(saved.future).toEqual({ keep: true });
+  expect(saved.startup).toBe('manual');
+  expect(saved.width).toBe(48);
+  expect(saved.panels.find((p: any) => p.id === 'session')).toEqual({
+    id: 'session',
+    visible: false,
+    extra: 1,
+  });
+  app.tui.renderNow(true);
+  app.tui.renderNow(true);
+  expect(app.widths.at(-1)).toBe(112);
+});
+
+it('leaves the config untouched when the settings overlay is cancelled', async () => {
+  const app = setup();
+  const path = join(app.dir, 'thoth-sidebar.json');
+  writeFileSync(
+    path,
+    JSON.stringify({ panels: [{ id: 'session', visible: true }] }),
+  );
+  const before = readFileSync(path, 'utf8');
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  const done = app.commands.get('sidebar').handler('settings', app.ctx);
+  await vi.waitFor(() => expect(app.overlay()).toBeDefined());
+  app.overlay().handleInput(' ');
+  app.overlay().handleInput('\u001b');
+  await done;
+  expect(readFileSync(path, 'utf8')).toBe(before);
+});
+
+it('applies a saved default width at the next start', () => {
+  const app = setup();
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({ width: 60 }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  app.tui.renderNow(true);
+  expect(app.widths.at(-1)).toBe(100);
 });

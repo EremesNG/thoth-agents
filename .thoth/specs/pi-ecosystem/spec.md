@@ -228,23 +228,23 @@ pi-core MUST export panel primitives (titled frame, cell-width truncation, keybo
 
 ### Requirement: Pi task state channels
 
-pi-subagents and pi-background-tasks MUST publish current-session task summary snapshots on versioned pi-core channels after each change and on request, containing only identity, status, agent/model/effort or kind, lifecycle times, usage/cost, exit and short preview fields, never prompts, transcripts, results, commands, environment or logs; subagent usage MUST be published only on the pi-core usage channel and the Thoth status line MUST consume it from there.
+pi-subagents and pi-background-tasks MUST publish current-session task summary snapshots on versioned pi-core channels after each change and on request, containing only identity, status, agent/model/effort or kind, lifecycle times, usage/cost, exit and short preview fields, never prompts, transcripts, results, commands, environment or logs; the subagents snapshot MUST also carry a bounded set of the session's persisted task summaries selected by highest cost with the same fields; subagent usage MUST be published only on the pi-core usage channel and the Thoth status line MUST consume it from there.
 
 #### Scenario: Pi task state channels
 
-- **GIVEN** a session running subagents and background tasks
+- **GIVEN** a resumed session with more than 100 persisted subagent tasks and running background tasks
 - **WHEN** a task changes state or a consumer requests snapshots
-- **THEN** both packages publish envelope snapshots for that session with summary fields only, and the status line shows cumulative subagent cost from the usage channel
+- **THEN** both packages publish envelope snapshots for that session with summary fields only, the subagents snapshot includes the highest-cost persisted tasks up to its bound, and the status line shows cumulative subagent cost from the usage channel
 
 ### Requirement: Discoverable work-panel registry
 
-pi-core MUST let consumers other than the host list registered work-panel sources with id, label, priority, contract version and a per-source monotonic revision that increases on registration and every provider change, subscribe to registration, removal and source changes, read each source's rows as data-only values bounded by a requested maximum and the source row cap, and invoke a source's open, history and close actions by source and row id; work-panel rows MUST contain no functions, and the work-panel contract version MUST be 2.
+pi-core MUST let consumers other than the host list registered work-panel sources with id, label, priority, contract version, a per-source monotonic revision that increases on registration and every provider change, and the provider's summary counts, subscribe to registration, removal and source changes, read each source's rows as data-only values bounded by a requested maximum and the source row cap, and invoke a source's open, history and close actions by source and row id; work-panel rows MUST contain no functions, and the work-panel contract version MUST be 2.
 
 #### Scenario: Discoverable work-panel registry
 
 - **GIVEN** the subagents, background-tasks and task-list sources registered
 - **WHEN** a consumer lists sources, subscribes and a subagent finishes
-- **THEN** it sees three sources, receives a change for the subagents source with a higher revision, reads that source's rows as plain data within its bound, and can open the item through the action API
+- **THEN** it sees three sources with their summary counts, receives a change for the subagents source with a higher revision and updated counts, reads that source's rows as plain data within its bound, and can open the item through the action API
 
 ### Requirement: Provider rate-limit registry
 
@@ -268,10 +268,20 @@ the Antigravity bridge MUST report API-equivalent message cost through an explic
 
 ### Requirement: Thoth Pi sidebar
 
-`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace and work-panel source panels that can be shown, hidden and reordered with persisted order and visibility, MUST follow the pi-atelier width and auto-hide rules, offer resizing through `/sidebar resize` and fullscreen divider drag without a keyboard shortcut, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
+`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace, work-panel source and Cost panels that can be shown, hidden and reordered with persisted order and visibility, including through a `/sidebar settings` overlay, MUST follow the pi-atelier width and auto-hide rules, offer resizing through `/sidebar resize` and fullscreen divider drag without a keyboard shortcut, MUST render atelier-style themed panel chrome with per-panel icons and colors, work-panel header summaries and detail-command footers, a Workspace path abbreviated like the editor border with changed-file and line counts versus HEAD, and a subagent cost bar panel with a `/sidebar cost` curves view, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
 
 #### Scenario: Thoth Pi sidebar
 
-- **GIVEN** a 160-column fullscreen session with a running subagent and two todos
-- **WHEN** the sidebar is visible with Subagents and Todos panels
-- **THEN** the transcript wraps at the remaining width, the sidebar shows both panels, the work panel above the editor no longer shows those sections or accepts ← focus for them, and hiding the sidebar restores them
+- **GIVEN** a 160-column fullscreen session with a running subagent, two todos and modified files
+- **WHEN** the sidebar is visible with Agents, Todos, Workspace and Cost panels
+- **THEN** the transcript wraps at the remaining width, each panel shows its themed title with a summary, Agents and Todos show their detail commands, Workspace shows `~`-abbreviated path and `Changed N files +A −D`, Cost shows bars by task display name, the work panel no longer shows the absorbed sections or accepts ← focus for them, and hiding the sidebar restores them
+
+### Requirement: Stable work-panel row height
+
+the shared work-panel renderer MUST decide multi-line metric wrapping from reserved widths of each metric's number format so a row's line count does not change when only the digit width of its metric values changes within each format's reserved range; values beyond a reserved range MAY only increase a row's line count, never toggle it back and forth.
+
+#### Scenario: Stable work-panel row height
+
+- **GIVEN** a running subagent row whose tokens, context percent, speed and elapsed values cross format boundaries such as 99→100 tok/s and 9s→10s
+- **WHEN** the work panel and the sidebar render it at any width
+- **THEN** while every value stays within its reserved range the row keeps the same number of lines and rows below it do not move

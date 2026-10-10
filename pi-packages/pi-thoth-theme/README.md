@@ -68,13 +68,15 @@ dual publication. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together
 and `/reload`; mixed old/new versions lose subagent cost display. The persisted
 usage checkpoint custom-entry type remains `thoth:subagent-usage`, so checkpoint
 restore and replay-duplicate suppression are unchanged. See
-[pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels-v1).
+[pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels).
 
 ## Render KIT
 
 Provides the Render KIT v1 contract defined by `@thoth-agents/pi-core` for
 first-party tools, custom messages and above-editor widgets. The kit shares this
 package's frames, theme roles, collapse hints and working/elapsed indicators.
+The Render KIT v1 semantic icon table includes `elapsed` for work-panel metrics,
+with nerd-clock, Unicode and ASCII alternatives.
 Producers discover it at render time, so extension load order does not matter;
 they do not depend on this package and keep native Pi rendering when it is absent.
 
@@ -121,7 +123,8 @@ are API-equivalent catalog estimates, not subscription charges.
 `true`. It frames the native editor in a rounded `muted` (sand) box with side borders,
 a dim `type or / for commands` placeholder, and top-left ready or native working
 status (including elapsed seconds). Git branch and working directory appear on
-the top border; model, thinking effort and context usage appear on the bottom.
+the top border, using pi-core's root-exported `formatCwd` for home abbreviation
+(shared with the sidebar); model, thinking effort and context usage appear on the bottom.
 Native scroll indicators are preserved. The status line always stays in its
 separate footer row below the box. Narrow widths use the native editor geometry.
 Disable `inputBox` to keep the native editor and the same footer.

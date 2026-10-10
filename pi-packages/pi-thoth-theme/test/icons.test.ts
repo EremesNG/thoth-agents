@@ -12,6 +12,7 @@ describe('icon table', () => {
     ['effort', 'f09d1', 'o'],
     ['context', 'f2db', 'ctx'],
     ['cost', 'f155', '$'],
+    ['elapsed', 'f017', 'elapsed'],
     ['tokensIn', 'f062', '^'],
     ['tokensOut', 'f063', 'v'],
     ['cache', 'f01bc', 'cache'],
@@ -59,6 +60,7 @@ describe('icon table', () => {
 
   it('provides native Unicode glyphs, statuses and motion frames', () => {
     expect(icon('branch', 'unicode')).toBe('⑂');
+    expect(icon('elapsed', 'unicode')).toBe('◷');
     expect(icon('agent', 'unicode')).toBe('⚙');
     expect(icon('warning', 'unicode')).toBe('⚠');
     expect(icon('selectionSelected', 'unicode')).toBe('●');

@@ -252,9 +252,42 @@ it.each([
   }
 });
 
-it('does not absorb an empty panel into the sidebar body', () => {
+it('absorbs an empty single-line panel displayed in the sidebar', () => {
   releases.push(source('todos', 'Todos', []));
-  expect(sidebar([{ id: 'todos', visible: true }]).sourceIds()).toEqual([]);
+  const panel = sidebar([{ id: 'todos', visible: true }]);
+  expect(lines(panel.render(44))).toHaveLength(1);
+  expect(panel.sourceIds()).toEqual(['todos']);
+});
+
+it('absorbs a nonempty panel collapsed to its title by the height budget', () => {
+  releases.push(source('subagents', 'Agents', [agentRow('a', 'one')]));
+  const panel = sidebar([{ id: 'subagents', visible: true }], {
+    height: () => 1,
+  });
+  const rendered = lines(panel.render(44));
+  expect(rendered).toHaveLength(1);
+  expect(rendered[0]).toContain('AGENTS');
+  expect(rendered[0]).not.toContain('one');
+  expect(panel.sourceIds()).toEqual(['subagents']);
+});
+
+it('does not absorb a panel excluded by the bounded title prefix', () => {
+  releases.push(
+    source('subagents', 'Agents', []),
+    source('background-tasks', 'Background', []),
+  );
+  const panel = sidebar(
+    [
+      { id: 'subagents', visible: true },
+      { id: 'background-tasks', visible: true },
+    ],
+    { height: () => 1 },
+  );
+  const rendered = lines(panel.render(44));
+  expect(rendered).toHaveLength(1);
+  expect(rendered[0]).toContain('AGENTS');
+  expect(rendered.join('\n')).not.toContain('BACKGROUND');
+  expect(panel.sourceIds()).toEqual(['subagents']);
 });
 
 it('refreshes finished provider metrics on late kit registration, icon changes and withdrawal', () => {

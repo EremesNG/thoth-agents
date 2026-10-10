@@ -17,11 +17,13 @@ import {
   SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
+  subscribeUIPreferences,
   WORK_PANEL_VERSION,
 } from '@thoth-agents/pi-core';
 import { afterEach, expect, it, vi } from 'vitest';
 import { uiSession } from '../../pi-core/test/work-panel-fixture.js';
 import sidebar from '../src/index.js';
+import { agentRow, source as historySource, strip } from './fixture.js';
 import { fullscreen, inline } from './layout/fixture.js';
 
 const cleanup: Array<() => void> = [];
@@ -232,6 +234,62 @@ it('declares only displayed source panels, releases on hide/narrow/dispose, pers
   );
   expect(app.listeners.get(SUBAGENTS_USAGE_CHANNEL.name)?.size).toBe(0);
   expect(app.input('\x1b[D')).toBeUndefined();
+});
+
+it('absorbs finished-only Agents and Background history after resume without repeated registry updates', async () => {
+  const app = setup();
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  const endedAt = Date.now() - 60 * 60 * 1000;
+  cleanup.push(
+    historySource(
+      'subagents',
+      'Agents',
+      [{ ...agentRow('agent', 'old agent', 'completed'), endedAt }],
+      { running: 0, completed: 136, failed: 3, total: 139 },
+    ),
+    historySource(
+      'background-tasks',
+      'Background',
+      [{ ...agentRow('background', 'old build', 'completed'), endedAt }],
+      { running: 0, completed: 3, failed: 0, total: 3 },
+    ),
+  );
+  const work = uiSession(app.tui as unknown as TuiMainScreen);
+  cleanup.push(await ensureWorkPanel(work.ctx));
+  const updates = vi.fn();
+  cleanup.push(subscribeUIPreferences(updates));
+
+  app.handlers.get('session_start')?.({ reason: 'resume' }, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  const screen = strip(app.screen());
+  expect(screen).toContain('AGENTS');
+  expect(screen).toContain('BACKGROUND');
+  expect(screen).toContain('✓136 ✗3');
+  expect(screen).not.toContain('old agent');
+  expect(screen).not.toContain('old build');
+  expect(getUIPreferences().absorbedWorkPanelSources).toEqual([
+    'subagents',
+    'background-tasks',
+  ]);
+  expect(work.render()).toEqual([]);
+
+  updates.mockClear();
+  for (let i = 0; i < 3; i++) {
+    app.observe();
+    app.tui.renderNow(true);
+    expect(work.render()).toEqual([]);
+  }
+  expect(updates).not.toHaveBeenCalled();
+  app.commands.get('sidebar').handler('panels hide subagents', app.ctx);
+  expect(updates).toHaveBeenCalledTimes(1);
+  expect(getUIPreferences().absorbedWorkPanelSources).toEqual([
+    'background-tasks',
+  ]);
+  expect(work.render().join('\n')).toContain('Agents');
+  expect(work.render().join('\n')).not.toContain('Background');
+  app.observe();
+  expect(updates).toHaveBeenCalledTimes(1);
 });
 
 it.each([
@@ -481,6 +539,9 @@ it('discovers sources after activation and returns absorbed sources when height 
   source({ on() {} });
   expect(getUIPreferences().absorbedWorkPanelSources).toContain('test-source');
   app.terminal.rows = 3;
+  app.observe();
+  expect(getUIPreferences().absorbedWorkPanelSources).toContain('test-source');
+  app.terminal.rows = 2;
   app.observe();
   expect(getUIPreferences().absorbedWorkPanelSources).not.toContain(
     'test-source',

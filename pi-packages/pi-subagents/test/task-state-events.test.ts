@@ -652,3 +652,47 @@ describe('subagent task-state publication', () => {
     }
   });
 });
+
+it.each([
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / SIDEBAR UNIT B (cost)',
+    'pi-sidebar-ux · SIDEBAR UNIT B (cost)',
+  ],
+  [
+    'change: pi-sidebar-ux / phase: converge / Verify curves',
+    'pi-sidebar-ux · Verify curves',
+  ],
+  ['PHASE: verify / CHANGE: pi-sidebar-ux', 'pi-sidebar-ux'],
+  ['PHASE: verify', ''],
+  ['CHANGE: pi-sidebar-ux / PHASE: verify', 'pi-sidebar-ux'],
+  ['PHASE: implement / Fix the plot', 'Fix the plot'],
+  ['CHANGE: pi-sidebar-ux / Fix the plot', 'pi-sidebar-ux · Fix the plot'],
+  [
+    'Keep PHASE: implement / in task text',
+    'Keep PHASE: implement / in task text',
+  ],
+])('derives envelope-free live and persisted labels from %s', (raw, expected) => {
+  const { events, snapshots } = collectSnapshots();
+  const source = taskSource([
+    task({ id: 'live', task: `## delegated task\n${raw}` }),
+  ]);
+  source.listSessionHistoryByCost.mockReturnValue([
+    task({ id: 'old', task: raw }),
+    task({ id: 'named', task: raw, display_name: 'Explicit' }),
+  ]);
+  const publisher = new SubagentsStatePublisher(events, source);
+  try {
+    publisher.startSession('/workspace', 'parent-a');
+    expect(snapshots[0].data.tasks[0].displayName).toBe(expected || 'worker');
+    expect(snapshots[0].data.history.map((entry) => entry.displayName)).toEqual(
+      [expected || 'worker', 'Explicit'],
+    );
+    expect(
+      formatTaskSummary(
+        source.listActiveSessionTasks('/workspace', 'parent-a')[0],
+      ),
+    ).toBe(expected);
+  } finally {
+    publisher.dispose();
+  }
+});

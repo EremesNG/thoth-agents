@@ -21,6 +21,14 @@ const cost = (
     .renderAt(width, height)
     .map(strip);
 
+it('falls back to the bare command when the normal footer decoration does not fit', () => {
+  const rows = cost(tracker([task('a', 1)]), 24);
+  expect(rows.at(-2)).toContain('/sidebar cost');
+  expect(rows.at(-2)).not.toContain('curves');
+  expect(rows.at(-2)).not.toContain('…');
+  for (const row of rows) expect(panelVisibleWidth(row)).toBe(24);
+});
+
 it('ranks live and persisted tasks by cost, deduplicating by id with live data winning', () => {
   const data = tracker(
     [
@@ -185,4 +193,13 @@ it('uses startedAt over createdAt when a queued task starts, even without a cost
     2000,
   );
   expect(data.ranked()[0].start).toBe(1000);
+});
+
+it('shows only five bars while retaining ten tasks for the curves overlay', () => {
+  const data = tracker(
+    Array.from({ length: 12 }, (_, i) => task(`t${i}`, i + 1)),
+  );
+  const rows = cost(data);
+  expect(rows.filter((row) => row.includes('█'))).toHaveLength(5);
+  expect(data.ranked()).toHaveLength(10);
 });

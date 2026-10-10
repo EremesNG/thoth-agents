@@ -32,21 +32,21 @@ export function curveSeries(
 ): CurveSeries[] {
   return tasks.map((task) => {
     const duration = Math.max(0, (task.end ?? now) - task.start);
-    const first = task.samples[0];
-    const points: CurvePoint[] = [];
-    if (first) {
-      if (first.at > task.start) points.push({ at: 0, cost: 0 });
-      points.push(
-        ...task.samples.map((sample) => ({
-          at: Math.max(0, Math.min(duration, sample.at - task.start)),
-          cost: sample.cost,
-        })),
-      );
-      if (points[points.length - 1].at < duration)
-        points.push({ at: duration, cost: task.cost });
-    } else {
-      points.push({ at: 0, cost: 0 }, { at: duration, cost: task.cost });
+    // State samples are cumulative levels at absolute Unix-ms timestamps,
+    // not per-turn deltas. Normalize defensively without inventing extra spend.
+    let last: CurvePoint = { at: 0, cost: 0 };
+    const points: CurvePoint[] = [last];
+    for (const sample of [...task.samples].sort((a, b) => a.at - b.at)) {
+      if (!Number.isFinite(sample.at) || !Number.isFinite(sample.cost))
+        continue;
+      const at = Math.max(0, Math.min(duration, sample.at - task.start));
+      const cost = Math.max(last.cost, Math.min(task.cost, sample.cost));
+      if (at === last.at && cost === last.cost) continue;
+      last = { at, cost };
+      points.push(last);
     }
+    if (last.at !== duration || last.cost !== task.cost)
+      points.push({ at: duration, cost: task.cost });
     return { label: task.label, cost: task.cost, points };
   });
 }
@@ -65,22 +65,42 @@ const PALETTE: readonly PanelRole[] = [
 ];
 
 interface Cell {
-  glyph: string;
+  connections: number;
   series: number;
+  end?: boolean;
 }
 
-function valueAt(points: readonly CurvePoint[], at: number): number | null {
-  const last = points[points.length - 1];
-  if (at < points[0].at || at > last.at) return null;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1];
-    const b = points[i];
-    if (at <= b.at)
-      return b.at === a.at
-        ? b.cost
-        : a.cost + ((b.cost - a.cost) * (at - a.at)) / (b.at - a.at);
+const LEFT = 1;
+const RIGHT = 2;
+const UP = 4;
+const DOWN = 8;
+
+function lineGlyph(connections: number, ascii: boolean): string {
+  if (ascii) {
+    if (connections & 3 && connections & 12) return '+';
+    return connections & 12 ? '|' : '-';
   }
-  return last.cost;
+  return (
+    (
+      {
+        1: '─',
+        2: '─',
+        3: '─',
+        4: '│',
+        8: '│',
+        12: '│',
+        5: '╯',
+        6: '└',
+        9: '┐',
+        10: '╭',
+        7: '┴',
+        11: '┬',
+        13: '┤',
+        14: '├',
+        15: '┼',
+      } as Record<number, string>
+    )[connections] ?? '─'
+  );
 }
 
 function duration(ms: number): string {
@@ -111,48 +131,68 @@ export function renderCurvePlot(
     0,
   );
   const yMax = Math.max(...series.map((s) => s.cost)) || 1;
-  const grid: (Cell | undefined)[][] = Array.from(
-    { length: plotH },
-    () => new Array<Cell | undefined>(plotW),
+  const grid: (Cell | undefined)[][] = Array.from({ length: plotH }, () =>
+    new Array<Cell | undefined>(plotW).fill(undefined),
   );
   const rowOf = (value: number) =>
     plotH - 1 - Math.round((value / yMax) * (plotH - 1));
   series.forEach((line, index) => {
-    let previous: number | undefined;
-    let lastColumn = -1;
-    for (let col = 0; col < plotW; col++) {
-      const value = valueAt(line.points, (max * col) / Math.max(1, plotW - 1));
-      if (value === null) {
-        previous = undefined;
-        continue;
+    const put = (
+      row: number,
+      col: number,
+      connections: number,
+      end = false,
+    ) => {
+      const cell = grid[row][col];
+      // Union connectivity at crossings; never erase another curve's segments.
+      if (cell) {
+        cell.connections |= connections;
+        cell.end ||= end;
+      } else grid[row][col] = { connections, series: index, end };
+    };
+    const connect = (x: number, y: number, nx: number, ny: number) => {
+      const direction = nx > x ? RIGHT : ny < y ? UP : DOWN;
+      const opposite =
+        direction === RIGHT ? LEFT : direction === UP ? DOWN : UP;
+      put(y, x, direction);
+      put(ny, nx, opposite);
+    };
+    const columnOf = (at: number) =>
+      Math.round((at / (max || 1)) * (plotW - 1));
+    let x = columnOf(line.points[0].at);
+    let y = rowOf(line.points[0].cost);
+    for (const point of line.points.slice(1)) {
+      const nx = columnOf(point.at);
+      const ny = rowOf(point.cost);
+      const fromX = x;
+      const fromY = y;
+      // Rasterize each segment including its exact endpoint. Vertical edges
+      // connect consecutive levels even when duration is less than one cell.
+      for (let col = x; col <= nx; col++) {
+        if (col > x) {
+          connect(x, y, col, y);
+          x = col;
+        }
+        const target =
+          nx === fromX
+            ? ny
+            : Math.round(fromY + ((ny - fromY) * (col - fromX)) / (nx - fromX));
+        while (y !== target) {
+          const nextY = y + (target < y ? -1 : 1);
+          connect(x, y, x, nextY);
+          y = nextY;
+        }
       }
-      const row = rowOf(value);
-      const put = (r: number, glyph: string) => {
-        grid[r][col] = { glyph, series: index };
-      };
-      if (previous === undefined || previous === row) put(row, g.h);
-      else {
-        const rising = row < previous;
-        put(previous, rising ? g.up : g.down);
-        for (
-          let r = Math.min(row, previous) + 1;
-          r < Math.max(row, previous);
-          r++
-        )
-          put(r, g.v);
-        put(row, rising ? g.rise : g.fall);
-      }
-      previous = row;
-      lastColumn = col;
     }
-    if (lastColumn >= 0) {
-      const row = rowOf(line.cost);
-      grid[row][lastColumn] = { glyph: g.end, series: index };
-    }
+    put(y, x, 0, true);
   });
   const colored = (cell: Cell | undefined) =>
     cell
-      ? panelFg(theme, PALETTE[cell.series % PALETTE.length], cell.glyph)
+      ? panelFg(
+          theme,
+          PALETTE[cell.series % PALETTE.length],
+          cell.end ? g.end : lineGlyph(cell.connections, ascii),
+        )
       : ' ';
   const rows = grid.map((cells, r) => {
     const label = r === 0 ? top : r === plotH - 1 ? bottom : '';

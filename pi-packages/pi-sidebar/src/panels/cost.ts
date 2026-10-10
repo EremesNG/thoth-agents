@@ -12,6 +12,7 @@ import { isAsciiMode, labelColumn } from './chrome.js';
 import { clean } from './rows.js';
 
 export interface CostSample {
+  /** Absolute Unix ms of the state snapshot (not task-relative). */
   at: number;
   cost: number;
 }
@@ -27,7 +28,7 @@ export interface CostTask {
   samples: CostSample[];
 }
 
-/** Bars show the most expensive tasks only. */
+/** Curves retain ten tasks; the sidebar displays the first five. */
 export const COST_TOP = 10;
 const MAX_TASKS = 200;
 const MAX_SAMPLES = 120;

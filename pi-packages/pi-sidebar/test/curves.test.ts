@@ -6,7 +6,15 @@ import {
   renderCurvePlot,
   renderCurvesView,
 } from '../src/curves.js';
-import { snapshot, strip, task, theme, tracker, useMode } from './fixture.js';
+import {
+  productionCostTasks,
+  snapshot,
+  strip,
+  task,
+  theme,
+  tracker,
+  useMode,
+} from './fixture.js';
 
 const releases: Array<() => void> = [];
 afterEach(() => {
@@ -50,6 +58,7 @@ it('plots samples against each task start, with the axis spanning the longest ta
     { at: 5000, cost: 2 },
   ]);
   expect(series[1].points).toEqual([
+    { at: 0, cost: 0 },
     { at: 0, cost: 0.1 },
     { at: 1000, cost: 0.5 },
     { at: 2000, cost: 1 },
@@ -234,4 +243,99 @@ it.each([
   expect(renderCurvePlot(series, 30, 8, theme).map(strip).at(-1)).toContain(
     label,
   );
+});
+
+it('preserves empty plot cells for production-shaped history curves', () => {
+  const start = 1791600000000;
+  const data = tracker(
+    [],
+    Array.from({ length: 10 }, (_, i) =>
+      task(`persisted-${i}`, 4.62 - i * 0.25, {
+        startedAt: start + i * 10000,
+        endedAt: start + i * 10000 + (i + 1) * 120000,
+      }),
+    ),
+  );
+  const plot = renderCurvePlot(curveSeries(data.ranked()), 114, 16, theme).map(
+    strip,
+  );
+  // Blank x coordinates must occupy cells, not collapse toward the y axis.
+  expect(plot.slice(0, -2).every((row) => row.length === 114)).toBe(true);
+  expect(plot[0].indexOf('●')).toBe(17);
+  expect(plot[0].slice(6, 15)).toBe(' '.repeat(9));
+});
+
+it('normalizes unordered absolute cumulative samples, preserving origin and final cost', () => {
+  expect(
+    curveSeries([
+      {
+        id: 'a',
+        label: 'A',
+        start: 1791600000000,
+        end: 1791600003000,
+        cost: 4,
+        samples: [
+          { at: 1791600002000, cost: 3 },
+          { at: 1791600000000, cost: 1 },
+          { at: 1791600001000, cost: 2 },
+          { at: 1791600002500, cost: 2.5 },
+        ],
+      },
+    ])[0].points,
+  ).toEqual([
+    { at: 0, cost: 0 },
+    { at: 0, cost: 1 },
+    { at: 1000, cost: 2 },
+    { at: 2000, cost: 3 },
+    { at: 2500, cost: 3 },
+    { at: 3000, cost: 4 },
+  ]);
+});
+
+it('connects short task endpoints and retains both paths at intersections', () => {
+  const plot = renderCurvePlot(
+    [
+      {
+        label: 'short',
+        cost: 2,
+        points: [
+          { at: 0, cost: 0 },
+          { at: 1, cost: 2 },
+        ],
+      },
+      {
+        label: 'long',
+        cost: 2,
+        points: [
+          { at: 0, cost: 0 },
+          { at: 100, cost: 2 },
+        ],
+      },
+    ],
+    16,
+    8,
+    theme,
+  ).map(strip);
+  // A sub-cell duration still gets a continuous vertical path to its end.
+  expect(plot.slice(0, 6).every((row) => row[6] !== ' ')).toBe(true);
+  expect(plot[5][6]).toBe('└'); // shared origin retains up and right connections
+});
+
+it('renders each production-shaped task as a connected monotonic origin-to-end path', () => {
+  const series = curveSeries(productionCostTasks());
+  for (const line of series) {
+    const plot = renderCurvePlot([line], 46, 12, theme).map(strip).slice(0, 10);
+    // Every elapsed column has a connected cell; rising y never goes backward.
+    let previous = 9;
+    for (let col = 6; col < 46; col++) {
+      const occupied = plot
+        .map((row, i) => (row[col] !== ' ' ? i : -1))
+        .filter((i) => i >= 0);
+      expect(occupied.length).toBeGreaterThan(0);
+      expect(Math.max(...occupied)).toBe(previous);
+      previous = Math.min(...occupied);
+    }
+    expect(plot[9][6]).not.toBe(' ');
+    expect(plot[0][45]).toBe('●');
+  }
 });

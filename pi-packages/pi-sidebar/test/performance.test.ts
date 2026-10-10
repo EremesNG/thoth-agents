@@ -74,7 +74,7 @@ it('shares one bounded plan per frame and never scans session entries on render'
   const first = panel.render(44);
   expect(
     vi.mocked(renderWorkPanelRow).mock.calls.map(([row]) => row.id),
-  ).toEqual(['0', '1', '2']);
+  ).toEqual(['0', '2', '3']);
   const renderCount = vi.mocked(renderWorkPanelRow).mock.calls.length;
   const baseline = entries.mock.calls.length;
   for (let i = 0; i < 20; i++) {

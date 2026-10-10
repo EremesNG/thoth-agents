@@ -83,16 +83,21 @@ are never rearranged; Cost is appended when missing.
   truncates with an ellipsis. The footer shows the detail command
   (`/subagents ▸ detail`, `/todos ▸ detail`, `/bg ▸ detail`, `>` in ASCII). An
   empty panel is a single title line that includes the command. Sources retain
-  active/pending rows plus at most five terminal rows (newest first when
-  timestamped). Only displayed sources are declared absorbed; their work-panel
+  all active/pending rows plus at most three finished rows, failures first and
+  newest first within each status. Finished rows use the host widget's shared
+  linger windows (10 s done / 30 s failed), require a finite completion timestamp,
+  and honor explicit expiry. Hidden history is not counted in `+N more`; header
+  counts remain provider totals and full history remains in `/subagents`, `/bg`
+  and `/todos`. Only displayed sources are declared absorbed; their work-panel
   sections return when hidden, too small, too narrow or disposed.
-- **Cost**: horizontal bars for the ten most expensive subagent tasks of the
+- **Cost**: horizontal bars for the five most expensive subagent tasks of the
   session, live and persisted, labeled by task display name (or a short name
-  derived from the Agents row's task summary) and scaled to the
+  derived from the Agents row's task summary, with leading PHASE/CHANGE dispatch
+  envelopes stripped and the change name retained) and scaled to the
   largest with eighth blocks (`#` in ASCII). The header shows the session
   subagent total and the footer `/sidebar cost ▸ curves`. Data comes from the
   `thoth:subagents:state` v2 snapshots (including up to 100 cost-ranked
-  persisted summaries in `history`); the curves view plots cost samples recorded
+  persisted summaries in `history`); the curves view retains the top ten and plots cumulative cost samples recorded
   from them during this session against elapsed time since each task's start,
   with a duration axis from zero to the longest task duration (running tasks use
   the current time). Tasks without samples draw a straight segment from `(0,0)`
@@ -100,13 +105,22 @@ are never rearranged; Cost is appended when missing.
 
 ### Degradation
 
-Panels fill in configured order until the height runs out. A work or Cost panel
-that does not fit shows its first rows and `+N more`; footers drop before rows;
-a panel that cannot show its title and one row becomes a title-only line, and
-panels after the last line are omitted. Below 24 columns the sidebar shows only
+Every visible panel first receives its title plus up to two content lines and
+its bottom border (or its full size if smaller); remaining height grows panels
+in configured order, whole rows at a time. Metric rows are indivisible: when a
+row needs more than the minimum body, `+N more` occupies that body until enough
+height is available. A work or Cost panel that does not fit shows its first rows
+and `+N more`, with its detail command right-aligned on that line when both fit.
+Otherwise the command is omitted; standalone footers drop before rows.
+Panels whose minimum cannot fit retain their title and summary. Gaps drop first
+when necessary to keep every title; only when height is smaller than the number
+of titles is an unavoidable bounded prefix shown. Measured height equals actual
+rendered height. Below 24 columns the sidebar shows only
 `widen: /sidebar resize`. Rendering is event-driven and cached: no session
-traversal per render, plans are keyed by source summaries, workspace, cost data
-revision and the shared animation frame.
+traversal per render. Retention expiry uses the existing shared 100 ms cadence
+only while a lingering row exists, without another timer or provider traversal;
+plan keys include retained rows, source summaries, workspace, cost revision and
+animation frame.
 
 ## Preferences
 

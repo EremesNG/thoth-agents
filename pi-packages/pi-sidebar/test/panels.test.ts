@@ -103,7 +103,7 @@ it('stacks configured panels in order, uses fresh discovered rows and kit, bound
   const short = panel.renderAt(44, 6).join('\n');
   expect(short).toContain('TASKS');
   expect(short).toContain('WORKSPACE');
-  expect(short).not.toContain('SESSION');
+  expect(short).toContain('SESSION');
   withdrawRenderKit(token);
   expect(panel.render(44).join('\n')).toContain('SESSION');
 });
@@ -141,7 +141,7 @@ function sourcePanel(
   });
 }
 
-it('keeps live rows and only the five newest terminal items, independently of provider caps', () => {
+it('keeps live rows and only three recent terminal items, failed-first, independently of provider caps', () => {
   const panel = sourcePanel([
     { id: 'live', primary: 'live item', state: 'running', status: 'running' },
     ...Array.from({ length: 8 }, (_, i) => ({
@@ -149,7 +149,7 @@ it('keeps live rows and only the five newest terminal items, independently of pr
       primary: `finished ${i}`,
       state: (i % 2 ? 'failed' : 'done') as 'failed' | 'done',
       status: i % 2 ? 'failed' : 'completed',
-      endedAt: i * 1000,
+      endedAt: Date.now() - (7 - i) * 1000,
     })),
     { id: 'pending', primary: 'pending item', status: 'pending' },
     { id: 'summary', primary: '+99 stale summary', summary: true },
@@ -161,17 +161,16 @@ it('keeps live rows and only the five newest terminal items, independently of pr
   expect(text.indexOf('pending item')).toBeLessThan(text.indexOf('finished 7'));
   expect(text).not.toContain('finished 2');
   expect(text).not.toContain('stale summary');
-  for (const i of [7, 6, 5, 4])
-    expect(text.indexOf(`finished ${i}`)).toBeLessThan(
-      text.indexOf(`finished ${i - 1}`),
-    );
+  expect(text.indexOf('finished 7')).toBeLessThan(text.indexOf('finished 5'));
+  expect(text.indexOf('finished 5')).toBeLessThan(text.indexOf('finished 3'));
+  for (const i of [0, 1, 2, 4, 6]) expect(text).not.toContain(`finished ${i}`);
   expect(text).not.toContain('+3 more'); // discarded history is not height overflow
 });
 
 it.each([
   {
     sequence: ['finished-A', 'pending-B', 'finished-C', 'running-D'],
-    retained: ['finished-A', 'pending-B', 'finished-C', 'running-D'],
+    retained: ['pending-B', 'running-D'],
   },
   {
     sequence: [
@@ -185,17 +184,9 @@ it.each([
       'finished-H',
       'finished-I',
     ],
-    retained: [
-      'pending-B',
-      'running-D',
-      'finished-E',
-      'finished-F',
-      'finished-G',
-      'finished-H',
-      'finished-I',
-    ],
+    retained: ['pending-B', 'running-D'],
   },
-])('keeps the full untimestamped provider sequence, retaining the last five finished rows: $sequence', ({
+])('keeps only active rows when finished timestamps are unavailable: $sequence', ({
   sequence,
   retained,
 }) => {
@@ -230,6 +221,13 @@ it.each([
     primary: 'build',
     status,
     statusTone: statusTone as any,
+    state:
+      status === 'running'
+        ? ('running' as const)
+        : status === 'failed' || status === 'timed_out'
+          ? ('failed' as const)
+          : ('done' as const),
+    endedAt: 0,
     identity: [{ text: 'build', role: 'primary' as const }],
     metrics: [{ segments: [{ text: 'elapsed 12s', role: 'meta' as const }] }],
   };
@@ -269,6 +267,7 @@ it('uses the task-list diamond and dim strikethrough, including with a render ki
       {
         id: 'done',
         primary: 'done todo',
+        endedAt: Date.now(),
         status: 'completed',
         segments: [{ text: 'done todo', role: 'completed' }],
       },
@@ -286,7 +285,7 @@ it('counts hidden retained items, not metric continuation lines or discarded his
       id: String(i),
       primary: `task ${i}`,
       status: 'completed',
-      endedAt: i,
+      endedAt: Date.now() - (7 - i),
       identity: [{ text: `task ${i}`, role: 'primary' }],
       metrics: [
         {
@@ -297,7 +296,7 @@ it('counts hidden retained items, not metric continuation lines or discarded his
   );
   const rendered = panel.renderAt(28, 6).join('\n');
   expect(rendered).toContain('task 7');
-  expect(rendered).toContain('+4 more');
+  expect(rendered).toContain('+2 more');
   expect(rendered).not.toContain('+7 more');
 });
 

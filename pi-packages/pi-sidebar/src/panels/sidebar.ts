@@ -16,6 +16,7 @@ import {
 import {
   createWorkPanelMetricGrid,
   panelFg,
+  panelLingerEndsAt,
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
@@ -41,41 +42,54 @@ import {
 } from './rows.js';
 import type { WorkspaceSnapshot } from './workspace.js';
 
-/** Keep all active/pending work and at most five terminal items per source. */
-function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
-  const items = rows.filter((row) => !row.summary);
-  const terminal = (row: WorkPanelRow) =>
-    row.state === 'done' ||
-    row.state === 'failed' ||
-    [
-      'completed',
-      'succeeded',
-      'failed',
-      'timed_out',
-      'cancelled',
-      'interrupted',
-      'deleted',
-    ].includes(row.status ?? '') ||
-    ['completed', 'failed', 'cancelled', 'interrupted', 'deleted'].includes(
-      row.statusGlyph ?? '',
-    );
-  const finished = items.filter(terminal);
-  if (!finished.some((row) => Number.isFinite(row.endedAt))) {
-    // No recency contract: earlier provider positions are discarded first.
-    // Keep the last five finished rows without regrouping the retained sequence.
-    let excess = Math.max(0, finished.length - 5);
-    return items.filter((row) => !terminal(row) || excess-- <= 0);
+/** Shared host linger windows, then a failed-first three-finished-row cap. */
+function retainedRows(rows: WorkPanelRow[], now: number): WorkPanelRow[] {
+  const active: WorkPanelRow[] = [];
+  const finished: WorkPanelRow[] = [];
+  for (const row of rows) {
+    if (row.summary) continue;
+    const status = workPanelRenderStatus(row);
+    const terminal =
+      !['queued', 'stopping', 'pending'].includes(row.status ?? '') &&
+      (row.state === 'done' ||
+        row.state === 'failed' ||
+        ['completed', 'failed', 'cancelled', 'interrupted', 'deleted'].includes(
+          status,
+        ));
+    if (!terminal) active.push(row);
+    else if (
+      (panelLingerEndsAt(row) ?? 0) > now &&
+      (row.expiresAt === undefined || row.expiresAt > now)
+    )
+      finished.push(row);
   }
   return [
-    ...items.filter((row) => !terminal(row)),
+    ...active,
     ...finished
       .sort(
         (a, b) =>
-          (Number.isFinite(b.endedAt) ? (b.endedAt ?? 0) : 0) -
-          (Number.isFinite(a.endedAt) ? (a.endedAt ?? 0) : 0),
+          Number(
+            b.state === 'failed' ||
+              workPanelRenderStatus(b) === 'failed' ||
+              b.status === 'timed_out',
+          ) -
+            Number(
+              a.state === 'failed' ||
+                workPanelRenderStatus(a) === 'failed' ||
+                a.status === 'timed_out',
+            ) || (b.endedAt ?? 0) - (a.endedAt ?? 0),
       )
-      .slice(0, 5),
+      .slice(0, 3),
   ];
+}
+
+function nextExpiry(rows: readonly WorkPanelRow[]): number {
+  return rows.reduce((next, row) => {
+    const linger = panelLingerEndsAt(row);
+    return linger === undefined
+      ? next
+      : Math.min(next, linger, row.expiresAt ?? Infinity);
+  }, Infinity);
 }
 
 /** Detail command shown in each work panel footer and in the empty title line. */
@@ -139,6 +153,7 @@ interface PanelData {
   /** Show `+N more` when blocks are cut by height. */
   more: boolean;
   footer?: string;
+  bareFooter?: string;
   /** Title-only line regardless of height. */
   empty: boolean;
   animated?: boolean[];
@@ -187,7 +202,11 @@ function footerRow(
   theme: RenderKitTheme,
 ): string {
   const arrow = isAsciiMode() ? '>' : '▸';
-  const text = truncatePanelText(`${command} ${arrow} ${label}`, width - 4);
+  const full = label ? `${command} ${arrow} ${label}` : command;
+  const text = truncatePanelText(
+    panelVisibleWidth(full) <= width - 4 ? full : command,
+    width - 4,
+  );
   return (
     ' '.repeat(Math.max(0, width - 4 - panelVisibleWidth(text))) +
     panelFg(theme, 'muted', text)
@@ -245,6 +264,7 @@ export class SidebarPanels implements Component {
   private icons = iconSignature();
   private revision = 0;
   private animated = false;
+  private panelGap = 1;
   private cost: ReturnType<typeof computeSessionCost>;
   private usage: ReturnType<ExtensionContext['getContextUsage']>;
   private sessionDirty = true;
@@ -255,6 +275,8 @@ export class SidebarPanels implements Component {
       revision: number;
       frame: number;
       items: WorkPanelRow[];
+      raw: WorkPanelRow[];
+      expiresAt: number;
       grid: WorkPanelMetricGrid;
       animated: boolean;
     }
@@ -346,7 +368,11 @@ export class SidebarPanels implements Component {
       } else if (preference.id === 'cost') {
         const tracker = options.cost?.();
         if (!tracker) continue;
-        const rows = renderCostRows(tracker.ranked(), width, options.theme);
+        const rows = renderCostRows(
+          tracker.ranked().slice(0, 5),
+          width,
+          options.theme,
+        );
         panels.push(
           staticPanel('cost', 'Cost', rows, {
             more: true,
@@ -355,6 +381,7 @@ export class SidebarPanels implements Component {
               ? formatUsd(options.subagentCost() || tracker.total())
               : COST_COMMAND,
             footer: footerRow(COST_COMMAND, 'curves', width, options.theme),
+            bareFooter: footerRow(COST_COMMAND, '', width, options.theme),
           }),
         );
       } else {
@@ -378,16 +405,18 @@ export class SidebarPanels implements Component {
       snapshot.revision !== source.revision ||
       (snapshot.animated && snapshot.frame !== frame)
     ) {
+      const raw = getWorkPanelSourceRows(source.id, {
+        // Exact retention/overflow counts require the complete snapshot.
+        maxRows: Number.MAX_SAFE_INTEGER,
+        respectRowCap: false,
+      });
+      const items = retainedRows(raw, now);
       snapshot = {
         revision: source.revision,
         frame,
-        items: retainedRows(
-          getWorkPanelSourceRows(source.id, {
-            // Exact retention/overflow counts require the complete snapshot.
-            maxRows: Number.MAX_SAFE_INTEGER,
-            respectRowCap: false,
-          }),
-        ),
+        raw,
+        items,
+        expiresAt: nextExpiry(items),
         grid: [],
         animated: false,
       };
@@ -409,7 +438,9 @@ export class SidebarPanels implements Component {
       // An empty panel is one title line that carries the command.
       summary:
         items.length === 0 && command
-          ? command
+          ? [sourceSummary(source, options.theme), command]
+              .filter(Boolean)
+              .join(' ')
           : sourceSummary(source, options.theme),
       costs: items.map((row) =>
         workPanelRowLineCount(row, inner, panelVisibleWidth, metricOptions),
@@ -427,6 +458,9 @@ export class SidebarPanels implements Component {
       more: true,
       footer: command
         ? footerRow(command, 'detail', inner + 4, options.theme)
+        : undefined,
+      bareFooter: command
+        ? footerRow(command, '', inner + 4, options.theme)
         : undefined,
       empty: items.length === 0,
       animated: items.map(
@@ -456,7 +490,20 @@ export class SidebarPanels implements Component {
       this.snapshots.clear();
       this.invalidate();
     }
-    const frame = Math.floor(Date.now() / WORK_PANEL_ANIMATION_INTERVAL_MS);
+    const now = Date.now();
+    // Prune cached rows on the existing cadence, without re-reading providers.
+    for (const snapshot of this.snapshots.values()) {
+      if (snapshot.expiresAt <= now) {
+        snapshot.items = retainedRows(snapshot.raw, now);
+        snapshot.expiresAt = nextExpiry(snapshot.items);
+        snapshot.grid = createWorkPanelMetricGrid(
+          snapshot.items,
+          panelVisibleWidth,
+        );
+        this.invalidate();
+      }
+    }
+    const frame = Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS);
     // Animation state is part of the key, so the key is re-read after planning.
     const makeKey = () =>
       JSON.stringify([
@@ -471,7 +518,11 @@ export class SidebarPanels implements Component {
         options.resizeWidth?.(),
         this.sessionView(),
         icons,
-        [...this.snapshots].map(([id, snapshot]) => [id, snapshot.grid]),
+        [...this.snapshots].map(([id, snapshot]) => [
+          id,
+          snapshot.items,
+          snapshot.grid,
+        ]),
         options.home,
       ]);
     if (makeKey() === this.cachedKey) return this.cachedPlan;
@@ -480,21 +531,48 @@ export class SidebarPanels implements Component {
         this.snapshots.delete(id);
     }
     const panels = this.build(sources, frame, width);
-    // Fill in order; a panel that cannot show a row (title + row + border)
-    // collapses to its title line, and later panels get what remains.
-    let remaining = Math.max(0, Math.floor(height));
-    const visible: PanelData[] = [];
-    for (const panel of panels) {
-      const room = remaining - (visible.length ? 1 : 0);
-      if (room < 1) break;
-      const full = panel.empty
-        ? 1
-        : panel.costs.reduce((sum, cost) => sum + cost, 0) +
-          (panel.footer ? 1 : 0) +
+    const budget = Math.max(0, Math.floor(height));
+    const visible = panels.slice(0, budget);
+    // Titles are mandatory. Drop gaps before dropping unavoidable trailing titles.
+    this.panelGap = budget >= visible.length * 2 - 1 ? 1 : 0;
+    let remaining =
+      budget - visible.length - Math.max(0, visible.length - 1) * this.panelGap;
+    const sizes = new Map<PanelData, number[]>();
+    for (const panel of visible) {
+      panel.height = 1;
+      const total = panel.costs.reduce((sum, cost) => sum + cost, 0);
+      const full = panel.empty ? 1 : total + (panel.footer ? 1 : 0) + 2;
+      const fitting = [1];
+      for (let size = 3; size <= Math.min(full, budget); size++) {
+        const footer = Boolean(panel.footer && size >= total + 3);
+        const fit = fitBlocks(
+          panel.costs,
+          size - 2 - Number(footer),
+          panel.more,
+        );
+        const used =
+          panel.costs.slice(0, fit.count).reduce((sum, cost) => sum + cost, 0) +
+          Number(fit.overflow) +
+          Number(footer) +
           2;
-      panel.height = room >= full ? full : room >= 3 ? room : 1;
-      remaining -= panel.height + (visible.length ? 1 : 0);
-      visible.push(panel);
+        if (used === size) fitting.push(size);
+      }
+      sizes.set(panel, fitting);
+      const minimum = fitting.filter((size) => size <= 4).at(-1) ?? 1;
+      if (remaining >= minimum - 1) {
+        panel.height = minimum;
+        remaining -= minimum - 1;
+      }
+    }
+    // Only after minimums are reserved, grow whole rows in configured order.
+    for (const panel of visible) {
+      const target =
+        sizes
+          .get(panel)
+          ?.filter((size) => size <= panel.height + remaining)
+          .at(-1) ?? 1;
+      remaining -= target - panel.height;
+      panel.height = target;
     }
     this.animated = false;
     for (const panel of visible) {
@@ -515,12 +593,12 @@ export class SidebarPanels implements Component {
         snapshot.frame !== frame &&
         panel.animated?.slice(0, count).some(Boolean)
       ) {
-        snapshot.items = retainedRows(
-          getWorkPanelSourceRows(panel.id, {
-            maxRows: Number.MAX_SAFE_INTEGER,
-            respectRowCap: false,
-          }),
-        );
+        snapshot.raw = getWorkPanelSourceRows(panel.id, {
+          maxRows: Number.MAX_SAFE_INTEGER,
+          respectRowCap: false,
+        });
+        snapshot.items = retainedRows(snapshot.raw, now);
+        snapshot.expiresAt = nextExpiry(snapshot.items);
         snapshot.grid = createWorkPanelMetricGrid(
           snapshot.items,
           panelVisibleWidth,
@@ -531,7 +609,21 @@ export class SidebarPanels implements Component {
       panel.rows = Array.from({ length: count }, (_, index) =>
         panel.block(index),
       ).flat();
-      if (overflow) panel.rows.push(`+${panel.costs.length - count} more`);
+      if (overflow) {
+        const more = `+${panel.costs.length - count} more`;
+        const available = width - 4 - panelVisibleWidth(more) - 1;
+        const command = [panel.footer, panel.bareFooter]
+          .map((text) => text?.trimStart())
+          .find((text) => text && panelVisibleWidth(text) <= available);
+        const gap =
+          width -
+          4 -
+          panelVisibleWidth(more) -
+          panelVisibleWidth(command ?? '');
+        panel.rows.push(
+          command && gap >= 1 ? more + ' '.repeat(gap) + command : more,
+        );
+      }
       if (footer && panel.footer) panel.rows.push(panel.footer);
       const active = panel.animated?.slice(0, count).some(Boolean) ?? false;
       if (snapshot) snapshot.animated = active;
@@ -541,6 +633,11 @@ export class SidebarPanels implements Component {
       if (!visible.some((panel) => panel.id === id && panel.height >= 3))
         snapshot.animated = false;
     }
+    // A lingering terminal row keeps only the already shared cadence alive.
+    this.animated ||= [...this.snapshots.values()].some(
+      (snapshot) =>
+        Number.isFinite(snapshot.expiresAt) && snapshot.expiresAt > now,
+    );
     this.cachedKey = makeKey();
     this.cachedPlan = visible;
     this.cachedLines = undefined;
@@ -574,7 +671,7 @@ export class SidebarPanels implements Component {
     const theme = this.options.theme;
     this.cachedLines = plan
       .flatMap((panel, index) => [
-        ...(index ? [''] : []),
+        ...(index && this.panelGap ? [''] : []),
         ...renderChrome({
           id: panel.id,
           title: panel.title,

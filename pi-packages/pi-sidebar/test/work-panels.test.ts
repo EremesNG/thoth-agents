@@ -199,6 +199,29 @@ it('recomputes metric widths when an animated row is re-exposed', () => {
 });
 
 it.each([
+  [30, '+7 more', '/subagents'],
+  [44, '+7 more', '/subagents ▸ detail'],
+] as const)('preserves the overflow detail command at width %i', (width, more, command) => {
+  releases.push(useMode('nerd'));
+  releases.push(
+    source(
+      'subagents',
+      'Agents',
+      Array.from({ length: 8 }, (_, index) =>
+        agentRow(String(index), 'worker'),
+      ),
+    ),
+  );
+  const panel = sidebar([{ id: 'subagents', visible: true }]);
+  const rendered = lines(panel.renderAt(width, 4));
+  expect(rendered).toHaveLength(4);
+  expect(rendered.at(-2)).toContain(more);
+  expect(rendered.at(-2)).toContain(command);
+  if (width === 30) expect(rendered.at(-2)).not.toContain('detail');
+  for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
+});
+
+it.each([
   ['nerd', '/subagents ▸ detail'],
   ['ascii', '/subagents > detail'],
 ] as const)('ends with the detail command footer in %s mode', (mode, footer) => {
@@ -412,4 +435,116 @@ it.each([
     }
     expect(new Set(heights).size).toBe(1);
   }
+});
+
+it('retains only recent finished rows, failed-first capped at three, without changing totals', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(100_000);
+  const finished = (id: string, endedAt: number, failed = false) => ({
+    ...agentRow(id, id, failed ? 'failed' : 'completed'),
+    state: failed ? ('failed' as const) : ('done' as const),
+    endedAt,
+  });
+  releases.push(
+    source(
+      'subagents',
+      'Agents',
+      [
+        agentRow('live', 'live'),
+        finished('expired', 50_000),
+        finished('older', 95_000),
+        finished('newest', 99_000),
+        finished('middle', 98_000),
+        finished('failure', 80_000, true),
+      ],
+      { running: 1, completed: 4, failed: 1, total: 6 },
+    ),
+  );
+  const panel = sidebar([{ id: 'subagents', visible: true }]);
+  const text = () => lines(panel.renderAt(44, 40)).join('\n');
+  expect(text()).toContain('live');
+  expect(text()).toContain('failure');
+  expect(text()).toContain('newest');
+  expect(text()).toContain('middle');
+  expect(text()).not.toContain('older');
+  expect(text()).not.toContain('expired');
+  expect(text()).toContain('◐1 ✓4 ✗1');
+  expect(text().indexOf('failure')).toBeLessThan(text().indexOf('newest'));
+  expect(panel.hasAnimation()).toBe(true);
+  vi.setSystemTime(111_000);
+  const expired = text();
+  expect(expired).not.toContain('failure');
+  expect(expired).not.toContain('newest');
+  expect(expired).not.toContain('+');
+});
+
+it.each([
+  'subagents',
+  'background-tasks',
+  'todos',
+])('expires %s rows on the shared cadence without another provider read', (id) => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  const listRows = vi.fn(() => [
+    { ...agentRow('done', 'finished item', 'completed'), endedAt: 1000 },
+    {
+      ...agentRow('failed', 'failure item', 'failed'),
+      state: 'failed' as const,
+      endedAt: 1000,
+    },
+  ]);
+  releases.push(
+    registerWorkPanelProvider({ on() {} } as never, {
+      version: WORK_PANEL_VERSION,
+      id,
+      label: 'Work',
+      priority: 10,
+      visibleCount: () => 2,
+      listRows,
+      summary: () => ({ running: 0, completed: 1, failed: 1, total: 2 }),
+      detail: () => null,
+      armCloseLabel: () => '',
+      close() {},
+    }),
+  );
+  const panel = sidebar([{ id, visible: true }]);
+  const first = panel.renderAt(44, 40);
+  expect(panel.hasAnimation()).toBe(true);
+  expect(panel.renderAt(44, 40)).toBe(first);
+  vi.setSystemTime(11_000);
+  const expiredDone = lines(panel.renderAt(44, 40)).join('\n');
+  expect(expiredDone).not.toContain('finished item');
+  expect(expiredDone).toContain('failure item');
+  expect(panel.hasAnimation()).toBe(true);
+  vi.setSystemTime(31_000);
+  expect(lines(panel.renderAt(44, 40)).join('\n')).not.toContain(
+    'failure item',
+  );
+  const header = lines(panel.renderAt(44, 40))[0];
+  expect(header).toContain(id === 'todos' ? '1/2' : '✓1 ✗1');
+  expect(panel.hasAnimation()).toBe(false);
+  expect(listRows).toHaveBeenCalledTimes(1);
+});
+
+it('refills the finished cap from still-eligible cached history when a prioritized row expires', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  releases.push(
+    source(
+      'subagents',
+      'Agents',
+      Array.from({ length: 4 }, (_, i) => ({
+        ...agentRow(`f${i}`, `failure ${i}`, 'failed'),
+        state: 'failed' as const,
+        endedAt: 1000 - i,
+        ...(i === 0 ? { expiresAt: 1100 } : {}),
+      })),
+    ),
+  );
+  const panel = sidebar([{ id: 'subagents', visible: true }]);
+  expect(lines(panel.renderAt(44, 40)).join('\n')).not.toContain('failure 3');
+  vi.setSystemTime(1100);
+  const text = lines(panel.renderAt(44, 40)).join('\n');
+  expect(text).not.toContain('failure 0');
+  expect(text).toContain('failure 3');
 });

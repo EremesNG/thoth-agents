@@ -38,7 +38,19 @@ export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
   const clean = firstContent
     .replace(/^#+\s*(?:delegated task:?|task:?)?\s*/i, '')
     .trim();
-  const summary = normalize(clean || firstContent);
+  let content = clean || firstContent;
+  let change = '';
+  // Dispatch metadata is not a task label. Only strip leading envelope
+  // segments, preserving ordinary occurrences inside the meaningful text.
+  let envelope = /^(PHASE|CHANGE):\s*([^/]*?)\s*(?:\/\s*|$)/i.exec(content);
+  while (envelope) {
+    if (envelope[1].toUpperCase() === 'CHANGE') change = normalize(envelope[2]);
+    content = content.slice(envelope[0].length);
+    envelope = /^(PHASE|CHANGE):\s*([^/]*?)\s*(?:\/\s*|$)/i.exec(content);
+  }
+  const summary = normalize(
+    change ? `${change}${content ? ` · ${content}` : ''}` : content,
+  );
   if (!summary) return '';
   return truncateToWidth(summary, maxLen, `${resolveIcon('ellipsis', '…')}`);
 }

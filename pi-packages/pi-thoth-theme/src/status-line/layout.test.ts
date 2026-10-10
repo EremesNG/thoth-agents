@@ -457,12 +457,12 @@ describe('border segments', () => {
 
   it('offers context richest first and a dash when usage is absent', () => {
     expect(formatContextSegments(data)).toEqual([
-      '\uf2db [████░░░░░░] 43% 425.9K/1M',
+      '\uf2db ◆◆◆⬖◇◇◇◇ 43% 425.9K/1M',
       '\uf2db 43% 425.9K/1M',
       '\uf2db 425.9K/1M',
     ]);
     expect(formatContextSegments(data, { mode: 'ascii' })[0]).toBe(
-      'ctx [####------] 43% 425.9K/1M',
+      'ctx [###=----] 43% 425.9K/1M',
     );
     expect(
       formatContextSegments({
@@ -474,7 +474,35 @@ describe('border segments', () => {
     expect(formatContextSegments({})).toEqual(['—']);
     expect(
       formatContextSegments({ contextPercent: 0, contextTokens: 0 })[0],
-    ).toBe('\uf2db [░░░░░░░░░░] 0% 0');
+    ).toBe('\uf2db ◇◇◇◇◇◇◇◇ 0% 0');
+  });
+
+  it.each([
+    [0, '◇◇◇◇◇◇◇◇', '[--------]'],
+    [1, '⬖◇◇◇◇◇◇◇', '[=-------]'],
+    [3, '⬖◇◇◇◇◇◇◇', '[=-------]'],
+    [12, '◆◇◇◇◇◇◇◇', '[#-------]'],
+    [50, '◆◆◆◆◇◇◇◇', '[####----]'],
+    [85, '◆◆◆◆◆◆◆◇', '[#######-]'],
+    [100, '◆◆◆◆◆◆◆◆', '[########]'],
+  ])('draws %i%% as eight half-step diamonds', (percent, unicode, ascii) => {
+    const bar = (mode: 'nerd' | 'unicode' | 'ascii') =>
+      formatContextSegments(
+        { contextPercent: percent, contextTokens: 1 },
+        { mode },
+      )[0];
+    expect(bar('nerd')).toContain(` ${unicode} ${percent}%`);
+    expect(bar('unicode')).toContain(` ${unicode} ${percent}%`);
+    expect(bar('ascii')).toContain(` ${ascii} ${percent}%`);
+  });
+
+  it('colors filled diamonds by threshold and empties dim', () => {
+    expect(
+      formatContextSegments(
+        { contextPercent: 50, contextTokens: 1 },
+        { theme: mockTheme },
+      )[0],
+    ).toContain('[success]◆◆◆◆[/success][dim]◇◇◇◇[/dim]');
   });
 
   it.each([

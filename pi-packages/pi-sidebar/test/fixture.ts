@@ -73,6 +73,9 @@ export function agentRow(
     id,
     primary: name,
     status,
+    ...(status === 'running' || status === 'pending'
+      ? {}
+      : { endedAt: Date.now() }),
     state: status === 'running' ? 'running' : 'done',
     identity: [{ text: name, role: 'primary' }],
     metrics: Object.entries(metrics).map(([key, text]) => ({
@@ -173,4 +176,32 @@ export function useMode(mode: keyof typeof GLYPHS): () => void {
     {},
   );
   return () => withdrawRenderKit(token);
+}
+
+/** SQL-shaped finished tasks plus sparse live state observations (Unix ms). */
+export function productionCostTasks() {
+  const start = 1791600000000;
+  const data = tracker(
+    [],
+    Array.from({ length: 10 }, (_, i) =>
+      task(`persisted-${i}`, 4.62 - i * 0.25, {
+        displayName: `Production task ${i + 1}`,
+        startedAt: start + i * 10000,
+        endedAt: start + i * 10000 + (i + 1) * 120000,
+      }),
+    ),
+  );
+  return data.ranked().map((entry, i) => ({
+    ...entry,
+    // History normally has no samples; live tasks may have only one or two.
+    samples:
+      i % 3 === 0
+        ? []
+        : i % 3 === 1
+          ? [{ at: entry.start + 60000, cost: entry.cost / 3 }]
+          : [
+              { at: entry.start + 90000, cost: entry.cost / 2 },
+              { at: entry.start + 30000, cost: entry.cost / 4 },
+            ],
+  }));
 }

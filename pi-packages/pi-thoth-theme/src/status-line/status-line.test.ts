@@ -531,7 +531,7 @@ describe('registerStatusLine', () => {
         `${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
       );
       expect(box[2]).toMatch(
-        /^╰─ \u{f06a9} Test Model · \u{f09d1} low ─+ \uf2db \[███░░░░░░░\] 25% 50K\/200K ─╯$/u,
+        /^╰─ \u{f06a9} Test Model · \u{f09d1} low ─+ \uf2db ◆◆◇◇◇◇◇◇ 25% 50K\/200K ─╯$/u,
       );
       expect(box[0]).toMatch(/ (?:\u{f07c}|dir) \/workspace\/project ─╮$/u);
       expect(box.map(visibleWidth)).toEqual([120, 120, 120]);
@@ -564,7 +564,7 @@ describe('registerStatusLine', () => {
         `╭─ ^ ready | git main ${'─'.repeat(32)} dir /workspace/project ─╮`,
       );
       expect(bottom).toBe(
-        `╰─ * Test Model | o low ${'─'.repeat(23)} ctx [###-------] 25% 50K/200K ─╯`,
+        `╰─ * Test Model | o low ${'─'.repeat(25)} ctx [##------] 25% 50K/200K ─╯`,
       );
       for (let width = 16; width <= 200; width++) {
         const rendered = borders(editor, width);
@@ -576,7 +576,7 @@ describe('registerStatusLine', () => {
       const unicode = borders(editor, 80);
       expect(unicode.top).toContain('· \ue0a0 main');
       expect(unicode.bottom).toContain('\u{f06a9} Test Model · \u{f09d1} low');
-      expect(unicode.bottom).toContain('[███░░░░░░░]');
+      expect(unicode.bottom).toContain('◆◆◇◇◇◇◇◇');
       expect(visibleWidth(unicode.top)).toBe(80);
       expect(visibleWidth(unicode.bottom)).toBe(80);
     } finally {
@@ -1188,7 +1188,7 @@ describe('registerStatusLine', () => {
     const row = component.render(120)[0];
     expect(row).toContain('\uf155 1.300');
     expect(row).not.toContain('80%');
-    expect(borders(editor, 120).bottom).toContain('[████████░░] 80% 160K/200K');
+    expect(borders(editor, 120).bottom).toContain('◆◆◆◆◆◆⬖◇ 80% 160K/200K');
   });
 
   it('shows a dash when context usage is not reported', () => {

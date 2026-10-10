@@ -265,7 +265,7 @@ describe('input-box editor composition', () => {
       `╭─ ▲ ready · \ue0a0 main ${'─'.repeat(48)} \u{f07c} ~/proj ─╮`,
     );
     expect(bottom).toBe(
-      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(30)} \uf2db [███░░░░░░░] 30% 60K/200K ─╯`,
+      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(34)} \uf2db ◆◆⬖◇◇◇◇◇ 30% 60K/200K ─╯`,
     );
     expect(top.length).toBe(80);
     expect(visibleWidth(bottom)).toBe(80);

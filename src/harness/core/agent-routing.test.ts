@@ -122,13 +122,6 @@ const ROUTING_FIXTURE = JSON.parse(
   }>;
 };
 
-const ACTIVE_OWNERSHIP_POLICY_PATHS = [
-  'AGENTS.md',
-  'skills/thoth-sdd/SKILL.md',
-  'docs/agent/agents-and-delegation.md',
-  'docs/sdd-pipeline.md',
-] as const;
-
 type RenderedSurface = {
   harness: HarnessId;
   root: string;
@@ -372,44 +365,41 @@ describe('canonical agent routing', () => {
     }
   });
 
-  test('keeps active instructions workflow-neutral and director-default', () => {
-    const activePolicies = ACTIVE_OWNERSHIP_POLICY_PATHS.map((path) => ({
-      path,
-      content: readFileSync(
-        new URL(`../../../${path}`, import.meta.url),
-        'utf8',
-      ),
-    }));
-
-    for (const { path, content } of activePolicies) {
-      expect(content, path).toMatch(/workflow|work contract|governance|SDD/i);
-      expect(content, path).not.toMatch(/Direct alone permits/i);
-      expect(content, path).not.toMatch(
+  test('keeps rendered product routing free of obsolete ownership rules', () => {
+    // Positive ownership, discovery and dispatch contracts are covered by
+    // agent-pack.test.ts and agents/prompt-rendering.test.ts, not repo docs.
+    for (const { harness, root } of renderRoutingSurfaces()) {
+      expect(root, harness).not.toMatch(/Direct alone permits/i);
+      expect(root, harness).not.toMatch(
         /artifact-backed implementation always selects/i,
       );
-      expect(content, path).not.toMatch(/all visual or UX work goes through/i);
+      expect(root, harness).not.toMatch(/all visual or UX work goes through/i);
+      expect(root, harness).not.toMatch(/delegate only for net\s+gain/i);
+      expect(root, harness).not.toMatch(/prefer root continuity/i);
+      expect(root, harness).not.toMatch(/another search or dependency ends/i);
     }
-    const combined = activePolicies.map(({ content }) => content).join('\n');
-    expect(combined).not.toMatch(/delegate only for net\s+gain/i);
-    expect(combined).not.toMatch(/prefer root continuity/i);
-    expect(combined).toMatch(/specialists?.*by default/i);
-    expect(combined).not.toMatch(/another search or dependency ends/i);
-    expect(combined).toMatch(/root retains known low-risk mechanical work/i);
-    expect(combined).toMatch(/preserve operator-selected model and effort/i);
+  });
 
-    const rootInstructions = activePolicies.find(
-      ({ path }) => path === 'AGENTS.md',
-    )?.content;
-    expect(rootInstructions).toMatch(
-      /before retaining or delegating.*ready work.*before waiting/is,
+  test('repository instructions do not restate product policy', () => {
+    const instructions = readFileSync(
+      new URL('../../../AGENTS.md', import.meta.url),
+      'utf8',
     );
-    expect(rootInstructions).toMatch(/designer.*worker/is);
-    expect(rootInstructions).toMatch(/librarian.*external evidence/is);
-    expect(rootInstructions).toMatch(
-      /root.*dispatch.*unknown local discovery.*Explorer.*without preliminary.*CodeGraph.*search.*file reads/is,
-    );
-    expect(rootInstructions).toMatch(
-      /assigned investigator.*must use CodeGraph.*before.*source-code discovery/is,
-    );
+    const productPolicyMarkers = [
+      'Review plan with Oracle (Recommended)',
+      'DEFAULT_REVIEW_AFTER_3',
+      'answerless',
+      'two fragments',
+      'no global wave barrier',
+      'Preserve operator-selected model and effort',
+      'Children never delegate',
+      'Subagent return contract',
+      'Omit autoResolutionMs',
+    ];
+
+    expect(
+      productPolicyMarkers.filter((marker) => instructions.includes(marker)),
+      'AGENTS.md must point to product policy owners, not duplicate their rules',
+    ).toEqual([]);
   });
 });

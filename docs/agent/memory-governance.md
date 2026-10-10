@@ -17,23 +17,15 @@ thoth-agents owns only provider-neutral orchestration outcomes:
 - provider-confirmed semantic continuity outcomes when root owns them; and
 - preserving provider assets during thoth-agents install, sync, reset, or removal.
 
-## Invariants
+## Product contract ownership
 
-- Never claim a provider effect without confirmed evidence.
-- Missing, stale, contradictory, or insufficient context is reported.
-- Memory authorization is separate from workspace permission. `observe` may
-  authorize a bounded durable provider observation for a read-only workspace
-  role, but never file mutation or root lifecycle.
-- Dispatch supplies project, stable root session identity or `unavailable`,
-  authorization, and bounded context. It never invents identity.
-- No thoth-agents package bundles thoth-mem hooks, MCP, protocol text, or
-  lifecycle implementation.
-- `.thoth/` holds active project change records, durable contracts, and
-  constitution; historical material remains preserved. Project work is not
-  mirrored into provider memory. Durable lessons and continuity follow the
-  installed thoth-mem skill.
-- A provider failure degrades memory but does not block unrelated implementation
-  or verification.
+The product renders bounded memory authorization separately from workspace
+permissions, reports missing or degraded evidence, and leaves provider effects
+and lifecycle to thoth-mem. `.thoth/` project governance is distinct from provider
+memory; unrelated implementation can continue when provider memory degrades.
 
-The bounded orchestration contract lives in
-`src/harness/core/memory-governance.ts` and is rendered by harness adapters.
+Owner: `src/harness/core/memory-governance.ts`
+(`getMemoryGovernanceContract`, `renderMemoryGovernanceInstructions`), rendered
+by harness adapters. Tests: `src/harness/core/memory-governance.test.ts` and
+`src/harness/provider-boundary.test.ts`. Provider mechanics belong to the
+independently installed thoth-mem skill and implementation.

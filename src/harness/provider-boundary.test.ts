@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { CONFIRMED_OPENAI_SUBAGENT_PRESET } from '../config';
+import { getSddWorkflowContract } from './core/sdd';
 import { SUPPORTED_HARNESSES } from './registry';
 
 const PROVIDER_BOUNDARY_TARGETS = {
@@ -26,6 +27,8 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'docs/agent/memory-governance.md',
     'docs/agent/sdd-and-skills.md',
     'docs/agent/agents-and-delegation.md',
+    'docs/agent/task-template.md',
+    'docs/agent/testing.md',
   ],
   lifecycleFixtures: [
     'src/harness/__fixtures__/codex/agent-worker.toml',
@@ -150,10 +153,10 @@ describe('provider boundary', () => {
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(41);
+    expect(targets).toHaveLength(43);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
-    ).toHaveLength(19);
+    ).toHaveLength(21);
     expect(
       targets.filter(({ group }) => group === 'lifecycleFixtures'),
     ).toHaveLength(2);
@@ -189,11 +192,9 @@ describe('provider boundary', () => {
     );
 
     expect(docs.some(({ content }) => /thoth-mem/i.test(content))).toBe(true);
-    expect(
-      docs.some(({ content }) =>
-        /\.thoth\/changes\/<id>\/<id>\.md/i.test(content),
-      ),
-    ).toBe(true);
+    expect(getSddWorkflowContract().recordPath).toBe(
+      '.thoth/changes/<id>/<id>.md',
+    );
     expect(
       consumers.some(
         ({ path, content }) =>

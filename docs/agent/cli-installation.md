@@ -88,15 +88,17 @@ execution does not.
   `preserveUserCopy`: an existing copy from any source at or above the floor is
   preserved and individually verified without reinstalling; an older copy is
   left untouched and blocks completion with manual upgrade guidance. Unreadable
-  identity or ambiguous sources fail closed. Upgrade local/Git checkouts in
-  place, or review ownership before switching the configured source through
-  Pi's native remove/install commands; verify the installed manifest and rerun
-  the complete flow. Dry-run performs no mutation. Other selected packages keep
+  identity or ambiguous sources fail closed. The operator recovery procedure
+  upgrades local/Git checkouts in place, or switches the configured source through
+  Pi's native remove/install commands after ownership review, then verifies the
+  installed manifest and reruns the complete flow. Dry-run performs no mutation.
+  Other selected packages keep
   their existing source-migration policy; the Claude/Antigravity bridges and
   pi-openai-fast remain unmanaged. The pi-subagents floor is the first release
-  owning `/subagents-tools`; upgrade it and thoth-agents together to avoid
-  missing or duplicate command owners. Upgrade pi-subagents and pi-thoth-theme
-  to `>=0.3.0` together and `/reload`: the status line now uses the v1 pi-core
+  owning `/subagents-tools`; paired upgrades with thoth-agents avoid
+  missing or duplicate command owners. The compatible status-line upgrade pairs
+  pi-subagents and pi-thoth-theme at `>=0.3.0`, followed by `/reload`, to use the
+  v1 pi-core
   `thoth:subagents:usage` envelope, not the removed raw `thoth:subagent-usage` bus
   event (the checkpoint discriminator remains unchanged). The first-party
   question extension supplies root-owned `ask_user_question` with stable ids,
@@ -158,21 +160,22 @@ execution does not.
   Dry-run reports configured blockers without mutation; status and Update
   previews expose the conflict and manual removal:
   `pi remove npm:@juicesharp/rpiv-todo --no-approve` for user scope. For project
-  scope, first review the project's ownership and trust, then use
+  scope, the operator procedure reviews project ownership and trust before
   `pi remove npm:@juicesharp/rpiv-todo --local --approve` from that project.
   Approval trusts project-local settings for this command only without saving
-  a trust decision. Run both commands if present in both scopes. The CLI never
-  removes it automatically. For an unmapped manifest, diagnostics name the
-  installed directory; after reviewing ownership, find and remove the matching
-  settings entry with `pi remove <source> --local --approve` rather than using
-  the diagnostic directory as a configured source. Verify removal with `pi list`
-  and rerun the complete flow.
+  a trust decision. Both commands apply when both scopes contain the conflict;
+  the CLI never removes it automatically. For an unmapped manifest, diagnostics
+  name the installed directory, while removal uses the matching configured
+  settings source after ownership review (`pi remove <source> --local --approve`),
+  not the diagnostic directory. Recovery ends with `pi list` verification and a
+  rerun of the complete flow.
   Partial native package state remains
   visible and is recovered by resolving the blocker and rerunning the complete
   flow.
 - OpenCode runtime update checks are notification-only. They do not rewrite
-  config, invalidate package state, or run package installation; operators must
-  rerun the latest CLI installer or apply Update explicitly.
+  config, invalidate package state, or run package installation; the operator
+  recovery path is
+  the latest CLI installer or an explicitly applied Update.
 - CLI changes require parser/help/tests and public docs in the same change.
 
 ## Verification

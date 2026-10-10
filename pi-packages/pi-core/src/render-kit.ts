@@ -33,6 +33,7 @@ export type SemanticGlyphName =
   | 'effort'
   | 'context'
   | 'cost'
+  | 'elapsed'
   | 'tokensIn'
   | 'tokensOut'
   | 'cache'
@@ -228,6 +229,7 @@ const nativeIcons: Record<SemanticGlyphName, string> = {
   effort: '◐',
   context: 'ctx',
   cost: '$',
+  elapsed: '◷',
   tokensIn: '↑',
   tokensOut: '↓',
   cache: 'cache',

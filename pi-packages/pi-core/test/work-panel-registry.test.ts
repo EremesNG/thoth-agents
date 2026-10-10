@@ -423,3 +423,73 @@ describe('work panel discovery', () => {
     expect(events).toHaveLength(6);
   });
 });
+
+it('discovers isolated data-only provider summaries without changing revisions', () => {
+  const { ctx } = uiSession();
+  const summary = {
+    running: 2,
+    completed: 3,
+    failed: 1,
+    total: 6,
+    text: '2 active',
+    segments: [],
+    extra: () => {},
+  };
+  cleanups.push(
+    registerWorkPanelProvider(ctx, {
+      ...provider('summary'),
+      summary: () => summary,
+    }),
+  );
+  cleanups.push(
+    registerWorkPanelProvider(ctx, {
+      ...provider('broken-summary'),
+      summary: () => {
+        throw new Error('broken');
+      },
+    }),
+  );
+  const sources = listWorkPanelSources();
+  expect(sources.find(({ id }) => id === 'summary')?.summary).toEqual({
+    running: 2,
+    completed: 3,
+    failed: 1,
+    total: 6,
+    text: '2 active',
+  });
+  expect(
+    sources.find(({ id }) => id === 'broken-summary')?.summary,
+  ).toBeUndefined();
+  expect(listWorkPanelSources().map(({ revision }) => revision)).toEqual(
+    sources.map(({ revision }) => revision),
+  );
+  summary.running = 9;
+  expect(sources.find(({ id }) => id === 'summary')?.summary?.running).toBe(2);
+});
+
+it('normalizes string summaries and filters non-data fields', () => {
+  const { ctx } = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(ctx, {
+      ...provider('text-summary'),
+      summary: () => '1/2',
+    }),
+  );
+  cleanups.push(
+    registerWorkPanelProvider(ctx, {
+      ...provider('invalid-summary'),
+      summary: () => ({
+        running: NaN,
+        total: Infinity,
+        text: 'valid',
+        completed: 1,
+      }),
+    }),
+  );
+  expect(
+    listWorkPanelSources().find(({ id }) => id === 'text-summary')?.summary,
+  ).toEqual({ text: '1/2' });
+  expect(
+    listWorkPanelSources().find(({ id }) => id === 'invalid-summary')?.summary,
+  ).toEqual({ text: 'valid', completed: 1 });
+});

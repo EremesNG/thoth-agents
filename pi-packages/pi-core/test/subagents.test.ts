@@ -20,6 +20,7 @@ import {
 import { createFakeBus } from './fake-bus.js';
 
 const snapshot: SubagentsSnapshot = {
+  history: [],
   tasks: [
     {
       id: 'queued',
@@ -134,7 +135,7 @@ describe('subagent state contract', () => {
     expect(isSubagentsSnapshot(snapshot)).toBe(true);
     expect(raw).toEqual([
       {
-        v: 1,
+        v: 2,
         source: '@thoth-agents/pi-subagents',
         sessionId: 'session-a',
         at: 100,
@@ -157,6 +158,7 @@ describe('subagent state contract', () => {
     expect(
       isSubagentsSnapshot({
         tasks: [],
+        history: [],
         counts,
         totals: { ...counts, total: 0 },
       }),
@@ -314,7 +316,7 @@ describe('subagent state contract', () => {
     expect(isSubagentsSnapshot(value)).toBe(false);
     expect(() =>
       events.emit('thoth:subagents:state', {
-        v: 1,
+        v: 2,
         source: '@thoth-agents/pi-subagents',
         sessionId: 'session-a',
         at: 0,
@@ -490,7 +492,7 @@ describe('subagent usage contract', () => {
     });
     expect(() =>
       events.emit('thoth:subagents:usage', {
-        v: 1,
+        v: 2,
         source: '@thoth-agents/pi-subagents',
         sessionId: 'parent',
         at: 0,
@@ -504,4 +506,41 @@ describe('subagent usage contract', () => {
     });
     expect(received).toEqual([usage]);
   });
+});
+
+it('requires v2 bounded history with the same strict task allow-list', () => {
+  expect(SUBAGENTS_STATE_CHANNEL.version).toBe(2);
+  expect(
+    isSubagentsSnapshot({
+      ...snapshot,
+      history: Array(100).fill(snapshot.tasks[0]),
+    }),
+  ).toBe(true);
+  expect(
+    isSubagentsSnapshot({
+      ...snapshot,
+      history: Array(101).fill(snapshot.tasks[0]),
+    }),
+  ).toBe(false);
+  expect(
+    isSubagentsSnapshot({
+      ...snapshot,
+      history: [{ ...snapshot.tasks[0], prompt: 'private' }],
+    }),
+  ).toBe(false);
+  expect(
+    isSubagentsSnapshot({
+      ...snapshot,
+      history: [{ ...snapshot.tasks[0], usage: { cost: 1, log: 'private' } }],
+    }),
+  ).toBe(false);
+  expect(isSubagentsSnapshot({ ...snapshot, history: Array(1) })).toBe(false);
+  expect(
+    isSubagentsSnapshot({
+      ...snapshot,
+      history: [{ ...snapshot.tasks[0], [Symbol('private')]: 'secret' }],
+    }),
+  ).toBe(false);
+  const { history: _history, ...legacy } = snapshot;
+  expect(isSubagentsSnapshot(legacy)).toBe(false);
 });

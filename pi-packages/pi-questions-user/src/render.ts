@@ -15,6 +15,8 @@ import {
   createKitRenderMemo,
   type RenderStatus,
   renderToolFooter,
+  resolveIcon,
+  resolveStatusGlyph,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import type { QuestionDetails } from './answers.js';
@@ -66,13 +68,19 @@ export function createQuestionRenderBridge() {
       row.invalidate?.();
     },
     finish(toolCallId: string) {
-      const row = rows.get(toolCallId);
-      if (!row || row.closed) return;
+      const row = rows.get(toolCallId) ?? { collapsed: false };
+      rows.set(toolCallId, row);
+      if (row.closed) return;
       // invalidate() synchronously renders again; do not rebind a completing row.
+      // The closed row stays as a tombstone: a later call render (before the
+      // result arrives) must not bind a fresh row, or the result render would
+      // re-enter the SDK's updateDisplay and mount the answers twice.
       row.closed = true;
+      const { invalidate } = row;
       if (row.state) row.state.collapsed = false;
-      row.invalidate?.();
-      rows.delete(toolCallId);
+      row.state = undefined;
+      row.invalidate = undefined;
+      invalidate?.();
     },
   };
 }
@@ -80,12 +88,20 @@ export function createQuestionRenderBridge() {
 interface Summary {
   status: RenderStatus;
   rows: string[];
+  /** Localized cancelled label, shown in the footer (kit) or as a row (native). */
+  cancelled?: string;
 }
 
 type Paint = (role: ThemeColor, text: string) => string;
 
+interface SummaryOptions {
+  paint?: Paint;
+  width?: number;
+  expanded?: boolean;
+}
+
 const COLLAPSED_ROWS = 10;
-const MAX_HEADER_COLUMN = 24;
+const MAX_HEADER_COLUMN = 16;
 const plain: Paint = (_role, text) => text;
 
 function renderState(context: RenderContext | undefined): RenderState {
@@ -109,50 +125,102 @@ function hang(text: string, first: string, rest: string, width: number) {
   );
 }
 
+function glyphs() {
+  const ok = resolveStatusGlyph('completed');
+  const ascii = /^[ -~]*$/u.test(ok);
+  return {
+    ok,
+    fail: resolveStatusGlyph('failed'),
+    pending: '?',
+    skipped: ascii ? '-' : '–',
+    note: ascii ? '~' : '✎',
+    ellipsis: resolveIcon('ellipsis', '…'),
+    separator: resolveIcon('separator', '·'),
+  };
+}
+
+function titleOf(title: string | undefined): string {
+  return title ? `Ask user · ${title}` : 'Ask user';
+}
+
+/** Pending call: one line of question headers. */
+function pendingRows(headers: string[], paint: Paint, width: number): string[] {
+  if (!headers.length) return [];
+  const g = glyphs();
+  const line = headers
+    .map((header) => `${paint('accent', g.pending)} ${paint('dim', header)}`)
+    .join(paint('dim', ` ${g.separator} `));
+  return [truncateToWidth(line, width, g.ellipsis)];
+}
+
 /**
- * Question → answer rows: an aligned header column, then the answer; notes hang
- * beneath it. Never reads plain content when details exist.
+ * Header column, then the answer; notes hang beneath the answer. Expanded adds
+ * each prompt above its row and wraps notes in full. Never reads plain content
+ * when details exist.
  */
 export function summarizeResult(
   details: QuestionDetails | undefined,
   text: string,
-  paint: Paint = plain,
-  width = Number.POSITIVE_INFINITY,
+  options: SummaryOptions = {},
 ): Summary {
   if (!details) return { status: 'failed', rows: text ? [text] : [] };
+  const { paint = plain, width = Number.POSITIVE_INFINITY } = options;
+  const expanded = options.expanded === true;
+  const g = glyphs();
   const labels = resolveLabels(details.labels);
-  const column = Math.min(
-    MAX_HEADER_COLUMN,
-    Math.max(0, ...details.questions.map((q) => visibleWidth(q.header))),
+  const column = Math.max(
+    1,
+    Math.min(
+      MAX_HEADER_COLUMN,
+      Math.max(0, ...details.questions.map((q) => visibleWidth(q.header))),
+      Number.isFinite(width) ? Math.floor(width / 3) : MAX_HEADER_COLUMN,
+    ),
   );
   const rows: string[] = [];
   if (details.error) {
-    rows.push(paint('error', `✗ ${labels.error}: ${details.error}`));
-    for (const issue of details.issues ?? []) {
-      rows.push(paint('muted', `  ${issue.path}: ${issue.message}`));
+    rows.push(paint('error', `${g.fail} ${labels.error}: ${details.error}`));
+    if (expanded) {
+      for (const issue of details.issues ?? []) {
+        rows.push(paint('muted', `  ${issue.path}: ${issue.message}`));
+      }
     }
   }
-  for (const question of details.questions) {
+  const recorded = details.questions.some(
+    (q) => getOwn(details.answers, q.id)?.status === 'answered',
+  );
+  // An error without recorded answers is only its error row (issues expanded).
+  const questions = details.error && !recorded ? [] : details.questions;
+  const gap = '  ';
+  const indent = ' '.repeat(column + gap.length);
+  for (const question of questions) {
     const answer = getOwn(details.answers, question.id);
-    const header = truncateToWidth(question.header, column, '…', true);
-    const lead = paint('accent', header);
-    const gap = ' '.repeat(2);
-    const indent = ' '.repeat(column + 2);
-    if (!answer || answer.status !== 'answered') {
-      rows.push(`${lead}${gap}${paint('dim', `○ ${labels.skipped}`)}`);
-    } else {
-      const picks = answer.labels.map((label) => paint('toolOutput', label));
-      const custom = answer.customText
-        ? [paint('accent', `“${answer.customText.replace(/\s+/g, ' ')}”`)]
-        : [];
+    if (expanded && question.prompt) {
       rows.push(
-        ...hang(
-          [...picks, ...custom].join(paint('dim', ', ')),
-          `${lead}${gap}${paint('success', '✓')} `,
-          `${indent}  `,
-          width,
+        ...wrapTextWithAnsi(
+          paint('dim', question.prompt.replace(/\s+/g, ' ')),
+          Math.max(1, width),
         ),
       );
+    }
+    const lead = paint(
+      'accent',
+      truncateToWidth(question.header, column, g.ellipsis, true),
+    );
+    if (!answer || answer.status !== 'answered') {
+      rows.push(
+        `${lead}${gap}${paint('dim', `${g.skipped} ${labels.skipped}`)}`,
+      );
+    } else {
+      const picks = [
+        ...answer.labels,
+        ...(answer.customText
+          ? [`“${answer.customText.replace(/\s+/g, ' ')}”`]
+          : []),
+      ];
+      const first = `${lead}${gap}${paint('success', g.ok)} `;
+      const picked = paint('success', picks.join(', '));
+      if (expanded) rows.push(...hang(picked, first, `${indent}  `, width));
+      else rows.push(truncateToWidth(`${first}${picked}`, width, g.ellipsis));
     }
     const notes = [
       ...(answer?.note ? [answer.note] : []),
@@ -162,20 +230,15 @@ export function summarizeResult(
       ),
     ];
     for (const note of notes) {
-      rows.push(
-        ...hang(
-          paint('muted', note.replace(/\s+/g, ' ')),
-          `${indent}${paint('dim', '✎')} `,
-          `${indent}  `,
-          width,
-        ),
-      );
+      const flat = note.replace(/\s+/g, ' ');
+      const first = `${indent}${paint('dim', g.note)} `;
+      if (expanded)
+        rows.push(...hang(paint('dim', flat), first, `${indent}  `, width));
+      else
+        rows.push(
+          truncateToWidth(`${first}${paint('dim', flat)}`, width, g.ellipsis),
+        );
     }
-  }
-  if (details.cancelled) {
-    rows.push(
-      paint('warning', `⊘ ${labels.cancelled} — ${labels.cancelledKept}`),
-    );
   }
   return {
     status: details.error
@@ -183,25 +246,14 @@ export function summarizeResult(
       : details.cancelled
         ? 'cancelled'
         : 'completed',
-    rows,
+    rows: Number.isFinite(width)
+      ? rows.map((row) => truncateToWidth(row, width, g.ellipsis))
+      : rows,
+    // An error-only outcome is just its error; cancellation adds nothing.
+    ...(details.cancelled && !(details.error && !recorded)
+      ? { cancelled: labels.cancelled }
+      : {}),
   };
-}
-
-function callRows(args: {
-  title?: string;
-  questions?: { header?: string }[];
-}): string[] {
-  const questions = args.questions ?? [];
-  return [
-    ...(args.title ? [args.title] : []),
-    ...(questions.length
-      ? [
-          `${questions.length} question${questions.length === 1 ? '' : 's'}: ${questions
-            .map((question) => question.header ?? '…')
-            .join(', ')}`,
-        ]
-      : []),
-  ];
 }
 
 /** Looks up the kit on every render; without it, draws the native padded box. */
@@ -209,7 +261,7 @@ function component(
   theme: Theme,
   state: RenderState,
   call: boolean,
-  text: string,
+  text: (width: number) => string,
   renderCard: (kit: ThothRenderKit, width: number) => string[],
 ): Component {
   const memo = createKitRenderMemo();
@@ -225,7 +277,7 @@ function component(
             : 'toolSuccessBg';
         const bg = (line: string) => theme.bg(role, line);
         const box = new Box(1, 0, bg);
-        box.addChild(new Text(text, 0, 0));
+        box.addChild(new Text(text(Math.max(1, width - 2)), 0, 0));
         const padding = bg(' '.repeat(width));
         return [
           ...(call ? [padding] : []),
@@ -252,46 +304,58 @@ export function createQuestionRenderers(
       state.isError = state.hasResult
         ? state.isError
         : (context?.isError ?? false);
-      const rows = [
-        ...callRows(args),
-        ...(state.collapsed && !state.hasResult
-          ? ['collapsed · Ctrl+] expand']
-          : []),
-      ];
-      const text = [
-        theme.fg('toolTitle', theme.bold('Ask user')),
-        ...rows.map((row) => theme.fg('muted', row)),
-      ].join('\n');
-      return component(theme, state, true, text, (kit, width) => {
-        const status: RenderStatus = state.hasResult
-          ? 'completed'
-          : context?.executionStarted
-            ? 'running'
-            : 'pending';
-        return kit.card(
-          theme,
-          {
-            title: 'Ask user',
-            body: rows.map((row) => kit.fg(theme, 'muted', row)),
-            part: state.hasResult ? 'start' : 'full',
-            // The result part owns the final tone; the call part must match it.
-            isError: state.isError,
-            isSuccess: state.hasResult && state.isSuccess,
-            status: state.hasResult ? undefined : status,
-            context,
-            footer: state.hasResult
-              ? undefined
-              : renderToolFooter(kit, theme, { status, context }),
-          },
-          width,
-        );
-      });
+      const title = titleOf(args.title);
+      const headers = (args.questions ?? []).map(
+        (question) => question.header ?? '…',
+      );
+      // Once answered, the result part owns every row; the call keeps only the title.
+      const rows = (paint: Paint, width: number) =>
+        state.hasResult
+          ? []
+          : [
+              ...pendingRows(headers, paint, width),
+              ...(state.collapsed ? ['collapsed · Ctrl+] expand'] : []),
+            ];
+      return component(
+        theme,
+        state,
+        true,
+        (width) =>
+          [
+            theme.fg('toolTitle', theme.bold(title)),
+            ...rows((role, text) => theme.fg(role, text), width),
+          ].join('\n'),
+        (kit, width) => {
+          const status: RenderStatus = state.hasResult
+            ? 'completed'
+            : context?.executionStarted
+              ? 'running'
+              : 'pending';
+          return kit.card(
+            theme,
+            {
+              title,
+              body: (bodyWidth) =>
+                rows((role, text) => kit.fg(theme, role, text), bodyWidth),
+              part: state.hasResult ? 'start' : 'full',
+              // The result part owns the final tone; the call part must match it.
+              isError: state.isError,
+              isSuccess: state.hasResult && state.isSuccess,
+              status: state.hasResult ? undefined : status,
+              context,
+              footer: state.hasResult
+                ? undefined
+                : renderToolFooter(kit, theme, { status, context }),
+            },
+            width,
+          );
+        },
+      );
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       const state = renderState(context);
       state.hasResult = true;
       state.collapsed = false;
-      if (context?.toolCallId) bridge.finish(context.toolCallId);
       state.isPartial = isPartial;
       const first = result.content[0];
       const raw = first?.type === 'text' ? first.text : '';
@@ -300,33 +364,43 @@ export function createQuestionRenderers(
       state.isError = Boolean(context?.isError) || outcome.status === 'failed';
       const status: RenderStatus = isPartial ? 'running' : outcome.status;
       state.isSuccess = status === 'completed' && !state.isError;
-      const heading = theme.fg(
-        state.isError ? 'error' : 'success',
-        state.isError ? '✗ Ask user' : '✓ Ask user',
-      );
-      const text = [
-        heading,
-        ...summarizeResult(result.details, raw, paint).rows,
-      ].join('\n');
-      return component(theme, state, false, text, (kit, width) =>
-        kit.card(
-          theme,
-          {
-            part: 'end',
-            body: (bodyWidth) =>
-              kit.collapse(
-                theme,
-                summarizeResult(result.details, raw, paint, bodyWidth).rows,
-                { expanded, budget: COLLAPSED_ROWS },
-              ),
-            status,
-            context,
-            isError: state.isError,
-            isSuccess: state.isSuccess,
-            footer: renderToolFooter(kit, theme, { status, context }),
-          },
-          width,
-        ),
+      const rows = (width: number) =>
+        summarizeResult(result.details, raw, { paint, width, expanded });
+      return component(
+        theme,
+        state,
+        false,
+        (width) => {
+          const summary = rows(width);
+          return [
+            ...summary.rows,
+            ...(summary.cancelled
+              ? [paint('warning', `${glyphs().fail} ${summary.cancelled}`)]
+              : []),
+          ].join('\n');
+        },
+        (kit, width) =>
+          kit.card(
+            theme,
+            {
+              part: 'end',
+              body: (bodyWidth) =>
+                kit.collapse(theme, rows(bodyWidth).rows, {
+                  expanded,
+                  budget: COLLAPSED_ROWS,
+                }),
+              status,
+              context,
+              isError: state.isError,
+              isSuccess: state.isSuccess,
+              footer: renderToolFooter(kit, theme, {
+                status,
+                context,
+                ...(outcome.cancelled ? { summary: outcome.cancelled } : {}),
+              }),
+            },
+            width,
+          ),
       );
     },
   };

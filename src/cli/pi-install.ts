@@ -82,9 +82,9 @@ export const PI_PACKAGE_SPECS = [
   },
   {
     id: 'ask-user-question',
-    source: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+    source: 'npm:@thoth-agents/pi-questions-user@>=0.3.0',
     packageName: '@thoth-agents/pi-questions-user',
-    version: '0.1.0',
+    version: '0.3.0',
   },
   {
     id: 'todo',

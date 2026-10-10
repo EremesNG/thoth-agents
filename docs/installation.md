@@ -220,7 +220,7 @@ The CLI installs and verifies these Pi packages in order:
 4. `npm:pi-web-access@>=0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
 5. `npm:pi-mcp-adapter@>=2.32.1` only for the anonymous grep.app MCP endpoint;
-6. `npm:@thoth-agents/pi-questions-user@>=0.1.0` for the root's interactive
+6. `npm:@thoth-agents/pi-questions-user@>=0.3.0` for the root's interactive
    `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
    recommendations, previews, notes and structured per-id answers; no fixed
    maximum on questions or options;

@@ -37,24 +37,8 @@
     "README.md",
     "LICENSE"
   ],
-  "dependencies": {
-    "@thoth-agents/pi-core": "workspace:^"
-  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.99.0",
-    "@earendil-works/pi-tui": ">=0.99.0",
-    "typebox": "*"
-  },
-  "peerDependenciesMeta": {
-    "@earendil-works/pi-coding-agent": {
-      "optional": true
-    },
-    "@earendil-works/pi-tui": {
-      "optional": true
-    },
-    "typebox": {
-      "optional": true
-    }
+    "@earendil-works/pi-tui": ">=0.99.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -64,6 +48,7 @@
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
     "@earendil-works/pi-ai": "1.0.2",
-    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@thoth-agents/pi-core": "workspace:^"
   }
 }

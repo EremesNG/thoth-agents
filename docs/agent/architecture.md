@@ -76,8 +76,8 @@ The bridges and pi-openai-fast remain operator-installed, not CLI-managed. See
 ## Pi editor-area UI
 
 pi-core owns the discoverable Work panel v2 registry. Root exports list sources,
-subscribe to per-source changes/revisions, read bounded data-only rows and invoke
-open/history/close with a live same-session context. The shared host renders
+subscribe to per-source changes/revisions, read bounded data-only rows and use
+that session's live context for open/history/close actions. The shared host renders
 semantic segments, keyed metrics with reserved widths for stable row heights,
 optional right-aligned columns for sidebar consumers, and status values; providers expose no row
 render callbacks or pre-styled text. Upgrade pi-subagents, pi-background-tasks and

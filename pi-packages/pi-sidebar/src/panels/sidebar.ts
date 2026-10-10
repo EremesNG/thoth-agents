@@ -644,8 +644,9 @@ export class SidebarPanels implements Component {
     return visible;
   }
   sourceIds(width = 44): string[] {
+    // A title-only panel still displays its source, even without live rows.
     return this.plan(this.options.height(), width)
-      .filter((panel) => panel.source && panel.height >= 3)
+      .filter((panel) => panel.source && panel.height >= 1)
       .map((panel) => panel.id);
   }
   hasAnimation(width = 44): boolean {

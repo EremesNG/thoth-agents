@@ -301,6 +301,7 @@ exactly one SHA field line; put notes on separate lines below the fields.
 
 Live checks then revised AC-6 (status-icon header counters, two-level aligned metric grid) and AC-8 (elapsed-time curves axis, derived labels); round 3 FAIL (stale grid on re-exposure) repaired; round 4 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-4 (19 files).
 Live check 2 revised AC-8 (top 5, curves rendering fix, envelope-stripped labels) and AC-10 (retention 10 s/30 s + cap 3, height fairness, `+N more` keeps command); round 5 FAIL (terminal envelope, bare-command fallback) repaired; round 6 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-7 (21 files). The status-line diamond gauge is a separate small user request verified in the same rounds.
+Live /resume bug (title-only panels not absorbed because absorption required height >= 3) repaired to absorb every rendered source panel; round 7 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-8 (3 files), including auto-hide release and resume probes.
 
 Round 1 fresh Oracle FAIL (missing production model column, stale icons on finished rows after kit change, stale docs) repaired; round 2 fresh Oracle PASS on 2026-10-09 against frozen manifest sidebar-ux-manifest-2 (60 files). Live user check outstanding before archive.
 

@@ -133,14 +133,22 @@ function contextBar(
   let token = 'success';
   if (percent >= 90) token = 'error';
   else if (percent >= 70) token = 'warning';
-  const filled = Math.min(10, Math.max(0, Math.round((percent / 100) * 10)));
-  const fillChar = isAscii ? '#' : '█';
-  const emptyChar = isAscii ? '-' : '░';
+  const halves = Math.min(
+    16,
+    Math.max(percent > 0 ? 1 : 0, Math.round((percent / 100) * 16)),
+  );
+  const full = Math.floor(halves / 2);
+  const half = halves % 2;
   const dim = (text: string) => themeFg(theme, 'dim', text);
+  const filled = isAscii
+    ? '#'.repeat(full) + (half ? '=' : '')
+    : '◆'.repeat(full) + (half ? '⬖' : '');
+  const empty = (isAscii ? '-' : '◇').repeat(8 - full - half);
+  const bar = isAscii
+    ? `${dim('[')}${themeFg(theme, token, filled)}${dim(empty)}${dim(']')}`
+    : `${themeFg(theme, token, filled)}${dim(empty)}`;
   return {
-    bar: `${dim('[')}${themeFg(theme, token, fillChar.repeat(filled))}${dim(
-      emptyChar.repeat(10 - filled),
-    )}${dim(']')}`,
+    bar,
     pct: themeFg(theme, token, `${Math.round(percent)}%`),
   };
 }

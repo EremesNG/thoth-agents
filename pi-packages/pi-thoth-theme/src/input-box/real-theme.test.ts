@@ -258,7 +258,7 @@ describe('input box with the real Pi Thoth theme', () => {
       `╭─ ▲ ready · \ue0a0 main ${'─'.repeat(68)} \u{f07c} ~/proj ─╮`,
     );
     expect(stripTerminalSequences(lines[2])).toBe(
-      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(50)} \uf2db [███░░░░░░░] 30% 60K/200K ─╯`,
+      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(54)} \uf2db ◆◆⬖◇◇◇◇◇ 30% 60K/200K ─╯`,
     );
     expect(lines.map(visibleWidth)).toEqual([100, 100, 100]);
     expect(lines[0]).toContain(theme.fg('success', '\ue0a0 main'));

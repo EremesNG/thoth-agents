@@ -308,7 +308,7 @@ User then replaced linger retention with a fixed minimum (active + 3 most recent
 Curves palette (live: repeated hues, overlap kept first series): 10 distinct mode-aware colors, later series wins overlaps, ascii digit markers; round 9 FAIL (raw truecolor in 256 mode) repaired; round 10 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-11 (2 files).
 Labels clarification (strip `Repo root` phrases and absolute paths; agent prefix in the curves legend only): rounds 11-12 FAIL (slash over-stripping, quoted paths) repaired; round 13 fresh Oracle PASS on 2026-10-10 against sidebar-ux-manifest-14 (8 files).
 
-Round 1 fresh Oracle FAIL (missing production model column, stale icons on finished rows after kit change, stale docs) repaired; round 2 fresh Oracle PASS on 2026-10-09 against frozen manifest sidebar-ux-manifest-2 (60 files). Live user check outstanding before archive.
+Round 1 fresh Oracle FAIL (missing production model column, stale icons on finished rows after kit change, stale docs) repaired; round 2 fresh Oracle PASS on 2026-10-09 against frozen manifest sidebar-ux-manifest-2 (60 files). Live user acceptance recorded on 2026-10-10 after the round-13 build (master 02cb9bc): sidebar, `/sidebar cost`, resume, cleanup and diamond gauge confirmed.
 
 - AC-1: PASS | registry tests (pi-core 957) | data-only isolated summaries; revisions and contract v2 unchanged
 - AC-2: PASS | 20..140 sweeps + independent 99->100 tok/s and 9s->10s probes at 40/59 in all icon modes | stable heights, monotonic overflow, measured=rendered; host golden changes limited to packing and AC-12; 1,120 model-present/absent host comparisons identical
@@ -328,4 +328,4 @@ Round 1 fresh Oracle FAIL (missing production model column, stale icons on finis
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

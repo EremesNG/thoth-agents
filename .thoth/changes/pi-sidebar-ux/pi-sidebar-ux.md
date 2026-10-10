@@ -61,6 +61,7 @@ Redesign the Pi sidebar after pi-atelier with gentle-shell header counters and d
 - Agent row metrics (user, 2026-10-09, live check): the sidebar column layout left only elapsed visible; show all metrics with icons (tools, tokens, ctx, tok/s, elapsed, cost) on continuation lines like the work panel.
 - Row layout (user, 2026-10-09): two-level layout — identity line on top, all metrics as aligned columns below (wrapping to another aligned line if needed), inline with the identity when wide.
 - Header counters (user, 2026-10-09, live check): `1·22·1` is confusing; show icons with the counts.
+- Labels (user, 2026-10-10): derived labels also drop `Repo root <path>` phrases and absolute paths; the curves overlay legend prefixes the agent name (`thoth-worker · pi-panel-standard · UNIT 2 (AC-2)`) while the sidebar Cost bars keep the label alone.
 - Minimum rows (user, 2026-10-09, after resume): an empty panel when everything finished is not wanted; always keep the 3 most recent finished rows (failures first), no linger expiry in the sidebar.
 - Sidebar cleanup (user, 2026-10-09): the Cost panel disappeared under growth; apply the widget retention plus a 3-finished-row cap, and guarantee each panel a minimum (title + 2 lines) before filling in order.
 - Live check 2 (user, 2026-10-09): the curves overlay draws broken horizontal fragments instead of rising per-task curves; the truncated last panel lost its command after `+N more`; reduce the sidebar Cost panel to top 5. Root: derived labels strip the dispatch envelope (`PHASE: … / CHANGE: …`) so labels start with the meaningful text.
@@ -298,13 +299,14 @@ exactly one SHA field line; put notes on separate lines below the fields.
 **Reviewer**: oracle
 **Independent from implementer**: Yes
 **Verdict**: PASS
-**Reviewed record SHA-256**: 79a20de291429d904f09c482bb3b1e4b8c8c3dee8a8bfe5e2aa98cc048bcffd6
+**Reviewed record SHA-256**: f779b5ac211a08d99f2a40c499fe743c6db042e548591b2995ba44edc845ed5e
 
 Live checks then revised AC-6 (status-icon header counters, two-level aligned metric grid) and AC-8 (elapsed-time curves axis, derived labels); round 3 FAIL (stale grid on re-exposure) repaired; round 4 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-4 (19 files).
 Live check 2 revised AC-8 (top 5, curves rendering fix, envelope-stripped labels) and AC-10 (retention 10 s/30 s + cap 3, height fairness, `+N more` keeps command); round 5 FAIL (terminal envelope, bare-command fallback) repaired; round 6 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-7 (21 files). The status-line diamond gauge is a separate small user request verified in the same rounds.
 Live /resume bug (title-only panels not absorbed because absorption required height >= 3) repaired to absorb every rendered source panel; round 7 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-8 (3 files), including auto-hide release and resume probes.
 User then replaced linger retention with a fixed minimum (active + 3 most recent finished, failures first, no expiry); round 8 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-9 (8 paths).
 Curves palette (live: repeated hues, overlap kept first series): 10 distinct mode-aware colors, later series wins overlaps, ascii digit markers; round 9 FAIL (raw truecolor in 256 mode) repaired; round 10 fresh Oracle PASS on 2026-10-09 against sidebar-ux-manifest-11 (2 files).
+Labels clarification (strip `Repo root` phrases and absolute paths; agent prefix in the curves legend only): rounds 11-12 FAIL (slash over-stripping, quoted paths) repaired; round 13 fresh Oracle PASS on 2026-10-10 against sidebar-ux-manifest-14 (8 files).
 
 Round 1 fresh Oracle FAIL (missing production model column, stale icons on finished rows after kit change, stale docs) repaired; round 2 fresh Oracle PASS on 2026-10-09 against frozen manifest sidebar-ux-manifest-2 (60 files). Live user check outstanding before archive.
 

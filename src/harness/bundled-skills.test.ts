@@ -210,6 +210,38 @@ describe('canonical workflow bundle contracts', () => {
         'plan-reviewer',
       ]);
 
+      const activationBoundaries = {
+        'thoth-init': [
+          'Use',
+          'initialize',
+          '.thoth',
+          'without modifying existing',
+        ],
+        'thoth-sdd': [
+          'Use',
+          'any change',
+          'proportional',
+          'classification',
+          'single',
+          'substantial',
+        ],
+        'thoth-constitution': ['Use only', 'explicit', 'creation', 'amendment'],
+        'thoth-archive': [
+          'Use only after',
+          'fresh Oracle PASS',
+          'substantial',
+          'closeout',
+        ],
+        'plan-reviewer': [
+          'Use only',
+          'selected',
+          'substantial ready',
+          'independent',
+          'blocker-only',
+          'does not authorize implementation',
+        ],
+      };
+
       for (const skillsRoot of [
         join(process.cwd(), 'skills'),
         join(packageRoot, 'plugin', 'skills'),
@@ -223,7 +255,14 @@ describe('canonical workflow bundle contracts', () => {
         for (const skillName of THOTH_OWNED_SKILL_NAMES) {
           const metadata = frontmatter(skillsRoot, skillName);
           expect(field(metadata, 'name')).toBe(skillName);
-          expect(field(metadata, 'description').length).toBeGreaterThan(0);
+          const description = field(metadata, 'description');
+          expect(description.length).toBeGreaterThan(0);
+          expect(description.length).toBeLessThanOrEqual(1024);
+          for (const boundary of activationBoundaries[skillName]) {
+            expect(description, `${skillName} activation boundary`).toContain(
+              boundary,
+            );
+          }
           expect(field(metadata, 'license')).toBe('MIT');
           expect(field(metadata, 'compatibility').length).toBeLessThanOrEqual(
             500,

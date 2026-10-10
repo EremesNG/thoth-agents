@@ -1,6 +1,6 @@
 ---
 name: thoth-sdd
-description: Apply proportional understanding and risk-aware SDD classification, with one ID-named record for substantial changes.
+description: Governs SDD changes, including the single ID-named record for substantial work. Use for any change requiring proportional understanding and risk-aware classification, whether small or substantial.
 license: MIT
 compatibility: Requires Node.js >=22.19 for bundled product validation.
 metadata:

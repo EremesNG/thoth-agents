@@ -1,6 +1,6 @@
 ---
 name: plan-reviewer
-description: Independent blocker-only Oracle review of a ready substantial SDD plan before separate implementation authorization.
+description: Provides independent, blocker-only Oracle review of a substantial SDD plan. Use only when plan review was selected at substantial ready; it does not authorize implementation.
 license: MIT
 compatibility: Requires the installed sibling thoth-sdd skill.
 metadata:

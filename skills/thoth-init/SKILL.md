@@ -1,6 +1,6 @@
 ---
 name: thoth-init
-description: Initialize canonical offline .thoth governance without modifying existing project records.
+description: Initializes canonical offline .thoth governance without modifying existing project records. Use only to initialize missing .thoth governance, not to amend or replace existing records.
 license: MIT
 compatibility: Requires Node.js >=22.19 and write access to target project.
 metadata:

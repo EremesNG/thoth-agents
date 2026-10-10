@@ -1,6 +1,6 @@
 ---
 name: thoth-archive
-description: Transactionally apply declared .thoth/specs deltas and archive independently verified substantial SDD changes.
+description: Applies declared .thoth/specs deltas and archives independently verified substantial SDD changes. Use only after a substantial change has a fresh Oracle PASS and passes closeout; not for unverified or incomplete work.
 license: MIT
 compatibility: Requires Node.js >=22.19 and installed sibling thoth-sdd skill.
 metadata:

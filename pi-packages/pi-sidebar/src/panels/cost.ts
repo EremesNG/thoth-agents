@@ -20,7 +20,7 @@ export interface CostTask {
   id: string;
   label: string;
   cost: number;
-  /** Unix ms; the earliest known moment of the task. */
+  /** Unix ms; startedAt, falling back to createdAt until the task starts. */
   start: number;
   end?: number;
   /** Cumulative cost observed in state snapshots; empty for history-only tasks. */
@@ -73,13 +73,14 @@ export class CostTracker {
       }
       if (
         known.cost === cost &&
+        known.start === start &&
         known.label === name &&
         known.end === task.endedAt
       )
         continue;
       changed = true;
       known.label = name;
-      known.start = Math.min(known.start, start);
+      known.start = start;
       known.end = task.endedAt;
       if (cost !== known.cost) {
         known.cost = cost;

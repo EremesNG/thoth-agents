@@ -530,7 +530,7 @@ but greedy text is **not padded**; identity clipping still uses the space actual
 left by the displayed metric text.
 
 `renderWorkPanelRow` from `@thoth-agents/pi-core/panel` accepts
-`metricLayout: 'columns'` for sidebar use. All groups must be keyed; otherwise
+the optional degrading `metricLayout: 'columns'`. All groups must be keyed; otherwise
 it retains greedy packing. Columns are right-aligned in their reserved widths
 and dropped in order: tokens, cost, model, then tools/context/speed; elapsed is
 retained last (clipped only if the available width cannot hold it).
@@ -539,6 +539,12 @@ groups from both inline metrics and continuations. Providers can use this for
 sidebar-only model·effort metadata without changing host rows.
 Use the same layout for height
 measurement: `workPanelRowLineCount(row, width, measure, { metricLayout: 'columns' })`.
+For non-dropping sidebar grids, use `metricLayout: 'grid'` and pass the same
+`metricGrid: createWorkPanelMetricGrid(rows, measure)` schema to render and measure.
+The schema aligns fixed-order wrapped columns across rows, including empty fields;
+model reserves 16 cells with ellipsis, while numbers beyond reservations widen
+shared columns without truncation. Inline fit reserves 24 identity cells for the
+whole panel; identity clips with ellipsis into the remaining room. The host's default layout is unchanged.
 
 `statusGlyph` is a closed semantic union: `RenderStatus | 'taskInProgress'`, never
 a literal glyph or function. `running` / `in_progress` resolve through the kit's

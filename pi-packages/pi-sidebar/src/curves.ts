@@ -13,7 +13,7 @@ import { isAsciiMode, type PanelRole } from './panels/chrome.js';
 import { type CostTask, type CostTracker, formatUsd } from './panels/cost.js';
 
 export interface CurvePoint {
-  /** Unix ms. */
+  /** Elapsed ms since this task's start. */
   at: number;
   /** Cumulative cost. */
   cost: number;
@@ -26,18 +26,26 @@ export interface CurveSeries {
 }
 
 /** Observed samples when present; otherwise one straight segment start to end. */
-export function curveSeries(tasks: readonly CostTask[]): CurveSeries[] {
+export function curveSeries(
+  tasks: readonly CostTask[],
+  now = Date.now(),
+): CurveSeries[] {
   return tasks.map((task) => {
+    const duration = Math.max(0, (task.end ?? now) - task.start);
     const first = task.samples[0];
     const points: CurvePoint[] = [];
     if (first) {
-      if (first.at > task.start) points.push({ at: task.start, cost: 0 });
-      points.push(...task.samples);
-    } else {
+      if (first.at > task.start) points.push({ at: 0, cost: 0 });
       points.push(
-        { at: task.start, cost: 0 },
-        { at: Math.max(task.start + 1, task.end ?? 0), cost: task.cost },
+        ...task.samples.map((sample) => ({
+          at: Math.max(0, Math.min(duration, sample.at - task.start)),
+          cost: sample.cost,
+        })),
       );
+      if (points[points.length - 1].at < duration)
+        points.push({ at: duration, cost: task.cost });
+    } else {
+      points.push({ at: 0, cost: 0 }, { at: duration, cost: task.cost });
     }
     return { label: task.label, cost: task.cost, points };
   });
@@ -98,9 +106,10 @@ export function renderCurvePlot(
   const margin = Math.max(top.length, bottom.length);
   const plotW = Math.max(2, width - margin - 1);
   const plotH = Math.max(2, height - 2);
-  const min = Math.min(...series.map((s) => s.points[0].at));
-  const max = Math.max(...series.map((s) => s.points[s.points.length - 1].at));
-  const span = Math.max(1, max - min);
+  const max = Math.max(
+    ...series.map((s) => s.points[s.points.length - 1].at),
+    0,
+  );
   const yMax = Math.max(...series.map((s) => s.cost)) || 1;
   const grid: (Cell | undefined)[][] = Array.from(
     { length: plotH },
@@ -112,10 +121,7 @@ export function renderCurvePlot(
     let previous: number | undefined;
     let lastColumn = -1;
     for (let col = 0; col < plotW; col++) {
-      const value = valueAt(
-        line.points,
-        min + (span * col) / Math.max(1, plotW - 1),
-      );
+      const value = valueAt(line.points, (max * col) / Math.max(1, plotW - 1));
       if (value === null) {
         previous = undefined;
         continue;
@@ -153,7 +159,7 @@ export function renderCurvePlot(
     return `${label.padStart(margin)}${ascii ? '|' : '┤'}${cells.map(colored).join('')}`;
   });
   const axis = `${' '.repeat(margin)}${ascii ? '+' : '└'}${g.h.repeat(plotW)}`;
-  const end = duration(span);
+  const end = duration(max);
   const scale = `${' '.repeat(margin + 1)}0${' '.repeat(Math.max(1, plotW - end.length - 1))}${end}`;
   return [...rows, axis, scale];
 }

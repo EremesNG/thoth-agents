@@ -248,8 +248,12 @@ responsive `identity` and `metrics`/`continuation` groups, and optional
 not a function or literal glyph; the host owns animation and glyph resolution.
 The `completed` role gives task-list rows dim/strikethrough styling in the host.
 Keyed metrics reserve number-format widths to stabilize row height across
-digit-width changes. The host keeps greedy packing; sidebar consumers use
-`metricLayout: 'columns'` for right-aligned, degrading columns. Semantic metric
+digit-width changes. The host keeps greedy packing; the sidebar uses
+`metricLayout: 'grid'` with a shared column schema, wrapping all metrics without
+dropping them and aligning missing fields as empty cells. Model·effort reserves
+16 cells with ellipsis; out-of-range numbers widen their shared column without
+truncation. The optional degrading `metricLayout: 'columns'` remains available.
+Semantic metric
 icons include `elapsed`; ASCII retains labels. Selection, focus and keys are unchanged.
 
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
@@ -293,9 +297,12 @@ chrome uses per-panel theme roles and SGR-dim borders. Session adds a context
 meter and warning/rejected Limit row. Workspace shares pi-core's root
 `formatCwd`, showing Clean/Modified/Conflicts and `Changed N files +A −D` from
 porcelain v2 and numstat against HEAD (empty tree when unborn). Work panels
-show provider summaries, right-aligned columns and `/subagents`, `/todos`, `/bg`
-footers; empty panels keep a title-plus-command line. Cost shows the top ten
-live/persisted session task costs as bars. Under pressure footers drop before
+show static running/done/failed status-icon counts with zero counts omitted
+(Todos keeps completed/total), all metrics with icons in aligned columns that
+wrap onto stable continuation lines (ASCII labels), and `/subagents`, `/todos`, `/bg` footers; empty panels keep
+a title-plus-command line. Cost shows the top ten live/persisted session task
+costs as bars, using display names or short task-summary names. Curves plot
+elapsed time per task from zero to the longest task duration. Under pressure footers drop before
 rows, panels reduce to titles, and widths below 24 show `/sidebar resize`.
 
 The process-wide, owner-tokened `registerUIPreferences` / `updateUIPreferences` /

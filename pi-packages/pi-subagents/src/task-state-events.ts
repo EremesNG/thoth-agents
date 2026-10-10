@@ -10,6 +10,7 @@ import {
 } from '@thoth-agents/pi-core';
 import type { SubagentManager } from './manager.js';
 import type { SubagentTask } from './types.js';
+import { formatTaskSummary } from './ui/background-widget.js';
 
 type TaskStateSource = Pick<
   SubagentManager,
@@ -41,7 +42,9 @@ function summarizeTask(task: SubagentTask): SubagentTaskSummary {
   return {
     id: task.id,
     agent: task.agent,
-    displayName: task.display_name,
+    displayName: task.display_name?.trim()
+      ? task.display_name
+      : formatTaskSummary(task) || task.agent,
     mode: task.mode,
     status: task.status,
     model: task.model,

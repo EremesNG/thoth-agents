@@ -9,15 +9,18 @@ import {
   type ProviderLimitEntry,
   type RenderKitTheme,
   resolveIcon,
+  resolveStatusGlyph,
   type WorkPanelRow,
   type WorkPanelSource,
 } from '@thoth-agents/pi-core';
 import {
+  createWorkPanelMetricGrid,
   panelFg,
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
   WORK_PANEL_ANIMATION_INTERVAL_MS,
+  type WorkPanelMetricGrid,
   workPanelRenderStatus,
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
@@ -86,12 +89,14 @@ const COST_COMMAND = '/sidebar cost';
 const MIN_PANEL_WIDTH = 24;
 export const WIDEN_HINT = 'widen: /sidebar resize';
 
-/** `active·done·failed` for agents and background tasks, `done/total` for todos. */
-function sourceSummary(source: WorkPanelSource): string | undefined {
+/** Static status counts for agents/background tasks, `done/total` for todos. */
+function sourceSummary(
+  source: WorkPanelSource,
+  theme: RenderKitTheme,
+): string | undefined {
   const summary = source.summary;
   if (!summary) return undefined;
   const { running, completed, failed, total } = summary;
-  const sep = resolveIcon('separator', '·');
   if (source.id === 'todos') {
     return completed !== undefined && total !== undefined
       ? `${completed}/${total}`
@@ -103,7 +108,23 @@ function sourceSummary(source: WorkPanelSource): string | undefined {
     completed !== undefined &&
     failed !== undefined
   )
-    return `${running}${sep}${completed}${sep}${failed}`;
+    return [
+      running > 0
+        ? panelFg(theme, 'accent', `${resolveStatusGlyph('running')}${running}`)
+        : '',
+      completed > 0
+        ? panelFg(
+            theme,
+            'success',
+            `${resolveStatusGlyph('completed')}${completed}`,
+          )
+        : '',
+      failed > 0
+        ? panelFg(theme, 'error', `${resolveStatusGlyph('failed')}${failed}`)
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
   return summary.text ? clean(summary.text) : undefined;
 }
 
@@ -234,6 +255,7 @@ export class SidebarPanels implements Component {
       revision: number;
       frame: number;
       items: WorkPanelRow[];
+      grid: WorkPanelMetricGrid;
       animated: boolean;
     }
   >();
@@ -366,21 +388,31 @@ export class SidebarPanels implements Component {
             respectRowCap: false,
           }),
         ),
+        grid: [],
         animated: false,
       };
+      snapshot.grid = createWorkPanelMetricGrid(
+        snapshot.items,
+        panelVisibleWidth,
+      );
       this.snapshots.set(source.id, snapshot);
     }
     const items = snapshot.items;
+    const metricOptions = {
+      metricLayout: 'grid' as const,
+      metricGrid: snapshot.grid,
+    };
     const command = DETAIL_COMMANDS[source.id];
     return {
       id: source.id,
       title: clean(source.label),
       // An empty panel is one title line that carries the command.
-      summary: items.length === 0 && command ? command : sourceSummary(source),
+      summary:
+        items.length === 0 && command
+          ? command
+          : sourceSummary(source, options.theme),
       costs: items.map((row) =>
-        workPanelRowLineCount(row, inner, panelVisibleWidth, {
-          metricLayout: 'columns',
-        }),
+        workPanelRowLineCount(row, inner, panelVisibleWidth, metricOptions),
       ),
       block: (index) =>
         renderWorkPanelRow(items[index], {
@@ -390,7 +422,7 @@ export class SidebarPanels implements Component {
           clip: truncatePanelText,
           measure: panelVisibleWidth,
           last: index === items.length - 1,
-          metricLayout: 'columns',
+          ...metricOptions,
         }),
       more: true,
       footer: command
@@ -439,6 +471,7 @@ export class SidebarPanels implements Component {
         options.resizeWidth?.(),
         this.sessionView(),
         icons,
+        [...this.snapshots].map(([id, snapshot]) => [id, snapshot.grid]),
         options.home,
       ]);
     if (makeKey() === this.cachedKey) return this.cachedPlan;
@@ -487,6 +520,10 @@ export class SidebarPanels implements Component {
             maxRows: Number.MAX_SAFE_INTEGER,
             respectRowCap: false,
           }),
+        );
+        snapshot.grid = createWorkPanelMetricGrid(
+          snapshot.items,
+          panelVisibleWidth,
         );
         snapshot.frame = frame;
         return this.plan(height, width);

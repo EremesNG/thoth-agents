@@ -67,11 +67,16 @@ it('renders current session values and subscription classification with cumulati
 
 it('stacks configured panels in order, uses fresh discovered rows and kit, bounds height and hides disabled panels', () => {
   let primary = 'First task';
+  let changed = () => {};
   const off = registerWorkPanelProvider(
     { on() {} } as any,
     {
       version: WORK_PANEL_VERSION,
       id: 'test-source',
+      onVisibleChanged: (listener: () => void) => {
+        changed = listener;
+        return () => {};
+      },
       label: 'Tasks',
       priority: 10,
       visibleCount: () => 1,
@@ -107,6 +112,7 @@ it('stacks configured panels in order, uses fresh discovered rows and kit, bound
   expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Session'));
   expect(text).toContain('First task');
   primary = 'Updated task';
+  changed();
   expect(panel.render(44).join('\n')).toContain('Updated task');
   expect(panel.sourceIds()).toEqual(['test-source']);
   config.panels[0].visible = false;

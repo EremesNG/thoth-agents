@@ -388,6 +388,8 @@ retain editor callbacks and app actions. Expanded questions acquire focus throug
 owned-overlay handles; collapsed questions return input to the editor, and
 teardown preserves visible foreign-overlay focus.
 
+- `workPanelRowLineCount(row, width, measure?)` measures the same responsive
+  continuation lines as the row renderer, without styling offscreen rows.
 - `renderWorkPanelRow(row, { width, now, theme, clip, measure?, selected?, last? })`
   renders the same data-row block as the host: semantic status glyphs, responsive
   identity/metric continuations, extra segments and completed strikethrough.

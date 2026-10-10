@@ -47,6 +47,7 @@ export class SidebarSession {
   private subagentCost = 0;
   private preference: symbol | undefined;
   private absorbed = '';
+  private renderedSignature = '';
   private appliedWidth = 44;
   private resizeStatus: string | undefined;
   private resizeInputRelease: (() => void) | undefined;
@@ -105,6 +106,7 @@ export class SidebarSession {
         sessionId: ctx.sessionManager.getSessionId(),
         onSnapshot: ({ data }) => {
           this.subagentCost = data.totalCost;
+          this.panels.refreshSessionCost();
           this.refresh();
         },
       }),
@@ -117,6 +119,7 @@ export class SidebarSession {
       this.prioritizeInput(input);
     }
     this.sync();
+    this.renderedSignature = this.signature();
     request(pi.events, SUBAGENTS_USAGE_REQUEST, {
       sessionId: ctx.sessionManager.getSessionId(),
       source: '@thoth-agents/pi-sidebar',
@@ -175,12 +178,25 @@ export class SidebarSession {
       }, WORK_PANEL_ANIMATION_INTERVAL_MS);
     }
   }
-  refresh(ctx?: ExtensionContext, workspace = false): void {
+  private signature(): string {
+    return JSON.stringify([
+      this.adapter.isDisplayed(),
+      this.appliedWidth,
+      this.tui.terminal.rows,
+      this.adapter.isDisplayed() ? this.panels.render(this.appliedWidth) : [],
+    ]);
+  }
+  refresh(ctx?: ExtensionContext, workspace = false, cost = false): void {
     if (this.disposed) return;
     if (ctx) this.context = ctx;
+    if (cost) this.panels.refreshSessionCost();
     if (workspace) this.workspaceReader.refresh();
     this.sync();
-    this.tui.requestRender();
+    const signature = this.signature();
+    if (signature !== this.renderedSignature) {
+      this.renderedSignature = signature;
+      this.tui.requestRender();
+    }
   }
   private inputActive(): boolean {
     return (

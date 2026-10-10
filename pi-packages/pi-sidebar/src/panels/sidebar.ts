@@ -3,6 +3,7 @@ import type { Component } from '@earendil-works/pi-tui';
 import {
   combineSessionAndSubagentCost,
   computeSessionCost,
+  getRenderKit,
   getWorkPanelSourceRows,
   listWorkPanelSources,
   type RenderKitTheme,
@@ -14,7 +15,9 @@ import {
   renderPanelCard,
   renderWorkPanelRow,
   truncatePanelText,
+  WORK_PANEL_ANIMATION_INTERVAL_MS,
   workPanelRenderStatus,
+  workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
 import type { SidebarConfig } from '../config.js';
 import type { WorkspaceSnapshot } from './workspace.js';
@@ -24,12 +27,14 @@ export function sessionRows(
   thinking: string,
   subscriptionProviders: readonly string[],
   subagentCost: number,
-): string[] {
-  const cost = computeSessionCost(ctx.sessionManager.getEntries(), {
+  cost = computeSessionCost(ctx.sessionManager.getEntries(), {
     subscriptionProviders,
     providerOf: () => ctx.model?.provider,
-  });
-  const usage = ctx.getContextUsage();
+  }),
+  usage: ReturnType<
+    ExtensionContext['getContextUsage']
+  > | null = ctx.getContextUsage(),
+): string[] {
   const number = (value: number) => value.toLocaleString('en-US');
   const context =
     usage?.tokens == null
@@ -87,28 +92,16 @@ function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
   ];
 }
 
-/** Height overflow counts retained items, never continuation lines or discarded history. */
-function boundedBody(blocks: string[][], budget: number): string[] {
-  if (blocks.flat().length <= budget) return blocks.flat();
-  const lines: string[] = [];
-  let shown = 0;
-  for (const block of blocks) {
-    if (lines.length + block.length > budget - 1) break;
-    lines.push(...block);
-    shown++;
-  }
-  return budget > 0 ? [...lines, `+${blocks.length - shown} more`] : [];
-}
-
 interface PanelData {
   id: string;
   title: string;
   rows: string[];
-  blocks?: string[][];
   animated?: boolean[];
   priority: number;
   source: boolean;
   height: number;
+  items?: WorkPanelRow[];
+  costs?: number[];
 }
 export interface SidebarPanelsOptions {
   config: SidebarConfig;
@@ -122,11 +115,86 @@ export interface SidebarPanelsOptions {
   resizeWidth?(): number | undefined;
 }
 export class SidebarPanels implements Component {
-  constructor(private readonly options: SidebarPanelsOptions) {}
-  invalidate(): void {} // Data and kit are sampled on every render; no stale cache.
+  private cachedKey = '';
+  private cachedPlan: PanelData[] = [];
+  private cachedLines: string[] | undefined;
+  private kit = getRenderKit();
+  private revision = 0;
+  private animated = false;
+  private cost: ReturnType<typeof computeSessionCost>;
+  private usage: ReturnType<ExtensionContext['getContextUsage']>;
+  private sessionDirty = true;
+  private sessionLeafId: string | null | undefined;
+  private snapshots = new Map<
+    string,
+    {
+      revision: number;
+      frame: number;
+      items: WorkPanelRow[];
+      animated: boolean;
+    }
+  >();
+  constructor(private readonly options: SidebarPanelsOptions) {
+    this.cost = { cost: 0, isSubscription: false };
+  }
+  private readSession(): void {
+    const ctx = this.options.context();
+    const leafId = ctx.sessionManager.getLeafId?.();
+    if (!this.sessionDirty && leafId === this.sessionLeafId) return;
+    this.usage = ctx.getContextUsage();
+    this.cost = computeSessionCost(ctx.sessionManager.getEntries(), {
+      subscriptionProviders: this.options.subscriptionProviders,
+      providerOf: () => ctx.model?.provider,
+    });
+    this.sessionLeafId = leafId;
+    this.sessionDirty = false;
+  }
+  refreshSessionCost(): void {
+    // message_end precedes persistence; the leaf check catches a later append.
+    this.sessionDirty = true;
+    this.invalidate();
+  }
+  invalidate(): void {
+    this.revision++;
+    this.cachedLines = undefined;
+  }
+  private sessionRows(): string[] {
+    return sessionRows(
+      this.options.context(),
+      this.options.thinking(),
+      this.options.subscriptionProviders,
+      this.options.subagentCost(),
+      this.cost,
+      this.usage ?? null,
+    );
+  }
   private plan(height: number, width = 44): PanelData[] {
+    this.readSession();
     const options = this.options;
     const sources = listWorkPanelSources();
+    const kit = getRenderKit();
+    if (kit !== this.kit) {
+      this.kit = kit;
+      this.invalidate();
+    }
+    const frame = Math.floor(Date.now() / WORK_PANEL_ANIMATION_INTERVAL_MS);
+    const makeKey = () =>
+      JSON.stringify([
+        sources,
+        height,
+        width,
+        this.revision,
+        this.animated ? frame : 0,
+        options.config,
+        options.workspace(),
+        options.resizeWidth?.(),
+        this.sessionRows(),
+      ]);
+    if (makeKey() === this.cachedKey) return this.cachedPlan;
+    for (const id of this.snapshots.keys()) {
+      if (!sources.some((source) => source.id === id))
+        this.snapshots.delete(id);
+    }
     const panels: PanelData[] = [];
     const resizeWidth = options.resizeWidth?.();
     if (resizeWidth !== undefined)
@@ -149,12 +217,7 @@ export class SidebarPanels implements Component {
         panels.push({
           id: 'session',
           title: 'Session',
-          rows: sessionRows(
-            options.context(),
-            options.thinking(),
-            options.subscriptionProviders,
-            options.subagentCost(),
-          ),
+          rows: this.sessionRows(),
           priority: 0,
           source: false,
           height: 6,
@@ -176,28 +239,36 @@ export class SidebarPanels implements Component {
       } else {
         const source = sources.find((source) => source.id === preference.id);
         if (!source) continue;
-        const items = retainedRows(
-          getWorkPanelSourceRows(source.id, {
-            maxRows: 100_000,
-            respectRowCap: false,
-          }),
+        let snapshot = this.snapshots.get(source.id);
+        if (
+          !snapshot ||
+          snapshot.revision !== source.revision ||
+          (snapshot.animated && snapshot.frame !== frame)
+        ) {
+          snapshot = {
+            revision: source.revision,
+            frame,
+            items: retainedRows(
+              getWorkPanelSourceRows(source.id, {
+                // Exact retention/overflow counts require the complete snapshot.
+                maxRows: Number.MAX_SAFE_INTEGER,
+                respectRowCap: false,
+              }),
+            ),
+            animated: false,
+          };
+          this.snapshots.set(source.id, snapshot);
+        }
+        const items = snapshot.items;
+        const costs = items.map((row) =>
+          workPanelRowLineCount(row, Math.max(1, width - 4), panelVisibleWidth),
         );
-        const blocks = items.map((row, index) =>
-          renderWorkPanelRow(row, {
-            width: Math.max(1, width - 4),
-            now,
-            theme: options.theme,
-            clip: truncatePanelText,
-            measure: panelVisibleWidth,
-            last: index === items.length - 1,
-          }),
-        );
-        const rows = blocks.flat();
         panels.push({
           id: source.id,
           title: clean(source.label),
-          rows: rows.length ? rows : ['No items'],
-          blocks: rows.length ? blocks : undefined,
+          rows: ['No items'],
+          items,
+          costs,
           animated: items.map(
             (row) =>
               !row.summary &&
@@ -205,7 +276,11 @@ export class SidebarPanels implements Component {
           ),
           priority: source.priority,
           source: true,
-          height: Math.max(1, rows.length) + 2,
+          height:
+            Math.max(
+              1,
+              costs.reduce((sum, cost) => sum + cost, 0),
+            ) + 2,
         });
       }
     }
@@ -233,7 +308,70 @@ export class SidebarPanels implements Component {
       total -= panel.height;
       panel.height = 0;
     }
-    return panels.filter((panel) => panel.height > 0);
+    const visible = panels.filter((panel) => panel.height > 0);
+    this.animated = false;
+    for (const panel of visible) {
+      if (!panel.items?.length || !panel.costs || panel.height < 3) continue;
+      const budget = panel.height - 2;
+      const overflow =
+        panel.costs.reduce((sum, cost) => sum + cost, 0) > budget;
+      let used = 0;
+      let shown = 0;
+      const blocks: string[][] = [];
+      const snapshot = this.snapshots.get(panel.id);
+      // Refresh newly exposed animation before rendering. Replan because fresh
+      // provider text can change row count and line costs as well.
+      let exposed = 0;
+      let exposedCost = 0;
+      for (const cost of panel.costs) {
+        if (exposedCost + cost > budget - (overflow ? 1 : 0)) break;
+        exposedCost += cost;
+        exposed++;
+      }
+      if (
+        snapshot &&
+        snapshot.frame !== frame &&
+        panel.animated?.slice(0, exposed).some(Boolean)
+      ) {
+        snapshot.items = retainedRows(
+          getWorkPanelSourceRows(panel.id, {
+            maxRows: Number.MAX_SAFE_INTEGER,
+            respectRowCap: false,
+          }),
+        );
+        snapshot.frame = frame;
+        return this.plan(height, width);
+      }
+      for (let index = 0; index < panel.items.length; index++) {
+        const cost = panel.costs[index];
+        if (used + cost > budget - (overflow ? 1 : 0)) break;
+        blocks.push(
+          renderWorkPanelRow(panel.items[index], {
+            width: Math.max(1, width - 4),
+            now,
+            theme: options.theme,
+            clip: truncatePanelText,
+            measure: panelVisibleWidth,
+            last: index === panel.items.length - 1,
+          }),
+        );
+        used += cost;
+        shown++;
+      }
+      const active = panel.animated?.slice(0, shown).some(Boolean) ?? false;
+      if (snapshot) snapshot.animated = active;
+      this.animated ||= active;
+      panel.rows = blocks.flat();
+      if (overflow) panel.rows.push(`+${panel.items.length - shown} more`);
+    }
+    for (const [id, snapshot] of this.snapshots) {
+      if (!visible.some((panel) => panel.id === id && panel.height >= 3))
+        snapshot.animated = false;
+    }
+    this.cachedKey = makeKey();
+    this.cachedPlan = visible;
+    this.cachedLines = undefined;
+    return visible;
   }
   sourceIds(width = 44): string[] {
     return this.plan(this.options.height(), width)
@@ -241,23 +379,18 @@ export class SidebarPanels implements Component {
       .map((panel) => panel.id);
   }
   hasAnimation(width = 44): boolean {
-    return this.plan(this.options.height(), width).some((panel) => {
-      if (!panel.blocks || panel.height < 3) return false;
-      const budget = panel.height - 2;
-      const overflow = panel.blocks.flat().length > budget;
-      let used = 0;
-      return panel.blocks.some((block, index) => {
-        used += block.length;
-        return used <= budget - (overflow ? 1 : 0) && panel.animated?.[index];
-      });
-    });
+    this.plan(this.options.height(), width);
+    return this.animated;
   }
+
   render(width: number): string[] {
     return this.renderAt(width, this.options.height());
   }
   renderAt(width: number, height: number): string[] {
     if (width <= 0 || height <= 0) return [];
-    return this.plan(height, width)
+    const plan = this.plan(height, width);
+    if (this.cachedLines) return this.cachedLines;
+    this.cachedLines = plan
       .flatMap((panel) =>
         panel.height < 3
           ? [truncatePanelText(panel.title, width)]
@@ -266,10 +399,7 @@ export class SidebarPanels implements Component {
                 panel.id === 'resize'
                   ? this.options.theme.fg('warning', panel.title)
                   : panel.title,
-              body: () =>
-                panel.blocks
-                  ? boundedBody(panel.blocks, panel.height - 2)
-                  : panel.rows.slice(0, panel.height - 2),
+              body: () => panel.rows.slice(0, panel.height - 2),
               width,
               maxHeight: panel.height,
               theme: this.options.theme,
@@ -281,5 +411,6 @@ export class SidebarPanels implements Component {
             }),
       )
       .slice(0, height);
+    return this.cachedLines;
   }
 }

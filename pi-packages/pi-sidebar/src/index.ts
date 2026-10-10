@@ -39,14 +39,19 @@ export default function sidebar(pi: ExtensionAPI): void {
     );
   });
   pi.on('session_shutdown', dispose);
-  pi.on('turn_end', (_event, ctx) => session?.refresh(ctx, true));
+  pi.on('turn_end', (_event, ctx) => session?.refresh(ctx, true, true));
+  pi.on('message_end', (_event, ctx) => session?.refresh(ctx, false, true));
+  pi.on('agent_end', (_event, ctx) => session?.refresh(ctx, false, true));
+  // Pi emits session_start for new/resumed/forked sessions (including switches).
+  pi.on('session_tree', (_event, ctx) => session?.refresh(ctx, false, true));
+  pi.on('session_compact', (_event, ctx) => session?.refresh(ctx, false, true));
   pi.on('tool_result', (event, ctx) => {
     session?.refresh(
       ctx,
       ['write', 'edit', 'bash', 'powershell'].includes(event.toolName),
     );
   });
-  pi.on('model_select', (_event, ctx) => session?.refresh(ctx));
+  pi.on('model_select', (_event, ctx) => session?.refresh(ctx, false, true));
   pi.registerCommand('sidebar', {
     description:
       'Toggle sidebar; auto/manual/on/off/resize; panels show/hide/up/down <id>; startup auto/manual/off',

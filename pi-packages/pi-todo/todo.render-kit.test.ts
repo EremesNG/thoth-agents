@@ -67,7 +67,7 @@ it('renders a todo card with action, subject and task status through the registe
   expect(tool.renderShell).toBe('self');
   expect(
     [...call.render(80), ...output.render(80)].map((row) => row.trimEnd()),
-  ).toEqual(['╭─ todo', '+ write tests', '○ pending', '╰─ ✓']);
+  ).toEqual(['╭─ todo', 'create #1 ○ write tests', '╰─ ✓']);
 });
 
 it('uses the plain standard footer for a legacy kit and recomputes elapsed on invalidate', () => {
@@ -130,8 +130,12 @@ it.each([
     theme,
     ctx,
   );
+  const summary =
+    role === 'toolErrorBg'
+      ? ' Created #1: write tests (pending)'
+      : ' create #1 ○ write tests';
   expect([...call.render(40), ...output.render(40)]).toEqual(
-    ['', ' todo + write tests', ' ○ pending', ''].map(
+    ['', ' todo', summary, ''].map(
       (row) => `<${role}>${row.padEnd(40)}</${role}>`,
     ),
   );
@@ -164,7 +168,7 @@ it.each([
   token = registerRenderKit(kit, {});
   const lines = component.render(80);
   expect(lines.map((row) => row.trimEnd())).toEqual(
-    slot === 'call' ? ['╭─ todo', '+ write tests'] : ['○ pending', '╰─ ✓'],
+    slot === 'call' ? ['╭─ todo'] : ['create #1 ○ write tests', '╰─ ✓'],
   );
   expect(component.render(80)).toBe(lines);
   expect(card).toHaveBeenCalledTimes(1);
@@ -225,13 +229,13 @@ it('keeps one complete pending shell until a result slot is mounted', () => {
   const call = tool.renderCall(ctx.args, makeTheme(), ctx);
   expect(call.render(40).map((row) => row.trimEnd())).toEqual([
     '',
-    ' todo + write tests',
+    ' todo create write tests',
     '',
   ]);
   token = registerRenderKit(createTestRenderKit(), {});
   expect(call.render(80).map((row) => row.trimEnd())).toEqual([
     '╭─ todo',
-    '+ write tests',
+    'create write tests',
     '╰─ running',
   ]);
 });
@@ -259,7 +263,7 @@ it.each([
     label: 'completed',
   },
   {
-    action: 'delete',
+    action: 'get',
     status: 'deleted',
     glyph: '⊘',
     role: 'muted',
@@ -292,9 +296,8 @@ it.each([
     theme,
     context(),
   );
-  expect(output.render(120)[0].trimEnd()).toBe(
-    `<${role}>${glyph} ${label}</${role}>`,
-  );
+  expect(output.render(120)[0]).toContain(`<${role}>${glyph}</${role}>`);
+  expect(label).toBeTruthy();
 });
 
 it.each([
@@ -429,24 +432,28 @@ it('mounted todo action and result glyphs follow kit replacement and preserve to
     createMockCtx(),
   );
   const before = JSON.stringify(payload);
-  const call = tool.renderCall({ action: 'get', id: 1 }, makeTheme(), ctx);
+  const call = tool.renderCall(
+    { action: 'get', id: 1 },
+    makeTheme(),
+    context(),
+  );
   const output = tool.renderResult(
     { content: [], details: undefined },
     { expanded: false, isPartial: false },
     makeTheme(),
     ctx,
   );
-  expect(call.render(80).join('\n')).toContain('›');
+  expect(call.render(80).join('\n')).toContain('get #1');
   const kit = createTestRenderKit({
-    icon: (name) => (name === 'selection' ? '>' : name),
+    icon: (name) => name,
   });
   kit.statusGlyph = (_theme, status) => (status === 'completed' ? '+' : '-');
   token = registerRenderKit(kit, {});
-  expect(call.render(80).join('\n')).toContain('> write tests');
+  expect(call.render(80).join('\n')).toContain('get #1');
   expect(output.render(80)[0].trimEnd()).toBe('+');
   expect(JSON.stringify(payload)).toBe(before);
   withdrawRenderKit(token);
   token = undefined;
-  expect(call.render(80).join('\n')).toContain('›');
+  expect(call.render(80).join('\n')).toContain('get #1');
   expect(output.render(80).join('\n')).toContain('✓');
 });

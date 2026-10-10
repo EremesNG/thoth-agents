@@ -48,7 +48,11 @@ export function curveSeries(
     }
     if (last.at !== duration || last.cost !== task.cost)
       points.push({ at: duration, cost: task.cost });
-    return { label: task.label, cost: task.cost, points };
+    const label =
+      task.agent && task.agent !== task.label
+        ? `${task.agent} · ${task.label}`
+        : task.label;
+    return { label, cost: task.cost, points };
   });
 }
 

@@ -82,6 +82,31 @@ it('bumps its revision only when the ranking inputs change', () => {
   expect(data.revision).toBe(revision + 1);
 });
 
+it('retains live and history agents for curves while sidebar bars keep only the label', () => {
+  const data = tracker(
+    [task('live', 3, { agent: 'thoth-worker', displayName: 'Live label' })],
+    [task('old', 1, { agent: 'thoth-reviewer', displayName: 'Old label' })],
+  );
+  expect(data.ranked().map((entry) => entry.agent)).toEqual([
+    'thoth-worker',
+    'thoth-reviewer',
+  ]);
+  const rows = cost(data).join('\n');
+  expect(rows).toContain('Live label');
+  expect(rows).toContain('Old label');
+  expect(rows).not.toContain('thoth-worker');
+  expect(rows).not.toContain('thoth-reviewer');
+  const revision = data.revision;
+  data.update(
+    snapshot([
+      task('live', 3, { agent: 'thoth-oracle', displayName: 'Live label' }),
+    ]),
+    2000,
+  );
+  expect(data.revision).toBe(revision + 1);
+  expect(data.ranked()[0].agent).toBe('thoth-oracle');
+});
+
 it('scales bars to the largest cost with eighth-block resolution', () => {
   expect(costBar(1, 10)).toBe('██████████');
   expect(costBar(0.5, 10)).toBe('█████');

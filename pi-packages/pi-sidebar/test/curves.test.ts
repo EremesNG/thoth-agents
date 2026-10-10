@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { type ExtensionContext, Theme } from '@earendil-works/pi-coding-agent';
+import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
   ASCII_MARKERS,
@@ -131,16 +132,38 @@ it('renders ASCII-only lines using * + - |', () => {
 
 it('lists every plotted task with its total in the legend', () => {
   const data = tracker(
-    [task('a', 3, { displayName: 'Alpha' })],
-    [task('b', 1, { displayName: 'Beta', startedAt: 0, endedAt: 50 })],
+    [task('a', 3, { agent: 'thoth-worker', displayName: 'Alpha' })],
+    [
+      task('b', 1, {
+        agent: 'thoth-reviewer',
+        displayName: 'Beta',
+        startedAt: 0,
+        endedAt: 50,
+      }),
+    ],
   );
   const view = renderCurvesView(data.ranked(), 60, 30, theme).map(strip);
   const text = view.join('\n');
   expect(text).toContain('Subagent cost curves');
-  expect(text).toMatch(/● Alpha +\$3\.00/);
-  expect(text).toMatch(/● Beta +\$1\.00/);
+  expect(text).toMatch(/● thoth-worker · Alpha +\$3\.00/);
+  expect(text).toMatch(/● thoth-reviewer · Beta +\$1\.00/);
   expect(text).toContain('q/Esc close');
   expect(view.length).toBeLessThanOrEqual(30);
+});
+
+it('ellipsizes agent and label together at narrow legend widths without duplicating the agent fallback', () => {
+  const data = tracker([
+    task('derived', 3, {
+      agent: 'thoth-worker',
+      displayName: 'pi-panel-standard · UNIT 2 (AC-2)',
+    }),
+    task('fallback', 1, { agent: 'thoth-worker', displayName: 'thoth-worker' }),
+  ]);
+  const view = renderCurvesView(data.ranked(), 34, 30, theme).map(strip);
+  expect(view.join('\n')).toContain('● thoth-worker · pi-p…');
+  expect(view.join('\n')).toMatch(/● thoth-worker +\$1\.00/);
+  expect(view.join('\n')).not.toContain('thoth-worker · thoth-worker');
+  for (const row of view) expect(panelVisibleWidth(row)).toBe(34);
 });
 
 it('says so when nothing has been spent', () => {
@@ -201,7 +224,7 @@ it.each([
   await vi.waitFor(() => expect(harness.component).toBeDefined());
   expect(harness.custom).toHaveBeenCalledOnce();
   expect(harness.component?.render(80).map(strip).join('\n')).toContain(
-    '● Live',
+    '● worker · Live',
   );
   harness.component?.handleInput?.('x');
   let closed = false;
@@ -274,6 +297,7 @@ it('normalizes unordered absolute cumulative samples, preserving origin and fina
     curveSeries([
       {
         id: 'a',
+        agent: 'worker',
         label: 'A',
         start: 1791600000000,
         end: 1791600003000,
@@ -422,7 +446,7 @@ it('keeps ascii series distinguishable with distinct markers in plot and legend'
   const view = renderCurvesView(tasks, 100, 40, theme).map(strip);
   const legend = view
     .filter((row) => /Production task/.test(row))
-    .map((row) => row.match(/(\S) Production/)?.[1]);
+    .map((row) => row.match(/(\S) worker · Production/)?.[1]);
   expect(legend).toEqual([...ASCII_MARKERS]);
   const plot = view.join('\n');
   for (const marker of ASCII_MARKERS) expect(plot).toContain(marker);

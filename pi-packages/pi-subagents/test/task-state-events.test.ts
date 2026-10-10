@@ -662,6 +662,95 @@ it.each([
     'change: pi-sidebar-ux / phase: converge / Verify curves',
     'pi-sidebar-ux · Verify curves',
   ],
+  [
+    String.raw`PHASE: implement / CHANGE: pi-panel-standard / UNIT 2 (AC-2). Repo root C:\Users\EremesNG\orca\workspaces\thoth-agents\sidebar (git worktree, branch sidebar...`,
+    'pi-panel-standard · UNIT 2 (AC-2)',
+  ],
+  [
+    String.raw`PHASE: implement / CHANGE: pi-panel-standard. Repo root C:\Users\...`,
+    'pi-panel-standard',
+  ],
+  [
+    'PHASE: implement / CHANGE: pi-panel-standard / UNIT 2; rEpO rOoT /home/user/repo,',
+    'pi-panel-standard · UNIT 2',
+  ],
+  ['Review /home/user/repo / ~/project/src; ~\\project\\src,', 'Review'],
+  [
+    String.raw`Review C:/Users/name/repo · C:\Users\name\repo; done.`,
+    'Review · done',
+  ],
+  ['Review / Repo root; / fixes,', 'Review / fixes'],
+  ['Repo root.', ''],
+  [String.raw`Repo root "C:\tmp\x"; Verify labels`, 'Verify labels'],
+  ['see `/usr/local/bin` then build', 'see then build'],
+  ["'~/.pi/agent' settings", 'settings'],
+  ['"fix a/b" toggle', '"fix a/b" toggle'],
+  ['`/subagents` command', '`/subagents` command'],
+  [String.raw`"~\project\src" settings`, 'settings'],
+  [String.raw`'C:\tmp\x' settings`, 'settings'],
+  ['"https://example.com/path" toggle', '"https://example.com/path" toggle'],
+  [
+    String.raw`PHASE: converge / CHANGE: pi-sidebar-ux / Repo root "C:\tmp\x"; Verify labels`,
+    'pi-sidebar-ux · Verify labels',
+  ],
+  [
+    'PHASE: converge / CHANGE: pi-sidebar-ux / see `/usr/local/bin` then build',
+    'pi-sidebar-ux · see then build',
+  ],
+  [
+    "PHASE: converge / CHANGE: pi-sidebar-ux / '~/.pi/agent' settings",
+    'pi-sidebar-ux · settings',
+  ],
+  [
+    'PHASE: converge / CHANGE: pi-sidebar-ux / "fix a/b" toggle',
+    'pi-sidebar-ux · "fix a/b" toggle',
+  ],
+  [
+    'PHASE: converge / CHANGE: pi-sidebar-ux / `/subagents` command',
+    'pi-sidebar-ux · `/subagents` command',
+  ],
+  [String.raw`C:\Users\name\repo`, ''],
+  ['/home/user/repo', ''],
+  ['~/project/src', ''],
+  ['~\\project\\src', ''],
+  [
+    'Keep /single and https://example.com/path',
+    'Keep /single and https://example.com/path',
+  ],
+  ['./a/b toggle', './a/b toggle'],
+  ['../a/b toggle', '../a/b toggle'],
+  ['Review (/home/user/repo) toggle', 'Review ( ) toggle'],
+  [String.raw`Review (C:\Users\name\repo) toggle`, 'Review ( ) toggle'],
+  ['fix ./a/b toggle', 'fix ./a/b toggle'],
+  ['fix a/b toggle', 'fix a/b toggle'],
+  ['AC-1/AC-2 sync', 'AC-1/AC-2 sync'],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / fix ./a/b toggle',
+    'pi-sidebar-ux · fix ./a/b toggle',
+  ],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / fix a/b toggle',
+    'pi-sidebar-ux · fix a/b toggle',
+  ],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / AC-1/AC-2 sync',
+    'pi-sidebar-ux · AC-1/AC-2 sync',
+  ],
+  ['/subagents command', '/subagents command'],
+  ['fix /subagents ▸ detail', 'fix /subagents ▸ detail'],
+  ['https://example.com/path/', 'https://example.com/path/'],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / /subagents command',
+    'pi-sidebar-ux · /subagents command',
+  ],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / fix /subagents ▸ detail',
+    'pi-sidebar-ux · fix /subagents ▸ detail',
+  ],
+  [
+    'PHASE: implement / CHANGE: pi-sidebar-ux / https://example.com/path/',
+    'pi-sidebar-ux · https://example.com/path/',
+  ],
   ['PHASE: verify / CHANGE: pi-sidebar-ux', 'pi-sidebar-ux'],
   ['PHASE: verify', ''],
   ['CHANGE: pi-sidebar-ux / PHASE: verify', 'pi-sidebar-ux'],
@@ -678,14 +767,21 @@ it.each([
   ]);
   source.listSessionHistoryByCost.mockReturnValue([
     task({ id: 'old', task: raw }),
-    task({ id: 'named', task: raw, display_name: 'Explicit' }),
+    task({
+      id: 'named',
+      task: raw,
+      display_name: String.raw` Explicit Repo root C:\Users\name\repo; `,
+    }),
   ]);
   const publisher = new SubagentsStatePublisher(events, source);
   try {
     publisher.startSession('/workspace', 'parent-a');
     expect(snapshots[0].data.tasks[0].displayName).toBe(expected || 'worker');
     expect(snapshots[0].data.history.map((entry) => entry.displayName)).toEqual(
-      [expected || 'worker', 'Explicit'],
+      [
+        expected || 'worker',
+        String.raw` Explicit Repo root C:\Users\name\repo; `,
+      ],
     );
     expect(
       formatTaskSummary(

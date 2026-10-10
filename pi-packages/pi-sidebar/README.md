@@ -93,7 +93,7 @@ are never rearranged; Cost is appended when missing.
 - **Cost**: horizontal bars for the five most expensive subagent tasks of the
   session, live and persisted, labeled by task display name (or a short name
   derived from the Agents row's task summary, with leading PHASE/CHANGE dispatch
-  envelopes stripped and the change name retained) and scaled to the
+  envelopes, Repo root phrases and absolute path tokens stripped, and the change name retained) and scaled to the
   largest with eighth blocks (`#` in ASCII). The header shows the session
   subagent total and the footer `/sidebar cost ▸ curves`. Data comes from the
   `thoth:subagents:state` v2 snapshots (including up to 100 cost-ranked
@@ -101,7 +101,7 @@ are never rearranged; Cost is appended when missing.
   from them during this session against elapsed time since each task's start,
   with a duration axis from zero to the longest task duration (running tasks use
   the current time). Tasks without samples draw a straight segment from `(0,0)`
-  to `(duration, final cost)`.
+  to `(duration, final cost)`. Curve legends show `agent · label` (once when identical); sidebar bars keep the label alone.
 
 ### Degradation
 

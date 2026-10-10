@@ -1,6 +1,9 @@
-import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { type ExtensionContext, Theme } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
+  ASCII_MARKERS,
   curveSeries,
   openCostCurves,
   renderCurvePlot,
@@ -120,9 +123,10 @@ it('renders ASCII-only lines using * + - |', () => {
   )
     .map(strip)
     .join('\n');
-  expect(plot).toContain('*');
+  expect(plot).toContain('1');
   expect(plot).toMatch(/[-+|]/);
   expect(plot).not.toMatch(/[─│╯╭╮╰●┤└]/);
+  expect(plot).not.toContain('*');
 });
 
 it('lists every plotted task with its total in the legend', () => {
@@ -339,3 +343,155 @@ it('renders each production-shaped task as a connected monotonic origin-to-end p
     expect(plot[0][45]).toBe('●');
   }
 });
+
+// Tagged theme: every role is observable; fixed hues arrive as raw SGR.
+const tagged = { fg: (role: string, text: string) => `<${role}>${text}</>` };
+const CELL =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR parsing
+  /(?:<(\w+)>|\[38;2;([\d;]+)m)(.)(?:<\/>|\[39m)/gu;
+const colorsOf = (row: string) =>
+  [...row.matchAll(CELL)].map((m) => ({ color: m[1] ?? m[2], glyph: m[3] }));
+
+it('uses ten distinct colors, and the legend color equals the line color', () => {
+  const view = renderCurvesView(productionCostTasks(), 100, 40, tagged);
+  const legend = view
+    .filter((row) => /Production task/.test(strip(row)))
+    .map((row) => colorsOf(row).find((c) => c.glyph === '●')?.color);
+  expect(legend).toHaveLength(10);
+  expect(new Set(legend).size).toBe(10);
+  const ends = view
+    .flatMap((row) => colorsOf(row))
+    .filter((c) => c.glyph === '●');
+  // Endpoint dots are drawn in the legend color of their own series.
+  for (const end of ends) expect(legend).toContain(end.color);
+});
+
+it('colors every plot cell of a series with that series color, solo or overlapped', () => {
+  const series = curveSeries(productionCostTasks());
+  const legend = renderCurvesView(productionCostTasks(), 100, 40, tagged)
+    .filter((row) => /Production task/.test(strip(row)))
+    .map((row) => colorsOf(row).find((c) => c.glyph === '●')?.color);
+  for (const line of series) {
+    const rows = renderCurvePlot([line], 100, 14, tagged).slice(0, -2);
+    const cells = rows.flatMap(colorsOf);
+    expect(cells.length).toBeGreaterThan(0);
+    // A lone series is index 0; every one of its cells carries that color.
+    for (const cell of cells.filter((c) => c.glyph !== '┤'))
+      expect(cell.color).toBe(legend[0]);
+  }
+  // Overlapped plot: no line cell is ever neutral or unstyled.
+  const all = renderCurvePlot(series, 100, 14, tagged).slice(0, -2);
+  for (const row of all) {
+    const plot = row.slice(row.indexOf('┤') + 1);
+    const painted = colorsOf(plot).length;
+    const glyphs = strip(plot)
+      .replace(/<\/?\w*>/g, '')
+      .replaceAll(' ', '');
+    expect(painted).toBe([...glyphs].length);
+    for (const cell of colorsOf(plot)) expect(legend).toContain(cell.color);
+  }
+});
+
+it('resolves overlaps deterministically: end markers win, then the later series', () => {
+  const flat = (cost: number, at: number) => ({
+    label: 'x',
+    cost,
+    points: [
+      { at: 0, cost: 0 },
+      { at, cost },
+    ],
+  });
+  const a = renderCurvePlot([flat(2, 100), flat(2, 100)], 16, 8, tagged);
+  const b = renderCurvePlot([flat(2, 100), flat(2, 100)], 16, 8, tagged);
+  expect(a).toEqual(b);
+  // Identical curves share every cell, so the later series owns all of them.
+  const later = renderCurvePlot([flat(2, 100)], 16, 8, tagged);
+  const owners = new Set(
+    a
+      .slice(0, -2)
+      .flatMap((row) => colorsOf(row.slice(row.indexOf('┤') + 1)))
+      .map((c) => c.color),
+  );
+  expect(owners).toEqual(new Set(['warning']));
+  expect(later.join()).toContain('<error>');
+});
+
+it('keeps ascii series distinguishable with distinct markers in plot and legend', () => {
+  releases.push(useMode('ascii'));
+  const tasks = productionCostTasks();
+  const view = renderCurvesView(tasks, 100, 40, theme).map(strip);
+  const legend = view
+    .filter((row) => /Production task/.test(row))
+    .map((row) => row.match(/(\S) Production/)?.[1]);
+  expect(legend).toEqual([...ASCII_MARKERS]);
+  const plot = view.join('\n');
+  for (const marker of ASCII_MARKERS) expect(plot).toContain(marker);
+});
+
+// Real Pi Theme built from the shipped thoth theme, in both color modes.
+const BG_KEYS = [
+  'selectedBg',
+  'searchMatchBg',
+  'userMessageBg',
+  'customMessageBg',
+  'toolPendingBg',
+  'toolSuccessBg',
+  'toolErrorBg',
+];
+const thothTheme = (mode: '256color' | 'truecolor') => {
+  const json = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL('../../pi-thoth-theme/themes/thoth.json', import.meta.url),
+      ),
+      'utf-8',
+    ),
+  ) as {
+    vars: Record<string, string | number>;
+    colors: Record<string, string | number>;
+  };
+  const entries = Object.entries(json.colors).map(([key, value]) => [
+    key,
+    typeof value === 'string' && value in json.vars ? json.vars[value] : value,
+  ]);
+  const part = (bg: boolean) =>
+    Object.fromEntries(
+      entries.filter(([k]) => BG_KEYS.includes(k as string) === bg),
+    );
+  return new Theme(part(false) as never, part(true) as never, mode);
+};
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: SGR parsing
+const REAL_CELL = /\u001b\[(38;[25](?:;\d+)+)m([^\u001b])/gu;
+const realColors = (rows: string[]) =>
+  rows.flatMap((row) =>
+    [...row.matchAll(REAL_CELL)].map((m) => ({ color: m[1], glyph: m[2] })),
+  );
+
+for (const mode of ['truecolor', '256color'] as const) {
+  it(`paints ten distinct series in ${mode} with legend == line color`, () => {
+    const real = thothTheme(mode);
+    const view = renderCurvesView(productionCostTasks(), 100, 40, real);
+    const legend = view
+      .filter((row) => /Production task/.test(strip(row)))
+      .map((row) => realColors([row]).find((c) => c.glyph === '●')?.color);
+    expect(legend).toHaveLength(10);
+    expect(new Set(legend).size).toBe(10);
+    for (const cell of realColors(view).filter((c) => c.glyph === '●'))
+      expect(legend).toContain(cell.color);
+    if (mode === '256color') {
+      expect(view.join('')).not.toContain('38;2;');
+      expect(legend.every((c) => c?.startsWith('38;5;'))).toBe(true);
+    } else {
+      const rgb = legend.map((c) => (c ?? '').split(';').slice(2).map(Number));
+      let nearest = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < rgb.length; i++)
+        for (let j = i + 1; j < rgb.length; j++)
+          nearest = Math.min(
+            nearest,
+            Math.hypot(...rgb[i].map((v, k) => v - rgb[j][k])),
+          );
+      expect(nearest).toBeGreaterThan(70);
+    }
+  });
+}

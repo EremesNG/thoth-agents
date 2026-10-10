@@ -254,18 +254,13 @@ describe('AI-first prompt rendering', () => {
     );
   });
 
-  test.each([
-    [
-      'OpenCode',
-      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
-    ],
-    ['Codex', renderCodexRootInstructions],
-    ['Claude Code', renderClaudeCodeRootInstructions],
-    ['Pi', renderPiRootInstructions],
-  ] as const)('offers both planning choices with bounded defaults in %s', (_harness, render) => {
+  test.each(
+    ROOT_RENDERERS,
+  )('offers both planning choices with bounded defaults in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
-    expect(prompt).toContain('Implement directly without review');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).not.toContain('Implement directly without review');
     expect(prompt).toMatch(
       /at ready, first show the user .*plan summary.*then always offer.*Review plan with Oracle/i,
     );
@@ -415,6 +410,19 @@ describe('AI-first prompt rendering', () => {
   test('special-cases only the built-in OpenAI model family', () => {
     expect(detectModelFamilyFromModel('openai/gpt-5.6-sol')).toBe('openai');
     expect(detectModelFamilyFromModel('kimi-for-coding/k2p5')).toBeUndefined();
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('keeps skipping plan review separate from implementation in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+    expect(prompt).toContain('Review plan with Oracle (Recommended)');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).not.toContain('Implement directly without review');
   });
 
   test.each(

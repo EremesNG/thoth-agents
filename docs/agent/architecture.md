@@ -49,9 +49,10 @@ persistence, receipts, state, and recovery remain outside this package.
    block completion rather than being replaced.
 
 Pi task summaries cross package boundaries as snapshots on pi-core's
-v1 `thoth:subagents:state` and `thoth:background:state` envelope channels, each
+v2 `thoth:subagents:state` and v1 `thoth:background:state` envelope channels, each
 with a `:request` channel. They cover the active subagent session or current
-cwd/session background origin, not task detail or history. The theme consumes
+cwd/session background origin. Subagent v2 adds up to 100 cost-ranked persisted
+session summaries in `history`, not full task detail/history. The theme consumes
 cumulative cost/run count on `thoth:subagents:usage` and requests it through
 `thoth:subagents:usage:request`. The raw `thoth:subagent-usage` bus event is removed
 (the checkpoint type stays); upgrade pi-subagents and pi-thoth-theme to `>=0.3.0`
@@ -77,7 +78,8 @@ The bridges and pi-openai-fast remain operator-installed, not CLI-managed. See
 pi-core owns the discoverable Work panel v2 registry. Root exports list sources,
 subscribe to per-source changes/revisions, read bounded data-only rows and invoke
 open/history/close with a live same-session context. The shared host renders
-semantic segments, responsive metrics and status values; providers expose no row
+semantic segments, keyed metrics with reserved widths for stable row heights,
+optional right-aligned columns for sidebar consumers, and status values; providers expose no row
 render callbacks or pre-styled text. Upgrade pi-subagents, pi-background-tasks and
 pi-todo together to `>=0.3.0`: first-owner arbitration hides incompatible v1/v2
 sections. See [the registry contract](harness-packaging.md#pi-work-panel-registry-v2).
@@ -104,9 +106,13 @@ pi-sidebar owns guarded, owner-restored layout adapters: a fullscreen right
 HStack column and a regular-mode reduced main render plus decorative overlay.
 It is read-only, leaves editor/footer ownership unchanged, and falls back to no
 sidebar on unsupported private Pi seams. Only the regular live viewport is
-supported, not historical scrollback. Built-in Session/Workspace panels coexist
+supported, not historical scrollback. Themed Session/Workspace/Cost panels coexist
 with bounded discovered work-source panels; Workspace's own git reader is
-event-driven and works without the theme.
+event-driven and works without the theme. Shared root `formatCwd` abbreviates
+paths; porcelain v2 and numstat compare tracked changes against HEAD. Work
+panels show discovery summaries, degrading columns and detail-command footers.
+`/sidebar settings` persists visibility/order/startup/default width;
+`/sidebar cost` shows cumulative curves behind the top-ten task-cost bars.
 
 pi-core's process-wide UI-preferences registry unions owner-declared absorbed
 work sources. The host excludes them from rendering, selection and focus until

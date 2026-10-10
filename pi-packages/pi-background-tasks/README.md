@@ -108,7 +108,7 @@ registry changes, including filesystem notifications for another process's
 writes (no polling timers), and on session start/switch. Watches are disposed and
 rebound across session switches and disposed on shutdown. Consumers replace the
 full snapshot; this channel does not change work-panel/history providers or
-retention. See [pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels-v1).
+retention. See [pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels).
 
 ## Lifecycle and limits
 

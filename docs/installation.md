@@ -233,10 +233,15 @@ The CLI installs and verifies these Pi packages in order:
     sidebar in fullscreen and regular Pi modes.
 
 The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
-Session, Workspace and discovered work-source panels. `/sidebar` toggles it;
+Session, Workspace, Cost and discovered work-source panels, with themed
+headers, provider summaries and detail-command footers. Workspace shows a
+`~`-abbreviated path and tracked file/line changes versus HEAD. `/sidebar` toggles it;
 `/sidebar panels` lists ids for show/hide/up/down commands; `/sidebar resize` resizes with live guidance inside the sidebar
 (← grows width, → shrinks; fullscreen also supports divider drag). Panel order/visibility and startup mode
-persist in `~/.pi/agent/thoth-sidebar.json`; width and current mode do not.
+persist in `~/.pi/agent/thoth-sidebar.json`. `/sidebar settings` edits these
+preferences and the saved default width (Enter saves, Esc cancels); current
+mode and resize width stay session-only. `/sidebar cost` opens cumulative
+curves for the task-cost bars.
 Only displayed source panels absorb their Work sections; hiding/auto-collapse
 restores them. Private layout seams use guarded fallback. Regular mode supports
 the live viewport only, not historical scrollback; update related extensions
@@ -340,13 +345,15 @@ and [the registry contract](../pi-packages/pi-core/README.md#provider-limits-v1)
 
 ### Pi session-state integrations
 
-Subagents and background tasks publish current-session summary-only v1 snapshots
+Subagents (v2) and background tasks (v1) publish current-session summary-only snapshots
 on `thoth:subagents:state` and `thoth:background:state`, each with a `:request`
 channel. They carry identity/status, lifecycle and short usage/exit/preview fields
-plus counts, never prompts, results, commands, environment or logs. Requests use
+plus counts, never prompts, results, commands, environment or logs. Subagent
+state v2 requires `history`: up to 100 persisted session task summaries
+selected and ordered by descending cost, using the same strict allow-list. Requests use
 an empty data object and a target session ID in the pi-core envelope; subscribe
 first, then request a complete snapshot (pre-readiness requests are answered at
-readiness). See [the exact contracts](../pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+readiness). See [the exact contracts](../pi-packages/pi-core/README.md#task-summary-and-usage-channels).
 The status line consumes cumulative cost/run count from `thoth:subagents:usage`
 and requests it through `thoth:subagents:usage:request` on session start. The raw
 `thoth:subagent-usage` bus event/request is removed; its checkpoint discriminator

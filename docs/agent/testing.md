@@ -101,6 +101,8 @@ pi-core, pi-subagents, pi-background-tasks and pi-thoth-theme, plus affected
 managed inventory changes. The channel tests cover exact summary-only key
 allow-lists and bounds, session/readiness requests, fresh cross-process metadata,
 and the usage envelope/status-line migration (including checkpoint replay).
+Subagent state v2 tests also cover required bounded `history`, strict field
+allow-lists and cost ranking before truncation (including old expensive tasks).
 Rerun a failing Windows timing check once to distinguish a transient failure
 from a repeatable regression; report both outcomes.
 
@@ -120,7 +122,11 @@ restoration and foreign ownership, real TUI fullscreen scroll/wheel, regular
 viewport/differential rendering, decorative versus blocking overlays, editor/
 question focus, mixed old first-owner fallback, absorption hide/restore and
 selection exclusion, width hysteresis, keys/drag, config round trips,
-event-driven git worktrees and theme cost parity. Rerun a Windows timing failure
+event-driven porcelain-v2/numstat git fixtures (including unborn HEAD, binary
+and conflicts), shared `formatCwd` parity, summary discovery, stable keyed
+metric heights across widths 20–140, semantic `elapsed` icons, honest history
+rows, degrading columns/footers, cost bars/curves and settings save/cancel.
+Keep the no-per-render-session-traversal and cached-plan performance checks green. Rerun a Windows timing failure
 once and report both outcomes. Follow with a live user check in **both** Pi modes:
 transcript wrapping/scrolling, resize/drag/auto-hide, question and foreign-overlay
 focus, retained-section ← interaction, restored Work sections and regular-mode

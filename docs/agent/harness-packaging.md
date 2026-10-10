@@ -231,6 +231,7 @@ pi-core's root exports `listWorkPanelSources()`,
 and `invokeWorkPanelAction(ctx, id, rowId, action)` for `open`, `history` and
 `close`. Listing and reading need neither a TUI import nor an installed host.
 Sources expose identity, ordering, contract version, selectable flags, row cap
+and optional provider `summary` counts/text, failure-isolated like row reads,
 and per-source monotonic revision; revisions increase on registration and every
 provider change, continuing across re-registration. Synchronous, failure-isolated
 listeners receive the affected source id on registration, removal and changes;
@@ -246,13 +247,16 @@ responsive `identity` and `metrics`/`continuation` groups, and optional
 `extraRows`/`extraSegments`. `statusGlyph` is `RenderStatus | 'taskInProgress'`,
 not a function or literal glyph; the host owns animation and glyph resolution.
 The `completed` role gives task-list rows dim/strikethrough styling in the host.
-Retention, layout, selection, focus and keys are unchanged.
+Keyed metrics reserve number-format widths to stabilize row height across
+digit-width changes. The host keeps greedy packing; sidebar consumers use
+`metricLayout: 'columns'` for right-aligned, degrading columns. Semantic metric
+icons include `elapsed`; ASCII retains labels. Selection, focus and keys are unchanged.
 
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
 `/reload`. The version-independent ownership slot remains first-owner-wins:
 incompatible v1/v2 copies install no host, register no section and expose no
 discovery, so mixed versions hide incompatible sections regardless of load order.
-The task-summary channels and Render KIT remain v1. See
+Subagent state is v2; background state, usage, requests and Render KIT remain v1. See
 [the provider and discovery API](../../pi-packages/pi-core/README.md#work-panel-v2).
 
 ## Pi sidebar and UI coordination
@@ -272,15 +276,27 @@ Manual hides below 92; auto collapses below `80 + preferred width` and reopens
 Esc revert), with a live hint inside the sidebar; fullscreen also supports divider drag. `/sidebar panels` lists ids;
 `panels show|hide|up|down <id>` persists visibility/order, and
 `startup auto|manual|off` persists next-session policy in
-`~/.pi/agent/thoth-sidebar.json`. Current width/mode/enabled state are session-only.
+`~/.pi/agent/thoth-sidebar.json`. `/sidebar settings` opens a show/hide/order,
+startup and default-width overlay (Space, Shift+↑/↓, ←/→; Enter saves, Esc
+cancels). Saved default width applies immediately; resize width and current
+mode/enabled state are session-only. `/sidebar cost` opens cumulative task-cost
+curves from observed snapshots, with straight segments for unsampled history.
 
 Session uses pi-core's `computeSessionCost` and
 `combineSessionAndSubagentCost`, shared with the theme; cumulative subagent
 snapshots replace rather than add to earlier snapshots, and `(sub)` classifies
 the current provider. Workspace reads its own git branch/status (including
-worktrees) on session start, turn end and write/edit/bash/powershell results,
-debounced without periodic polling. Discovered work-source panels read bounded
-data rows and use the current render kit with native fallback.
+worktrees) on session start, turn start, every tool result and turn end,
+coalesced to 250 ms without periodic polling. Discovered work-source panels read bounded
+data rows and use the current render kit with native fallback. Atelier-style
+chrome uses per-panel theme roles and SGR-dim borders. Session adds a context
+meter and warning/rejected Limit row. Workspace shares pi-core's root
+`formatCwd`, showing Clean/Modified/Conflicts and `Changed N files +A −D` from
+porcelain v2 and numstat against HEAD (empty tree when unborn). Work panels
+show provider summaries, right-aligned columns and `/subagents`, `/todos`, `/bg`
+footers; empty panels keep a title-plus-command line. Cost shows the top ten
+live/persisted session task costs as bars. Under pressure footers drop before
+rows, panels reduce to titles, and widths below 24 show `/sidebar resize`.
 
 The process-wide, owner-tokened `registerUIPreferences` / `updateUIPreferences` /
 `withdrawUIPreferences` registry merges `absorbedWorkPanelSources`. The host
@@ -299,8 +315,8 @@ pre-feature owners instead of blocking editor input; old fullscreen hosts may
 not honor absorption. Upgrade related extensions together and `/reload`.
 See [controls, config schema and limitations](../../pi-packages/pi-sidebar/README.md),
 [core APIs](../../pi-packages/pi-core/README.md#sidebar-ui-preferences-and-decorative-overlays)
-and [closeout checks](testing.md#local-closeout-gate). A dedicated Cost/quota
-panel and sidebar row actions are not part of this package.
+and [closeout checks](testing.md#local-closeout-gate). Provider quota panels
+and sidebar row actions are not part of this package.
 
 ## Pi provider status and subscription cost
 
@@ -357,7 +373,8 @@ for the three `pi install` commands and authentication requirements.
 
 ## Pi task channels
 
-pi-core defines these channels and their validators, all v1, using
+pi-core defines these channels and their validators: subagent state is v2;
+background state, usage and requests remain v1. They use
 `{ v, source, sessionId, at, data }` envelopes (`at` is Unix milliseconds):
 
 | Snapshot | Request | Producer |
@@ -369,6 +386,8 @@ pi-core defines these channels and their validators, all v1, using
 Subagent snapshots contain current-session in-memory task identity, agent/display
 name, mode/status, model/effort, lifecycle times, token usage/cost and an output
 preview of at most 800 UTF-16 code units, plus status counts and persisted totals.
+The required v2 `history` array carries up to 100 persisted session summaries,
+selected and ordered by descending cost with the same strict allow-list.
 Background snapshots contain current cwd/session-origin task identity/name,
 kind/status, lifecycle times, exit code/signal and dismissal, plus counts. The
 contract permits numeric or short-text progress (at most 200 code units); the
@@ -384,9 +403,9 @@ published after changes and session readiness/replay. Subagent activity uses the
 manager's 150 ms coalescing. Background publication uses fresh metadata reads,
 filesystem change notifications for cross-process writes (no polling timers),
 and watch disposal/rebinding on session switch and shutdown. These channels do
-not provide task detail, history, bus replay caching or child/parent bus sharing.
+not provide full task detail/history, bus replay caching or child/parent bus sharing.
 Invalid, unsupported-version or foreign-session envelopes are ignored by filtered
-subscriptions. See [pi-core's exact payload contracts](../../pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+subscriptions. See [pi-core's exact payload contracts](../../pi-packages/pi-core/README.md#task-summary-and-usage-channels).
 
 The raw `thoth:subagent-usage` bus event and raw request handler are removed;
 only its checkpoint custom-entry discriminator is retained. The status line

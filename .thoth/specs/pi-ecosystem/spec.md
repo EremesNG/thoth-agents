@@ -245,3 +245,33 @@ pi-core MUST let consumers other than the host list registered work-panel source
 - **GIVEN** the subagents, background-tasks and task-list sources registered
 - **WHEN** a consumer lists sources, subscribes and a subagent finishes
 - **THEN** it sees three sources, receives a change for the subagents source with a higher revision, reads that source's rows as plain data within its bound, and can open the item through the action API
+
+### Requirement: Provider rate-limit registry
+
+pi-core MUST provide a process-wide, version-tolerant registry of provider rate-limit windows that bridges in root or subagent sessions report to and consumers can list and subscribe to, containing only status, utilization fraction, reset and observation times, window type, overage flags and the observing session id; the Claude bridge MUST report every rate-limit event to it, and subagent cards MUST show an active warning observed by their own session.
+
+#### Scenario: Provider rate-limit registry
+
+- **GIVEN** a subagent running on the Claude bridge
+- **WHEN** its query receives a warning rate-limit event
+- **THEN** the registry lists that window with the child session id, a consumer subscribed in the root session is notified, and the subagent's card shows the warning with its reset time
+
+### Requirement: Subscription provider cost and on-demand quota
+
+the Antigravity bridge MUST report API-equivalent message cost through an explicit model-to-catalog price mapping, the theme MUST treat `antigravity` as a default subscription provider, and provider quota MUST only be fetched on demand through `/agy quota` and `/claude quota`, never periodically.
+
+#### Scenario: Subscription provider cost and on-demand quota
+
+- **GIVEN** an Antigravity session using a mapped Gemini model
+- **WHEN** a turn completes and the user runs `/claude quota`
+- **THEN** the message cost equals the catalog price for its tokens, the status line includes it marked `(sub)`, and the quota command prints the plan windows without sending a prompt
+
+### Requirement: Thoth Pi sidebar
+
+`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace and work-panel source panels that can be shown, hidden and reordered with persisted order and visibility, MUST follow the pi-atelier width and auto-hide rules, offer resizing through `/sidebar resize` and fullscreen divider drag without a keyboard shortcut, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
+
+#### Scenario: Thoth Pi sidebar
+
+- **GIVEN** a 160-column fullscreen session with a running subagent and two todos
+- **WHEN** the sidebar is visible with Subagents and Todos panels
+- **THEN** the transcript wraps at the remaining width, the sidebar shows both panels, the work panel above the editor no longer shows those sections or accepts ← focus for them, and hiding the sidebar restores them

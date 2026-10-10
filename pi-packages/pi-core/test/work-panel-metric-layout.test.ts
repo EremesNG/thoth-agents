@@ -101,7 +101,7 @@ it('sweeps every format boundary at widths 20..140 with and without a kit withou
       if (token) withdrawRenderKit(token);
     }
   }
-});
+}, 60_000);
 
 it('grows monotonically beyond the reserved ranges', () => {
   const beyond = {

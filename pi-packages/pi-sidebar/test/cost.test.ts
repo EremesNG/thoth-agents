@@ -171,3 +171,18 @@ it('bounds recorded samples and tracked tasks', () => {
   expect(data.total()).toBeGreaterThan(400);
   expect(data.ranked()[0].cost).toBe(400);
 });
+
+it('uses startedAt over createdAt when a queued task starts, even without a cost change', () => {
+  const data = tracker(
+    [task('queued', 1, { status: 'queued', createdAt: 100 })],
+    [],
+    200,
+  );
+  data.update(
+    snapshot([
+      task('queued', 1, { status: 'running', createdAt: 100, startedAt: 1000 }),
+    ]),
+    2000,
+  );
+  expect(data.ranked()[0].start).toBe(1000);
+});

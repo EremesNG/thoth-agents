@@ -50,8 +50,10 @@ export {
 } from './panel-primitives.js';
 
 export {
+  createWorkPanelMetricGrid,
   renderWorkPanelRow,
   WORK_PANEL_ANIMATION_INTERVAL_MS,
+  type WorkPanelMetricGrid,
   type WorkPanelRowRenderOptions,
   workPanelRenderStatus,
   workPanelRowLineCount,

@@ -10,8 +10,10 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import subagentsExtension from '../src/extension/subagents-extension.js';
 import type { SubagentSessionTaskCounts } from '../src/history.js';
+import { visibleWidth } from '../src/render/text-width.js';
 import { SubagentsStatePublisher } from '../src/task-state-events.js';
 import type { SubagentActivity, SubagentTask } from '../src/types.js';
+import { formatTaskSummary } from '../src/ui/background-widget.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
@@ -65,6 +67,52 @@ function taskSource(
 }
 
 describe('subagent task-state publication', () => {
+  it.each([
+    'live',
+    'history',
+  ] as const)('derives short display names for %s snapshots without persisting them', (kind) => {
+    const { events, snapshots } = collectSnapshots();
+    const tasks = [
+      task({
+        id: 'derived',
+        task: '# delegated task\n  Review   the   API contract  \nOther details',
+      }),
+      task({ id: 'wide', task: '界'.repeat(80) }),
+      task({
+        id: 'named',
+        display_name: 'Explicit name',
+        task: 'Ignored task',
+      }),
+      task({
+        id: 'empty',
+        task: '  \n  ',
+      }),
+    ];
+    const source = taskSource(kind === 'live' ? tasks : []);
+    if (kind === 'history')
+      source.listSessionHistoryByCost.mockReturnValue(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      const summaries =
+        kind === 'live' ? snapshots[0].data.tasks : snapshots[0].data.history;
+      expect(summaries.map(({ displayName }) => displayName)).toEqual([
+        'Review the API contract',
+        formatTaskSummary(tasks[1]),
+        'Explicit name',
+        'worker',
+      ]);
+      expect(visibleWidth(summaries[1].displayName ?? '')).toBeLessThanOrEqual(
+        60,
+      );
+      expect(summaries[0].displayName).toBe(formatTaskSummary(tasks[0]));
+      expect(tasks[0].display_name).toBeUndefined();
+      expect(isSubagentsSnapshot(snapshots[0].data)).toBe(true);
+    } finally {
+      publisher.dispose();
+    }
+  });
+
   it('scopes real manager tasks to the active session while retaining history-only tasks in totals, not details', async () => {
     env.writeAgent('worker');
     const history = env.createHistoryStore();
@@ -142,6 +190,7 @@ describe('subagent task-state publication', () => {
       history.upsertTask(
         env.tmp,
         task({
+          task: 'New task',
           id: `new-${i}`,
           created_at: new Date(
             Date.parse('2026-02-01T00:00:00Z') + i,
@@ -375,6 +424,7 @@ describe('subagent task-state publication', () => {
         {
           id: 'task-b',
           agent: 'worker',
+          displayName: 'private task text',
           mode: 'background',
           status: 'running',
           createdAt: 1767225600000,

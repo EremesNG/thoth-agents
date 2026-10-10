@@ -12,6 +12,7 @@ it('publishes the TUI panel subpath without a runtime coding-agent dependency', 
   expect(typeof panel.openPanelOverlay).toBe('function');
   expect(typeof panel.workPanelRenderStatus).toBe('function');
   expect(typeof panel.workPanelRowLineCount).toBe('function');
+  expect(typeof panel.createWorkPanelMetricGrid).toBe('function');
   const history = await import('@thoth-agents/pi-core/history-panel');
   expect(history.historyPanelMouseWheelDelta).toBe(panel.panelMouseWheelDelta);
 });

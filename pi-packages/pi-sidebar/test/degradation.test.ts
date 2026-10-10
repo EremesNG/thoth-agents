@@ -83,7 +83,7 @@ it('turns a panel that cannot fit its title and one row into a title-only line',
     const lines = render(panel, height);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('AGENTS');
-    expect(lines[0]).toContain('3·0·0');
+    expect(lines[0]).toContain('◐3');
   }
   // Agents take 6 lines and a gap; one line is left for Session's title.
   const lines = render(panel, 8);

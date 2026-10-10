@@ -6,11 +6,12 @@ import {
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import {
+  createWorkPanelMetricGrid,
   panelVisibleWidth,
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import {
   agentRow,
   FULL_METRICS,
@@ -23,6 +24,7 @@ import {
 const releases: Array<() => void> = [];
 afterEach(() => {
   for (const off of releases.splice(0).reverse()) off();
+  vi.useRealTimers();
 });
 
 const lines = (text: string[]) => text.map(strip);
@@ -55,9 +57,9 @@ it('shows discovered summaries in each work panel header', () => {
   );
   const heading = (title: string) =>
     text.find((line) => line.includes(title)) ?? '';
-  expect(heading('AGENTS')).toMatch(/1·4·2 ─╮$/);
+  expect(heading('AGENTS')).toMatch(/◐1 ✓4 ✗2 ─╮$/);
   expect(heading('TODOS')).toMatch(/2\/5 ─╮$/);
-  expect(heading('BACKGROUND')).toMatch(/1·3·0 ─╮$/);
+  expect(heading('BACKGROUND')).toMatch(/◐1 ✓3 ─╮$/);
 });
 
 it('omits the header summary when the provider has none', () => {
@@ -90,24 +92,47 @@ it('puts the workspace state word in its header', () => {
   expect(state('conflicts')).toMatch(/Conflicts ─╮$/);
 });
 
-it('drops tokens, then cost, then model as width shrinks while elapsed stays', () => {
-  releases.push(
-    source('subagents', 'Agents', [
-      agentRow('a', 'explorer', 'running', FULL_METRICS),
-    ]),
+it.each([
+  'nerd',
+  'ascii',
+] as const)('keeps every metric on stable continuation lines in %s mode at 30/44 cells', (mode) => {
+  releases.push(useMode(mode));
+  const values =
+    mode === 'ascii'
+      ? {
+          tools: 'tools 99',
+          tokens: 'in 9.9k out 99',
+          context: 'ctx 9.9%',
+          speed: 'tok/s 99',
+          cost: '$0.99',
+          elapsed: 'elapsed 9s',
+          model: 'gpt-5·high',
+        }
+      : {
+          tools: '⚒ 99',
+          tokens: '↑9.9k ↓99',
+          context: '◔ 9.9%',
+          speed: '↯ 99',
+          cost: '$0.99',
+          elapsed: '◷ 9s',
+          model: 'gpt-5·high',
+        };
+  const row = agentRow('a', 'explorer', 'running', values);
+  row.metrics = row.metrics?.map((group) =>
+    group.key === 'model' ? { ...group, columnsOnly: true } : group,
   );
+  releases.push(source('subagents', 'Agents', [row]));
   const panel = sidebar([{ id: 'subagents', visible: true }]);
-  const row = (width: number) => strip(panel.renderAt(width, 40)[1]);
-  expect(row(72)).toContain('↑12k');
-  expect(row(72)).toContain('$0.42');
-  expect(row(56)).not.toContain('↑12k');
-  expect(row(56)).toContain('$0.42');
-  expect(row(56)).toContain('gpt-5');
-  expect(row(50)).not.toContain('$0.42');
-  expect(row(50)).toContain('gpt-5');
-  expect(row(40)).not.toContain('gpt-5');
-  for (const width of [72, 56, 50, 44, 40, 36, 30, 28])
-    expect(row(width)).toContain('1m 05s');
+  for (const width of [30, 44]) {
+    const rendered = lines(panel.renderAt(width, 40));
+    const continuation = rendered.slice(2, -2).join('\n').replace(/\s+/g, ' ');
+    for (const value of Object.values(values))
+      expect(continuation).toContain(value);
+    for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
+    expect(
+      row.metrics?.find((group) => group.key === 'model')?.columnsOnly,
+    ).toBe(true);
+  }
 });
 
 it.each([
@@ -124,13 +149,53 @@ it.each([
     (sum, row) =>
       sum +
       workPanelRowLineCount(row, width - 4, panelVisibleWidth, {
-        metricLayout: 'columns',
+        metricLayout: 'grid',
+        metricGrid: createWorkPanelMetricGrid(rows, panelVisibleWidth),
       }),
     0,
   );
   // top + rows + footer + bottom
   expect(rendered).toHaveLength(expected + 3);
   for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
+});
+
+it('recomputes metric widths when an animated row is re-exposed', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  const metrics = {
+    tools: '⚒ 99',
+    tokens: 'inputs ↑9.9k out ↓99',
+    context: '◔ 9.9%',
+    speed: '↯ 99',
+    cost: '$0.99',
+    model: 'gpt-5·high',
+  };
+  const rows = [
+    agentRow('a', 'worker', 'running', { ...metrics, elapsed: '99h 59m' }),
+  ];
+  releases.push(source('subagents', 'Agents', rows));
+  const panel = sidebar([{ id: 'subagents', visible: true }]);
+  expect(lines(panel.renderAt(69, 40)).join('\n')).toContain('99h 59m');
+  // Collapse the panel so animation stops reading the provider.
+  panel.renderAt(69, 1);
+  vi.setSystemTime(10000);
+  rows[0] = agentRow('a', 'worker', 'running', {
+    ...metrics,
+    elapsed: '100h 00m',
+  });
+  panel.renderAt(69, 1);
+  const exposed = lines(panel.renderAt(69, 40));
+  expect(exposed.join('\n')).toContain('100h 00m');
+  const fresh = lines(
+    sidebar([{ id: 'subagents', visible: true }]).renderAt(69, 40),
+  );
+  expect(exposed).toEqual(fresh);
+  const measured = workPanelRowLineCount(rows[0], 65, panelVisibleWidth, {
+    metricLayout: 'grid',
+    metricGrid: createWorkPanelMetricGrid(rows, panelVisibleWidth),
+  });
+  expect(exposed).toHaveLength(measured + 3);
+  for (const line of exposed) expect(panelVisibleWidth(line)).toBe(69);
 });
 
 it.each([
@@ -205,4 +270,146 @@ it('refreshes finished provider metrics on late kit registration, icon changes a
   withdrawRenderKit(token);
   expect(text()).toContain('elapsed 9s');
   expect(text()).not.toContain('CLOCK 9s');
+});
+
+it.each([
+  'nerd',
+  'unicode',
+  'ascii',
+] as const)('uses static status glyphs and status roles in %s headers, fitting 30/44 cells', (mode) => {
+  if (mode === 'ascii') releases.push(useMode('ascii'));
+  const kit = createTestRenderKit();
+  const plainGlyph = kit.statusGlyph;
+  const calls: string[] = [];
+  kit.statusGlyph = (theme, status) => {
+    calls.push(status);
+    if (mode === 'ascii')
+      return status === 'running' ? '*' : status === 'completed' ? 'v' : 'x';
+    return plainGlyph(theme, status);
+  };
+  const token = registerRenderKit(kit, {});
+  releases.push(() => withdrawRenderKit(token));
+  releases.push(
+    source('subagents', 'Agents', [agentRow('a', 'one')], {
+      running: 1,
+      completed: 22,
+      failed: 1,
+    }),
+    source('background-tasks', 'Background', [agentRow('b', 'build')], {
+      running: 1,
+      completed: 22,
+      failed: 1,
+    }),
+  );
+  const styled: Array<[string, string]> = [];
+  kit.fg = (_theme, role, text) => {
+    styled.push([role, text]);
+    return text;
+  };
+  const panel = sidebar(
+    [
+      { id: 'subagents', visible: true },
+      { id: 'background-tasks', visible: true },
+    ],
+    {
+      theme: {
+        fg: (role, text) => {
+          styled.push([role, text]);
+          return text;
+        },
+      },
+    },
+  );
+  const expected = mode === 'ascii' ? '*1 v22 x1' : '◐1 ✓22 ✗1';
+  for (const width of [30, 44]) {
+    const rendered = lines(panel.renderAt(width, 40));
+    for (const title of ['AGENTS', 'BACKGROUND']) {
+      const heading = rendered.find((line) => line.includes(title)) ?? '';
+      expect(heading).toContain(expected);
+      expect(panelVisibleWidth(heading)).toBe(width);
+    }
+  }
+  expect(styled).toContainEqual(['accent', mode === 'ascii' ? '*1' : '◐1']);
+  expect(styled).toContainEqual(['success', mode === 'ascii' ? 'v22' : '✓22']);
+  expect(styled).toContainEqual(['error', mode === 'ascii' ? 'x1' : '✗1']);
+  expect(calls).toContain('running');
+});
+
+it('omits zero status counts, including an all-zero header summary', () => {
+  releases.push(
+    source('subagents', 'Agents', [agentRow('a', 'one')], {
+      running: 0,
+      completed: 0,
+      failed: 0,
+    }),
+  );
+  const heading = lines(
+    sidebar([{ id: 'subagents', visible: true }]).renderAt(30, 40),
+  )[0];
+  expect(heading).toMatch(/AGENTS ─+╮$/);
+  expect(heading).not.toContain('0');
+});
+
+it.each([
+  'nerd',
+  'ascii',
+] as const)('keeps grid sidebar row heights stable across digit boundaries in %s mode', (mode) => {
+  releases.push(useMode(mode));
+  for (const width of [30, 44]) {
+    const heights: number[] = [];
+    for (const metricValues of [
+      {
+        tools: '99',
+        tokens: ['9.9k', '99'],
+        context: '9.9%',
+        speed: '99',
+        cost: '0.99',
+        elapsed: '9s',
+      },
+      {
+        tools: '100',
+        tokens: ['10.0k', '100'],
+        context: '10.0%',
+        speed: '100',
+        cost: '1.00',
+        elapsed: '10s',
+      },
+      {
+        tools: '101',
+        tokens: ['10k', '101'],
+        context: '11.0%',
+        speed: '101',
+        cost: '1.01',
+        elapsed: '1m 05s',
+      },
+    ]) {
+      const ascii = mode === 'ascii';
+      const row = agentRow('a', 'explorer', 'running', {
+        tools: `${ascii ? 'tools' : '⚒'} ${metricValues.tools}`,
+        tokens: `${ascii ? 'in ' : '↑'}${metricValues.tokens[0]} ${ascii ? 'out ' : '↓'}${metricValues.tokens[1]}`,
+        context: `${ascii ? 'ctx' : '◔'} ${metricValues.context}`,
+        speed: `${ascii ? 'tok/s' : '↯'} ${metricValues.speed}`,
+        cost: `$${metricValues.cost}`,
+        elapsed: `${ascii ? 'elapsed' : '◷'} ${metricValues.elapsed}`,
+        model: 'gpt-5·high',
+      });
+      const off = source('subagents', 'Agents', [row]);
+      try {
+        const rendered = sidebar([{ id: 'subagents', visible: true }]).renderAt(
+          width,
+          40,
+        );
+        expect(rendered.length).toBe(
+          workPanelRowLineCount(row, width - 4, panelVisibleWidth, {
+            metricLayout: 'grid',
+            metricGrid: createWorkPanelMetricGrid([row], panelVisibleWidth),
+          }) + 3,
+        );
+        heights.push(rendered.length);
+      } finally {
+        off();
+      }
+    }
+    expect(new Set(heights).size).toBe(1);
+  }
 });

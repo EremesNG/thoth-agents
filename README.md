@@ -302,10 +302,13 @@ The [Pi sidebar](pi-packages/pi-sidebar/README.md) adds read-only Session,
 Workspace, Cost and discovered Todos/Subagents/Background panels in fullscreen and
 regular mode. `/sidebar` toggles, `/sidebar panels` lists ids for show/hide/order
 commands, and `/sidebar resize` resizes. `/sidebar settings` edits panel order,
-visibility, startup and default width; `/sidebar cost` opens task-cost curves.
-Themed panels show summary counts and detail commands; Workspace shows a
+visibility, startup and default width; `/sidebar cost` opens task-cost curves
+against elapsed time per task, labeled by display name or a short task-summary name.
+Themed Agents/Background headers show static status-icon counts, omitting zero
+counts (Todos keeps completed/total), and detail commands; Workspace shows a
 `~`-abbreviated path and tracked file/line changes versus HEAD. Agent metrics
-include cost and semantic icons, with stable wrapping across digit changes. Only displayed source panels absorb their
+include all available metrics with semantic icons (ASCII labels) in shared
+aligned columns that wrap without dropping metrics, stably across digit changes. Only displayed source panels absorb their
 Work sections; hiding the sidebar restores them. Panel order/visibility and
 startup policy/default width live in `~/.pi/agent/thoth-sidebar.json`. Subagent
 state v2 adds up to 100 cost-ranked persisted session summaries in `history`. Private Pi layout seams

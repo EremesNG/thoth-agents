@@ -234,14 +234,18 @@ The CLI installs and verifies these Pi packages in order:
 
 The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
 Session, Workspace, Cost and discovered work-source panels, with themed
-headers, provider summaries and detail-command footers. Workspace shows a
+headers, static Agents/Background status-icon counts with zero counts omitted
+(Todos keeps completed/total), and detail-command footers. All available row
+metrics appear in aligned columns that wrap without dropping fields, with icons
+(ASCII labels) and stable heights within reserved numeric ranges. Workspace shows a
 `~`-abbreviated path and tracked file/line changes versus HEAD. `/sidebar` toggles it;
 `/sidebar panels` lists ids for show/hide/up/down commands; `/sidebar resize` resizes with live guidance inside the sidebar
 (← grows width, → shrinks; fullscreen also supports divider drag). Panel order/visibility and startup mode
 persist in `~/.pi/agent/thoth-sidebar.json`. `/sidebar settings` edits these
 preferences and the saved default width (Enter saves, Esc cancels); current
 mode and resize width stay session-only. `/sidebar cost` opens cumulative
-curves for the task-cost bars.
+curves for the task-cost bars against elapsed time per task, from zero to the
+longest task duration, labeled by display name or a short task-summary name.
 Only displayed source panels absorb their Work sections; hiding/auto-collapse
 restores them. Private layout seams use guarded fallback. Regular mode supports
 the live viewport only, not historical scrollback; update related extensions

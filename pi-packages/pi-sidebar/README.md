@@ -70,25 +70,33 @@ are never rearranged; Cost is appended when missing.
   rows when non-zero. A reader refreshes on session start, turn start, every
   tool result and turn end, coalesced to 250 ms, without polling.
 - **Agents, Todos, Background** (discovered sources): the header shows the
-  provider summary — `active·done·failed` for Agents and Background, `done/total`
-  for Todos. Rows use keyed metrics with reserved format widths for stable row height
-  and semantic icons (`elapsed` included; text labels in ASCII), through the
-  shared work-panel renderer with right-aligned columns
-  (model·effort, tokens, cost, elapsed) that drop tokens, then cost, then model
-  as the width shrinks; elapsed stays. The footer shows the detail command
+  provider summary — static running, done and failed status-icon counts for Agents
+  and Background, omitting zero counts (ASCII uses the kit's status glyphs), and
+  `done/total` for Todos. Rows show identity, then all available keyed metrics
+  (tools, tokens, context, speed, cost, elapsed and model·effort) in panel-aligned
+  columns with single-space gutters, semantic icons and text labels in ASCII.
+  Columns wrap together onto aligned continuation lines as width shrinks, never
+  dropping a metric; when all columns plus a 24-cell identity budget fit,
+  the whole panel uses inline right-aligned metrics (identity clips with ellipsis). Missing fields retain empty cells. Numeric format reservations
+  keep heights stable within range; larger values widen the shared column and
+  may add a line without truncating digits. Model·effort reserves 16 cells and
+  truncates with an ellipsis. The footer shows the detail command
   (`/subagents ▸ detail`, `/todos ▸ detail`, `/bg ▸ detail`, `>` in ASCII). An
   empty panel is a single title line that includes the command. Sources retain
   active/pending rows plus at most five terminal rows (newest first when
   timestamped). Only displayed sources are declared absorbed; their work-panel
   sections return when hidden, too small, too narrow or disposed.
 - **Cost**: horizontal bars for the ten most expensive subagent tasks of the
-  session, live and persisted, labeled by task display name and scaled to the
+  session, live and persisted, labeled by task display name (or a short name
+  derived from the Agents row's task summary) and scaled to the
   largest with eighth blocks (`#` in ASCII). The header shows the session
   subagent total and the footer `/sidebar cost ▸ curves`. Data comes from the
   `thoth:subagents:state` v2 snapshots (including up to 100 cost-ranked
   persisted summaries in `history`); the curves view plots cost samples recorded
-  from them during this session, and tasks without samples are drawn as a
-  straight segment from start to end.
+  from them during this session against elapsed time since each task's start,
+  with a duration axis from zero to the longest task duration (running tasks use
+  the current time). Tasks without samples draw a straight segment from `(0,0)`
+  to `(duration, final cost)`.
 
 ### Degradation
 

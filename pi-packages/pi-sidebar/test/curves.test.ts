@@ -33,13 +33,31 @@ const progressing = () => {
   return data;
 };
 
-it('draws observed samples as cumulative points', () => {
-  const [series] = curveSeries(progressing().ranked());
-  expect(series.points).toEqual([
-    { at: 1000, cost: 0.1 },
-    { at: 2000, cost: 0.5 },
-    { at: 3000, cost: 1 },
+it('plots samples against each task start, with the axis spanning the longest task duration', () => {
+  const data = progressing();
+  data.update(
+    snapshot([
+      task('late', 2, {
+        startedAt: 86000000,
+        endedAt: 86005000,
+      }),
+    ]),
+    86005000,
+  );
+  const series = curveSeries(data.ranked(), 6000);
+  expect(series[0].points).toEqual([
+    { at: 0, cost: 0 },
+    { at: 5000, cost: 2 },
   ]);
+  expect(series[1].points).toEqual([
+    { at: 0, cost: 0.1 },
+    { at: 1000, cost: 0.5 },
+    { at: 2000, cost: 1 },
+    { at: 5000, cost: 1 },
+  ]);
+  expect(renderCurvePlot(series, 30, 8, theme).map(strip).at(-1)).toMatch(
+    /0 +5s$/,
+  );
 });
 
 it('draws a straight start-to-end segment for tasks without samples', () => {
@@ -48,9 +66,9 @@ it('draws a straight start-to-end segment for tasks without samples', () => {
     [task('old', 2, { displayName: 'Old', startedAt: 100, endedAt: 900 })],
   );
   expect(data.ranked()[0].samples).toEqual([]);
-  expect(curveSeries(data.ranked())[0].points).toEqual([
-    { at: 100, cost: 0 },
-    { at: 900, cost: 2 },
+  expect(curveSeries(data.ranked(), 4000)[0].points).toEqual([
+    { at: 0, cost: 0 },
+    { at: 800, cost: 2 },
   ]);
 });
 
@@ -60,15 +78,15 @@ it('prefixes a zero point when the first sample came after the task started', ()
     [],
     4000,
   );
-  expect(curveSeries(data.ranked())[0].points).toEqual([
-    { at: 500, cost: 0 },
-    { at: 4000, cost: 1 },
+  expect(curveSeries(data.ranked(), 4000)[0].points).toEqual([
+    { at: 0, cost: 0 },
+    { at: 3500, cost: 1 },
   ]);
 });
 
 it('renders box-drawing lines with axis labels and an end marker', () => {
   const plot = renderCurvePlot(
-    curveSeries(progressing().ranked()),
+    curveSeries(progressing().ranked(), 3000),
     30,
     8,
     theme,
@@ -86,7 +104,7 @@ it('renders box-drawing lines with axis labels and an end marker', () => {
 it('renders ASCII-only lines using * + - |', () => {
   releases.push(useMode('ascii'));
   const plot = renderCurvePlot(
-    curveSeries(progressing().ranked()),
+    curveSeries(progressing().ranked(), 3000),
     30,
     8,
     theme,
@@ -197,4 +215,23 @@ it('reads fresh tracker data on every render while open', async () => {
   );
   harness.component?.handleInput?.('q');
   await done;
+});
+
+it.each([
+  [60000, '60s'],
+  [120000, '2m'],
+  [7200000, '2.0h'],
+])('labels an elapsed duration of %i ms as %s', (elapsed, label) => {
+  const data = tracker(
+    [],
+    [task('history', 1, { createdAt: 86000000, endedAt: 86000000 + elapsed })],
+  );
+  const series = curveSeries(data.ranked());
+  expect(series[0].points).toEqual([
+    { at: 0, cost: 0 },
+    { at: elapsed, cost: 1 },
+  ]);
+  expect(renderCurvePlot(series, 30, 8, theme).map(strip).at(-1)).toContain(
+    label,
+  );
 });

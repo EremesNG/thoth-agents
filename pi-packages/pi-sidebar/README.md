@@ -84,9 +84,9 @@ are never rearranged; Cost is appended when missing.
   (`/subagents ▸ detail`, `/todos ▸ detail`, `/bg ▸ detail`, `>` in ASCII). An
   empty panel is a single title line that includes the command. Sources retain
   all active/pending rows plus at most three finished rows, failures first and
-  newest first within each status. Finished rows use the host widget's shared
-  linger windows (10 s done / 30 s failed), require a finite completion timestamp,
-  and honor explicit expiry. Hidden history is not counted in `+N more`; header
+  newest first within each status, without linger or expiry limits. Finished
+  history remains visible even after resume; unavailable timestamps preserve
+  provider order. Hidden history is not counted in `+N more`; header
   counts remain provider totals and full history remains in `/subagents`, `/bg`
   and `/todos`. Only displayed sources are declared absorbed; their work-panel
   sections return when hidden, too small, too narrow or disposed.
@@ -117,10 +117,9 @@ when necessary to keep every title; only when height is smaller than the number
 of titles is an unavoidable bounded prefix shown. Measured height equals actual
 rendered height. Below 24 columns the sidebar shows only
 `widen: /sidebar resize`. Rendering is event-driven and cached: no session
-traversal per render. Retention expiry uses the existing shared 100 ms cadence
-only while a lingering row exists, without another timer or provider traversal;
-plan keys include retained rows, source summaries, workspace, cost revision and
-animation frame.
+traversal per render. The shared 100 ms cadence runs only for visible animated
+work rows, not finished history; plan keys include retained rows, source
+summaries, workspace, cost revision and animation frame.
 
 ## Preferences
 

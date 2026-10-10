@@ -170,7 +170,7 @@ it('keeps live rows and only three recent terminal items, failed-first, independ
 it.each([
   {
     sequence: ['finished-A', 'pending-B', 'finished-C', 'running-D'],
-    retained: ['pending-B', 'running-D'],
+    retained: ['pending-B', 'running-D', 'finished-A', 'finished-C'],
   },
   {
     sequence: [
@@ -184,9 +184,15 @@ it.each([
       'finished-H',
       'finished-I',
     ],
-    retained: ['pending-B', 'running-D'],
+    retained: [
+      'pending-B',
+      'running-D',
+      'finished-A',
+      'finished-C',
+      'finished-E',
+    ],
   },
-])('keeps only active rows when finished timestamps are unavailable: $sequence', ({
+])('keeps active rows plus up to three stable finished rows when timestamps are unavailable: $sequence', ({
   sequence,
   retained,
 }) => {

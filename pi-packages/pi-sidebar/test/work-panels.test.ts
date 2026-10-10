@@ -470,7 +470,7 @@ it.each([
   }
 });
 
-it('retains only recent finished rows, failed-first capped at three, without changing totals', () => {
+it('retains active plus three finished rows indefinitely, failed-first, without changing totals', () => {
   vi.useFakeTimers();
   vi.setSystemTime(100_000);
   const finished = (id: string, endedAt: number, failed = false) => ({
@@ -505,25 +505,32 @@ it('retains only recent finished rows, failed-first capped at three, without cha
   expect(text().indexOf('failure')).toBeLessThan(text().indexOf('newest'));
   expect(panel.hasAnimation()).toBe(true);
   vi.setSystemTime(111_000);
-  const expired = text();
-  expect(expired).not.toContain('failure');
-  expect(expired).not.toContain('newest');
-  expect(expired).not.toContain('+');
+  const retained = text();
+  expect(retained).toContain('failure');
+  expect(retained).toContain('newest');
+  expect(retained).toContain('middle');
+  expect(retained).not.toContain('+');
 });
 
 it.each([
-  'subagents',
-  'background-tasks',
-  'todos',
-])('expires %s rows on the shared cadence without another provider read', (id) => {
+  ['subagents', 4000],
+  ['background-tasks', 4000],
+  ['todos', 4000],
+  ['subagents', 100_000],
+  ['background-tasks', 100_000],
+  ['todos', 100_000],
+] as const)('retains three finished %s rows at time %i without idle redraws', (id, now) => {
   vi.useFakeTimers();
-  vi.setSystemTime(1000);
+  vi.setSystemTime(now);
   const listRows = vi.fn(() => [
-    { ...agentRow('done', 'finished item', 'completed'), endedAt: 1000 },
+    { ...agentRow('older', 'older item', 'completed'), endedAt: 1000 },
+    { ...agentRow('newest', 'newest item', 'completed'), endedAt: 3000 },
+    { ...agentRow('middle', 'middle item', 'completed'), endedAt: 2000 },
     {
       ...agentRow('failed', 'failure item', 'failed'),
       state: 'failed' as const,
-      endedAt: 1000,
+      endedAt: 0,
+      expiresAt: 100,
     },
   ]);
   releases.push(
@@ -532,9 +539,9 @@ it.each([
       id,
       label: 'Work',
       priority: 10,
-      visibleCount: () => 2,
+      visibleCount: () => 4,
       listRows,
-      summary: () => ({ running: 0, completed: 1, failed: 1, total: 2 }),
+      summary: () => ({ running: 0, completed: 3, failed: 1, total: 4 }),
       detail: () => null,
       armCloseLabel: () => '',
       close() {},
@@ -542,42 +549,19 @@ it.each([
   );
   const panel = sidebar([{ id, visible: true }]);
   const first = panel.renderAt(44, 40);
-  expect(panel.hasAnimation()).toBe(true);
-  expect(panel.renderAt(44, 40)).toBe(first);
-  vi.setSystemTime(11_000);
-  const expiredDone = lines(panel.renderAt(44, 40)).join('\n');
-  expect(expiredDone).not.toContain('finished item');
-  expect(expiredDone).toContain('failure item');
-  expect(panel.hasAnimation()).toBe(true);
-  vi.setSystemTime(31_000);
-  expect(lines(panel.renderAt(44, 40)).join('\n')).not.toContain(
-    'failure item',
+  const text = lines(first).join(String.fromCharCode(10));
+  expect(text).toContain('failure item');
+  expect(text).toContain('newest item');
+  expect(text).toContain('middle item');
+  expect(text).not.toContain('older item');
+  expect(text).not.toContain('more');
+  expect(text.indexOf('failure item')).toBeLessThan(
+    text.indexOf('newest item'),
   );
-  const header = lines(panel.renderAt(44, 40))[0];
-  expect(header).toContain(id === 'todos' ? '1/2' : '✓1 ✗1');
+  expect(text.indexOf('newest item')).toBeLessThan(text.indexOf('middle item'));
+  expect(lines(first)[0]).toContain(id === 'todos' ? '3/4' : '✓3 ✗1');
   expect(panel.hasAnimation()).toBe(false);
+  vi.setSystemTime(200_000);
+  expect(panel.renderAt(44, 40)).toBe(first);
   expect(listRows).toHaveBeenCalledTimes(1);
-});
-
-it('refills the finished cap from still-eligible cached history when a prioritized row expires', () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(1000);
-  releases.push(
-    source(
-      'subagents',
-      'Agents',
-      Array.from({ length: 4 }, (_, i) => ({
-        ...agentRow(`f${i}`, `failure ${i}`, 'failed'),
-        state: 'failed' as const,
-        endedAt: 1000 - i,
-        ...(i === 0 ? { expiresAt: 1100 } : {}),
-      })),
-    ),
-  );
-  const panel = sidebar([{ id: 'subagents', visible: true }]);
-  expect(lines(panel.renderAt(44, 40)).join('\n')).not.toContain('failure 3');
-  vi.setSystemTime(1100);
-  const text = lines(panel.renderAt(44, 40)).join('\n');
-  expect(text).not.toContain('failure 0');
-  expect(text).toContain('failure 3');
 });

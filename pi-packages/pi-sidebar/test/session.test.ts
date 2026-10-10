@@ -266,8 +266,8 @@ it('absorbs finished-only Agents and Background history after resume without rep
   expect(screen).toContain('AGENTS');
   expect(screen).toContain('BACKGROUND');
   expect(screen).toContain('✓136 ✗3');
-  expect(screen).not.toContain('old agent');
-  expect(screen).not.toContain('old build');
+  expect(screen).toContain('old agent');
+  expect(screen).toContain('old build');
   expect(getUIPreferences().absorbedWorkPanelSources).toEqual([
     'subagents',
     'background-tasks',

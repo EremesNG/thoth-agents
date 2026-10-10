@@ -16,7 +16,6 @@ import {
 import {
   createWorkPanelMetricGrid,
   panelFg,
-  panelLingerEndsAt,
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
@@ -42,8 +41,8 @@ import {
 } from './rows.js';
 import type { WorkspaceSnapshot } from './workspace.js';
 
-/** Shared host linger windows, then a failed-first three-finished-row cap. */
-function retainedRows(rows: WorkPanelRow[], now: number): WorkPanelRow[] {
+/** All active rows plus the three newest finished rows, failures first. */
+function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
   const active: WorkPanelRow[] = [];
   const finished: WorkPanelRow[] = [];
   for (const row of rows) {
@@ -57,11 +56,7 @@ function retainedRows(rows: WorkPanelRow[], now: number): WorkPanelRow[] {
           status,
         ));
     if (!terminal) active.push(row);
-    else if (
-      (panelLingerEndsAt(row) ?? 0) > now &&
-      (row.expiresAt === undefined || row.expiresAt > now)
-    )
-      finished.push(row);
+    else finished.push(row);
   }
   return [
     ...active,
@@ -81,15 +76,6 @@ function retainedRows(rows: WorkPanelRow[], now: number): WorkPanelRow[] {
       )
       .slice(0, 3),
   ];
-}
-
-function nextExpiry(rows: readonly WorkPanelRow[]): number {
-  return rows.reduce((next, row) => {
-    const linger = panelLingerEndsAt(row);
-    return linger === undefined
-      ? next
-      : Math.min(next, linger, row.expiresAt ?? Infinity);
-  }, Infinity);
 }
 
 /** Detail command shown in each work panel footer and in the empty title line. */
@@ -275,8 +261,6 @@ export class SidebarPanels implements Component {
       revision: number;
       frame: number;
       items: WorkPanelRow[];
-      raw: WorkPanelRow[];
-      expiresAt: number;
       grid: WorkPanelMetricGrid;
       animated: boolean;
     }
@@ -410,13 +394,11 @@ export class SidebarPanels implements Component {
         maxRows: Number.MAX_SAFE_INTEGER,
         respectRowCap: false,
       });
-      const items = retainedRows(raw, now);
+      const items = retainedRows(raw);
       snapshot = {
         revision: source.revision,
         frame,
-        raw,
         items,
-        expiresAt: nextExpiry(items),
         grid: [],
         animated: false,
       };
@@ -491,18 +473,6 @@ export class SidebarPanels implements Component {
       this.invalidate();
     }
     const now = Date.now();
-    // Prune cached rows on the existing cadence, without re-reading providers.
-    for (const snapshot of this.snapshots.values()) {
-      if (snapshot.expiresAt <= now) {
-        snapshot.items = retainedRows(snapshot.raw, now);
-        snapshot.expiresAt = nextExpiry(snapshot.items);
-        snapshot.grid = createWorkPanelMetricGrid(
-          snapshot.items,
-          panelVisibleWidth,
-        );
-        this.invalidate();
-      }
-    }
     const frame = Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS);
     // Animation state is part of the key, so the key is re-read after planning.
     const makeKey = () =>
@@ -593,12 +563,11 @@ export class SidebarPanels implements Component {
         snapshot.frame !== frame &&
         panel.animated?.slice(0, count).some(Boolean)
       ) {
-        snapshot.raw = getWorkPanelSourceRows(panel.id, {
+        const raw = getWorkPanelSourceRows(panel.id, {
           maxRows: Number.MAX_SAFE_INTEGER,
           respectRowCap: false,
         });
-        snapshot.items = retainedRows(snapshot.raw, now);
-        snapshot.expiresAt = nextExpiry(snapshot.items);
+        snapshot.items = retainedRows(raw);
         snapshot.grid = createWorkPanelMetricGrid(
           snapshot.items,
           panelVisibleWidth,
@@ -633,11 +602,6 @@ export class SidebarPanels implements Component {
       if (!visible.some((panel) => panel.id === id && panel.height >= 3))
         snapshot.animated = false;
     }
-    // A lingering terminal row keeps only the already shared cadence alive.
-    this.animated ||= [...this.snapshots.values()].some(
-      (snapshot) =>
-        Number.isFinite(snapshot.expiresAt) && snapshot.expiresAt > now,
-    );
     this.cachedKey = makeKey();
     this.cachedPlan = visible;
     this.cachedLines = undefined;

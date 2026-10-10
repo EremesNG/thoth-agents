@@ -901,7 +901,7 @@ describe('Pi setup', () => {
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
-      'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+      'npm:@thoth-agents/pi-questions-user@>=0.3.0',
       'npm:@thoth-agents/pi-todo@>=0.3.0',
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
@@ -1078,7 +1078,7 @@ describe('Pi setup', () => {
         if (args[0] === 'install') {
           mutations.push([...args]);
           if (args[1] === 'npm:thoth-agents@0.3.12') rootInstalled = true;
-          if (args[1] === 'npm:@thoth-agents/pi-questions-user@>=0.1.0')
+          if (args[1] === 'npm:@thoth-agents/pi-questions-user@>=0.3.0')
             questionsInstalled = true;
         }
         if (args[0] === 'list')
@@ -1110,7 +1110,7 @@ describe('Pi setup', () => {
     expect(applyPiSetup(plan)).toMatchObject({
       success: true,
       installedPackages: expect.arrayContaining([
-        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        'npm:@thoth-agents/pi-questions-user@>=0.3.0',
       ]),
     });
     expect(mutations.filter(([action]) => action === 'remove')).toEqual(
@@ -1121,7 +1121,7 @@ describe('Pi setup', () => {
       ['remove', source, '--no-approve'],
       [
         'install',
-        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        'npm:@thoth-agents/pi-questions-user@>=0.3.0',
         '--no-approve',
       ],
     ]);
@@ -3132,7 +3132,7 @@ describe('Pi setup', () => {
     },
     {
       id: 'ask-user-question' as const,
-      failedSource: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+      failedSource: 'npm:@thoth-agents/pi-questions-user@>=0.3.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
         'npm:@thoth-agents/pi-subagents@>=0.3.0',
@@ -3150,7 +3150,7 @@ describe('Pi setup', () => {
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
-        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        'npm:@thoth-agents/pi-questions-user@>=0.3.0',
       ],
     },
   ])('stops before managed resources when $id cannot be individually verified', ({

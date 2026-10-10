@@ -284,10 +284,6 @@ importers:
         version: 4.1.11(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   pi-packages/pi-sidebar:
-    dependencies:
-      '@thoth-agents/pi-core':
-        specifier: workspace:^
-        version: link:../pi-core
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 1.0.2
@@ -301,6 +297,9 @@ importers:
       '@rolldown/binding-wasm32-wasi':
         specifier: ^1.2.4
         version: 1.2.11
+      '@thoth-agents/pi-core':
+        specifier: workspace:^
+        version: link:../pi-core
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.19

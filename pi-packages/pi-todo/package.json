@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-todo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "Session-owned task lists, context reinjection, and state snapshots for Pi.",
   "license": "MIT",

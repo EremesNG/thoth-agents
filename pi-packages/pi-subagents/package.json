@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-subagents",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Installable Pi package that adds markdown-defined subagents, delegated task tools, history, and model profiles.",
   "type": "module",
   "license": "MIT",

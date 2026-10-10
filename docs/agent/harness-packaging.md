@@ -547,7 +547,8 @@ publishing. The root `thoth-agents` trusted publisher must also reference
 `release.yml` (already in use).
 
 For the new sidebar specifically, from a clean merged checkout after the frozen
-install and build (pi-core must already be published at a compatible version):
+install and build. The sidebar bundle inlines pi-core, so pi-core does not need
+to be published first:
 
 ```sh
 cd pi-packages/pi-sidebar

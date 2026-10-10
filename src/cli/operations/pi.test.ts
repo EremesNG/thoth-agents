@@ -908,7 +908,7 @@ describe('Pi operations', () => {
     const status = getPiStatus(context);
     expect(status.targets).toContainEqual(
       expect.objectContaining({
-        path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        path: 'npm:@thoth-agents/pi-questions-user@>=0.3.0',
         state: 'missing',
       }),
     );
@@ -973,7 +973,7 @@ describe('Pi operations', () => {
       join(askPath, 'package.json'),
       JSON.stringify({
         name: '@thoth-agents/pi-questions-user',
-        version: '0.1.0',
+        version: '0.3.0',
       }),
     );
     writeFileSync(
@@ -1003,7 +1003,7 @@ describe('Pi operations', () => {
           exitCode: 0,
           stdout: [
             'User packages:',
-            '  npm:@thoth-agents/pi-questions-user@>=0.1.0',
+            '  npm:@thoth-agents/pi-questions-user@>=0.3.0',
             `    ${askPath}`,
             ...(scope === 'User'
               ? ['  npm:@juicesharp/rpiv-todo@>=2.9.0', `    ${todoPath}`]
@@ -1021,7 +1021,7 @@ describe('Pi operations', () => {
           state: 'missing',
         }),
         expect.objectContaining({
-          path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+          path: 'npm:@thoth-agents/pi-questions-user@>=0.3.0',
           state: 'installed',
           description: expect.stringContaining(
             'does not prove live tool availability',

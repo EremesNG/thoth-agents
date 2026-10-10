@@ -19,6 +19,7 @@ export interface CostSample {
 
 export interface CostTask {
   id: string;
+  agent: string;
   label: string;
   cost: number;
   /** Unix ms; startedAt, falling back to createdAt until the task starts. */
@@ -57,12 +58,14 @@ export class CostTracker {
       const cost = task.usage?.cost;
       if (cost === undefined || !(cost > 0)) continue;
       const name = label(task);
+      const agent = clean(task.agent || '');
       const start = task.startedAt ?? task.createdAt;
       const known = this.tasks.get(task.id);
       if (!known) {
         // A task already finished on first sight has no observed progression.
         this.tasks.set(task.id, {
           id: task.id,
+          agent,
           label: name,
           cost,
           start,
@@ -76,11 +79,13 @@ export class CostTracker {
         known.cost === cost &&
         known.start === start &&
         known.label === name &&
+        known.agent === agent &&
         known.end === task.endedAt
       )
         continue;
       changed = true;
       known.label = name;
+      known.agent = agent;
       known.start = start;
       known.end = task.endedAt;
       if (cost !== known.cost) {

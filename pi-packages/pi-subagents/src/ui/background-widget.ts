@@ -21,6 +21,20 @@ function normalize(text: string | undefined): string {
   return text ? text.replace(/\s+/g, ' ').trim() : '';
 }
 
+// Paths are tokens, not URLs or dispatch separators. POSIX paths must have
+// at least two segments so a standalone slash or /command remains meaningful.
+const absolutePath = String.raw`(?:[a-z]:[\\/][^\s"'\x60()\[\]{},;]+|~[\\/][^\s"'\x60()\[\]{},;]+|/[^\s/"'\x60()\[\]{},;]+/[^\s"'\x60()\[\]{},;]+)`;
+
+const absolutePathToken = String.raw`(?:"${absolutePath}"|'${absolutePath}'|\x60${absolutePath}\x60|${absolutePath})`;
+
+function tidyDerivedLabel(text: string): string {
+  return normalize(text)
+    .replace(/(?<!\S)([/|·;,])(?:\s+[/|·;,])+(?!\S)/g, '$1')
+    .replace(/^(?:[/|·;,](?:\s+|$))+|(?:^|\s+)[/|·;,](?:\s+[/|·;,])*$/g, '')
+    .replace(/^(?!\.{1,2}[\\/])[|·;,.\s]+|[|·;,.!?\s]+$/g, '')
+    .trim();
+}
+
 export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
   const name = normalize(task.display_name);
   if (name)
@@ -38,17 +52,33 @@ export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
   const clean = firstContent
     .replace(/^#+\s*(?:delegated task:?|task:?)?\s*/i, '')
     .trim();
-  let content = clean || firstContent;
+  // Remove repository-location metadata before parsing envelopes: forward
+  // slashes in paths are not dispatch segment separators.
+  let content = (clean || firstContent)
+    .replace(
+      new RegExp(
+        String.raw`\brepo\s+root\b(?:\s+${absolutePathToken})?(?:\s*\(git worktree[^)]*(?:\)|$))?[.;,]?`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(String.raw`(?<=^|[\s("'\x60])${absolutePathToken}`, 'gi'),
+      ' ',
+    );
+  content = tidyDerivedLabel(content);
   let change = '';
   // Dispatch metadata is not a task label. Only strip leading envelope
   // segments, preserving ordinary occurrences inside the meaningful text.
   let envelope = /^(PHASE|CHANGE):\s*([^/]*?)\s*(?:\/\s*|$)/i.exec(content);
   while (envelope) {
-    if (envelope[1].toUpperCase() === 'CHANGE') change = normalize(envelope[2]);
+    if (envelope[1].toUpperCase() === 'CHANGE')
+      change = tidyDerivedLabel(envelope[2]);
     content = content.slice(envelope[0].length);
     envelope = /^(PHASE|CHANGE):\s*([^/]*?)\s*(?:\/\s*|$)/i.exec(content);
   }
-  const summary = normalize(
+  content = tidyDerivedLabel(content);
+  const summary = tidyDerivedLabel(
     change ? `${change}${content ? ` · ${content}` : ''}` : content,
   );
   if (!summary) return '';

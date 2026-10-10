@@ -58,6 +58,8 @@ export type SubagentsTotals = SubagentsCounts & { total: number };
 /** Active-session tasks plus persisted session totals; identity is in the envelope. */
 export type SubagentsSnapshot = {
   tasks: SubagentTaskSummary[];
+  /** Cost-ranked persisted session summaries, at most 100 entries. */
+  history: SubagentTaskSummary[];
   counts: SubagentsCounts;
   totals: SubagentsTotals;
 };
@@ -67,12 +69,16 @@ export function isSubagentsSnapshot(
 ): value is SubagentsSnapshot {
   try {
     if (
-      !isExactRecord(value, ['tasks', 'counts', 'totals']) ||
-      !Array.isArray(value.tasks)
+      !isExactRecord(value, ['tasks', 'history', 'counts', 'totals']) ||
+      !Array.isArray(value.tasks) ||
+      !Array.isArray(value.history) ||
+      value.history.length > 100
     )
       return false;
-    for (const task of value.tasks) {
-      if (!isSubagentTask(task)) return false;
+    for (const tasks of [value.tasks, value.history]) {
+      for (const task of tasks) {
+        if (!isSubagentTask(task)) return false;
+      }
     }
     const { counts, totals } = value;
     return (
@@ -166,7 +172,7 @@ function isSubagentTask(value: unknown): value is SubagentTaskSummary {
 
 export const SUBAGENTS_STATE_CHANNEL = defineChannel<SubagentsSnapshot>({
   name: 'thoth:subagents:state',
-  version: 1,
+  version: 2,
   validate: isSubagentsSnapshot,
 });
 

@@ -235,6 +235,7 @@ describe('semantic icon resolvers', () => {
       effort: '◐',
       context: 'ctx',
       cost: '$',
+      elapsed: '◷',
       tokensIn: '↑',
       tokensOut: '↓',
       cache: 'cache',
@@ -809,4 +810,20 @@ describe('render kit memo', () => {
     expect(memo.render(80, build)).toBe(empty);
     expect(build).toHaveBeenCalledExactlyOnceWith(undefined);
   });
+});
+
+it('falls back natively for elapsed when a v1 kit omits or rejects the new icon', () => {
+  expect(resolveIcon('elapsed')).toBe('◷');
+  for (const icon of [
+    undefined,
+    () => undefined,
+    () => {
+      throw new Error('unknown icon');
+    },
+  ]) {
+    const token = registerRenderKit({ ...kit, icon } as ThothRenderKit, {});
+    expect(resolveIcon('elapsed')).toBe('◷');
+    expect(resolveIcon('elapsed', 'time')).toBe('time');
+    if (token) withdrawRenderKit(token);
+  }
 });

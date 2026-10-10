@@ -285,8 +285,8 @@ missing, or older versions are not. Re-running Install or applying Update
 migrates legacy exact sources for the other selected extensions through Pi while
 preserving package resource filters and unrelated settings.
 
-Subagents and background tasks publish summary-only v1 snapshots through
-[pi-core's task channels](pi-packages/pi-core/README.md#task-summary-and-usage-channels-v1).
+Subagents (v2) and background tasks (v1) publish summary-only snapshots through
+[pi-core's task channels](pi-packages/pi-core/README.md#task-summary-and-usage-channels).
 The status line uses `thoth:subagents:usage`, not the removed raw
 `thoth:subagent-usage` bus event. Upgrade pi-subagents and pi-thoth-theme to
 `>=0.3.0` together and `/reload` to retain subagent cost display; the usage
@@ -296,14 +296,19 @@ The shared Pi Work panel uses pi-core's v2 data-only provider contract and
 [discovery/action API](pi-packages/pi-core/README.md#discovery-and-actions).
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
 `/reload`; first-owner arbitration hides incompatible sections in mixed v1/v2
-installs. Task-summary channels and Render KIT remain v1.
+installs. Subagent state is v2; background state, usage, requests and Render KIT remain v1.
 
 The [Pi sidebar](pi-packages/pi-sidebar/README.md) adds read-only Session,
-Workspace and discovered Todos/Subagents/Background panels in fullscreen and
+Workspace, Cost and discovered Todos/Subagents/Background panels in fullscreen and
 regular mode. `/sidebar` toggles, `/sidebar panels` lists ids for show/hide/order
-commands, and `/sidebar resize` resizes. Only displayed source panels absorb their
+commands, and `/sidebar resize` resizes. `/sidebar settings` edits panel order,
+visibility, startup and default width; `/sidebar cost` opens task-cost curves.
+Themed panels show summary counts and detail commands; Workspace shows a
+`~`-abbreviated path and tracked file/line changes versus HEAD. Agent metrics
+include cost and semantic icons, with stable wrapping across digit changes. Only displayed source panels absorb their
 Work sections; hiding the sidebar restores them. Panel order/visibility and
-startup policy live in `~/.pi/agent/thoth-sidebar.json`. Private Pi layout seams
+startup policy/default width live in `~/.pi/agent/thoth-sidebar.json`. Subagent
+state v2 adds up to 100 cost-ranked persisted session summaries in `history`. Private Pi layout seams
 have guarded fallback; regular mode covers the live viewport, not historical
 scrollback. Update related extensions together to avoid mixed old UI owners.
 

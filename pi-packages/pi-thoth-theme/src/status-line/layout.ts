@@ -1,4 +1,3 @@
-import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import { combineSessionAndSubagentCost } from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
@@ -45,18 +44,7 @@ function themeFg(
   return theme?.fg ? theme.fg(token, text) : text;
 }
 
-export function formatCwd(cwd: string, home?: string): string {
-  if (!home) return cwd;
-  const relativeToHome = relative(resolve(home), resolve(cwd));
-  if (
-    relativeToHome === '..' ||
-    relativeToHome.startsWith(`..${sep}`) ||
-    isAbsolute(relativeToHome)
-  ) {
-    return cwd;
-  }
-  return relativeToHome === '' ? '~' : `~${sep}${relativeToHome}`;
-}
+export { formatCwd } from '@thoth-agents/pi-core';
 
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString();

@@ -48,6 +48,7 @@ describe('theme kit icon lookup per mode', () => {
     Record<SemanticIconName, string | readonly string[]>
   > = {
     nerd: {
+      elapsed: '',
       warning: '\u{f071}',
       branch: '\u{e0a0}',
       folder: '\u{f07c}',
@@ -97,6 +98,7 @@ describe('theme kit icon lookup per mode', () => {
       workingFrames: ['△', '◭', '▲', '◮'],
     },
     unicode: {
+      elapsed: '◷',
       warning: '⚠',
       branch: '⑂',
       folder: 'dir',
@@ -146,6 +148,7 @@ describe('theme kit icon lookup per mode', () => {
       workingFrames: ['△', '◭', '▲', '◮'],
     },
     ascii: {
+      elapsed: 'elapsed',
       warning: '!',
       branch: 'git',
       folder: 'dir',

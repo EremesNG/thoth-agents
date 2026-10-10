@@ -8,6 +8,7 @@ import {
 } from './render-kit.js';
 import type {
   WorkPanelItemState,
+  WorkPanelMetricGroup,
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,
@@ -466,10 +467,52 @@ function wrapSegments(
     });
 }
 
+/** Number-field maxima in cells, excluding semantic icons, labels and separators. */
+const metricNumberWidths = {
+  tools: 3,
+  tokens: 5,
+  context: 6,
+  speed: 3,
+  cost: 6,
+  elapsed: 7,
+};
+// Reservation cells exist only in the packing plan; never in rendered greedy text.
+const reservationCell = '\0';
+const visibleSegments = (parts: readonly WorkPanelSegment[]) =>
+  parts.map((part) => ({
+    ...part,
+    text: part.text.replaceAll(reservationCell, ''),
+  }));
+
+function reservedMetricSegments(
+  group: WorkPanelMetricGroup,
+  continuation = false,
+): WorkPanelSegment[] {
+  const parts = continuation
+    ? (group.continuation ?? group.segments)
+    : group.segments;
+  if (!group.key || group.key === 'model')
+    return parts.map((part) => ({ ...part }));
+  const reserved = metricNumberWidths[group.key];
+  const valuePattern =
+    group.key === 'elapsed'
+      ? /\d+(?:\.\d+)?(?:ms|[smh])(?: \d+[smh])?|\?/g
+      : /\d+(?:\.\d+)?[kKmM%]?|\?/g;
+  return parts.map((part) => ({
+    ...part,
+    text: part.text.replace(
+      valuePattern,
+      (value) =>
+        value + reservationCell.repeat(Math.max(0, reserved - value.length)),
+    ),
+  }));
+}
+
 function responsiveContent(
   row: WorkPanelRow,
   width: number,
   measure: Measure,
+  metricLayout: 'greedy' | 'columns' = 'greedy',
 ): WorkPanelRowContent {
   const identity: readonly WorkPanelSegment[] = row.identity ??
     row.segments ?? [{ text: row.primary, role: 'primary' }];
@@ -481,10 +524,17 @@ function responsiveContent(
     groups.flatMap((group, index) =>
       index ? [separator, ...group] : [...group],
     );
-  const metrics = (row.metrics ?? []).map(({ segments }) => segments);
+  const planningMeasure: Measure = (text) =>
+    measure(text.replaceAll(reservationCell, ' '));
+  const groups = (row.metrics ?? []).filter(
+    (group) => metricLayout === 'columns' || !group.columnsOnly,
+  );
+  const metrics = groups.map((group) => reservedMetricSegments(group));
   const metricSegments = joinGroups(metrics);
   const inlineWidth =
-    width - measure(segmentText(metricSegments)) - measure(separator.text);
+    width -
+    planningMeasure(segmentText(metricSegments)) -
+    measure(separator.text);
   const minIdentity =
     identity
       .filter(({ role }) => role !== 'secondary')
@@ -492,22 +542,86 @@ function responsiveContent(
     (identity.some(({ role, text }) => role === 'secondary' && text)
       ? measure(separator.text) + 1
       : 0);
+  if (
+    metricLayout === 'columns' &&
+    groups.length &&
+    groups.every((group) => group.key)
+  ) {
+    let columns = groups.map((group, index) => ({
+      group,
+      parts: metrics[index],
+    }));
+    const columnsWidth = () =>
+      planningMeasure(
+        segmentText(joinGroups(columns.map(({ parts }) => parts))),
+      );
+    for (const key of [
+      'tokens',
+      'cost',
+      'model',
+      'tools',
+      'context',
+      'speed',
+    ]) {
+      if (columnsWidth() + measure(separator.text) + minIdentity <= width)
+        break;
+      columns = columns.filter(({ group }) => group.key !== key);
+    }
+    const columnWidth = columnsWidth();
+    const identityWidth = Math.max(
+      0,
+      width - columnWidth - measure(separator.text),
+    );
+    const segments = fitIdentity(identity, identityWidth, measure);
+    const gap = Math.max(
+      0,
+      width -
+        columnWidth -
+        measure(segmentText(segments)) -
+        measure(separator.text),
+    );
+    if (gap) segments.push({ text: ' '.repeat(gap), role: 'meta' });
+    if (columns.length)
+      segments.push(
+        separator,
+        ...joinGroups(
+          columns.map(({ parts }) => {
+            const visible = visibleSegments(parts);
+            const padding =
+              planningMeasure(segmentText(parts)) -
+              measure(segmentText(visible));
+            return [
+              { text: ' '.repeat(Math.max(0, padding)), role: 'meta' as const },
+              ...visible,
+            ];
+          }),
+        ),
+      );
+    return { text: segmentText(segments), segments };
+  }
   const inline = metrics.length > 0 && inlineWidth >= minIdentity;
-  const segments = fitIdentity(identity, inline ? inlineWidth : width, measure);
-  if (inline) segments.push(separator, ...metricSegments);
+  const visibleMetrics = visibleSegments(metricSegments);
+  const actualInlineWidth =
+    width - measure(segmentText(visibleMetrics)) - measure(separator.text);
+  const segments = fitIdentity(
+    identity,
+    inline ? actualInlineWidth : width,
+    measure,
+  );
+  if (inline) segments.push(separator, ...visibleMetrics);
   const continuations: WorkPanelSegment[][] = [];
   if (!inline) {
-    for (const group of row.metrics ?? []) {
-      const parts = group.continuation ?? group.segments;
+    for (const group of groups) {
+      const parts = reservedMetricSegments(group, true);
       const previous = continuations.at(-1);
       const joined = previous ? [...previous, separator, ...parts] : [...parts];
-      if (previous && measure(segmentText(joined)) <= width)
+      if (previous && planningMeasure(segmentText(joined)) <= width)
         continuations[continuations.length - 1] = joined;
       else continuations.push([...parts]);
     }
   }
   const extraSegments = continuations.flatMap((parts) =>
-    wrapSegments(parts, width, measure),
+    wrapSegments(parts, width, planningMeasure).map(visibleSegments),
   );
   return {
     text: segmentText(segments),
@@ -517,7 +631,11 @@ function responsiveContent(
   };
 }
 
-function panelContentReader(width: number, measure = defaultMeasure) {
+function panelContentReader(
+  width: number,
+  measure = defaultMeasure,
+  metricLayout: 'greedy' | 'columns' = 'greedy',
+) {
   const kit = getRenderKit();
   const contents = new Map<Pick<PanelRow, 'row'>, WorkPanelRowContent>();
   function contentFor(entry: Pick<PanelRow, 'row'>) {
@@ -529,6 +647,7 @@ function panelContentReader(width: number, measure = defaultMeasure) {
               entry.row,
               Math.max(0, width - (kit ? 7 : 4)),
               measure,
+              metricLayout,
             )
           : {
               text: [entry.row.name, entry.row.primary, entry.row.elapsed]
@@ -790,6 +909,8 @@ export interface WorkPanelRowRenderOptions {
   measure?: Measure;
   selected?: boolean;
   last?: boolean;
+  /** Sidebar-only degrading right-aligned keyed columns; host defaults to greedy. */
+  metricLayout?: 'greedy' | 'columns';
 }
 
 /** The same responsive data-row rendering used by the work-panel host. */
@@ -797,9 +918,14 @@ export function workPanelRowLineCount(
   row: WorkPanelRow,
   width: number,
   measure: Measure = defaultMeasure,
+  options: Pick<WorkPanelRowRenderOptions, 'metricLayout'> = {},
 ): number {
   if (!(width > 0)) return 0;
-  const content = panelContentReader(width, measure)({ row });
+  const content = panelContentReader(
+    width,
+    measure,
+    options.metricLayout,
+  )({ row });
   return 1 + (content.extraRows?.filter((line) => line.trim()).length ?? 0);
 }
 
@@ -814,7 +940,7 @@ export function renderWorkPanelRow(
   const fg = (role: Parameters<RenderKitTheme['fg']>[0], text: string) =>
     kit ? kit.fg(theme, role, text) : theme.fg(role, text);
   const styleSegments = segmentStyler(theme, clip, measure);
-  const contentFor = panelContentReader(width, measure);
+  const contentFor = panelContentReader(width, measure, options.metricLayout);
   const entry = { row };
   const status = workPanelRenderStatus(row);
   const indicator = !row.summary

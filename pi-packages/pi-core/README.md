@@ -123,7 +123,7 @@ request(pi.events, TODO_STATE_REQUEST, {
 Transport is within one Pi session runtime. Cross-process delivery, child/parent
 bus sharing and persistence are not provided by this package.
 
-## Task summary and usage channels v1
+## Task summary and usage channels
 
 All definitions, payload types and validators below are exported from the root
 entry, with no runtime Pi/TUI dependency. Each state publication is a complete,
@@ -138,7 +138,7 @@ read-only snapshot, not a delta. Session identity belongs to the envelope.
 | `SUBAGENTS_USAGE_CHANNEL` | `thoth:subagents:usage` | `SubagentsUsageSnapshot` |
 | `SUBAGENTS_USAGE_REQUEST` | `thoth:subagents:usage:request` | `SubagentsUsageRequest` |
 
-Every definition has version 1. Producer sources are
+`SUBAGENTS_STATE_CHANNEL` has version 2; all other definitions remain version 1. Producer sources are
 `@thoth-agents/pi-subagents` and `@thoth-agents/pi-background-tasks` respectively;
 request sources identify the consumer package. All three request types are
 `Record<string, never>` and accept only empty plain or null-prototype objects.
@@ -156,8 +156,11 @@ Subscribe before requesting with `data: {}`, as in the task-list example above.
 - `SubagentTaskUsage`: optional `input` and `output` token counts and `cost`.
   Token counts are non-negative safe integers; cost is finite and non-negative.
 - `SubagentsSnapshot`: `tasks: SubagentTaskSummary[]`, `counts: SubagentsCounts`,
-  `totals: SubagentsTotals`. Tasks are the active session's in-memory tasks;
-  totals carry persisted session counts without history task details or IDs.
+  `history: SubagentTaskSummary[]`, `totals: SubagentsTotals`. Tasks are the active
+  session's in-memory tasks; history contains up to 100 persisted session task
+  summaries selected and ordered by descending cost by the producer. History
+  uses the same strict allow-list as tasks. Totals carry persisted session counts.
+  Version 1 snapshots and snapshots without history are rejected.
 - `SubagentsCounts`: all seven status keys, each a non-negative safe integer.
   `SubagentsTotals`: the same keys plus required non-negative safe integer `total`.
   Producers normalize missing persisted status counts to zero.
@@ -504,7 +507,7 @@ removes the host, not providers; extension owners unregister providers on unload
 Rows are plain data: `id` and `primary`, with optional name, status/tone, elapsed
 and navigator metadata. `segments` carry unstyled text and semantic roles.
 For responsive rows, `identity` carries the name, secondary label and attention
-segments; `metrics` is an array of `{ segments, continuation? }` groups. The host
+segments; `metrics` is an array of `{ key?, segments, continuation?, columnsOnly? }` groups. The host
 shrinks secondary labels before names, protects warning/error attention, joins
 metrics with the semantic separator, and moves them into wrapped continuations
 when they cannot fit inline. Each group's optional `continuation` supplies a
@@ -513,6 +516,29 @@ Continuations and informational `summary: true` rows are not selectable.
 The `completed` segment role renders dim text with the current theme's
 strikethrough (plain dim text if unavailable); providers must not pre-style rows.
 There is no `row.render` or other row callback.
+
+Optional metric `key` is `tools | tokens | context | speed | cost | elapsed | model`.
+Keyed numeric groups reserve each formatted value's maximum width: tokens 5
+cells (e.g. `1000k`, `99.9M`), context 6 (`100.0%`), speed and tools 3 digits,
+cost 6 (`999.99`, excluding currency), elapsed 7 (`59m 59s`, `99h 59m`). Icons,
+labels, spaces and separators add their measured cell widths; tokens reserve
+both input and output independently. Keep each formatted value including its
+unit suffix in one segment. Larger formatted fields add their excess width;
+`model` and unkeyed groups use their measured width. Compact `continuation`
+values use the same reservations. Packing and wrapping use these reservations,
+but greedy text is **not padded**; identity clipping still uses the space actually
+left by the displayed metric text.
+
+`renderWorkPanelRow` from `@thoth-agents/pi-core/panel` accepts
+`metricLayout: 'columns'` for sidebar use. All groups must be keyed; otherwise
+it retains greedy packing. Columns are right-aligned in their reserved widths
+and dropped in order: tokens, cost, model, then tools/context/speed; elapsed is
+retained last (clipped only if the available width cannot hold it).
+The host keeps the default `'greedy'` layout and excludes `columnsOnly: true`
+groups from both inline metrics and continuations. Providers can use this for
+sidebar-only model·effort metadata without changing host rows.
+Use the same layout for height
+measurement: `workPanelRowLineCount(row, width, measure, { metricLayout: 'columns' })`.
 
 `statusGlyph` is a closed semantic union: `RenderStatus | 'taskInProgress'`, never
 a literal glyph or function. `running` / `in_progress` resolve through the kit's
@@ -584,7 +610,10 @@ provider-owned.
 
 Sources report `id`, `label`, `priority`, `version`, `revision`,
 `selectableHeading`, `selectableSummary` and `rowCap` (default 3), sorted like the
-host sections. Revisions increase per source on registration and every provider
+host sections. Optional `summary` exposes only `running`, `completed`, `failed`,
+`total` and `text` from the provider, as a fresh data-only copy. String summaries
+become `{ text }`; absent or throwing summary reads leave it undefined without
+hiding the source or other providers. Discovery is still work-panel contract v2. Revisions increase per source on registration and every provider
 change, and continue across replacement/unregister/re-registration. Registry
 listeners run synchronously on register, unregister and provider change, receive
 the affected id, are isolated from failures, and stop after disposal. Subscription
@@ -611,7 +640,7 @@ The version-independent ownership slot remains first-owner-wins. Incompatible
 v1/v2 copies install no host, register no section and expose no discovery.
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
 `/reload`; mixed versions hide incompatible sections whichever contract owns
-the slot. The task-summary channels and Render KIT remain v1.
+the slot. Subagent state is v2; background state, usage, requests and Render KIT remain v1.
 
 ### Prompt retention
 
@@ -712,3 +741,12 @@ returns the combined numeric cost (pass the result's `cost`, not the object). Th
 replace the previous snapshot with `data.totalCost`, never accumulate snapshots,
 and reset it when changing sessions. These helpers do not format output or
 subscribe to lifecycle events.
+
+## Shared path formatting
+
+Root export `formatCwd(cwd: string, home?: string): string` abbreviates home as
+`~` with native platform separators, preserving paths outside home byte-for-byte.
+It uses only `node:path`, with no Pi/TUI dependency; the theme uses this same helper.
+
+The render-kit v1 semantic glyph union includes `elapsed`: native fallback `◷`
+is used when an older kit omits or rejects the lookup. No render-kit version bump.

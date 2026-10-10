@@ -56,8 +56,21 @@ export interface WorkPanelRowContent {
   extraRows?: readonly string[];
 }
 
+export type WorkPanelMetricKey =
+  | 'tools'
+  | 'tokens'
+  | 'context'
+  | 'speed'
+  | 'cost'
+  | 'elapsed'
+  | 'model';
+
 export interface WorkPanelMetricGroup {
+  /** Opt in to format-derived reservations and sidebar column priority. */
+  key?: WorkPanelMetricKey;
   segments: readonly WorkPanelSegment[];
+  /** Sidebar column metadata excluded from the host's greedy metric layout. */
+  columnsOnly?: boolean;
   /** Optional compact counterpart when metrics move below the identity line. */
   continuation?: readonly WorkPanelSegment[];
 }
@@ -223,6 +236,11 @@ export interface WorkPanelSource {
   selectableHeading: boolean;
   selectableSummary: boolean;
   rowCap: number;
+  /** Data-only provider counters; a failed summary read leaves this absent. */
+  summary?: Pick<
+    WorkPanelSummary,
+    'running' | 'completed' | 'failed' | 'total' | 'text'
+  >;
 }
 
 /** Discovery never claims the ownership slot or installs UI. */
@@ -237,6 +255,23 @@ export function listWorkPanelSources(): WorkPanelSource[] {
       selectableHeading: provider.selectableHeading === true,
       selectableSummary: provider.selectableSummary === true,
       rowCap: provider.rowCap ?? 3,
+      summary: safely(() => {
+        const summary = provider.summary?.();
+        if (typeof summary === 'string') return { text: summary };
+        if (!summary) return undefined;
+        return Object.fromEntries(
+          ['running', 'completed', 'failed', 'total', 'text'].flatMap((key) => {
+            const value = summary[key as keyof WorkPanelSummary];
+            return (
+              key === 'text'
+                ? typeof value === 'string'
+                : typeof value === 'number' && Number.isFinite(value)
+            )
+              ? [[key, value]]
+              : [];
+          }),
+        );
+      }, undefined),
     }))
     .sort((a, b) => a.priority - b.priority || a.label.localeCompare(b.label));
 }

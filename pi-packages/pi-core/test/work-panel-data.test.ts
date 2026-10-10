@@ -29,7 +29,10 @@ const agentRow: WorkPanelRow = {
     { text: ' · ⚠ 1 dropped', role: 'warning' },
   ],
   metrics: ['tools 5', '↑20k ↓10k', 'ctx 62.0%', '75 tok/s', 'elapsed 12s'].map(
-    (text) => ({ segments: [{ text, role: 'meta' }] }),
+    (text, index) => ({
+      key: (['tools', 'tokens', 'context', 'speed', 'elapsed'] as const)[index],
+      segments: [{ text, role: 'meta' }],
+    }),
   ),
 };
 
@@ -79,14 +82,22 @@ describe('data-only work panel rendering', () => {
     );
     expect(session.render(100)).toEqual([
       themed ? 'Agents · 1 items' : '◆ Agents · 1 items',
-      `${themed ? '  └─ ' : '  '}⠋ worker · inspect · ⚠ 1 dropped · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s`,
+      ...(themed
+        ? [
+            '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
+            '       tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
+          ]
+        : [
+            '  ⠋ worker · inspect · ⚠ 1 dropped · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
+          ]),
       '← interact',
     ]);
     expect(session.render(40)).toEqual([
       themed ? 'Agents · 1 items' : '◆ Agents · 1 items',
       `${themed ? '  └─ ' : '  '}⠋ worker · inspect · ⚠ 1 dropped`,
-      `${themed ? '       ' : '    '}tools 5 · ↑20k ↓10k · ctx 62.0%`,
-      `${themed ? '       ' : '    '}75 tok/s · elapsed 12s`,
+      `${themed ? '       ' : '    '}tools 5 · ↑20k ↓10k`,
+      `${themed ? '       ' : '    '}ctx 62.0% · 75 tok/s`,
+      `${themed ? '       ' : '    '}elapsed 12s`,
       '← interact',
     ]);
     vi.setSystemTime(100);
@@ -222,6 +233,8 @@ describe('data-only work panel rendering', () => {
         listRows: () => [
           {
             ...agentRow,
+            // Legacy unkeyed providers retain their existing shrink/packing behavior.
+            metrics: agentRow.metrics?.map(({ segments }) => ({ segments })),
             identity: [
               { text: 'worker', role: 'primary' },
               {

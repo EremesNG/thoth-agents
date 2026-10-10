@@ -68,8 +68,8 @@ it('shares one bounded plan per frame and never scans session entries on render'
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '.', status: 'Clean' }),
-    height: () => 12,
+    workspace: () => ({ cwd: '.' }),
+    height: () => 14, // Session chrome is two rows taller than before.
   });
   const first = panel.render(44);
   expect(
@@ -134,7 +134,7 @@ it('keeps static output cached across frames, and invalidates on kit replacement
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '.', status: 'Clean' }),
+    workspace: () => ({ cwd: '.' }),
     height: () => 4,
   });
   const first = panel.render(44);
@@ -195,7 +195,7 @@ function sessionFixture() {
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '.', status: 'Clean' }),
+    workspace: () => ({ cwd: '.' }),
     height: () => 20,
   });
   return { panel, entries, getEntries, getBranch, getContextUsage };
@@ -240,7 +240,7 @@ it('detects persistence after message_end even if rendered before the append', (
   });
   const lines = panel.render(44).join('\n');
   expect(lines).toContain('$1.250');
-  expect(lines).toContain('100 / 10,000');
+  expect(lines).toMatch(/Context\s.*1%/);
 });
 it('refreshes re-exposed animated provider text before the first visible frame', () => {
   vi.useFakeTimers();
@@ -275,4 +275,55 @@ it.each([
   panel.refreshSessionCost();
   panel.render(44);
   expect(read).toHaveBeenCalledTimes(1);
+});
+
+it('reuses the plan across renders and replans only when the cost data revision changes', async () => {
+  const { CostTracker } = await import('../src/panels/cost.js');
+  const data = new CostTracker();
+  const ranked = vi.spyOn(data, 'ranked');
+  const panel = new SidebarPanels({
+    config: { startup: 'auto', panels: [{ id: 'cost', visible: true }] },
+    context: () =>
+      ({
+        model: { provider: 'test', id: 'test' },
+        getContextUsage: () => undefined,
+        sessionManager: { getEntries: () => [] },
+      }) as unknown as ExtensionContext,
+    theme: { fg: (_role, text) => text },
+    thinking: () => 'off',
+    subscriptionProviders: [],
+    subagentCost: () => 0,
+    workspace: () => ({ cwd: '.' }),
+    cost: () => data,
+    height: () => 20,
+  });
+  const first = panel.render(44);
+  const calls = ranked.mock.calls.length;
+  for (let i = 0; i < 20; i++) expect(panel.render(44)).toBe(first);
+  expect(ranked).toHaveBeenCalledTimes(calls);
+  data.update(
+    {
+      tasks: [
+        {
+          id: 'a',
+          agent: 'worker',
+          displayName: 'Arrived',
+          mode: 'task',
+          status: 'running',
+          createdAt: 0,
+          usage: { cost: 1 },
+        },
+      ],
+      history: [],
+      counts: {} as never,
+      totals: {} as never,
+    },
+    1000,
+  );
+  const second = panel.render(44);
+  expect(ranked.mock.calls.length).toBeGreaterThan(calls);
+  expect(second.join('\n')).toContain('Arrived');
+  const settled = ranked.mock.calls.length;
+  for (let i = 0; i < 20; i++) expect(panel.render(44)).toBe(second);
+  expect(ranked).toHaveBeenCalledTimes(settled);
 });

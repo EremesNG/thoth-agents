@@ -12,7 +12,7 @@ import {
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { SidebarConfig } from '../src/config.js';
-import { SidebarPanels, sessionRows } from '../src/panels/sidebar.js';
+import { SidebarPanels } from '../src/panels/sidebar.js';
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
@@ -40,30 +40,6 @@ function context() {
     },
   } as unknown as ExtensionContext;
 }
-
-it('renders current session values and subscription classification with cumulative subagent cost', () => {
-  const ctx = context();
-  expect(sessionRows(ctx, 'off', ['claude-bridge'], 0.75)).toEqual([
-    'claude-bridge / test-model',
-    'Thinking: high',
-    'Context: 12.3% · 12,345 / 100,000',
-    'Cost: $2.000 (sub)',
-  ]);
-  ctx.model = { id: 'other', provider: 'paid' } as ExtensionContext['model'];
-  ctx.thinkingLevel = undefined;
-  ctx.getContextUsage = () => ({
-    tokens: null,
-    percent: null,
-    contextWindow: 200000,
-  });
-  expect(sessionRows(ctx, 'medium', ['claude-bridge'], 1)[1]).toBe(
-    'Thinking: medium',
-  );
-  expect(sessionRows(ctx, 'medium', ['claude-bridge'], 1).slice(2)).toEqual([
-    'Context: unknown / 200,000',
-    'Cost: $2.250',
-  ]);
-});
 
 it('stacks configured panels in order, uses fresh discovered rows and kit, bounds height and hides disabled panels', () => {
   let primary = 'First task';
@@ -102,14 +78,14 @@ it('stacks configured panels in order, uses fresh discovered rows and kit, bound
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '/project', branch: 'main', status: 'Clean' }),
+    workspace: () => ({ cwd: '/project', branch: 'main' }),
     height: () => 30,
   });
   const token = registerRenderKit(createTestRenderKit(), {});
   disposers.push(() => withdrawRenderKit(token));
   const text = panel.render(44).join('\n');
-  expect(text.indexOf('Tasks')).toBeLessThan(text.indexOf('Workspace'));
-  expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Session'));
+  expect(text.indexOf('TASKS')).toBeLessThan(text.indexOf('WORKSPACE'));
+  expect(text.indexOf('WORKSPACE')).toBeLessThan(text.indexOf('SESSION'));
   expect(text).toContain('First task');
   primary = 'Updated task';
   changed();
@@ -123,10 +99,13 @@ it('stacks configured panels in order, uses fresh discovered rows and kit, bound
     const lines = panel.renderAt(28, height);
     expect(lines.length).toBeLessThanOrEqual(height);
   }
-  expect(panel.renderAt(44, 6).join('\n')).toContain('Session');
-  expect(panel.renderAt(44, 6).join('\n')).not.toContain('Workspace');
+  // Panels fill in configured order; the second collapses to its title line.
+  const short = panel.renderAt(44, 6).join('\n');
+  expect(short).toContain('TASKS');
+  expect(short).toContain('WORKSPACE');
+  expect(short).not.toContain('SESSION');
   withdrawRenderKit(token);
-  expect(panel.render(44).join('\n')).toContain('Session');
+  expect(panel.render(44).join('\n')).toContain('SESSION');
 });
 
 function sourcePanel(
@@ -157,7 +136,7 @@ function sourcePanel(
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '/project', status: 'Clean' }),
+    workspace: () => ({ cwd: '/project' }),
     height: () => 100,
   });
 }
@@ -363,7 +342,7 @@ it('shows resumed Agent history and uses the exact host clock frame for animated
     thinking: () => 'off',
     subscriptionProviders: [],
     subagentCost: () => 0,
-    workspace: () => ({ cwd: '/project', status: 'Clean' }),
+    workspace: () => ({ cwd: '/project' }),
     height: () => 30,
   });
   const lines = panel.render(44).join(String.fromCharCode(10));

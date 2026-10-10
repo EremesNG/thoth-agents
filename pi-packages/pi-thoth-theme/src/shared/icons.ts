@@ -18,6 +18,7 @@ const ICONS: Record<ThemeIconName, Variants> = {
   model: { nerd: '\u{f06a9}', unicode: '●', ascii: '*' },
   effort: { nerd: '\u{f09d1}', unicode: '◐', ascii: 'o' },
   context: { nerd: '\u{f2db}', unicode: 'ctx', ascii: 'ctx' },
+  elapsed: { nerd: '', unicode: '◷', ascii: 'elapsed' },
   cost: { nerd: '\u{f155}', unicode: '$', ascii: '$' },
   tokensIn: { nerd: '\u{f062}', unicode: '↑', ascii: '^' },
   tokensOut: { nerd: '\u{f063}', unicode: '↓', ascii: 'v' },

@@ -21,6 +21,7 @@ export {
   request,
   subscribe,
 } from './channels.js';
+export { formatCwd } from './cwd.js';
 export {
   hasBlockingOverlay,
   registerDecorativeOverlay,
@@ -141,6 +142,7 @@ export type {
   WorkPanelDetail,
   WorkPanelItemState,
   WorkPanelMetricGroup,
+  WorkPanelMetricKey,
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,

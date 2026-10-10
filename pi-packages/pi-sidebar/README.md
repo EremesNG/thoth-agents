@@ -26,6 +26,12 @@ are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
 - `/sidebar` toggles enabled state; `auto` and `manual` select the width policy
   and enable the sidebar. `on` enables without changing policy; `off` disables.
   Auto-hidden sidebars still require enough terminal width to appear.
+- `/sidebar settings` opens an overlay to show/hide and reorder panels
+  (**Space** toggles, **Shift+↑/↓** moves), cycle the startup mode and set the
+  default width (**←/→**, **Shift** steps four, 28–72). **Enter** saves to
+  `thoth-sidebar.json`; **Esc** cancels. A saved width applies immediately.
+- `/sidebar cost` opens an overlay with cumulative subagent cost curves per task
+  over time; **q** or **Esc** closes it.
 - `/sidebar panels` lists panel ids in order, including unavailable saved ids.
 - `/sidebar panels show|hide|up|down <id>` changes panel visibility or order.
 - `/sidebar startup auto|manual|off` saves the next session's startup preference.
@@ -40,39 +46,59 @@ are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
 Width defaults to 44, bounded to 28–72. Manual mode hides below 92 terminal
 columns; above that it temporarily shrinks to leave the main pane at least 64
 columns, preserving the preferred width. Auto mode collapses below `80 + width`
-and reopens eight columns later. Mode, preferred width and enabled state are
-session-only. Startup defaults to `auto`.
+and reopens eight columns later. Mode, enabled state and `/sidebar resize`
+changes are session-only; the default width and startup (default `auto`) come
+from `/sidebar settings`.
 
 ## Panels
 
-Panels stack in configured order. Height reduction first shortens lower-priority
-panels, then removes them; Session has the highest priority and Workspace the
-lowest. Terminal height bounds rendering; work sources retain active/pending items plus
-at most five terminal items. Timestamped sources put active/pending items first,
-then terminal items newest completion timestamp first. Untimestamped sources keep
-provider order across all retained rows; without a recency contract, earlier
-provider positions are dropped first, keeping the last five terminal items in
-provider order. Rendering samples the current pi-core render kit, with native
-frames when no theme supplies a kit.
+Each panel renders as `╭─ <icon> TITLE … summary ─╮` with one hue per panel taken
+from theme roles (Session accent, Workspace mdLink, Agents mdCode, Todos success,
+Background syntaxNumber, Cost warning) and a dimmed border; ASCII icon mode
+draws `+ - |`. Labels occupy 12 cells (9 below 28 columns); values align right.
+Default order: Session, Workspace, Agents, Todos, Background, Cost. Saved orders
+are never rearranged; Cost is appended when missing.
 
-- **Session**: current provider/model, thinking level, context percent/tokens,
-  session cost plus the latest cumulative subagent cost. Subscription providers
-  add `(sub)`. Reads `statusLine.subscriptionProviders` from `pi-thoth-theme.json`
-  in the same agent directory; defaults to `claude-bridge` and `antigravity`.
-- **Workspace**: cwd, branch (including linked worktrees and detached HEAD), and
-  staged/changed/untracked/conflict counts. Its own git reader refreshes on
-  session start, turn end, and write/edit/bash/powershell tool results, debounced
-  150 ms without polling. Non-git directories and unavailable git are tolerated.
-- **Work sources**: one panel per pi-core discovered source, including Todos,
-  Subagents and Background. Rows use the work-panel host's shared data renderer
-  at the card body width (including status glyphs, metric continuations and
-  completed strikethrough). Height overflow counts only hidden retained items,
-  not discarded older history or continuation lines. Registry notifications
-  refresh the sidebar. Only
-  sources actually displayed are declared absorbed: their work-panel sections
-  return when hidden, height-reduced away, too narrow or disposed. A failed mount
-  declares no absorption. Regular-mode overlays are registered decorative so
-  editor input and foreign dialogs retain their normal behavior.
+- **Session**: model and provider, thinking level, a context meter, session
+  cost with `(sub)` for subscription providers plus the subagent cost, and a
+  Limit row while a provider limit is warning or rejected. Subscription providers
+  come from `statusLine.subscriptionProviders` in `pi-thoth-theme.json`
+  (default `claude-bridge` and `antigravity`).
+- **Workspace**: the path abbreviated by pi-core's root `formatCwd`, like the editor border, branch (including
+  worktrees and detached HEAD), the state (Clean, Modified, Conflicts) in the
+  header, `Changed N files +A −D` against HEAD, and Untracked/Binary/Conflicts
+  rows when non-zero. A reader refreshes on session start, turn start, every
+  tool result and turn end, coalesced to 250 ms, without polling.
+- **Agents, Todos, Background** (discovered sources): the header shows the
+  provider summary — `active·done·failed` for Agents and Background, `done/total`
+  for Todos. Rows use keyed metrics with reserved format widths for stable row height
+  and semantic icons (`elapsed` included; text labels in ASCII), through the
+  shared work-panel renderer with right-aligned columns
+  (model·effort, tokens, cost, elapsed) that drop tokens, then cost, then model
+  as the width shrinks; elapsed stays. The footer shows the detail command
+  (`/subagents ▸ detail`, `/todos ▸ detail`, `/bg ▸ detail`, `>` in ASCII). An
+  empty panel is a single title line that includes the command. Sources retain
+  active/pending rows plus at most five terminal rows (newest first when
+  timestamped). Only displayed sources are declared absorbed; their work-panel
+  sections return when hidden, too small, too narrow or disposed.
+- **Cost**: horizontal bars for the ten most expensive subagent tasks of the
+  session, live and persisted, labeled by task display name and scaled to the
+  largest with eighth blocks (`#` in ASCII). The header shows the session
+  subagent total and the footer `/sidebar cost ▸ curves`. Data comes from the
+  `thoth:subagents:state` v2 snapshots (including up to 100 cost-ranked
+  persisted summaries in `history`); the curves view plots cost samples recorded
+  from them during this session, and tasks without samples are drawn as a
+  straight segment from start to end.
+
+### Degradation
+
+Panels fill in configured order until the height runs out. A work or Cost panel
+that does not fit shows its first rows and `+N more`; footers drop before rows;
+a panel that cannot show its title and one row becomes a title-only line, and
+panels after the last line are omitted. Below 24 columns the sidebar shows only
+`widen: /sidebar resize`. Rendering is event-driven and cached: no session
+traversal per render, plans are keyed by source summaries, workspace, cost data
+revision and the shared animation frame.
 
 ## Preferences
 
@@ -89,16 +115,16 @@ frames when no theme supplies a kit.
 ```
 
 `startup` accepts `auto`, `manual` or `off` (default `auto`); it applies to the
-next session, not the current one. `panels` is an ordered array of non-empty
-string ids and boolean `visible` flags. Built-in ids are `session` and
-`workspace`; use `/sidebar panels` for the discovered work-source ids (for
-example `agents`). Display labels are not command ids.
+next session, not the current one. `width` (28–72, optional) is the default
+preferred width, applied at start and when saved from `/sidebar settings`. `panels` is an ordered array of non-empty
+string ids and boolean `visible` flags. Built-in ids are `session`, `workspace` and `cost`; work-source ids are
+`subagents`, `todos` and `background-tasks` (use `/sidebar panels` for all
+discovered ids). Display labels are not command ids.
 
 Missing or malformed files use defaults. Invalid/duplicate ids are ignored;
 a missing or invalid visibility flag defaults to `true`. Newly discovered
-panels default to visible and append to the saved order. Unrecognized ids and
-keys are preserved when saving. Width, current mode and enabled state are not
-stored here. Writes use a unique
+panels default to visible and are added before Cost. Unrecognized ids and keys
+are preserved when saving. Current mode and enabled state are not stored here. Writes use a unique
 same-directory temporary file and atomic rename; failures are reported and
 session changes remain usable. Shutdown releases input listeners, registry and
 usage subscriptions, preferences, pending git work and owned layout changes.
@@ -130,7 +156,8 @@ pnpm --filter @thoth-agents/pi-sidebar build
   supply those rows to the sidebar.
 - Panels are bounded read-only summaries, not history views or interactive rows.
   Use existing source commands or restore the Work panel with `/sidebar off`
-  for actions. There is no dedicated Cost or quota panel.
+  for actions. Cost curves show only progression observed while the sidebar ran;
+  tasks first seen in persisted history are drawn as a straight segment.
 - Real-terminal checks in both modes remain necessary, particularly scrollback,
   mouse dragging, focus restoration and terminal/custom keybinding behavior.
 

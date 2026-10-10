@@ -332,12 +332,15 @@ describe('Agents work-panel rows', () => {
     const session = await mount(agents);
     expect(renderBody(session, 100).text).toContain('elapsed 9s');
     expect(agents.listRows(now + 100000)[0]?.metrics?.at(-1)?.segments).toEqual(
-      [{ text: 'elapsed 9s', role: 'meta' }],
+      [
+        { text: 'elapsed ', role: 'meta' },
+        { text: '9s', role: 'meta' },
+      ],
     );
     ended.ended_at = undefined;
-    expect(agents.listRows(now)[0]?.metrics?.at(-1)?.segments).toEqual([
-      { text: 'elapsed ?', role: 'meta' },
-    ]);
+    expect(
+      agents.listRows(now)[0]?.metrics?.some(({ key }) => key === 'elapsed'),
+    ).toBe(false);
     const queue = task({
       status: 'queued',
       started_at: undefined,
@@ -399,7 +402,7 @@ describe('Agents work-panel rows', () => {
       for (const line of lines)
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
       if (width === 100) {
-        expect(content.extraRows ?? []).toEqual([]);
+        expect(content.extraRows?.length).toBe(1);
         expect(content.text).toContain('…');
       }
       if (width <= 50) expect(content.extraRows?.length).toBeGreaterThan(0);
@@ -484,7 +487,7 @@ describe('Agents work-panel rows', () => {
       '75 tok/s',
       'elapsed 12s',
     ];
-    for (const width of [100, 80, 70]) {
+    for (const width of [140, 120, 100]) {
       const content = renderBody(session, width);
       expect(content.extraRows ?? []).toEqual([]);
       for (const metric of metrics) expect(content.text).toContain(metric);
@@ -492,7 +495,7 @@ describe('Agents work-panel rows', () => {
       expect(content.text).toContain('…');
       expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
     }
-    for (const width of [50, 35, 24]) {
+    for (const width of [80, 70, 50, 35, 24]) {
       const content = renderBody(session, width);
       expect(content.extraRows?.length).toBeGreaterThan(0);
       expect(content.text).toContain('worker');
@@ -534,10 +537,11 @@ it('renders agent identity, task, metrics and dropped tools with distinct roles 
         ),
       ).toBe(true);
       expect(
-        styled.some(
-          ([role, text]) => role === 'dim' && text.includes('tools 5'),
-        ),
-      ).toBe(true);
+        styled
+          .filter(([role]) => role === 'dim')
+          .map(([, text]) => text)
+          .join(''),
+      ).toContain('* 5');
       expect(
         styled.some(
           ([role, text]) => role === 'warning' && text.includes('⚠ 1 dropped'),
@@ -546,7 +550,7 @@ it('renders agent identity, task, metrics and dropped tools with distinct roles 
       expect(lines.every((line: string) => visibleWidth(line) <= width)).toBe(
         true,
       );
-      expect(lines.join(' ')).toContain('75 tok/s');
+      expect(lines.join(' ')).toContain('tok/s 75');
     }
   } finally {
     withdrawRenderKit(token);

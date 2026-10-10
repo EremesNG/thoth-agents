@@ -26,14 +26,17 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 
 ## Task summary and usage channels
 
-Publishes complete snapshots on pi-core's v1 `thoth:subagents:state` channel with
+Publishes complete snapshots on pi-core's v2 `thoth:subagents:state` channel with
 source `@thoth-agents/pi-subagents` and envelope
 `{ v, source, sessionId, at, data }` (`at` is Unix milliseconds). Data contains
 active-session in-memory task summaries: id, agent/display name, mode/status,
 model/effort, lifecycle times, input/output token usage and cost, and an output
 preview bounded to 800 UTF-16 code units, plus status counts and persisted totals.
 It contains no prompts, context, transcripts, results, thread snapshots or
-questions; persisted history contributes totals, not task details.
+questions. The required `history` field contains up to 100 persisted session
+task summaries selected and ordered by descending cost, using the same strict
+allow-list as live tasks; persisted totals remain separate. V1 snapshots are
+not accepted by the v2 contract.
 
 Snapshots are published after task changes (activity uses the manager's 150 ms
 coalescing), on session start/switch/tree/compact, and in response to
@@ -49,7 +52,7 @@ raw request handler are removed, with no dual publication. Its checkpoint
 custom-entry type remains unchanged, including restore and replay-duplicate
 suppression. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together and
 `/reload` to retain status-line subagent cost display. See
-[pi-core's exact contracts](../pi-core/README.md#task-summary-and-usage-channels-v1).
+[pi-core's exact contracts](../pi-core/README.md#task-summary-and-usage-channels).
 
 ## Rendering
 
@@ -59,7 +62,12 @@ Work panel render through the theme's Render KIT when present, discovered throug
 rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
 
 The Agents provider uses pi-core's v2 data-only Work panel contract. Rows carry
-semantic status, identity segments and responsive metric/continuation groups;
+semantic status, identity segments and keyed metric/continuation groups.
+Reserved format widths keep row heights stable across digit-width changes;
+sidebar consumers can request right-aligned `metricLayout: 'columns'`.
+Metrics include cost and use semantic icons in nerd/unicode modes (including
+`elapsed`), with explicit text labels in ASCII. History rows omit unavailable
+metrics and their separators instead of showing `?`;
 the host owns glyph animation and styling, not row callbacks. pi-core's
 [discovery/action API](../pi-core/README.md#discovery-and-actions) lists sources,
 subscribes to revisions, reads bounded rows and invokes same-session actions.
@@ -554,7 +562,7 @@ Behavior:
 - Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "background"`.
 - `mode: "task"` waits, renders `(task)`, and remains eligible for manual `ctrl+h` handoff.
 - `mode: "background"` returns immediately, renders `(background)`, and relies on the automatic completion notification.
-- The shared Work panel shows an `Agents · N running` section while work is active, with one compact row per eligible task and `+N more` counting only eligible overflow. Live tasks and current-prompt failures remain eligible, alongside at most the 3 latest current-prompt completions; earlier terminal tasks stay in history. While idle with no live tasks, it collapses to `Agents · N done · M failed` using session totals. Each row shows a running braille animation (or a distinct queued/terminal glyph), agent, concise task label and tool uses, lifetime input/output tokens, context percentage, average output speed (`N tok/s`) and active elapsed time. Running/queued rows retain a warning-colored `⚠ N dropped` count when tools were dropped. The task label truncates before warnings and metrics; narrow widths move metrics to continuation rows. Token counts exclude caches. Output speed divides accumulated measured assistant output tokens by generation time, excluding tools and compaction; its counters persist across continuations. Unavailable values show `?`, while measured zeroes remain visible. Resolved model, activity and other details remain in the existing task panel. With an empty root editor, press ← to focus Work, ↑↓ to select across sections, Enter to open the selected task (or history on the collapsed Agents line), or x twice to cancel a running task. Esc/→ return to the editor. Unfocused ↑↓ retain prompt history, and overlays, dialogs and the task panel receive their keys. The pi-core host alone owns the Work widget, navigation listener and running-only refresh lifecycle. Separate foreground task-mode double-Escape and manual handoff listeners reuse the host's editor-focus, overlay and suspension guard without requiring empty input; without an installed Work host they retain their existing handling.
+- The shared Work panel shows an `Agents · N running` section while work is active, with one compact row per eligible task and `+N more` counting only eligible overflow. Live tasks and current-prompt failures remain eligible, alongside at most the 3 latest current-prompt completions; earlier terminal tasks stay in history. While idle with no live tasks, it collapses to `Agents · N done · M failed` using session totals. Each row shows a running braille animation (or a distinct queued/terminal glyph), agent, concise task label and tool uses, lifetime input/output tokens, context percentage, average output speed (`N tok/s`) and active elapsed time, plus task cost. Metrics use semantic icons in nerd/unicode modes and text labels in ASCII; reserved widths keep wrapping stable across number-format boundaries. Running/queued rows retain a warning-colored `⚠ N dropped` count when tools were dropped. The task label truncates before warnings and metrics; narrow widths move metrics to continuation rows. Token counts exclude caches. Output speed divides accumulated measured assistant output tokens by generation time, excluding tools and compaction; its counters persist across continuations. Unavailable live values show `?`, while measured zeroes remain visible; persisted history rows omit missing metrics and separators. Resolved model, activity and other details remain in the existing task panel. With an empty root editor, press ← to focus Work, ↑↓ to select across sections, Enter to open the selected task (or history on the collapsed Agents line), or x twice to cancel a running task. Esc/→ return to the editor. Unfocused ↑↓ retain prompt history, and overlays, dialogs and the task panel receive their keys. The pi-core host alone owns the Work widget, navigation listener and running-only refresh lifecycle. Separate foreground task-mode double-Escape and manual handoff listeners reuse the host's editor-focus, overlay and suspension guard without requiring empty input; without an installed Work host they retain their existing handling.
 - When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
 - Model and effort overrides still require an explicit user decision before use.
 

@@ -13,7 +13,10 @@ import type { SubagentTask } from './types.js';
 
 type TaskStateSource = Pick<
   SubagentManager,
-  'listActiveSessionTasks' | 'snapshotSessionTaskCounts' | 'onTaskUpdate'
+  | 'listActiveSessionTasks'
+  | 'listSessionHistoryByCost'
+  | 'snapshotSessionTaskCounts'
+  | 'onTaskUpdate'
 >;
 
 function completeCounts(
@@ -96,6 +99,11 @@ export class SubagentsStatePublisher {
     const tasks = this.source
       .listActiveSessionTasks(cwd, sessionId)
       .map(summarizeTask);
+    const liveIds = new Set(tasks.map(({ id }) => id));
+    const history = this.source
+      .listSessionHistoryByCost(cwd, sessionId)
+      .filter((task) => !liveIds.has(task.id))
+      .map(summarizeTask);
     const counts = completeCounts();
     for (const task of tasks) counts[task.status]++;
     const persistedCounts = completeCounts(
@@ -111,7 +119,7 @@ export class SubagentsStatePublisher {
     publish(this.events, SUBAGENTS_STATE_CHANNEL, {
       sessionId,
       source: '@thoth-agents/pi-subagents',
-      data: { tasks, counts, totals },
+      data: { tasks, history, counts, totals },
     });
   }
 }

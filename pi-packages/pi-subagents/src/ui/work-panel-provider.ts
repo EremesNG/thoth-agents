@@ -1,8 +1,12 @@
 import {
+  getRenderKit,
   type RenderKitTheme,
   resolveIcon,
+  type SemanticGlyphName,
   WORK_PANEL_VERSION,
   type WorkPanelItemState,
+  type WorkPanelMetricGroup,
+  type WorkPanelMetricKey,
   type WorkPanelProvider,
   type WorkPanelRow,
   type WorkPanelSegment,
@@ -45,13 +49,88 @@ function taskRow(
   const ended = task.ended_at ? Date.parse(task.ended_at) : NaN;
   const end =
     task.status === 'running' || task.status === 'stopping' ? now : ended;
-  const parts = [
-    `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
-    `${resolveIcon('tokensIn', '↑')}${finiteNonnegative(task.usage?.input) ? formatTokens(task.usage.input) : '?'} ${resolveIcon('tokensOut', '↓')}${finiteNonnegative(task.usage?.output) ? formatTokens(task.usage.output) : '?'}`,
-    `ctx ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
-    `${speed !== undefined ? Math.round(speed) : '?'} tok/s`,
-    `elapsed ${Number.isFinite(started) && Number.isFinite(end) ? formatDuration(Math.floor(Math.max(0, end - started) / 1000) * 1000) : '?'}`,
-  ];
+  // Token arrows distinguish ASCII; the tool glyph is '*' in Unicode too.
+  const kit = getRenderKit();
+  const ascii = resolveIcon('tokensIn', '↑') === '^';
+  const label = (icon: SemanticGlyphName, text: string) =>
+    ascii || !kit ? text : resolveIcon(icon);
+  const live = taskState(task) === 'running';
+  const parts: WorkPanelMetricGroup[] = [];
+  if (task.model?.trim()) {
+    const modelId = task.model.trim().split('/').at(-1) ?? task.model.trim();
+    const model =
+      modelId.match(/(?:^|-)claude-(sonnet|opus|haiku)(?:-|$)/i)?.[1] ??
+      modelId;
+    const effort =
+      task.effort &&
+      {
+        off: 'off',
+        minimal: 'min',
+        low: 'lo',
+        medium: 'med',
+        high: 'hi',
+        xhigh: 'xhi',
+        max: 'max',
+      }[task.effort];
+    parts.push({
+      key: 'model',
+      columnsOnly: true,
+      segments: [{ text: effort ? `${model}·${effort}` : model, role: 'meta' }],
+    });
+  }
+  const add = (key: WorkPanelMetricKey, prefix: string, value: string) => {
+    parts.push({
+      key,
+      segments: [
+        { text: prefix, role: 'meta' },
+        { text: value, role: 'meta' },
+      ],
+    });
+  };
+  if (finiteNonnegative(metrics?.toolUses))
+    add('tools', `${label('tool', 'tools')} `, String(metrics.toolUses));
+  else if (live) add('tools', `${label('tool', 'tools')} `, '?');
+  const tokens: WorkPanelSegment[] = [];
+  for (const [value, icon, text] of [
+    [task.usage?.input, 'tokensIn', 'in '],
+    [task.usage?.output, 'tokensOut', 'out '],
+  ] as const) {
+    if (!finiteNonnegative(value) && !live) continue;
+    if (tokens.length) tokens.push({ text: ' ', role: 'meta' });
+    tokens.push(
+      { text: ascii ? text : resolveIcon(icon), role: 'meta' },
+      {
+        text: finiteNonnegative(value) ? formatTokens(value) : '?',
+        role: 'meta',
+      },
+    );
+  }
+  if (tokens.length) parts.push({ key: 'tokens', segments: tokens });
+  if (finiteNonnegative(metrics?.contextPercent))
+    add(
+      'context',
+      `${label('context', 'ctx')} `,
+      `${metrics.contextPercent.toFixed(1)}%`,
+    );
+  else if (live) add('context', `${label('context', 'ctx')} `, '?');
+  if (speed !== undefined || live) {
+    const value = speed === undefined ? '?' : String(Math.round(speed));
+    if (!kit)
+      parts.push({
+        key: 'speed',
+        segments: [{ text: `${value} tok/s`, role: 'meta' }],
+      });
+    else add('speed', `${label('throughput', 'tok/s')} `, value);
+  }
+  if (finiteNonnegative(task.usage?.cost))
+    add('cost', label('cost', '$'), task.usage.cost.toFixed(2));
+  if (Number.isFinite(started) && Number.isFinite(end))
+    add(
+      'elapsed',
+      `${label('elapsed', 'elapsed')} `,
+      formatDuration(Math.floor(Math.max(0, end - started) / 1000) * 1000),
+    );
+  else if (live) add('elapsed', `${label('elapsed', 'elapsed')} `, '?');
   const warning =
     (task.status === 'running' || task.status === 'queued') &&
     task.dropped_tools?.length
@@ -77,7 +156,7 @@ function taskRow(
         ? [{ text: `${separator}${limitWarning}`, role: 'warning' as const }]
         : []),
     ],
-    metrics: parts.map((text) => ({ segments: [{ text, role: 'meta' }] })),
+    metrics: parts,
   };
 }
 

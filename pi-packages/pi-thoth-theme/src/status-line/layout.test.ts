@@ -1,5 +1,6 @@
 import { sep } from 'node:path';
 import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
+import { formatCwd as coreFormatCwd } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
 import {
   type FooterData,
@@ -18,6 +19,17 @@ const mockTheme = {
 };
 
 describe('formatCwd', () => {
+  it('reexports the shared helper, preserving native-separator output', () => {
+    expect(formatCwd).toBe(coreFormatCwd);
+    expect(formatCwd('/home/test/project', '/home/test')).toBe(
+      `~${sep}project`,
+    );
+    if (process.platform === 'win32') {
+      expect(formatCwd('C:\\Users\\Test\\project', 'C:/Users/Test')).toBe(
+        '~\\project',
+      );
+    }
+  });
   it.each([
     { cwd: '/home/test', expected: '~' },
     {

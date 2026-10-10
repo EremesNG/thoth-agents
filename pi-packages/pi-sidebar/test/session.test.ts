@@ -663,3 +663,31 @@ it('ticks animated visible work at the host cadence and stops on completion, hid
   vi.advanceTimersByTime(300);
   expect(render).not.toHaveBeenCalled();
 });
+
+it('does not request a render for unchanged refreshes or scan entries during main renders', () => {
+  const app = setup();
+  const entries = vi.spyOn(app.ctx.sessionManager, 'getEntries');
+  app.handlers.get('session_start')?.({}, app.ctx);
+  const scans = entries.mock.calls.length;
+  const render = vi.spyOn(app.tui, 'requestRender');
+  render.mockClear();
+  for (let index = 0; index < 20; index++) {
+    app.observe();
+    app.screen();
+    app.handlers.get('tool_result')?.({ toolName: 'read' }, app.ctx);
+  }
+  expect(entries).toHaveBeenCalledTimes(scans);
+  expect(render).not.toHaveBeenCalled();
+  for (const event of [
+    'message_end',
+    'turn_end',
+    'agent_end',
+    'session_tree',
+    'session_compact',
+    'model_select',
+  ]) {
+    const previous = entries.mock.calls.length;
+    app.handlers.get(event)?.({}, app.ctx);
+    expect(entries).toHaveBeenCalledTimes(previous + 1);
+  }
+});

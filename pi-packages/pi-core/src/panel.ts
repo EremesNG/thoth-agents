@@ -54,4 +54,5 @@ export {
   WORK_PANEL_ANIMATION_INTERVAL_MS,
   type WorkPanelRowRenderOptions,
   workPanelRenderStatus,
+  workPanelRowLineCount,
 } from './work-panel-render.js';

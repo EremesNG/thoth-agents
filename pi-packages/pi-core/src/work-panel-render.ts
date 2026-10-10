@@ -793,6 +793,16 @@ export interface WorkPanelRowRenderOptions {
 }
 
 /** The same responsive data-row rendering used by the work-panel host. */
+export function workPanelRowLineCount(
+  row: WorkPanelRow,
+  width: number,
+  measure: Measure = defaultMeasure,
+): number {
+  if (!(width > 0)) return 0;
+  const content = panelContentReader(width, measure)({ row });
+  return 1 + (content.extraRows?.filter((line) => line.trim()).length ?? 0);
+}
+
 export function renderWorkPanelRow(
   row: WorkPanelRow,
   options: WorkPanelRowRenderOptions,

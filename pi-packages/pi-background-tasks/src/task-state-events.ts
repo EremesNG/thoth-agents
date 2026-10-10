@@ -1,5 +1,5 @@
-import { type FSWatcher, statSync, watch } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { type FSWatcher, readdirSync, statSync, watch } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -45,51 +45,77 @@ function summarize(meta: BackgroundTaskMeta): BackgroundTaskSummary {
   };
 }
 
-/** Watch directories, not meta.json inodes or indexes: writers replace files atomically. */
+/** Use nonrecursive directory watches: Linux recursive fs.watch tracks file
+ * inodes and may silently miss subsequent atomic replacements of meta.json. */
 function watchRegistry(onChange: () => void): () => void {
   const directory = baseDir();
-  let registryWatch: FSWatcher | undefined;
+  const tasksDirectory = join(directory, 'tasks');
+  const watches = new Map<string, { watcher: FSWatcher; identity: string }>();
   let parentWatch: FSWatcher | undefined;
 
-  function refresh(): void {
-    let exists = false;
+  function attach(path: string): void {
+    let identity: string | undefined;
     try {
-      exists = statSync(directory).isDirectory();
+      const stat = statSync(path);
+      if (stat.isDirectory()) identity = `${stat.dev}:${stat.ino}`;
     } catch {
-      /* Not created yet. */
+      /* Removed or not created yet. */
     }
-    if (!exists) {
-      registryWatch?.close();
-      registryWatch = undefined;
-      return;
-    }
-    if (registryWatch) return;
+    const existing = watches.get(path);
+    if (existing && existing.identity === identity) return;
+    existing?.watcher.close();
+    watches.delete(path);
+    if (!identity) return;
     try {
-      registryWatch = watch(
-        directory,
-        { recursive: true, persistent: false },
-        (_event, filename) => {
-          const path = filename?.toString().replaceAll('\\', '/');
-          if (
-            !path ||
-            path === 'tasks' ||
-            (path.startsWith('tasks/') &&
-              (path.split('/').length === 2 || path.endsWith('/meta.json')))
-          ) {
-            onChange();
-          }
-        },
-      );
-      registryWatch.on('error', () => {
-        registryWatch?.close();
-        registryWatch = undefined;
+      const watcher = watch(path, { persistent: false }, (_event, filename) => {
+        const name = filename?.toString();
+        if (path === directory) {
+          if (name && name !== 'tasks') return;
+          refresh();
+        } else if (path === tasksDirectory) {
+          refresh();
+        } else if (name && name !== 'meta.json') {
+          return;
+        }
+        onChange();
+      });
+      watches.set(path, { watcher, identity });
+      watcher.on('error', () => {
+        watcher.close();
+        if (watches.get(path)?.watcher === watcher) watches.delete(path);
       });
     } catch {
-      /* The parent watch can retry after a directory change. */
+      /* A parent directory notification can retry. */
     }
   }
 
-  // A nonrecursive parent watch covers an empty registry without scanning the OS temp tree.
+  function refresh(): void {
+    // Attach parents before scanning, including recovery after watcher errors.
+    // A child created during the scan is then covered by a parent notification.
+    attach(directory);
+    attach(tasksDirectory);
+    const directories = new Set([directory, tasksDirectory]);
+    try {
+      for (const entry of readdirSync(tasksDirectory, {
+        withFileTypes: true,
+      })) {
+        if (entry.isDirectory()) {
+          const path = join(tasksDirectory, entry.name);
+          directories.add(path);
+          attach(path);
+        }
+      }
+    } catch {
+      /* Not created yet. */
+    }
+    for (const [path, { watcher }] of watches) {
+      if (directories.has(path)) continue;
+      watcher.close();
+      watches.delete(path);
+    }
+  }
+
+  // Cover an absent registry without scanning or watching the OS temp tree recursively.
   try {
     parentWatch = watch(
       dirname(directory),
@@ -109,7 +135,8 @@ function watchRegistry(onChange: () => void): () => void {
   }
   refresh();
   return () => {
-    registryWatch?.close();
+    for (const { watcher } of watches.values()) watcher.close();
+    watches.clear();
     parentWatch?.close();
   };
 }

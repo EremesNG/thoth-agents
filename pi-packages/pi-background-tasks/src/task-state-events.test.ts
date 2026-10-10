@@ -6,6 +6,8 @@ import {
   watch,
   writeFileSync,
 } from 'node:fs';
+import { rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -260,6 +262,16 @@ describe('background task state events', () => {
     writeMeta(task()); // Seeds the process-owned metadata cache with a running record.
     const host = publisherHost();
     await host.emit('session_start');
+    // Linux recursive fs.watch follows file inodes and can stop reporting after
+    // the first atomic replacement. Watch the containing directory directly.
+    expect(watch).toHaveBeenCalledWith(
+      taskDir('task-a'),
+      { persistent: false },
+      expect.any(Function),
+    );
+    for (const [, options] of vi.mocked(watch).mock.calls) {
+      expect(options).not.toHaveProperty('recursive', true);
+    }
     replaceExternally(task('task-a', { status: 'succeeded', endedAt: 2000 }));
     await vi.waitFor(() =>
       expect(host.snapshots.at(-1)?.data.tasks[0]?.status).toBe('succeeded'),
@@ -278,6 +290,95 @@ describe('background task state events', () => {
       timed_out: 0,
     });
   });
+
+  it.each([
+    'initial attachment',
+    'error recovery',
+  ])('discovers tasks created immediately before their parent watcher attaches during %s', async (phase) => {
+    writeMeta(task());
+    const host = publisherHost();
+    if (phase === 'error recovery') await host.emit('session_start');
+    const fs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const tasksDirectory = dirname(taskDir('task-a'));
+    vi.mocked(watch).mockImplementation((...args: Parameters<typeof watch>) => {
+      if (args[0] === tasksDirectory) {
+        mkdirSync(taskDir('gap-task'), { recursive: true });
+        replaceExternally(task('gap-task'));
+      }
+      return fs.watch(...args);
+    });
+    try {
+      if (phase === 'initial attachment') await host.emit('session_start');
+      else {
+        const calls = vi.mocked(watch).mock.calls;
+        const results = vi.mocked(watch).mock.results;
+        const tasksIndex = calls.findIndex(([path]) => path === tasksDirectory);
+        results[tasksIndex]?.value.emit(
+          'error',
+          new Error('watch interrupted'),
+        );
+        // Simulate the ancestor notification that retries the errored watch.
+        const registryIndex = calls.findIndex(([path]) => path === baseDir());
+        results[registryIndex]?.value.emit('change', 'rename', 'tasks');
+      }
+      expect(watch).toHaveBeenCalledWith(
+        taskDir('gap-task'),
+        { persistent: false },
+        expect.any(Function),
+      );
+      replaceExternally(task('gap-task', { status: 'failed', endedAt: 3000 }));
+      await vi.waitFor(() =>
+        expect(
+          host.snapshots.at(-1)?.data.tasks.find(({ id }) => id === 'gap-task')
+            ?.status,
+        ).toBe('failed'),
+      );
+      expect(
+        vi
+          .mocked(watch)
+          .mock.calls.filter(([path]) => path === taskDir('gap-task')),
+      ).toHaveLength(1);
+    } finally {
+      vi.mocked(watch).mockImplementation(fs.watch);
+    }
+  });
+
+  it('keeps reporting 50 serial and 50 parallel rounds of same-ID replacements', async () => {
+    const ids = Array.from({ length: 8 }, (_, index) => `stress-${index}`);
+    for (const id of ids) writeMeta(task(id));
+    const host = publisherHost();
+    await host.emit('session_start');
+    for (let round = 1; round <= 50; round++) {
+      replaceExternally(task(ids[0], { lastCheckedAt: round }));
+      await vi.waitFor(() =>
+        expect(
+          host.snapshots.at(-1)?.data.tasks.find(({ id }) => id === ids[0])
+            ?.lastCheckedAt,
+        ).toBe(round),
+      );
+    }
+    for (let round = 51; round <= 100; round++) {
+      await Promise.all(
+        ids.map(async (id) => {
+          const path = metaPathFor(id);
+          const temporary = `${path}.stress.tmp`;
+          await writeFile(
+            temporary,
+            JSON.stringify(task(id, { lastCheckedAt: round })),
+          );
+          await rename(temporary, path);
+        }),
+      );
+      await vi.waitFor(() => {
+        const tasks = host.snapshots.at(-1)?.data.tasks;
+        expect(tasks).toHaveLength(ids.length);
+        expect(tasks?.map(({ lastCheckedAt }) => lastCheckedAt)).toEqual(
+          ids.map(() => round),
+        );
+      });
+    }
+    expect(watch).toHaveBeenCalledTimes(3 + ids.length);
+  }, 20_000);
 
   it('starts with no registry and discovers externally created tasks without polling or local writes', async () => {
     expect(existsSync(baseDir())).toBe(false);
@@ -305,6 +406,25 @@ describe('background task state events', () => {
     );
   });
 
+  it('rebinds task directory watches after external deletion and recreation', async () => {
+    writeMeta(task());
+    const host = publisherHost();
+    await host.emit('session_start');
+    rmSync(taskDir('task-a'), { recursive: true, force: true });
+    await vi.waitFor(() =>
+      expect(host.snapshots.at(-1)?.data.tasks).toEqual([]),
+    );
+    mkdirSync(taskDir('task-a'), { recursive: true });
+    replaceExternally(task('task-a', { status: 'failed', endedAt: 3000 }));
+    await vi.waitFor(() =>
+      expect(host.snapshots.at(-1)?.data.tasks[0]?.status).toBe('failed'),
+    );
+    replaceExternally(task('task-a', { status: 'cancelled', endedAt: 4000 }));
+    await vi.waitFor(() =>
+      expect(host.snapshots.at(-1)?.data.tasks[0]?.status).toBe('cancelled'),
+    );
+  });
+
   it.each([
     'request',
     'local change',
@@ -316,7 +436,7 @@ describe('background task state events', () => {
     const closes = vi
       .mocked(watch)
       .mock.results.map(({ value }) => vi.spyOn(value, 'close'));
-    expect(closes).toHaveLength(2); // One registry watch and one parent watch.
+    expect(closes).toHaveLength(4); // Parent, registry, tasks and task directory.
 
     // Pi returns immediately on cancellation: no shutdown or start follows.
     await host.emit('session_before_switch');
@@ -334,7 +454,7 @@ describe('background task state events', () => {
       expect(host.snapshots).toHaveLength(2);
     }
     expect(host.snapshots.at(-1)?.sessionId).toBe('session-a');
-    expect(watch).toHaveBeenCalledTimes(2);
+    expect(watch).toHaveBeenCalledTimes(4);
     for (const close of closes) expect(close).not.toHaveBeenCalled();
   });
 
@@ -350,7 +470,7 @@ describe('background task state events', () => {
     const firstWatches = vi
       .mocked(watch)
       .mock.results.map(({ value }) => vi.spyOn(value, 'close'));
-    expect(firstWatches).toHaveLength(2);
+    expect(firstWatches).toHaveLength(5);
     const firstWatchCount = vi.mocked(watch).mock.results.length;
     writeMeta(task('task-a', { status: 'failed' })); // A pending old-origin notification must not cross the switch.
     await host.emit('session_before_switch');
@@ -373,8 +493,8 @@ describe('background task state events', () => {
       .mocked(watch)
       .mock.results.slice(firstWatchCount)
       .map(({ value }) => vi.spyOn(value, 'close'));
-    expect(secondWatches).toHaveLength(2);
-    expect(watch).toHaveBeenCalledTimes(4);
+    expect(secondWatches).toHaveLength(5);
+    expect(watch).toHaveBeenCalledTimes(10);
     expect(
       vi
         .mocked(watch)
@@ -414,7 +534,7 @@ describe('background task state events', () => {
     const firstWatches = vi
       .mocked(watch)
       .mock.results.map(({ value }) => vi.spyOn(value, 'close'));
-    expect(firstWatches).toHaveLength(2);
+    expect(firstWatches).toHaveLength(4);
 
     await host.emit('session_start');
     for (const close of firstWatches) expect(close).toHaveBeenCalledTimes(1);
@@ -422,8 +542,8 @@ describe('background task state events', () => {
       .mocked(watch)
       .mock.results.slice(firstWatches.length)
       .map(({ value }) => vi.spyOn(value, 'close'));
-    expect(secondWatches).toHaveLength(2);
-    expect(watch).toHaveBeenCalledTimes(4);
+    expect(secondWatches).toHaveLength(4);
+    expect(watch).toHaveBeenCalledTimes(8);
     expect(host.snapshots).toHaveLength(2);
     requestState(host);
     expect(host.snapshots).toHaveLength(3); // Exactly one active request listener.

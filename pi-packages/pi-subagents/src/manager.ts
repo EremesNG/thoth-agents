@@ -659,6 +659,10 @@ export class SubagentManager {
     return [...active, ...persisted].sort(compareTasksByRecentActivity);
   }
 
+  listSessionHistoryByCost(cwd: string, sessionId: string): SubagentTask[] {
+    return this.history.listSessionTaskMetadataByCost(cwd, sessionId);
+  }
+
   onTaskUpdate(listener: () => void): () => void {
     this.taskUpdateListeners.add(listener);
     return () => {

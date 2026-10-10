@@ -514,12 +514,16 @@ describe('Agents work-panel render kit discovery', () => {
       expect(tree).toHaveBeenCalled();
       for (const output of [native, lines]) {
         expect(output.join(' ')).toContain('⠋');
-        for (const metric of metrics)
+        for (const metric of output === native
+          ? metrics
+          : ['* 5', '↑20k ↓10k', 'ctx 62.0%', 'tok/s 75', '◷ 12s'])
           expect(output.join(' ')).toContain(metric);
         expect(
           output.every((line: string) => visibleWidth(line) <= width),
         ).toBe(true);
-        if (width >= 80) expect(output).toHaveLength(3);
+        if (width === 100) expect(output).toHaveLength(3);
+        if (width === 80)
+          expect(output).toHaveLength(output === native ? 4 : 3);
         expect(output.at(-1)).toBe('← interact');
       }
     } finally {

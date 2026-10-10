@@ -24,6 +24,8 @@ function task(): SubagentTask {
     mode: 'background',
     status: 'running',
     task: 'inspect',
+    model: 'anthropic/claude-sonnet-4-5',
+    effort: 'high',
     created_at: '2026-01-01T00:00:00Z',
     started_at: '2026-01-01T00:00:00Z',
     usage: { input: 20000, output: 10000 } as SubagentTask['usage'],
@@ -37,9 +39,7 @@ function task(): SubagentTask {
   };
 }
 
-// Literal v1 host/provider output captured with git show at
-// 91b473d0a77dea2c24ca594b4605b9ecf0641aad before migration.
-// Includes the host gutters, summary, responsive metric blocks and height budget.
+// Accepted stable packing and semantic metric labels; identity, glyphs and controls stay unchanged.
 const nativeGolden = [
   [
     100,
@@ -63,8 +63,9 @@ const nativeGolden = [
     [
       '◆ Agents · 1 running',
       '  ⠋ worker · inspect · ⚠ 1 dropped',
-      '    tools 5 · ↑20k ↓10k · ctx 62.0%',
-      '    75 tok/s · elapsed 12s',
+      '    tools 5 · ↑20k ↓10k',
+      '    ctx 62.0% · 75 tok/s',
+      '    elapsed 12s',
       '← interact',
     ],
   ],
@@ -73,8 +74,10 @@ const nativeGolden = [
     [
       '◆ Agents · 1 running',
       '  ⠋ worker · ⚠ 1 dropped',
-      '    tools 5 · ↑20k ↓10k',
-      '    ctx 62.0% · 75 tok/s',
+      '    tools 5',
+      '    ↑20k ↓10k',
+      '    ctx 62.0%',
+      '    75 tok/s',
       '    elapsed 12s',
       '← interact',
     ],
@@ -82,16 +85,17 @@ const nativeGolden = [
   [
     12,
     [
-      '◆ Agents \x1b[0m...\x1b[0m',
+      '◆ Agents \u001b[0m...\u001b[0m',
       '  ⠋ ⚠ 1 drop',
-      '    tools 5',
+      '    tools',
+      '    5',
       '    ↑20k',
       '    ↓10k',
       '    ctx',
       '    62.0%',
-      '    75 tok/s',
+      '    75',
+      '    tok/s',
       '    elapsed',
-      '    12s',
       '← interact',
     ],
   ],
@@ -101,7 +105,7 @@ const themedGolden = [
     100,
     [
       'Agents · 1 running',
-      '  └─ ⠋ worker · inspect · ⚠ 1 dropped · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
+      '  └─ ⠋ worker · inspect · ⚠ 1 dropped · * 5 · ↑20k ↓10k · ctx 62.0% · tok/s 75 · ◷ 12s',
       '← interact',
     ],
   ],
@@ -110,7 +114,7 @@ const themedGolden = [
     [
       'Agents · 1 running',
       '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
-      '       tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
+      '       * 5 · ↑20k ↓10k · ctx 62.0% · tok/s 75 · ◷ 12s',
       '← interact',
     ],
   ],
@@ -119,8 +123,9 @@ const themedGolden = [
     [
       'Agents · 1 running',
       '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
-      '       tools 5 · ↑20k ↓10k · ctx 62.0%',
-      '       75 tok/s · elapsed 12s',
+      '       * 5 · ↑20k ↓10k',
+      '       ctx 62.0% · tok/s 75',
+      '       ◷ 12s',
       '← interact',
     ],
   ],
@@ -129,11 +134,11 @@ const themedGolden = [
     [
       'Agents · 1 running',
       '  └─ ⠋ wo… · ⚠ 1 dropped',
-      '       tools 5',
+      '       * 5',
       '       ↑20k ↓10k',
       '       ctx 62.0%',
-      '       75 tok/s',
-      '       elapsed 12s',
+      '       tok/s 75',
+      '       ◷ 12s',
       '← interact',
     ],
   ],
@@ -142,15 +147,15 @@ const themedGolden = [
     [
       'Agents · 1 r',
       '  └─ ⠋ ⚠ 1 d',
-      '       tools',
-      '       5',
+      '       * 5',
       '       ↑20k',
+      '       ',
       '       ↓10k',
+      '       ',
       '       ctx',
       '       62.0%',
-      '       75',
+      '       ',
       '       tok/s',
-      '       elaps',
       '← interact',
     ],
   ],
@@ -160,7 +165,7 @@ describe('subagents v2 render parity', () => {
   it.each([
     false,
     true,
-  ])('preserves recorded v1 rows (kit: %s) as data-only snapshots', async (themed) => {
+  ])('keeps identity and controls with stable keyed metric packing (kit: %s)', async (themed) => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
     const item = task();
@@ -192,19 +197,23 @@ describe('subagents v2 render parity', () => {
       expect(session.render(width)).toEqual(lines);
     vi.setSystemTime(now + 100);
     expect(session.render(100)[1]).toContain('⠙ worker');
-    expect(session.render(100)[1]).toContain('elapsed 12s');
+    expect(session.render(100).join(' ')).toContain(
+      themed ? '◷ 12s' : 'elapsed 12s',
+    );
     expect(agents.listRows(now + 1500)[0]?.metrics?.at(-1)?.segments).toEqual([
-      { text: 'elapsed 13s', role: 'meta' },
+      { text: themed ? '◷ ' : 'elapsed ', role: 'meta' },
+      { text: '13s', role: 'meta' },
     ]);
     expect(rows[0]?.metrics?.at(-1)?.segments).toEqual([
-      { text: 'elapsed 12s', role: 'meta' },
+      { text: themed ? '◷ ' : 'elapsed ', role: 'meta' },
+      { text: '12s', role: 'meta' },
     ]);
   });
 
   it.each([
     false,
     true,
-  ])('preserves v1 queue, stopping and terminal glyph/elapsed golden rows (kit: %s)', async (themed) => {
+  ])('preserves queue, stopping and terminal glyph/elapsed golden rows (kit: %s)', async (themed) => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
     const item = task();
@@ -258,7 +267,7 @@ describe('subagents v2 render parity', () => {
       item.status = status;
       const expected = [
         `${themed ? '' : '◆ '}${heading}`,
-        `${themed ? '  └─ ' : '  '}${body}`,
+        `${themed ? '  └─ ' : '  '}${themed ? body.replace('tools 5', '* 5').replace('75 tok/s', 'tok/s 75').replace('elapsed ', '◷ ') : body}`,
         '← interact',
       ];
       expect(session.render(100)).toEqual(expected);

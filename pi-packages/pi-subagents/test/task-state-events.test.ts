@@ -50,6 +50,7 @@ function taskSource(
     listActiveSessionTasks: vi.fn((_cwd?: string, sessionId?: string) =>
       tasks.filter((entry) => !sessionId || entry.session_id === sessionId),
     ),
+    listSessionHistoryByCost: vi.fn(() => [] as SubagentTask[]),
     snapshotSessionTaskCounts: vi.fn(() => persistedCounts),
     onTaskUpdate(notify: () => void) {
       listeners.add(notify);
@@ -82,6 +83,9 @@ describe('subagent task-state publication', () => {
     try {
       publisher.startSession(env.tmp, 'parent-a');
       expect(snapshots[0]?.data.tasks.map(({ id }) => id)).toEqual(a.task_ids);
+      expect(snapshots[0]?.data.history.map(({ id }) => id)).toEqual([
+        'history-only',
+      ]);
       expect(snapshots[0]?.data.counts.completed).toBe(1);
       expect(snapshots[0]?.data.totals).toMatchObject({
         total: 2,
@@ -102,6 +106,90 @@ describe('subagent task-state publication', () => {
       expect(snapshots.every(({ data }) => isSubagentsSnapshot(data))).toBe(
         true,
       );
+    } finally {
+      publisher.dispose();
+    }
+  });
+
+  it('publishes the highest-cost persisted history beyond the newest 100, without live overlaps or foreign tasks', async () => {
+    env.writeAgent('worker');
+    const history = env.createHistoryStore();
+    const manager = env.createManager(env.mockRunner(), history);
+    const live = await manager.run(
+      { agent: 'worker', task: 'live', mode: 'task' },
+      { cwd: env.tmp, sessionId: 'parent-a' },
+    );
+    const usage = (cost: number) => ({
+      input: 1,
+      output: 2,
+      cost,
+      cacheRead: 0,
+      cacheWrite: 0,
+      contextTokens: 0,
+      turns: 1,
+    });
+    history.upsertTask(
+      env.tmp,
+      task({
+        id: 'old-expensive',
+        display_name: 'Old review',
+        usage: usage(50),
+        prompt: 'private',
+        output_preview: 'x'.repeat(900),
+      }),
+    );
+    for (let i = 0; i < 110; i++)
+      history.upsertTask(
+        env.tmp,
+        task({
+          id: `new-${i}`,
+          created_at: new Date(
+            Date.parse('2026-02-01T00:00:00Z') + i,
+          ).toISOString(),
+          usage: usage(i / 100),
+        }),
+      );
+    history.upsertTask(
+      env.tmp,
+      task({ id: 'foreign', session_id: 'parent-b', usage: usage(100) }),
+    );
+    history.upsertTask(
+      `${env.tmp}/foreign-cwd`,
+      task({ id: 'foreign-cwd', usage: usage(200) }),
+    );
+    expect(
+      history.listSessionTasks(env.tmp, 'parent-a').map(({ id }) => id),
+    ).not.toContain('old-expensive');
+    expect(
+      manager.listSessionTasks(env.tmp, 'parent-a').map(({ id }) => id),
+    ).not.toContain('old-expensive');
+    const { events, snapshots } = collectSnapshots();
+    const publisher = new SubagentsStatePublisher(events, manager);
+    try {
+      publisher.startSession(env.tmp, 'parent-a');
+      const snapshot = snapshots[0];
+      if (!snapshot) throw new Error('Expected history snapshot');
+      expect(snapshot.v).toBe(2);
+      expect(snapshot.data.history).toHaveLength(100);
+      expect(snapshot.data.history[0]).toMatchObject({
+        id: 'old-expensive',
+        displayName: 'Old review',
+        usage: { cost: 50 },
+        preview: 'x'.repeat(800),
+      });
+      expect(snapshot.data.history.map(({ id }) => id)).not.toContain(
+        'foreign',
+      );
+      expect(snapshot.data.history.map(({ id }) => id)).not.toContain(
+        'foreign-cwd',
+      );
+      expect(snapshot.data.history[1]?.usage?.cost).toBe(1.09);
+      expect(snapshot.data.history.at(-1)?.usage?.cost).toBe(0.11);
+      expect(snapshot.data.history.map(({ id }) => id)).not.toContain(
+        live.task_ids[0],
+      );
+      expect(isSubagentsSnapshot(snapshot.data)).toBe(true);
+      expect(JSON.stringify(snapshot)).not.toContain('private');
     } finally {
       publisher.dispose();
     }
@@ -375,7 +463,7 @@ describe('subagent task-state publication', () => {
         data: {},
       });
       events.emit(SUBAGENTS_STATE_REQUEST.name, {
-        v: 1,
+        v: 2,
         source: 'consumer',
         sessionId: 'parent-a',
         at: 0,
@@ -452,7 +540,7 @@ describe('subagent task-state publication', () => {
         'v',
       ]);
       expect(snapshot).toMatchObject({
-        v: 1,
+        v: 2,
         source: '@thoth-agents/pi-subagents',
         sessionId: 'parent-a',
         at: expect.any(Number),
@@ -460,6 +548,7 @@ describe('subagent task-state publication', () => {
       expect(isSubagentsSnapshot(snapshot.data)).toBe(true);
       expect(Object.keys(snapshot.data).sort()).toEqual([
         'counts',
+        'history',
         'tasks',
         'totals',
       ]);

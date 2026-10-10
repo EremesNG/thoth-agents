@@ -633,6 +633,22 @@ export class SubagentHistoryStore {
       .map((row) => rowToTask(row, { includeSnapshots: false }));
   }
 
+  /** Separate cost ranking: recency-based history readers remain unchanged. */
+  listSessionTaskMetadataByCost(
+    cwd: string,
+    sessionId: string,
+  ): SubagentTask[] {
+    return this.db(cwd)
+      .prepare(`
+      SELECT ${SESSION_TASK_METADATA_COLUMNS}
+      FROM subagent_tasks WHERE cwd = ? AND session_id = ?
+      ORDER BY usage_cost DESC, created_at DESC, id DESC
+      LIMIT 100
+    `)
+      .all(cwd, sessionId)
+      .map((row) => rowToTask(row, { includeSnapshots: false }));
+  }
+
   listTasksByStatus(
     cwd: string,
     statuses: SubagentTask['status'][],

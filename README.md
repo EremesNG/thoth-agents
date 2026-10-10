@@ -203,6 +203,7 @@ uncertainty, and risk and selects the fitting specialist.
 
 | Designer | Worker |
 | :---: | :---: |
+| <img src="img/agents/designer.webp" width="150" alt="Hathor as the Designer"> | <img src="img/agents/worker.webp" width="150" alt="Ptah as the Worker"> |
 | **Makes interfaces work well.** Owns material UI/UX, accessibility, interaction, and visual quality. | **Implements changes.** Owns delegated implementation, including coupled behavior, edge cases, migrations, and correctness-critical work. |
 
 Research and review specialists are read-only. Implementation work has one

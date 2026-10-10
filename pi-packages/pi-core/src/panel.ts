@@ -51,7 +51,6 @@ export {
 
 export {
   createWorkPanelMetricGrid,
-  panelLingerEndsAt,
   renderWorkPanelRow,
   WORK_PANEL_ANIMATION_INTERVAL_MS,
   type WorkPanelMetricGrid,

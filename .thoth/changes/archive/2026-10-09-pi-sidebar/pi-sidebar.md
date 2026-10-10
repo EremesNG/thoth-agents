@@ -233,11 +233,14 @@ Round 1 FAIL (AC-6 absorption on control visibility) and round 2 FAIL (AC-6 full
 - AC-6: PASS | pi-core (942) and pi-sidebar (54) suites, four independent replays | absorption hides render/selection/focus, restored on release and at the first render after takeover; isolated liveness predicates
 - AC-7: PASS | installer tests (294 root) | sidebar managed >=0.3.0 with preservation, below-floor block, ambiguity fail-closed, dry-run
 - AC-8: PASS | check:ci, typecheck, build, test:pi-extensions, seven package suites | all pass; docs incl. first-publish bootstrap
-- Source: .thoth/specs/pi-ecosystem/spec.md | sha256:7da019f35b4578c4f861c74f6d20ca1aa0351f8b1fe0da7d0725bda2abd5ad76
+- Source: .thoth/specs/pi-ecosystem/spec.md | sha256:2286bbe82d0325423ae36ad939758ba9972cd4611506c3119e264103b2ef5488
 - Source: .thoth/specs/cli-installation/spec.md | sha256:76e8c3123182b02e3ab2bdc0ce57f3c564d714959f0e65f38bcd296bd8472ad0
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY
+
+Live user checks passed on 2026-10-09 in regular and fullscreen modes: layout, /sidebar on|off with work-panel absorption, /sidebar resize hint, divider drag, panel rendering parity, resumed-session Agents history and synced spinner animation.
+pi-ecosystem source baseline refreshed after archiving pi-provider-status, which changed only the unrelated requirements "Provider rate-limit registry" and "Subscription provider cost and on-demand quota".

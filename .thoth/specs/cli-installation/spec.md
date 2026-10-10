@@ -505,3 +505,13 @@ Complete Pi installation and applied Update MUST install and individually verify
 - **GIVEN** a Pi profile with a user-installed pi-thoth-theme at the minimum version and no pi-background-tasks
 - **WHEN** Install or applied Update runs
 - **THEN** the theme copy is preserved and verified, pi-background-tasks is installed and verified, and a dry-run performs no mutation
+
+### Requirement: Install the first-party Pi sidebar extension
+
+Complete Pi installation and applied Update MUST install and individually verify `@thoth-agents/pi-sidebar` at its configured minimum version as an additional selected Pi package, preserving and verifying an existing copy at or above the minimum from any source, blocking with manual upgrade guidance below it and failing closed on ambiguous identity; dry-run MUST remain mutation-free.
+
+#### Scenario: Install the first-party Pi sidebar extension
+
+- **GIVEN** a Pi profile without the sidebar
+- **WHEN** Install runs
+- **THEN** `@thoth-agents/pi-sidebar` is installed and verified, and a dry-run performs no mutation

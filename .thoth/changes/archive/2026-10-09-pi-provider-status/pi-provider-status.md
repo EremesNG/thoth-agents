@@ -218,4 +218,6 @@ Round 1 fresh Oracle passed AC-1..AC-5 and AC-7 and failed AC-6 (flash cause not
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY
+
+Live user check passed on 2026-10-09: status line cost with (sub) and subagent usage, /agy quota without visible window; archived together with pi-sidebar.

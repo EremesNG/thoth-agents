@@ -46,6 +46,8 @@ beforeEach(async () => {
   cwd = join(root, 'workspace');
   agentDir = join(root, 'agent');
   mkdirSync(cwd);
+  // Bound trusted project skill discovery to this fixture, not temp ancestors.
+  mkdirSync(join(cwd, '.git'));
   mkdirSync(agentDir);
   producerPackage = join(root, 'producer');
   mkdirSync(producerPackage);
@@ -60,6 +62,9 @@ beforeEach(async () => {
     join(producerPackage, 'index.ts'),
     `export { default } from ${JSON.stringify(producerPath)};\n`,
   );
+  // The SDK discovers ~/.agents/skills separately from PI_CODING_AGENT_DIR.
+  vi.stubEnv('HOME', root);
+  vi.stubEnv('USERPROFILE', root);
   vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
   vi.stubEnv('PI_SUBAGENTS_HISTORY_HOME', join(root, 'history'));
   writeFileSync(
@@ -362,6 +367,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
           taskId: 'kit-child',
           cwd,
           ctx: {
+            cwd,
             modelRuntime,
             settingsManager: parent.settingsManager,
             pi: {

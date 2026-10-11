@@ -25,6 +25,7 @@ export function createQuestionTool(
   const rendering = createQuestionRenderBridge();
   return {
     name: TOOL_NAME,
+    exposure: 'model-only',
     label: 'Ask User Question',
     description:
       'Ask the user a questionnaire with stable ids, single/multi choices, text or Yes/No confirmation. Required is advisory; recommendations are never preselected.',

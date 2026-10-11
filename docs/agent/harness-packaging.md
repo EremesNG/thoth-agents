@@ -77,9 +77,30 @@
   fields; they do not claim fresh-context or depth enforcement. Omitted run mode
   follows the selected definition and configuration, with background as the
   runtime fallback; an explicit `mode: "task"` continues to wait. The
-  `/subagents-model` command edits model profiles for global or project
-  definitions in their matching config scope. `model_profiles` takes precedence
-  over definition fields, configuration defaults, and the parent model/effort.
+  `/subagents-model` manages named model/effort profiles independently of
+  definition scope. Storage is global `<agentDir>/thoth/profiles.json`
+  (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) or project
+  `<project>/.pi/thoth/profiles.json`, with schema
+  `{version:1, active?, profiles:{name:{agents:{agent:{model?,effort?}}}}}`.
+  Global `active` names a global profile (or `default`); project `active` pins
+  either scope (or `default`). Selection is session → project pin → global
+  active → read-only virtual `default`, with project-over-global name shadowing
+  and warning/fallback for missing references. Profile fields override
+  definition fields, configuration defaults, then parent model/effort;
+  missing agents/fields use that fallback chain. `default` is never stored
+  and exposes definition/shipped values without overrides. Session selection
+  persists in the Pi session across reload/resume; switching applies at run
+  time to new runs/continuations without rewriting definitions. The old
+  `model_profiles` field in `subagents.json` is no longer used.
+  Keys: ←/→ browse profiles, ↑/↓ agents, Enter edit, `n` new, `c` clone,
+  `s` save, `r` rename, `d` delete, `u` session, `g` global active, `p` project
+  pin. New/cloned profiles are drafts until save; unedited new saves copy all
+  listed agents' default effective model/effort into a self-contained profile.
+  Editing `default` offers creation instead; rename/delete are forbidden.
+  Referenced deletion confirms and clears active/pin pointers; unsaved close
+  confirms discard. Non-overlay fallbacks only list/activate. See
+  [installation](../installation.md#configure-subagent-model-profiles-inside-pi)
+  for panel and storage details.
   pi-subagents registers both `/subagents-model` and `/subagents-tools`; the
   tools command lives in `pi-packages/pi-subagents/src/tools-panel/`, not the
   root extension. It edits the resolved global/project definitions, changing

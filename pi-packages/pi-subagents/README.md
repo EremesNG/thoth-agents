@@ -19,7 +19,7 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - Task-to-background handoff via `ctrl+h` by default, configurable in `subagents.json`.
 - Automatic background completion/failure notifications that start or queue a parent-orchestrator response; no polling is needed just to wait.
 - TUI execution rendering can expand/collapse tool and rendered component output with `ctrl+o`, show/hide assistant thinking blocks with `ctrl+t`, and display queued/consumed steering messages in the owning task detail timeline.
-- Model profile UI via `/subagents-model` and definition tool editor via `/subagents-tools`, both on pi-core's shared list-editor shell.
+- Named model profiles via `/subagents-model` and definition tool editor via `/subagents-tools`, both on pi-core's shared list-editor shell.
 - Per-agent/default model and thinking-effort configuration.
 - Tool allowlist filtering that prevents subagents from delegating to other subagents.
 - Generic subagent-to-parent interaction handoff so human decisions happen on the main thread.
@@ -320,7 +320,7 @@ Choose the narrowest scope that matches the intended behavior:
 | Scope | Path | Use it when |
 |---|---|---|
 | Global defaults | `$PI_CODING_AGENT_DIR/subagents.json`, or `~/.pi/agent/subagents.json` when the environment variable is unset | The setting should apply across projects unless locally overridden. |
-| Project-local overrides | `.pi/subagents.json` | This workspace needs different defaults, shortcuts, tools, or profiles. |
+| Project-local overrides | `.pi/subagents.json` | This workspace needs different defaults, shortcuts, or tools. |
 | One definition | Frontmatter in the selected global/project Markdown definition | Only that subagent needs `subagent_mode`, or an explicit per-file model/effort override. |
 
 Config resolves as a field-by-field cascade:
@@ -334,7 +334,7 @@ Config resolves as a field-by-field cascade:
 
 Avoid copying every global value into project config: add only intentional local overrides unless you specifically want to pin inherited values. Changing where the package is installed does not change this cascade.
 
-`model_profiles` follow the selected definition source rather than being merged freely across scopes: project-local definitions use project-local profiles, while global definitions use global profiles. If a project definition overrides a global definition with the same normalized name, the project definition and its project-local profile win.
+Named model profiles are stored separately in `thoth/profiles.json`, not in `subagents.json`, and apply by normalized agent name regardless of definition scope. See [Model profile resolution](#model-profile-resolution). The former `model_profiles` field in `subagents.json` is no longer read or written.
 
 ### Asking an agent to configure Subagents
 
@@ -388,13 +388,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
     "memory_search",
     "memory_recall",
     "memory_get"
-  ],
-  "model_profiles": {
-    "discovery": {
-      "model": "anthropic/claude-haiku-4-5",
-      "effort": "low"
-    }
-  }
+  ]
 }
 ```
 
@@ -408,7 +402,6 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
 | `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
 | `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but still counts toward total `timeout_ms`. |
-| `model_profiles` | `{}` | Per-agent model/effort overrides scoped to matching definitions. Project-local profiles apply to project-local definitions; global profiles apply to global definitions. |
 | `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
 | `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). Suspended during pending orchestrator questions, context compaction, and auto-retry backoff; resuming refreshes both session and active-tool inactivity budgets. |
 | `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; total `timeout_ms` still applies throughout. |
@@ -444,9 +437,39 @@ any tool starting with subagent_
 
 ## Model profile resolution
 
+Named profiles contain model/effort settings for subagents, not the orchestrator or other configuration. Storage:
+
+- Global: `<agentDir>/thoth/profiles.json`, where `agentDir` honors `PI_CODING_AGENT_DIR` and defaults to `~/.pi/agent`.
+- Project: `<project>/.pi/thoth/profiles.json`.
+
+Both files use this versioned schema (model and effort fields may be omitted):
+
+```json
+{
+  "version": 1,
+  "active": "fast",
+  "profiles": {
+    "fast": {
+      "agents": {
+        "discovery": {
+          "model": "anthropic/claude-haiku-4-5",
+          "effort": "low"
+        }
+      }
+    }
+  }
+}
+```
+
+Optional `active` means the global active profile in the global file, or the project pin in the project file. Global active must name a global profile (or `default`); a project pin may name a project or global profile (or `default`).
+
+Selection precedence is **session selection → project pin → global active → `default`**. Inside a project, a project profile shadows a same-named global profile. Missing references produce a warning and fall back to the next level. The reserved, read-only virtual `default` is never stored: it has no overrides, so agents use their definition/shipped values and the fallback chain below.
+
+Session selection is persisted in the Pi session, survives reload/resume, and never writes configuration files. Switching profiles applies at run time to new runs and continuations without rewriting definitions. Agents or fields absent from the selected profile use the same fallback chain.
+
 Effective model resolution order:
 
-1. `model_profiles[agent].model` from the config matching the selected definition scope: project-local for project definitions, global for global definitions
+1. Selected profile's `agents[agent].model`
 2. subagent frontmatter `model`
 3. `default_model`
 4. current orchestrator model
@@ -454,7 +477,7 @@ Effective model resolution order:
 
 Effective effort resolution order:
 
-1. `model_profiles[agent].effort` from the config matching the selected definition scope: project-local for project definitions, global for global definitions
+1. Selected profile's `agents[agent].effort`
 2. subagent frontmatter `effort` / `thinking_level` / `thinkingLevel`
 3. `default_effort`
 4. current orchestrator thinking level
@@ -651,7 +674,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | Entry point | Description |
 |---|---|
 | `/subagents` | Open the session-focused TUI subagent history panel. |
-| `/subagents-model` | Configure model profiles for global or project subagent definitions. |
+| `/subagents-model` | Manage named model profiles and select them for the session, project, or globally. |
 | `/subagents-tools` | Edit tools in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
 | `x` | Cancel the currently selected queued/running subagent from the open history/detail panel by default. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
@@ -659,17 +682,28 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `ctrl+o` | Expand or collapse rendered tool output and subagent responses in the active execution/detail view. |
 | `ctrl+t` | Show or hide assistant thinking blocks in the open subagent execution panel, using Pi's `app.thinking.toggle` keybinding. |
 
-`/subagents-model` writes profile changes to the config that matches each selected definition: project-local subagents write to `.pi/subagents.json`, while global subagents write to `~/.pi/agent/subagents.json` or `$PI_CODING_AGENT_DIR/subagents.json` when `PI_CODING_AGENT_DIR` is set.
+`/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile.
 
-Both list editors use selectedBg rows, terminal-cell width handling,
-cursor-centered height-aware viewports, wheel navigation and dirty-discard
-confirmation. Model tables switch to wide layout at 102 columns (tools at 84);
-model search and profile persistence keep their existing behavior. Native
-CSI-u/kitty Enter, Escape and navigation keys work without per-panel bindings.
-The shared overlay host enables wheel reporting in regular TUI mode and releases
-it on close, rejection or disposal; fullscreen-owned mouse tracking is unchanged.
+| Key | Action |
+|---|---|
+| ←/→ | Browse profiles. |
+| ↑/↓ | Select an agent. |
+| Enter | Edit the agent's model/effort. |
+| `m` / `e` | Edit model only / effort only. |
+| `n` / `c` | New from default / clone selected profile; choose global or project scope. |
+| `s` | Save the draft or edits. |
+| `r` / `d` | Rename / delete a profile. |
+| `u` | Toggle this Pi session's selection. |
+| `g` | Toggle global active. |
+| `p` | Toggle this project's pin. |
 
-In non-TUI environments, edit `model_profiles` manually in the matching local or global JSON file, or `tools` in the selected Markdown definition.
+Pressing `u`, `g`, or `p` on that pointer's current selection clears it. Picker “reset” restores default's effective model or effort for that agent.
+
+New and cloned profiles are in-memory drafts until `s` and cannot be activated before saving. Saving an unedited new profile stores a full copy of default's effective model/effort for every listed agent; saved profiles are self-contained snapshots. Editing `default` offers creating a new profile instead; it cannot be renamed or deleted. Renaming carries session, project pin and global active pointers that resolve to the profile to its new name; deleting confirms and clears those pointers. Closing with unsaved changes asks for confirmation.
+
+Both list editors use pi-core's shared shell with selectedBg rows, terminal-cell width handling, cursor-centered viewports, wheel navigation and dirty-discard confirmation. Native CSI-u/kitty keys work without per-panel bindings. The overlay host releases regular-mode mouse reporting on close, rejection or disposal; fullscreen-owned tracking is unchanged. The tools table uses a wide layout at 84 columns.
+
+Non-overlay fallbacks (`ui.select` and non-TUI) support profile listing and activation only; `ui.select` sets selections without toggling them off. To edit without the overlay, edit the appropriate `thoth/profiles.json` file directly, or `tools` in the selected Markdown definition.
 
 ## Task history
 

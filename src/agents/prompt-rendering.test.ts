@@ -135,15 +135,15 @@ describe('AI-first prompt rendering', () => {
     expect(prompt.match(/<role>\n([\s\S]*?)\n<\/role>/)?.[1]).toBe(
       'You are the root coordinator. By default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize.',
     );
-    const defaultIndex = block.indexOf('Specialists execute by default');
+    const defaultIndex = block.indexOf('Unlocated local source');
     const mechanicalIndex = block.indexOf(
-      'Root retains known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
     );
     const consultationIndex = block.indexOf(
-      'One known source, one bounded question',
+      'Direct consultation: one known source and bounded question',
     );
     const budgetIndex = block.indexOf(
-      'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
+      'at most two source fragments, about 200 code lines per user request across tools, files and subtasks',
     );
     const userIndex = block.indexOf(
       'Explicit user direct-work or no-delegation instruction wins',
@@ -200,26 +200,28 @@ describe('AI-first prompt rendering', () => {
     expect
       .soft(block)
       .toMatch(
-        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
       );
     expect
       .soft(block)
       .toContain(
-        'no preliminary discovery is needed to prepare that assignment',
+        'name the unknown location in the assignment instead of pre-reading',
       );
     expect
       .soft(block)
       .toContain(
-        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
       );
     expect
       .soft(block)
       .toMatch(
-        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
       );
     expect
       .soft(block)
-      .toContain('This self-check is guidance, not runtime enforcement.');
+      .toContain(
+        'This ownership policy is prompt guidance, not runtime enforcement.',
+      );
   });
 
   test.each(
@@ -228,13 +230,10 @@ describe('AI-first prompt rendering', () => {
     const workflow =
       render().match(/<sdd-workflow>([\s\S]*?)<\/sdd-workflow>/)?.[1] ?? '';
     expect(workflow).toMatch(
-      /user-facing replies\/questions\/options: language of the last real human message/i,
+      /user-facing replies, questions and options use the language of the last real human message, including question-tool answers/i,
     );
     expect(workflow).toMatch(
-      /real human message \(incl\. question-tool answers\/explicit language requests\)/i,
-    );
-    expect(workflow).toMatch(
-      /explicit requests beat inferred language until the human switches/i,
+      /an explicit language request persists until the human switches/i,
     );
     expect(workflow).toMatch(
       /delegation, records, code and artifacts may stay (?:in )?English/i,
@@ -265,9 +264,8 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /at ready, first show the user .*plan summary.*then always offer.*Review plan with Oracle/i,
     );
-    expect(prompt).toMatch(
-      /EXPLICIT_REVIEW.*EXPLICIT_SKIP.*DEFAULT_REVIEW_AFTER_3/i,
-    );
+    // Recording-time provenance codes live in the installed thoth-sdd skill.
+    expect(prompt).toMatch(/as installed `thoth-sdd` defines/);
     expect(prompt).toMatch(
       /plan-review disposition separately from implementation authorization/i,
     );
@@ -279,22 +277,17 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /first and second confirmed empty native returns.*repeat the same question.*no dependent work/i,
     );
-    expect(prompt).toMatch(
-      /third confirmed empty native return.*choose the recommendation/i,
-    );
+    expect(prompt).toMatch(/after the third, choose the recommendation/i);
     expect(prompt).toMatch(/explicit Stop wins/i);
     expect(prompt).toMatch(
       /Pending, unavailable, failed, interrupted or host-prohibited questions do not count/i,
     );
     expect(prompt).toMatch(
-      /higher-priority host or tool rules prevent.*report the limitation/i,
-    );
-    expect(prompt).toMatch(
-      /do not claim three returns or treat the result as explicit selection/i,
+      /obey and report host limits without claiming three returns or an explicit selection/i,
     );
     expect(prompt).toMatch(/Never fabricate facts or secrets.*safe deferral/i);
     expect(prompt).toMatch(/No implementation writer may approve/);
-    expect(prompt).toMatch(/closes only after independent PASS/);
+    expect(prompt).toMatch(/only after independent PASS/);
   });
 
   test.each([
@@ -337,37 +330,37 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /unlocated local source, flow, or responsibility.*Explorer.*before any root.*search/is,
     );
-    expect(prompt).toMatch(/discovery assignment.*unknown location/is);
+    expect(prompt).toMatch(/unknown location in the assignment/is);
     expect(prompt).toMatch(
       /known.*bounded implementation.*directly.*designer.*worker.*without.*Explorer/is,
     );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
-    expect(prompt).toMatch(/root retains known low-risk mechanical work/i);
-    expect(prompt).toMatch(/must not repeat delegated discovery/i);
-    expect(prompt).toMatch(/missing support.*targeted evidence/i);
+    expect(prompt).toMatch(
+      /direct-work exceptions: known low-risk mechanical work/i,
+    );
+    expect(prompt).toMatch(/never repeat delegated discovery/i);
+    expect(prompt).toMatch(/fill gaps with a targeted request/i);
     expect(prompt).toMatch(
       /delegation failure.*truthful.*does not authorize unrestricted root/is,
     );
     expect(prompt).toMatch(
-      /specialists execute by default for discovery of unlocated source, external research and substantive implementation/i,
+      /by default, specialists perform discovery of unlocated source, external research and substantive implementation/i,
     );
-    expect(prompt).toMatch(/one known source.*one bounded question/i);
+    expect(prompt).toMatch(/one known source and bounded question/i);
     expect(prompt).toMatch(
-      /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
+      /new path, unlocated dependency or exhausted allowance, delegate the missing evidence/i,
     );
     expect(prompt).toMatch(
-      /experimental cumulative.*two source fragments.*approximately 200 code lines.*per user request/i,
+      /two source fragments, about 200 code lines per user request/i,
     );
-    expect(prompt).toMatch(/across tools, files, and subtasks/i);
+    expect(prompt).toMatch(/across tools, files and subtasks/i);
     expect(prompt).toMatch(
-      /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
+      /required instructions and coordination artifacts excluded; never source or log dumps/i,
     );
     expect(prompt).toMatch(/not runtime enforcement/i);
+    expect(prompt).toMatch(/independent verification stays mandatory/i);
     expect(prompt).toMatch(
-      /mandatory independent verification remains intact/i,
-    );
-    expect(prompt).toMatch(
-      /exploration, research, planning, implementation, and verification.*one independently acceptable outcome/i,
+      /each exploration, research, planning, implementation or verification unit has one independently acceptable outcome/i,
     );
     expect(prompt).toMatch(
       /accepted upstream inputs.*result produced.*owned writes.*interfaces.*shared resources.*focused checks.*pass evidence.*native return milestone.*stop condition/i,
@@ -394,7 +387,7 @@ describe('AI-first prompt rendering', () => {
   ] as const)('bounds execution without overriding operator effort in %s', (_harness, render) => {
     const prompt = render();
     // Rendered policy coverage, not proof of model compliance or runtime enforcement.
-    expect(prompt).toMatch(/root retains.*reviewed commits/i);
+    expect(prompt).toMatch(/direct-work exceptions.*reviewed commits/i);
     expect(prompt).toMatch(/explicit.*no.delegation.*wins/i);
     expect(prompt).not.toMatch(
       /another search or dependency ends|only root mutation exception/i,
@@ -405,7 +398,7 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/two consecutive.*without new evidence/i);
     expect(prompt).toMatch(/native attention.*inspect.*steer/i);
     expect(prompt).toMatch(/timeout.*not.*progress/i);
-    expect(prompt).toMatch(/no polling/i);
+    expect(prompt).toMatch(/never polling/i);
   });
 
   test('special-cases only the built-in OpenAI model family', () => {
@@ -459,10 +452,10 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     expect(prompt).toContain(
-      'dispatch every admitted conflict-free ready unit before waiting',
+      'Dispatch every admitted conflict-free ready unit before waiting',
     );
     expect(prompt).toContain(
-      'refill freed capacity with newly ready consumers before another wait',
+      'Refill freed capacity with newly ready consumers before another wait',
     );
     expect(prompt).toContain('no global wave barrier');
     expect(prompt).toContain('root-accepted, and fresh');
@@ -482,7 +475,7 @@ describe('AI-first prompt rendering', () => {
       'Native execution and terminal results are the sole authority',
     );
     expect(prompt).toContain(
-      'never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror',
+      'never polling, timers or an invented executor, queue, scheduler, wait API or lifecycle mirror',
     );
     expect(prompt).toContain('native execution state stays with the harness');
     expect(prompt).toContain('single record, relevant diff and dirty files');
@@ -497,24 +490,24 @@ describe('AI-first prompt rendering', () => {
 
   test.each(
     DIALECTS,
-  )('renders the work-unit envelope in $harness', (dialect) => {
+  )('renders one unified work-unit envelope in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
     );
-    for (const heading of [
-      'PHASE',
-      'PHASE / CHANGE',
-      'OBJECTIVE',
-      'INPUT ARTIFACTS',
-      'REQUIREMENTS',
-      'BOUNDARIES',
-      'VERIFICATION',
-      'EXPECTED OUTPUT',
-      'HANDOFF',
-      'MEMORY',
+    for (const field of [
+      'names its phase, the change record when one exists, applicable requirements',
+      'accepted upstream inputs and result produced',
+      'bounds owned writes',
+      'focused checks with pass evidence',
+      'a native return milestone, a stop condition',
+      'scoped MEMORY authorization (`none`, `recall` or `observe`)',
     ])
-      expect(prompt).toContain(heading);
+      expect(prompt).toContain(field);
+    expect(prompt).not.toContain('<phase-dispatch>');
+    expect(prompt).toContain(
+      'New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions',
+    );
   });
 
   test.each(
@@ -831,11 +824,11 @@ describe('AI-first prompt rendering', () => {
 
   test('keeps generated roots compact', () => {
     const roots = [
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_500],
-      [renderCodexRootInstructions(), 15_000],
-      [renderClaudeCodeRootInstructions(), 15_000],
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 12_500],
+      [renderCodexRootInstructions(), 13_800],
+      [renderClaudeCodeRootInstructions(), 13_300],
       // Pi tool schemas and the subagents-configuration skill own operator details.
-      [renderPiRootInstructions(), 17_000],
+      [renderPiRootInstructions(), 15_600],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
@@ -857,7 +850,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "bc5f0b805465737ab5224cf339368c61610a1ca89bc2bbd6bd3a44e819686642",
+          "391ecfe1f8c8cdd899a5eaafd21886e6eff895808168e89a83d31f0a1172c863",
           "3c6cec172ead08bbd4f905fe7424ed94b4b251f4798880d53382be50856bd866",
           "8995d957e4e3861aedba4ee4907c1feaa79a865eb9110d447c9aebe30d0f87c7",
           "487a056dad8f88f1258f486d61a043f2fcd7b81a311209ba78d1bcd1fbd2c974",
@@ -868,7 +861,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "06e404560fdd76138d92eed47f25346e401ce188a155337a11f721988e15bc37",
+          "6a4c1473be33c545c6777b1bb01459a647109724b1bc615edc08d3c793152f71",
           "252f9d6277b5637de7982a6d26c673c5c7317d65f2e2c9c846a48669c20fa7e7",
           "a620c249ffa378ff2fd5fd81bcd56321102f4889170a1f58b71f689a4159562d",
           "c291fa15d2e58c5dc06472e3d25b60c5777910abba4d59d8912d0820d4cbe4bc",
@@ -879,7 +872,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "f0d31d50d044b1dcfd9c47631743f8f9556db027b02371eb041778752221b25c",
+          "8983b964914d1d83ba4240962188faca2fc71259a474207999381fa218cf38cc",
           "0b1ba17e3e1565bed8c29795c0aafcd67d2cbcd08afe21e7a1ee65bf7a23d23f",
           "4ac41f8716aeb883786a0b2e92b46aaf9dab7378f2d7d7fdaa8ef5845b0303dd",
           "db5fa796df7943534ce3a02308b879faa5fd1f351fd994c6daf77c791362ec39",

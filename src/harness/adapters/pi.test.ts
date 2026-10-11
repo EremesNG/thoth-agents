@@ -20,36 +20,39 @@ describe('Pi adapter', () => {
         .map((instruction) => `- ${instruction}`)
         .join('\n'),
     );
-    const defaultIndex = block.indexOf('Specialists execute by default');
-    expect(defaultIndex).toBeGreaterThanOrEqual(0);
-    expect(
+    expect(root).toMatch(
+      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+    );
+    expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
-        'Root retains known low-risk mechanical work, including reviewed commits',
+        'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
       ),
-    ).toBeGreaterThan(defaultIndex);
+    );
     expect
       .soft(block)
       .toMatch(
-        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
       );
     expect
       .soft(block)
       .toContain(
-        'no preliminary discovery is needed to prepare that assignment',
+        'name the unknown location in the assignment instead of pre-reading',
       );
     expect
       .soft(block)
       .toContain(
-        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
       );
     expect
       .soft(block)
       .toMatch(
-        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
       );
     expect
       .soft(block)
-      .toContain('This self-check is guidance, not runtime enforcement.');
+      .toContain(
+        'This ownership policy is prompt guidance, not runtime enforcement.',
+      );
     for (const phrase of [
       'If delegating',
       'Boundaries alone do not require delegation',

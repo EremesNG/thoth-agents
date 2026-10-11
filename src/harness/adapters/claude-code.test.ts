@@ -40,36 +40,39 @@ describe('Claude Code adapter v0.3', () => {
         .map((instruction) => `- ${instruction}`)
         .join('\n'),
     );
-    const defaultIndex = block.indexOf('Specialists execute by default');
-    expect(defaultIndex).toBeGreaterThanOrEqual(0);
-    expect(
+    expect(root).toMatch(
+      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+    );
+    expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
-        'Root retains known low-risk mechanical work, including reviewed commits',
+        'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
       ),
-    ).toBeGreaterThan(defaultIndex);
+    );
     expect
       .soft(block)
       .toMatch(
-        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
       );
     expect
       .soft(block)
       .toContain(
-        'no preliminary discovery is needed to prepare that assignment',
+        'name the unknown location in the assignment instead of pre-reading',
       );
     expect
       .soft(block)
       .toContain(
-        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
       );
     expect
       .soft(block)
       .toMatch(
-        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
       );
     expect
       .soft(block)
-      .toContain('This self-check is guidance, not runtime enforcement.');
+      .toContain(
+        'This ownership policy is prompt guidance, not runtime enforcement.',
+      );
     for (const phrase of [
       'If delegating',
       'Boundaries alone do not require delegation',
@@ -172,17 +175,17 @@ describe('Claude Code adapter v0.3', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Claude dialect.
-    expect(instructions.length).toBeLessThanOrEqual(15_000);
+    expect(instructions.length).toBeLessThanOrEqual(13_300);
     expect(instructions).toContain('root coordinator');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(
-      /specialists execute by default.*root retains/is,
+      /specialists perform discovery.*you direct, decide, accept/is,
     );
     expect(instructions).toContain(
-      'Root retains known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
     );
     expect(instructions).toContain(
-      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
+      'By default, specialists perform discovery of unlocated source, external research and substantive implementation',
     );
     expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
@@ -193,9 +196,9 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions).toContain('TodoWrite');
     expect(instructions).toContain('thoth-sdd');
     expect(instructions).toContain('thoth-agents:oracle');
-    expect(instructions).toContain('Final verification is mandatory.');
+    expect(instructions).toContain('Final verification is mandatory:');
     expect(instructions).toContain(
-      'Trivial deterministic low-risk work may use focused root checks',
+      'trivial deterministic low-risk work may use focused root checks',
     );
     expect(instructions).not.toContain('delegate-first');
     expect(instructions).not.toContain('requirements-interview');

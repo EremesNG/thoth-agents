@@ -288,7 +288,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       sameAssignmentContinuation:
         '`subagent_reply` for an injected `subagent-question`, or `subagent_send_message`/`subagent_continue` when exposed,',
       independentContext:
-        'a new objective, phase, mutable surface or independent judgment uses a fresh `subagent_run`',
+        'each `subagent_run` starts an isolated child session',
       statusAction:
         '`subagent_status`, `subagent_result`, or `subagent_cancel` by `task_id`',
       terminalState:

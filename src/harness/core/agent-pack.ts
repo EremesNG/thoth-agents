@@ -278,36 +278,26 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
     'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
   ],
   discovery: [
-    'Unlocated local source, flow, or responsibility goes to Explorer before any root code search, file read, shell/git inspection, or CodeGraph query; no preliminary discovery is needed to prepare that assignment.',
-    'A bounded discovery assignment may state an unknown location; root must not perform exploratory pre-reading to prepare it.',
-    'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
-    'Before the first read/search/shell call of a turn, root checks whether this is a known bounded source within a direct-work exception; if not, dispatch the appropriate specialist. This self-check is guidance, not runtime enforcement.',
-    'The assigned investigator owns applicable discovery-tool fallback.',
+    'Unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell/git or CodeGraph call; name the unknown location in the assignment instead of pre-reading. Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
+    'Before the first read/search/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch.',
   ],
   directConsultation: [
-    'One known source, one bounded question. On a new path or unlocated dependency, stop and delegate; do not continue discovery from acquired context.',
-    'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
-    'Required operating instructions and pertinent coordination artifacts are excluded; this never permits source or log dumps.',
-    'At exhaustion, delegate missing evidence. Prompt guidance, not runtime enforcement; it never waives independent verification.',
+    'Direct consultation: one known source and bounded question; at most two source fragments, about 200 code lines per user request across tools, files and subtasks (required instructions and coordination artifacts excluded; never source or log dumps). On a new path, unlocated dependency or exhausted allowance, delegate the missing evidence.',
   ],
   directException: [
-    'Bounded direct-work exception: Root retains known low-risk mechanical work, including reviewed commits. Do not reopen completed discovery for mechanical operations.',
-    'Root may make a minimal authorized low-risk edit only when scope and verification are known and no discovery or independent judgment is needed.',
+    'Direct-work exceptions: known low-risk mechanical work, including reviewed commits, without reopening completed discovery; and a minimal authorized low-risk edit when scope and verification are known and no discovery or independent judgment is needed.',
   ],
   writerRouting: [
-    'Known sufficiently bounded implementation goes directly to designer or worker by task shape without a mandatory Explorer stage.',
-    'Use librarian for needed external evidence and Oracle for independent judgment; never impose a mechanical all-role pipeline.',
+    'Known bounded implementation goes directly to designer or worker without a mandatory Explorer stage; use librarian for external evidence and Oracle for independent judgment, never a fixed all-role pipeline.',
   ],
   evidenceHandling: [
-    'Request conclusions, localized evidence, and uncertainty instead of full files, source dumps, or logs. Request next action only from Oracle, Worker and Designer.',
-    'Root must not repeat delegated discovery before, during, or after the assignment.',
-    'Missing support triggers a targeted evidence request or bounded inspection of identified evidence, while mandatory independent verification remains intact.',
+    'Request conclusions, localized evidence and uncertainty, not full files, source dumps or logs; request next action only from Oracle, Worker and Designer. Never repeat delegated discovery; fill gaps with a targeted request or bounded inspection of identified evidence. Independent verification stays mandatory.',
   ],
   delegationFailure: [
-    'Report delegation failure truthfully; it does not authorize unrestricted root execution.',
+    'Report delegation failure truthfully; it does not authorize unrestricted root execution. This ownership policy is prompt guidance, not runtime enforcement.',
   ],
   userDirection:
-    'Explicit user direct-work or no-delegation instruction wins; preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed. Disclose unavailable independent review; never self-approve.',
+    'Explicit user direct-work or no-delegation instruction wins. Preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed. Disclose unavailable independent review; never self-approve.',
   insufficientSignals: [
     'workflow persistence choice',
     'file count or an additional targeted search alone',
@@ -319,7 +309,6 @@ export function getImplementationOwnershipInstructions(
   policy: ImplementationOwnershipPolicy,
 ): string[] {
   return [
-    policy.defaultRule,
     ...policy.discovery,
     ...policy.directException,
     ...policy.directConsultation,
@@ -350,23 +339,23 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     boundedWidth: true,
     decisions: {
       unitOutcome:
-        'For exploration, research, planning, implementation, and verification, each unit has one independently acceptable outcome',
+        'Each exploration, research, planning, implementation or verification unit has one independently acceptable outcome',
       unitEnvelope:
-        'Name accepted upstream inputs and result produced; bound owned writes and require compatible reads, interfaces, and shared resources; include focused checks with pass evidence, a native return milestone, and stop condition',
+        'Each assignment names its phase, the change record when one exists, applicable requirements, accepted upstream inputs and result produced; bounds owned writes and requires compatible reads, interfaces and shared resources; includes focused checks with pass evidence, a native return milestone, a stop condition and scoped MEMORY authorization (`none`, `recall` or `observe`)',
       phaseSplitting:
         'Split phases with separately acceptable outcomes before dispatch; keep cohesive tiny edits together',
       independentDiscovery:
-        'Run precise independent Explorer questions in parallel within proven native capacity; avoid duplicate reads; dependent questions wait for root-accepted fresh outputs',
+        'Run precise independent Explorer questions in parallel within proven native capacity, without duplicate reads; dependent questions wait for root-accepted fresh outputs',
       scopeGrowth:
-        'Missing context, interfaces, ownership conflicts, or material scope growth returns bounded progress for root reassessment before expansion',
+        'Missing context, interfaces, ownership conflicts or material scope growth return bounded progress for root reassessment before expansion',
       dependency:
-        'block a unit until every concrete upstream output is terminal, root-accepted, and fresh',
+        'Block a unit until every concrete upstream output is terminal, root-accepted, and fresh',
       ownershipConflict:
         'serialize overlapping mutable surfaces or assign one writer',
       readyDispatch:
-        'dispatch every admitted conflict-free ready unit before waiting within proven native capacity',
+        'Dispatch every admitted conflict-free ready unit before waiting within proven native capacity',
       refill:
-        'refill freed capacity with newly ready consumers before another wait',
+        'Refill freed capacity with newly ready consumers before another wait',
       terminalEvidence:
         'silence, timeout, and malformed status remain nonterminal',
       degradation:

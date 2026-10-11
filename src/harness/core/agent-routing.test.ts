@@ -218,7 +218,9 @@ describe('canonical agent routing', () => {
       expect(
         surface.root,
         `${routingCase.id}:${surface.harness}:workflow-owner`,
-      ).toMatch(/specialists execute by default.*root retains/is);
+      ).toMatch(
+        /by default, specialists perform.*you direct, decide, accept/is,
+      );
       expect(surface.root).not.toMatch(/Direct micro-action/i);
       expect(surface.root).not.toMatch(/Artifact-backed implement follows/i);
       if (routingCase.expectedOwner === 'oracle') {
@@ -232,8 +234,10 @@ describe('canonical agent routing', () => {
         ).toMatch(/no implementation writer may approve its own work/i);
       }
 
-      expect(surface.root).toContain('select-specialists');
-      expect(surface.root).toContain('admit-ready-units');
+      expect(surface.root).toContain('Block a unit until every concrete');
+      expect(surface.root).toContain(
+        'Dispatch every admitted conflict-free ready unit',
+      );
     }
   });
 

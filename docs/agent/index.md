@@ -32,6 +32,7 @@ linked document.
 | --- | --- | --- |
 | Architecture | A change crosses two routes or plugin composition | [`architecture.md`](architecture.md) |
 | Verification | Selecting proportional local-closeout checks, release-tooling triggers, or CI/build/test scope | [`testing.md`](testing.md) |
+| Project QA evaluations | Contract cases, offline Pi harness/grader tests, or opt-in live `eval:pi` configuration/results | [`testing.md#project-qa-evaluation-suite`](testing.md#project-qa-evaluation-suite) (`evals/`, `vitest.evals.live.config.ts`) |
 | Public compatibility | CLI, schema, generated package, or published docs change | README, public docs, schema, writer tests |
 | Zod | A schema under `.agents/skills/zod/` changes | Its local `AGENTS.md` only |
 

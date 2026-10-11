@@ -205,13 +205,19 @@ describe('prompt dialects', () => {
     expect(PI_PROMPT_DIALECT.tools.userQuestionTool).toBe('ask_user_question');
     expect(PI_PROMPT_DIALECT.tools.progressTool).toBeUndefined();
     expect(PI_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
-      'subagent_run({ agent: "thoth-worker", task: "…", mode: "task" })',
+      'subagent_run({ agent: "thoth-worker", task: "…" })',
     );
     expect(PI_PROMPT_DIALECT.tools.roleReference('librarian')).toBe(
-      'subagent_run({ agent: "thoth-librarian", task: "…", mode: "background" })',
+      'subagent_run({ agent: "thoth-librarian", task: "…" })',
     );
     expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).toContain(
-      'one canonical `agent`, a fresh bounded `task`',
+      'one canonical `agent` and a fresh bounded `task`',
+    );
+    expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).not.toContain(
+      'mode',
+    );
+    expect(PI_PROMPT_DIALECT.tools.backgroundDelegationTool).not.toContain(
+      'mode',
     );
     expect(
       PI_PROMPT_DIALECT.tools.lifecycle.sameAssignmentContinuation,
@@ -224,40 +230,19 @@ describe('prompt dialects', () => {
   test('keeps Pi question replies in the live assignment without treating waiting as completion', () => {
     const { lifecycle, backgroundWaitInstruction } = PI_PROMPT_DIALECT.tools;
     expect(lifecycle.sameAssignmentContinuation).toContain(
-      'subagent_reply({ task_id, request_id?, message })',
-    );
-    expect(lifecycle.sameAssignmentContinuation).toContain(
-      'injected `subagent-question`',
+      '`subagent_reply` for an injected `subagent-question`',
     );
     expect(lifecycle.nonterminalState).toContain(
-      'waiting for an orchestrator reply',
-    );
-    expect(lifecycle.nonterminalState).toContain(
-      'injected `subagent-question`',
+      'A pending `subagent-question` or orchestrator reply',
     );
     expect(backgroundWaitInstruction).toContain(
-      'regardless of `tools` selection',
-    );
-    expect(backgroundWaitInstruction).toContain('`disallowed_tools`');
-    expect(backgroundWaitInstruction).toContain(
-      'Oracle denies `ask_orchestrator`',
+      'native terminal notifications wake the parent',
     );
     expect(backgroundWaitInstruction).toContain(
-      'Explicit exact-name `tools` lists are the default',
+      'Do not poll status or sleep merely to wait',
     );
-    expect(backgroundWaitInstruction).toContain(
-      'all registered root tools (active and inactive)',
-    );
-    expect(backgroundWaitInstruction).toContain('including `*`');
-    expect(backgroundWaitInstruction).toContain(
-      'edit `disallowed_tools` manually',
-    );
-    expect(backgroundWaitInstruction).toContain(
-      'A task-mode child that asks a question is moved to background',
-    );
-    expect(backgroundWaitInstruction).toContain(
-      'collect its result later through terminal completion',
-    );
+    // Child tool configuration belongs to the subagents-configuration skill.
+    expect(backgroundWaitInstruction).not.toContain('disallowed_tools');
   });
 
   test('supports OpenCode, Codex, Claude Code, and Pi prompt dialect ids', () => {

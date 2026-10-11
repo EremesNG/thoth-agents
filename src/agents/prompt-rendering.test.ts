@@ -620,14 +620,10 @@ describe('AI-first prompt rendering', () => {
       createOrchestratorPromptSections(),
       PI_PROMPT_DIALECT,
     );
-    expect(prompt).toContain(
-      'subagent_run({ agent, task, mode: "background" })',
-    );
+    expect(prompt).toContain('subagent_run({ agent, task })');
     expect(prompt.toLowerCase()).toContain('launch separate background runs');
     expect(prompt).toContain('before collecting results');
-    expect(prompt.toLowerCase()).toContain(
-      'native terminal notifications (`triggerturn`/`followup`) wake the parent',
-    );
+    expect(prompt).toContain('native terminal notifications wake the parent');
     expect(prompt).toContain('Do not poll status or sleep merely to wait');
     expect(prompt).toContain('cancellation-acknowledged state');
   });
@@ -838,6 +834,8 @@ describe('AI-first prompt rendering', () => {
       [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_500],
       [renderCodexRootInstructions(), 15_000],
       [renderClaudeCodeRootInstructions(), 15_000],
+      // Pi tool schemas and the subagents-configuration skill own operator details.
+      [renderPiRootInstructions(), 17_000],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);

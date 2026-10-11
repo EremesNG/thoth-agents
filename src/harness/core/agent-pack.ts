@@ -1,3 +1,21 @@
+import {
+  getSpecialistResultFields,
+  SPECIALIST_RESULT_CONTRACT,
+  type SpecialistRole,
+} from './result-contract';
+
+export type {
+  OracleReview,
+  OracleReviewKind,
+  ResultCommon,
+  SpecialistResult,
+  SpecialistRole,
+} from './result-contract';
+export {
+  getSpecialistResultFields,
+  SPECIALIST_RESULT_CONTRACT,
+} from './result-contract';
+
 export type AgentRoleName =
   | 'orchestrator'
   | 'explorer'
@@ -401,11 +419,11 @@ const HANDOFF_RETURN_FIELDS = [
 
 export const AGENT_RETURN_CONTRACT = {
   orchestrator: HANDOFF_RETURN_FIELDS,
-  explorer: EVIDENCE_RETURN_FIELDS,
-  librarian: EVIDENCE_RETURN_FIELDS,
-  oracle: HANDOFF_RETURN_FIELDS,
-  designer: HANDOFF_RETURN_FIELDS,
-  worker: HANDOFF_RETURN_FIELDS,
+  explorer: getSpecialistResultFields('explorer'),
+  librarian: getSpecialistResultFields('librarian'),
+  oracle: getSpecialistResultFields('oracle'),
+  designer: getSpecialistResultFields('designer'),
+  worker: getSpecialistResultFields('worker'),
 } as const satisfies Record<AgentRoleName, readonly string[]>;
 
 function cloneReturnContract(
@@ -442,6 +460,70 @@ export function getAgentRole(name: AgentRoleName): AgentRoleContract {
   return role;
 }
 
+interface ResultFieldSchema {
+  type: string | readonly string[];
+  const?: unknown;
+  enum?: readonly unknown[];
+  properties?: Record<string, ResultFieldSchema>;
+  required?: readonly string[];
+  items?: ResultFieldSchema;
+  minLength?: number;
+  pattern?: string;
+  requiredIff?: {
+    field: string;
+    discriminator: string;
+    value: string;
+    issueCode: string;
+  };
+}
+
+function renderResultType(schema: ResultFieldSchema): string {
+  if ('const' in schema) return JSON.stringify(schema.const);
+  if (schema.enum) return schema.enum.map(String).join('|');
+  if (schema.type === 'object') {
+    const condition = schema.requiredIff;
+    const constraint = condition
+      ? ` (${condition.field} required iff ${condition.discriminator}=${condition.value}; forbidden otherwise)`
+      : '';
+    return `{${Object.entries(schema.properties ?? {})
+      .map(
+        ([name, field]) =>
+          `${name}${schema.required?.includes(name) ? '' : '?'}: ${renderResultType(field)}`,
+      )
+      .join(', ')}}${constraint}`;
+  }
+  if (schema.items) return `${renderResultType(schema.items)}[]`;
+  if (schema.pattern === '^[a-f0-9]{64}$') return 'hex64';
+  if (schema.minLength) return 's+';
+  const types = typeof schema.type === 'string' ? [schema.type] : schema.type;
+  return types.map((type) => (type === 'string' ? 's' : type)).join('|');
+}
+
+/** Render only this role's fields from the shared validator contract. */
+export function renderSpecialistResultContract(role: SpecialistRole): string {
+  const contract = SPECIALIST_RESULT_CONTRACT;
+  const properties: Record<string, ResultFieldSchema> = {
+    ...contract.common.properties,
+    ...contract.roles[role].properties,
+    role: { type: 'string', const: role },
+  };
+  const fields = getSpecialistResultFields(role)
+    .map((name) => `- ${name}: ${renderResultType(properties[name])}`)
+    .join('\n');
+  const reviewRules =
+    role === 'oracle'
+      ? `
+${Object.entries(contract.reviewKinds)
+  .filter(([kind]) => kind !== 'diagnosis' && kind !== 'advice')
+  .map(([kind, rule]) => `${kind}: ${rule.verdicts.join('|')}`)
+  .join(
+    '; ',
+  )}; diagnosis/advice: null. ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Expected record digest in final-verification: require reviewedRecord and reviewedRecordSha256.`
+      : '';
+  return `Return exactly one fenced \`\`\`${contract.fence} JSON block and nothing else. Use valid JSON; escape quotes and backslashes. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. Required except ?; no extra keys. Unique evidence IDs; evidenceIds reference them.
+${fields}${reviewRules}`;
+}
+
 export function renderAgentRoutingDescription(role: AgentRoleContract): string {
   return [
     role.responsibility,
@@ -450,7 +532,9 @@ export function renderAgentRoutingDescription(role: AgentRoleContract): string {
     `Escalate when: ${role.escalateWhen.join(' ')}`,
     `Mutation: ${role.canMutateWorkspace ? `only the assigned ${role.scope} surface` : 'read-only; never mutate the workspace'}.`,
     `Verification: ${role.verification.join(' ')}`,
-    `Return: ${AGENT_RETURN_CONTRACT[role.name].join(', ')}.`,
+    role.name === 'orchestrator'
+      ? 'Present results to the user as readable prose.'
+      : 'Return: one thoth-result envelope; root validates before acceptance.',
   ].join(' ');
 }
 

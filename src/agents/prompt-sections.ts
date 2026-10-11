@@ -1,10 +1,10 @@
 import {
-  AGENT_RETURN_CONTRACT,
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
   getImplementationOwnershipInstructions,
   type ImplementationOwnershipPolicy,
+  renderSpecialistResultContract,
   type SpecialistDecision,
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
@@ -196,12 +196,6 @@ Bounded assignments specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS, REQUIREM
 export function createOrchestratorPromptSections(): RolePromptSection[] {
   const workflow = getSddWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
-  const childReturnFields = policy.specialistDirectory
-    .map(
-      ({ role }) =>
-        `- ${roleTemplate(role)} return fields: ${AGENT_RETURN_CONTRACT[role].join(', ')}.`,
-    )
-    .join('\n');
 
   return [
     roleText(`<role>
@@ -268,8 +262,9 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 </artifacts>
 
 <delegation>
-- Use this envelope for all \`{{delegationTool}}\` delegation.
-${childReturnFields}
+- Specialist finals: thoth-result envelopes. Validate every full unchanged native terminal result before acceptance per thoth-sdd: \`node "<skill-dir>/scripts/validate-result.mjs" --role <role>\` (stdin); <skill-dir>: installed skill path.
+- Invalid: not accepted; at most one format-only repair/assignment; preserve findings/verdict. No skill/validator: report installation drift; accept nothing (fail-closed).
+- Structural validity never implies acceptance; judge scope, evidence, checks, freshness/provenance. Use readable prose.
 
 ${renderSddPhaseDispatchTemplate()}
 </delegation>`),
@@ -290,10 +285,9 @@ const ROLE_SPECIFIC_RULES: Record<
     'Cite every substantive external claim and label inference explicitly.',
   ],
   oracle: [
-    'Separate observations, risks, and recommendations.',
-    'Review against stated requirements and contracts; do not invent implementation scope.',
-    'For selected focused plan review or final verify, load the matching bundled thoth-sdd guidance and remain read-only.',
-    'Reject self-review: the implementing root or writer cannot substitute for independent oracle judgment.',
+    'Separate observations, risks and recommendations; review stated requirements/contracts, not invented scope.',
+    'For plan review or final verify, load matching bundled thoth-sdd guidance; remain read-only.',
+    'Reject self-review: implementing root/writer cannot substitute for independent oracle judgment.',
   ],
   designer: [
     'Own user-facing choices, implementation, and visual verification.',
@@ -373,8 +367,7 @@ ${role.responsibility}
     createSubagentRulesSection(),
     createQuestionProtocolSection('child', roleName),
     roleText(`<return-contract>
-Return a compact result with these fields:
-${AGENT_RETURN_CONTRACT[roleName].map((field) => `- ${field}`).join('\n')}
+${renderSpecialistResultContract(roleName)}
 </return-contract>`),
     createResponseBudgetSection(),
   ];
@@ -448,7 +441,7 @@ function renderSubagentRules(
       ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
       : '- Do not delegate further; root owns progress.',
     '- Use terminating checks; avoid watch processes and indefinite waits.',
-    '- Preserve operator-selected model and effort. Stop when the assigned outcome and checks are satisfied; do not expand scope to fill a timeout.',
+    '- Preserve operator-selected model/effort. Stop after the assigned outcome and checks; never expand scope to fill a timeout.',
     '- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.',
     dialect.harness === 'pi'
       ? '- Use the native skill catalog or exact supplied skill paths. If a skill named by the assignment or required by the current phase contract cannot be loaded, return a blocker instead of improvising; do not search the user home or install replacements.'
@@ -461,11 +454,11 @@ function renderSubagentRules(
 
   if (section.memoryAccess === 'dispatch-scoped') {
     rules.push(
-      '- Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.',
-      '- For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
-      '- MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.',
-      '- `.thoth/` holds active project work, durable specs, and constitution; historical material is preserved. It is not provider memory; do not mirror work artifacts.',
-      '- Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.',
+      '- Dispatch MEMORY: `none` forbids provider work; `recall` allows bounded reads; `observe` also allows a bounded durable observation within scope.',
+      '- `recall`/`observe`: follow installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
+      '- MEMORY never authorizes workspace mutation or transfers root lifecycle/real-user-intent ownership.',
+      '- `.thoth/`: active work, durable specs/constitution, preserved history—not provider memory. Never mirror work artifacts.',
+      '- Report unavailable/degraded/stale/contradictory/insufficient memory evidence; continue unrelated safe work.',
     );
   }
 

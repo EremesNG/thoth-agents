@@ -74,7 +74,7 @@ At substantial `ready`, first show the user a concise plan summary (goal,
 acceptance, key decisions, units, risks, record path), then always offer
 `Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation was already authorized.
 Silence is never an explicit review skip; run a fresh read-only review only when
-selected. After a selected `[OKAY]`, separately offer `Implement (Recommended)` /
+selected. After a validated plan-review `OKAY`, separately offer `Implement (Recommended)` /
 `Stop`; prior explicit authorization remains valid, while an explicit later
 `Stop` supersedes it. Record the plan-review selection as
 `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`; `SKIPPED`
@@ -142,6 +142,38 @@ parent. Read only the current phase under
 `<skill-dir>/references/phases/{explore,specify,clarify,plan,checklist,tasks,implement,verify,converge}.md`;
 plan review and archive are sibling skill contracts. Use installed local assets
 only; do not provision skills or run a network installer mid-workflow.
+
+## Specialist result validation
+
+Before accepting any specialist result, resolve `<skill-dir>` from the installed
+thoth-sdd SKILL.md directory, exactly as for `scripts/validate.mjs`, and run:
+
+```text
+node "<skill-dir>/scripts/validate-result.mjs" --role <role> [--review-kind <kind>] [--record-sha256 <hex>] [--input <path>]
+```
+
+Pass the unchanged native terminal result via stdin, or `--input <path>` when
+piping is impractical; do not extract, rewrite, or wrap the envelope, or create
+persisted evidence files. Set `--role` from the assignment (explorer, librarian,
+oracle, designer, worker). For Oracle, also set `--review-kind` from the assignment:
+plan-review, final-verification, diagnosis, or advice. For final verification of a
+substantial record, set `--record-sha256` to the expected SHA-256 of exact UTF-8
+bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
+
+- Exit **0** means structurally valid only. Root still judges scope, evidence,
+  checks, freshness, provenance, and content before acceptance, and presents
+  accepted results to the user in readable prose.
+- Exit **1** means not accepted. Allow at most one format-only repair request per assignment,
+  shared with any runtime enforcement; it must not change findings or verdict.
+  Exhaustion is a contract failure reported truthfully, never converted into an Oracle `BLOCKED` judgment.
+- Exit **2** or an unavailable skill/validator means validation cannot be completed:
+  report the error (missing assets are installation drift) and accept no specialist result
+  of any role until validation is available and passes (fail-closed). Do not
+  provision replacements mid-workflow.
+
+Oracle `diagnosis` and `advice` never authorize implementation or closeout;
+these review kinds carry `verdict: null`. Approval comes only from the validated
+review field, never free text; validation itself is not user authorization.
 
 ## Gates and CLI
 

@@ -540,4 +540,14 @@ Lean Pi children MUST keep the specialist prompt and lean isolation while receiv
 
 - **GIVEN** a trusted project with a designer skill and a lean designer child without a filter
 - **WHEN** the child starts
-- **THEN** its effective prompt lists that skill's name, description and location without context files or root injection 
+- **THEN** its effective prompt lists that skill's name, description and location without context files or root injection
+
+### Requirement: Structured specialist results
+
+Every specialist MUST end with exactly one fenced `thoth-result` JSON envelope that conforms to the role-discriminated contract defined in the agent pack, and root MUST validate it with the bundled validator before accepting it, treat missing or malformed envelopes as not accepted, allow at most one format-only repair, and still judge the content; Oracle verdicts MUST come only from the envelope review field.
+
+#### Scenario: Structured specialist results
+
+- **GIVEN** an Oracle final message without a valid envelope
+- **WHEN** root evaluates the terminal result
+- **THEN** the result is not accepted, at most one format-only repair is requested, and no approval is recorded 

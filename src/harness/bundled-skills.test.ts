@@ -274,6 +274,43 @@ describe('canonical workflow bundle contracts', () => {
     }
   });
 
+  test('requires validated Oracle envelopes before recording approvals', () => {
+    const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8');
+    const plan = readFileSync('skills/plan-reviewer/SKILL.md', 'utf8');
+    const verify = readFileSync(
+      'skills/thoth-sdd/references/phases/verify.md',
+      'utf8',
+    );
+
+    expect(sdd).toContain('## Specialist result validation');
+    expect(sdd).toContain('node "<skill-dir>/scripts/validate-result.mjs"');
+    expect(sdd).toContain('--role');
+    expect(sdd).toContain('--review-kind');
+    expect(sdd).toContain('--record-sha256');
+    expect(sdd).toContain('--input');
+    expect(sdd).toContain('unchanged native terminal result');
+    expect(sdd).toContain('one format-only repair request per assignment');
+    expect(sdd).toContain('must not change findings or verdict');
+    expect(sdd).toContain('never converted into an Oracle `BLOCKED` judgment');
+    expect(sdd).toContain('installation drift');
+    expect(sdd).toContain('accept no specialist result');
+    expect(sdd).toContain('diagnosis` and `advice` never authorize');
+
+    expect(plan).toContain('`thoth-result`');
+    expect(plan).toContain('`review.kind: "plan-review"`');
+    expect(plan).toContain('`review.verdict: "OKAY" | "REJECT"`');
+    expect(plan).toContain('at most three blocking risks');
+    expect(plan).toContain('only from a validated envelope');
+    expect(plan).not.toContain('Return `[OKAY]`');
+
+    expect(verify).toContain('`review.kind: "final-verification"`');
+    expect(verify).toContain('`review.verdict: "PASS" | "FAIL" | "BLOCKED"`');
+    expect(verify).toContain('`reviewedRecord`');
+    expect(verify).toContain('`reviewedRecordSha256`');
+    expect(verify).toContain('only from a validated PASS envelope');
+    expect(verify).toContain('whose digest matches');
+  });
+
   test('keeps generated assets byte-identical and relative references resolvable', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-contracts-'));
 

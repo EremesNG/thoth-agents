@@ -51,7 +51,8 @@
     ]
   },
   "scripts": {
-    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema && pnpm run build:pi-extensions",
+    "build": "pnpm run generate:result-contract && pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema && pnpm run build:pi-extensions",
+    "generate:result-contract": "tsx scripts/generate-result-contract.ts",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",

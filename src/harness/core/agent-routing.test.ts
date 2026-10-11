@@ -354,13 +354,13 @@ describe('canonical agent routing', () => {
     for (const role of ['explorer', 'librarian'] as const) {
       const description = renderAgentRoutingDescription(getAgentRole(role));
       expect(description).toContain(
-        'Return: conclusion, evidence, verification, risks, openQuestions.',
+        'Return: one thoth-result envelope; root validates before acceptance.',
       );
       expect(description).not.toContain('nextAction');
     }
     for (const role of ['oracle', 'worker', 'designer'] as const) {
       expect(renderAgentRoutingDescription(getAgentRole(role))).toContain(
-        'Return: conclusion, evidence, verification, risks, openQuestions, nextAction.',
+        'Return: one thoth-result envelope; root validates before acceptance.',
       );
     }
   });

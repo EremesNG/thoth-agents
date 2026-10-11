@@ -632,6 +632,74 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toContain('cancellation-acknowledged state');
   });
 
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('renders typed specialist envelopes in $harness', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const output = renderRolePrompt(sectionsFor(role), dialect);
+      const contract =
+        output.match(/<return-contract>([\s\S]*?)<\/return-contract>/)?.[1] ??
+        '';
+      expect(contract).toContain(
+        'exactly one fenced ```thoth-result JSON block and nothing else',
+      );
+      expect(contract).toContain(`role: "${role}"`);
+      expect(contract).toContain('status: complete|partial|blocked|failed');
+      expect(contract).toContain('basis: observed|inferred');
+      expect(contract).toContain('outcome: pass|fail|not-run');
+      expect(contract).toContain('valid JSON');
+      expect(contract).toContain(
+        'Types: s=string, s+=nonempty string, hex64=64 lowercase hex',
+      );
+      expect(contract).toContain('escape quotes and backslashes');
+      for (const field of [
+        'schemaVersion',
+        'conclusion',
+        'evidence',
+        'verification',
+        'risks',
+        'openQuestions',
+      ])
+        expect(contract).toContain(`${field}:`);
+      expect(contract.includes('changedFiles:')).toBe(
+        role === 'worker' || role === 'designer',
+      );
+      if (role === 'worker' || role === 'designer') {
+        expect(contract).toContain(
+          'changedFiles: {path: s+, change: added|modified|deleted|renamed, previousPath?: s',
+        );
+        expect(contract).toContain(
+          'previousPath required iff change=renamed; forbidden otherwise',
+        );
+        expect(contract).not.toContain('changedFiles: string[]');
+      }
+      expect(contract.includes('nextAction:')).toBe(
+        role !== 'explorer' && role !== 'librarian',
+      );
+      expect(contract.includes('review:')).toBe(role === 'oracle');
+      if (role === 'oracle') {
+        expect(contract).toContain('plan-review: OKAY|REJECT');
+        expect(contract).toContain('final-verification: PASS|FAIL|BLOCKED');
+        expect(contract).toContain('diagnosis/advice: null');
+        expect(contract).toContain('reviewedRecord and reviewedRecordSha256');
+        expect(contract).toContain('complete status and no blocking risks');
+      }
+    }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('keeps shared specialist prompts under 5000 characters in $harness', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      expect(
+        renderRolePrompt(sectionsFor(role), dialect).length,
+        role,
+      ).toBeLessThan(5_000);
+    }
+  });
+
   test('keeps child memory authorization and compact return fields', () => {
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       const prompt = renderRolePrompt(
@@ -661,19 +729,27 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
-  ])('renders truthful per-role child return fields in the $harness root', (dialect) => {
+  ])('requires validation before acceptance in $harness', (dialect) => {
     const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
-    for (const role of ['explorer', 'librarian'] as const) {
-      expect(root).toContain(
-        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions.`,
-      );
-    }
-    for (const role of ['oracle', 'worker', 'designer'] as const) {
-      expect(root).toContain(
-        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.`,
-      );
-    }
-    expect(root).not.toContain('Child return fields:');
+    expect(root).toContain('Specialist finals: thoth-result envelopes');
+    expect(root).toContain(
+      'every full unchanged native terminal result before acceptance',
+    );
+    expect(root).toContain(
+      'node "<skill-dir>/scripts/validate-result.mjs" --role <role>',
+    );
+    expect(root).toContain('<skill-dir>: installed skill path');
+    expect(root).toContain('Invalid: not accepted');
+    expect(root).toContain(
+      'at most one format-only repair/assignment; preserve findings/verdict',
+    );
+    expect(root).toContain(
+      'report installation drift; accept nothing (fail-closed)',
+    );
+    expect(root).toContain('Structural validity never implies acceptance');
+    expect(root).toContain('scope, evidence, checks, freshness/provenance');
+    expect(root).toContain('readable prose');
+    expect(root).not.toContain('return fields:');
   });
 
   describe.each(HARNESS_RENDERERS)('$harness specialist outputs', ({
@@ -689,21 +765,14 @@ describe('AI-first prompt rendering', () => {
       const returnContract = output.match(
         /<return-contract>([\s\S]*?)<\/return-contract>/,
       )?.[1];
-      const fields = returnContract
-        ?.split('\n')
-        .filter((line) => line.startsWith('- '));
       const questions = output.match(/<questions>([\s\S]*?)<\/questions>/)?.[1];
 
       if (role === 'explorer' || role === 'librarian') {
-        expect(fields).toEqual([
-          '- conclusion',
-          '- evidence',
-          '- verification',
-          '- risks',
-          '- openQuestions',
-        ]);
+        expect(returnContract).not.toContain('nextAction:');
+        expect(returnContract).not.toContain('changedFiles:');
+        expect(returnContract).not.toContain('review:');
         expect(output).toContain(
-          'Return: conclusion, evidence, verification, risks, openQuestions.',
+          'Return: one thoth-result envelope; root validates before acceptance.',
         );
         expect(
           output.match(/<evidence-only>[\s\S]*?<\/evidence-only>/)?.[0],
@@ -725,16 +794,9 @@ describe('AI-first prompt rendering', () => {
           );
         }
       } else {
-        expect(fields).toEqual([
-          '- conclusion',
-          '- evidence',
-          '- verification',
-          '- risks',
-          '- openQuestions',
-          '- nextAction',
-        ]);
+        expect(returnContract).toContain('nextAction: s|null');
         expect(output).toContain(
-          'Return: conclusion, evidence, verification, risks, openQuestions, nextAction.',
+          'Return: one thoth-result envelope; root validates before acceptance.',
         );
         expect(output).not.toContain('<evidence-only>');
         if (harness === 'Pi') {
@@ -797,8 +859,8 @@ describe('AI-first prompt rendering', () => {
   });
 });
 
-// Baseline captured before the Pi-only catalog guidance change.
-test('keeps non-Pi root and specialist prompts byte-identical', () => {
+// Intentional structured-specialist-results baseline across non-Pi harnesses.
+test('pins non-Pi structured result prompt snapshots', () => {
   const hashes = DIALECTS.map((dialect) => [
     dialect.harness,
     getAgentPackContract().roles.map(({ name }) =>
@@ -812,34 +874,34 @@ test('keeps non-Pi root and specialist prompts byte-identical', () => {
       [
         "opencode",
         [
-          "88d7ff5c46cc2496c60271c93469b2f64f4b76806b690bace5b5139a1e3d8633",
-          "48a9141dbbe8a69b50056715e3df6317953495c409da8d9aeca4e759af9ef087",
-          "58dbda570d9adb2adb4400756180b63aeecd63c74a5a5227c708183ebc6b91f3",
-          "e8bd03467e223c2dc74efbec4c44818b57e4b32caebd39bd5effce98f692a900",
-          "9281f106023d0724a076b8db55ba628f38c5e9c75229f5e63528f37f169077e1",
-          "b2eb4a94adb98de5c8cfbfa53a0ccb4235b7d4be60f3068bdd7a922ef69004d8",
+          "60b0beeb14b7575637cdab74cbc6310581f1cb34f369beae100dceac0459f30b",
+          "82d38d78c922900a10ce4d91d16b20c1f362ef7c418d34df2c33054b89947187",
+          "0fffda8580d654b0f4b8fb9a1100ca08aba27e4873a4ca5291398e23cab71ba6",
+          "0fd32c2c12d23490c903e7b5a694f01af56ad65bccc9ce58652c1ec29732f861",
+          "c8479d2f1d85f5b1f6576b4fb9d4fa4149a8e33249bf6394ee77d09193bb5829",
+          "a223064d304b944dcb8f3391145b8ad879fd042490d2c5543ccb6afded3c40de",
         ],
       ],
       [
         "codex",
         [
-          "849c95e364263c807abc14700f53af3adaed66d0ef986d96dc2fad2b1b1aa531",
-          "04e596cdc5558812c47caa73b75d7c7c3109de1752fb7b484494de6ef7330cf9",
-          "68eb6f5cfbe4c953d364e79ca9d3bcb95088489a492db1a68a74d23c9d15eb27",
-          "6eafcd85a76f79d0c7719daae74cdfb085b2ccec0cef3a0c09da6692e8c146c0",
-          "39bbbf6d77addebf07b80cf170402714bfe643d0baeeecd5685e244fc13e9cba",
-          "6e918e90721a26d61e99b1bae0aadc6c76bc81d7625a36b2275dfc77ded4604d",
+          "dc719e547b7591781f6e126c37780f7f495574d1a38edcbe360a19903779970b",
+          "5163d6e27c209d3775938a9f0dbacb738e405900574491e4e67eb90f891c2f0d",
+          "fba2709bdddd3a18ffd49b1e59e85f773b94b381f78d7857b4efbbd1101241fe",
+          "983afe718cc5cab4a0ed849508b819d755cbc23b24303f93d4820b323e97bbc7",
+          "2a986ebf496f468b8b4a25f2f3c0467626ae6b99f9718c5c7c36c5e0c3f35d66",
+          "246b03dd3acea5d12122bb990fd3082fdd4a2d5995c92b8d958beb09da94ebc0",
         ],
       ],
       [
         "claude",
         [
-          "2b84b778e995df134314e914f56641b83ac622ae6175a39ff4e0c852ff34bfb1",
-          "432303ca87d480c468b686f3e24eda654fd7b4be896994591817dbb51dcb6a0c",
-          "6896e4871305b5e3b7e92578610dfcdfc21841c40e0e21bf69a8bc5acda23083",
-          "4fe0e893d49824afc5dd9816612227ba3e4264e0fc52c71084ab454d0ead4595",
-          "18f20610560a0d311758b95d8947403ff76ff09fbce9a293d4ce5bef25ea3927",
-          "4faa80b929fb902cb11dc114b37578486023318b161d47dd8905d17ca2774819",
+          "3c1e01316677c86c76ddad6ac9b1fffb6d9f52040dfbb8e8072f71bbec6d232c",
+          "d1cb1a3e4861478b9b58454dec8a7607618f701299f1dcf118feddfa4cc82eca",
+          "2a7339c7b6f88b0264a9451d0c3b52e6fb8985048726ae436d8d8973948d404b",
+          "fef0326ec6469522e7f1eeb100cc8c67fdf729e7add87458d41a44cc11f89e2c",
+          "7c62856ec3494d8e4bee62656ad50d0ed3a1dd0f74131f940299a91ccc3c3ada",
+          "f0ec27c8bb790bdb052b5c8d705716c32c0235f968c933513e6deedd6ffc04d8",
         ],
       ],
     ]

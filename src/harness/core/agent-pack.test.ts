@@ -224,6 +224,9 @@ describe('agent-pack contract', () => {
     const contract = getAgentPackContract().returnContract;
     for (const role of ['explorer', 'librarian'] as const) {
       expect(contract[role]).toEqual([
+        'schemaVersion',
+        'role',
+        'status',
         'conclusion',
         'evidence',
         'verification',
@@ -231,13 +234,29 @@ describe('agent-pack contract', () => {
         'openQuestions',
       ]);
     }
-    for (const role of ['oracle', 'designer', 'worker'] as const) {
+    expect(contract.oracle).toEqual([
+      'schemaVersion',
+      'role',
+      'status',
+      'conclusion',
+      'evidence',
+      'verification',
+      'risks',
+      'openQuestions',
+      'nextAction',
+      'review',
+    ]);
+    for (const role of ['designer', 'worker'] as const) {
       expect(contract[role]).toEqual([
+        'schemaVersion',
+        'role',
+        'status',
         'conclusion',
         'evidence',
         'verification',
         'risks',
         'openQuestions',
+        'changedFiles',
         'nextAction',
       ]);
     }

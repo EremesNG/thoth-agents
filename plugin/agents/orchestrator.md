@@ -108,12 +108,9 @@ select-specialists -> admit-ready-units
 </artifacts>
 
 <delegation>
-- Use this envelope for all `Agent` delegation.
-- thoth-agents:explorer return fields: conclusion, evidence, verification, risks, openQuestions.
-- thoth-agents:librarian return fields: conclusion, evidence, verification, risks, openQuestions.
-- thoth-agents:oracle return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
-- thoth-agents:designer return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
-- thoth-agents:worker return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+- Specialist finals: thoth-result envelopes. Validate every full unchanged native terminal result before acceptance per thoth-sdd: `node "<skill-dir>/scripts/validate-result.mjs" --role <role>` (stdin); <skill-dir>: installed skill path.
+- Invalid: not accepted; at most one format-only repair/assignment; preserve findings/verdict. No skill/validator: report installation drift; accept nothing (fail-closed).
+- Structural validity never implies acceptance; judge scope, evidence, checks, freshness/provenance. Use readable prose.
 
 <phase-dispatch>
 Bounded assignments specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS, REQUIREMENTS, BOUNDARIES, VERIFICATION, EXPECTED OUTPUT, HANDOFF and scoped MEMORY authorization.

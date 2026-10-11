@@ -3,6 +3,7 @@ import {
   AGENT_ROLE_NAMES,
   getAgentPackContract,
   getAgentRole,
+  renderSpecialistResultContract,
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
@@ -224,9 +225,6 @@ describe('agent-pack contract', () => {
     const contract = getAgentPackContract().returnContract;
     for (const role of ['explorer', 'librarian'] as const) {
       expect(contract[role]).toEqual([
-        'schemaVersion',
-        'role',
-        'status',
         'conclusion',
         'evidence',
         'verification',
@@ -235,34 +233,48 @@ describe('agent-pack contract', () => {
       ]);
     }
     expect(contract.oracle).toEqual([
-      'schemaVersion',
-      'role',
-      'status',
       'conclusion',
       'evidence',
       'verification',
       'risks',
       'openQuestions',
       'nextAction',
-      'review',
     ]);
     for (const role of ['designer', 'worker'] as const) {
       expect(contract[role]).toEqual([
-        'schemaVersion',
-        'role',
-        'status',
         'conclusion',
         'evidence',
         'verification',
         'risks',
         'openQuestions',
-        'changedFiles',
         'nextAction',
+        'changedFiles',
       ]);
     }
     const anotherContract = getAgentPackContract().returnContract;
     for (const role of AGENT_ROLE_NAMES) {
       expect(contract[role]).not.toBe(anotherContract[role]);
     }
+  });
+  test('keeps all role renderers loadable without non-gate envelope schemas', () => {
+    for (const role of [
+      'explorer',
+      'librarian',
+      'designer',
+      'worker',
+    ] as const) {
+      expect(renderSpecialistResultContract(role)).toBe(
+        `Return compact markdown fields (no JSON): ${getAgentPackContract().returnContract[role].join(', ')}.`,
+      );
+    }
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'plan-review: OKAY|REJECT',
+    );
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'final-verification: PASS|FAIL|BLOCKED',
+    );
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'Diagnosis/advice uses markdown fields and cannot approve',
+    );
   });
 });

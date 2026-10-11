@@ -583,7 +583,7 @@
           "timeMs": 1800000,
           "caseUsd": 1
         },
-        "prompt": "Implement a small UI improvement to index.html: make the welcome card readable and accessible. Delegate the visual design to thoth-designer; let the specialist discover any relevant project guidelines itself, without forwarding skill paths. MEMORY: none. Finish the task with the normal structured specialist result.",
+        "prompt": "Implement a small UI improvement to index.html: make the welcome card readable and accessible. Delegate the visual design to thoth-designer; let the specialist discover any relevant project guidelines itself, without forwarding skill paths. MEMORY: none. Finish the task with the normal compact markdown result.",
         "expectations": [
           "positive-progress",
           "delegated-memory-scope",

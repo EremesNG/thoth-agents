@@ -166,20 +166,6 @@ export function validateResult(message, options = {}) {
       });
     }
     if (type === 'object') {
-      if (schema.requiredIff) {
-        const {
-          field,
-          discriminator,
-          value: expected,
-          issueCode,
-        } = schema.requiredIff;
-        if (Object.hasOwn(value, field) !== (value[discriminator] === expected))
-          issue(
-            issueCode,
-            childPath(path, field),
-            `${field} is required iff ${discriminator} is ${expected}; otherwise it is forbidden.`,
-          );
-      }
       for (const key of schema.required)
         if (!Object.hasOwn(value, key))
           issue(
@@ -216,7 +202,7 @@ export function validateResult(message, options = {}) {
   if (issues.length) return invalid();
   if (options.role && envelope.role !== options.role)
     issue('ROLE_MISMATCH', '/role', 'Role does not match assignment.');
-  if (options.reviewKind && envelope.review?.kind !== options.reviewKind)
+  if (options.reviewKind && envelope.review.kind !== options.reviewKind)
     issue(
       'REVIEW_KIND_MISMATCH',
       '/review/kind',
@@ -244,48 +230,48 @@ export function validateResult(message, options = {}) {
       });
     });
   }
-  if (envelope.review) {
-    const { kind, verdict } = envelope.review;
-    if (!contract.reviewKinds[kind].verdicts.includes(verdict))
+  const { kind, verdict } = envelope.review;
+  if (!contract.reviewKinds[kind].verdicts.includes(verdict))
+    issue(
+      'VERDICT_MISMATCH',
+      '/review/verdict',
+      'Verdict is not allowed for this review kind.',
+    );
+  if (contract.rules.positiveVerdicts.includes(verdict)) {
+    if (envelope.status !== contract.rules.positiveStatus)
       issue(
-        'VERDICT_MISMATCH',
-        '/review/verdict',
-        'Verdict is not allowed for this review kind.',
+        'VERDICT_STATUS',
+        '/status',
+        'Positive verdict requires complete status.',
       );
-    if (contract.rules.positiveVerdicts.includes(verdict)) {
-      if (envelope.status !== contract.rules.positiveStatus)
+    envelope.risks.forEach((risk, index) => {
+      if (!contract.rules.positiveAllowsBlockingRisks && risk.blocking)
         issue(
-          'VERDICT_STATUS',
-          '/status',
-          'Positive verdict requires complete status.',
+          'BLOCKING_RISK',
+          `/risks/${index}/blocking`,
+          'Positive verdict forbids blocking risks.',
         );
-      envelope.risks.forEach((risk, index) => {
-        if (!contract.rules.positiveAllowsBlockingRisks && risk.blocking)
-          issue(
-            'BLOCKING_RISK',
-            `/risks/${index}/blocking`,
-            'Positive verdict forbids blocking risks.',
-          );
-      });
+    });
+  }
+  if (envelope.review.kind === contract.rules.recordBindingReviewKind) {
+    for (const key of contract.rules.recordBindingRequiredFields) {
+      if (!envelope.review[key])
+        issue(
+          'RECORD_BINDING_REQUIRED',
+          `/review/${key}`,
+          'Final verification requires reviewed record binding.',
+        );
     }
   }
   if (options.recordSha256 !== undefined) {
-    if (envelope.review?.kind !== contract.rules.recordBindingReviewKind)
+    if (envelope.review.kind !== contract.rules.recordBindingReviewKind)
       issue(
         'REVIEW_KIND_MISMATCH',
         '/review/kind',
         'Record binding requires final-verification.',
       );
-    for (const key of contract.rules.recordBindingRequiredWithExpectedDigest) {
-      if (!envelope.review?.[key])
-        issue(
-          'RECORD_BINDING_REQUIRED',
-          `/review/${key}`,
-          'Assignment requires reviewed record binding.',
-        );
-    }
     if (
-      envelope.review?.reviewedRecordSha256 &&
+      envelope.review.reviewedRecordSha256 &&
       envelope.review.reviewedRecordSha256 !== options.recordSha256
     )
       issue(
@@ -298,7 +284,7 @@ export function validateResult(message, options = {}) {
 }
 
 export const RESULT_VALIDATOR_USAGE =
-  'node validate-result.mjs [--role <role>] [--review-kind <kind>] [--record-sha256 <hex>] [--input <path>]';
+  'node validate-result.mjs [--role oracle] [--review-kind plan-review|final-verification] [--record-sha256 <hex>] [--input <path>]';
 function main(args) {
   const options = {};
   let input;

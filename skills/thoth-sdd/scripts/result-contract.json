@@ -10,7 +10,7 @@
       },
       "role": {
         "type": "string",
-        "enum": ["explorer", "librarian", "oracle", "designer", "worker"]
+        "enum": ["oracle"]
       },
       "status": {
         "type": "string",
@@ -153,18 +153,6 @@
     "additionalProperties": false
   },
   "roles": {
-    "explorer": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    },
-    "librarian": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    },
     "oracle": {
       "type": "object",
       "properties": {
@@ -176,15 +164,10 @@
           "properties": {
             "kind": {
               "type": "string",
-              "enum": [
-                "plan-review",
-                "final-verification",
-                "diagnosis",
-                "advice"
-              ]
+              "enum": ["plan-review", "final-verification"]
             },
             "verdict": {
-              "type": ["string", "null"]
+              "type": "string"
             },
             "reviewedRecord": {
               "type": "string",
@@ -201,80 +184,6 @@
       },
       "required": ["nextAction", "review"],
       "additionalProperties": false
-    },
-    "designer": {
-      "type": "object",
-      "properties": {
-        "changedFiles": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "minLength": 1
-              },
-              "change": {
-                "type": "string",
-                "enum": ["added", "modified", "deleted", "renamed"]
-              },
-              "previousPath": {
-                "type": "string"
-              }
-            },
-            "required": ["path", "change"],
-            "additionalProperties": false,
-            "requiredIff": {
-              "field": "previousPath",
-              "discriminator": "change",
-              "value": "renamed",
-              "issueCode": "CHANGED_FILE_RENAME"
-            }
-          }
-        },
-        "nextAction": {
-          "type": ["string", "null"]
-        }
-      },
-      "required": ["changedFiles", "nextAction"],
-      "additionalProperties": false
-    },
-    "worker": {
-      "type": "object",
-      "properties": {
-        "changedFiles": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "minLength": 1
-              },
-              "change": {
-                "type": "string",
-                "enum": ["added", "modified", "deleted", "renamed"]
-              },
-              "previousPath": {
-                "type": "string"
-              }
-            },
-            "required": ["path", "change"],
-            "additionalProperties": false,
-            "requiredIff": {
-              "field": "previousPath",
-              "discriminator": "change",
-              "value": "renamed",
-              "issueCode": "CHANGED_FILE_RENAME"
-            }
-          }
-        },
-        "nextAction": {
-          "type": ["string", "null"]
-        }
-      },
-      "required": ["changedFiles", "nextAction"],
-      "additionalProperties": false
     }
   },
   "reviewKinds": {
@@ -283,12 +192,6 @@
     },
     "final-verification": {
       "verdicts": ["PASS", "FAIL", "BLOCKED"]
-    },
-    "diagnosis": {
-      "verdicts": [null]
-    },
-    "advice": {
-      "verdicts": [null]
     }
   },
   "rules": {
@@ -298,9 +201,6 @@
     "evidenceIdUnique": true,
     "evidenceReferences": ["verification", "risks"],
     "recordBindingReviewKind": "final-verification",
-    "recordBindingRequiredWithExpectedDigest": [
-      "reviewedRecord",
-      "reviewedRecordSha256"
-    ]
+    "recordBindingRequiredFields": ["reviewedRecord", "reviewedRecordSha256"]
   }
 }

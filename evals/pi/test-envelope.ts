@@ -1,5 +1,4 @@
 export function envelope(
-  role = 'oracle',
   kind = 'final-verification',
   verdict = 'PASS',
   digest?: string,
@@ -8,7 +7,7 @@ export function envelope(
     '```thoth-result\n' +
     JSON.stringify({
       schemaVersion: 1,
-      role,
+      role: 'oracle',
       status: 'complete',
       conclusion: 'Checked.',
       evidence: [],
@@ -16,20 +15,16 @@ export function envelope(
       risks: [],
       openQuestions: [],
       nextAction: null,
-      ...(role === 'oracle'
-        ? {
-            review: {
-              kind,
-              verdict,
-              ...(digest
-                ? {
-                    reviewedRecord: '.thoth/changes/greeting/greeting.md',
-                    reviewedRecordSha256: digest,
-                  }
-                : {}),
-            },
-          }
-        : { changedFiles: [] }),
+      review: {
+        kind,
+        verdict,
+        ...(kind === 'final-verification'
+          ? {
+              reviewedRecord: '.thoth/changes/greeting/greeting.md',
+              reviewedRecordSha256: digest ?? 'a'.repeat(64),
+            }
+          : {}),
+      },
     }) +
     '\n```'
   );

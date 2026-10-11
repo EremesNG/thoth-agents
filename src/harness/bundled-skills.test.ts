@@ -284,7 +284,7 @@ describe('canonical workflow bundle contracts', () => {
 
     expect(sdd).toContain('## Specialist result validation');
     expect(sdd).toContain('node "<skill-dir>/scripts/validate-result.mjs"');
-    expect(sdd).toContain('--role');
+    expect(sdd).not.toContain('--role');
     expect(sdd).toContain('--review-kind');
     expect(sdd).toContain('--record-sha256');
     expect(sdd).toContain('--input');
@@ -293,7 +293,9 @@ describe('canonical workflow bundle contracts', () => {
     expect(sdd).toContain('must not change findings or verdict');
     expect(sdd).toContain('never converted into an Oracle `BLOCKED` judgment');
     expect(sdd).toContain('installation drift');
-    expect(sdd).toContain('accept no specialist result');
+    expect(sdd).toContain('blocks only gate approvals');
+    expect(sdd).toContain('custom agents');
+    expect(sdd).toContain('judged on content');
     expect(sdd).toContain('diagnosis` and `advice` never authorize');
 
     expect(plan).toContain('`thoth-result`');

@@ -1,6 +1,6 @@
 ---
 name: explorer
-description: "Resolve broad or uncertain repository questions and return distilled evidence. Use when: Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain. Do not use when: Not for implementation, edits, or known narrow questions. Escalate when: Send external evidence to librarian and mutation scope to root. Mutation: read-only; never mutate the workspace. Verification: reports inspected paths, confidence, and remaining gaps Return: one thoth-result envelope; root validates before acceptance."
+description: "Resolve broad or uncertain repository questions and return distilled evidence. Use when: Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain. Do not use when: Not for implementation, edits, or known narrow questions. Escalate when: Send external evidence to librarian and mutation scope to root. Mutation: read-only; never mutate the workspace. Verification: reports inspected paths, confidence, and remaining gaps Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions."
 model: haiku
 effort: medium
 disallowedTools: "Write, Edit"
@@ -65,15 +65,7 @@ Use `AskUserQuestion` only for a blocking material choice, destructive or securi
 </questions>
 
 <return-contract>
-Return exactly one fenced ```thoth-result JSON block and nothing else. Use valid JSON; escape quotes and backslashes. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. Required except ?; no extra keys. Unique evidence IDs; evidenceIds reference them.
-- schemaVersion: 1
-- role: "explorer"
-- status: complete|partial|blocked|failed
-- conclusion: s
-- evidence: {id: s+, kind: s, locator: s, claim: s, basis: observed|inferred, uncertainty: s}[]
-- verification: {check: s, method: s, outcome: pass|fail|not-run, evidenceIds: s[], reason: s}[]
-- risks: {description: s, severity: low|medium|high|critical, blocking: boolean, evidenceIds: s[]}[]
-- openQuestions: {question: s, owner: s, options: s[], facts: s[]}[]
+Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions.
 </return-contract>
 
 Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.

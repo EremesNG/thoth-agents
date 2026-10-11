@@ -108,9 +108,9 @@ select-specialists -> admit-ready-units
 </artifacts>
 
 <delegation>
-- Specialist finals: thoth-result envelopes. Validate every full unchanged native terminal result before acceptance per thoth-sdd: `node "<skill-dir>/scripts/validate-result.mjs" --role <role>` (stdin); <skill-dir>: installed skill path.
-- Invalid: not accepted; at most one format-only repair/assignment; preserve findings/verdict. No skill/validator: report installation drift; accept nothing (fail-closed).
-- Structural validity never implies acceptance; judge scope, evidence, checks, freshness/provenance. Use readable prose.
+- Only Oracle gates (plan-review/final-verification): validate before recording OKAY/PASS: `node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>]` (unchanged stdin; skill path).
+- Invalid: no approval; at most one format-only repair; preserve findings/verdict. No validator: blocks only gate approvals; report drift.
+- Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals. Judge scope, evidence, checks, freshness/provenance.
 
 <phase-dispatch>
 Bounded assignments specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS, REQUIREMENTS, BOUNDARIES, VERIFICATION, EXPECTED OUTPUT, HANDOFF and scoped MEMORY authorization.

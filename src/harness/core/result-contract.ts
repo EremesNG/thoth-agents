@@ -1,4 +1,4 @@
-/** Serializable source of truth shared by prompts and the installed validator. */
+/** Serializable Oracle gate contract shared by prompts and the installed validator. */
 const text = { type: 'string' } as const;
 const texts = { type: 'array', items: text } as const;
 const nullableText = { type: ['string', 'null'] } as const;
@@ -14,30 +14,11 @@ function array<const T>(items: T) {
   return { type: 'array', items } as const;
 }
 
-const changedFile = {
-  ...object({
-    path: { type: 'string', minLength: 1 },
-    change: {
-      type: 'string',
-      enum: ['added', 'modified', 'deleted', 'renamed'],
-    },
-    previousPath: text,
-  }),
-  required: ['path', 'change'],
-  requiredIff: {
-    field: 'previousPath',
-    discriminator: 'change',
-    value: 'renamed',
-    issueCode: 'CHANGED_FILE_RENAME',
-  },
-} as const;
-const changedFiles = array(changedFile);
-
 const common = object({
   schemaVersion: { type: 'number', const: 1 },
   role: {
     type: 'string',
-    enum: ['explorer', 'librarian', 'oracle', 'designer', 'worker'],
+    enum: ['oracle'],
   },
   status: {
     type: 'string',
@@ -79,9 +60,9 @@ const review = {
   ...object({
     kind: {
       type: 'string',
-      enum: ['plan-review', 'final-verification', 'diagnosis', 'advice'],
+      enum: ['plan-review', 'final-verification'],
     },
-    verdict: { type: ['string', 'null'] },
+    verdict: { type: 'string' },
     reviewedRecord: { type: 'string', minLength: 1 },
     reviewedRecordSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
   }),
@@ -93,17 +74,11 @@ export const SPECIALIST_RESULT_CONTRACT = {
   fence: 'thoth-result',
   common,
   roles: {
-    explorer: object({}),
-    librarian: object({}),
     oracle: object({ nextAction: nullableText, review }),
-    designer: object({ changedFiles, nextAction: nullableText }),
-    worker: object({ changedFiles, nextAction: nullableText }),
   },
   reviewKinds: {
     'plan-review': { verdicts: ['OKAY', 'REJECT'] },
     'final-verification': { verdicts: ['PASS', 'FAIL', 'BLOCKED'] },
-    diagnosis: { verdicts: [null] },
-    advice: { verdicts: [null] },
   },
   rules: {
     positiveVerdicts: ['OKAY', 'PASS'],
@@ -112,10 +87,7 @@ export const SPECIALIST_RESULT_CONTRACT = {
     evidenceIdUnique: true,
     evidenceReferences: ['verification', 'risks'],
     recordBindingReviewKind: 'final-verification',
-    recordBindingRequiredWithExpectedDigest: [
-      'reviewedRecord',
-      'reviewedRecordSha256',
-    ],
+    recordBindingRequiredFields: ['reviewedRecord', 'reviewedRecordSha256'],
   },
 } as const;
 
@@ -148,25 +120,14 @@ export type OracleReview = {
   [K in OracleReviewKind]: {
     kind: K;
     verdict: (typeof SPECIALIST_RESULT_CONTRACT.reviewKinds)[K]['verdicts'][number];
-    reviewedRecord?: string;
-    reviewedRecordSha256?: string;
-  };
+  } & (K extends 'final-verification'
+    ? { reviewedRecord: string; reviewedRecordSha256: string }
+    : { reviewedRecord?: string; reviewedRecordSha256?: string });
 }[OracleReviewKind];
-export type ChangedFile = {
-  path: string;
-} & (
-  | { change: 'added' | 'modified' | 'deleted'; previousPath?: never }
-  | { change: 'renamed'; previousPath: string }
-);
-export type SpecialistResult = {
-  [R in SpecialistRole]: Omit<ResultCommon, 'role'> & {
-    role: R;
-  } & (R extends 'oracle'
-      ? { nextAction: string | null; review: OracleReview }
-      : R extends 'worker' | 'designer'
-        ? { changedFiles: ChangedFile[]; nextAction: string | null }
-        : object);
-}[SpecialistRole];
+export type SpecialistResult = ResultCommon & {
+  nextAction: string | null;
+  review: OracleReview;
+};
 
 /** Required field names for compact role-specific prompt rendering. */
 export function getSpecialistResultFields(

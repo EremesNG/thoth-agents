@@ -4,12 +4,10 @@ import { envelope } from './test-envelope';
 
 it('maps only validated final-verification envelopes to verdicts', () => {
   expect(parseOracleVerdict(envelope())).toBe('PASS');
-  expect(
-    parseOracleVerdict(envelope('oracle', 'final-verification', 'BLOCKED')),
-  ).toBe('NON_PASS');
-  expect(parseOracleVerdict(envelope('oracle', 'plan-review', 'OKAY'))).toBe(
-    'UNKNOWN',
+  expect(parseOracleVerdict(envelope('final-verification', 'BLOCKED'))).toBe(
+    'NON_PASS',
   );
+  expect(parseOracleVerdict(envelope('plan-review', 'OKAY'))).toBe('UNKNOWN');
 });
 
 it.each([

@@ -145,35 +145,39 @@ only; do not provision skills or run a network installer mid-workflow.
 
 ## Specialist result validation
 
-Before accepting any specialist result, resolve `<skill-dir>` from the installed
-thoth-sdd SKILL.md directory, exactly as for `scripts/validate.mjs`, and run:
+Only Oracle gate assignments (plan-review and final-verification) return a
+structured envelope. Before recording plan-review `OKAY` or final-verification
+`PASS`, root resolves `<skill-dir>` from the installed thoth-sdd SKILL.md
+directory, exactly as for `scripts/validate.mjs`, and runs:
 
 ```text
-node "<skill-dir>/scripts/validate-result.mjs" --role <role> [--review-kind <kind>] [--record-sha256 <hex>] [--input <path>]
+node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--input <path>]
 ```
 
 Pass the unchanged native terminal result via stdin, or `--input <path>` when
 piping is impractical; do not extract, rewrite, or wrap the envelope, or create
-persisted evidence files. Set `--role` from the assignment (explorer, librarian,
-oracle, designer, worker). For Oracle, also set `--review-kind` from the assignment:
-plan-review, final-verification, diagnosis, or advice. For final verification of a
-substantial record, set `--record-sha256` to the expected SHA-256 of exact UTF-8
+persisted evidence files. Set `--review-kind` to the assigned `plan-review` or
+`final-verification`. For final verification of a substantial record, set
+`--record-sha256` to the independently calculated expected SHA-256 of exact UTF-8
 bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
+Confirm `reviewedRecord` identifies the assigned record.
 
 - Exit **0** means structurally valid only. Root still judges scope, evidence,
-  checks, freshness, provenance, and content before acceptance, and presents
-  accepted results to the user in readable prose.
-- Exit **1** means not accepted. Allow at most one format-only repair request per assignment,
+  checks, freshness, provenance, independence, and content before recording any
+  approval, and presents accepted results to the user in readable prose.
+- Exit **1** means no approval. Allow at most one format-only repair request per assignment,
   shared with any runtime enforcement; it must not change findings or verdict.
   Exhaustion is a contract failure reported truthfully, never converted into an Oracle `BLOCKED` judgment.
 - Exit **2** or an unavailable skill/validator means validation cannot be completed:
-  report the error (missing assets are installation drift) and accept no specialist result
-  of any role until validation is available and passes (fail-closed). Do not
-  provision replacements mid-workflow.
+  report the error (missing assets are installation drift). This blocks only gate approvals;
+  ordinary delegations proceed. Do not provision replacements mid-workflow.
 
-Oracle `diagnosis` and `advice` never authorize implementation or closeout;
-these review kinds carry `verdict: null`. Approval comes only from the validated
-review field, never free text; validation itself is not user authorization.
+Other Thoth specialist returns use compact markdown fields and are judged on content,
+not validated for format. User-defined custom agents retain their own free format;
+neither ordinary specialist results nor custom agents are rejected for format or
+count as approvals. Oracle `diagnosis` and `advice` never authorize implementation
+or closeout and return compact markdown, not envelopes. Approval comes only from
+the validated gate review field, never free text; validation itself is not user authorization.
 
 ## Gates and CLI
 

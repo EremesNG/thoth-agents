@@ -1,7 +1,6 @@
 import {
   getSpecialistResultFields,
   SPECIALIST_RESULT_CONTRACT,
-  type SpecialistRole,
 } from './result-contract';
 
 export type {
@@ -419,11 +418,11 @@ const HANDOFF_RETURN_FIELDS = [
 
 export const AGENT_RETURN_CONTRACT = {
   orchestrator: HANDOFF_RETURN_FIELDS,
-  explorer: getSpecialistResultFields('explorer'),
-  librarian: getSpecialistResultFields('librarian'),
-  oracle: getSpecialistResultFields('oracle'),
-  designer: getSpecialistResultFields('designer'),
-  worker: getSpecialistResultFields('worker'),
+  explorer: EVIDENCE_RETURN_FIELDS,
+  librarian: EVIDENCE_RETURN_FIELDS,
+  oracle: HANDOFF_RETURN_FIELDS,
+  designer: [...HANDOFF_RETURN_FIELDS, 'changedFiles'],
+  worker: [...HANDOFF_RETURN_FIELDS, 'changedFiles'],
 } as const satisfies Record<AgentRoleName, readonly string[]>;
 
 function cloneReturnContract(
@@ -469,28 +468,18 @@ interface ResultFieldSchema {
   items?: ResultFieldSchema;
   minLength?: number;
   pattern?: string;
-  requiredIff?: {
-    field: string;
-    discriminator: string;
-    value: string;
-    issueCode: string;
-  };
 }
 
 function renderResultType(schema: ResultFieldSchema): string {
   if ('const' in schema) return JSON.stringify(schema.const);
   if (schema.enum) return schema.enum.map(String).join('|');
   if (schema.type === 'object') {
-    const condition = schema.requiredIff;
-    const constraint = condition
-      ? ` (${condition.field} required iff ${condition.discriminator}=${condition.value}; forbidden otherwise)`
-      : '';
     return `{${Object.entries(schema.properties ?? {})
       .map(
         ([name, field]) =>
           `${name}${schema.required?.includes(name) ? '' : '?'}: ${renderResultType(field)}`,
       )
-      .join(', ')}}${constraint}`;
+      .join(', ')}}`;
   }
   if (schema.items) return `${renderResultType(schema.items)}[]`;
   if (schema.pattern === '^[a-f0-9]{64}$') return 'hex64';
@@ -499,8 +488,12 @@ function renderResultType(schema: ResultFieldSchema): string {
   return types.map((type) => (type === 'string' ? 's' : type)).join('|');
 }
 
-/** Render only this role's fields from the shared validator contract. */
-export function renderSpecialistResultContract(role: SpecialistRole): string {
+/** Keep non-gate returns independent of the Oracle validator contract. */
+export function renderSpecialistResultContract(
+  role: Exclude<AgentRoleName, 'orchestrator'>,
+): string {
+  const markdown = `Return compact markdown fields (no JSON): ${AGENT_RETURN_CONTRACT[role].join(', ')}.`;
+  if (role !== 'oracle') return markdown;
   const contract = SPECIALIST_RESULT_CONTRACT;
   const properties: Record<string, ResultFieldSchema> = {
     ...contract.common.properties,
@@ -510,17 +503,14 @@ export function renderSpecialistResultContract(role: SpecialistRole): string {
   const fields = getSpecialistResultFields(role)
     .map((name) => `- ${name}: ${renderResultType(properties[name])}`)
     .join('\n');
-  const reviewRules =
-    role === 'oracle'
-      ? `
+  const reviewRules = `
 ${Object.entries(contract.reviewKinds)
-  .filter(([kind]) => kind !== 'diagnosis' && kind !== 'advice')
   .map(([kind, rule]) => `${kind}: ${rule.verdicts.join('|')}`)
   .join(
     '; ',
-  )}; diagnosis/advice: null. ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Expected record digest in final-verification: require reviewedRecord and reviewedRecordSha256.`
-      : '';
-  return `Return exactly one fenced \`\`\`${contract.fence} JSON block and nothing else. Use valid JSON; escape quotes and backslashes. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. Required except ?; no extra keys. Unique evidence IDs; evidenceIds reference them.
+  )}; ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 from the assignment.`;
+  return `${markdown}
+Diagnosis/advice uses markdown fields and cannot approve. Only for assigned plan-review or final-verification, instead return exactly one fenced \`\`\`${contract.fence} JSON block and nothing else. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. No extra keys; ?=optional. evidenceIds reference unique evidence IDs.
 ${fields}${reviewRules}`;
 }
 
@@ -534,7 +524,7 @@ export function renderAgentRoutingDescription(role: AgentRoleContract): string {
     `Verification: ${role.verification.join(' ')}`,
     role.name === 'orchestrator'
       ? 'Present results to the user as readable prose.'
-      : 'Return: one thoth-result envelope; root validates before acceptance.',
+      : `Return: compact markdown fields: ${AGENT_RETURN_CONTRACT[role.name].join(', ')}.${role.name === 'oracle' ? ' Only plan-review/final-verification uses a thoth-result gate envelope; diagnosis/advice cannot approve.' : ''}`,
   ].join(' ');
 }
 

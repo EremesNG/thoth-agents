@@ -72,8 +72,8 @@ per invocation. IDs are `small-no-record`, `plan-review-choice`,
 `plan-review-no-forwarded-skills`, and `designer-project-skill`. The catalog plan
 case requires canonical review choices, a valid Oracle plan-review OKAY, a separate
 Implement/Stop question answered Stop, no implementation writes, and no SKILL.md
-path in the Oracle assignment. The designer case requires a valid completed designer
-envelope and a successful native read of the trusted fixture project skill by that
+path in the Oracle assignment. The designer case requires a completed designer
+task and a successful native read of the trusted fixture project skill by that
 same designer task, without a forwarded path.
 
 A case's `live.caps` in `contracts.json` may override `timeMs`, `turns` and
@@ -132,9 +132,9 @@ its reason. `eval:pi` always uses verbose, non-silent reporting to show per-case
 summaries. A successful command may still contain skipped findings, so read the
 passed/failed/skipped totals and each printed status. Graders use tool calls, questions, task
 results and workspace snapshot diffs (including bash/child writes), not an LLM
-judge. Specialist results are graded only by the installed
+judge. Only Oracle gate results are envelope-graded by the installed
 [`validateResult`](../../skills/thoth-sdd/scripts/validate-result.mjs) API, typed
-through its `.d.mts` declaration. The entire native task result must be a valid
+through its `.d.mts` declaration. For these gates, the entire native task result must be a valid
 `thoth-result` envelope; preliminary prose or embedded/example fences are not
 extracted to manufacture validity. Oracle approval requires the expected review
 kind and verdict: plan-review OKAY or final-verification PASS. The closeout case
@@ -148,16 +148,20 @@ detection remains separate from specialist validation. The seeded implemented
 fixture is checked offline against the installed verify and closeout validator.
 Root memory-provider calls are outside this suite's assertions.
 
-For the designer catalog case, claims in prose or a valid envelope are **not**
+Ordinary specialist returns use compact markdown and custom agents keep their own
+format; neither is envelope-graded or counts as approval. The memory case retains
+explicit MEMORY scope checks on every delegation, with no envelope requirement.
+
+For the designer catalog case, claims in the result are **not**
 read evidence. Before cleanup the harness reads eval-owned native child JSONL
 sessions from task `nested_session_path`, pairs `toolCall`/`toolResult` by call ID,
 and retains task attribution. Only a completed non-error `read` of the expected
-project SKILL.md by the approved designer task counts. Negative offline traces
+project SKILL.md by the completed designer task counts. Negative offline traces
 cover missing reads, failed reads, another task's reads, and forwarded paths.
 
 `THOTH_EVAL_VERBOSE=1` prints parent skill names, ordered tools, scripted
 questions, subagent assignment path flags, task statuses/result excerpts,
-envelope validity and validator issue codes per specialist task, task-attributed
+envelope validity and validator issue codes for Oracle gate tasks, task-attributed
 native child tool completions, written paths and final assistant text. Long
 values are marked `[truncated]`. Default output stays summary-only; no persistent
 trace/report files are written. Diagnostics can contain prompt/code/answer

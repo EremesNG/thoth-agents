@@ -273,12 +273,8 @@ export function gradeCase(item: LiveCase, result: EvaluationResult): string[] {
         const designers = completedTasks(result, 'thoth-designer');
         if (
           !designers.some(({ task }) => {
-            const validation = validateSpecialistTask(task);
             const text = assignment(result, task);
             return (
-              validation.valid &&
-              validation.envelope.role === 'designer' &&
-              validation.envelope.status === 'complete' &&
               text !== undefined &&
               !/SKILL\.md\b/i.test(text) &&
               successfulSkillRead(
@@ -291,7 +287,7 @@ export function gradeCase(item: LiveCase, result: EvaluationResult): string[] {
           })
         )
           reasons.push(
-            'No completed valid designer envelope with a successful task-attributed project skill read and no forwarded path',
+            'No completed designer task with a successful task-attributed project skill read and no forwarded path',
           );
         break;
       }

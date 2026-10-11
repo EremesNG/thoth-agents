@@ -1,6 +1,6 @@
 ---
 name: thoth-designer
-description: "Own user-facing implementation choices and visual quality for UI work. Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material. Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work. Escalate when: Escalate coupled contracts, migrations, or high risk to worker. Mutation: only the assigned UI/UX decisions, implementation, and visual verification surface. Verification: includes visual verification when applicable Return: one thoth-result envelope; root validates before acceptance."
+description: "Own user-facing implementation choices and visual quality for UI work. Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material. Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work. Escalate when: Escalate coupled contracts, migrations, or high risk to worker. Mutation: only the assigned UI/UX decisions, implementation, and visual verification surface. Verification: includes visual verification when applicable Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles."
 tools: "read, bash, edit, write, grep, find, ls"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
@@ -63,17 +63,7 @@ Do not open a user dialog. Continue safe non-blocked work, then escalate the unr
 </questions>
 
 <return-contract>
-Return exactly one fenced ```thoth-result JSON block and nothing else. Use valid JSON; escape quotes and backslashes. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. Required except ?; no extra keys. Unique evidence IDs; evidenceIds reference them.
-- schemaVersion: 1
-- role: "designer"
-- status: complete|partial|blocked|failed
-- conclusion: s
-- evidence: {id: s+, kind: s, locator: s, claim: s, basis: observed|inferred, uncertainty: s}[]
-- verification: {check: s, method: s, outcome: pass|fail|not-run, evidenceIds: s[], reason: s}[]
-- risks: {description: s, severity: low|medium|high|critical, blocking: boolean, evidenceIds: s[]}[]
-- openQuestions: {question: s, owner: s, options: s[], facts: s[]}[]
-- changedFiles: {path: s+, change: added|modified|deleted|renamed, previousPath?: s} (previousPath required iff change=renamed; forbidden otherwise)[]
-- nextAction: s|null
+Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles.
 </return-contract>
 
 Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.

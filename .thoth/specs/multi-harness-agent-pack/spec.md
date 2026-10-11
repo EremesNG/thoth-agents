@@ -544,10 +544,10 @@ Lean Pi children MUST keep the specialist prompt and lean isolation while receiv
 
 ### Requirement: Structured specialist results
 
-Every specialist MUST end with exactly one fenced `thoth-result` JSON envelope that conforms to the role-discriminated contract defined in the agent pack, and root MUST validate it with the bundled validator before accepting it, treat missing or malformed envelopes as not accepted, allow at most one format-only repair, and still judge the content; Oracle verdicts MUST come only from the envelope review field.
+Only Oracle results that gate SDD transitions (plan review and final verification) MUST end with exactly one fenced `thoth-result` JSON envelope conforming to the gate contract, and root MUST validate it with the bundled validator before recording plan-review OKAY or final-verification PASS, treat a missing or malformed envelope as no approval, allow at most one format-only repair, and still judge the content; other Thoth specialist results use compact fields judged by root, user-defined agent results keep their own free format, and neither is rejected for format nor counts as an approval.
 
 #### Scenario: Structured specialist results
 
-- **GIVEN** an Oracle final message without a valid envelope
-- **WHEN** root evaluates the terminal result
-- **THEN** the result is not accepted, at most one format-only repair is requested, and no approval is recorded 
+- **GIVEN** an Explorer answering a user question and an Oracle final verification without a valid envelope
+- **WHEN** root evaluates both
+- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval 

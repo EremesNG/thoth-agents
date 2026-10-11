@@ -5,9 +5,7 @@ import { expect, it } from 'vitest';
 import { successfulSkillRead } from './child-tools';
 import { runEvaluation } from './harness';
 import { gradeEvaluation, liveCases } from './live-cases';
-import { validateSpecialistTask } from './specialist-results';
 import { syntheticProvider } from './synthetic-provider';
-import { envelope } from './test-envelope';
 
 it('real SDK children discover repository skills and only trusted project skills, with native read evidence', async () => {
   const skill = '.pi/skills/fixture-ui-guidelines/SKILL.md';
@@ -32,7 +30,7 @@ it('real SDK children discover repository skills and only trusted project skills
       ...(trusted
         ? [{ calls: [{ name: 'read', args: { path: skill } }] }]
         : []),
-      { text: envelope('designer') },
+      { text: 'conclusion: Improved the card.' },
     ]);
     let repositoryCatalog = false;
     let projectCatalog = false;
@@ -94,9 +92,7 @@ it('real SDK children discover repository skills and only trusted project skills
         task.agent === 'thoth-designer' && task.status === 'completed',
     )?.task;
     expect(task).toBeDefined();
-    expect(validateSpecialistTask(task ?? {}).valid, String(task?.result)).toBe(
-      true,
-    );
+    expect(task?.result).toBe('conclusion: Improved the card.');
     if (trusted) {
       const item = liveCases.find(
         (item) => item.id === 'designer-project-skill',

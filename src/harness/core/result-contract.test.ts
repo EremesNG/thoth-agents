@@ -5,51 +5,19 @@ import { SPECIALIST_RESULT_CONTRACT } from './agent-pack';
 describe('specialist result contract', () => {
   it('publishes strict required fields and role extensions as generated data', () => {
     expect(SPECIALIST_RESULT_CONTRACT.schemaVersion).toBe(1);
-    expect(Object.keys(SPECIALIST_RESULT_CONTRACT.roles)).toEqual([
-      'explorer',
-      'librarian',
+    expect(Object.keys(SPECIALIST_RESULT_CONTRACT.roles)).toEqual(['oracle']);
+    expect(SPECIALIST_RESULT_CONTRACT.common.properties.role.enum).toEqual([
       'oracle',
-      'designer',
-      'worker',
     ]);
-    expect(SPECIALIST_RESULT_CONTRACT.common.properties.status.enum).toEqual([
-      'complete',
-      'partial',
-      'blocked',
-      'failed',
+    expect(Object.keys(SPECIALIST_RESULT_CONTRACT.reviewKinds)).toEqual([
+      'plan-review',
+      'final-verification',
     ]);
     expect(SPECIALIST_RESULT_CONTRACT.common.additionalProperties).toBe(false);
-    expect(SPECIALIST_RESULT_CONTRACT.roles.explorer.properties).toEqual({});
-    expect(SPECIALIST_RESULT_CONTRACT.roles.worker.required).toEqual([
-      'changedFiles',
+    expect(SPECIALIST_RESULT_CONTRACT.roles.oracle.required).toEqual([
       'nextAction',
+      'review',
     ]);
-    for (const role of ['worker', 'designer'] as const) {
-      expect(
-        SPECIALIST_RESULT_CONTRACT.roles[role].properties.changedFiles,
-      ).toEqual({
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', minLength: 1 },
-            change: {
-              type: 'string',
-              enum: ['added', 'modified', 'deleted', 'renamed'],
-            },
-            previousPath: { type: 'string' },
-          },
-          required: ['path', 'change'],
-          additionalProperties: false,
-          requiredIff: {
-            field: 'previousPath',
-            discriminator: 'change',
-            value: 'renamed',
-            issueCode: 'CHANGED_FILE_RENAME',
-          },
-        },
-      });
-    }
     expect(
       JSON.parse(
         readFileSync('skills/thoth-sdd/scripts/result-contract.json', 'utf8'),

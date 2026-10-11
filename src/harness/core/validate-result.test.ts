@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { validateResult } from '../../../skills/thoth-sdd/scripts/validate-result.mjs';
 
 const digest = 'a'.repeat(64);
-function fixture(role = 'explorer'): any {
+function fixture(role = 'oracle'): any {
   const result: any = {
     schemaVersion: 1,
     role,
@@ -34,16 +34,10 @@ function fixture(role = 'explorer'): any {
     risks: [],
     openQuestions: [],
   };
-  if (role === 'worker' || role === 'designer')
-    Object.assign(result, {
-      changedFiles: [{ path: 'src/example.ts', change: 'modified' }],
-      nextAction: null,
-    });
-  if (role === 'oracle')
-    Object.assign(result, {
-      nextAction: null,
-      review: { kind: 'plan-review', verdict: 'OKAY' },
-    });
+  Object.assign(result, {
+    nextAction: null,
+    review: { kind: 'plan-review', verdict: 'OKAY' },
+  });
   return result;
 }
 const fence = (value: unknown) =>
@@ -51,79 +45,32 @@ const fence = (value: unknown) =>
 const codes = (message: string, options = {}) =>
   validateResult(message, options).issues.map((i) => i.code);
 
-describe('specialist result validation', () => {
+describe('Oracle gate result validation', () => {
+  it('accepts an Oracle plan review with or without an expected role', () => {
+    const result = fixture();
+    for (const options of [{}, { role: 'oracle' as const }])
+      expect(validateResult(`\n ${fence(result)} \n`, options)).toEqual({
+        valid: true,
+        envelope: result,
+        issues: [],
+      });
+  });
   it.each([
     'explorer',
     'librarian',
-    'oracle',
     'designer',
     'worker',
-  ])('accepts a complete %s fixture', (role) => {
-    const result = fixture(role);
-    expect(validateResult(`\n ${fence(result)} \n`, { role })).toEqual({
-      valid: true,
-      envelope: result,
-      issues: [],
-    });
+  ])('rejects nongate role %s', (role) => {
+    expect(codes(fence(fixture(role)))).toContain('INVALID_VALUE');
+    expect(codes(fence(fixture()), { role })).toEqual(['EXPECTATION_INVALID']);
   });
-});
-
-describe.each(['worker', 'designer'])('%s changed file records', (role) => {
-  it.each([
-    'added',
-    'modified',
-    'deleted',
-    'renamed',
-  ])('accepts %s records', (change) => {
-    const result = fixture(role);
-    result.changedFiles = [
-      {
-        path: 'new.ts',
-        change,
-        ...(change === 'renamed' ? { previousPath: 'old.ts' } : {}),
-      },
-    ];
-    expect(validateResult(fence(result)).valid).toBe(true);
-    result.changedFiles = [];
-    expect(validateResult(fence(result)).valid).toBe(true);
-  });
-  it.each([
-    [{ path: 'new.ts', change: 'renamed' }],
-    ...['added', 'modified', 'deleted'].map((change) => [
-      { path: 'new.ts', change, previousPath: 'old.ts' },
-    ]),
-  ])('requires previousPath iff renamed: %j', (entry) => {
-    const result = fixture(role);
-    result.changedFiles = [entry];
-    expect(validateResult(fence(result)).issues).toContainEqual(
-      expect.objectContaining({
-        code: 'CHANGED_FILE_RENAME',
-        path: '/changedFiles/0/previousPath',
-      }),
-    );
-  });
-  it.each([
-    ['legacy.ts', 'TYPE_MISMATCH', ''],
-    [{ path: '', change: 'modified' }, 'INVALID_VALUE', '/path'],
-    [{ change: 'modified' }, 'REQUIRED_FIELD', '/path'],
-    [{ path: 'file.ts' }, 'REQUIRED_FIELD', '/change'],
-    [{ path: 'file.ts', change: 'unknown' }, 'INVALID_VALUE', '/change'],
-    [
-      { path: 'file.ts', change: 'modified', extra: true },
-      'UNDECLARED_FIELD',
-      '/extra',
-    ],
-    [
-      { path: 'file.ts', change: 'renamed', previousPath: null },
-      'TYPE_MISMATCH',
-      '/previousPath',
-    ],
-  ])('rejects malformed record %j', (entry, code, suffix) => {
-    const result = fixture(role);
-    result.changedFiles = [entry];
-    expect(validateResult(fence(result)).issues).toContainEqual(
-      expect.objectContaining({ code, path: `/changedFiles/0${suffix}` }),
-    );
+  it.each(['diagnosis', 'advice'])('rejects nongate review kind %s', (kind) => {
+    const result = fixture();
+    result.review = { kind, verdict: null };
+    expect(codes(fence(result))).toContain('INVALID_VALUE');
+    expect(codes(fence(fixture()), { reviewKind: kind })).toEqual([
+      'EXPECTATION_INVALID',
+    ]);
   });
 });
 
@@ -133,14 +80,8 @@ describe('strict envelopes and contract rejection', () => {
     result.role = {};
     expect(codes(fence(result))).toContain('TYPE_MISMATCH');
   });
-  it.each([
-    'explorer',
-    'librarian',
-    'oracle',
-    'designer',
-    'worker',
-  ])('rejects invalid %s fixtures', (role) => {
-    const result = fixture(role);
+  it('rejects missing common fields and undeclared fields', () => {
+    const result = fixture();
     delete result.evidence;
     expect(codes(fence(result))).toContain('REQUIRED_FIELD');
     result.evidence = [];
@@ -227,27 +168,24 @@ describe('strict envelopes and contract rejection', () => {
       codes(fence(result).replace('"constructor"', '"__proto__"')),
     ).toContain('UNDECLARED_FIELD');
   });
-  it('rejects missing extensions and forbidden explorer nextAction', () => {
-    const worker = fixture('worker');
-    delete worker.changedFiles;
-    expect(codes(fence(worker))).toContain('REQUIRED_FIELD');
-    const explorer = fixture();
-    explorer.nextAction = null;
-    expect(codes(fence(explorer))).toContain('UNDECLARED_FIELD');
+  it('requires Oracle extensions and forbids changedFiles', () => {
+    for (const key of ['nextAction', 'review']) {
+      const result = fixture();
+      delete result[key];
+      expect(codes(fence(result))).toContain('REQUIRED_FIELD');
+    }
+    const result = fixture();
+    result.changedFiles = [];
+    expect(codes(fence(result))).toContain('UNDECLARED_FIELD');
   });
-  it('checks assignment role and review kind', () => {
-    expect(codes(fence(fixture()), { role: 'worker' })).toContain(
-      'ROLE_MISMATCH',
-    );
+  it('checks assignment review kind', () => {
     expect(
-      codes(fence(fixture('oracle')), { reviewKind: 'diagnosis' }),
+      codes(fence(fixture()), { reviewKind: 'final-verification' }),
     ).toContain('REVIEW_KIND_MISMATCH');
-    expect(codes(fence(fixture()), { reviewKind: 'plan-review' })).toContain(
-      'REVIEW_KIND_MISMATCH',
-    );
   });
   it('checks evidence id uniqueness and references in checks and risks', () => {
     const result = fixture();
+    result.review.verdict = 'REJECT';
     result.evidence.push({ ...result.evidence[0] });
     result.verification[0].evidenceIds = ['missing'];
     result.risks = [
@@ -270,23 +208,35 @@ describe('strict envelopes and contract rejection', () => {
     ['final-verification', 'PASS'],
     ['final-verification', 'FAIL'],
     ['final-verification', 'BLOCKED'],
-    ['diagnosis', null],
-    ['advice', null],
   ])('accepts %s verdict %s', (kind, verdict) => {
     const result = fixture('oracle');
-    result.review = { kind, verdict };
+    result.review = {
+      kind,
+      verdict,
+      ...(kind === 'final-verification'
+        ? { reviewedRecord: 'record.md', reviewedRecordSha256: digest }
+        : {}),
+    };
     expect(validateResult(fence(result)).valid).toBe(true);
   });
   it.each([
     ['plan-review', 'PASS'],
     ['final-verification', 'OKAY'],
-    ['diagnosis', 'OKAY'],
-    ['advice', 'PASS'],
-    ['plan-review', null],
   ])('rejects %s verdict %s', (kind, verdict) => {
     const result = fixture('oracle');
-    result.review = { kind, verdict };
+    result.review = {
+      kind,
+      verdict,
+      ...(kind === 'final-verification'
+        ? { reviewedRecord: 'record.md', reviewedRecordSha256: digest }
+        : {}),
+    };
     expect(codes(fence(result))).toContain('VERDICT_MISMATCH');
+  });
+  it('rejects null verdicts', () => {
+    const result = fixture();
+    result.review.verdict = null;
+    expect(codes(fence(result))).toContain('TYPE_MISMATCH');
   });
   it.each([
     'partial',
@@ -305,15 +255,20 @@ describe('strict envelopes and contract rejection', () => {
     ];
     expect(codes(fence(result))).toEqual(['VERDICT_STATUS', 'BLOCKING_RISK']);
   });
-  it('accepts nonpositive and null verdicts with blocked status and blocking risks', () => {
+  it('accepts nonpositive verdicts with blocked status and blocking risks', () => {
     for (const [kind, verdict] of [
       ['plan-review', 'REJECT'],
       ['final-verification', 'BLOCKED'],
-      ['diagnosis', null],
     ]) {
       const result = fixture('oracle');
       result.status = 'blocked';
-      result.review = { kind, verdict };
+      result.review = {
+        kind,
+        verdict,
+        ...(kind === 'final-verification'
+          ? { reviewedRecord: 'record.md', reviewedRecordSha256: digest }
+          : {}),
+      };
       result.risks = [
         {
           description: 'risk',
@@ -325,10 +280,32 @@ describe('strict envelopes and contract rejection', () => {
       expect(validateResult(fence(result)).valid).toBe(true);
     }
   });
+  it.each([
+    'PASS',
+    'FAIL',
+    'BLOCKED',
+  ])('requires both record binding fields for %s without an expected digest', (verdict) => {
+    for (const missing of ['reviewedRecord', 'reviewedRecordSha256']) {
+      const result = fixture();
+      result.review = {
+        kind: 'final-verification',
+        verdict,
+        reviewedRecord: 'record.md',
+        reviewedRecordSha256: digest,
+      };
+      delete result.review[missing];
+      expect(validateResult(fence(result)).issues).toEqual([
+        expect.objectContaining({
+          code: 'RECORD_BINDING_REQUIRED',
+          path: `/review/${missing}`,
+        }),
+      ]);
+    }
+  });
   it('binds final verification to an assigned record digest', () => {
     const result = fixture('oracle');
     result.review = { kind: 'final-verification', verdict: 'PASS' };
-    expect(codes(fence(result), { recordSha256: digest })).toEqual([
+    expect(codes(fence(result))).toEqual([
       'RECORD_BINDING_REQUIRED',
       'RECORD_BINDING_REQUIRED',
     ]);
@@ -368,29 +345,10 @@ function cli(
   return { status: result.status, output: JSON.parse(result.stdout) };
 }
 
-describe('installed validator CLI', () => {
-  it('ships identical validator and contract assets and runs from the plugin outside the source tree', () => {
-    for (const name of ['validate-result.mjs', 'result-contract.json']) {
-      expect(readFileSync(`plugin/skills/thoth-sdd/scripts/${name}`)).toEqual(
-        readFileSync(`skills/thoth-sdd/scripts/${name}`),
-      );
-    }
-    const dir = mkdtempSync(join(tmpdir(), 'thoth-installed-'));
-    try {
-      expect(
-        cli(
-          ['--role', 'worker'],
-          fence(fixture('worker')),
-          resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
-          dir,
-        ).status,
-      ).toBe(0);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+describe('canonical validator CLI', () => {
   it('validates stdin and reports invalid input using exits 0 and 1', () => {
-    expect(cli(['--role', 'worker'], fence(fixture('worker'))).status).toBe(0);
+    expect(cli(['--role', 'oracle'], fence(fixture())).status).toBe(0);
+    expect(cli([], fence(fixture())).status).toBe(0);
     expect(cli([], 'missing')).toEqual({
       status: 1,
       output: {
@@ -418,15 +376,20 @@ describe('installed validator CLI', () => {
         fence(result),
       ).status,
     ).toBe(0);
-    expect(cli(['--role', 'worker'], fence(fixture())).status).toBe(1);
+    expect(cli([], fence(fixture('worker'))).status).toBe(1);
   });
   it.each([
     ['--bogus'],
     ['--role'],
     ['--role', 'root'],
+    ...['explorer', 'librarian', 'designer', 'worker'].map((role) => [
+      '--role',
+      role,
+    ]),
+    ...['diagnosis', 'advice'].map((kind) => ['--review-kind', kind]),
     ['--review-kind', 'unknown'],
     ['--record-sha256', 'bad'],
-    ['--role', 'worker', '--role', 'worker'],
+    ['--role', 'oracle', '--role', 'oracle'],
   ])('uses exit 2 for usage errors: %j', (args) => {
     expect(cli(args, '').status).toBe(2);
   });
@@ -439,6 +402,29 @@ describe('installed validator CLI', () => {
       writeFileSync(path, 'bad');
       expect(cli(['--input', path], '').status).toBe(1);
       expect(cli(['--input', join(dir, 'absent')], '').status).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('installed validator assets', () => {
+  it('ships identical validator and contract assets and runs from the plugin outside the source tree', () => {
+    for (const name of ['validate-result.mjs', 'result-contract.json']) {
+      expect(readFileSync(`plugin/skills/thoth-sdd/scripts/${name}`)).toEqual(
+        readFileSync(`skills/thoth-sdd/scripts/${name}`),
+      );
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-installed-'));
+    try {
+      expect(
+        cli(
+          ['--role', 'oracle'],
+          fence(fixture()),
+          resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+          dir,
+        ).status,
+      ).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

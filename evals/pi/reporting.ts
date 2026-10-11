@@ -45,20 +45,15 @@ export function reportVerboseEvaluation(
     const dispatch = result.subagents.find(
       (call) => call.args.agent === task.agent,
     );
-    const validation = validateSpecialistTask(
-      task,
-      task.agent === 'thoth-oracle'
-        ? {
-            reviewKind: result.expectedOracleReviewKind,
-            recordSha256: result.recordSha256,
-          }
-        : {},
-    );
-    log(
-      `      envelope-valid=${validation.valid ? 'Yes' : 'No'} issue-codes=${validation.issues.map((issue) => issue.code).join(', ') || '(none)'}`,
-    );
     const taskId = String(task.id ?? task.task_id ?? 'unavailable');
-    if (task.agent === 'thoth-oracle') {
+    if (task.agent === 'thoth-oracle' && result.expectedOracleReviewKind) {
+      const validation = validateSpecialistTask(task, {
+        reviewKind: result.expectedOracleReviewKind,
+        recordSha256: result.recordSha256,
+      });
+      log(
+        `      envelope-valid=${validation.valid ? 'Yes' : 'No'} issue-codes=${validation.issues.map((issue) => issue.code).join(', ') || '(none)'}`,
+      );
       // Diagnostic-only parsing without expected options: an otherwise valid
       // wrong-kind/digest envelope must expose its judgment, never gain approval.
       const native = validateSpecialistTask(task);

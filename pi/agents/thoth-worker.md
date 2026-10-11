@@ -1,6 +1,6 @@
 ---
 name: thoth-worker
-description: "Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded nonvisual implementation is ready, regardless of complexity; root direct work is limited to the bounded implementation-ownership exceptions. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded nonvisual implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: one thoth-result envelope; root validates before acceptance."
+description: "Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded nonvisual implementation is ready, regardless of complexity; root direct work is limited to the bounded implementation-ownership exceptions. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded nonvisual implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles."
 tools: "read, bash, edit, write, grep, find, ls"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
@@ -63,17 +63,7 @@ Do not open a user dialog. Continue safe non-blocked work, then escalate the unr
 </questions>
 
 <return-contract>
-Return exactly one fenced ```thoth-result JSON block and nothing else. Use valid JSON; escape quotes and backslashes. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. Required except ?; no extra keys. Unique evidence IDs; evidenceIds reference them.
-- schemaVersion: 1
-- role: "worker"
-- status: complete|partial|blocked|failed
-- conclusion: s
-- evidence: {id: s+, kind: s, locator: s, claim: s, basis: observed|inferred, uncertainty: s}[]
-- verification: {check: s, method: s, outcome: pass|fail|not-run, evidenceIds: s[], reason: s}[]
-- risks: {description: s, severity: low|medium|high|critical, blocking: boolean, evidenceIds: s[]}[]
-- openQuestions: {question: s, owner: s, options: s[], facts: s[]}[]
-- changedFiles: {path: s+, change: added|modified|deleted|renamed, previousPath?: s} (previousPath required iff change=renamed; forbidden otherwise)[]
-- nextAction: s|null
+Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles.
 </return-contract>
 
 Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.

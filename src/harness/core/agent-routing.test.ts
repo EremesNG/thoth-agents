@@ -354,14 +354,24 @@ describe('canonical agent routing', () => {
     for (const role of ['explorer', 'librarian'] as const) {
       const description = renderAgentRoutingDescription(getAgentRole(role));
       expect(description).toContain(
-        'Return: one thoth-result envelope; root validates before acceptance.',
+        'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
       );
       expect(description).not.toContain('nextAction');
     }
     for (const role of ['oracle', 'worker', 'designer'] as const) {
-      expect(renderAgentRoutingDescription(getAgentRole(role))).toContain(
-        'Return: one thoth-result envelope; root validates before acceptance.',
+      const description = renderAgentRoutingDescription(getAgentRole(role));
+      expect(description).toContain(
+        'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction',
       );
+      if (role === 'oracle') {
+        expect(description).toContain(
+          'Only plan-review/final-verification uses a thoth-result gate envelope',
+        );
+        expect(description).toContain('diagnosis/advice cannot approve');
+      } else {
+        expect(description).toContain('nextAction, changedFiles');
+        expect(description).not.toContain('thoth-result');
+      }
     }
   });
 

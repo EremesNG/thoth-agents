@@ -7,7 +7,7 @@ it('accepts only the whole validated envelope with expected review kind and reco
   const digest = 'a'.repeat(64);
   const task = {
     agent: 'thoth-oracle',
-    result: envelope('oracle', 'final-verification', 'PASS', digest),
+    result: envelope('final-verification', 'PASS', digest),
   };
   expect(
     validateSpecialistTask(task, {
@@ -30,4 +30,7 @@ it('accepts only the whole validated envelope with expected review kind and reco
   expect(
     validateSpecialistTask({ agent: 'thoth-oracle', result: '[PASS]' }).valid,
   ).toBe(false);
+  for (const agent of ['thoth-designer', 'custom-reviewer', '']) {
+    expect(validateSpecialistTask({ ...task, agent }).valid).toBe(false);
+  }
 });

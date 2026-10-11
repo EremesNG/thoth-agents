@@ -7,6 +7,7 @@ it('prints Oracle judgment and task-attributed designer read paths without relyi
   const log = vi.fn();
   reportVerboseEvaluation(
     {
+      expectedOracleReviewKind: 'final-verification',
       status: 'PASS',
       reasons: [],
       warnings: [],
@@ -29,7 +30,7 @@ it('prints Oracle judgment and task-attributed designer read paths without relyi
             id: 'oracle',
             agent: 'thoth-oracle',
             status: 'completed',
-            result: envelope('oracle', 'final-verification', 'FAIL'),
+            result: envelope('final-verification', 'FAIL'),
           },
         },
         {
@@ -38,7 +39,7 @@ it('prints Oracle judgment and task-attributed designer read paths without relyi
             id: 'designer',
             agent: 'thoth-designer',
             status: 'completed',
-            result: envelope('designer'),
+            result: 'conclusion: Improved the card.',
           },
         },
       ],
@@ -60,6 +61,7 @@ it('prints Oracle judgment and task-attributed designer read paths without relyi
   expect(output).toContain(
     'task=oracle review.kind=final-verification verdict=FAIL',
   );
+  expect(output.match(/envelope-valid=/g)).toHaveLength(1);
   expect(output).toContain(
     'task=designer child-read-path=.pi/skills/fixture-ui-guidelines/SKILL.md completed=true isError=false',
   );
@@ -115,6 +117,7 @@ it('prints bounded ordered trace details only when verbose is explicitly enabled
         },
       },
     ],
+    expectedOracleReviewKind: 'final-verification',
     writtenPaths: ['README.md', 'gone.txt'],
     changes: [
       {

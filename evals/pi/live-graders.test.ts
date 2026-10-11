@@ -118,7 +118,7 @@ const passRecord =
 
 function providerWithChild(
   steps: ScriptStep[],
-  text = envelope('oracle', 'plan-review', 'OKAY'),
+  text = envelope('plan-review', 'OKAY'),
 ) {
   const parent = syntheticProvider(steps);
   const child = syntheticProvider([{ text }]);
@@ -169,8 +169,8 @@ async function trace(id: string, steps: ScriptStep[], text?: string) {
       steps,
       text ??
         (id === 'verification-fresh-oracle'
-          ? envelope('oracle', 'final-verification', 'PASS', fixtureDigest())
-          : envelope('oracle', 'plan-review', 'OKAY')),
+          ? envelope('final-verification', 'PASS', fixtureDigest())
+          : envelope('plan-review', 'OKAY')),
     ),
     inspect: (context) => {
       inheritModels(context);
@@ -597,7 +597,7 @@ it('replays v3 plan ordering with recommended Implement label after recorded OKA
           agent: 'thoth-oracle',
           status: 'completed',
           mode: 'background',
-          result: envelope('oracle', 'plan-review', 'OKAY'),
+          result: envelope('plan-review', 'OKAY'),
         },
       },
     ],
@@ -684,7 +684,7 @@ it('valid non-PASS Oracle without a root approval write is inconclusive', async 
     const result = await trace(
       'verification-fresh-oracle',
       [{ calls: [oracle] }],
-      envelope('oracle', 'final-verification', verdict),
+      envelope('final-verification', verdict),
     );
     expect(result.status, result.reasons.join('\n')).toBe('INCONCLUSIVE');
   }

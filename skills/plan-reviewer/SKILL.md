@@ -34,12 +34,12 @@ workflow manifests, evidence directories, or a scheduler. Structural `ready` is
 necessary but not sufficient for semantic readiness.
 
 Return exactly one fenced `thoth-result` JSON envelope as the entire final
-message, following the specialist contract: `role: "oracle"`,
+message, following the Oracle gate contract: `role: "oracle"`,
 `review.kind: "plan-review"`, and `review.verdict: "OKAY" | "REJECT"`.
 Include concise evidence and at most three blocking risks for actual execution
 blockers with smallest repairs; mark cautions nonblocking. An OKAY requires
 `status: "complete"` and no blocking risks. Root validates the unchanged native
-terminal result with `--role oracle --review-kind plan-review` using the sibling
+terminal result with `--review-kind plan-review` using the sibling
 thoth-sdd skill's **Specialist result validation** procedure, including its shared
 one-request format-only repair budget. Root records plan-review `OKAY` only from a validated envelope
 and after judging the content; a malformed or missing envelope is not approval.

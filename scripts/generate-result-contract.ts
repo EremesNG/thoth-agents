@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { SPECIALIST_RESULT_CONTRACT } from '../src/harness/core/agent-pack';
+import { SPECIALIST_RESULT_CONTRACT } from '../src/harness/core/result-contract';
 
 const output = new URL(
   '../skills/thoth-sdd/scripts/result-contract.json',

@@ -84,7 +84,7 @@ it('grades missing/invalid approval inconclusive without a write and FAIL after 
   }
 });
 it('requires correct review kind and digest, not just valid Oracle JSON', () => {
-  const result = trace('o1', envelope('oracle', 'plan-review', 'OKAY'));
+  const result = trace('o1', envelope('plan-review', 'OKAY'));
   result.changes = [
     {
       path: '.thoth/changes/greeting/greeting.md',
@@ -97,7 +97,7 @@ it('requires correct review kind and digest, not just valid Oracle JSON', () => 
   expect(result.status).toBe('FAIL');
   const bound = trace(
     'o1',
-    envelope('oracle', 'final-verification', 'PASS', 'b'.repeat(64)),
+    envelope('final-verification', 'PASS', 'b'.repeat(64)),
   );
   bound.recordSha256 = 'a'.repeat(64);
   bound.changes = result.changes;
@@ -105,7 +105,7 @@ it('requires correct review kind and digest, not just valid Oracle JSON', () => 
   expect(bound.status).toBe('FAIL');
 });
 it('requires catalog-driven plan approval, canonical choices, Stop handling and no forwarded path', () => {
-  const result = trace('o1', envelope('oracle', 'plan-review', 'OKAY'));
+  const result = trace('o1', envelope('plan-review', 'OKAY'));
   const question = (labels: string[], at: number, answer: string) => ({
     at,
     answer: { answer },
@@ -197,13 +197,55 @@ it('requires designer successful native read from the same task and no forwarded
     [[read], true, 'FAIL'],
     [[read], false, 'PASS'],
   ] as const) {
-    const result = trace('d1', envelope('designer'), 'thoth-designer');
+    const result = trace(
+      'd1',
+      `conclusion: Improved the card.
+evidence: Project guidelines read.
+verification: Checked.
+risks: none
+openQuestions: none
+nextAction: none`,
+      'thoth-designer',
+    );
     result.childTools = [...calls];
     if (forwarded) {
       result.tasks[0].task.task = `Read ${skill}`;
       result.subagents[0].args.task = `Read ${skill}`;
     }
     gradeEvaluation(item('designer-project-skill'), result);
+    expect(result.status, result.reasons.join('; ')).toBe(expected);
+  }
+});
+
+it('does not accept designer read evidence before task completion', () => {
+  const result = trace('d1', 'conclusion: Work in progress.', 'thoth-designer');
+  result.tasks[0].task.status = 'running';
+  result.childTools = [
+    {
+      taskId: 'd1',
+      id: 'r',
+      name: 'read',
+      args: { path: '.pi/skills/fixture-ui-guidelines/SKILL.md' },
+      completed: true,
+      isError: false,
+    },
+  ];
+  gradeEvaluation(item('designer-project-skill'), result);
+  expect(result.status).toBe('FAIL');
+});
+
+it('grades ordinary discovery on MEMORY scope without an envelope', () => {
+  for (const [assignment, expected] of [
+    ['MEMORY: none. Discover the greeting.', 'PASS'],
+    ['Discover the greeting.', 'FAIL'],
+  ]) {
+    const result = trace(
+      'e1',
+      'conclusion: Found the greeting.',
+      'thoth-explorer',
+    );
+    result.subagents[0].args.task = assignment;
+    gradeEvaluation(item('memory-recall-bounded-reads'), result);
     expect(result.status, result.reasons.join('; ')).toBe(expected);
   }
 });

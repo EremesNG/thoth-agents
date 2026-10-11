@@ -61,7 +61,6 @@ describe('subagent runner thread snapshots', () => {
     stall_timeout_ms: 10_000,
     max_concurrency: 1,
     default_tools: ['bash', 'memory_search', 'custom_tool'],
-    model_profiles: {},
   };
 
   async function runWithSession(

@@ -42,6 +42,8 @@ export type ResolvedProfileField<T> = {
 };
 
 export type EffectiveSubagentProfile = {
+  profileName?: string;
+  warnings?: string[];
   agent: string;
   model: ResolvedProfileField<ModelRef>;
   effort: ResolvedProfileField<ThinkingEffort>;
@@ -72,9 +74,6 @@ export type SubagentsConfig = {
   default_model?: ModelRef;
   default_effort?: ThinkingEffort;
   default_mode?: SubagentMode;
-  model_profiles: SubagentModelProfiles;
-  global_model_profiles?: SubagentModelProfiles;
-  project_model_profiles?: SubagentModelProfiles;
   timeout_ms: number;
   stall_timeout_ms: number;
   stall_suspend_max_ms?: number;

@@ -14,6 +14,8 @@ import {
 } from '../atelier-metadata.js';
 import { readSubagentsConfig, subagentSourceWarnings } from '../config.js';
 import { SubagentManager } from '../manager.js';
+import { SessionModelProfile } from '../model-profiles/session.js';
+import { ModelProfileStore } from '../model-profiles/store.js';
 import { runSubagentModelsCommand } from '../model-profiles-ui.js';
 import {
   renderSubagentCompletionMessage,
@@ -132,6 +134,15 @@ export default function subagentsExtension(pi: any): void {
       }
     },
   );
+  const sessionModelProfile = new SessionModelProfile(
+    typeof pi.appendEntry === 'function'
+      ? (type, data) => pi.appendEntry(type, data)
+      : undefined,
+  );
+  const setSessionModelProfile = (profile?: string) => {
+    sessionModelProfile.set(profile);
+    manager.setSessionModelProfile(sessionModelProfile.get());
+  };
   registerSubagentTools(pi, manager, process.cwd());
   const taskStateEvents = pi.events
     ? new SubagentsStatePublisher(pi.events, manager)
@@ -177,6 +188,12 @@ export default function subagentsExtension(pi: any): void {
   };
 
   pi.on?.('session_start', async (_event: unknown, ctx: any) => {
+    sessionModelProfile.restore(
+      ctx?.sessionManager?.getBranch?.() ??
+        ctx?.sessionManager?.getEntries?.() ??
+        [],
+    );
+    manager.setSessionModelProfile(sessionModelProfile.get());
     checkToolsOwnership(ctx);
     if (ctx.hasUI && !publication)
       publication = publishToolDefinitions(definitions);
@@ -194,7 +211,12 @@ export default function subagentsExtension(pi: any): void {
     const cwd = ctx?.cwd ?? process.cwd();
     manager.reconcileOrphanedTasks(cwd);
     taskStateEvents?.startSession(cwd, sessionId);
-    for (const warning of subagentSourceWarnings(cwd))
+    for (const warning of [
+      ...subagentSourceWarnings(cwd),
+      ...new ModelProfileStore({ cwd, agentDir: ctx?.agentDir }).resolve(
+        sessionModelProfile.get(),
+      ).warnings,
+    ])
       ctx?.ui?.notify?.(warning, 'warning');
     panelCtx = ctx;
     registerSubagentsPanelOpener((taskId?: string) =>
@@ -295,7 +317,13 @@ export default function subagentsExtension(pi: any): void {
   pi.registerCommand?.('subagents-model', {
     description: 'Configure subagent model profiles',
     handler: async (_args: string, ctx: any) =>
-      runSubagentModelsCommand({ ...ctx, pi }),
+      runSubagentModelsCommand({
+        ...ctx,
+        pi,
+        sessionModelProfile: sessionModelProfile.get(),
+        getSessionModelProfile: () => sessionModelProfile.get(),
+        setSessionModelProfile,
+      }),
   });
   const checkToolsOwnership = registerToolsCommand(pi);
 }

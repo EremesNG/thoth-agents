@@ -699,8 +699,10 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       agentName: definition.name,
       definition,
       config,
-      ctx,
+      ctx: { ...ctx, cwd },
     });
+  for (const warning of profile.warnings ?? [])
+    onActivity?.({ message: warning, diagnostic: true });
   const preferred = selectedModel({ ctx, definition, profile });
   const effort = profile.effort.value;
   const configuredTools = definition.tools?.length

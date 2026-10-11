@@ -15,6 +15,8 @@ export type ListedSubagent = {
   model?: ModelRef;
   effort?: ThinkingEffort;
   tools: string[];
+  profileName?: string;
+  warnings?: string[];
 };
 
 function modelLabel(model?: ModelRef): string {
@@ -22,7 +24,7 @@ function modelLabel(model?: ModelRef): string {
 }
 
 function summary(agent: ListedSubagent, ui = false): string {
-  return `${agent.name} ${ui ? resolveIcon('separator', '·') : '·'} model: ${modelLabel(agent.model)} ${ui ? resolveIcon('separator', '·') : '·'} effort: ${agent.effort ?? 'default/current'}`;
+  return `${agent.name} ${ui ? resolveIcon('separator', '·') : '·'} model: ${modelLabel(agent.model)} ${ui ? resolveIcon('separator', '·') : '·'} effort: ${agent.effort ?? 'default/current'}${agent.profileName && agent.profileName !== 'default' ? ` · profile: ${agent.profileName}` : ''}${agent.warnings?.length ? ` · warning: ${agent.warnings.join(' ')}` : ''}`;
 }
 
 export function formatSubagentList(

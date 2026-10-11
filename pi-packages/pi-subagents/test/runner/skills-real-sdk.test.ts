@@ -185,7 +185,6 @@ it.each([
         modelRuntime: runtime,
       },
       config: {
-        model_profiles: {},
         default_tools: ['read'],
         timeout_ms: 10000,
         stall_timeout_ms: 10000,

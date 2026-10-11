@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { SettingsManager } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import {
   classifyFallbackFailure,
@@ -42,6 +43,9 @@ describe('subagent runner interaction-required bridge', () => {
       }
     }
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SettingsManager,
+      DefaultPackageManager: undefined,
+      ProjectTrustStore: undefined,
       ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
@@ -78,6 +82,14 @@ describe('subagent runner interaction-required bridge', () => {
       onActivity: (activity) => activities.push(activity),
     });
 
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        diagnostic: true,
+        message:
+          'DefaultPackageManager unavailable; child skill catalog omitted.',
+        transcript: expect.stringContaining('child skill catalog omitted'),
+      }),
+    );
     expect(result.result).toBe('lean done');
     expect(loaderInstances).toHaveLength(1);
     expect(loaderInstances[0].reload).toHaveBeenCalledTimes(1);
@@ -85,6 +97,8 @@ describe('subagent runner interaction-required bridge', () => {
       cwd: '/workspace',
       agentDir: '/agent-dir',
       noSkills: true,
+      additionalSkillPaths: [],
+      noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
@@ -192,6 +206,9 @@ describe('subagent runner interaction-required bridge', () => {
       dispose: vi.fn(async () => undefined),
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SettingsManager,
+      DefaultPackageManager: undefined,
+      ProjectTrustStore: undefined,
       ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',

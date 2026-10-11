@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
+import { mergePiSubagentsConfig } from './pi-install';
 import { readPiModelConfig, savePiModelConfig } from './pi-model-config';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
 import { readPiToolConfig, savePiToolConfig } from './pi-tool-config';
@@ -803,4 +804,67 @@ Old body.
       readFileSync(join(options.piRoot, 'agents', 'thoth-explorer.md'), 'utf8'),
     ).toContain('name: thoth-explorer');
   });
+});
+
+test.each([
+  { field: 'skills: ["tdd", "plan-*"]', expected: '["tdd","plan-*"]' },
+  {
+    field: `skills:
+  - tdd
+  - "plan-*"`,
+    expected: '["tdd","plan-*"]',
+  },
+  { field: 'skills: []', expected: '[]' },
+])('preserves operator skill filters on repeated sync: $field', ({
+  field,
+  expected,
+}) => {
+  const options = fixture();
+  syncPiSpecialists(options);
+  const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+  writeFileSync(
+    target,
+    readFileSync(target, 'utf8').replace(
+      'managed-by: thoth-agents',
+      `managed-by: thoth-agents
+${field}`,
+    ),
+  );
+  for (let i = 0; i < 2; i++) {
+    expect(syncPiSpecialists(options).success).toBe(true);
+    expect(readFileSync(target, 'utf8')).toContain(`skills: ${expected}`);
+  }
+});
+
+test('preserves operator lean_skills settings without setting a Thoth default', () => {
+  for (const lean_skills of [true, false]) {
+    expect(mergePiSubagentsConfig({ lean_skills, other: 'preserve' })).toEqual({
+      lean_skills,
+      other: 'preserve',
+      session_resources: 'lean',
+      enable_continue: false,
+    });
+  }
+  expect(mergePiSubagentsConfig({})).not.toHaveProperty('lean_skills');
+});
+
+test.each([
+  'skills: tdd',
+  'skills: [1]',
+  'skills: null',
+  'skills: [" "]',
+])('leaves malformed operator filters unchanged: %s', (field) => {
+  const options = fixture();
+  syncPiSpecialists(options);
+  const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+  const current = readFileSync(target, 'utf8').replace(
+    'managed-by: thoth-agents',
+    `managed-by: thoth-agents
+${field}`,
+  );
+  writeFileSync(target, current);
+  const result = syncPiSpecialists(options);
+  expect(result.success).toBe(true);
+  expect(result.diagnostics.join(' ')).toContain('skills');
+  expect(readFileSync(target, 'utf8')).toBe(current);
 });

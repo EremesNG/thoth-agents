@@ -172,7 +172,21 @@
   Global `<agent-dir>/subagents.json` therefore requests
   `session_resources: "lean"` and `enable_continue: false`; lean filters
   `before_agent_start` and `session_start`, while full child resources are
-  unsupported. Trusted packages in `lifecycle_passthrough` (default: the two
+  unsupported. Lean children retain their specialist prompt and receive a
+  metadata-only skill catalog (name, description, location), not skill bodies,
+  context files, prompt templates, themes, or root injection. Discovery uses
+  native user skills, configured packages, and trusted project/ancestor skills
+  for the child cwd, offline without installing packages. Parent project trust
+  is reused for children inside that project; other child directories consult
+  persisted native trust, with unknown trust treated as untrusted. Discovery
+  failures produce diagnostics; `disable-model-invocation` skills stay hidden.
+  Optional agent frontmatter `skills` lists names or globs: omitted means all
+  discovered skills, `[]` means none, and unmatched entries produce diagnostics.
+  Thoth config `agents.<role>.skills` generates that Pi-only field; sync preserves
+  operator-edited filters. Global/project `lean_skills` defaults to true;
+  `lean_skills: false` disables child catalogs without enabling full resources.
+  Explicit assignment paths remain available alongside catalog discovery.
+  Trusted packages in `lifecycle_passthrough` (default: the two
   provider bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
   thoth-agents) are the exception: they keep their full lifecycle in children,
   with prompt-shaping events observe-only as defense in depth except that a
@@ -186,7 +200,8 @@
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app
   uses `pi-mcp-adapter`, through the exact attributable global server entry.
 - Pi safely merges `session_resources: "lean"` and `enable_continue: false`
-  into global `subagents.json` without replacing unrelated keys. Detected
+  into global `subagents.json` without replacing unrelated keys, including an
+  operator's `lean_skills` choice; Thoth does not write that default. Detected
   incumbent `pi-subagents` or former `pi-subagents-j0k3r` packages block before
   mutation with manual recovery; setup never removes them or installs both
   delegation runtimes.

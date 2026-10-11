@@ -207,6 +207,13 @@
                 }
               ]
             },
+            "skills": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
             "temperature": {
               "type": "number",
               "minimum": 0,
@@ -261,6 +268,13 @@
                 }
               }
             ]
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "temperature": {
             "type": "number",

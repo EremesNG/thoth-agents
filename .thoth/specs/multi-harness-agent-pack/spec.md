@@ -531,3 +531,13 @@ The root thoth-agents package and every Pi package under pi-packages MUST declar
 - **GIVEN** the repository manifests and root lockfile
 - **WHEN** Pi SDK dependencies are inspected
 - **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer
+
+### Requirement: Pi lean children discover a filtered skill catalog
+
+Lean Pi children MUST keep the specialist prompt and lean isolation while receiving a metadata-only skill catalog from offline native discovery for the child cwd, including user, configured package and trusted project skills and excluding untrusted project skills; an optional per-specialist `skills` filter MAY narrow it and `lean_skills: false` MAY disable it; explicit skill paths in assignments remain valid, and a specialist that cannot load a protocol-required skill MUST return a blocker.
+
+#### Scenario: Pi lean children discover a filtered skill catalog
+
+- **GIVEN** a trusted project with a designer skill and a lean designer child without a filter
+- **WHEN** the child starts
+- **THEN** its effective prompt lists that skill's name, description and location without context files or root injection 

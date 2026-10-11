@@ -927,6 +927,37 @@ describe('config and workflow loading', () => {
     expect(config.max_concurrency).toBe(3);
     expect(config.default_tools).toEqual(['read', 'memory_search']);
     expect(config.session_resources).toBe('lean');
+    expect(config.lean_skills).toBe(true);
+  });
+
+  it('project lean_skills overrides global and definitions carry a skill list', () => {
+    const agentDir = path.join(tmp, 'catalog-global');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ lean_skills: false }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ lean_skills: true }),
+    );
+    fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'catalog.md'),
+      `---
+name: catalog
+skills: [tdd, "review-*"]
+---
+Specialist`,
+    );
+    withAgentDir(agentDir, () => {
+      expect(readSubagentsConfig(tmp).lean_skills).toBe(true);
+      expect(
+        loadSubagents(tmp).find((agent) => agent.name === 'catalog')?.skills,
+      ).toEqual(['tdd', 'review-*']);
+      fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), '{}');
+      expect(readSubagentsConfig(tmp).lean_skills).toBe(false);
+    });
   });
 
   it('allows explicitly opting nested subagent sessions back into full resource loading', () => {

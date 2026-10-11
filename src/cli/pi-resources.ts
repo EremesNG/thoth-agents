@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { isSeq, parseDocument } from 'yaml';
 import { LEGACY_OPENAI_PRESET } from '../config/constants';
 import {
   PI_SPECIALIST_ROLES,
@@ -61,9 +62,28 @@ function preserveOverrides(
   role: (typeof PI_SPECIALIST_ROLES)[number],
 ): string {
   const toolOverrides = readPiSpecialistToolOverrides(current);
+  // Tool parsing above also rejects malformed YAML and unsupported aliases.
+  const source =
+    /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(current)?.[1] ?? '';
+  const skillsNode = parseDocument(source).get('skills', true);
+  if (skillsNode !== undefined && !isSeq(skillsNode))
+    throw new Error('skills must be a list of nonempty names or globs.');
+  const skills = isSeq(skillsNode) ? skillsNode.toJSON() : undefined;
+  if (
+    skills !== undefined &&
+    (!Array.isArray(skills) ||
+      skills.some(
+        (skill: unknown) =>
+          typeof skill !== 'string' || !skill.trim() || skill !== skill.trim(),
+      ))
+  )
+    throw new Error('skills must be a list of nonempty names or globs.');
   const end = next.indexOf('\n---', 4);
   if (end < 0) return next;
   let frontmatter = next.slice(0, end);
+
+  if (skills !== undefined)
+    frontmatter = replaceField(frontmatter, 'skills', JSON.stringify(skills));
 
   const oldModel = field(current, 'model');
   const oldEffort = field(current, 'effort') ?? field(current, 'thinking');
@@ -184,7 +204,7 @@ export function syncPiSpecialists(
           content = preserveOverrides(content, current, role);
         } catch (error) {
           diagnostics.push(
-            `Preserved ${name} unchanged because its tool, disallowed_tools, or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
+            `Preserved ${name} unchanged because its tool, disallowed_tools, skills, or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
           );
           continue;
         }

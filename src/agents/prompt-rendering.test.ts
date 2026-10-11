@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
@@ -794,4 +795,53 @@ describe('AI-first prompt rendering', () => {
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
   });
+});
+
+// Baseline captured before the Pi-only catalog guidance change.
+test('keeps non-Pi root and specialist prompts byte-identical', () => {
+  const hashes = DIALECTS.map((dialect) => [
+    dialect.harness,
+    getAgentPackContract().roles.map(({ name }) =>
+      createHash('sha256')
+        .update(renderRolePrompt(sectionsFor(name), dialect))
+        .digest('hex'),
+    ),
+  ]);
+  expect(hashes).toMatchInlineSnapshot(`
+    [
+      [
+        "opencode",
+        [
+          "88d7ff5c46cc2496c60271c93469b2f64f4b76806b690bace5b5139a1e3d8633",
+          "48a9141dbbe8a69b50056715e3df6317953495c409da8d9aeca4e759af9ef087",
+          "58dbda570d9adb2adb4400756180b63aeecd63c74a5a5227c708183ebc6b91f3",
+          "e8bd03467e223c2dc74efbec4c44818b57e4b32caebd39bd5effce98f692a900",
+          "9281f106023d0724a076b8db55ba628f38c5e9c75229f5e63528f37f169077e1",
+          "b2eb4a94adb98de5c8cfbfa53a0ccb4235b7d4be60f3068bdd7a922ef69004d8",
+        ],
+      ],
+      [
+        "codex",
+        [
+          "849c95e364263c807abc14700f53af3adaed66d0ef986d96dc2fad2b1b1aa531",
+          "04e596cdc5558812c47caa73b75d7c7c3109de1752fb7b484494de6ef7330cf9",
+          "68eb6f5cfbe4c953d364e79ca9d3bcb95088489a492db1a68a74d23c9d15eb27",
+          "6eafcd85a76f79d0c7719daae74cdfb085b2ccec0cef3a0c09da6692e8c146c0",
+          "39bbbf6d77addebf07b80cf170402714bfe643d0baeeecd5685e244fc13e9cba",
+          "6e918e90721a26d61e99b1bae0aadc6c76bc81d7625a36b2275dfc77ded4604d",
+        ],
+      ],
+      [
+        "claude",
+        [
+          "2b84b778e995df134314e914f56641b83ac622ae6175a39ff4e0c852ff34bfb1",
+          "432303ca87d480c468b686f3e24eda654fd7b4be896994591817dbb51dcb6a0c",
+          "6896e4871305b5e3b7e92578610dfcdfc21841c40e0e21bf69a8bc5acda23083",
+          "4fe0e893d49824afc5dd9816612227ba3e4264e0fc52c71084ab454d0ead4595",
+          "18f20610560a0d311758b95d8947403ff76ff09fbce9a293d4ce5bef25ea3927",
+          "4faa80b929fb902cb11dc114b37578486023318b161d47dd8905d17ca2774819",
+        ],
+      ],
+    ]
+  `);
 });

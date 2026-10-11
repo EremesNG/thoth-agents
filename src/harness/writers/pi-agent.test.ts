@@ -80,7 +80,10 @@ describe('Pi agent writer', () => {
           ? '"ask_orchestrator"'
           : undefined,
       );
-      expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
+      expect(artifact.content).toMatch(
+        /^effort: "(?:low|medium|high|xhigh|max)"$/m,
+      );
+      expect(artifact.content).not.toMatch(/^skills:/m);
       expect(artifact.content).toContain('subagent_mode: "background"');
       expect(artifact.content).not.toMatch(
         /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,

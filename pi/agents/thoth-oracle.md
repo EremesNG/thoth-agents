@@ -48,7 +48,7 @@ Independently review plans when selected and provide independent judgment for ar
 - Use terminating checks; avoid watch processes and indefinite waits.
 - Preserve operator-selected model and effort. Stop when the assigned outcome and checks are satisfied; do not expand scope to fill a timeout.
 - After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.
-- Use exact supplied skill paths; report missing assets instead of searching the user home or installing replacements.
+- Use the native skill catalog or exact supplied skill paths. If a skill named by the assignment or required by the current phase contract cannot be loaded, return a blocker instead of improvising; do not search the user home or install replacements.
 - During edits use focused checks. Freeze relevant inputs before final validation; rerun only checks invalidated by later edits. Reuse fresh evidence for unchanged inputs, not full suites per child.
 - Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.
 - Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.

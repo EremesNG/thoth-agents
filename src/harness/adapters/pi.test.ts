@@ -432,3 +432,40 @@ describe('Pi adapter', () => {
     expect(serialized).not.toContain('task store implementation');
   });
 });
+
+test.each([
+  { skills: ['tdd', 'plan-*'] },
+  { skills: [] },
+])('renders configured per-role skill filters %j only on that role', ({
+  skills,
+}) => {
+  const rendered = piAdapter.render({
+    projectRoot: process.cwd(),
+    config: { agents: { worker: { skills } } } as PluginConfig,
+  });
+  for (const artifact of rendered.artifacts) {
+    expect(artifact.content.match(/^skills: (.+)$/m)?.[1]).toBe(
+      artifact.path === 'agents/thoth-worker.md'
+        ? JSON.stringify(skills)
+        : undefined,
+    );
+  }
+});
+
+test('uses native specialist catalogs and blocks unavailable protocol skills', () => {
+  const root = renderPiRootInstructions();
+  expect(root).toContain('skill paths are optional complements');
+  expect(root).toContain('specialists have their own native skill catalog');
+  expect(root).toContain('metadata-only skill catalogs');
+  expect(root).toContain('offline');
+  for (const child of piAdapter.render({ projectRoot: process.cwd() })
+    .artifacts) {
+    expect(child.content).toContain(
+      'Use the native skill catalog or exact supplied skill paths',
+    );
+    expect(child.content).toContain(
+      'named by the assignment or required by the current phase contract',
+    );
+    expect(child.content).toContain('return a blocker instead of improvising');
+  }
+});

@@ -856,6 +856,39 @@ function scanPiProjectInstalledIncumbents(
   return incumbents;
 }
 
+export function mergePiCodemodeSettings(
+  current: Record<string, unknown>,
+): Record<string, unknown> {
+  const tools = current.defaultTools;
+  if (
+    tools !== undefined &&
+    (!Array.isArray(tools) || tools.some((tool) => typeof tool !== 'string'))
+  )
+    throw new Error('Global Pi defaultTools must be an array of strings.');
+  if (current.codemode !== undefined && !isRecord(current.codemode))
+    throw new Error('Global Pi codemode must be a JSON object.');
+  const codemode = isRecord(current.codemode) ? current.codemode : {};
+  let defaultTools = tools ?? ['+codemode'];
+  if (
+    !defaultTools.some((tool: string) =>
+      ['codemode', '+codemode', '-codemode'].includes(tool),
+    )
+  ) {
+    const additive =
+      defaultTools.length > 0 &&
+      defaultTools.every((tool: string) => /^[+-]/.test(tool));
+    defaultTools = [...defaultTools, additive ? '+codemode' : 'codemode'];
+  }
+  return {
+    ...current,
+    defaultTools,
+    codemode: {
+      ...codemode,
+      ...(codemode.mode === undefined ? { mode: 'on' } : {}),
+    },
+  };
+}
+
 export function mergePiSubagentsConfig(
   current: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1003,10 +1036,12 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
   }
   let userPackages: PiConfiguredPackage[] = [];
   let plannedQuestionRemovals: PiConfiguredPackage[] = [];
+  let codemodeSettingsContent: string | undefined;
   let subagentsConfigContent: string | undefined;
   let mcpContent: string | undefined;
   try {
     const userSettings = readJsonObject(paths.settingsPath);
+    codemodeSettingsContent = `${JSON.stringify(mergePiCodemodeSettings(userSettings), null, 2)}\n`;
     const incumbentSource = configuredPackageSource(
       userSettings,
       isPiIncumbentDelegationSource,
@@ -1141,6 +1176,16 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       target: pkg.source,
       command: { command: 'pi', args: ['install', pkg.source, '--no-approve'] },
     })),
+    ...(codemodeSettingsContent === undefined
+      ? []
+      : [
+          {
+            kind: 'settings' as const,
+            description: 'Fill absent global codemode defaults',
+            target: paths.settingsPath,
+            content: codemodeSettingsContent,
+          },
+        ]),
     ...(subagentsConfigContent === undefined
       ? []
       : [
@@ -2016,11 +2061,13 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         (candidate.kind === 'settings' || candidate.kind === 'mcp'),
     )) {
       const content =
-        item.target === plan.paths.subagentsConfigPath
-          ? `${JSON.stringify(mergePiSubagentsConfig(readJsonObject(item.target)), null, 2)}\n`
-          : item.target === plan.paths.mcpConfigPath
-            ? `${JSON.stringify(mergePiGrepMcpConfig(readJsonObject(item.target)), null, 2)}\n`
-            : (item.content ?? '');
+        item.target === plan.paths.settingsPath
+          ? `${JSON.stringify(mergePiCodemodeSettings(readJsonObject(item.target)), null, 2)}\n`
+          : item.target === plan.paths.subagentsConfigPath
+            ? `${JSON.stringify(mergePiSubagentsConfig(readJsonObject(item.target)), null, 2)}\n`
+            : item.target === plan.paths.mcpConfigPath
+              ? `${JSON.stringify(mergePiGrepMcpConfig(readJsonObject(item.target)), null, 2)}\n`
+              : (item.content ?? '');
       if (writePiManagedText(item.target, content)) changed.push(item.target);
     }
     const resources = syncPiSpecialists({

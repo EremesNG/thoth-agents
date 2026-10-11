@@ -34,6 +34,7 @@ export function getPiSpecialistDefaultTools(role: PiSpecialistRole): string[] {
     'grep',
     'find',
     'ls',
+    ...(role === 'explorer' || role === 'librarian' ? ['codemode'] : []),
     ...(role === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
   ];
 }

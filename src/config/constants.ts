@@ -42,11 +42,24 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
   worker: [],
 };
 
-export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
+/** Previous shipped defaults, retained only for upgrade comparison. */
+export const LEGACY_OPENAI_PRESET = {
   explorer: { model: 'gpt-6-luna', effort: 'low' },
   librarian: { model: 'gpt-6-luna', effort: 'high' },
   oracle: { model: 'gpt-6-astra', effort: 'medium' },
   designer: { model: 'gpt-6-sol', effort: 'medium' },
+  worker: { model: 'gpt-6-luna', effort: 'max' },
+  orchestrator: { model: 'gpt-6-sol', effort: 'xhigh' },
+} as const satisfies Record<
+  BuiltinAgentName,
+  { model: string; effort: string }
+>;
+
+export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
+  explorer: { model: 'gpt-6-luna', effort: 'max' },
+  librarian: { model: 'gpt-6-luna', effort: 'max' },
+  oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+  designer: { model: 'gpt-6-luna', effort: 'max' },
   worker: { model: 'gpt-6-luna', effort: 'max' },
 } as const satisfies Record<
   Exclude<BuiltinAgentName, 'orchestrator'>,
@@ -54,8 +67,8 @@ export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
 >;
 
 export const OPENCODE_OPENAI_ORCHESTRATOR_PRESET = {
-  model: 'gpt-6-sol',
-  effort: 'xhigh',
+  model: 'gpt-6.1-sol',
+  effort: 'high',
 } as const;
 
 // Default models for each agent. OpenCode requires provider-qualified IDs,

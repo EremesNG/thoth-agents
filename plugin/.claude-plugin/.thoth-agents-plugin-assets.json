@@ -14,7 +14,7 @@
     {
       "path": "agents/explorer.md",
       "kind": "agent-config",
-      "sha256": "sha256:4faa5cf7900d535264e8eb890ab1cb0c8c587d767166153224490798ab530e6f"
+      "sha256": "sha256:386a0478c7584bd03bc62a9f0a6ed4472a0dc966b466ee6a115dbf943d952c42"
     },
     {
       "path": "agents/librarian.md",

@@ -6,6 +6,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { LEGACY_OPENAI_PRESET } from '../config/constants';
 import { isValidPackageVersion } from './package-version';
 import {
   ensureConfigDir,
@@ -187,6 +188,61 @@ export function updateOpenCodeMainConfig(
   }
 }
 
+function configObject(value: unknown): Record<string, unknown> {
+  if (value === undefined) return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Expected an object in managed lite configuration.');
+  return value as Record<string, unknown>;
+}
+
+function mergeLiteConfig(
+  defaults: Record<string, unknown>,
+  installed: Record<string, unknown>,
+): Record<string, unknown> {
+  const presets = { ...configObject(installed.presets) };
+  const shipped = configObject(configObject(defaults.presets).openai);
+  const activeName =
+    typeof installed.preset === 'string' ? installed.preset : 'openai';
+  const rootAgents = { ...configObject(installed.agents) };
+
+  // Merge the shipped preset and the selected preset. Root agent overrides must
+  // participate in comparison, otherwise a customized effective pair can advance.
+  for (const name of new Set(['openai', activeName])) {
+    const roles = { ...configObject(presets[name]) };
+    for (const [role, legacy] of Object.entries(LEGACY_OPENAI_PRESET)) {
+      const rootRole = name === activeName ? rootAgents[role] : undefined;
+      const current = {
+        ...configObject(roles[role]),
+        ...configObject(rootRole),
+      };
+      const advancesLegacy =
+        current.model === `openai/${legacy.model}` &&
+        current.variant === legacy.effort;
+      if (roles[role] === undefined && rootRole === undefined) {
+        roles[role] = shipped[role];
+      } else if (advancesLegacy) {
+        roles[role] = { ...current, ...configObject(shipped[role]) };
+        if (rootRole !== undefined)
+          rootAgents[role] = {
+            ...configObject(rootRole),
+            ...configObject(shipped[role]),
+          };
+      } else {
+        // Do not fill an omitted variant: it means runtime inheritance.
+        roles[role] = current;
+      }
+    }
+    presets[name] = roles;
+  }
+  return {
+    ...defaults,
+    ...installed,
+    preset: activeName,
+    presets,
+    ...(installed.agents !== undefined ? { agents: rootAgents } : {}),
+  };
+}
+
 export function writeLiteConfig(
   installConfig: InstallConfig,
   targetPath?: string,
@@ -195,7 +251,12 @@ export function writeLiteConfig(
 
   try {
     ensureConfigDir();
-    const config = generateLiteConfig(installConfig);
+    let config = generateLiteConfig(installConfig);
+    if (!installConfig.reset && existsSync(configPath)) {
+      const { config: installed, error } = parseConfigFile(configPath);
+      if (error) throw new Error(`Failed to parse lite config: ${error}`);
+      if (installed) config = mergeLiteConfig(config, configObject(installed));
+    }
 
     // Atomic write for lite config too
     const tmpPath = `${configPath}.tmp`;

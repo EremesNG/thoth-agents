@@ -539,10 +539,10 @@ provider. The ambient root retains Pi's selected model and effort settings:
 
 | Specialist | Model | Effort |
 | --- | --- | --- |
-| explorer | `openai-codex/gpt-6-luna` | `low` |
-| librarian | `openai-codex/gpt-6-luna` | `high` |
-| oracle | `openai-codex/gpt-6-astra` | `medium` |
-| designer | `openai-codex/gpt-6-sol` | `medium` |
+| explorer | `openai-codex/gpt-6-luna` | `max` |
+| librarian | `openai-codex/gpt-6-luna` | `max` |
+| oracle | `openai-codex/gpt-6.1-sol` | `xhigh` |
+| designer | `openai-codex/gpt-6-luna` | `max` |
 | worker | `openai-codex/gpt-6-luna` | `max` |
 
 Definitions use runtime-supported `model`, `effort`, and `subagent_mode` fields.

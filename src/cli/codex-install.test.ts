@@ -89,6 +89,86 @@ function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
 }
 
 describe('Codex install setup plan', () => {
+  test.each([
+    ['gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['custom-model', 'medium', 'custom-model', 'medium'],
+    ['gpt-6-astra', 'high', 'gpt-6-astra', 'high'],
+    ['gpt-6-astra', undefined, 'gpt-6-astra', undefined],
+    ['openai/gpt-6-astra', 'medium', 'openai/gpt-6-astra', 'medium'],
+  ])('sync compares the complete Codex legacy pair %s / %s coherently across two syncs', (model, effort, expectedModel, expectedEffort) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-legacy-'));
+    try {
+      const home = join(dir, 'home');
+      applyFreshCodexSetup(dir, home);
+      const target = rolePath(home, 'oracle');
+      writeFileSync(
+        target,
+        replaceRoleTomlEffort(
+          replaceRoleModel(readFileSync(target, 'utf8'), model),
+          effort,
+        ),
+      );
+      const key = 'thoth-agents-oracle.toml';
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      state.models[key] = 'gpt-6-astra';
+      state.configuredModels = { [key]: model };
+      state.configuredEfforts = { [key]: effort };
+      writeFileSync(managedModelsPath(home), JSON.stringify(state));
+      for (let sync = 0; sync < 2; sync++) {
+        applyFreshCodexSetup(dir, home);
+        const content = readFileSync(target, 'utf8');
+        expect(roleModel(content)).toBe(expectedModel);
+        expect(parseRoleTomlEffort(content)).toBe(expectedEffort);
+        const next = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+        expect(next.configuredModels[key]).toBe(expectedModel);
+        expect(next.configuredEfforts?.[key]).toBe(expectedEffort);
+        if (model === 'gpt-6-astra' && effort === 'medium')
+          expect(next.models[key]).toBe('gpt-6.1-sol');
+      }
+      applyFreshCodexSetup(dir, home, true);
+      expect(roleModel(readFileSync(target, 'utf8'))).toBe('gpt-6.1-sol');
+      expect(parseRoleTomlEffort(readFileSync(target, 'utf8'))).toBe('xhigh');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
+    ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
+    ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
+    ['designer', 'gpt-6-sol', 'high', 'gpt-6-sol', 'high'],
+    ['designer', 'gpt-6-sol', undefined, 'gpt-6-sol', undefined],
+  ] as const)('advances only complete tracked Codex pair %s / %s / %s without configured state', (role, model, effort, expectedModel, expectedEffort) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-tracked-legacy-'));
+    try {
+      const home = join(dir, 'home');
+      applyFreshCodexSetup(dir, home);
+      const target = rolePath(home, role);
+      writeFileSync(
+        target,
+        replaceRoleTomlEffort(
+          replaceRoleModel(readFileSync(target, 'utf8'), model),
+          effort,
+        ),
+      );
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      state.models[`thoth-agents-${role}.toml`] = model;
+      writeFileSync(managedModelsPath(home), JSON.stringify(state));
+      for (let sync = 0; sync < 2; sync++) {
+        applyFreshCodexSetup(dir, home);
+        expect(roleModel(readFileSync(target, 'utf8'))).toBe(expectedModel);
+        expect(parseRoleTomlEffort(readFileSync(target, 'utf8'))).toBe(
+          expectedEffort,
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('effort TOML helpers add, replace, and remove only the owned field', () => {
     const content = 'model = "gpt-5.6-sol"\nsandbox_mode = "read-only"\n';
     const added = replaceRoleTomlEffort(content, 'max');
@@ -112,10 +192,10 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-6-astra', effort: 'medium' },
-        librarian: { model: 'gpt-6-luna', effort: 'high' },
-        explorer: { model: 'gpt-6-luna', effort: 'low' },
-        designer: { model: 'gpt-6-sol', effort: 'medium' },
+        oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+        librarian: { model: 'gpt-6-luna', effort: 'max' },
+        explorer: { model: 'gpt-6-luna', effort: 'max' },
+        designer: { model: 'gpt-6-luna', effort: 'max' },
         worker: { model: 'gpt-6-luna', effort: 'max' },
       } as const;
 
@@ -1172,7 +1252,7 @@ describe('Codex install setup plan', () => {
             'description = "user edited"',
           )
           .replace(
-            'model_reasoning_effort = "medium"',
+            'model_reasoning_effort = "max"',
             'model_reasoning_effort = "high"',
           )
           .replace(

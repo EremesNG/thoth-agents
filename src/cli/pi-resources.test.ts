@@ -35,7 +35,91 @@ function fixture() {
 }
 
 describe('Pi specialist synchronization', () => {
-  test('adds packaged defaults to old definitions without treating body examples as overrides', () => {
+  test.each([
+    ['openai-codex/gpt-6-astra', 'medium', 'openai-codex/gpt-6.1-sol', 'xhigh'],
+    ['custom/model', 'medium', 'custom/model', 'medium'],
+    ['openai-codex/gpt-6-astra', 'high', 'openai-codex/gpt-6-astra', 'high'],
+    [
+      'openai-codex/gpt-6-astra',
+      undefined,
+      'openai-codex/gpt-6-astra',
+      undefined,
+    ],
+  ])('sync compares the complete Pi legacy pair %s / %s', (model, effort, expectedModel, expectedEffort) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts)
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    const target = join(options.piRoot, 'agents', 'thoth-oracle.md');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      `---
+name: thoth-oracle
+managed-by: thoth-agents
+model: "${model}"
+${
+  effort === undefined
+    ? ''
+    : `effort: "${effort}"
+`
+}tools: "read"
+---
+Old body.
+`,
+    );
+    for (let sync = 0; sync < 2; sync++) {
+      expect(syncPiSpecialists(options).success).toBe(true);
+      const role = readPiModelConfig(options.piRoot, ['oracle']).roles[0];
+      expect(role.model).toBe(expectedModel);
+      expect(role.effort).toEqual(
+        expectedEffort === undefined
+          ? { kind: 'inherit' }
+          : { kind: 'effort', value: expectedEffort },
+      );
+      expect(readFileSync(target, 'utf8')).toContain('tools: "read"');
+    }
+  });
+
+  test.each([
+    ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
+    ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
+    ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
+  ] as const)('advances legacy Pi %s with thinking migration', (role, model, thinking, expectedModel, expectedEffort) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts)
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    const target = join(options.piRoot, 'agents', `thoth-${role}.md`);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      `---
+name: thoth-${role}
+managed-by: thoth-agents
+model: 'openai-codex/${model}'
+thinking: ${thinking}
+---
+Old body.
+`,
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    const current = readPiModelConfig(options.piRoot, [role]).roles[0];
+    expect(current.model).toBe(`openai-codex/${expectedModel}`);
+    expect(current.effort).toEqual({ kind: 'effort', value: expectedEffort });
+    expect(readFileSync(target, 'utf8')).not.toMatch(/^thinking:/m);
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test('adds packaged model to old definitions without treating body examples as overrides or filling absent effort', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -53,7 +137,7 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
     expect(content).toContain('model: "openai-codex/gpt-6-luna"');
-    expect(content).toContain('effort: "max"');
+    expect(content).not.toMatch(/^effort:/m);
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 

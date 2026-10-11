@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LEGACY_OPENAI_PRESET } from '../config/constants';
 import {
   codexAdapter,
   renderCodexRootInstructions,
@@ -390,6 +391,7 @@ export function applyCodexManagedModelOverrides(
 }
 
 function resolveRoleTomlContent(options: {
+  role: CodexRoleName;
   renderedContent: string;
   targetPath: string;
   state: ManagedModelState;
@@ -425,6 +427,23 @@ function resolveRoleTomlContent(options: {
   const installedContent = readFileSync(options.targetPath, 'utf8');
   const currentModel = parseRoleTomlModel(installedContent);
   const currentEffort = parseRoleTomlEffort(installedContent);
+  const legacy = LEGACY_OPENAI_PRESET[options.role];
+  if (currentModel === legacy.model && currentEffort === legacy.effort) {
+    options.nextState.models[key] = renderedModel;
+    if (configuredModel !== undefined) {
+      options.nextState.configuredModels ??= {};
+      options.nextState.configuredModels[key] = renderedModel;
+    }
+    if (configuredEffort !== undefined) {
+      options.nextState.configuredEfforts ??= {};
+      const renderedEffort = parseRoleTomlEffort(options.renderedContent);
+      if (renderedEffort !== undefined)
+        options.nextState.configuredEfforts[key] = renderedEffort;
+      else delete options.nextState.configuredEfforts[key];
+    }
+    return options.renderedContent;
+  }
+
   if (configuredModel !== undefined) {
     options.nextState.models[key] = renderedModel;
     options.nextState.configuredModels ??= {};
@@ -457,7 +476,12 @@ function resolveRoleTomlContent(options: {
   }
 
   options.nextState.models[key] = renderedModel;
-  return replaceRoleTomlEffort(options.renderedContent, currentEffort);
+  return replaceRoleTomlEffort(
+    currentModel === undefined
+      ? options.renderedContent
+      : replaceRoleTomlModel(options.renderedContent, currentModel),
+    currentEffort,
+  );
 }
 
 function roleArtifactContent(
@@ -511,6 +535,7 @@ export function buildCodexSetupPlan(
           roleArtifactContent(target.role, render.artifacts),
         ),
         content: resolveRoleTomlContent({
+          role: target.role,
           renderedContent: roleArtifactContent(target.role, render.artifacts),
           targetPath: target.path,
           state: managedModelState,

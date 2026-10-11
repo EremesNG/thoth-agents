@@ -127,7 +127,7 @@ describe('Claude Code adapter v0.3', () => {
         String(artifact(artifacts, suffix)?.content),
       )?.[1];
 
-    expect(effortOf(defaults, 'agents/explorer.md')).toBe('low');
+    expect(effortOf(defaults, 'agents/explorer.md')).toBe('medium');
     expect(effortOf(defaults, 'agents/designer.md')).toBe('medium');
     expect(effortOf(defaults, 'agents/worker.md')).toBe('medium');
     expect(effortOf(defaults, 'agents/librarian.md')).toBe('high');

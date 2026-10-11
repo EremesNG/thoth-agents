@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { LEGACY_OPENAI_PRESET } from '../config/constants';
 import {
   PI_SPECIALIST_ROLES,
   piSpecialistName,
@@ -54,39 +55,42 @@ function replaceField(
     : `${frontmatter}\n${name}: ${value}`;
 }
 
-function preserveOverrides(next: string, current: string): string {
+function preserveOverrides(
+  next: string,
+  current: string,
+  role: (typeof PI_SPECIALIST_ROLES)[number],
+): string {
   const toolOverrides = readPiSpecialistToolOverrides(current);
   const end = next.indexOf('\n---', 4);
   if (end < 0) return next;
   let frontmatter = next.slice(0, end);
 
   const oldModel = field(current, 'model');
+  const oldEffort = field(current, 'effort') ?? field(current, 'thinking');
+  const legacy = LEGACY_OPENAI_PRESET[role];
+  const advancesLegacy =
+    isSentinel(oldModel ?? '', `openai-codex/${legacy.model}`) &&
+    isSentinel(oldEffort ?? '', legacy.effort);
   const transitionalModelInherit = isSentinel(
     field(current, 'thoth-model-inherit') ?? '',
     'true',
   );
-  if (oldModel || transitionalModelInherit)
+  if (!advancesLegacy && (oldModel || transitionalModelInherit))
     frontmatter = replaceField(
       frontmatter,
       'model',
       !oldModel || isSentinel(oldModel, 'default') ? '"inherit"' : oldModel,
     );
 
-  // Migrate legacy thinking values once; absent effort on an existing owned
-  // definition means inherit, so later package syncs must not re-pin a default.
-  const oldEffort = field(current, 'effort') ?? field(current, 'thinking');
-  const preservesInheritance =
-    oldEffort === undefined &&
-    (isSentinel(field(current, 'thoth-thinking-inherit') ?? '', 'true') ||
-      field(current, 'defaultContext') !== undefined ||
-      field(current, 'subagent_mode') !== undefined);
-  const effort = oldEffort
-    ? isSentinel(oldEffort, 'default') || isSentinel(oldEffort, 'inherit')
-      ? undefined
-      : oldEffort
-    : preservesInheritance
-      ? undefined
-      : field(next, 'effort');
+  // Legacy thinking participates in pair comparison, then migrates to effort.
+  // An omitted effort is inheritance, even on pre-effort owned definitions.
+  const effort = advancesLegacy
+    ? field(next, 'effort')
+    : oldEffort &&
+        !isSentinel(oldEffort, 'default') &&
+        !isSentinel(oldEffort, 'inherit')
+      ? oldEffort
+      : undefined;
   frontmatter = replaceField(frontmatter, 'effort', effort);
   frontmatter = replaceField(frontmatter, 'thinking', undefined);
   if (toolOverrides.tools)
@@ -160,7 +164,8 @@ export function syncPiSpecialists(
           'Unowned canonical or obsolete Pi specialist definitions block synchronization; remove or rename them explicitly before retrying.',
       };
 
-    for (const name of PI_SPECIALIST_NAMES) {
+    for (const role of PI_SPECIALIST_ROLES) {
+      const name = piSpecialistName(role);
       const source = join(options.packageRoot, 'pi', 'agents', `${name}.md`);
       const target = join(options.piRoot, 'agents', `${name}.md`);
       if (!existsSync(source))
@@ -176,7 +181,7 @@ export function syncPiSpecialists(
         : undefined;
       if (current !== undefined) {
         try {
-          content = preserveOverrides(content, current);
+          content = preserveOverrides(content, current, role);
         } catch (error) {
           diagnostics.push(
             `Preserved ${name} unchanged because its tool, disallowed_tools, or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,

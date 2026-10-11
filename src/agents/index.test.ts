@@ -88,12 +88,37 @@ describe('OpenCode v0.3 agent roster', () => {
 describe('OpenCode v0.3 defaults', () => {
   test('preserves the established specialist and root defaults', () => {
     expect(getAgentConfigs()).toMatchObject({
-      orchestrator: { model: 'openai/gpt-6-sol', variant: 'xhigh' },
-      explorer: { model: 'openai/gpt-6-luna', variant: 'low' },
-      librarian: { model: 'openai/gpt-6-luna', variant: 'high' },
-      oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
-      designer: { model: 'openai/gpt-6-sol', variant: 'medium' },
+      orchestrator: { model: 'openai/gpt-6.1-sol', variant: 'high' },
+      explorer: { model: 'openai/gpt-6-luna', variant: 'max' },
+      librarian: { model: 'openai/gpt-6-luna', variant: 'max' },
+      oracle: { model: 'openai/gpt-6.1-sol', variant: 'xhigh' },
+      designer: { model: 'openai/gpt-6-luna', variant: 'max' },
       worker: { model: 'openai/gpt-6-luna', variant: 'max' },
+    });
+  });
+
+  test.each(
+    ROLE_NAMES,
+  )('inherits effort for a %s model-only override', (role) => {
+    const rendered = getAgentConfigs({
+      agents: { [role]: { model: 'custom/model' } },
+    })[role];
+
+    expect(rendered.model).toBe('custom/model');
+    expect(rendered).not.toHaveProperty('variant');
+  });
+
+  test('keeps shipped effort when overrides do not change the model', () => {
+    expect(
+      getAgentConfigs({
+        agents: {
+          oracle: { temperature: 0.2 },
+          orchestrator: { steps: 35 },
+        },
+      }),
+    ).toMatchObject({
+      oracle: { variant: 'xhigh', temperature: 0.2 },
+      orchestrator: { variant: 'high', steps: 35 },
     });
   });
 
@@ -130,6 +155,7 @@ describe('OpenCode v0.3 defaults', () => {
       { id: 'custom/primary', variant: 'high' },
       { id: 'custom/fallback' },
     ]);
+    expect(getAgentConfigs(config).oracle).not.toHaveProperty('variant');
   });
 
   test('adds bounded-step guidance when steps are configured', () => {

@@ -3,8 +3,8 @@ name: thoth-oracle
 description: "Independently review plans when selected and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts. Use when: Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment. Do not use when: Not for implementation, mutation, persistence, or self-review. Escalate when: Return blockers and remediation anchors to root. Mutation: read-only; never mutate the workspace. Verification: separates observations, risks, and recommendations Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 tools: "read, bash, grep, find, ls"
 disallowed_tools: "ask_orchestrator"
-model: "openai-codex/gpt-6-astra"
-effort: "medium"
+model: "openai-codex/gpt-6.1-sol"
+effort: "xhigh"
 subagent_mode: "background"
 managed-by: thoth-agents
 ---

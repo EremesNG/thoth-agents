@@ -381,6 +381,65 @@ describe('named model profile panel', () => {
       expect(text()).toContain('duo (global)');
     });
 
+    it('edits a rename at the cursor without moving the profile selection', () => {
+      seed();
+      const { modal, press, text } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right, 'r'); // solo
+      press(KEYS.left, KEYS.left);
+      expect(modal.render(110).join('\n')).toContain(
+        'name: so\u001b[7ml\u001b[27mo',
+      );
+      press('X', KEYS.right, BACKSPACE, '\u001b[3~', 'ab');
+      expect(text()).toContain('name: soXab');
+      press(KEYS.enter);
+      expect(text()).toContain('Renamed solo to soXab');
+      expect(env().readFile('global').profiles.soXab).toBeDefined();
+      expect(env().readFile('global').profiles.shared).toBeDefined();
+      expect(text()).toContain('profile 4/4');
+    });
+
+    it.each([
+      'n',
+      'c',
+    ])('edits new names with %s using jumps and pasted text', (key) => {
+      const { modal, press, text, workspace } = open(env());
+      press(key, 'ac', '\u001b[H', KEYS.left, KEYS.right);
+      press('\u001b[200~b\u001b[201~');
+      expect(modal.render(110).join('\n')).toContain(
+        'name: ab\u001b[7mc\u001b[27m',
+      );
+      press('\u001b[F', KEYS.right, BACKSPACE, 'd');
+      press('\u0001', '\u001b[3~', 'A', '\u0005', 'e');
+      expect(text()).toContain('name: Abde');
+      press(KEYS.enter);
+      expect(text()).toContain('Scope for Abde');
+      press(KEYS.enter);
+      expect(workspace.entries().some((entry) => entry.name === 'Abde')).toBe(
+        true,
+      );
+    });
+
+    it('keeps clear, validation and cancel behavior while editing a rename', () => {
+      seed();
+      const { press, text, done } = open(env());
+      press(KEYS.right, 'r', KEYS.left, '\u0015', KEYS.enter);
+      expect(text()).toContain('Profile name must be non-empty');
+      press('changed', KEYS.left, KEYS.right, KEYS.esc);
+      expect(text()).toContain('profile 2/4');
+      expect(env().readFile('project').profiles.shared).toBeDefined();
+      expect(done).not.toHaveBeenCalled();
+    });
+
+    it('scrolls long names to keep a grapheme cursor visible within the frame', () => {
+      const { modal, press } = open(env());
+      press('n', 'abcdefghijklmnop界🙂', KEYS.left, BACKSPACE);
+      const raw = modal.render(24).join('\n');
+      expect(raw).toContain('\u001b[7m🙂\u001b[27m');
+      expect(
+        modal.render(24).every((line) => panelVisibleWidth(line) <= 24),
+      ).toBe(true);
+    });
+
     it('renames drafts in memory without writing', () => {
       const { press, text, typeName } = open(env());
       press('n');

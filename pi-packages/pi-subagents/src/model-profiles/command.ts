@@ -3,6 +3,7 @@ import {
   getSupportedThinkingLevels,
   type Model,
 } from '@earendil-works/pi-ai';
+import { Input } from '@earendil-works/pi-tui';
 import { resolveIcon } from '@thoth-agents/pi-core';
 import {
   createListEditor,
@@ -138,8 +139,7 @@ type ModalInput = {
 type Status = { text: string; tone: 'success' | 'warning' | 'error' };
 type Prompt = {
   title: string;
-  label: string;
-  value: string;
+  input: Input;
   error?: string;
   /** Returns an error to keep the prompt open. */
   submit: (value: string) => string | undefined;
@@ -243,10 +243,12 @@ export function createSubagentModelProfilesModal(
     value: string,
     submit: (name: string) => void,
   ) => {
+    const nameInput = new Input({ prompt: 'name: ' });
+    nameInput.setValue(value);
+    nameInput.handleInput('\u0005'); // Start rename at the end of the existing name.
     prompt = {
       title,
-      label: 'name',
-      value,
+      input: nameInput,
       submit: (name) => {
         const trimmed = name.trim();
         if (!trimmed) return 'Profile name must be non-empty';
@@ -656,7 +658,7 @@ export function createSubagentModelProfilesModal(
   const renderPrompt = (active: Prompt, width: number): string[] => {
     const rows: PanelRowInput[] = [
       panelHintRow('type a name · enter confirm · esc cancel'),
-      `${active.label}: ${active.value}▌`,
+      ...active.input.render(Math.max(0, width - 4)),
       ...(active.error ? [{ text: active.error, tone: 'error' as const }] : []),
     ];
     return renderPanelFrame({
@@ -671,12 +673,10 @@ export function createSubagentModelProfilesModal(
   const promptInput = (active: Prompt, data: string) => {
     const key = normalizePanelKey(data);
     if (key === 'escape') prompt = undefined;
-    else if (key === 'enter') active.error = active.submit(active.value);
-    else if (key === 'backspace')
-      active.value = [...active.value].slice(0, -1).join('');
-    else if (key === 'ctrl+u') active.value = '';
-    else if ([...data].every((char) => char >= ' ' && char !== '\u007f'))
-      active.value += data;
+    else if (key === 'enter')
+      active.error = active.submit(active.input.getValue());
+    else if (key === 'ctrl+u') active.input.setValue('');
+    else active.input.handleInput(data);
     input.tui?.requestRender?.();
   };
 

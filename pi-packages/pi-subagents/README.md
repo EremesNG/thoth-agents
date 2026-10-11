@@ -524,6 +524,7 @@ Behavior:
 
 - Invocation mode stays optional. Effective resolution is `input.mode ?? definition.subagent_mode ?? config.default_mode ?? "background"`. An explicit `mode: "task"` remains effective when the user asks to wait.
 - `mode: "task"` waits for completion and returns compact task summaries.
+- Successful task results contain only the last assistant message with non-empty text, not earlier narration or progress notes. A textless trailing message falls back to the latest text message. Continuations select only from the current continuation's messages; earlier text remains in transcript/history.
 - `mode: "background"` returns task IDs immediately. Respond to the user and wait for the automatic completion/failure turn; do not sleep, poll status, or fetch results just to wait. Use status/result tools only when you explicitly need an intermediate status or stored result.
 - Batch input is intentionally unsupported: call `subagent_run` once per subagent so each delegation has an isolated lifecycle, result, and failure surface.
 - Double Escape during task-mode execution cancels running subagents and aborts the main turn.

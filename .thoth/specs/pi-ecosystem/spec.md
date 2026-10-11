@@ -294,7 +294,7 @@ When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by t
 
 - **GIVEN** a codemode call whose details list nested calls
 - **WHEN** it renders collapsed
-- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors 
+- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors
 
 ### Requirement: Codemode default activation
 
@@ -304,7 +304,7 @@ The Pi installer enables codemode with mode `on` in global settings unless the u
 
 - **GIVEN** global settings without codemode configuration
 - **WHEN** thoth-agents installs for Pi
-- **THEN** `defaultTools` selects codemode (`+codemode` additively, or plain `codemode` in an empty or replacement list) and `codemode.mode` is `on`, while existing user codemode choices and unrelated settings are preserved 
+- **THEN** `defaultTools` selects codemode (`+codemode` additively, or plain `codemode` in an empty or replacement list) and `codemode.mode` is `on`, while existing user codemode choices and unrelated settings are preserved
 
 ### Requirement: Codemode in lean subagent children
 
@@ -314,7 +314,7 @@ A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi'
 
 - **GIVEN** a lean child whose tools include `codemode` and `read`
 - **WHEN** its session starts
-- **THEN** the `codemode` tool is registered and a script can call `read`, but cannot call unselected tools or `model-only` delegation controls 
+- **THEN** the `codemode` tool is registered and a script can call `read`, but cannot call unselected tools or `model-only` delegation controls
 
 ### Requirement: Codemode delegation boundary
 
@@ -324,4 +324,14 @@ Thoth delegation controls, the child `ask_orchestrator` tool and `ask_user_quest
 
 - **GIVEN** codemode is active in mode `on` or `only`
 - **WHEN** the root delegates, replies to a child or asks the user, or a child asks the orchestrator
-- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script 
+- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script
+
+### Requirement: Named Pi subagent model profiles
+
+Pi `/subagents-model` MUST manage named model profiles (model and effort per subagent) stored in `<agentDir>/thoth/profiles.json` and `<project>/.pi/thoth/profiles.json`, with a read-only virtual `default`, draft-until-save creation from default or another profile, project-over-global name shadowing, and effective selection session → project pin → global active → `default` applied at run time without rewriting agent definitions; `model_profiles` in `subagents.json` MUST NOT be used.
+
+#### Scenario: Named Pi subagent model profiles
+
+- **GIVEN** a global active profile `openai` and a project pin `claude`
+- **WHEN** a subagent runs in that project without a session selection
+- **THEN** it uses the `claude` profile's model and effort, and selecting `openai` for the session makes later runs in that session, including after resume, use `openai` without changing any config file

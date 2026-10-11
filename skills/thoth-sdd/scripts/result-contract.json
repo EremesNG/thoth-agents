@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "fence": "thoth-result",
+  "common": {
+    "type": "object",
+    "properties": {
+      "schemaVersion": {
+        "type": "number",
+        "const": 1
+      },
+      "role": {
+        "type": "string",
+        "enum": ["oracle"]
+      },
+      "status": {
+        "type": "string",
+        "enum": ["complete", "partial", "blocked", "failed"]
+      },
+      "conclusion": {
+        "type": "string"
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string"
+            },
+            "locator": {
+              "type": "string"
+            },
+            "claim": {
+              "type": "string"
+            },
+            "basis": {
+              "type": "string",
+              "enum": ["observed", "inferred"]
+            },
+            "uncertainty": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "locator",
+            "claim",
+            "basis",
+            "uncertainty"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "verification": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string",
+              "enum": ["pass", "fail", "not-run"]
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": ["check", "method", "outcome", "evidenceIds", "reason"],
+          "additionalProperties": false
+        }
+      },
+      "risks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "critical"]
+            },
+            "blocking": {
+              "type": "boolean"
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["description", "severity", "blocking", "evidenceIds"],
+          "additionalProperties": false
+        }
+      },
+      "openQuestions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "facts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["question", "owner", "options", "facts"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "schemaVersion",
+      "role",
+      "status",
+      "conclusion",
+      "evidence",
+      "verification",
+      "risks",
+      "openQuestions"
+    ],
+    "additionalProperties": false
+  },
+  "roles": {
+    "oracle": {
+      "type": "object",
+      "properties": {
+        "nextAction": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["plan-review", "final-verification"]
+            },
+            "verdict": {
+              "type": "string"
+            },
+            "reviewedRecord": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reviewedRecordSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": ["kind", "verdict"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["nextAction", "review"],
+      "additionalProperties": false
+    }
+  },
+  "reviewKinds": {
+    "plan-review": {
+      "verdicts": ["OKAY", "REJECT"]
+    },
+    "final-verification": {
+      "verdicts": ["PASS", "FAIL", "BLOCKED"]
+    }
+  },
+  "rules": {
+    "positiveVerdicts": ["OKAY", "PASS"],
+    "positiveStatus": "complete",
+    "positiveAllowsBlockingRisks": false,
+    "evidenceIdUnique": true,
+    "evidenceReferences": ["verification", "risks"],
+    "recordBindingReviewKind": "final-verification",
+    "recordBindingRequiredFields": ["reviewedRecord", "reviewedRecordSha256"]
+  }
+}

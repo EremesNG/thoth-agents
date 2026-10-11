@@ -23,23 +23,12 @@
 
 - `[path]:[symbol]` — [why it matters].
 
-## Bounded work units (when active)
+## Workflow contracts
 
-For substantial work, keep the task rows in the sole ID-named change record and
-link to it here instead of copying them. For each active or just-accepted unit
-that needs a handoff, preserve this contract:
-
-- Outcome: one independently acceptable result.
-- Known entrypoints and skill paths: exact paths needed for the result.
-- Inputs: accepted evidence or upstream outputs.
-- Dependencies: named units and accepted outputs, or none.
-- Output: concrete finding, decision, or artifact.
-- Owner: root or selected role.
-- Writes: exact owned paths, or `none` for read-only work.
-- Interface boundaries: relevant contracts, callers, and shared-resource limits.
-- Focused check and PASS evidence: check and observable passing result.
-- Return milestone: when root can review and accept the result.
-- Stop / reassessment: smallest missing input, conflict, or new scope to return.
+For change records and work-unit fields, refer to the product template
+[`skills/thoth-sdd/templates/change.md`](../../skills/thoth-sdd/templates/change.md).
+The product's return contract is `AGENT_RETURN_CONTRACT` in
+[`src/harness/core/agent-pack.ts`](../../src/harness/core/agent-pack.ts).
 
 ## Work completed
 
@@ -57,8 +46,4 @@ Do not list a command as run if it was not run.
 
 ## Next action
 
-[One specific next step. Omit this section for Explorer and Librarian, which
-report facts only; list their open choices with the facts for each option under
-Questions and risks.]
-
-Do not attach full logs, whole files, secrets, or unfiltered search transcripts.
+[One specific next step.]

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
@@ -134,15 +135,15 @@ describe('AI-first prompt rendering', () => {
     expect(prompt.match(/<role>\n([\s\S]*?)\n<\/role>/)?.[1]).toBe(
       'You are the root coordinator. By default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize.',
     );
-    const defaultIndex = block.indexOf('Specialists execute by default');
+    const defaultIndex = block.indexOf('Unlocated local source');
     const mechanicalIndex = block.indexOf(
-      'Root retains known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
     );
     const consultationIndex = block.indexOf(
-      'One known source, one bounded question',
+      'Direct consultation: one known source and bounded question',
     );
     const budgetIndex = block.indexOf(
-      'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
+      'at most two source fragments, about 200 code lines per user request across tools, files and subtasks',
     );
     const userIndex = block.indexOf(
       'Explicit user direct-work or no-delegation instruction wins',
@@ -199,26 +200,28 @@ describe('AI-first prompt rendering', () => {
     expect
       .soft(block)
       .toMatch(
-        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
       );
     expect
       .soft(block)
       .toContain(
-        'no preliminary discovery is needed to prepare that assignment',
+        'name the unknown location in the assignment instead of pre-reading',
       );
     expect
       .soft(block)
       .toContain(
-        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
       );
     expect
       .soft(block)
       .toMatch(
-        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
       );
     expect
       .soft(block)
-      .toContain('This self-check is guidance, not runtime enforcement.');
+      .toContain(
+        'This ownership policy is prompt guidance, not runtime enforcement.',
+      );
   });
 
   test.each(
@@ -227,13 +230,10 @@ describe('AI-first prompt rendering', () => {
     const workflow =
       render().match(/<sdd-workflow>([\s\S]*?)<\/sdd-workflow>/)?.[1] ?? '';
     expect(workflow).toMatch(
-      /user-facing replies\/questions\/options: language of the last real human message/i,
+      /user-facing replies, questions and options use the language of the last real human message, including question-tool answers/i,
     );
     expect(workflow).toMatch(
-      /real human message \(incl\. question-tool answers\/explicit language requests\)/i,
-    );
-    expect(workflow).toMatch(
-      /explicit requests beat inferred language until the human switches/i,
+      /an explicit language request persists until the human switches/i,
     );
     expect(workflow).toMatch(
       /delegation, records, code and artifacts may stay (?:in )?English/i,
@@ -254,24 +254,18 @@ describe('AI-first prompt rendering', () => {
     );
   });
 
-  test.each([
-    [
-      'OpenCode',
-      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
-    ],
-    ['Codex', renderCodexRootInstructions],
-    ['Claude Code', renderClaudeCodeRootInstructions],
-    ['Pi', renderPiRootInstructions],
-  ] as const)('offers both planning choices with bounded defaults in %s', (_harness, render) => {
+  test.each(
+    ROOT_RENDERERS,
+  )('offers both planning choices with bounded defaults in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
-    expect(prompt).toContain('Implement directly without review');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).not.toContain('Implement directly without review');
     expect(prompt).toMatch(
       /at ready, first show the user .*plan summary.*then always offer.*Review plan with Oracle/i,
     );
-    expect(prompt).toMatch(
-      /EXPLICIT_REVIEW.*EXPLICIT_SKIP.*DEFAULT_REVIEW_AFTER_3/i,
-    );
+    // Recording-time provenance codes live in the installed thoth-sdd skill.
+    expect(prompt).toMatch(/as installed `thoth-sdd` defines/);
     expect(prompt).toMatch(
       /plan-review disposition separately from implementation authorization/i,
     );
@@ -283,22 +277,17 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /first and second confirmed empty native returns.*repeat the same question.*no dependent work/i,
     );
-    expect(prompt).toMatch(
-      /third confirmed empty native return.*choose the recommendation/i,
-    );
+    expect(prompt).toMatch(/after the third, choose the recommendation/i);
     expect(prompt).toMatch(/explicit Stop wins/i);
     expect(prompt).toMatch(
       /Pending, unavailable, failed, interrupted or host-prohibited questions do not count/i,
     );
     expect(prompt).toMatch(
-      /higher-priority host or tool rules prevent.*report the limitation/i,
-    );
-    expect(prompt).toMatch(
-      /do not claim three returns or treat the result as explicit selection/i,
+      /obey and report host limits without claiming three returns or an explicit selection/i,
     );
     expect(prompt).toMatch(/Never fabricate facts or secrets.*safe deferral/i);
     expect(prompt).toMatch(/No implementation writer may approve/);
-    expect(prompt).toMatch(/closes only after independent PASS/);
+    expect(prompt).toMatch(/only after independent PASS/);
   });
 
   test.each([
@@ -341,37 +330,37 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /unlocated local source, flow, or responsibility.*Explorer.*before any root.*search/is,
     );
-    expect(prompt).toMatch(/discovery assignment.*unknown location/is);
+    expect(prompt).toMatch(/unknown location in the assignment/is);
     expect(prompt).toMatch(
       /known.*bounded implementation.*directly.*designer.*worker.*without.*Explorer/is,
     );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
-    expect(prompt).toMatch(/root retains known low-risk mechanical work/i);
-    expect(prompt).toMatch(/must not repeat delegated discovery/i);
-    expect(prompt).toMatch(/missing support.*targeted evidence/i);
+    expect(prompt).toMatch(
+      /direct-work exceptions: known low-risk mechanical work/i,
+    );
+    expect(prompt).toMatch(/never repeat delegated discovery/i);
+    expect(prompt).toMatch(/fill gaps with a targeted request/i);
     expect(prompt).toMatch(
       /delegation failure.*truthful.*does not authorize unrestricted root/is,
     );
     expect(prompt).toMatch(
-      /specialists execute by default for discovery of unlocated source, external research and substantive implementation/i,
+      /by default, specialists perform discovery of unlocated source, external research and substantive implementation/i,
     );
-    expect(prompt).toMatch(/one known source.*one bounded question/i);
+    expect(prompt).toMatch(/one known source and bounded question/i);
     expect(prompt).toMatch(
-      /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
+      /new path, unlocated dependency or exhausted allowance, delegate the missing evidence/i,
     );
     expect(prompt).toMatch(
-      /experimental cumulative.*two source fragments.*approximately 200 code lines.*per user request/i,
+      /two source fragments, about 200 code lines per user request/i,
     );
-    expect(prompt).toMatch(/across tools, files, and subtasks/i);
+    expect(prompt).toMatch(/across tools, files and subtasks/i);
     expect(prompt).toMatch(
-      /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
+      /required instructions and coordination artifacts excluded; never source or log dumps/i,
     );
     expect(prompt).toMatch(/not runtime enforcement/i);
+    expect(prompt).toMatch(/independent verification stays mandatory/i);
     expect(prompt).toMatch(
-      /mandatory independent verification remains intact/i,
-    );
-    expect(prompt).toMatch(
-      /exploration, research, planning, implementation, and verification.*one independently acceptable outcome/i,
+      /each exploration, research, planning, implementation or verification unit has one independently acceptable outcome/i,
     );
     expect(prompt).toMatch(
       /accepted upstream inputs.*result produced.*owned writes.*interfaces.*shared resources.*focused checks.*pass evidence.*native return milestone.*stop condition/i,
@@ -398,7 +387,7 @@ describe('AI-first prompt rendering', () => {
   ] as const)('bounds execution without overriding operator effort in %s', (_harness, render) => {
     const prompt = render();
     // Rendered policy coverage, not proof of model compliance or runtime enforcement.
-    expect(prompt).toMatch(/root retains.*reviewed commits/i);
+    expect(prompt).toMatch(/direct-work exceptions.*reviewed commits/i);
     expect(prompt).toMatch(/explicit.*no.delegation.*wins/i);
     expect(prompt).not.toMatch(
       /another search or dependency ends|only root mutation exception/i,
@@ -409,12 +398,25 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/two consecutive.*without new evidence/i);
     expect(prompt).toMatch(/native attention.*inspect.*steer/i);
     expect(prompt).toMatch(/timeout.*not.*progress/i);
-    expect(prompt).toMatch(/no polling/i);
+    expect(prompt).toMatch(/never polling/i);
   });
 
   test('special-cases only the built-in OpenAI model family', () => {
     expect(detectModelFamilyFromModel('openai/gpt-5.6-sol')).toBe('openai');
     expect(detectModelFamilyFromModel('kimi-for-coding/k2p5')).toBeUndefined();
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('keeps skipping plan review separate from implementation in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+    expect(prompt).toContain('Review plan with Oracle (Recommended)');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).not.toContain('Implement directly without review');
   });
 
   test.each(
@@ -450,10 +452,10 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     expect(prompt).toContain(
-      'dispatch every admitted conflict-free ready unit before waiting',
+      'Dispatch every admitted conflict-free ready unit before waiting',
     );
     expect(prompt).toContain(
-      'refill freed capacity with newly ready consumers before another wait',
+      'Refill freed capacity with newly ready consumers before another wait',
     );
     expect(prompt).toContain('no global wave barrier');
     expect(prompt).toContain('root-accepted, and fresh');
@@ -473,7 +475,7 @@ describe('AI-first prompt rendering', () => {
       'Native execution and terminal results are the sole authority',
     );
     expect(prompt).toContain(
-      'never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror',
+      'never polling, timers or an invented executor, queue, scheduler, wait API or lifecycle mirror',
     );
     expect(prompt).toContain('native execution state stays with the harness');
     expect(prompt).toContain('single record, relevant diff and dirty files');
@@ -488,24 +490,24 @@ describe('AI-first prompt rendering', () => {
 
   test.each(
     DIALECTS,
-  )('renders the work-unit envelope in $harness', (dialect) => {
+  )('renders one unified work-unit envelope in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
     );
-    for (const heading of [
-      'PHASE',
-      'PHASE / CHANGE',
-      'OBJECTIVE',
-      'INPUT ARTIFACTS',
-      'REQUIREMENTS',
-      'BOUNDARIES',
-      'VERIFICATION',
-      'EXPECTED OUTPUT',
-      'HANDOFF',
-      'MEMORY',
+    for (const field of [
+      'names its phase, the change record when one exists, applicable requirements',
+      'accepted upstream inputs and result produced',
+      'bounds owned writes',
+      'focused checks with pass evidence',
+      'a native return milestone, a stop condition',
+      'scoped MEMORY authorization (`none`, `recall` or `observe`)',
     ])
-      expect(prompt).toContain(heading);
+      expect(prompt).toContain(field);
+    expect(prompt).not.toContain('<phase-dispatch>');
+    expect(prompt).toContain(
+      'New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions',
+    );
   });
 
   test.each(
@@ -611,16 +613,65 @@ describe('AI-first prompt rendering', () => {
       createOrchestratorPromptSections(),
       PI_PROMPT_DIALECT,
     );
-    expect(prompt).toContain(
-      'subagent_run({ agent, task, mode: "background" })',
-    );
+    expect(prompt).toContain('subagent_run({ agent, task })');
     expect(prompt.toLowerCase()).toContain('launch separate background runs');
     expect(prompt).toContain('before collecting results');
-    expect(prompt.toLowerCase()).toContain(
-      'native terminal notifications (`triggerturn`/`followup`) wake the parent',
-    );
+    expect(prompt).toContain('native terminal notifications wake the parent');
     expect(prompt).toContain('Do not poll status or sleep merely to wait');
     expect(prompt).toContain('cancellation-acknowledged state');
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('renders markdown returns with Oracle-only gates in $harness', (dialect) => {
+    const fields = 'conclusion, evidence, verification, risks, openQuestions';
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const output = renderRolePrompt(sectionsFor(role), dialect);
+      const contract =
+        output.match(/<return-contract>([\s\S]*?)<\/return-contract>/)?.[1] ??
+        '';
+      const expected =
+        fields +
+        (role === 'explorer' || role === 'librarian' ? '' : ', nextAction') +
+        (role === 'worker' || role === 'designer' ? ', changedFiles' : '');
+      expect(contract).toContain(
+        `Return compact markdown fields (no JSON): ${expected}.`,
+      );
+      if (role !== 'oracle') {
+        expect(contract).not.toContain('thoth-result');
+        expect(contract).not.toContain('schemaVersion');
+      } else {
+        expect(contract).toContain(
+          'Only for assigned plan-review or final-verification',
+        );
+        expect(contract).toContain(
+          'exactly one fenced ```thoth-result JSON block and nothing else',
+        );
+        expect(contract).toContain('plan-review: OKAY|REJECT');
+        expect(contract).toContain('final-verification: PASS|FAIL|BLOCKED');
+        expect(contract).toContain(
+          'reviewedRecord and reviewedRecordSha256 from the assignment',
+        );
+        expect(contract).toContain(
+          'Diagnosis/advice uses markdown fields and cannot approve',
+        );
+        expect(contract).toContain('complete status and no blocking risks');
+        expect(contract).toContain('role: "oracle"');
+      }
+    }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('keeps shared specialist prompts under 5000 characters in $harness', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      expect(
+        renderRolePrompt(sectionsFor(role), dialect).length,
+        role,
+      ).toBeLessThan(5_000);
+    }
   });
 
   test('keeps child memory authorization and compact return fields', () => {
@@ -652,19 +703,27 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
-  ])('renders truthful per-role child return fields in the $harness root', (dialect) => {
+  ])('validates only Oracle gates before approvals in $harness', (dialect) => {
     const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
-    for (const role of ['explorer', 'librarian'] as const) {
-      expect(root).toContain(
-        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions.`,
-      );
-    }
-    for (const role of ['oracle', 'worker', 'designer'] as const) {
-      expect(root).toContain(
-        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.`,
-      );
-    }
-    expect(root).not.toContain('Child return fields:');
+    expect(root).toContain(
+      'Only Oracle gates (plan-review/final-verification)',
+    );
+    expect(root).toContain(
+      'node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>]',
+    );
+    expect(root).toContain('validate before recording OKAY/PASS');
+    expect(root).toContain(
+      'Invalid: no approval; at most one format-only repair; preserve findings/verdict',
+    );
+    expect(root).toContain(
+      'No validator: blocks only gate approvals; report drift',
+    );
+    expect(root).toContain(
+      'Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals',
+    );
+    expect(root).toContain('scope, evidence, checks, freshness/provenance');
+    expect(root).not.toContain('--role <role>');
+    expect(root).not.toContain('accept nothing');
   });
 
   describe.each(HARNESS_RENDERERS)('$harness specialist outputs', ({
@@ -680,21 +739,14 @@ describe('AI-first prompt rendering', () => {
       const returnContract = output.match(
         /<return-contract>([\s\S]*?)<\/return-contract>/,
       )?.[1];
-      const fields = returnContract
-        ?.split('\n')
-        .filter((line) => line.startsWith('- '));
       const questions = output.match(/<questions>([\s\S]*?)<\/questions>/)?.[1];
 
       if (role === 'explorer' || role === 'librarian') {
-        expect(fields).toEqual([
-          '- conclusion',
-          '- evidence',
-          '- verification',
-          '- risks',
-          '- openQuestions',
-        ]);
+        expect(returnContract).not.toContain('nextAction:');
+        expect(returnContract).not.toContain('changedFiles:');
+        expect(returnContract).not.toContain('review:');
         expect(output).toContain(
-          'Return: conclusion, evidence, verification, risks, openQuestions.',
+          'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
         );
         expect(
           output.match(/<evidence-only>[\s\S]*?<\/evidence-only>/)?.[0],
@@ -716,16 +768,9 @@ describe('AI-first prompt rendering', () => {
           );
         }
       } else {
-        expect(fields).toEqual([
-          '- conclusion',
-          '- evidence',
-          '- verification',
-          '- risks',
-          '- openQuestions',
-          '- nextAction',
-        ]);
+        expect(returnContract).toContain('openQuestions, nextAction');
         expect(output).toContain(
-          'Return: conclusion, evidence, verification, risks, openQuestions, nextAction.',
+          'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
         );
         expect(output).not.toContain('<evidence-only>');
         if (harness === 'Pi') {
@@ -779,11 +824,62 @@ describe('AI-first prompt rendering', () => {
 
   test('keeps generated roots compact', () => {
     const roots = [
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_500],
-      [renderCodexRootInstructions(), 15_000],
-      [renderClaudeCodeRootInstructions(), 15_000],
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 12_500],
+      [renderCodexRootInstructions(), 13_800],
+      [renderClaudeCodeRootInstructions(), 13_300],
+      // Pi tool schemas and the subagents-configuration skill own operator details.
+      [renderPiRootInstructions(), 15_600],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
   });
+});
+
+// Intentional gate-only results baseline across non-Pi harnesses.
+test('pins non-Pi gate-only result prompt snapshots', () => {
+  const hashes = DIALECTS.map((dialect) => [
+    dialect.harness,
+    getAgentPackContract().roles.map(({ name }) =>
+      createHash('sha256')
+        .update(renderRolePrompt(sectionsFor(name), dialect))
+        .digest('hex'),
+    ),
+  ]);
+  expect(hashes).toMatchInlineSnapshot(`
+    [
+      [
+        "opencode",
+        [
+          "391ecfe1f8c8cdd899a5eaafd21886e6eff895808168e89a83d31f0a1172c863",
+          "3c6cec172ead08bbd4f905fe7424ed94b4b251f4798880d53382be50856bd866",
+          "8995d957e4e3861aedba4ee4907c1feaa79a865eb9110d447c9aebe30d0f87c7",
+          "487a056dad8f88f1258f486d61a043f2fcd7b81a311209ba78d1bcd1fbd2c974",
+          "e7dc4d10d0b579fd0a2caa65e93175abcde8ad391dda9c0853d2e0402a496d85",
+          "4820d7da4fd06a281a4bf71fb9f554b524ea48cb119bce762dc7c9e9abc3c3dc",
+        ],
+      ],
+      [
+        "codex",
+        [
+          "6a4c1473be33c545c6777b1bb01459a647109724b1bc615edc08d3c793152f71",
+          "252f9d6277b5637de7982a6d26c673c5c7317d65f2e2c9c846a48669c20fa7e7",
+          "a620c249ffa378ff2fd5fd81bcd56321102f4889170a1f58b71f689a4159562d",
+          "c291fa15d2e58c5dc06472e3d25b60c5777910abba4d59d8912d0820d4cbe4bc",
+          "228cc8e0fdba6ed1c899731eb9de8808aca12b5e0c36931edf6ca19b653dd765",
+          "c2d360a0d84a68fd02a4f7d86808d8e5d28fc9a75da81849bb3de2f4bc1ffb52",
+        ],
+      ],
+      [
+        "claude",
+        [
+          "8983b964914d1d83ba4240962188faca2fc71259a474207999381fa218cf38cc",
+          "0b1ba17e3e1565bed8c29795c0aafcd67d2cbcd08afe21e7a1ee65bf7a23d23f",
+          "4ac41f8716aeb883786a0b2e92b46aaf9dab7378f2d7d7fdaa8ef5845b0303dd",
+          "db5fa796df7943534ce3a02308b879faa5fd1f351fd994c6daf77c791362ec39",
+          "82323b51b8eb6b4edaa8950c64832643c754a5657cba1cddb62f25dccc7a2bf3",
+          "e3a6f087bd549c855ba693725fac6b65e28de3908ee7450614a58fbf2e49ace0",
+        ],
+      ],
+    ]
+  `);
 });

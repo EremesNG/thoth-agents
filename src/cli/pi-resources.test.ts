@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
+import { mergePiSubagentsConfig } from './pi-install';
 import { readPiModelConfig, savePiModelConfig } from './pi-model-config';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
 import { readPiToolConfig, savePiToolConfig } from './pi-tool-config';
@@ -35,7 +36,91 @@ function fixture() {
 }
 
 describe('Pi specialist synchronization', () => {
-  test('adds packaged defaults to old definitions without treating body examples as overrides', () => {
+  test.each([
+    ['openai-codex/gpt-6-astra', 'medium', 'openai-codex/gpt-6.1-sol', 'xhigh'],
+    ['custom/model', 'medium', 'custom/model', 'medium'],
+    ['openai-codex/gpt-6-astra', 'high', 'openai-codex/gpt-6-astra', 'high'],
+    [
+      'openai-codex/gpt-6-astra',
+      undefined,
+      'openai-codex/gpt-6-astra',
+      undefined,
+    ],
+  ])('sync compares the complete Pi legacy pair %s / %s', (model, effort, expectedModel, expectedEffort) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts)
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    const target = join(options.piRoot, 'agents', 'thoth-oracle.md');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      `---
+name: thoth-oracle
+managed-by: thoth-agents
+model: "${model}"
+${
+  effort === undefined
+    ? ''
+    : `effort: "${effort}"
+`
+}tools: "read"
+---
+Old body.
+`,
+    );
+    for (let sync = 0; sync < 2; sync++) {
+      expect(syncPiSpecialists(options).success).toBe(true);
+      const role = readPiModelConfig(options.piRoot, ['oracle']).roles[0];
+      expect(role.model).toBe(expectedModel);
+      expect(role.effort).toEqual(
+        expectedEffort === undefined
+          ? { kind: 'inherit' }
+          : { kind: 'effort', value: expectedEffort },
+      );
+      expect(readFileSync(target, 'utf8')).toContain('tools: "read"');
+    }
+  });
+
+  test.each([
+    ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
+    ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
+    ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
+  ] as const)('advances legacy Pi %s with thinking migration', (role, model, thinking, expectedModel, expectedEffort) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts)
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    const target = join(options.piRoot, 'agents', `thoth-${role}.md`);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      `---
+name: thoth-${role}
+managed-by: thoth-agents
+model: 'openai-codex/${model}'
+thinking: ${thinking}
+---
+Old body.
+`,
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    const current = readPiModelConfig(options.piRoot, [role]).roles[0];
+    expect(current.model).toBe(`openai-codex/${expectedModel}`);
+    expect(current.effort).toEqual({ kind: 'effort', value: expectedEffort });
+    expect(readFileSync(target, 'utf8')).not.toMatch(/^thinking:/m);
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test('adds packaged model to old definitions without treating body examples as overrides or filling absent effort', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -53,7 +138,7 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
     expect(content).toContain('model: "openai-codex/gpt-6-luna"');
-    expect(content).toContain('effort: "max"');
+    expect(content).not.toMatch(/^effort:/m);
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
@@ -719,4 +804,67 @@ describe('Pi specialist synchronization', () => {
       readFileSync(join(options.piRoot, 'agents', 'thoth-explorer.md'), 'utf8'),
     ).toContain('name: thoth-explorer');
   });
+});
+
+test.each([
+  { field: 'skills: ["tdd", "plan-*"]', expected: '["tdd","plan-*"]' },
+  {
+    field: `skills:
+  - tdd
+  - "plan-*"`,
+    expected: '["tdd","plan-*"]',
+  },
+  { field: 'skills: []', expected: '[]' },
+])('preserves operator skill filters on repeated sync: $field', ({
+  field,
+  expected,
+}) => {
+  const options = fixture();
+  syncPiSpecialists(options);
+  const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+  writeFileSync(
+    target,
+    readFileSync(target, 'utf8').replace(
+      'managed-by: thoth-agents',
+      `managed-by: thoth-agents
+${field}`,
+    ),
+  );
+  for (let i = 0; i < 2; i++) {
+    expect(syncPiSpecialists(options).success).toBe(true);
+    expect(readFileSync(target, 'utf8')).toContain(`skills: ${expected}`);
+  }
+});
+
+test('preserves operator lean_skills settings without setting a Thoth default', () => {
+  for (const lean_skills of [true, false]) {
+    expect(mergePiSubagentsConfig({ lean_skills, other: 'preserve' })).toEqual({
+      lean_skills,
+      other: 'preserve',
+      session_resources: 'lean',
+      enable_continue: false,
+    });
+  }
+  expect(mergePiSubagentsConfig({})).not.toHaveProperty('lean_skills');
+});
+
+test.each([
+  'skills: tdd',
+  'skills: [1]',
+  'skills: null',
+  'skills: [" "]',
+])('leaves malformed operator filters unchanged: %s', (field) => {
+  const options = fixture();
+  syncPiSpecialists(options);
+  const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+  const current = readFileSync(target, 'utf8').replace(
+    'managed-by: thoth-agents',
+    `managed-by: thoth-agents
+${field}`,
+  );
+  writeFileSync(target, current);
+  const result = syncPiSpecialists(options);
+  expect(result.success).toBe(true);
+  expect(result.diagnostics.join(' ')).toContain('skills');
+  expect(readFileSync(target, 'utf8')).toBe(current);
 });

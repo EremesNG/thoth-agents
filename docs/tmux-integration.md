@@ -280,7 +280,7 @@ The OpenCode fix implements proper session lifecycle management:
 - Event handlers for `session.deleted` events
 - Automatic cleanup of tmux panes and processes
 
-See [AGENTS.md](../AGENTS.md) for implementation details.
+See [runtime integrations](agent/runtime-integrations.md) for implementation entrypoints.
 
 ### Port Conflicts
 
@@ -519,6 +519,6 @@ tmux load-buffer ~/my-layout.txt
 
 - **Official Tmux Documentation:** https://github.com/tmux/tmux/wiki
 - **Multi-harness orientation:** [README](../README.md)
-- **Quick Reference:** [docs/quick-reference.md#tmux-integration](quick-reference.md#tmux-integration)
-- **Task Delegation:** [docs/quick-reference.md#task-delegation](quick-reference.md#task-delegation)
+- **Quick Reference:** [docs/quick-reference.md](quick-reference.md)
+- **Task Delegation:** [agent and delegation context](agent/agents-and-delegation.md)
 - **OpenCode Documentation:** https://opencode.ai/docs

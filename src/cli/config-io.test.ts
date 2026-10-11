@@ -8,6 +8,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getAgentConfigs } from '../agents';
+import { loadPluginConfig } from '../config/loader';
 import {
   addPluginToOpenCodeConfig,
   detectCurrentConfig,
@@ -172,6 +174,181 @@ describe('config-io', () => {
     expect(readFileSync(configPath, 'utf8')).toBe(original);
     expect(existsSync(`${configPath}.bak`)).toBe(false);
     expect(existsSync(`${configPath}.tmp`)).toBe(false);
+  });
+
+  test.each([
+    ['openai/gpt-6-astra', 'medium', 'openai/gpt-6.1-sol', 'xhigh'],
+    ['custom/model', 'medium', 'custom/model', 'medium'],
+    ['openai/gpt-6-astra', 'high', 'openai/gpt-6-astra', 'high'],
+    ['openai/gpt-6-astra', undefined, 'openai/gpt-6-astra', undefined],
+  ])('lite sync preserves the active complete pair %s / %s and unrelated keys', (model, variant, expectedModel, expectedVariant) => {
+    paths.ensureConfigDir();
+    delete process.env.THOTH_AGENTS_PRESET;
+    const litePath = paths.getLiteConfig();
+    const original = JSON.stringify({
+      preset: 'personal',
+      presets: {
+        personal: {
+          oracle: { model, variant, temperature: 0.2 },
+          orchestrator: { model: 'openai/gpt-6-sol', variant: 'xhigh' },
+          custom: { model: 'other/custom' },
+        },
+        spare: { worker: { model: 'other/worker' } },
+      },
+      customSetting: { keep: true },
+      tmux: { enabled: false },
+    });
+    writeFileSync(litePath, original);
+    expect(
+      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
+    ).toBe(true);
+    const saved = JSON.parse(readFileSync(litePath, 'utf8'));
+    expect(saved.preset).toBe('personal');
+    expect(saved.presets.personal.oracle).toEqual({
+      model: expectedModel,
+      ...(expectedVariant ? { variant: expectedVariant } : {}),
+      temperature: 0.2,
+    });
+    expect(saved.presets.personal.orchestrator).toEqual({
+      model: 'openai/gpt-6.1-sol',
+      variant: 'high',
+    });
+    expect(saved.presets.personal.worker).toEqual({
+      model: 'openai/gpt-6-luna',
+      variant: 'max',
+    });
+    expect(saved.presets.personal.custom).toEqual({ model: 'other/custom' });
+    expect(saved.presets.spare).toEqual({ worker: { model: 'other/worker' } });
+    expect(saved.customSetting).toEqual({ keep: true });
+    expect(saved.tmux).toEqual({ enabled: false });
+    expect(readFileSync(`${litePath}.bak`, 'utf8')).toBe(original);
+    const active = loadPluginConfig(join(tmpDir, 'no-project'));
+    expect(active.agents?.oracle?.model).toBe(expectedModel);
+    expect(active.agents?.oracle?.variant).toBe(expectedVariant);
+    const rendered = getAgentConfigs(active);
+    expect(rendered.oracle.model).toBe(expectedModel);
+    expect(rendered.oracle.variant).toBe(expectedVariant);
+    expect(rendered.orchestrator.variant).toBe('high');
+    expect(rendered.worker.variant).toBe('max');
+    expect(
+      writeLiteConfig({ hasTmux: false, reset: true }, litePath).success,
+    ).toBe(true);
+    const reset = loadPluginConfig(join(tmpDir, 'no-project'));
+    expect(reset.preset).toBe('openai');
+    expect(reset.agents?.oracle).toEqual({
+      model: 'openai/gpt-6.1-sol',
+      variant: 'xhigh',
+    });
+    expect(getAgentConfigs(reset)).toMatchObject({
+      oracle: { model: 'openai/gpt-6.1-sol', variant: 'xhigh' },
+      orchestrator: { model: 'openai/gpt-6.1-sol', variant: 'high' },
+    });
+  });
+
+  test.each([
+    ['openai/gpt-6-sol', undefined, undefined],
+    ['custom/root', 'low', 'low'],
+    ['openai/gpt-6.1-sol', 'high', 'high'],
+  ] as const)('lite sync renders orchestrator effort for %s / %s', (model, variant, expectedVariant) => {
+    paths.ensureConfigDir();
+    delete process.env.THOTH_AGENTS_PRESET;
+    const litePath = paths.getLiteConfig();
+    writeFileSync(
+      litePath,
+      JSON.stringify({
+        preset: 'personal',
+        presets: { personal: { orchestrator: { model, variant } } },
+      }),
+    );
+
+    expect(
+      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
+    ).toBe(true);
+    const rendered = getAgentConfigs(
+      loadPluginConfig(join(tmpDir, 'no-project')),
+    );
+    expect(rendered.orchestrator.model).toBe(model);
+    expect(rendered.orchestrator.variant).toBe(expectedVariant);
+    if (expectedVariant === undefined) {
+      expect(rendered.orchestrator).not.toHaveProperty('variant');
+    }
+  });
+
+  test.each([
+    ['orchestrator', 'gpt-6-sol', 'xhigh', 'gpt-6.1-sol', 'high'],
+    ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
+    ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
+    ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
+  ] as const)('lite sync advances the active OpenCode %s legacy pair', (role, model, variant, expectedModel, expectedVariant) => {
+    paths.ensureConfigDir();
+    delete process.env.THOTH_AGENTS_PRESET;
+    const litePath = paths.getLiteConfig();
+    writeFileSync(
+      litePath,
+      JSON.stringify({
+        preset: 'openai',
+        presets: {
+          openai: {
+            [role]: { model: `openai/${model}`, variant, temperature: 0.3 },
+          },
+        },
+      }),
+    );
+    for (let sync = 0; sync < 2; sync++) {
+      expect(
+        writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
+      ).toBe(true);
+      expect(
+        loadPluginConfig(join(tmpDir, 'no-project')).agents?.[role],
+      ).toEqual({
+        model: `openai/${expectedModel}`,
+        variant: expectedVariant,
+        temperature: 0.3,
+      });
+    }
+  });
+
+  test.each([
+    'medium',
+    'high',
+  ])('lite sync compares root overrides in the active pair with %s effort', (variant) => {
+    paths.ensureConfigDir();
+    delete process.env.THOTH_AGENTS_PRESET;
+    const litePath = paths.getLiteConfig();
+    writeFileSync(
+      litePath,
+      JSON.stringify({
+        preset: 'openai',
+        presets: {
+          openai: {
+            oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
+          },
+        },
+        agents: { oracle: { variant, temperature: 0.7 } },
+      }),
+    );
+    expect(
+      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
+    ).toBe(true);
+    const active = loadPluginConfig(join(tmpDir, 'no-project'));
+    expect(active.agents?.oracle).toEqual({
+      model: variant === 'medium' ? 'openai/gpt-6.1-sol' : 'openai/gpt-6-astra',
+      variant: variant === 'medium' ? 'xhigh' : 'high',
+      temperature: 0.7,
+    });
+  });
+
+  test('lite sync rejects malformed existing JSON without writing or backing up', () => {
+    paths.ensureConfigDir();
+    const litePath = paths.getLiteConfig();
+    writeFileSync(litePath, '{ broken');
+    expect(
+      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
+    ).toBe(false);
+    expect(readFileSync(litePath, 'utf8')).toBe('{ broken');
+    expect(existsSync(`${litePath}.bak`)).toBe(false);
   });
 
   test('writeLiteConfig writes lite config with OpenAI preset', () => {

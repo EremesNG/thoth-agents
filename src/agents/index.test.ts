@@ -88,12 +88,37 @@ describe('OpenCode v0.3 agent roster', () => {
 describe('OpenCode v0.3 defaults', () => {
   test('preserves the established specialist and root defaults', () => {
     expect(getAgentConfigs()).toMatchObject({
-      orchestrator: { model: 'openai/gpt-6-sol', variant: 'xhigh' },
-      explorer: { model: 'openai/gpt-6-luna', variant: 'low' },
-      librarian: { model: 'openai/gpt-6-luna', variant: 'high' },
-      oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
-      designer: { model: 'openai/gpt-6-sol', variant: 'medium' },
+      orchestrator: { model: 'openai/gpt-6.1-sol', variant: 'high' },
+      explorer: { model: 'openai/gpt-6-luna', variant: 'max' },
+      librarian: { model: 'openai/gpt-6-luna', variant: 'max' },
+      oracle: { model: 'openai/gpt-6.1-sol', variant: 'xhigh' },
+      designer: { model: 'openai/gpt-6-luna', variant: 'max' },
       worker: { model: 'openai/gpt-6-luna', variant: 'max' },
+    });
+  });
+
+  test.each(
+    ROLE_NAMES,
+  )('inherits effort for a %s model-only override', (role) => {
+    const rendered = getAgentConfigs({
+      agents: { [role]: { model: 'custom/model' } },
+    })[role];
+
+    expect(rendered.model).toBe('custom/model');
+    expect(rendered).not.toHaveProperty('variant');
+  });
+
+  test('keeps shipped effort when overrides do not change the model', () => {
+    expect(
+      getAgentConfigs({
+        agents: {
+          oracle: { temperature: 0.2 },
+          orchestrator: { steps: 35 },
+        },
+      }),
+    ).toMatchObject({
+      oracle: { variant: 'xhigh', temperature: 0.2 },
+      orchestrator: { variant: 'high', steps: 35 },
     });
   });
 
@@ -130,6 +155,7 @@ describe('OpenCode v0.3 defaults', () => {
       { id: 'custom/primary', variant: 'high' },
       { id: 'custom/fallback' },
     ]);
+    expect(getAgentConfigs(config).oracle).not.toHaveProperty('variant');
   });
 
   test('adds bounded-step guidance when steps are configured', () => {
@@ -149,26 +175,28 @@ describe('OpenCode v0.3 prompt boundaries', () => {
   test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt.length).toBeLessThanOrEqual(13_500);
+    expect(prompt.length).toBeLessThanOrEqual(12_500);
     expect(prompt).toContain('root coordinator');
     expect(prompt).toContain(
-      'Root retains known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
     );
     expect(prompt).toContain(
-      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
+      'By default, specialists perform discovery of unlocated source, external research and substantive implementation',
     );
     expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
-    expect(prompt).toMatch(/specialists execute by default.*root retains/is);
+    expect(prompt).toMatch(
+      /specialists perform discovery.*you direct, decide, accept/is,
+    );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
     expect(prompt).toContain('.thoth/changes/<id>/<id>.md');
     expect(prompt).toContain('thoth-sdd');
     expect(prompt).toContain('oracle');
-    expect(prompt).toContain('Final verification is mandatory.');
+    expect(prompt).toContain('Final verification is mandatory:');
     expect(prompt).toContain(
-      'Trivial deterministic low-risk work may use focused root checks',
+      'trivial deterministic low-risk work may use focused root checks',
     );
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');

@@ -20,7 +20,7 @@ linked document.
 | Pi sidebar, fullscreen/regular layout, resize, settings/cost overlays, panel summaries/order, absorption, shared session cost | [`harness-packaging.md#pi-sidebar-and-ui-coordination`](harness-packaging.md#pi-sidebar-and-ui-coordination) | `pi-packages/pi-sidebar/src/`, pi-core UI-preferences/decorative-overlay/session-cost, pi-thoth-theme status line | sidebar layout/control/panel tests, core focus/absorption and theme golden tests | architecture, verification |
 | Pi provider limits, Claude quota, subscription cost, child rate-limit warnings | [`harness-packaging.md#pi-provider-status-and-subscription-cost`](harness-packaging.md#pi-provider-status-and-subscription-cost) | `pi-packages/pi-core/src/provider-limits.ts`, pi-claude-bridge, pi-antigravity-bridge, pi-subagents UI, pi-thoth-theme | package provider-limit, quota, pricing and warning tests | architecture, verification |
 | Pi work panel, provider discovery/summaries, keyed metrics/stable heights, data-only rows, mixed-version ownership | [`harness-packaging.md#pi-work-panel-registry-v2`](harness-packaging.md#pi-work-panel-registry-v2) | `pi-packages/pi-core/src/work-panel*.ts`, pi-subagents/pi-background-tasks/pi-todo providers | package work-panel, retention, lifecycle and focus tests | architecture, verification |
-| Pi question dock, Ctrl+] collapse/expand, editor-slot composition, panel focus | [`harness-packaging.md#pi-question-dock-and-editor-slot`](harness-packaging.md#pi-question-dock-and-editor-slot) | `pi-packages/pi-core/src/`, `pi-packages/pi-questions-user/src/` | package `test/`, pi-subagents `test/ui/` | architecture, verification |
+| Pi question dock, Ctrl+] collapse/expand, editor-slot composition, panel focus | [`harness-packaging.md#pi-question-dock-and-editor-slot`](harness-packaging.md#pi-question-dock-and-editor-slot) | `pi-packages/pi-core/src/`, `pi-packages/pi-questions-user/src/` | `pi-packages/pi-core/test/`, `pi-packages/pi-questions-user/test/`, `pi-packages/pi-subagents/test/ui/` | architecture, verification |
 | OpenCode runtime, hooks, MCP, LSP, ast-grep, tmux, fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | colocated tests and `src/plugin-node-runtime.test.ts` | memory boundary |
 | parser, TUI, install, update, sync, status, required skills, provider setup invocation | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
 | Proportional SDD understanding/classification, one ID-named record, authorization, durable deltas and closeout | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, `skills/` | SDD classification/protocol, prompt, skill and archive tests | memory boundary |
@@ -32,6 +32,7 @@ linked document.
 | --- | --- | --- |
 | Architecture | A change crosses two routes or plugin composition | [`architecture.md`](architecture.md) |
 | Verification | Selecting proportional local-closeout checks, release-tooling triggers, or CI/build/test scope | [`testing.md`](testing.md) |
+| Project QA evaluations | Contract cases, offline Pi harness/grader tests, or opt-in live `eval:pi` configuration/results | [`testing.md#project-qa-evaluation-suite`](testing.md#project-qa-evaluation-suite) (`evals/`, `vitest.evals.live.config.ts`) |
 | Public compatibility | CLI, schema, generated package, or published docs change | README, public docs, schema, writer tests |
 | Zod | A schema under `.agents/skills/zod/` changes | Its local `AGENTS.md` only |
 
@@ -48,27 +49,8 @@ entire repository.
 - [`task-template.md`](task-template.md)
 - [`routing-cases.json`](routing-cases.json)
 
-## Context budget evidence
+## Prompt size checks
 
-The 2026-08-21 specialist-writer refresh used the documented `characters / 4`
-estimate (not billing or model token measurement). Always-loaded context remained
-at 8,465 characters / ~2,117 estimated tokens before and after. Generated Claude
-specialists all decreased from their Git HEAD baselines:
-
-| Role | Before chars / estimate | After chars / estimate |
-| --- | ---: | ---: |
-| explorer | 5,199 / ~1,300 | 3,435 / ~859 |
-| librarian | 5,238 / ~1,310 | 3,412 / ~853 |
-| oracle | 5,863 / ~1,466 | 3,910 / ~978 |
-| designer | 5,092 / ~1,273 | 3,417 / ~855 |
-| quick | 5,090 / ~1,273 | 3,375 / ~844 |
-| deep | 5,222 / ~1,306 | 3,463 / ~866 |
-
-The progressive-context validator reported zero errors and zero warnings.
-
-The 2026-08-21 route-independent ownership refresh also held always-loaded
-context at 8,465 characters / ~2,117 estimated tokens before and after. Current
-rendered root packages measure 8,499 / ~2,125 for OpenCode, 9,855 / ~2,464 for
-Codex, and 9,340 / ~2,335 for Claude Code. These harness-specific roots are
-routed outputs, not additional always-loaded repository files. Strict validation
-again reported zero errors and zero warnings.
+Rendered product prompt size caps are asserted in
+[`src/agents/prompt-rendering.test.ts`](../../src/agents/prompt-rendering.test.ts).
+Use those assertions rather than historical size snapshots.

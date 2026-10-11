@@ -44,36 +44,39 @@ describe('Codex adapter v0.3', () => {
         .map((instruction) => `- ${instruction}`)
         .join('\n'),
     );
-    const defaultIndex = block.indexOf('Specialists execute by default');
-    expect(defaultIndex).toBeGreaterThanOrEqual(0);
-    expect(
+    expect(root).toMatch(
+      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+    );
+    expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
-        'Root retains known low-risk mechanical work, including reviewed commits',
+        'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
       ),
-    ).toBeGreaterThan(defaultIndex);
+    );
     expect
       .soft(block)
       .toMatch(
-        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
       );
     expect
       .soft(block)
       .toContain(
-        'no preliminary discovery is needed to prepare that assignment',
+        'name the unknown location in the assignment instead of pre-reading',
       );
     expect
       .soft(block)
       .toContain(
-        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
       );
     expect
       .soft(block)
       .toMatch(
-        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
       );
     expect
       .soft(block)
-      .toContain('This self-check is guidance, not runtime enforcement.');
+      .toContain(
+        'This ownership policy is prompt guidance, not runtime enforcement.',
+      );
     for (const phrase of [
       'If delegating',
       'Boundaries alone do not require delegation',
@@ -113,17 +116,19 @@ describe('Codex adapter v0.3', () => {
     const root = renderCodexRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Codex dialect.
-    expect(root.length).toBeLessThanOrEqual(15_000);
+    expect(root.length).toBeLessThanOrEqual(13_800);
     expect(root).toContain('root coordinator');
     expect(root).toContain(
-      'Root retains known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
     );
     expect(root).toContain(
-      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
+      'By default, specialists perform discovery of unlocated source, external research and substantive implementation',
     );
     expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
-    expect(root).toMatch(/specialists execute by default.*root retains/is);
+    expect(root).toMatch(
+      /specialists perform discovery.*you direct, decide, accept/is,
+    );
     expect(root).not.toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
@@ -131,9 +136,9 @@ describe('Codex adapter v0.3', () => {
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
     expect(root).toContain('thoth-sdd');
-    expect(root).toContain('Final verification is mandatory.');
+    expect(root).toContain('Final verification is mandatory:');
     expect(root).toContain(
-      'Trivial deterministic low-risk work may use focused root checks',
+      'trivial deterministic low-risk work may use focused root checks',
     );
     expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');

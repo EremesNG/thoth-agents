@@ -16,14 +16,17 @@ function readPackageMetadata(): PackageMetadata {
 }
 
 describe('shared plugin lifecycle', () => {
-  test('build regenerates the shared plugin before compiling', () => {
+  test('build generates the result contract before syncing the plugin and compiling', () => {
     const { scripts } = readPackageMetadata();
     const buildSteps = scripts.build.split('&&').map((step) => step.trim());
     const prepublishSteps = scripts.prepublishOnly
       .split('&&')
       .map((step) => step.trim());
 
-    expect(buildSteps[0]).toBe('pnpm run integration:sync');
+    expect(buildSteps.slice(0, 2)).toEqual([
+      'pnpm run generate:result-contract',
+      'pnpm run integration:sync',
+    ]);
     expect(buildSteps).toContain('tsup');
     expect(prepublishSteps).toEqual([
       'pnpm run build',

@@ -16,9 +16,11 @@ memory lifecycle.
 
 ## Invariants
 
-- Preserve user agent and command overrides.
-- Respect `disabled_mcps`.
-- Generate only the built-in OpenAI preset.
+The runtime preserves user agent/command overrides, honors `disabled_mcps`, and
+ships the built-in OpenAI preset. Owners: `src/index.ts`, `src/agents/index.ts`,
+`src/mcp/index.ts`, and `src/config/constants.ts`. Tests:
+`src/agents/index.test.ts` and `src/mcp/index.test.ts`.
+
 - No alternate-provider mapping, phase-agent reminder, or provider lifecycle
   hook is bundled.
 - Tmux is OpenCode-only.

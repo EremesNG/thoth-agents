@@ -92,7 +92,7 @@ describe('proportional SDD phase protocols', () => {
     expect(getSddPhase('plan-review').activation).toBe('conditional');
     expect(review).toMatch(/optional.*after.*plan/i);
     expect(review).toMatch(
-      /at ready.*always offer.*Review plan with Oracle \(Recommended\).*Implement directly without review/i,
+      /at ready.*always offer.*Review plan with Oracle \(Recommended\).*Proceed without review/i,
     );
     expect(review).toMatch(
       /at ready, first show the user .*plan summary.*then always offer/i,

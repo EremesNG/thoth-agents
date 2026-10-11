@@ -85,6 +85,8 @@ export const AgentOverrideConfigSchema = z.object({
       ),
     ])
     .optional(),
+  /** Pi specialist catalog filter; omitted discovers all, [] discovers none. */
+  skills: z.array(z.string().trim().min(1)).optional(),
   temperature: z.number().min(0).max(2).optional(),
   steps: z.number().int().min(1).optional(),
   variant: z.string().optional().catch(undefined),

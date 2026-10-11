@@ -147,6 +147,10 @@ describe('subagent runner thread snapshots', () => {
           },
           {
             role: 'assistant',
+            content: [{ type: 'text', text: 'continuation progress' }],
+          },
+          {
+            role: 'assistant',
             content: [{ type: 'text', text: 'continued answer' }],
           },
         ];
@@ -212,6 +216,43 @@ describe('subagent runner thread snapshots', () => {
     );
     expect(JSON.stringify(continued.result.thread_snapshot)).not.toContain(
       'initial answer"},{"type":"assistant',
+    );
+  });
+
+  it.each([
+    { content: [] },
+    {
+      content: [
+        { type: 'toolCall', id: 'read-2', name: 'read', arguments: {} },
+      ],
+    },
+    { content: [{ type: 'thinking', thinking: 'No response text here.' }] },
+    { content: [{ type: 'text', text: '   ' }] },
+  ])('falls back to the latest text answer when the trailing assistant message has no text (%j)', async ({
+    content,
+  }) => {
+    const session = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [
+        { role: 'assistant', content: 'earlier narration' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'latest answer' },
+            { type: 'text', text: 'second paragraph' },
+          ],
+        },
+        { role: 'assistant', content },
+        { role: 'toolResult', content: 'not an assistant answer' },
+      ],
+      dispose: vi.fn(async () => undefined),
+    };
+
+    const { result } = await runWithSession(session);
+    expect(result.result).toBe('latest answer\nsecond paragraph');
+    expect(JSON.stringify(result.thread_snapshot)).toContain(
+      'earlier narration',
     );
   });
 
@@ -763,7 +804,7 @@ describe('subagent runner thread snapshots', () => {
     }
   });
 
-  it('interleaves final session tool-call messages with matching tool rows before final assistant text', async () => {
+  it('returns only the final answer while retaining narration and tool calls in the thread snapshot', async () => {
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
       subscribe: vi.fn((callback: (event: unknown) => void) => {
@@ -795,6 +836,7 @@ describe('subagent runner thread snapshots', () => {
               name: 'read',
               arguments: { path: 'AGENTS.md' },
             },
+            { type: 'text', text: "I'll read the guide first." },
           ],
         },
         {
@@ -814,10 +856,11 @@ describe('subagent runner thread snapshots', () => {
           : `${item.type}:${item.name}`,
     );
 
+    expect(result.result).toBe('final after tools');
     expect(labels).toEqual([
       'attempt:1',
       'user:undefined',
-      'assistant:toolCall:read',
+      "assistant:toolCall:read|I'll read the guide first.",
       'tool:read',
       'assistant:final after tools',
     ]);

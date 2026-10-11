@@ -2,10 +2,15 @@
 
 ## Repository purpose
 
-**thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
-six roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
-provider-neutral memory boundaries, and proportional AI-first SDD governance.
-OpenCode is the stable default path; each harness has different guarantees.
+**thoth-agents** is an adaptive multi-harness orchestration plugin with six roles,
+native delegation, provider-neutral memory boundaries, and AI-first SDD governance.
+
+This repository is developed with thoth-agents installed: its workflow (SDD,
+delegation, verification) comes from the installed product, not this file. Product
+policy lives in `src/harness/core/agent-pack.ts`, `src/agents/prompt-sections.ts`,
+`src/agents/prompt-dialects.ts`, `src/harness/core/sdd.ts`,
+`src/harness/core/memory-governance.ts`, and `skills/**`; `.thoth/` is this
+repository's own governance, managed through the product skills.
 
 For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
 Keep `docs/agent/` documents on demand at startup.
@@ -20,15 +25,10 @@ Keep `docs/agent/` documents on demand at startup.
 5. Add another route or overlay only to resolve a concrete question.
 6. Do not explore `node_modules/`, `dist/`, coverage, generated fixtures, or
    third-party code unless the task names them or evidence requires it.
-7. Subagents must return summarized evidence, not full files or logs.
 
 ## Preferred navigation tools
 
-- Root dispatches unknown local discovery to Explorer without preliminary
-  CodeGraph queries, native search, file reads, or shell/git inspection. Project
-  navigation instructions govern the assigned investigator; they never make root
-  the investigator.
-- When `.codegraph/` exists, the assigned investigator must use CodeGraph before
+- When `.codegraph/` exists, use CodeGraph before
   source-code discovery through `webstorm-index`, native search, or file reads.
   Prefer the `codegraph_explore` MCP tool; if it is not exposed, use `codegraph
   explore "<question or symbol names>"` from the repository root.
@@ -84,139 +84,16 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Use TypeScript and modern Node patterns consistent with the existing code.
 - Keep changes explicit and limited to the requested behavior. Preserve unrelated
   edits; never revert work you did not make. Ignore backward compatibility.
-- Every change completes proportional explore -> specify -> clarify before
-  classification; these steps do not force a document or interview. Staffing
-  follows the root delegation policy. Investigate repository facts before asking,
-  and leave unresolved material
-  human-owned choices blocked. Only then classify by meaningful coordination and
-  contract impact, uncertainty, and risk/failure cost. File count alone does not
-  increase scope: a clear, low-risk localized mechanical change may touch several
-  files and remain small. Increased scope or risk reopens understanding and
-  classification.
-- Small work uses test-first implementation and focused verification with no
-  persistent record. Substantial work plans in the sole
-  `.thoth/changes/<id>/<id>.md` record after classification; risk may require
-  planning even for a patch-sized change. No alias, duplicate record, report,
-  evidence directory, process tool, or execution wrapper is created. See the
-  [SDD guide](docs/agent/sdd-and-skills.md).
-- At substantial `ready`, first show the user a concise plan summary (goal,
-  acceptance, key decisions, units, risks), then always offer
-  `Review plan with Oracle (Recommended)` or `Proceed without review`, even when
-  implementation was already authorized. Silence is never an explicit skip. After `[OKAY]`, preserve the separate
-  `Implement (Recommended)` / `Stop` choice; prior explicit authorization
-  remains valid and a later explicit `Stop` supersedes it. Review alone does not
-  authorize implementation or replace final verification.
-- Every orchestrator choice with a meaningful recommended action must state that
-  recommendation. Count confirmed answerless native returns separately for each
-  question: after the first and second, repeat the same question and do no
-  dependent work; after the third, select the recommendation. Explicit answers
-  win and explicit `Stop` always wins. Pending, unavailable, failed, interrupted,
-  or host-prohibited question attempts do not count. Report higher-priority host
-  limits accurately; never claim three returns or an explicit user choice when
-  they did not occur. Never fabricate missing facts or secrets; when the
-  unresolved decision is human-owned, recommend a safe deferral that leaves it
-  unresolved rather than choosing it for the user.
-- At closeout, plan-review provenance distinguishes `EXPLICIT_REVIEW`,
-  `EXPLICIT_SKIP`, and `DEFAULT_REVIEW_AFTER_3`. `SKIPPED` requires
-  `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
-  `DEFAULT_REVIEW_AFTER_3`. Review approval does not replace final verification.
-- Shape each retained or delegated unit across discovery, research, planning,
-  implementation and verification around one independently acceptable outcome,
-  accepted upstream inputs, output, owned writes/interface, a focused check with
-  pass evidence, and a return/stop condition. Split separate outcomes; keep
-  cohesive tiny work together. List order is not a dependency. Before retaining or delegating, check
-  read assumptions, shared resources and concrete output dependencies. Dispatch all
-  independent admitted ready work before waiting within proven native capacity;
-  release consumers after their fresh accepted dependencies, with no global wave barrier.
-- Specialists perform discovery, external research and substantive implementation by default.
-- Use Librarian for external evidence and Oracle for independent judgment; no fixed all-role pipeline.
-- Root coordinates, directs and accepts work. Direct work is limited to bounded
-  exceptions: known low-risk mechanical work, including reviewed commits, and
-  one bounded question about a known source. Unless the user directs root-owned
-  investigation, unlocated local source, flow, or responsibility goes to Explorer
-  before any root code search, file read, shell/git inspection, or CodeGraph query;
-  no preliminary discovery is needed to prepare the assignment. Before the first
-  read/search/shell call of a turn, root checks for a known bounded source within
-  a direct-work exception; otherwise dispatch the appropriate specialist.
-  The experimental direct-source allowance is at most two fragments and about
-  200 code lines per user request, cumulatively across files,
-  tools and subtasks; a new discovery path or exhausted allowance sends missing
-  evidence to a specialist. Required instructions and pertinent coordination
-  artifacts are excluded, never as a source/log dump. This is prompt guidance,
-  not runtime enforcement. Full custom `orchestrator.prompt` replacement remains
-  supported and may omit bundled defaults. Preserve explicit user ownership and
-  do not duplicate delegated discovery. Known bounded implementation goes to
-  designer or worker; external evidence to librarian; independent judgment to
-  oracle. See [agent and delegation guidance](docs/agent/agents-and-delegation.md).
-- Preserve operator-selected model and effort, including max. Fix scope and
-  supervision, not the operator's settings. Delegation failure is not permission
-  for unrestricted fallback. If independent review is prohibited, disclose that
-  limitation; do not claim independent PASS or archive.
-- Each assignment needs one independently checkable outcome, exact known source
-  and skill paths, owned writes, focused checks, and a return/stop condition.
-  Split broad integration by accepted outcomes, not one agent per file. On native
-  attention or a missed agreed milestone, inspect progress and steer, narrow,
-  or stop safely; timeout is a safety ceiling, not a progress plan. After two
-  consecutive attempts without new evidence or progress, return the smallest
-  blocker instead of looping. Long productive work is not failure by duration.
-- Use native notifications/waits without polling or custom timers. If native
-  attention is unavailable, use assignments that return at an agreed milestone.
-  Freeze relevant inputs before final validation; reuse fresh checks and rerun
-  only those invalidated by edits. Reconcile background commands before returning;
-  late notifications must preserve the substantive handoff. See the
-  [execution guidance](skills/thoth-sdd/references/phases/implement.md).
-- Do not duplicate delegated discovery. Request conclusions, localized evidence
-  and uncertainty (plus next action from Oracle, Worker and Designer only); target
-  missing support instead of rereading every file. Bounded evidence inspection for root decisions/recovery and mandatory
-  independent verification remain valid. Coordination artifacts must not hide
-  source or log dumps.
-- Keep delegation depth one, one writer per mutable surface, and fresh specialist
-  sessions at work boundaries. Children never delegate. New Oracle judgments
-  always use a fresh read-only reviewer. A writer never approves its own work.
-- Native harness tools own dispatch, status, wait, cancellation, terminal results
-  and capacity. Thoth supplies policies and bounded evidence, never a scheduler,
-  job database, lifecycle mirror or tracing runtime. Report unavailable native
-  capabilities truthfully. Worktree automation remains outside this workflow.
-- For resume, load the contract and relevant checkpoint, inspect current owned
-  files and changed dependencies, and reconcile native liveness before another
-  writer starts. Preserve useful partial/preexisting edits. A checkpoint, timeout
-  or silence never proves termination. Unknown liveness blocks only conflicts.
-- Use installed TDD for behavior changes and simplify after implementation. Use
-  progressive-context-router for repository instruction work; architectural-
-  grilling only for explicit interviews or unresolved material human decisions.
-  Workflow execution uses local installed contracts, never CLI installation or
-  downloads. QA executables remain project-owned.
-- Final verification is mandatory. Persisted or materially risky work needs a
-  fresh read-only Oracle against agreement, actual diff and evidence. Optional
-  plan review never substitutes for final verification. Root records results and
-  archives only fresh passing work and explicitly declared durable updates.
-- `.thoth/constitution.md` contains active project principles and
-  `.thoth/specs/` durable product contracts. Preserve historical material under
-  `.thoth/history/`; it is not active SDD context. No default evidence directory
-  or per-change process tools/scripts, wrappers, report files or evidence generators.
-- thoth-mem independently owns provider persistence, hooks, MCP and lifecycle.
-  Follow its installed guidance; never mirror project work records. Root
-  owns verified identity, lifecycle and real-user intent. Delegated authorization
-  is none, recall or observe, independent of workspace permission.
-- Published installs require consistent provider complete evidence. Never turn
-  reset into provider force/rollback. Local Pi installation leaves thoth-mem to
-  its separate installer. Preserve unrelated provider assets.
-- Omit autoResolutionMs entirely from request_user_input. Some harness controls
-  are instruction-only; do not claim enforcement or ignore those boundaries.
 
 ## Change and verification flow
 
-1. Explore, specify, and clarify proportionally; then classify by coordination,
-   uncertainty, and risk, reusing authorization already given.
-2. For substantial work, plan in the one ID-named record and shape units. Small
-   work stays artifact-free; delegation alone does not require persistence.
-3. Resolve the two applicable planning choices, then implement within ownership,
-   keeping useful checkpoints for recovery.
-4. Apply the proportional local-closeout gate below.
-5. Review the diff for unrelated changes, generated drift and accidental secrets.
-6. Update routed documentation for durable facts and independently verify.
+1. Use the router to identify the relevant project entrypoints and tests.
+2. Implement the requested behavior within scope and update routed documentation
+   for durable project facts.
+3. Apply the local-closeout gate below.
+4. Review the diff for unrelated changes, generated drift, and accidental secrets.
 
-To close locally, run touched-package/area typechecks and TDD tests, plus
+To close locally, run touched-package/area typechecks and focused tests, plus
 `pnpm run check:ci` and `pnpm run typecheck`. Add `pnpm run build` for built/runtime
 output or packaging changes. Release/packaging tooling tests are required only
 when their inputs change; see the [verification guide](docs/agent/testing.md#local-closeout-gate)
@@ -236,19 +113,6 @@ as change failures.
   manifest cannot install those surfaces. `$thoth-init` initializes project work
   governance only.
 - Do not assume capability or enforcement equivalence across harnesses.
-
-## Subagent return contract
-
-Return the conclusion, inspected paths and symbols, relevant tests or commands,
-open questions, and risks. Do not return full logs, whole files, or unfiltered
-search transcripts.
-
-- Explorer and Librarian report facts only: no recommended fixes, designs,
-  defaults or next actions. An open question they cannot settle is returned as the
-  question, its possible options and the facts for each option, without choosing
-  one; root decides or asks Oracle.
-- Oracle adds its independent judgment and recommendations; Worker and Designer
-  add the next implementation action.
 
 ## Definition of done
 

@@ -22,8 +22,8 @@ describe('providers', () => {
     expect(config.preset).toBe('openai');
     const agents = (config.presets as any).openai;
     expect(agents).toBeDefined();
-    expect(agents.orchestrator.model).toBe('openai/gpt-6-sol');
-    expect(agents.orchestrator.variant).toBe('xhigh');
+    expect(agents.orchestrator.model).toBe('openai/gpt-6.1-sol');
+    expect(agents.orchestrator.variant).toBe('high');
     expect(agents.worker).toEqual({
       model: 'openai/gpt-6-luna',
       variant: 'max',
@@ -41,20 +41,20 @@ describe('providers', () => {
       MODEL_MAPPINGS.openai.orchestrator.model,
     );
     expect(agents.oracle).toEqual({
-      model: 'openai/gpt-6-astra',
-      variant: 'medium',
+      model: 'openai/gpt-6.1-sol',
+      variant: 'xhigh',
     });
     expect(agents.librarian).toEqual({
       model: 'openai/gpt-6-luna',
-      variant: 'high',
+      variant: 'max',
     });
     expect(agents.explorer).toEqual({
       model: 'openai/gpt-6-luna',
-      variant: 'low',
+      variant: 'max',
     });
     expect(agents.designer).toEqual({
-      model: 'openai/gpt-6-sol',
-      variant: 'medium',
+      model: 'openai/gpt-6-luna',
+      variant: 'max',
     });
     expect(agents.worker).toEqual({
       model: 'openai/gpt-6-luna',

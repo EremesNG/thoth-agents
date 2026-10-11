@@ -210,6 +210,38 @@ describe('canonical workflow bundle contracts', () => {
         'plan-reviewer',
       ]);
 
+      const activationBoundaries = {
+        'thoth-init': [
+          'Use',
+          'initialize',
+          '.thoth',
+          'without modifying existing',
+        ],
+        'thoth-sdd': [
+          'Use',
+          'any change',
+          'proportional',
+          'classification',
+          'single',
+          'substantial',
+        ],
+        'thoth-constitution': ['Use only', 'explicit', 'creation', 'amendment'],
+        'thoth-archive': [
+          'Use only after',
+          'fresh Oracle PASS',
+          'substantial',
+          'closeout',
+        ],
+        'plan-reviewer': [
+          'Use only',
+          'selected',
+          'substantial ready',
+          'independent',
+          'blocker-only',
+          'does not authorize implementation',
+        ],
+      };
+
       for (const skillsRoot of [
         join(process.cwd(), 'skills'),
         join(packageRoot, 'plugin', 'skills'),
@@ -223,7 +255,14 @@ describe('canonical workflow bundle contracts', () => {
         for (const skillName of THOTH_OWNED_SKILL_NAMES) {
           const metadata = frontmatter(skillsRoot, skillName);
           expect(field(metadata, 'name')).toBe(skillName);
-          expect(field(metadata, 'description').length).toBeGreaterThan(0);
+          const description = field(metadata, 'description');
+          expect(description.length).toBeGreaterThan(0);
+          expect(description.length).toBeLessThanOrEqual(1024);
+          for (const boundary of activationBoundaries[skillName]) {
+            expect(description, `${skillName} activation boundary`).toContain(
+              boundary,
+            );
+          }
           expect(field(metadata, 'license')).toBe('MIT');
           expect(field(metadata, 'compatibility').length).toBeLessThanOrEqual(
             500,
@@ -233,6 +272,75 @@ describe('canonical workflow bundle contracts', () => {
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
     }
+  });
+
+  test('requires validated Oracle envelopes before recording approvals', () => {
+    const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8');
+    const plan = readFileSync('skills/plan-reviewer/SKILL.md', 'utf8');
+    const verify = readFileSync(
+      'skills/thoth-sdd/references/phases/verify.md',
+      'utf8',
+    );
+
+    expect(sdd).toContain('## Specialist result validation');
+    expect(sdd).toContain('node "<skill-dir>/scripts/validate-result.mjs"');
+    expect(sdd).not.toContain('--role');
+    expect(sdd).toContain('--review-kind');
+    expect(sdd).toContain('--record-sha256');
+    expect(sdd).toContain('--input');
+    expect(sdd).toContain('unchanged native terminal result');
+    expect(sdd).toContain('one format-only repair request per assignment');
+    expect(sdd).toContain('must not change findings or verdict');
+    expect(sdd).toContain('never converted into an Oracle `BLOCKED` judgment');
+    expect(sdd).toContain('installation drift');
+    expect(sdd).toContain('blocks only gate approvals');
+    expect(sdd).toContain('custom agents');
+    expect(sdd).toContain('judged on content');
+    expect(sdd).toContain('diagnosis` and `advice` never authorize');
+
+    expect(plan).toContain('`thoth-result`');
+    expect(plan).toContain('`review.kind: "plan-review"`');
+    expect(plan).toContain('`review.verdict: "OKAY" | "REJECT"`');
+    expect(plan).toContain('at most three blocking risks');
+    expect(plan).toContain('only from a validated envelope');
+    expect(plan).not.toContain('Return `[OKAY]`');
+
+    expect(verify).toContain('`review.kind: "final-verification"`');
+    expect(verify).toContain('`review.verdict: "PASS" | "FAIL" | "BLOCKED"`');
+    expect(verify).toContain('`reviewedRecord`');
+    expect(verify).toContain('`reviewedRecordSha256`');
+    expect(verify).toContain('only from a validated PASS envelope');
+    expect(verify).toContain('whose digest matches');
+  });
+
+  test('requires unchanged final-verification envelope bookkeeping before closeout', () => {
+    for (const path of [
+      'skills/thoth-sdd/SKILL.md',
+      'skills/thoth-sdd/references/phases/verify.md',
+    ]) {
+      const guidance = readFileSync(path, 'utf8').replace(/\s+/g, ' ');
+      expect(guidance, path).toContain(
+        '`verify` → fresh final Oracle → root validates and pastes → `closeout` → archive',
+      );
+      expect(guidance, path).toContain(
+        'unchanged final-verification envelope under `**Oracle envelope**:`',
+      );
+      expect(guidance, path).toContain(
+        'post-PASS bookkeeping in Verification; no new review',
+      );
+      expect(guidance, path).toContain(
+        'Plan-review envelopes are not embedded',
+      );
+      expect(guidance, path).toContain(
+        'Closeout fails without exactly one valid PASS envelope matching the record path and prefix digest',
+      );
+      expect(guidance, path).toContain(
+        'consistent with `**Verdict**` and `**Reviewed record SHA-256**`',
+      );
+    }
+    expect(readFileSync('skills/thoth-archive/SKILL.md', 'utf8')).toContain(
+      'matching valid PASS final-verification envelope under `**Oracle envelope**:`',
+    );
   });
 
   test('keeps generated assets byte-identical and relative references resolvable', () => {

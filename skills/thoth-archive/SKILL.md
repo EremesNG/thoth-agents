@@ -1,6 +1,6 @@
 ---
 name: thoth-archive
-description: Transactionally apply declared .thoth/specs deltas and archive independently verified substantial SDD changes.
+description: Applies declared .thoth/specs deltas and archives independently verified substantial SDD changes. Use only after a substantial change has a fresh Oracle PASS and passes closeout; not for unverified or incomplete work.
 license: MIT
 compatibility: Requires Node.js >=22.19 and installed sibling thoth-sdd skill.
 metadata:
@@ -12,6 +12,7 @@ metadata:
 
 Root archives only after the implementation writer has terminated and a fresh
 independent Oracle PASS has covered the actual change, diff, checks, and risks.
+Closeout requires a matching valid PASS final-verification envelope under `**Oracle envelope**:`.
 Structural closeout validation is not approval. The single record must have all
 tasks complete, explicit plan-review disposition and implementation authorization,
 every acceptance outcome's concrete PASS check/evidence, reviewed-record and

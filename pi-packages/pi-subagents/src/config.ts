@@ -169,6 +169,18 @@ function validateDefinitionFrontmatter(
     )
       issues.push(AMBIGUOUS_TOOLS_ISSUE);
   }
+  if (
+    Object.hasOwn(data, 'skills') &&
+    !(
+      Array.isArray(data.skills) &&
+      data.skills.every(
+        (skill) => typeof skill === 'string' && skill.trim().length > 0,
+      )
+    )
+  )
+    issues.push(
+      'skills must be a YAML list of non-empty names or glob patterns',
+    );
   return issues;
 }
 
@@ -535,6 +547,7 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     session_resources: parseSessionResources(
       raw.session_resources ?? raw.sessionResources,
     ),
+    lean_skills: typeof raw.lean_skills === 'boolean' ? raw.lean_skills : true,
     lifecycle_passthrough: parseLifecyclePassthrough(raw.lifecycle_passthrough),
     background_handoff_shortcut: parseBackgroundHandoffShortcut(
       raw.background_handoff_shortcut ?? raw.backgroundHandoffShortcut,
@@ -731,6 +744,9 @@ function loadSubagentsFromDir(
           subagent_mode: rawSubagentMode,
           tools,
           disallowed_tools: disallowedTools,
+          skills: Array.isArray(data.skills)
+            ? data.skills.map((skill: string) => skill.trim())
+            : undefined,
           scope,
         },
       ];

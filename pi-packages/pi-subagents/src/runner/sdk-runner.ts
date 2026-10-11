@@ -20,6 +20,7 @@ import {
   structuredMetadataFromError,
 } from './event-processing.js';
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
+import { leanResources } from './lean-resources.js';
 import { createAskOrchestratorTool } from './orchestrator-tool.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
@@ -473,6 +474,7 @@ async function createSession(
   nestedSessionPath?: string,
   onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
   orchestratorChannel?: SubagentOrchestratorChannel,
+  skillFilter?: string[],
 ) {
   const piSdk = await loadPiSdkModule();
   const { createAgentSession, SessionManager } = piSdk;
@@ -511,15 +513,35 @@ async function createSession(
       throw new Error(
         'Subagent lean session resources require DefaultResourceLoader from Pi SDK.',
       );
+    const diagnostic = (message: string) =>
+      onActivity?.({
+        diagnostic: true,
+        message,
+      });
+    const resources = await leanResources(
+      piSdk,
+      cwd,
+      agentDir,
+      ctx,
+      config.lean_skills !== false,
+      skillFilter,
+      diagnostic,
+    );
+    options.settingsManager = resources.settingsManager;
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir,
-      settingsManager: ctx?.settingsManager,
+      settingsManager: resources.loaderSettings,
+      noExtensions: true,
+      additionalExtensionPaths: resources.additionalExtensionPaths,
+      additionalSkillPaths: resources.additionalSkillPaths,
+      skillsOverride: resources.skillsOverride,
       noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
       systemPromptOverride: () => systemPrompt,
+      appendSystemPromptOverride: () => [],
       extensionsOverride: (base: any) =>
         isolateSubagentExtensions(
           base,
@@ -528,6 +550,10 @@ async function createSession(
         ),
     });
     await resourceLoader.reload();
+    for (const entry of resourceLoader.getSkills?.().diagnostics ?? [])
+      diagnostic(
+        `Skill discovery: ${entry.message}${entry.path ? ` (${entry.path})` : ''}`,
+      );
     options.agentDir = agentDir;
     options.resourceLoader = resourceLoader;
   }
@@ -650,6 +676,20 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   orchestratorChannel,
   onActivity,
 }) => {
+  // Event processing emits cumulative transcript snapshots. Keep diagnostics in
+  // each snapshot so later execution updates cannot overwrite their evidence.
+  if (config.session_resources === 'lean') {
+    const diagnostics: string[] = [];
+    const reportActivity = onActivity;
+    onActivity = (activity) => {
+      if (activity.diagnostic) diagnostics.push(activity.message);
+      const transcript =
+        diagnostics.length && (activity.transcript || activity.diagnostic)
+          ? `# child resource diagnostics\n\n${diagnostics.join('\n')}\n\n${activity.transcript ?? ''}`
+          : activity.transcript;
+      reportActivity?.({ ...activity, transcript });
+    };
+  }
   const profile =
     effectiveProfile ??
     resolveEffectiveSubagentProfile({
@@ -705,6 +745,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       nested_session_path,
       onActivity,
       orchestratorChannel,
+      definition.skills,
     );
     const abortBridge = createSessionAbortBridge(session, signal);
     let unregisterInteractionSession = () => {};

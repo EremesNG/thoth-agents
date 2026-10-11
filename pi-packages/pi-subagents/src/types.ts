@@ -57,6 +57,7 @@ export type SubagentDefinition = {
   subagent_mode?: SubagentMode;
   tools: string[];
   disallowed_tools?: string[];
+  skills?: string[];
   scope?: SubagentDefinitionScope;
 };
 
@@ -80,6 +81,7 @@ export type SubagentsConfig = {
   max_concurrency: number;
   default_tools: string[];
   session_resources?: SubagentSessionResources;
+  lean_skills?: boolean;
   lifecycle_passthrough?: string[];
   background_handoff_shortcut?: string;
   history_panel_shortcut?: string;

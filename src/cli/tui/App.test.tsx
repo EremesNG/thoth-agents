@@ -1785,7 +1785,7 @@ describe('restore defaults menu', () => {
     expect(ops.applied).toHaveLength(1);
     expect(ops.applied[0]?.items).toHaveLength(5);
     await press(stdin, 'c');
-    expect(lastFrame()).toContain('oracle: gpt-6-astra');
+    expect(lastFrame()).toContain('oracle: gpt-6.1-sol');
     expect(lastFrame()).not.toContain('*oracle');
   });
 
@@ -1806,7 +1806,7 @@ describe('restore defaults menu', () => {
     expect(lastFrame()).toContain('Restore failed');
     await press(stdin, 'c');
     expect(lastFrame()).toContain('*explorer');
-    expect(lastFrame()).not.toContain('oracle: gpt-6-astra');
+    expect(lastFrame()).not.toContain('oracle: gpt-6.1-sol');
   });
 
   test('blocked Claude restore never applies', async () => {

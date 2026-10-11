@@ -3,6 +3,7 @@
 ## 1.5.1
 
 ### Fixed
+- Return only the last assistant message with non-empty text for successful task results, including continuations, falling back past textless trailing messages while preserving earlier narration in transcript/history.
 - Preserved validated finalized subagent responses when later nested `session.prompt()` calls fail, while keeping explicit error, aborted, and streaming-only partial responses classified as failures.
 - Updated `subagent_run` guidance to omit `mode` unless the user explicitly requests task or background, allowing automatic mode selection.
 - Added opt-in `enable_continue` configuration with global/project cascading defaults, conditional `subagent_continue` registration after reload or restart, manager-level disabled guarding, and suppressed continuation recommendations while disabled.

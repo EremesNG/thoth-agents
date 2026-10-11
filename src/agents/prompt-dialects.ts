@@ -276,26 +276,25 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
   tools: {
     delegationTool: 'subagent_run',
-    backgroundDelegationTool:
-      'subagent_run({ agent, task, mode: "background" })',
+    backgroundDelegationTool: 'subagent_run({ agent, task })',
     backgroundStatusTool: 'subagent_status({ task_id })',
     backgroundWaitInstruction:
-      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait. Explicit exact-name `tools` lists are the default; manual globs, including `*`, select from all registered root tools (active and inactive), minus native `subagent_*` exclusions and `disallowed_tools`; edit `disallowed_tools` manually for injected tools and trimming globs. When `enable_ask_orchestrator` is true, children receive `ask_orchestrator` regardless of `tools` selection unless denied by `disallowed_tools`; only Thoth Oracle denies `ask_orchestrator` by default for independent judgment. A task-mode child that asks a question is moved to background; answer it with `subagent_reply` and collect its result later through terminal completion.',
+      'Launch separate background runs before collecting results; native terminal notifications wake the parent. Do not poll status or sleep merely to wait.',
     userQuestionTool: 'ask_user_question',
     hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:
-        '`subagent_run` with one canonical `agent`, a fresh bounded `task`, and an explicit `mode` of `"task"` or `"background"`',
+        '`subagent_run` with one canonical `agent` and a fresh bounded `task`',
       sameAssignmentContinuation:
-        '`subagent_reply({ task_id, request_id?, message })` for an injected `subagent-question` when exposed; `subagent_send_message` only when exposed and its schema is confirmed; `subagent_continue` is unavailable unless `enable_continue` is explicitly enabled',
+        '`subagent_reply` for an injected `subagent-question`, or `subagent_send_message`/`subagent_continue` when exposed,',
       independentContext:
-        'a new objective, phase, mutable surface, or independent judgment uses a fresh `subagent_run`; optional `context` is plain supporting text, not a context-mode selector',
+        'each `subagent_run` starts an isolated child session',
       statusAction:
         '`subagent_status`, `subagent_result`, or `subagent_cancel` by `task_id`',
       terminalState:
         'a native terminal completion notification or terminal task-id result',
       nonterminalState:
-        'waiting for an orchestrator reply, an injected `subagent-question`, running, queued, timed-out, malformed, message-accepted, or cancellation-acknowledged state',
+        'A pending `subagent-question` or orchestrator reply, running, queued, timed-out, malformed, message-accepted or cancellation-acknowledged state',
       sameSessionProbe:
         '`subagent_status({ task_id })` for the current parent-owned assignment',
       enforcement: 'runtime-supported',
@@ -303,7 +302,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the ambient Pi root'
-        : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`,
+        : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…" })`,
   },
   capabilities: {
     capabilities: PI_PROMPT_CAPABILITIES,
@@ -320,7 +319,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   renderRoleInvocation(role) {
     return role === 'orchestrator'
       ? 'ambient Pi root'
-      : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`;
+      : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…" })`;
   },
 };
 

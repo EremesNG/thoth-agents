@@ -76,3 +76,17 @@ describe('v0.3 agent configuration schema', () => {
     ).toBe(true);
   });
 });
+
+test('accepts optional Pi role skill names/globs and empty catalogs', () => {
+  for (const skills of [undefined, [], ['tdd', 'plan-*']]) {
+    expect(
+      PluginConfigSchema.parse({ agents: { worker: { skills } } }).agents
+        ?.worker.skills,
+    ).toEqual(skills);
+  }
+  for (const skills of ['tdd', [1], [''], ['  ']]) {
+    expect(
+      PluginConfigSchema.safeParse({ agents: { worker: { skills } } }).success,
+    ).toBe(false);
+  }
+});

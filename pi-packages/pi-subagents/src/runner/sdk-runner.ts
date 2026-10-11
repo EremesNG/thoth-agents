@@ -533,6 +533,9 @@ async function createSession(
       agentDir,
       settingsManager: resources.loaderSettings,
       noExtensions: true,
+      extensionFactories: tools.includes('codemode')
+        ? [piSdk.createCodemodeExtension({ mode: 'on' })]
+        : [],
       additionalExtensionPaths: resources.additionalExtensionPaths,
       additionalSkillPaths: resources.additionalSkillPaths,
       skillsOverride: resources.skillsOverride,

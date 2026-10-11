@@ -12,6 +12,7 @@ export function createAskOrchestratorTool(
 ): ToolDefinition<typeof parameters> {
   return {
     name: 'ask_orchestrator',
+    exposure: 'model-only',
     label: 'Ask Orchestrator',
     description:
       'Ask the owning orchestrator a blocking alignment question, or report non-blocking progress. Questions return the orchestrator reply. This is not a human question or delegation tool.',

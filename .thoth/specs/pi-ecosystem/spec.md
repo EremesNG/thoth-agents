@@ -285,3 +285,43 @@ the shared work-panel renderer MUST decide multi-line metric wrapping from reser
 - **GIVEN** a running subagent row whose tokens, context percent, speed and elapsed values cross format boundaries such as 99→100 tok/s and 9s→10s
 - **WHEN** the work panel and the sidebar render it at any width
 - **THEN** while every value stays within its reserved range the row keeps the same number of lines and rows below it do not move
+
+### Requirement: Codemode compact rendering
+
+When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by the Thoth render kit as a card of its nested calls without replacing or wrapping Pi's builtin codemode extension.
+
+#### Scenario: Codemode compact rendering
+
+- **GIVEN** a codemode call whose details list nested calls
+- **WHEN** it renders collapsed
+- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors 
+
+### Requirement: Codemode default activation
+
+The Pi installer enables codemode with mode `on` in global settings unless the user already configured codemode.
+
+#### Scenario: Codemode default activation
+
+- **GIVEN** global settings without codemode configuration
+- **WHEN** thoth-agents installs for Pi
+- **THEN** `defaultTools` selects codemode (`+codemode` additively, or plain `codemode` in an empty or replacement list) and `codemode.mode` is `on`, while existing user codemode choices and unrelated settings are preserved 
+
+### Requirement: Codemode in lean subagent children
+
+A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi's public codemode extension so the tool is available, scoped to the child's selected tools.
+
+#### Scenario: Codemode in lean subagent children
+
+- **GIVEN** a lean child whose tools include `codemode` and `read`
+- **WHEN** its session starts
+- **THEN** the `codemode` tool is registered and a script can call `read`, but cannot call unselected tools or `model-only` delegation controls 
+
+### Requirement: Codemode delegation boundary
+
+Thoth delegation controls, the child `ask_orchestrator` tool and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work.
+
+#### Scenario: Codemode delegation boundary
+
+- **GIVEN** codemode is active in mode `on` or `only`
+- **WHEN** the root delegates, replies to a child or asks the user, or a child asks the orchestrator
+- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script 

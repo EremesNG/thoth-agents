@@ -7,7 +7,7 @@ import {
 } from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('keeps specialist allowlists independent of injected ask_orchestrator', () => {
+  test('adds codemode only to research specialists and keeps ask_orchestrator injected', () => {
     const roles = [
       'explorer',
       'librarian',
@@ -18,7 +18,7 @@ describe('Pi agent writer', () => {
     expect(
       roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
     ).toEqual([
-      ['explorer', ['read', 'bash', 'grep', 'find', 'ls']],
+      ['explorer', ['read', 'bash', 'grep', 'find', 'ls', 'codemode']],
       [
         'librarian',
         [
@@ -27,6 +27,7 @@ describe('Pi agent writer', () => {
           'grep',
           'find',
           'ls',
+          'codemode',
           'resolve-library-id',
           'query-docs',
           'mcp',
@@ -63,9 +64,9 @@ describe('Pi agent writer', () => {
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
     const expectedTools: Record<string, string> = {
-      'agents/thoth-explorer.md': 'read, bash, grep, find, ls',
+      'agents/thoth-explorer.md': 'read, bash, grep, find, ls, codemode',
       'agents/thoth-librarian.md':
-        'read, bash, grep, find, ls, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+        'read, bash, grep, find, ls, codemode, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
       'agents/thoth-oracle.md': 'read, bash, grep, find, ls',
       'agents/thoth-designer.md': 'read, bash, edit, write, grep, find, ls',
       'agents/thoth-worker.md': 'read, bash, edit, write, grep, find, ls',

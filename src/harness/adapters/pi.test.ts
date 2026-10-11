@@ -251,6 +251,19 @@ describe('Pi adapter', () => {
     );
   });
 
+  test('batches independent codemode work while keeping control calls direct', () => {
+    const runtime = renderPiRootInstructions().match(
+      /<pi-runtime>([\s\S]*?)<\/pi-runtime>/,
+    )?.[1];
+    expect(runtime).toContain(
+      'When `codemode` is available, batch independent reads, research and memory calls in one script',
+    );
+    expect(runtime).toContain(
+      'delegation (`subagent_*`), child replies and user questions stay direct calls',
+    );
+    expect(runtime?.match(/codemode/g)).toHaveLength(1);
+  });
+
   test('waits for terminal notifications and keeps acceptance separate', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];

@@ -823,12 +823,16 @@ describe('AI-first prompt rendering', () => {
   });
 
   test('keeps generated roots compact', () => {
+    const piRoot = renderPiRootInstructions();
+    expect(piRoot).toContain(
+      'When `codemode` is available, batch independent reads, research and memory calls in one script',
+    );
     const roots = [
       [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 12_500],
       [renderCodexRootInstructions(), 13_800],
       [renderClaudeCodeRootInstructions(), 13_300],
       // Pi tool schemas and the subagents-configuration skill own operator details.
-      [renderPiRootInstructions(), 15_600],
+      [piRoot, 15_600],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);

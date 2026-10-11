@@ -101,9 +101,9 @@
   describes the channel as subject to `enable_ask_orchestrator` and
   `disallowed_tools`; it is not a checkbox. The panel does not read runtime
   configuration or edit denials.
-  Generated defaults are explicit: `read, bash, grep, find, ls` for Explorer and
-  Oracle; Designer and Worker add `edit, write` before the search tools;
-  Librarian adds its research tools. All omit `ask_user_question`, `todo` and
+  Generated defaults are explicit: `read, bash, grep, find, ls` for Oracle;
+  Explorer adds `codemode`; Designer and Worker add `edit, write` before the
+  search tools; Librarian adds its research tools and `codemode`. All omit `ask_user_question`, `todo` and
   third-party delegation tools. Every enabled child receives `ask_orchestrator`
   regardless of selection form unless denied. Only Oracle's generated definition
   declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment.
@@ -211,6 +211,31 @@
   progress and research guidance is rendered by `src/agents/prompt-sections.ts`
   and `src/agents/prompt-dialects.ts`; tests: `src/agents/prompt-rendering.test.ts`.
   Package presence remains distinct from live UI/provider availability.
+
+## Pi codemode
+
+The Pi installer fills global `settings.json` codemode defaults after native
+package installs, re-reading the file so package entries and unrelated settings
+are preserved. An absent `defaultTools` becomes `["+codemode"]`; a non-empty list
+containing only `+`/`-` selectors gains `+codemode`. Empty or replacement lists
+gain plain `codemode`. Existing `codemode`, `+codemode` or `-codemode` entries
+are unchanged. An absent `codemode.mode` becomes `"on"`; existing modes and nested
+fields such as `inlineBudget` are preserved. Reinstallation is idempotent, and
+managed-write safety rejects symlinked settings.
+
+With theme tool rendering enabled, pi-thoth-theme renders the builtin codemode
+tool as a compact card of nested calls (name, status and duration; up to eight
+collapsed, plus a remaining count). Expansion shows the script, output and
+errors. The renderer does not replace or wrap Pi's builtin implementation.
+Explorer and Librarian select codemode by default; lean children with codemode
+selected load Pi's public codemode extension in mode `on`, scoped to their other
+selected tools.
+
+Batch independent script-callable reads, research and memory work through
+codemode. Delegation controls, `ask_orchestrator` and `ask_user_question` are
+`model-only`: call them directly, never from scripts. They remain direct under
+both `on` and user-selected `only`. Task-list and background-task tools remain
+script-callable; the boundary does not exclude all control-plane tools.
 
 ## Pi question dock and editor slot
 

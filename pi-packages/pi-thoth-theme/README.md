@@ -37,8 +37,10 @@ of the module toggles below.
   drop speed, then cache, then tokens before truncating cost. Editor-border
   metadata is decorated in place without claiming the custom editor slot.
 - **Tools**: boxed calls and results for `read`, `bash`, `powershell`, `ls`,
-  `grep`, `find`, `edit` and `write`, with Nerd Font icons, native Unicode
-  glyphs or ASCII alternatives. `bash` and `powershell` show a live elapsed time
+  `grep`, `find`, `edit`, `write` and `codemode`, with Nerd Font icons, native Unicode
+  glyphs or ASCII alternatives. `codemode` previews up to eight nested calls
+  with status and duration; expanded results show the script, output and errors
+  without replacing Pi's builtin codemode extension. `bash` and `powershell` show a live elapsed time
   while running. Execution and parameters delegate to Pi's built-in tools;
   Pi's native output toggle still
   collapses and expands results. Registered non-built-in tools keep their own

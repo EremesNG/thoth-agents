@@ -12,6 +12,7 @@ metadata:
 
 Root archives only after the implementation writer has terminated and a fresh
 independent Oracle PASS has covered the actual change, diff, checks, and risks.
+Closeout requires a matching valid PASS final-verification envelope under `**Oracle envelope**:`.
 Structural closeout validation is not approval. The single record must have all
 tasks complete, explicit plan-review disposition and implementation authorization,
 every acceptance outcome's concrete PASS check/evidence, reviewed-record and

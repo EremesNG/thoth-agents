@@ -164,4 +164,14 @@ The reviewed record digest MUST cover the exact bytes preceding the `## Authoriz
 
 - **GIVEN** a substantial record with a final Oracle PASS and matching digest
 - **WHEN** root edits only Authorization, Verification, or Closeout lines
-- **THEN** closeout remains valid without a new Oracle round, and WHEN any byte before `## Authorization` changes THEN closeout fails as stale until a fresh independent review records a new digest 
+- **THEN** closeout remains valid without a new Oracle round, and WHEN any byte before `## Authorization` changes THEN closeout fails as stale until a fresh independent review records a new digest
+
+### Requirement: Closeout requires the validated Oracle envelope
+
+Substantial closeout and archive MUST require the record's Verification section to contain exactly one unchanged Oracle final-verification `thoth-result` envelope that the bundled validator accepts for this record's path and prefix SHA-256 with verdict PASS and that agrees with the recorded Verdict and reviewed digest; a missing, invalid, non-PASS or mismatched envelope MUST fail closeout.
+
+#### Scenario: Closeout requires the validated Oracle envelope
+
+- **GIVEN** a record whose Verdict field says PASS but whose embedded Oracle envelope says FAIL
+- **WHEN** closeout validation runs
+- **THEN** closeout fails and archive is refused 

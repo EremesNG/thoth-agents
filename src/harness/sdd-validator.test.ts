@@ -24,6 +24,7 @@ function fixture(
   reviewDisposition = 'SKIPPED',
   reviewSelection: string | null = 'EXPLICIT_SKIP',
   implementationAuthorization = 'AUTHORIZED',
+  includeEnvelope = true,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'sdd-'));
   roots.push(root);
@@ -50,14 +51,50 @@ function fixture(
     return `- Source: ${path} | sha256:${digest(content)}`;
   });
   const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver explicit behavior.\n\n## Non-goals\n\nNo unrelated migration.\n\n## Acceptance\n\n- AC-1: Visible result is checked.\n\n## Clarifications\n\n- No material question remains; accepted intent is settled.\n\n## Decisions\n\n- Scope and behavior confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nUpdate source and test behavior; no process tooling.\n\n## Tasks\n\n- [x] AC-1: Implement and test the behavior.\n\n## Authorization\n\n**Plan review**: ${reviewDisposition}\n${reviewSelection === null ? '' : `**Plan review selection**: ${reviewSelection}\n`}**Implementation**: ${implementationAuthorization}\n\n`;
+  const envelope = `\`\`\`thoth-result
+${JSON.stringify({
+  schemaVersion: 1,
+  role: 'oracle',
+  status: 'complete',
+  conclusion: 'Verified.',
+  evidence: [],
+  verification: [],
+  risks: [],
+  openQuestions: [],
+  nextAction: null,
+  review: {
+    kind: 'final-verification',
+    verdict: 'PASS',
+    reviewedRecord: `.thoth/changes/${id}/${id}.md`,
+    reviewedRecordSha256: digest(before.split('## Authorization')[0]),
+  },
+})}
+\`\`\``;
   const verification = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${digest(before.split('## Authorization')[0])}\n\n- AC-1: PASS | pnpm test | behavior observed\n- Source: source.txt | sha256:${digest('verified implementation\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
-  writeFileSync(join(change, `${id}.md`), before + verification);
-  return { root, change, id, before, verification };
+  const boundVerification = includeEnvelope
+    ? verification.replace(
+        '## Closeout',
+        `**Oracle envelope**:
+
+${envelope}
+
+## Closeout`,
+      )
+    : verification;
+  writeFileSync(join(change, `${id}.md`), before + boundVerification);
+  return {
+    root,
+    change,
+    id,
+    before,
+    verification: boundVerification,
+    envelope,
+  };
 }
-function validate(change: string, through = 'ready') {
+function validate(change: string, through = 'ready', validatorScript = script) {
   const result = spawnSync(
     process.execPath,
-    [script, '--change', change, '--through', through, '--json'],
+    [validatorScript, '--change', change, '--through', through, '--json'],
     { windowsHide: true, encoding: 'utf8' },
   );
   return {
@@ -76,6 +113,539 @@ afterEach(() => {
 });
 
 describe('ID-named SDD validator', () => {
+  test.each([
+    'skills',
+    'plugin/skills',
+  ])('%s closeout refuses an envelope after an intervening H2', (skillsRoot) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          '**Oracle envelope**:',
+          '## Oracle result\n\n**Oracle envelope**:',
+        ),
+    );
+    const result = validate(
+      f.change,
+      'closeout',
+      join(process.cwd(), skillsRoot, 'thoth-sdd/scripts/validate.mjs'),
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.report.errors.map(({ code }) => code)).toContain(
+      'SDD-ORACLE-ENVELOPE-MISSING',
+    );
+  });
+
+  test.each([
+    'skills',
+    'plugin/skills',
+  ])('%s closeout accepts an envelope after an intervening H3', (skillsRoot) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          '**Oracle envelope**:',
+          '### Oracle result\n\n**Oracle envelope**:',
+        ),
+    );
+    const result = validate(
+      f.change,
+      'closeout',
+      join(process.cwd(), skillsRoot, 'thoth-sdd/scripts/validate.mjs'),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.report.valid).toBe(true);
+  });
+
+  test('closeout rejects a missing Oracle envelope while verify remains unchanged', () => {
+    const f = fixture(
+      'example',
+      '- None.',
+      {},
+      'SKIPPED',
+      'EXPLICIT_SKIP',
+      'AUTHORIZED',
+      false,
+    );
+    expect(validate(f.change, 'verify').report.valid).toBe(true);
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+  });
+
+  test('closeout counts a FAIL envelope hidden after a heading in an example', () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          '## Closeout',
+          `\`\`\`\`markdown
+## Hidden heading
+${f.envelope.replace('"verdict":"PASS"', '"verdict":"FAIL"')}
+\`\`\`\`
+
+## Closeout`,
+        ),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    ['backtick', '````markdown', '````'],
+    ['tilde', '~~~~markdown', '~~~~~'],
+  ])('closeout rejects a %s literal example beside the genuine envelope', (_name, start, end) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          '**Oracle envelope**:',
+          `${start}\n**Oracle envelope**:\n\n${f.envelope}\n- AC-99: FAIL | example\n- Source: missing.txt | absent\n${end}\n\n**Oracle envelope**:`,
+        ),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    '> ',
+    '- ',
+    '1. ',
+    '    ',
+    '> - ',
+  ])('closeout counts a %s prefixed example anywhere in the record', (prefix) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification +
+        `\n${prefix}${f.envelope.split('\n').join(`\n${prefix}`)}\n`,
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    'before Authorization',
+    'after Closeout',
+  ])('closeout counts a second marker %s', (position) => {
+    const f = fixture();
+    const text = f.before + f.verification;
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      position === 'before Authorization'
+        ? text.replace(
+            '## Authorization',
+            '**Oracle envelope**:\n\n## Authorization',
+          )
+        : `${text}\n**Oracle envelope**:\n`,
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    'before Authorization',
+    'after Closeout',
+    'inside Authorization',
+  ])('closeout refuses a single binding %s', (position) => {
+    const f = fixture();
+    const binding = `**Oracle envelope**:\n\n${f.envelope}\n\n`;
+    const text = (f.before + f.verification).replace(binding, '');
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      position === 'before Authorization'
+        ? text.replace('## Authorization', `${binding}## Authorization`)
+        : position === 'inside Authorization'
+          ? text.replace('## Verification', `${binding}## Verification`)
+          : text + binding,
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+  });
+
+  test.each([
+    '## verification',
+    ' ## Verification',
+    '## Verification ',
+    '## closeout',
+    ' ## Closeout',
+    '## Closeout ',
+  ])('closeout requires exact placement heading %s', (heading) => {
+    const f = fixture();
+    const canonical = heading.toLowerCase().includes('verification')
+      ? '## Verification'
+      : '## Closeout';
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before + f.verification.replace(canonical, heading),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+  });
+
+  test('closeout refuses a block that closes after the Closeout heading', () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          `${f.envelope}\n\n## Closeout`,
+          `${f.envelope.slice(0, -3)}## Closeout\n\`\`\``,
+        ),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+  });
+
+  test('a leading BOM is retained in the reviewed digest but ignored for line matching', () => {
+    const f = fixture();
+    const oldDigest = digest(f.before.split('## Authorization')[0]);
+    const newDigest = digest(`\uFEFF${f.before.split('## Authorization')[0]}`);
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      `\uFEFF${f.before}${f.verification}`.replaceAll(oldDigest, newDigest),
+    );
+    expect(validate(f.change, 'closeout').report.valid).toBe(true);
+  });
+
+  test.each([
+    ['tilde', '~~~thoth-result', '~~~'],
+    ['long backtick', '````thoth-result', '````'],
+    ['indented', '  ```thoth-result', '  ```'],
+    ['extra space', '``` thoth-result', '```'],
+    ['trailing info space', '```thoth-result ', '```'],
+  ])('closeout rejects a top-level %s envelope fence unchanged', (_name, start, end) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          f.envelope,
+          f.envelope.replace('```thoth-result', start).replace(/```$/, end),
+        ),
+    );
+    const result = validate(f.change, 'closeout');
+    expect(result.report.valid).toBe(false);
+    expect(result.report.errors.map(({ code }) => code)).toContain(
+      'SDD-ORACLE-ENVELOPE-INVALID',
+    );
+    expect(result.stdout).toContain('ENVELOPE_FORMAT');
+  });
+
+  test.each([
+    [
+      'marker inside a text fence',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(
+          '**Oracle envelope**:',
+          '```text\n**Oracle envelope**:\n```',
+        ),
+      'MISSING',
+    ],
+    [
+      'intervening prose',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(
+          '**Oracle envelope**:',
+          '**Oracle envelope**:\nNot adjacent.',
+        ),
+      'MISSING',
+    ],
+    [
+      'extra info string',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace('```thoth-result', '```thoth-result json'),
+      'INVALID',
+    ],
+    [
+      'short closing fence',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace('```thoth-result', '````thoth-result'),
+      'INVALID',
+    ],
+    [
+      'mismatched closing character',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(f.envelope, f.envelope.replace(/```$/, '~~~')),
+      'INVALID',
+    ],
+  ])('closeout rejects %s with fence-aware extraction', (_name, mutate, suffix) => {
+    const f = fixture();
+    writeFileSync(join(f.change, `${f.id}.md`), f.before + mutate(f));
+    expect(
+      validate(f.change, 'closeout').report.errors.map((e) => e.code),
+    ).toContain(`SDD-ORACLE-ENVELOPE-${suffix}`);
+  });
+
+  test.each([
+    'FAIL',
+    'PASS',
+  ])('closeout rejects a preceding %s envelope beside the marked PASS', (verdict) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          '**Oracle envelope**:',
+          `${f.envelope.replace('"verdict":"PASS"', `"verdict":"${verdict}"`)}\n\n**Oracle envelope**:`,
+        ),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    'THOTH-RESULT',
+    'ThOtH-ReSuLt',
+  ])('closeout counts a second %s block as duplicate', (info) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification +
+        `\n${f.envelope.replace('thoth-result', info)}\n`,
+    );
+    const result = validate(f.change, 'closeout');
+    expect(result.report.valid).toBe(false);
+    expect(result.report.errors.map(({ code }) => code)).toContain(
+      'SDD-ORACLE-ENVELOPE-DUPLICATE',
+    );
+  });
+
+  test('closeout rejects duplicate envelope blocks', () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace(
+          f.envelope,
+          `${f.envelope}
+
+${f.envelope}`,
+        ),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+  });
+
+  test.each([
+    ['canonical', '```thoth-result', '```', '\n'],
+    ['uppercase info', '```THOTH-RESULT', '```', '\n'],
+    ['mixed-case info', '```ThOtH-ReSuLt', '```', '\n'],
+    ['CRLF', '```thoth-result', '```', '\r\n'],
+    ['tilde', '~~~thoth-result', '~~~', '\n'],
+    ['long backtick', '````thoth-result', '````', '\n'],
+    ['indented', '   ```thoth-result', '   ```', '\n'],
+    ['leading info space', '``` thoth-result', '```', '\n'],
+    ['trailing info space', '```thoth-result ', '```', '\n'],
+    ['extra info', '```thoth-result json', '```', '\n'],
+    ['info prefix', '```thoth-result-example', '```', '\n'],
+    ['closing space', '```thoth-result', '``` ', '\n'],
+    ['long closing fence', '```thoth-result', '````', '\n'],
+  ])('closeout acceptance matches validate-result for %s blocks', (_name, start, end, newline) => {
+    const f = fixture();
+    const block = f.envelope
+      .replace('```thoth-result', start)
+      .replace(/```$/, end)
+      .replace(/\n/g, newline);
+    const direct = spawnSync(
+      process.execPath,
+      [
+        join(process.cwd(), 'skills/thoth-sdd/scripts/validate-result.mjs'),
+        '--review-kind',
+        'final-verification',
+        '--record-sha256',
+        digest(f.before.split('## Authorization')[0]),
+      ],
+      { windowsHide: true, encoding: 'utf8', input: block },
+    );
+    expect(direct.status).not.toBeNull();
+    const directReport = JSON.parse(direct.stdout) as { valid: boolean };
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before + f.verification.replace(f.envelope, block),
+    );
+    expect(validate(f.change, 'closeout').report.valid).toBe(
+      directReport.valid,
+    );
+  });
+
+  test('the template envelope placeholder remains compatible with verify', () => {
+    const f = fixture();
+    const template = readFileSync(
+      join(process.cwd(), 'skills/thoth-sdd/templates/change.md'),
+      'utf8',
+    );
+    expect(template).toMatch(
+      /\*\*Oracle envelope\*\*:\s*```thoth-result\r?\nPENDING\r?\n```/,
+    );
+    const verification = template
+      .slice(template.indexOf('## Verification'))
+      .replace(/^- Source:.*\r?\n/gm, '')
+      .replace(
+        '## Closeout',
+        `- Source: source.txt | sha256:${digest('verified implementation\n')}\n\n## Closeout`,
+      );
+    writeFileSync(join(f.change, `${f.id}.md`), f.before + verification);
+    expect(validate(f.change, 'verify').report.valid).toBe(true);
+  });
+
+  test.each([
+    [
+      'marker with no block',
+      (f: ReturnType<typeof fixture>) => f.verification.replace(f.envelope, ''),
+      'MISSING',
+    ],
+    [
+      'block without marker',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace('**Oracle envelope**:', ''),
+      'MISSING',
+    ],
+    [
+      'block before marker',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(
+          `**Oracle envelope**:\n\n${f.envelope}`,
+          `${f.envelope}\n\n**Oracle envelope**:`,
+        ),
+      'MISSING',
+    ],
+    [
+      'block outside Verification',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification
+          .replace(f.envelope, '')
+          .replace('**Archive**: READY', `**Archive**: READY\n\n${f.envelope}`),
+      'MISSING',
+    ],
+    [
+      'duplicate marker',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(
+          '**Oracle envelope**:',
+          '**Oracle envelope**:\n**Oracle envelope**:',
+        ),
+      'DUPLICATE',
+    ],
+    [
+      'unterminated block',
+      (f: ReturnType<typeof fixture>) =>
+        f.verification.replace(f.envelope, f.envelope.slice(0, -3)),
+      'INVALID',
+    ],
+  ])('closeout rejects %s', (_name, mutate, suffix) => {
+    const f = fixture();
+    writeFileSync(join(f.change, `${f.id}.md`), f.before + mutate(f));
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain(`SDD-ORACLE-ENVELOPE-${suffix}`);
+  });
+
+  test.each([
+    [
+      'invalid JSON',
+      (block: string) => block.replace('"schemaVersion":1', '"schemaVersion":'),
+      'INVALID',
+    ],
+    [
+      'wrong review kind',
+      (block: string) => block.replace('final-verification', 'plan-review'),
+      'INVALID',
+    ],
+    [
+      'non-PASS verdict',
+      (block: string) => block.replace('"verdict":"PASS"', '"verdict":"FAIL"'),
+      'NOT-PASS',
+    ],
+    [
+      'wrong record',
+      (block: string) =>
+        block.replace(
+          '.thoth/changes/example/example.md',
+          '.thoth/changes/other/other.md',
+        ),
+      'RECORD-MISMATCH',
+    ],
+    [
+      'wrong digest',
+      (block: string) =>
+        block.replace(
+          /"reviewedRecordSha256":"[a-f0-9]{64}"/,
+          `"reviewedRecordSha256":"${'0'.repeat(64)}"`,
+        ),
+      'DIGEST-MISMATCH',
+    ],
+  ])('closeout rejects %s in the embedded envelope', (_name, mutate, suffix) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before + f.verification.replace(f.envelope, mutate(f.envelope)),
+    );
+    const result = validate(f.change, 'closeout');
+    expect(result.report.valid).toBe(false);
+    expect(result.report.errors.map(({ code }) => code)).toContain(
+      `SDD-ORACLE-ENVELOPE-${suffix}`,
+    );
+    if (suffix === 'INVALID') {
+      expect(result.stdout).toMatch(/JSON_SYNTAX|REVIEW_KIND_MISMATCH/);
+    }
+  });
+
+  test('closeout rejects a Verdict field that disagrees with the PASS envelope', () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before +
+        f.verification.replace('**Verdict**: PASS', '**Verdict**: FAIL'),
+    );
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-ORACLE-ENVELOPE-VERDICT-MISMATCH');
+  });
+
+  test('verify then embed then closeout preserves the reviewed prefix digest', () => {
+    const f = fixture(
+      'example',
+      '- None.',
+      {},
+      'SKIPPED',
+      'EXPLICIT_SKIP',
+      'AUTHORIZED',
+      false,
+    );
+    const record = join(f.change, `${f.id}.md`);
+    const prefixDigest = digest(
+      readFileSync(record, 'utf8').split('## Authorization')[0],
+    );
+    expect(validate(f.change, 'verify').status).toBe(0);
+    writeFileSync(
+      record,
+      readFileSync(record, 'utf8').replace(
+        '## Closeout',
+        `**Oracle envelope**:\n\n${f.envelope}\n\n## Closeout`,
+      ),
+    );
+    expect(
+      digest(readFileSync(record, 'utf8').split('## Authorization')[0]),
+    ).toBe(prefixDigest);
+    expect(validate(f.change, 'closeout').status).toBe(0);
+  });
+
   test.each([
     ['Authorization', '**Implementation**: AUTHORIZED'],
     ['Verification', '**Verdict**: PASS'],
@@ -134,7 +704,10 @@ describe('ID-named SDD validator', () => {
 
     expect(
       validate(f.change, 'closeout').report.errors.map(({ code }) => code),
-    ).toEqual(['SDD-VERIFICATION-STALE']);
+    ).toEqual([
+      'SDD-VERIFICATION-STALE',
+      'SDD-ORACLE-ENVELOPE-DIGEST-MISMATCH',
+    ]);
   });
 
   test('verify accepts final-review and Archive placeholders with complete tasks and reviewed sources', () => {
@@ -162,6 +735,8 @@ describe('ID-named SDD validator', () => {
     expect(closeout.report.errors.map(({ code }) => code)).toEqual([
       'SDD-VERIFICATION',
       'SDD-VERIFICATION-STALE',
+      'SDD-ORACLE-ENVELOPE-DIGEST-MISMATCH',
+      'SDD-ORACLE-ENVELOPE-VERDICT-MISMATCH',
       'SDD-VERIFICATION-COVERAGE',
       'SDD-ARCHIVE-READINESS',
     ]);
@@ -200,6 +775,8 @@ describe('ID-named SDD validator', () => {
     expect(result.report.valid).toBe(false);
     expect(result.report.errors.map(({ code }) => code)).toEqual([
       'SDD-VERIFICATION-STALE',
+      'SDD-ORACLE-ENVELOPE-INVALID',
+      'SDD-ORACLE-ENVELOPE-DIGEST-MISMATCH',
     ]);
   });
 

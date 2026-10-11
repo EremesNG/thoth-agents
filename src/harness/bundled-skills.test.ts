@@ -313,6 +313,36 @@ describe('canonical workflow bundle contracts', () => {
     expect(verify).toContain('whose digest matches');
   });
 
+  test('requires unchanged final-verification envelope bookkeeping before closeout', () => {
+    for (const path of [
+      'skills/thoth-sdd/SKILL.md',
+      'skills/thoth-sdd/references/phases/verify.md',
+    ]) {
+      const guidance = readFileSync(path, 'utf8').replace(/\s+/g, ' ');
+      expect(guidance, path).toContain(
+        '`verify` → fresh final Oracle → root validates and pastes → `closeout` → archive',
+      );
+      expect(guidance, path).toContain(
+        'unchanged final-verification envelope under `**Oracle envelope**:`',
+      );
+      expect(guidance, path).toContain(
+        'post-PASS bookkeeping in Verification; no new review',
+      );
+      expect(guidance, path).toContain(
+        'Plan-review envelopes are not embedded',
+      );
+      expect(guidance, path).toContain(
+        'Closeout fails without exactly one valid PASS envelope matching the record path and prefix digest',
+      );
+      expect(guidance, path).toContain(
+        'consistent with `**Verdict**` and `**Reviewed record SHA-256**`',
+      );
+    }
+    expect(readFileSync('skills/thoth-archive/SKILL.md', 'utf8')).toContain(
+      'matching valid PASS final-verification envelope under `**Oracle envelope**:`',
+    );
+  });
+
   test('keeps generated assets byte-identical and relative references resolvable', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-contracts-'));
 

@@ -185,6 +185,8 @@ the validated gate review field, never free text; validation itself is not user 
 node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <explore|specify|clarify|plan|tasks|checklist|ready|verify|closeout> --json
 ```
 
+Substantial records must not contain other `thoth-result` fences or `**Oracle envelope**:` marker lines anywhere in the file; write examples inline instead.
+
 The early gates validate the one record proportionally. `plan` validates without
 requiring tasks. `tasks` and `ready` require concrete coverage of every accepted
 outcome. `ready` requires settled material decisions before the mandatory
@@ -195,6 +197,16 @@ implementation authorization, and reviewed source digests/baselines. It permits
 final-review and Archive placeholders. `closeout` additionally requires a fresh
 independent Oracle PASS, every acceptance outcome with concrete PASS
 check/evidence, exactly one matching record SHA-256 field, and Archive READY.
+Order: `verify` → fresh final Oracle → root validates and pastes → `closeout` → archive.
+After accepting a validated PASS, root pastes the Oracle's unchanged
+final-verification envelope under `**Oracle envelope**:` in the record's
+Verification section (post-PASS bookkeeping in Verification; no new review).
+Plan-review envelopes are not embedded. Closeout fails without exactly one valid
+PASS envelope matching the record path and prefix digest, consistent with
+`**Verdict**` and `**Reviewed record SHA-256**`. Preserve the envelope unchanged
+when archiving; archived validation accepts its original active record path.
+Historical archived records are not retrofitted or re-validated by this rule.
+
 The initial `PENDING` selection placeholder is allowed before `verify` only.
 `SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
 `DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected by a durable delta must

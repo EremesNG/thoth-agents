@@ -13,9 +13,7 @@ import {
   loadSubagents,
   parseFrontmatter,
   readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
   resolveEffectiveSubagentMode,
-  saveGlobalSubagentModelProfile,
   subagentSourceWarnings,
 } from '../src/config.js';
 import {
@@ -37,16 +35,11 @@ import {
 } from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
 import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
   buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
   createSubagentModelProfilesModal,
   globalSubagentsConfigPath,
   groupAvailableModelsByProvider,
   runSubagentModelsCommand,
-  stageModelProfileEdit,
 } from '../src/model-profiles-ui.js';
 import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
 import {
@@ -853,53 +846,12 @@ describe('config and workflow loading', () => {
     expect(warnings[1]).toContain('local-dup');
   });
 
-  it('merges model_profiles from global and project config with project precedence', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: { model: 'anthropic/claude-sonnet-4-5', effort: 'high' },
-          reviewer: { model: 'openai/gpt-5.2', effort: 'low' },
-          maxEffort: { model: 'openai/gpt-5.2', effort: 'max' },
-          invalidEffort: { model: 'openai/gpt-5.2', effort: 'extreme' },
-          invalidModel: { model: 'missing-provider', effort: 'low' },
-        },
-      }),
-    );
+  it('ignores obsolete model_profiles in subagents.json', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: {
-            model: { provider: 'openai', id: 'gpt-5.2-codex' },
-            effort: 'medium',
-          },
-          projectOnly: { model: 'anthropic/claude-opus-4-5', effort: 'xhigh' },
-        },
-      }),
+      JSON.stringify({ model_profiles: { analyst: { effort: 'max' } } }),
     );
-
-    const config = withAgentDir(agentDir, () => readSubagentsConfig(tmp));
-
-    expect(config.model_profiles).toEqual({
-      analyst: {
-        model: { provider: 'openai', id: 'gpt-5.2-codex' },
-        effort: 'medium',
-      },
-      reviewer: { model: { provider: 'openai', id: 'gpt-5.2' }, effort: 'low' },
-      maxeffort: {
-        model: { provider: 'openai', id: 'gpt-5.2' },
-        effort: 'max',
-      },
-      invalideffort: { model: { provider: 'openai', id: 'gpt-5.2' } },
-      invalidmodel: { effort: 'low' },
-      projectonly: {
-        model: { provider: 'anthropic', id: 'claude-opus-4-5' },
-        effort: 'xhigh',
-      },
-    });
+    expect(readSubagentsConfig(tmp)).not.toHaveProperty('model_profiles');
   });
 
   it('defaults nested subagent sessions to lean resources and preserves legacy config behavior', () => {
@@ -919,7 +871,7 @@ describe('config and workflow loading', () => {
 
     const config = withAgentDir(agentDir, () => readSubagentsConfig(tmp));
 
-    expect(config.model_profiles).toEqual({});
+    expect(config).not.toHaveProperty('model_profiles');
     expect(config.default_model).toEqual({ provider: 'openai', id: 'gpt-5.2' });
     expect(config.default_effort).toBe('medium');
     expect(config.timeout_ms).toBe(123);

@@ -45,7 +45,6 @@ describe('subagent runner structured errors', () => {
     stall_timeout_ms: 10_000,
     max_concurrency: 1,
     default_tools: ['read'],
-    model_profiles: {},
   };
 
   async function runStructuredSession(
@@ -532,9 +531,6 @@ describe('subagent runner structured errors', () => {
     });
     const sliceConfig: SubagentsConfig = {
       ...config,
-      model_profiles: {
-        'sdd-apply': { model: { provider: 'preferred', id: 'primary-model' } },
-      },
     };
     const ctx = {
       model: fallbackModel,
@@ -552,7 +548,20 @@ describe('subagent runner structured errors', () => {
       definition,
       task: 'runner selected-model failure',
       cwd: '/workspace',
-      ctx,
+      ctx: {
+        ...ctx,
+        modelProfile: {
+          name: 'test',
+          profile: {
+            agents: {
+              'sdd-apply': {
+                model: { provider: 'preferred', id: 'primary-model' },
+              },
+            },
+          },
+          warnings: [],
+        },
+      },
       config: sliceConfig,
       signal: new AbortController().signal,
     });
@@ -584,9 +593,6 @@ describe('subagent runner structured errors', () => {
     });
     const sliceConfig: SubagentsConfig = {
       ...config,
-      model_profiles: {
-        'sdd-apply': { model: { provider: 'preferred', id: 'primary-model' } },
-      },
     };
 
     const failedPromise = sdkSubagentRunner({
@@ -594,15 +600,28 @@ describe('subagent runner structured errors', () => {
       task: 'runner no distinct fallback failure',
       cwd: '/workspace',
       ctx: {
-        model: sharedModel,
-        modelRegistry: {
-          find: vi.fn((provider: string, id: string) =>
-            provider === 'preferred' && id === 'primary-model'
-              ? sharedModel
-              : undefined,
-          ),
+        ...{
+          model: sharedModel,
+          modelRegistry: {
+            find: vi.fn((provider: string, id: string) =>
+              provider === 'preferred' && id === 'primary-model'
+                ? sharedModel
+                : undefined,
+            ),
+          },
+          ui: { notify: vi.fn() },
         },
-        ui: { notify: vi.fn() },
+        modelProfile: {
+          name: 'test',
+          profile: {
+            agents: {
+              'sdd-apply': {
+                model: { provider: 'preferred', id: 'primary-model' },
+              },
+            },
+          },
+          warnings: [],
+        },
       },
       config: sliceConfig,
       signal: new AbortController().signal,

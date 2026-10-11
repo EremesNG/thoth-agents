@@ -34,7 +34,6 @@ const config: SubagentsConfig = {
   stall_timeout_ms: 60_000,
   max_concurrency: 3,
   default_tools: ['bg_task_spawn'],
-  model_profiles: {},
   session_resources: 'lean',
 };
 afterEach(() => {

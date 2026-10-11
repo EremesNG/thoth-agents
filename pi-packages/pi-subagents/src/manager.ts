@@ -37,6 +37,7 @@ import {
   publishInteractionResponse,
   sanitizeInteractionTransportText,
 } from './interaction-channel.js';
+import { ModelProfileStore } from './model-profiles/store.js';
 import {
   profileSourceLabel,
   resolveEffectiveSubagentProfile,
@@ -600,7 +601,26 @@ export class SubagentManager {
     return this.closePromise;
   }
 
+  private sessionModelProfile?: string;
+
+  setSessionModelProfile(profile?: string): void {
+    this.sessionModelProfile = profile;
+  }
+  getSessionModelProfile(): string | undefined {
+    return this.sessionModelProfile;
+  }
+  private profileContext(ctx: any, cwd: string): any {
+    const modelProfile = new ModelProfileStore({
+      cwd,
+      agentDir: ctx?.agentDir,
+    }).resolve(this.sessionModelProfile);
+    for (const warning of modelProfile.warnings)
+      ctx?.ui?.notify?.(warning, 'warning');
+    return { ...ctx, cwd, modelProfile };
+  }
+
   listAgents(cwd: string, ctx: any = {}) {
+    ctx = this.profileContext(ctx, cwd);
     const config = readSubagentsConfig(cwd);
     return loadSubagents(cwd).map((definition) => {
       const profile = resolveEffectiveSubagentProfile({
@@ -616,6 +636,8 @@ export class SubagentManager {
         tools: definition.tools,
         model: profile.model.value,
         effort: profile.effort.value,
+        profileName: profile.profileName,
+        warnings: profile.warnings,
       };
     });
   }
@@ -1275,6 +1297,7 @@ export class SubagentManager {
     onTaskUpdate?: (tasks: SubagentTask[]) => void,
   ): Promise<SubagentRunResult> {
     const cwd = ctx?.cwd ?? process.cwd();
+    ctx = this.profileContext(ctx, cwd);
     const agents = input.agents?.length
       ? input.agents
       : input.agent
@@ -1362,6 +1385,7 @@ export class SubagentManager {
   }> {
     const cwd = ctx?.cwd ?? process.cwd();
     const taskCwd = this.taskCwds.get(input.task_id) ?? cwd;
+    ctx = this.profileContext(ctx, taskCwd);
     const existing = this.getTask(input.task_id, taskCwd);
     if (!existing) throw new Error(`Subagent task not found: ${input.task_id}`);
     if (!readSubagentsConfig(taskCwd).enable_continue)

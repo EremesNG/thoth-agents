@@ -1,41 +1,33 @@
-import os from 'node:os';
-import path from 'node:path';
-import { resolveEffectiveSubagentProfile } from '../profile-resolver.js';
+import { loadSubagents, readSubagentsConfig } from '../config.js';
+import { resolveDefaultSubagentProfile } from '../profile-resolver.js';
 import type {
   ModelRef,
-  SubagentDefinition,
   SubagentDefinitionScope,
-  SubagentModelProfile,
-  SubagentsConfig,
   ThinkingEffort,
 } from '../types.js';
+import { modelProfilePaths } from './store.js';
 
 type AvailableModel = { provider: string; id: string; label: string };
 
-export type ModelProfileRow = {
+/** One listed subagent with the values the virtual `default` profile yields. */
+export type AgentRow = {
+  /** Normalized (trimmed, lowercase) agent key used by profiles. */
+  key: string;
   name: string;
   description: string;
-  modelLabel: string;
-  effortLabel: string;
-  effectiveModel?: ModelRef;
-  inheritedModel?: ModelRef;
-  effectiveEffort?: ThinkingEffort;
-  inheritedEffort?: ThinkingEffort;
-  explicitProfile: SubagentModelProfile;
-  scope?: SubagentDefinitionScope;
+  scope: SubagentDefinitionScope;
+  defaultModel?: ModelRef;
+  defaultEffort?: ThinkingEffort;
 };
 
-export function globalSubagentsConfigPath(
-  agentDir = path.join(os.homedir(), '.pi', 'agent'),
-): string {
-  return path.join(agentDir, 'subagents.json');
+export function globalSubagentsConfigPath(agentDir?: string): string {
+  return modelProfilePaths({ cwd: process.cwd(), agentDir }).global;
 }
-
 export function projectSubagentsConfigPath(cwd: string): string {
-  return path.join(cwd, '.pi', 'subagents.json');
+  return modelProfilePaths({ cwd }).project;
 }
 
-function modelKey(model: ModelRef): string {
+export function modelKey(model: ModelRef): string {
   return `${model.provider}/${model.id}`;
 }
 
@@ -78,7 +70,7 @@ export function groupAvailableModelsByProvider(
   );
 }
 
-function availableModelSet(rawModels: any[] = []): Set<string> {
+export function availableModelSet(rawModels: any[] = []): Set<string> {
   return new Set(
     Object.values(groupAvailableModelsByProvider(rawModels))
       .flat()
@@ -86,58 +78,28 @@ function availableModelSet(rawModels: any[] = []): Set<string> {
   );
 }
 
-export function buildModelProfileRows(input: {
-  definitions: SubagentDefinition[];
-  config: SubagentsConfig;
-  ctx: any;
-  availableModels?: any[];
-}): ModelProfileRow[] {
-  const byName = new Map<string, SubagentDefinition>();
-  for (const definition of input.definitions)
+export function buildAgentRows(ctx: any = {}): AgentRow[] {
+  const cwd = ctx.cwd ?? process.cwd();
+  const config = readSubagentsConfig(cwd);
+  const byName = new Map<string, ReturnType<typeof loadSubagents>[number]>();
+  for (const definition of loadSubagents(cwd))
     byName.set(definition.name, definition);
-  const available = input.availableModels
-    ? availableModelSet(input.availableModels)
-    : undefined;
-
   return [...byName.values()]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((definition) => {
-      const resolved = resolveEffectiveSubagentProfile({
+      const resolved = resolveDefaultSubagentProfile({
         agentName: definition.name,
         definition,
-        config: input.config,
-        ctx: input.ctx,
+        config,
+        ctx,
       });
-      const inherited = resolveEffectiveSubagentProfile({
-        agentName: definition.name,
-        definition,
-        config: {
-          ...input.config,
-          model_profiles: {},
-          global_model_profiles: {},
-          project_model_profiles: {},
-        },
-        ctx: input.ctx,
-      });
-      const unavailable =
-        resolved.model.value &&
-        available &&
-        !available.has(modelKey(resolved.model.value));
       return {
+        key: definition.name.trim().toLowerCase(),
         name: definition.name,
         description: definition.description,
-        modelLabel: `${resolved.model.label}${unavailable ? ' (unavailable)' : ''}`,
-        effortLabel: resolved.effort.label,
-        effectiveModel: resolved.model.value,
-        inheritedModel: inherited.model.value,
-        effectiveEffort: resolved.effort.value,
-        inheritedEffort: inherited.effort.value,
-        explicitProfile: {
-          ...((definition.scope === 'project'
-            ? input.config.project_model_profiles?.[definition.name]
-            : input.config.global_model_profiles?.[definition.name]) ?? {}),
-        },
         scope: definition.scope ?? 'global',
+        defaultModel: resolved.model.value,
+        defaultEffort: resolved.effort.value,
       };
     });
 }

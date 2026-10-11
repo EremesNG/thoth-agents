@@ -9,6 +9,7 @@ import type { SubagentTask } from '../../src/types.js';
 import { renderSubagentWorkRow } from '../../src/ui/background-widget.js';
 import { SubagentsHistoryPanel } from '../../src/ui/subagents-history-panel.js';
 import { frameBox } from '../../src/ui/theme.js';
+import { createProfileEnv } from '../model-profiles/support.js';
 
 const theme = {
   fg: (_role: string, text: string) => text,
@@ -180,16 +181,10 @@ it('frame boxes resolve semantic borders at render time and restore native outpu
 });
 
 it('mounted model profiles resolve selection, separators, and navigation after kit changes', () => {
+  const env = createProfileEnv();
+  onTestFinished(env.cleanup);
   const modal = createSubagentModelProfilesModal({
-    rows: [
-      {
-        name: 'worker',
-        description: 'inspect',
-        modelLabel: 'current',
-        effortLabel: 'current',
-        explicitProfile: {},
-      },
-    ],
+    workspace: env.workspace(),
     theme,
     done: () => {},
   });
@@ -198,8 +193,8 @@ it('mounted model profiles resolve selection, separators, and navigation after k
   onTestFinished(() => withdrawRenderKit(token));
   const themed = modal.render(160).join('\n');
   expect(themed).toContain('>');
-  expect(modal.render(60).join('\n')).toContain('agent | model | effort');
-  expect(themed).toContain('^/v/j/k move |');
+  expect(modal.render(59).join('\n')).toContain('agent | model | effort');
+  expect(themed).toContain('^/v agent |');
   for (const width of [1, 5, 20, 40, 80, 160])
     expect(
       modal.render(width).every((line) => visibleWidth(line) <= width),

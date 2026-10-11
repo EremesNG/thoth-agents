@@ -555,21 +555,40 @@ authenticate providers or silently substitute models.
 
 ### Configure subagent model profiles inside Pi
 
-Run `/subagents-model` in Pi's interactive TUI to edit model and effort profiles
-for global or project subagent definitions. The editor saves each profile to the
-configuration scope that owns its definition: global profiles go in
-`~/.pi/agent/subagents.json` (or `$PI_CODING_AGENT_DIR/subagents.json`), while
-project profiles go in `.pi/subagents.json`. Resolution for each model and effort
-field is `model_profiles` first, then definition frontmatter, then the matching
-configuration default, then the parent value. Reload Pi after updating the
-`@thoth-agents/pi-subagents` runtime to register the command. It uses pi-core's
-shared list-editor shell with selectedBg rows, a cursor-centered, height-aware
-viewport, wheel navigation and dirty-discard confirmation; the wide model table
-starts at 102 columns. Profile scope and model filtering are unchanged.
-Both list editors recognize native CSI-u/kitty Enter, Escape and navigation keys
-as well as legacy terminal sequences. Wheel navigation works in regular and
-fullscreen TUI mode; the shared host restores its regular-mode mouse reporting
-when the panel closes.
+Run `/subagents-model` in Pi's interactive TUI to manage named model/effort
+profiles. Global storage is `<agentDir>/thoth/profiles.json` (`agentDir` honors
+`PI_CODING_AGENT_DIR`, default `~/.pi/agent`); project storage is
+`<project>/.pi/thoth/profiles.json`. Both use
+`{ "version": 1, "active": "name", "profiles": { "name": { "agents": { "agent": { "model": "provider/id", "effort": "medium" } } } } }`.
+`active`, `model` and `effort` are optional. Global `active` must name a global
+profile (or `default`); project `active` pins a project or global profile (or
+`default`). The old `model_profiles` field in `subagents.json` is no longer used.
+
+Selection is **session → project pin → global active → `default`**. Project
+profiles shadow same-named global profiles; missing references warn and fall
+back to the next level. Profile fields override definition frontmatter, then
+configuration defaults, then parent values. Missing agents/fields use that
+fallback chain. The reserved, read-only virtual `default` is never stored and
+has no overrides, exposing definition/shipped values and fallbacks. Session
+selection persists in the Pi session across reload/resume, not in config files.
+Switching applies to new runs and continuations without rewriting definitions.
+
+Keys: ←/→ browse profiles (no activation), ↑/↓ select agents, Enter edit,
+`n` new from default, `c` clone, `s` save, `r` rename, `d` delete, `u` use for
+session, `g` global active, `p` pin project. New/cloned profiles are drafts until
+save, with a choice of global or project storage. Saving an unedited new profile
+stores a full copy of default's effective model/effort for every listed agent;
+saved profiles are self-contained snapshots. Editing `default` offers creating
+a profile; it cannot be renamed/deleted. Deletion confirms and clears referenced
+active/pin pointers; closing with unsaved changes asks for confirmation.
+Non-overlay fallbacks (`ui.select`, non-TUI) support only listing/activation.
+
+Reload Pi after updating `@thoth-agents/pi-subagents` to register the command.
+The panel uses pi-core's shared list-editor shell with a profile sidebar at
+90 columns or wider and a stacked layout when narrow, selectedBg rows,
+cursor-centered viewports, wheel navigation and dirty-discard confirmation.
+Both list editors recognize native CSI-u/kitty keys and legacy sequences;
+the shared host restores regular-mode mouse reporting when the panel closes.
 
 ### Configure specialist tools inside Pi
 

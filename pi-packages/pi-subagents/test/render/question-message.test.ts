@@ -16,6 +16,7 @@ beforeEach(() => {
       constructor(...args: any[]) {
         deliverQuestion = args[6];
         Object.assign(this, {
+          setSessionModelProfile: vi.fn(),
           reconcileOrphanedTasks: vi.fn(),
           close: vi.fn(),
         });

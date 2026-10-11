@@ -66,7 +66,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
       session_resources: 'lean',
     };
     const activities: any[] = [];
@@ -174,7 +173,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -233,7 +231,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
         session_resources: 'lean',
       },
       signal: new AbortController().signal,
@@ -358,7 +355,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const activities: Array<{
       transcript?: string;
@@ -474,7 +470,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     });
@@ -555,7 +550,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     });
@@ -596,12 +590,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {
-        'sdd-apply': {
-          model: { provider: 'profile', id: 'model' },
-          effort: 'xhigh',
-        },
-      },
     };
     const profileModel = { provider: 'profile', id: 'model' };
 
@@ -610,13 +598,29 @@ describe('subagent runner interaction-required bridge', () => {
       task: 'apply work',
       cwd: '/workspace',
       ctx: {
-        model: { provider: 'orchestrator', id: 'model' },
-        modelRegistry: {
-          find: vi.fn((provider: string, id: string) =>
-            provider === 'profile' && id === 'model' ? profileModel : undefined,
-          ),
+        ...{
+          model: { provider: 'orchestrator', id: 'model' },
+          modelRegistry: {
+            find: vi.fn((provider: string, id: string) =>
+              provider === 'profile' && id === 'model'
+                ? profileModel
+                : undefined,
+            ),
+          },
+          pi: { getThinkingLevel: () => 'low' },
         },
-        pi: { getThinkingLevel: () => 'low' },
+        modelProfile: {
+          name: 'test',
+          profile: {
+            agents: {
+              'sdd-apply': {
+                model: { provider: 'profile', id: 'model' },
+                effort: 'xhigh',
+              },
+            },
+          },
+          warnings: [],
+        },
       },
       config,
       signal: new AbortController().signal,
@@ -663,7 +667,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: { 'sdd-design': { effort: 'high' } },
     };
     const frontmatterModel = { provider: 'frontmatter', id: 'model' };
 
@@ -672,9 +675,16 @@ describe('subagent runner interaction-required bridge', () => {
       task: 'design work',
       cwd: '/workspace',
       ctx: {
-        modelRegistry: { find: vi.fn(() => frontmatterModel) },
-        model: { provider: 'orchestrator', id: 'model' },
-        thinkingLevel: 'low',
+        ...{
+          modelRegistry: { find: vi.fn(() => frontmatterModel) },
+          model: { provider: 'orchestrator', id: 'model' },
+          thinkingLevel: 'low',
+        },
+        modelProfile: {
+          name: 'test',
+          profile: { agents: { 'sdd-design': { effort: 'high' } } },
+          warnings: [],
+        },
       },
       config,
       signal: new AbortController().signal,
@@ -721,7 +731,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
 
     await sdkSubagentRunner({
@@ -787,17 +796,25 @@ describe('subagent runner interaction-required bridge', () => {
         task: 'apply work',
         cwd: '/workspace',
         ctx: {
-          modelRegistry: { find: vi.fn(() => undefined) },
-          model: { provider: 'orchestrator', id: 'model' },
+          ...{
+            modelRegistry: { find: vi.fn(() => undefined) },
+            model: { provider: 'orchestrator', id: 'model' },
+          },
+          modelProfile: {
+            name: 'test',
+            profile: {
+              agents: {
+                'sdd-apply': { model: { provider: 'missing', id: 'model' } },
+              },
+            },
+            warnings: [],
+          },
         },
         config: {
           timeout_ms: 10_000,
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {
-            'sdd-apply': { model: { provider: 'missing', id: 'model' } },
-          },
         },
         signal: new AbortController().signal,
       }),
@@ -837,7 +854,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
 
     const result = await sdkSubagentRunner({
@@ -911,7 +927,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -967,7 +982,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['tool_*', 'read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -1031,7 +1045,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const input = {
       definition,
@@ -1114,7 +1127,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -1156,7 +1168,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const run = (selector: string) =>
       sdkSubagentRunner({
@@ -1232,7 +1243,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
       } as any);
@@ -1282,7 +1292,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
       });
@@ -1374,7 +1383,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
         registerLiveBridge: (bridge) => bridges.push(bridge),
@@ -1447,7 +1455,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       };
 
       await sdkSubagentRunner({
@@ -1571,7 +1578,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: controller.signal,
     });
@@ -1622,7 +1628,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: controller.signal,
       }),

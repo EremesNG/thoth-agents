@@ -13,8 +13,6 @@ import {
   loadSubagents,
   parseFrontmatter,
   readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
-  saveGlobalSubagentModelProfile,
   subagentSourceWarnings,
 } from '../src/config.js';
 import {
@@ -36,16 +34,11 @@ import {
 } from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
 import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
   buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
   createSubagentModelProfilesModal,
   globalSubagentsConfigPath,
   groupAvailableModelsByProvider,
   runSubagentModelsCommand,
-  stageModelProfileEdit,
 } from '../src/model-profiles-ui.js';
 import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
 import {

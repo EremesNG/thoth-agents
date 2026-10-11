@@ -48,7 +48,6 @@ const config: SubagentsConfig = {
   stall_timeout_ms: 10_000,
   max_concurrency: 1,
   default_tools: [],
-  model_profiles: {},
   session_resources: 'lean',
 };
 

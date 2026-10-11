@@ -1,2158 +1,617 @@
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
-import os from 'node:os';
-import path from 'node:path';
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import extension, {
-  completionMessage,
-  createSubagentsPanelKeyMatcher,
-  resolveRegisteredToolDefinition,
-  sendSubagentCompletionMessage,
-} from '../../index.js';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  loadSubagents,
-  parseFrontmatter,
-  readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
-  saveGlobalSubagentModelProfile,
-  subagentSourceWarnings,
-} from '../../src/config.js';
-import {
-  isSubagentsDebugEnabled,
-  writeSubagentsDebugLog,
-} from '../../src/debug.js';
-import {
-  deriveErrorString,
-  normalizeErrorMetadata,
-  parseErrorMetadata,
-  SubagentStructuredError,
-  safeErrorMetadataDetails,
-  serializeErrorMetadata,
-} from '../../src/error-metadata.js';
-import {
-  resolveSubagentHistoryDbPath,
-  resolveSubagentsHistoryHome,
-  SubagentHistoryStore,
-} from '../../src/history.js';
-import { SubagentManager } from '../../src/manager.js';
-import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
   buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
   createSubagentModelProfilesModal,
-  globalSubagentsConfigPath,
-  groupAvailableModelsByProvider,
   runSubagentModelsCommand,
-  stageModelProfileEdit,
 } from '../../src/model-profiles-ui.js';
-import { resolveEffectiveSubagentProfile } from '../../src/profile-resolver.js';
 import {
-  createSubagentsRenderLogger,
-  DEFAULT_RENDER_DEBUG_LOG_PATH,
-} from '../../src/render-debug.js';
-import { buildPrompt, ThreadSnapshotBuilder } from '../../src/runner.js';
-import {
-  boundThreadSnapshot,
-  isValidThreadSnapshot,
-  registerSubagentRuntimeToolDefinition,
-  renderThreadBody,
-  resetPiComponentCacheForTests,
-} from '../../src/thread-view.js';
-import { registerSubagentTools } from '../../src/tools.js';
-import type {
-  EffectiveSubagentProfile,
-  SubagentErrorMetadata,
-  SubagentModelProfiles,
-  SubagentRunner,
-  SubagentTask,
-} from '../../src/types.js';
-import { SubagentsHistoryPanel } from '../../src/ui.js';
+  AVAILABLE_MODELS,
+  KEYS,
+  type ProfileEnv,
+  stripAnsi,
+  useProfileEnv,
+} from './support.js';
 
-const require = createRequire(import.meta.url);
+const theme = { fg: (_role: string, text: string) => text };
 
-let tmp: string;
-let oldAgentDir: string | undefined;
-let oldHistoryDbPath: string | undefined;
-beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-test-'));
-  oldAgentDir = process.env.PI_CODING_AGENT_DIR;
-  oldHistoryDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
-  process.env.PI_CODING_AGENT_DIR = path.join(tmp, 'isolated-agent');
-  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
-    tmp,
-    'global-agent',
-    'subagents-history.sqlite',
-  );
-  fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
-});
-afterEach(() => {
-  if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-  else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
-  if (oldHistoryDbPath === undefined)
-    delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
-  else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryDbPath;
-  fs.rmSync(tmp, { recursive: true, force: true });
+function open(env: ProfileEnv, height = 40) {
+  const done = vi.fn();
+  const workspace = env.workspace();
+  const modal = createSubagentModelProfilesModal({
+    workspace,
+    availableModels: AVAILABLE_MODELS,
+    theme,
+    maxHeight: () => height,
+    done,
+  });
+  const press = (...keys: string[]) => {
+    for (const key of keys) modal.handleInput(key);
+  };
+  const text = (width = 110) => stripAnsi(modal.render(width).join('\n'));
+  /** Type a name into the prompt and confirm it. */
+  const typeName = (name: string) => press(...name.split(''), KEYS.enter);
+  return { modal, workspace, done, press, text, typeName };
+}
+
+const profile = (model: string, effort: string, reviewer = model) => ({
+  agents: {
+    analyst: { model, effort },
+    reviewer: { model: reviewer, effort },
+  },
 });
 
-function writeAgent(name: string, body = '# Agent\nhello') {
-  fs.writeFileSync(
-    path.join(tmp, '.pi', 'subagents', `${name}.md`),
-    `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`,
-  );
-}
+const BACKSPACE = '\u007f';
 
-function mockRunner(delay = 0): SubagentRunner {
-  return async ({ definition, task }) => {
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    return {
-      result: `${definition.name} handled ${task}`,
-      model: 'mock/model',
-      fallback_used: false,
-    };
-  };
-}
+describe('named model profile panel', () => {
+  const env = useProfileEnv();
 
-function statusSnapshot(text: string) {
-  return {
-    version: 1 as const,
-    source: 'events' as const,
-    items: [{ type: 'status' as const, text }],
-  };
-}
-
-const modalTheme = { fg: (_role: string, text: string) => text };
-function modalTui() {
-  return { terminal: { rows: 40 }, requestRender() {} };
-}
-
-function stripAnsi(text: string): string {
-  return text
-    .replace(/\u001b\[[0-9;]*m/g, '')
-    .replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
-}
-
-function renderText(
-  snapshot: unknown,
-  overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {},
-): string {
-  const context = {
-    cwd: tmp,
-    visibleWidth: (text: string) => stripAnsi(text).length,
-    truncateToWidth: (text: string, width: number) =>
-      text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
-    ...overrides,
-  };
-  return stripAnsi(renderThreadBody(snapshot, context).join('\n'))
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function withAgentDir<T>(agentDir: string, run: () => T): T {
-  const old = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = agentDir;
-  try {
-    return run();
-  } finally {
-    if (old === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = old;
+  function seed() {
+    env().writeProfiles('global', {
+      active: 'shared',
+      profiles: {
+        shared: profile('openai/gpt-5.5', 'high'),
+        solo: profile('openai/gpt-5.5', 'low'),
+      },
+    });
+    env().writeProfiles('project', {
+      profiles: { shared: profile('anthropic/claude-x', 'medium') },
+    });
   }
-}
 
-function readJsonl(file: string): any[] {
-  return fs
-    .readFileSync(file, 'utf8')
-    .trim()
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-}
-
-describe('model profiles ui', () => {
-  it.each([
-    '\x1b[99;5u',
-    '\x1b[99;5:1u',
-  ])('modal handles native Ctrl-C for clean cancel, picker back and dirty discard (%j)', (data) => {
-    const done = vi.fn();
-    const create = () =>
-      createSubagentModelProfilesModal({
-        rows: [
-          {
-            name: 'analyst',
-            description: 'analysis agent',
-            modelLabel: 'unresolved',
-            effortLabel: 'profile: high',
-            explicitProfile: { effort: 'high' },
-          },
-        ],
-        done,
-      });
-    const clean = create();
-    clean.handleInput(data);
-    expect(done).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
-    done.mockClear();
-
-    const dirty = create();
-    dirty.handleInput('E');
-    dirty.handleInput('e');
-    expect(dirty.render(100).join('\n')).toContain('Choose effort');
-    dirty.handleInput(data);
-    expect(dirty.render(100).join('\n')).toContain('Subagent model profiles');
-    expect(dirty.render(100).join('\n')).toContain('pending: 1 change');
-    expect(done).not.toHaveBeenCalled();
-    dirty.handleInput(data);
-    expect(dirty.render(100).join('\n')).toContain('Discard unsaved draft?');
-    expect(done).not.toHaveBeenCalled();
-    dirty.handleInput('d');
-    expect(done).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
-  });
-
-  it('modal handles native CSI-u arrows, Enter and Escape without per-panel key wiring', () => {
-    const done = vi.fn();
-    const modal = createSubagentModelProfilesModal({
-      rows: ['analyst', 'reviewer'].map((name) => ({
-        name,
-        description: name,
-        modelLabel: 'unresolved model',
-        effortLabel: 'unresolved effort',
-        explicitProfile: {},
-      })),
-      availableModels: [{ provider: 'openai', id: 'model' }],
-      done,
-    });
-    modal.handleInput('\x1b[57420u');
-    expect(modal.render(100).join('\n')).toMatch(/›\s+reviewer/);
-    modal.handleInput('\x1b[13u');
-    expect(modal.render(100).join('\n')).toContain(
-      'Select model provider for reviewer',
-    );
-    modal.handleInput('\x1b[27u');
-    expect(modal.render(100).join('\n')).toContain('Subagent model profiles');
-    expect(done).not.toHaveBeenCalled();
-    modal.handleInput('\x1b[27u');
-    expect(done).toHaveBeenCalledWith({ action: 'cancel' });
-  });
-
-  it('keeps project model_profiles precedence while scalar config precedence is unchanged', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        default_model: 'global/model',
-        default_effort: 'low',
-        timeout_ms: 100,
-        stall_timeout_ms: 200,
-        max_concurrency: 1,
-        default_tools: ['read'],
-        model_profiles: {
-          analyst: { model: 'global/analyst', effort: 'low' },
-          reviewer: { effort: 'minimal' },
-        },
-      }),
-    );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        default_model: 'project/model',
-        default_effort: 'high',
-        timeout_ms: 300,
-        stall_timeout_ms: 400,
-        max_concurrency: 2,
-        default_tools: ['memory_search'],
-        model_profiles: {
-          analyst: { effort: 'xhigh' },
-          reviewer: { model: 'project/reviewer' },
-        },
-      }),
-    );
-
-    const config = withAgentDir(agentDir, () => readSubagentsConfig(tmp));
-
-    expect(config.model_profiles).toEqual({
-      analyst: { effort: 'xhigh' },
-      reviewer: { model: { provider: 'project', id: 'reviewer' } },
-    });
-    expect(config.default_model).toEqual({ provider: 'project', id: 'model' });
-    expect(config.default_effort).toBe('high');
-    expect(config.timeout_ms).toBe(300);
-    expect(config.stall_timeout_ms).toBe(400);
-    expect(config.max_concurrency).toBe(2);
-    expect(config.default_tools).toEqual(['memory_search']);
-  });
-
-  it('saves global model profiles without dropping supported or unknown config keys', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        default_model: 'openai/gpt-5.2',
-        timeout_ms: 600,
-        future_unknown_key: { keep: true },
-        model_profiles: { reviewer: { effort: 'medium' } },
-      }),
-    );
-
-    saveGlobalSubagentModelProfile({
-      agentName: 'analyst',
-      profile: {
-        model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-        effort: 'high',
-      },
-      agentDir,
-    });
-
-    const text = fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8');
-    expect(text.endsWith('\n')).toBe(true);
-    expect(JSON.parse(text)).toEqual({
-      default_model: 'openai/gpt-5.2',
-      timeout_ms: 600,
-      future_unknown_key: { keep: true },
-      model_profiles: {
-        reviewer: { effort: 'medium' },
-        analyst: { model: 'anthropic/claude-sonnet-4-5', effort: 'high' },
-      },
-    });
-  });
-
-  it('creates global config and removes empty profile entries after resets', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    saveGlobalSubagentModelProfile({
-      agentName: 'analyst',
-      profile: { model: { provider: 'openai', id: 'gpt-5.2' } },
-      agentDir,
-    });
-    resetGlobalSubagentModelProfileField({
-      agentName: 'analyst',
-      field: 'model',
-      agentDir,
-    });
-
-    const text = fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8');
-    expect(text.endsWith('\n')).toBe(true);
-    expect(JSON.parse(text)).toEqual({});
-  });
-
-  it('resolves effective subagent profile with independent precedence and provenance labels', () => {
-    const definition = {
-      name: 'analyst',
-      description: 'analyst',
-      filePath: 'analyst.md',
-      instructions: '# Analyst',
-      model: { provider: 'definition', id: 'model' },
-      effort: 'medium' as const,
-      tools: ['read'],
-    };
-    const config = {
-      default_model: { provider: 'default', id: 'model' },
-      default_effort: 'low' as const,
-      timeout_ms: 1,
-      stall_timeout_ms: 1,
-      max_concurrency: 1,
-      default_tools: ['read'],
-      model_profiles: {
-        analyst: { model: { provider: 'profile', id: 'model' } },
-      },
-    };
-
-    const resolved = resolveEffectiveSubagentProfile({
-      agentName: 'analyst',
-      definition,
-      config,
-      ctx: {
-        model: { provider: 'orchestrator', id: 'model' },
-        pi: { getThinkingLevel: () => 'xhigh' },
-      },
-    });
-
-    expect(resolved.model).toMatchObject({
-      value: { provider: 'profile', id: 'model' },
-      source: 'profile',
-      label: 'profile: profile/model',
-    });
-    expect(resolved.effort).toMatchObject({
-      value: 'medium',
-      source: 'definition',
-      label: 'definition: medium',
-    });
-  });
-
-  it('resolves definition defaults and orchestrator fallbacks independently', () => {
-    const baseDefinition = {
-      name: 'reviewer',
-      description: 'reviewer',
-      filePath: 'reviewer.md',
-      instructions: '# Reviewer',
-      tools: ['read'],
-    };
-    const config = {
-      timeout_ms: 1,
-      stall_timeout_ms: 1,
-      max_concurrency: 1,
-      default_tools: ['read'],
-      model_profiles: { reviewer: { effort: 'high' as const } },
-    };
-
-    expect(
-      resolveEffectiveSubagentProfile({
-        agentName: 'reviewer',
-        definition: baseDefinition,
-        config,
-        ctx: {
-          model: { provider: 'orchestrator', id: 'model' },
-          thinkingLevel: 'low',
-        },
-      }),
-    ).toMatchObject({
-      model: {
-        value: { provider: 'orchestrator', id: 'model' },
-        source: 'orchestrator',
-        label: 'orchestrator: orchestrator/model',
-      },
-      effort: { value: 'high', source: 'profile', label: 'profile: high' },
-    });
-
-    expect(
-      resolveEffectiveSubagentProfile({
-        agentName: 'reviewer',
-        definition: baseDefinition,
-        config: {
-          ...config,
-          default_model: { provider: 'default', id: 'model' },
-          default_effort: 'minimal' as const,
-          model_profiles: {},
-        },
-        ctx: {
-          model: { provider: 'orchestrator', id: 'model' },
-          thinkingLevel: 'low',
-        },
-      }),
-    ).toMatchObject({
-      model: {
-        value: { provider: 'default', id: 'model' },
-        source: 'default',
-        label: 'default: default/model',
-      },
-      effort: {
-        value: 'minimal',
-        source: 'default',
-        label: 'default: minimal',
-      },
-    });
-  });
-
-  it('builds model profile rows only for loaded agents, including convention-named agents', () =>
-    withAgentDir(path.join(tmp, 'isolated-agent'), () => {
-      writeAgent('analyst');
-      writeAgent('explore');
-      writeAgent('specify');
-      writeAgent('verify');
-      writeAgent('sdd-explore');
-      const agentDir = path.join(tmp, 'isolated-agent');
-      fs.mkdirSync(agentDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents.json'),
-        JSON.stringify({
-          model_profiles: {
-            analyst: { model: 'missing/provider-model', effort: 'high' },
-            'sdd-spec': { effort: 'medium' },
-          },
-        }),
+  describe('layout', () => {
+    it('renders a profile sidebar beside the agent list at wide widths', () => {
+      seed();
+      env().store.setProjectPin('shared');
+      env().session.value = 'solo';
+      const { modal, text } = open(env());
+      const plain = text(110);
+      const lines = plain.split('\n');
+      expect(plain).toContain('Profiles');
+      expect(plain).toContain('Subagent model profiles');
+      // default first, then local, then global profiles with tags and markers
+      const sidebar = lines.map((line) => line.slice(0, 28)).join('\n');
+      expect(sidebar.indexOf('default')).toBeLessThan(
+        sidebar.indexOf('shared (local)'),
       );
-      const definitions = loadSubagents(tmp);
-      const config = readSubagentsConfig(tmp);
-      const rows = buildModelProfileRows({
-        definitions,
-        config,
-        ctx: {
-          model: { provider: 'openai', id: 'gpt-5.2' },
-          thinkingLevel: 'low',
-        },
-        availableModels: [{ provider: 'openai', id: 'gpt-5.2' }],
-      });
+      expect(sidebar).toMatch(/ P\s+shared \(local\)/);
+      expect(sidebar).toMatch(/G\s+shared \(global\)~/);
+      expect(sidebar).toMatch(/● S\s+solo \(global\)/);
+      expect(plain).toContain('● effective');
+      // agent detail shows effective model/effort of the selected profile
+      expect(plain).toMatch(/analyst\s+openai\/gpt-5\.5\s+low/);
+      expect(plain).toMatch(/reviewer\s+anthropic\/claude-x\s+high/);
+      expect(lines.every((line) => panelVisibleWidth(line) === 110)).toBe(true);
+      for (const width of [90, 100, 120, 160])
+        expect(
+          modal.render(width).every((line) => panelVisibleWidth(line) <= width),
+        ).toBe(true);
+    });
 
-      expect(rows.map((row) => row.name)).toEqual([
-        'analyst',
-        'explore',
-        'sdd-explore',
-        'specify',
-        'verify',
+    it('stacks the profile list above the agents when narrow', () => {
+      seed();
+      const { modal, text } = open(env());
+      const plain = text(70);
+      expect(plain).not.toContain('Profiles');
+      expect(plain).toContain('profile 1/4');
+      expect(plain).toMatch(/› +default/);
+      expect(plain).toMatch(/● +shared \(local\)/);
+      expect(plain).toMatch(/G +shared \(global\)~/);
+      for (const width of [1, 3, 5, 20, 42, 60, 89, 90])
+        expect(
+          modal.render(width).every((line) => panelVisibleWidth(line) <= width),
+        ).toBe(true);
+    });
+
+    it('switches to the sidebar exactly at width 90', () => {
+      const { modal } = open(env());
+      expect(stripAnsi(modal.render(89).join('\n'))).not.toContain('Profiles');
+      expect(stripAnsi(modal.render(90).join('\n'))).toContain('Profiles');
+    });
+
+    it('measures wide glyphs in cells and keeps the shell hints', () => {
+      env().writeProfiles('global', {
+        profiles: { 界界界界界界界界界界: profile('openai/gpt-5.5', 'low') },
+      });
+      const { modal, press, text } = open(env());
+      press(KEYS.right);
+      expect(text(100)).toContain('界界');
+      expect(
+        modal.render(100).every((line) => panelVisibleWidth(line) === 100),
+      ).toBe(true);
+      expect(text(100)).toContain('esc/q close');
+    });
+  });
+
+  describe('browsing and activation', () => {
+    it('uses default for a dangling global active even when a project profile has that name', () => {
+      env().writeProfiles('global', { active: 'orphan', profiles: {} });
+      env().writeProfiles('project', {
+        profiles: { orphan: profile('anthropic/claude-x', 'max') },
+      });
+      const { workspace } = open(env());
+      expect(workspace.effective()).toEqual({ name: 'default' });
+      expect(workspace.markers(workspace.entries()[0]).effective).toBe(true);
+      expect(workspace.markers(workspace.entries()[1]).effective).toBe(false);
+      env().session.value = 'orphan';
+      expect(env().workspace().effective()).toEqual({
+        name: 'orphan',
+        scope: 'project',
+      });
+      env().session.value = undefined;
+      env().store.setProjectPin('orphan');
+      workspace.reload();
+      expect(workspace.effective()).toEqual({
+        name: 'orphan',
+        scope: 'project',
+      });
+    });
+
+    it('shadows an existing global active with the same-named project profile', () => {
+      seed();
+      const { workspace } = open(env());
+      expect(workspace.effective()).toEqual({
+        name: 'shared',
+        scope: 'project',
+      });
+      expect(workspace.markers(workspace.entries()[1]).effective).toBe(true);
+      expect(workspace.markers(workspace.entries()[2]).effective).toBe(false);
+    });
+
+    it('browses profiles with left/right without activating anything', () => {
+      seed();
+      const { press, text } = open(env());
+      press(KEYS.right);
+      expect(text()).toContain('profile 2/4');
+      expect(text()).toMatch(/analyst\s+anthropic\/claude-x\s+medium/);
+      press(KEYS.right, KEYS.right, KEYS.right, KEYS.right);
+      expect(text()).toContain('profile 4/4');
+      press(KEYS.left, KEYS.left, KEYS.left, KEYS.left, KEYS.left);
+      expect(text()).toContain('profile 1/4');
+      expect(env().session.history).toEqual([]);
+      expect(env().readFile('global').active).toBe('shared');
+      expect(env().store.read('project').active).toBeUndefined();
+    });
+
+    it('moves between agents with arrows and j/k', () => {
+      const { press, text } = open(env());
+      expect(text()).toMatch(/›\s+analyst/);
+      press(KEYS.down);
+      expect(text()).toMatch(/›\s+reviewer/);
+      press('k');
+      expect(text()).toMatch(/›\s+analyst/);
+      press('j');
+      expect(text()).toMatch(/›\s+reviewer/);
+    });
+
+    it('u/g/p set and toggle session, global active and project pin', () => {
+      seed();
+      const { press, text } = open(env());
+      // order: default, shared (local), shared (global, shadowed), solo (global)
+      press(KEYS.right, KEYS.right);
+      press('u');
+      expect(text()).toContain('shadowed by the local profile');
+      press('p');
+      expect(text()).toContain('shadowed by the local profile');
+      press('g');
+      expect(text()).toContain('Cleared the global active (shared)');
+      expect(env().store.read('global').active).toBeUndefined();
+      press('g');
+      expect(env().store.read('global').active).toBe('shared');
+
+      press(KEYS.right); // solo (global)
+      press('u');
+      expect(env().session.value).toBe('solo');
+      expect(text()).toContain('Session now uses solo');
+      press('u');
+      expect(env().session.value).toBeUndefined();
+      press('p');
+      expect(env().store.read('project').active).toBe('solo');
+      press('g');
+      expect(env().store.read('global').active).toBe('solo');
+
+      press(KEYS.left, KEYS.left); // shared (local)
+      press('g');
+      expect(text()).toContain('Global active must be a global profile');
+      press('p');
+      expect(env().store.read('project').active).toBe('shared');
+    });
+
+    it('intercepts g before the shell treats it as Home', () => {
+      seed();
+      const { press, text } = open(env());
+      press(KEYS.down); // agent cursor on reviewer
+      press('g');
+      expect(text()).toMatch(/›\s+reviewer/);
+      expect(text()).toContain('Global active profile is default');
+    });
+
+    it('toggling the session selection clears it', () => {
+      seed();
+      env().session.value = 'solo';
+      const { press, text } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press('u');
+      expect(env().session.value).toBeUndefined();
+      expect(text()).toContain('Cleared the session selection');
+    });
+  });
+
+  describe('lifecycle', () => {
+    it('creates a draft from default and an unedited save stores a full copy', () => {
+      const { press, text, typeName, workspace } = open(env());
+      press('n');
+      expect(text()).toContain('New profile from default');
+      typeName('fresh');
+      expect(text()).toContain('Scope for fresh');
+      press(KEYS.enter); // project (first)
+      expect(text()).toContain('fresh (local) · draft: unsaved');
+      expect(text()).toContain('pending: 1 change');
+      expect(fs.existsSync(env().store.paths.project)).toBe(false);
+      press('s');
+      expect(text()).toContain('Saved fresh (local)');
+      expect(workspace.pendingCount()).toBe(0);
+      expect(env().readFile('project').profiles.fresh.agents).toEqual({
+        analyst: { model: 'openai/gpt-5.5', effort: 'low' },
+        reviewer: { model: 'anthropic/claude-x', effort: 'high' },
+      });
+      expect(text()).not.toContain('draft');
+    });
+
+    it('clones the selected profile into a draft in the chosen scope', () => {
+      seed();
+      const { press, text, typeName } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo (global)
+      press('c');
+      typeName('solo-copy');
+      press(KEYS.down, KEYS.enter); // global
+      expect(text()).toContain('solo-copy (global) · draft: unsaved');
+      expect(text()).toMatch(/analyst\s+openai\/gpt-5\.5\s+low/);
+      press('s');
+      expect(env().readFile('global').profiles['solo-copy'].agents).toEqual(
+        env().readFile('global').profiles.solo.agents,
+      );
+    });
+
+    it('rejects reserved and empty names, and duplicates in the same scope', () => {
+      seed();
+      const { press, text, typeName } = open(env());
+      press('n');
+      typeName('default');
+      expect(text()).toContain('default is a reserved virtual profile');
+      press(KEYS.esc);
+      press('n', KEYS.enter);
+      expect(text()).toContain('Profile name must be non-empty');
+      press(KEYS.esc);
+      press('n');
+      typeName('shared');
+      press(KEYS.enter); // project scope already has shared
+      expect(text()).toContain('already exists in project scope');
+      expect(Object.keys(env().readFile('project').profiles)).toEqual([
+        'shared',
       ]);
-      expect(rows.find((row) => row.name === 'analyst')).toMatchObject({
-        explicitProfile: {},
-        scope: 'project',
-        modelLabel: 'orchestrator: openai/gpt-5.2',
-        effortLabel: 'orchestrator: low',
-      });
-      expect(rows.find((row) => row.name === 'explore')).toMatchObject({
-        modelLabel: 'orchestrator: openai/gpt-5.2',
-        effortLabel: 'orchestrator: low',
-      });
-      expect(rows.find((row) => row.name === 'sdd-explore')).toMatchObject({
-        description: 'sdd-explore agent',
-      });
-      expect(config.global_model_profiles?.['sdd-spec']).toEqual({
-        effort: 'medium',
-      });
-    }));
-
-  it('builds model profile rows with source scope for global and project definitions', () =>
-    withAgentDir(path.join(tmp, 'global-agent'), () => {
-      const agentDir = path.join(tmp, 'global-agent');
-      fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents', 'shared.md'),
-        `---\nname: shared\ndescription: global shared\n---\n# Global Shared`,
-      );
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents', 'global-only.md'),
-        `---\nname: global-only\ndescription: global only\n---\n# Global Only`,
-      );
-      fs.writeFileSync(
-        path.join(tmp, '.pi', 'subagents', 'shared.md'),
-        `---\nname: shared\ndescription: project shared\n---\n# Project Shared`,
-      );
-      const definitions = loadSubagents(tmp);
-      const rows = buildModelProfileRows({
-        definitions,
-        config: readSubagentsConfig(tmp),
-        ctx: {
-          model: { provider: 'openai', id: 'gpt-5.2' },
-          thinkingLevel: 'low',
-        },
-      });
-
-      expect(rows.find((row) => row.name === 'shared')).toMatchObject({
-        description: 'project shared',
-        scope: 'project',
-      });
-      expect(rows.find((row) => row.name === 'global-only')).toMatchObject({
-        description: 'global only',
-        scope: 'global',
-      });
-    }));
-
-  it('groups available models by provider for provider and model selection', () => {
-    expect(
-      groupAvailableModelsByProvider([
-        { provider: 'openai', id: 'gpt-5.2' },
-        { provider: 'anthropic', name: 'claude-sonnet-4-5' },
-        { provider: { id: 'openai' }, model: 'gpt-5.2-codex' },
-      ]),
-    ).toEqual({
-      anthropic: [
-        {
-          provider: 'anthropic',
-          id: 'claude-sonnet-4-5',
-          label: 'claude-sonnet-4-5',
-        },
-      ],
-      openai: [
-        { provider: 'openai', id: 'gpt-5.2', label: 'gpt-5.2' },
-        { provider: 'openai', id: 'gpt-5.2-codex', label: 'gpt-5.2-codex' },
-      ],
-    });
-  });
-
-  it('stages selected row edits and reset operations without changing other rows', () => {
-    let staged: SubagentModelProfiles = {
-      analyst: {
-        model: { provider: 'openai', id: 'gpt-5.2' },
-        effort: 'high' as const,
-      },
-      reviewer: { effort: 'medium' as const },
-    };
-
-    staged = stageModelProfileEdit(staged, {
-      agentName: 'analyst',
-      model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-      effort: 'low',
-    });
-    expect(staged.analyst).toEqual({
-      model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-      effort: 'low',
-    });
-    expect(staged.reviewer).toEqual({ effort: 'medium' });
-
-    staged = stageModelProfileEdit(staged, {
-      agentName: 'analyst',
-      reset: 'model',
-    });
-    expect(staged.analyst).toEqual({ effort: 'low' });
-    staged = stageModelProfileEdit(staged, {
-      agentName: 'analyst',
-      reset: 'effort',
-    });
-    expect(staged.analyst).toEqual({});
-    staged = stageModelProfileEdit(staged, {
-      agentName: 'reviewer',
-      reset: 'row',
-    });
-    expect(staged.reviewer).toEqual({});
-  });
-
-  it('tracks only dirty model profile rows while preserving reset semantics', () => {
-    const baseProfiles: SubagentModelProfiles = {
-      analyst: { model: { provider: 'openai', id: 'gpt-5.2' }, effort: 'high' },
-      reviewer: {},
-      implementer: { effort: 'medium' },
-    };
-
-    let dirty: SubagentModelProfiles = {};
-    dirty = applyDirtyProfileEdit({
-      baseProfiles,
-      dirtyProfiles: dirty,
-      edit: { agentName: 'analyst', effort: 'low' },
-    });
-    expect(dirty).toEqual({
-      analyst: { model: { provider: 'openai', id: 'gpt-5.2' }, effort: 'low' },
-    });
-    expect(dirty).not.toHaveProperty('reviewer');
-
-    dirty = applyDirtyProfileEdit({
-      baseProfiles,
-      dirtyProfiles: dirty,
-      edit: {
-        agentName: 'reviewer',
-        model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-      },
-    });
-    expect(dirty).toEqual({
-      analyst: { model: { provider: 'openai', id: 'gpt-5.2' }, effort: 'low' },
-      reviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-4-5' } },
     });
 
-    dirty = applyDirtyProfileEdit({
-      baseProfiles,
-      dirtyProfiles: dirty,
-      edit: { agentName: 'analyst', effort: 'high' },
-    });
-    expect(dirty).toEqual({
-      reviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-4-5' } },
-    });
-
-    dirty = applyDirtyProfileEdit({
-      baseProfiles,
-      dirtyProfiles: dirty,
-      edit: { agentName: 'implementer', reset: 'row' },
-    });
-    expect(dirty).toEqual({
-      reviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-4-5' } },
-      implementer: {},
-    });
-  });
-
-  it('returns an exact no-op Save All message without writing model profiles', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    const existingConfig = {
-      default_model: 'openai/gpt-5.2',
-      model_profiles: { analyst: { effort: 'high' } },
-    };
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify(existingConfig),
-    );
-
-    const message = buildNoChangesModelProfilesMessage(agentDir);
-
-    expect(message).toBe(
-      `No subagent model profile changes to save. Nothing written to ${globalSubagentsConfigPath(agentDir)}.`,
-    );
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8'),
-      ),
-    ).toEqual(existingConfig);
-  });
-
-  it('builds local rows with only local explicit profiles even when a global profile is inherited', () =>
-    withAgentDir(path.join(tmp, 'global-agent'), () => {
-      const agentDir = path.join(tmp, 'global-agent');
-      fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents', 'analyst.md'),
-        `---\nname: analyst\ndescription: global analyst\n---\n# Global Analyst`,
-      );
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents.json'),
-        JSON.stringify({
-          model_profiles: { analyst: { model: 'global/model', effort: 'low' } },
-        }),
-      );
-      fs.writeFileSync(
-        path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-        `---\nname: analyst\ndescription: project analyst\n---\n# Project Analyst`,
-      );
-
-      const config = readSubagentsConfig(tmp);
-      const rows = buildModelProfileRows({
-        definitions: loadSubagents(tmp),
-        config,
-        ctx: {},
-      });
-      const analyst = rows.find((row) => row.name === 'analyst');
-
-      expect(analyst).toMatchObject({
-        scope: 'project',
-        modelLabel: 'unresolved',
-        effortLabel: 'unresolved',
-      });
-      expect(analyst?.explicitProfile).toEqual({});
-    }));
-
-  it('ignores project-local model profiles for global-only subagent definitions', () =>
-    withAgentDir(path.join(tmp, 'global-agent'), () => {
-      const agentDir = path.join(tmp, 'global-agent');
-      fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents', 'tool-smoke.md'),
-        `---\nname: tool-smoke\ndescription: global smoke\n---\n# Global Smoke`,
-      );
-      fs.writeFileSync(
-        path.join(agentDir, 'subagents.json'),
-        JSON.stringify({
-          model_profiles: {
-            'tool-smoke': { model: 'global/smoke', effort: 'low' },
-          },
-        }),
-      );
-      fs.writeFileSync(
-        path.join(tmp, '.pi', 'subagents.json'),
-        JSON.stringify({
-          model_profiles: {
-            'tool-smoke': { model: 'project/wrong', effort: 'high' },
-          },
-        }),
-      );
-
-      const rows = buildModelProfileRows({
-        definitions: loadSubagents(tmp),
-        config: readSubagentsConfig(tmp),
-        ctx: {},
-      });
-      const smoke = rows.find((row) => row.name === 'tool-smoke');
-
-      expect(smoke).toMatchObject({
-        scope: 'global',
-        modelLabel: 'profile: global/smoke',
-        effortLabel: 'profile: low',
-      });
-      expect(smoke?.explicitProfile).toEqual({
-        model: { provider: 'global', id: 'smoke' },
+    it('edits agent model and effort through the pickers and saves them', () => {
+      seed();
+      const { press, text, workspace } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo (global)
+      press(KEYS.enter);
+      expect(text()).toContain('Select model provider for analyst in solo');
+      press(KEYS.down, KEYS.down); // reset, anthropic, openai
+      press(KEYS.enter);
+      expect(text()).toContain('Select openai model for analyst');
+      press(KEYS.enter); // gpt-5.5
+      expect(text()).toContain('Choose effort');
+      press(KEYS.enter); // keep the highlighted current effort
+      expect(workspace.pendingCount()).toBe(0);
+      press('e', KEYS.down, KEYS.down, KEYS.down, KEYS.enter);
+      expect(workspace.pendingCount()).toBe(1);
+      expect(text()).toContain('pending: 1 change');
+      expect(text()).toContain('solo* (global)');
+      press('s');
+      expect(workspace.pendingCount()).toBe(0);
+      const saved = env().readFile('global').profiles.solo.agents;
+      expect(saved.analyst.model).toBe('openai/gpt-5.5');
+      expect(saved.analyst.effort).not.toBe('low');
+      expect(saved.reviewer).toEqual({
+        model: 'openai/gpt-5.5',
         effort: 'low',
       });
-    }));
-
-  it('commits staged model profile saves to global and project config by row scope', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        default_model: 'openai/gpt-5.2',
-        model_profiles: {
-          global_agent: { effort: 'medium' },
-          local_agent: { effort: 'low' },
-        },
-      }),
-    );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        timeout_ms: 123,
-        model_profiles: { local_agent: { effort: 'high' } },
-      }),
-    );
-
-    const message = commitStagedModelProfiles({
-      agentDir,
-      cwd: tmp,
-      profileScopes: { local_agent: 'project', global_agent: 'global' },
-      stagedProfiles: {
-        local_agent: {
-          model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-          effort: 'xhigh',
-        },
-        global_agent: { model: { provider: 'openai', id: 'gpt-5.2-codex' } },
-      },
-      save: true,
     });
 
-    expect(message).toContain(path.join(tmp, '.pi', 'subagents.json'));
-    expect(message).toContain(globalSubagentsConfigPath(agentDir));
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(tmp, '.pi', 'subagents.json'), 'utf8'),
-      ),
-    ).toEqual({
-      timeout_ms: 123,
-      model_profiles: {
-        local_agent: { model: 'anthropic/claude-sonnet-4-5', effort: 'xhigh' },
-      },
-    });
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8'),
-      ),
-    ).toEqual({
-      default_model: 'openai/gpt-5.2',
-      model_profiles: {
-        global_agent: { model: 'openai/gpt-5.2-codex' },
-        local_agent: { effort: 'low' },
-      },
-    });
-  });
-
-  it('commits staged model profile saves and leaves config unchanged on cancel', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        default_model: 'openai/gpt-5.2',
-        model_profiles: {
-          analyst: { model: 'openai/gpt-5.2', effort: 'high' },
-          reviewer: { effort: 'medium' },
-        },
-      }),
-    );
-    const beforeCancel = fs.readFileSync(
-      path.join(agentDir, 'subagents.json'),
-      'utf8',
-    );
-    expect(
-      commitStagedModelProfiles({
-        agentDir,
-        stagedProfiles: { analyst: {} },
-        save: false,
-      }),
-    ).toMatch(/Cancelled/);
-    expect(fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8')).toBe(
-      beforeCancel,
-    );
-
-    const message = commitStagedModelProfiles({
-      agentDir,
-      stagedProfiles: {
-        analyst: { effort: 'low' },
-        reviewer: {},
-        implementer: {
-          model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-        },
-      },
-      save: true,
-    });
-
-    expect(message).toContain('Saved subagent model profiles');
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8'),
-      ),
-    ).toEqual({
-      default_model: 'openai/gpt-5.2',
-      model_profiles: {
-        analyst: { effort: 'low' },
-        implementer: { model: 'anthropic/claude-sonnet-4-5' },
-      },
-    });
-  });
-
-  it('modal navigates rows with arrow/vim/home/end keys and saves selected model identifiers', () => {
-    const completions: any[] = [];
-    let renderRequests = 0;
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2' },
-          effectiveEffort: 'medium',
-          explicitProfile: {},
-        },
-        {
-          name: 'reviewer',
-          description: 'review agent',
-          modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-          effortLabel: 'orchestrator: low',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2-codex' },
-          effectiveEffort: 'low',
-          explicitProfile: {},
-        },
-        {
-          name: 'implementer',
-          description: 'implementation agent',
-          modelLabel: 'unresolved model',
-          effortLabel: 'unresolved effort',
-          explicitProfile: {},
-        },
-      ],
-      availableModels: [
-        {
-          provider: 'anthropic',
-          id: 'claude-sonnet-4-5',
-          label: 'Claude Sonnet',
-        },
-        { provider: 'openai', id: 'gpt-5.2-codex', label: 'GPT Codex' },
-      ],
-      tui: {
-        requestRender: () => {
-          renderRequests += 1;
-        },
-      },
-      done: (result: any) => completions.push(result),
-    });
-
-    modal.handleInput('down');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+reviewer/);
-    modal.handleInput('j');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+implementer/);
-    modal.handleInput('up');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+reviewer/);
-    modal.handleInput('k');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+analyst/);
-    modal.handleInput('end');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+implementer/);
-    modal.handleInput('home');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+analyst/);
-    modal.handleInput('G');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+implementer/);
-    modal.handleInput('g');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/›\s+analyst/);
-
-    modal.handleInput('enter');
-    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
-      'Select model provider for analyst',
-    );
-    modal.handleInput('down');
-    modal.handleInput('enter');
-    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
-      'Select anthropic model for analyst',
-    );
-    modal.handleInput('enter');
-    modal.handleInput('s');
-
-    expect(completions).toEqual([
-      {
-        action: 'save',
-        dirtyProfiles: {
-          analyst: {
-            model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-          },
-        },
-      },
-    ]);
-    expect(renderRequests).toBeGreaterThan(0);
-  });
-
-  it('modal scrolls and live-filters large provider model lists', () => {
-    const completions: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          explicitProfile: {},
-        },
-      ],
-      availableModels: Array.from({ length: 15 }, (_, index) => ({
+    it('resets an agent value to the default effective value', () => {
+      seed();
+      const { press, workspace } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press('m', KEYS.enter); // "reset to default model"
+      const solo = workspace.entries().find((entry) => entry.name === 'solo');
+      // analyst default = orchestrator gpt-5.5, so no change versus saved
+      expect(solo?.agents.analyst.model).toEqual({
         provider: 'openai',
-        id:
-          index === 14
-            ? 'target-model'
-            : `model-${String(index + 1).padStart(2, '0')}`,
-        label:
-          index === 14
-            ? 'Target Model'
-            : `Model ${String(index + 1).padStart(2, '0')}`,
-      })),
-      done: (result: any) => completions.push(result),
+        id: 'gpt-5.5',
+      });
+      press(KEYS.down, 'm', KEYS.enter);
+      expect(solo?.agents.reviewer.model).toEqual({
+        provider: 'anthropic',
+        id: 'claude-x',
+      });
+      expect(workspace.pendingCount()).toBe(1);
     });
 
-    modal.handleInput('m');
-    modal.handleInput('down');
-    modal.handleInput('enter');
-    expect(stripAnsi(modal.render(120).join('\n'))).toContain(
-      'Showing 1–10 of 15',
-    );
+    it('offers a new profile when editing default and protects it', () => {
+      const { press, text } = open(env());
+      press(KEYS.enter);
+      expect(text()).toContain('default is read-only');
+      expect(text()).toContain('Create a new profile from default');
+      press(KEYS.enter);
+      expect(text()).toContain('New profile from default');
+      press(KEYS.esc);
+      press('r');
+      expect(text()).toContain('default cannot be renamed');
+      press('d');
+      expect(text()).toContain('default cannot be deleted');
+      press('s');
+      expect(text()).toContain('default is read-only');
+    });
 
-    for (let i = 0; i < 11; i += 1) modal.handleInput('down');
-    const scrolled = stripAnsi(modal.render(120).join('\n'));
-    expect(scrolled).toContain('Showing 6–15 of 15');
-    expect(scrolled).not.toContain('Model 01');
-    expect(scrolled).toMatch(/›\s+Model 12/);
+    it('declining the default edit offer changes nothing', () => {
+      const { press, text, workspace } = open(env());
+      press(KEYS.enter, KEYS.down, KEYS.enter);
+      expect(text()).toContain('profile 1/1');
+      expect(workspace.pendingCount()).toBe(0);
+    });
 
-    for (const char of 'model') modal.handleInput(char);
-    modal.handleInput('\u001b[B');
-    modal.handleInput('\u001b[A');
-    let filtered = stripAnsi(modal.render(120).join('\n'));
-    expect(filtered).toContain('15/15 matches');
-    expect(filtered).toContain('search: model');
-    expect(filtered).toMatch(/›\s+Model 01/);
+    it('renames saved profiles in their file', () => {
+      seed();
+      const { press, text, typeName } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press('r');
+      expect(text()).toContain('Rename solo');
+      press(KEYS.esc);
+      expect(text()).toContain('Subagent model profiles');
+      press('r', BACKSPACE, BACKSPACE, BACKSPACE, BACKSPACE);
+      typeName('duo');
+      expect(text()).toContain('Renamed solo to duo');
+      expect(Object.keys(env().readFile('global').profiles).sort()).toEqual([
+        'duo',
+        'shared',
+      ]);
+      expect(text()).toContain('duo (global)');
+    });
 
-    modal.handleInput('\u007f');
-    modal.handleInput('\u007f');
-    modal.handleInput('\u007f');
-    modal.handleInput('\u007f');
-    modal.handleInput('\u007f');
-    for (const char of 'target') modal.handleInput(char);
-    modal.handleInput('\u0015');
-    expect(stripAnsi(modal.render(120).join('\n'))).toContain('15 models');
-    modal.handleInput('q');
-    modal.handleInput('g');
-    filtered = stripAnsi(modal.render(120).join('\n'));
-    expect(filtered).toContain('search: qg');
-    expect(filtered).toContain('0/15 matches');
-    expect(filtered).toContain('No matching rows');
-    modal.handleInput('\u0015');
-    modal.handleInput('G');
-    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Target Model/);
-    modal.handleInput('g');
-    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Model 01/);
-    modal.handleInput('\u001b[<65;1;1M');
-    expect(stripAnsi(modal.render(120).join('\n'))).toMatch(/›\s+Model 02/);
-    modal.handleInput('\u001b[<64;1;1M');
-    for (const char of 'target') modal.handleInput(char);
-    filtered = stripAnsi(modal.render(120).join('\n'));
-    expect(filtered).toContain('1/15 match');
-    expect(filtered).toContain('search: target');
-    expect(filtered).toMatch(/›\s+Target Model/);
+    it('renames drafts in memory without writing', () => {
+      const { press, text, typeName } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter);
+      press('r', BACKSPACE, BACKSPACE, BACKSPACE);
+      typeName('other');
+      expect(text()).toContain('other (local) · draft: unsaved');
+      expect(fs.existsSync(env().store.paths.project)).toBe(false);
+    });
 
-    modal.handleInput('enter');
-    modal.handleInput('s');
-    expect(completions).toEqual([
-      {
-        action: 'save',
-        dirtyProfiles: {
-          analyst: { model: { provider: 'openai', id: 'target-model' } },
-        },
-      },
-    ]);
+    it('rename carries the project pin and session selection', () => {
+      seed();
+      env().store.setProjectPin('solo');
+      env().session.value = 'solo';
+      const { press, typeName } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press('r', BACKSPACE, BACKSPACE, BACKSPACE, BACKSPACE);
+      typeName('duo');
+      expect(env().store.read('project').active).toBe('duo');
+      expect(env().session.value).toBe('duo');
+    });
+
+    it('delete confirms and reports cleared global active and project pin', () => {
+      seed();
+      env().store.setProjectPin('solo');
+      env().store.setGlobalActive('solo');
+      const { press, text } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press('d');
+      expect(text()).toContain('Delete solo?');
+      expect(text()).toContain('global active');
+      expect(text()).toContain('project pin');
+      press(KEYS.down, KEYS.enter); // keep it
+      expect(env().readFile('global').profiles.solo).toBeDefined();
+      press('d', KEYS.enter);
+      expect(text()).toContain('Deleted solo.');
+      expect(text()).toContain('Cleared project pin, global active');
+      expect(env().readFile('global').profiles.solo).toBeUndefined();
+      expect(env().readFile('global').active).toBeUndefined();
+      expect(env().store.read('project').active).toBeUndefined();
+    });
+
+    it('deleting a draft discards it without touching files', () => {
+      const { press, text, typeName, workspace } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter);
+      expect(workspace.pendingCount()).toBe(1);
+      press('d', KEYS.enter);
+      expect(workspace.pendingCount()).toBe(0);
+      expect(text()).not.toContain('tmp (local)');
+      expect(fs.existsSync(env().store.paths.project)).toBe(false);
+    });
+
+    it('refuses to activate an unsaved draft', () => {
+      const { press, text, typeName } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter);
+      press('u');
+      expect(text()).toContain('Save the draft before using it');
+    });
   });
 
-  it('modal centers a height-budgeted cursor with selectedBg and scrolls by wheel', () => {
-    let maxHeight = 13;
-    const results: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: Array.from({ length: 20 }, (_, index) => ({
-        name: `agent-${String(index).padStart(2, '0')}`,
-        description: '',
-        modelLabel: 'unresolved',
-        effortLabel: 'unresolved',
-        explicitProfile: {},
-      })),
-      maxHeight: () => maxHeight,
-      theme: {
-        ...modalTheme,
-        bg: (_role: string, text: string) => `\u001b[44m${text}\u001b[0m`,
-      },
-      done: (result) => results.push(result),
+  describe('closing', () => {
+    it('closes immediately when clean', () => {
+      const { press, done } = open(env());
+      press(KEYS.esc);
+      expect(done).toHaveBeenCalledExactlyOnceWith({
+        action: 'close',
+        discarded: 0,
+      });
     });
 
-    for (let index = 0; index < 10; index += 1) modal.handleInput('j');
-    const centered = modal.render(102);
-    expect(centered).toHaveLength(13);
-    expect(stripAnsi(centered.join('\n'))).toContain('Showing 8–13 of 20');
-    expect(centered.join('\n')).toContain('\u001b[44m›   agent-10');
-    expect(centered.every((line) => panelVisibleWidth(line) === 102)).toBe(
-      true,
-    );
-    modal.handleInput('\u001b[<65;1;1M');
-    const scrolled = modal.render(102);
-    expect(scrolled.join('\n')).toContain('\u001b[44m›   agent-11');
-    expect(stripAnsi(scrolled.join('\n'))).toContain('Showing 9–14 of 20');
-    maxHeight = 7;
-    const short = modal.render(42);
-    expect(short).toHaveLength(7);
-    expect(short.join('\n')).toContain('\u001b[44m›   agent-11');
-    modal.handleInput('e');
-    modal.handleInput('end');
-    expect(stripAnsi(modal.render(42).join('\n'))).toMatch(/›\s+max/);
-    modal.handleInput('enter');
-    modal.handleInput('s');
-    expect(results).toEqual([
-      { action: 'save', dirtyProfiles: { 'agent-11': { effort: 'max' } } },
-    ]);
+    it('asks before discarding drafts and unsaved edits', () => {
+      seed();
+      const { press, text, typeName, done } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter);
+      press(KEYS.esc);
+      expect(text()).toContain('Discard unsaved draft?');
+      expect(done).not.toHaveBeenCalled();
+      press('k');
+      expect(text()).toContain('Subagent model profiles');
+      press('q', 'd');
+      expect(done).toHaveBeenCalledExactlyOnceWith({
+        action: 'close',
+        discarded: 1,
+      });
+      expect(env().readFile('project').profiles.tmp).toBeUndefined();
+    });
+
+    it('saving clears the pending state so closing no longer asks', () => {
+      const { press, typeName, done } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter, 's', KEYS.esc);
+      expect(done).toHaveBeenCalledWith({ action: 'close', discarded: 0 });
+    });
   });
 
-  it('modal switches to a cell-aligned wide table exactly at width 102', () => {
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: '界 analyst',
-          description: '',
-          scope: 'project',
-          modelLabel: 'custom/模型',
-          effortLabel: 'high',
-          explicitProfile: {},
-        },
-      ],
-      done: () => {},
+  describe('store errors', () => {
+    it('shows a save failure instead of swallowing it', () => {
+      const { press, text, typeName } = open(env());
+      press('n');
+      typeName('tmp');
+      press(KEYS.enter);
+      // A directory in place of the file makes the store read fail.
+      fs.mkdirSync(env().store.paths.project, { recursive: true });
+      press('s');
+      expect(text()).toContain('Cannot read model profiles');
+      expect(text()).toContain('draft: unsaved');
     });
 
-    const compact = stripAnsi(modal.render(101).join('\n'));
-    expect(compact).toContain('界 analyst (local) · custom/模型 · high');
-    const wide = modal.render(102);
-    const wideRow = wide.find((line) => line.includes('›')) ?? '';
-    expect(wideRow).not.toContain(' · ');
-    expect(
-      panelVisibleWidth(wideRow.slice(0, wideRow.indexOf('custom/模型'))),
-    ).toBe(36);
-    for (const width of [1, 3, 20, 42, 101, 102, 120])
+    it('reports a malformed profiles file when opening the command', async () => {
+      env().writeProfiles('global', { profiles: { bad: { agents: [] } } });
+      const notify = vi.fn();
+      const message = await runSubagentModelsCommand(
+        env().ctx({ ui: { custom: vi.fn(), notify } }),
+      );
+      expect(message).toContain('Cannot read model profiles');
+      expect(notify).toHaveBeenCalledWith(message, 'error');
+    });
+  });
+
+  describe('non-overlay flows', () => {
+    it('lists profiles in the non-TUI message', async () => {
+      seed();
+      const message = await runSubagentModelsCommand(env().ctx());
+      expect(message).toContain('/subagents-model');
+      expect(message).toContain('default');
+      expect(message).toContain('shared (local)');
+      expect(message).toMatch(/G +shared \(global\) \[shadowed\]/);
       expect(
-        modal.render(width).every((line) => panelVisibleWidth(line) <= width),
-      ).toBe(true);
-  });
-
-  it('modal offers and saves max when the effective model supports it', () => {
-    const saved: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'default: custom/max-model',
-          effortLabel: 'unresolved',
-          effectiveModel: { provider: 'custom', id: 'max-model' },
-          explicitProfile: {},
-        },
-      ],
-      availableModels: [
-        {
-          provider: 'custom',
-          id: 'max-model',
-          reasoning: true,
-          thinkingLevelMap: { max: 'max' },
-        },
-      ],
-      done: (result: any) => saved.push(result),
+        buildNonTuiModelProfilesMessage(undefined, env().agentDir),
+      ).toContain(env().store.paths.global);
     });
 
-    modal.handleInput('e');
-    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/\bmax\b/);
-    modal.handleInput('end');
-    modal.handleInput('enter');
-    modal.handleInput('s');
-
-    expect(saved).toEqual([
-      { action: 'save', dirtyProfiles: { analyst: { effort: 'max' } } },
-    ]);
-  });
-
-  it.each([
-    {
-      source: 'definition',
-      definitionModel: 'custom/definition-model',
-      defaultModel: 'custom/default-model',
-      expected: ['off'],
-    },
-    {
-      source: 'default',
-      definitionModel: undefined,
-      defaultModel: 'custom/default-model',
-      expected: ['low', 'medium'],
-    },
-    {
-      source: 'orchestrator',
-      definitionModel: undefined,
-      defaultModel: undefined,
-      expected: ['off', 'minimal', 'low', 'medium', 'high'],
-    },
-  ])('modal uses the $source model after resetting a saved model', async ({
-    definitionModel,
-    defaultModel,
-    expected,
-  }) => {
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ndescription: analysis agent\n${definitionModel ? `model: ${definitionModel}\n` : ''}---\nAnalyze`,
-    );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        default_model: defaultModel,
-        model_profiles: { analyst: { model: 'custom/max-model' } },
-      }),
-    );
-    const models = [
-      {
-        provider: 'custom',
-        id: 'max-model',
-        reasoning: true,
-        thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
-      },
-      { provider: 'custom', id: 'definition-model', reasoning: false },
-      {
-        provider: 'custom',
-        id: 'default-model',
-        reasoning: true,
-        thinkingLevelMap: { off: null, minimal: null, high: null },
-      },
-      { provider: 'custom', id: 'current-model', reasoning: true },
-    ];
-
-    await runSubagentModelsCommand({
-      cwd: tmp,
-      model: models[3],
-      modelRegistry: { getAvailable: async () => models },
-      ui: {
-        custom: async (factory: any) => {
-          let result: any;
-          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
-            result = value;
-          });
-          modal.handleInput('e');
-          expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/\bmax\b/);
-          modal.handleInput('esc');
-          modal.handleInput('M');
-          modal.handleInput('e');
-          const picker = stripAnsi(modal.render(100).join('\n'));
-          expect(picker).toContain('inherit/reset effort');
-          for (const effort of expected)
-            expect(picker).toMatch(new RegExp(`\\b${effort}\\b`));
-          for (const effort of [
-            'off',
-            'minimal',
-            'low',
-            'medium',
-            'high',
-            'xhigh',
-            'max',
-          ]) {
-            if (!expected.includes(effort))
-              expect(picker).not.toMatch(new RegExp(`\\b${effort}\\b`));
-          }
-          modal.handleInput('esc');
-          modal.handleInput('s');
-          return result;
-        },
-      },
-    });
-  });
-
-  it.each([
-    'registry',
-    'runtime',
-    'current',
-  ] as const)('modal resolves effort capabilities from the %s model when it is not listed as available', async (source) => {
-    writeAgent('analyst');
-    const model = {
-      provider: 'custom',
-      id: 'max-model',
-      reasoning: true,
-      thinkingLevelMap: { max: 'max' },
-    };
-    await runSubagentModelsCommand({
-      cwd: tmp,
-      model:
-        source === 'current' ? model : { provider: 'custom', id: 'max-model' },
-      ...(source === 'runtime'
-        ? { modelRuntime: { getModel: () => model } }
-        : {}),
-      ...(source === 'registry'
-        ? { modelRegistry: { find: () => model, getAvailable: async () => [] } }
-        : {}),
-      ui: {
-        custom: async (factory: any) => {
-          let result: any;
-          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
-            result = value;
-          });
-          modal.handleInput('e');
-          const picker = stripAnsi(modal.render(100).join('\n'));
-          expect(picker).toMatch(/\bmax\b/);
-          expect(picker).not.toMatch(/\bxhigh\b/);
-          modal.handleInput('end');
-          modal.handleInput('enter');
-          modal.handleInput('s');
-          return result;
-        },
-      },
-    });
-    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
-      effort: 'max',
-    });
-  });
-
-  it.each([
-    ['max', 'max'],
-    ['xhigh', 'xhigh'],
-    ['max', 'high'],
-    ['max', 'inherit'],
-  ] as const)('modal preserves unsupported %s after staging another model unless the user chooses %s', (effort, chosen) => {
-    const saved: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'profile: custom/max-model',
-          effortLabel: `profile: ${effort}`,
-          effectiveModel: { provider: 'custom', id: 'max-model' },
-          effectiveEffort: effort,
-          explicitProfile: {
-            model: { provider: 'custom', id: 'max-model' },
-            effort,
-          },
-        },
-      ],
-      availableModels: [
-        { provider: 'custom', id: 'limited-model', reasoning: true },
-        {
-          provider: 'custom',
-          id: 'max-model',
-          reasoning: true,
-          thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
-        },
-      ],
-      done: (result: any) => saved.push(result),
+    it('ui.select flow only lists and activates', async () => {
+      seed();
+      const select = vi
+        .fn()
+        .mockImplementationOnce(async (_title: string, choices: string[]) =>
+          choices.find((choice) => choice.includes('solo (global)')),
+        )
+        .mockImplementationOnce(async () => 'Use for this session');
+      const notify = vi.fn();
+      const message = await runSubagentModelsCommand(
+        env().ctx({ ui: { select, notify } }),
+      );
+      expect(message).toBe('Session now uses solo.');
+      expect(env().session.value).toBe('solo');
+      expect(notify).toHaveBeenCalledWith(message, 'info');
+      expect(select.mock.calls[1][1]).toEqual([
+        'Use for this session',
+        'Set as global active',
+        'Pin to this project',
+        'Cancel',
+      ]);
     });
 
-    modal.handleInput('m');
-    modal.handleInput('down');
-    modal.handleInput('enter');
-    modal.handleInput('enter');
-    modal.handleInput('e');
-    const picker = stripAnsi(modal.render(100).join('\n'));
-    expect(picker).toMatch(new RegExp(`›\\s+${effort}.*unsupported.*Pi`));
-    expect(picker).not.toMatch(
-      new RegExp(`\\b${effort === 'max' ? 'xhigh' : 'max'}\\b`),
-    );
-    if (chosen === 'high') modal.handleInput('up');
-    else if (chosen === 'inherit') modal.handleInput('home');
-    modal.handleInput('enter');
-    modal.handleInput('s');
-
-    expect(saved).toEqual([
-      {
-        action: 'save',
-        dirtyProfiles: {
-          analyst: {
-            model: { provider: 'custom', id: 'limited-model' },
-            ...(chosen === 'inherit' ? {} : { effort: chosen }),
-          },
-        },
-      },
-    ]);
-  });
-
-  it('modal shows an inherited unsupported effort without pinning it after reset', async () => {
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      '---\nname: analyst\ndescription: analysis agent\neffort: max\n---\nAnalyze',
-    );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ model_profiles: { analyst: { effort: 'high' } } }),
-    );
-
-    await runSubagentModelsCommand({
-      cwd: tmp,
-      model: { provider: 'custom', id: 'limited-model', reasoning: true },
-      ui: {
-        custom: async (factory: any) => {
-          let result: any;
-          const modal = factory(modalTui(), modalTheme, {}, (value: any) => {
-            result = value;
-          });
-          modal.handleInput('E');
-          modal.handleInput('e');
-          const picker = stripAnsi(modal.render(100).join('\n'));
-          expect(picker).toMatch(/›\s+inherit\/reset effort/);
-          expect(picker).toMatch(/max.*unsupported.*Pi/);
-          modal.handleInput('enter');
-          modal.handleInput('s');
-          return result;
-        },
-      },
+    it('ui.select flow sets the global active profile and pin, and can cancel', async () => {
+      seed();
+      const pick = (needle: string, action: string) =>
+        vi
+          .fn()
+          .mockImplementationOnce(async (_t: string, c: string[]) =>
+            c.find((choice) => choice.includes(needle)),
+          )
+          .mockImplementationOnce(async () => action);
+      await runSubagentModelsCommand(
+        env().ctx({
+          ui: { select: pick('solo (global)', 'Set as global active') },
+        }),
+      );
+      expect(env().store.read('global').active).toBe('solo');
+      await runSubagentModelsCommand(
+        env().ctx({
+          ui: { select: pick('shared (local)', 'Pin to this project') },
+        }),
+      );
+      expect(env().store.read('project').active).toBe('shared');
+      const cancelled = await runSubagentModelsCommand(
+        env().ctx({ ui: { select: vi.fn(async () => 'Cancel') } }),
+      );
+      expect(cancelled).toContain('Cancelled');
     });
 
-    expect(
-      readSubagentsConfig(tmp).project_model_profiles?.analyst?.effort,
-    ).toBeUndefined();
-  });
-
-  it('modal confirms discarding dirty edits and can resume before saving', () => {
-    const results: any[] = [];
-    const rows = [
-      {
-        name: 'analyst',
-        description: 'analysis agent',
-        modelLabel: 'unresolved',
-        effortLabel: 'profile: high',
-        explicitProfile: { effort: 'high' as const },
-      },
-    ];
-    const modal = createSubagentModelProfilesModal({
-      rows,
-      done: (result) => results.push(result),
+    it('ui.select flow reports activation errors', async () => {
+      seed();
+      const notify = vi.fn();
+      const select = vi
+        .fn()
+        .mockImplementationOnce(async (_t: string, c: string[]) =>
+          c.find((choice) => choice.includes('shared (global)')),
+        )
+        .mockImplementationOnce(async () => 'Pin to this project');
+      const message = await runSubagentModelsCommand(
+        env().ctx({ ui: { select, notify } }),
+      );
+      expect(message).toContain('shadowed by the local profile');
+      expect(notify).toHaveBeenCalledWith(message, 'error');
     });
 
-    modal.handleInput('E');
-    modal.handleInput('q');
-    expect(results).toEqual([]);
-    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
-      'Discard unsaved draft?',
-    );
-    modal.handleInput('esc');
-    expect(stripAnsi(modal.render(100).join('\n'))).toContain(
-      'pending: 1 change',
-    );
-    modal.handleInput('s');
-    expect(results).toEqual([
-      { action: 'save', dirtyProfiles: { analyst: {} } },
-    ]);
-
-    const discard = createSubagentModelProfilesModal({
-      rows,
-      done: (result) => results.push(result),
+    it('opens the overlay through ui.custom and reports the close', async () => {
+      const notify = vi.fn();
+      let options: unknown;
+      const custom = vi.fn(async (factory: any, opts: unknown) => {
+        options = opts;
+        const panel = factory(
+          { requestRender() {}, terminal: { rows: 40 } },
+          theme,
+          undefined,
+          () => {},
+        );
+        expect(stripAnsi(panel.render(100).join('\n'))).toContain('Profiles');
+        return { action: 'close', discarded: 2 };
+      });
+      const message = await runSubagentModelsCommand(
+        env().ctx({
+          ui: { custom, notify },
+          modelRegistry: { getAvailable: async () => AVAILABLE_MODELS },
+        }),
+      );
+      expect(options).toMatchObject({ overlay: true });
+      expect(message).toBe(
+        'Closed model profiles; discarded 2 unsaved drafts/edits.',
+      );
+      expect(notify).toHaveBeenCalledWith(message, 'warning');
     });
-    discard.handleInput('r');
-    discard.handleInput('esc');
-    discard.handleInput('d');
-    discard.handleInput('s');
-    expect(results).toEqual([
-      { action: 'save', dirtyProfiles: { analyst: {} } },
-      { action: 'cancel' },
-    ]);
-  });
-
-  it('modal handles main reset hotkeys, effort picker values, nested back, save, and cancel', () => {
-    const rows = [
-      {
-        name: 'analyst',
-        description: 'analysis agent',
-        modelLabel: 'profile: openai/gpt-5.2',
-        effortLabel: 'profile: medium',
-        effectiveModel: { provider: 'openai', id: 'gpt-5.2' },
-        effectiveEffort: 'medium' as const,
-        explicitProfile: {
-          model: { provider: 'openai', id: 'gpt-5.2' },
-          effort: 'medium' as const,
-        },
-      },
-      {
-        name: 'reviewer',
-        description: 'review agent',
-        modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-        effortLabel: 'orchestrator: low',
-        effectiveModel: { provider: 'openai', id: 'gpt-5.2-codex' },
-        effectiveEffort: 'low' as const,
-        explicitProfile: {},
-      },
-    ];
-    const saved: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows,
-      availableModels: [
-        { provider: 'openai', id: 'gpt-5.2-codex', label: 'GPT Codex' },
-      ],
-      done: (result: any) => saved.push(result),
-    });
-
-    modal.handleInput('e');
-    const effortPicker = stripAnsi(modal.render(100).join('\n'));
-    for (const label of [
-      'inherit/reset effort',
-      'off',
-      'minimal',
-      'low',
-      'medium',
-      'high',
-      'xhigh',
-      'max',
-    ])
-      expect(effortPicker).toContain(label);
-    for (let i = 0; i < 5; i += 1) modal.handleInput('down');
-    modal.handleInput('enter');
-    modal.handleInput('M');
-    modal.handleInput('E');
-    modal.handleInput('r');
-    modal.handleInput('down');
-    modal.handleInput('m');
-    modal.handleInput('q');
-    modal.handleInput('s');
-
-    expect(saved).toEqual([{ action: 'save', dirtyProfiles: { analyst: {} } }]);
-
-    const cancelled: any[] = [];
-    const cancelModal = createSubagentModelProfilesModal({
-      rows,
-      availableModels: [],
-      done: (result: any) => cancelled.push(result),
-    });
-    cancelModal.handleInput('q');
-    expect(cancelled).toEqual([{ action: 'cancel' }]);
-
-    const escaped: any[] = [];
-    const escapeModal = createSubagentModelProfilesModal({
-      rows,
-      availableModels: [],
-      done: (result: any) => escaped.push(result),
-    });
-    escapeModal.handleInput('esc');
-    expect(escaped).toEqual([{ action: 'cancel' }]);
-  });
-
-  it('modal preserves unrelated dirty rows when nested pickers are cancelled', () => {
-    const results: any[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2' },
-          effectiveEffort: 'medium',
-          explicitProfile: {},
-        },
-        {
-          name: 'reviewer',
-          description: 'review agent',
-          modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-          effortLabel: 'orchestrator: low',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2-codex' },
-          effectiveEffort: 'low',
-          explicitProfile: {},
-        },
-      ],
-      availableModels: [
-        { provider: 'openai', id: 'gpt-5.2-codex', label: 'GPT Codex' },
-      ],
-      done: (result: any) => results.push(result),
-    });
-
-    modal.handleInput('e');
-    for (let i = 0; i < 6; i += 1) modal.handleInput('down');
-    modal.handleInput('enter');
-    modal.handleInput('down');
-    modal.handleInput('m');
-    modal.handleInput('esc');
-    modal.handleInput('s');
-
-    expect(results).toEqual([
-      { action: 'save', dirtyProfiles: { analyst: { effort: 'xhigh' } } },
-    ]);
-  });
-
-  it('modal labels each subagent row with a dimmed local/global scope', () => {
-    const dimmed: string[] = [];
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          scope: 'project',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          explicitProfile: {},
-        },
-        {
-          name: 'reviewer',
-          description: 'review agent',
-          scope: 'global',
-          modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-          effortLabel: 'orchestrator: low',
-          explicitProfile: {},
-        },
-      ],
-      theme: {
-        fg: (name: string, text: string) => {
-          if (name === 'dim') dimmed.push(text);
-          return text;
-        },
-      },
-      availableModels: [],
-      done: () => undefined,
-    });
-
-    const rendered = stripAnsi(modal.render(120).join('\n'));
-
-    expect(rendered).toContain('analyst (local)');
-    expect(rendered).toContain('reviewer (global)');
-    expect(dimmed).toEqual(expect.arrayContaining(['(local)', '(global)']));
-  });
-
-  it('modal renders a compact model/effort editor without noisy descriptions', () => {
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description:
-            'long analysis description that should not take vertical space in the compact default view',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2' },
-          effectiveEffort: 'medium',
-          explicitProfile: {},
-        },
-        {
-          name: 'reviewer',
-          description: 'review agent',
-          modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-          effortLabel: 'orchestrator: low',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2-codex' },
-          effectiveEffort: 'low',
-          explicitProfile: {},
-        },
-        {
-          name: 'implementer',
-          description: 'implementation agent',
-          modelLabel: 'orchestrator: openai/gpt-5.5',
-          effortLabel: 'orchestrator: high',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.5' },
-          effectiveEffort: 'high',
-          explicitProfile: {},
-        },
-      ],
-      availableModels: [],
-      done: () => undefined,
-    });
-
-    const lines = modal.render(120).map(stripAnsi);
-    const rendered = lines.join('\n');
-
-    expect(rendered).toContain('Subagent model profiles');
-    expect(rendered).toContain('target: local/global by subagent scope');
-    expect(rendered).toContain('pending: none');
-    expect(rendered).toContain('agent');
-    expect(rendered).toContain('model');
-    expect(rendered).toContain('effort');
-    expect(
-      lines.some((line) =>
-        line.startsWith('│ target: local/global by subagent scope'),
-      ),
-    ).toBe(true);
-    expect(rendered).toContain('›   analyst');
-    expect(rendered).toContain('reviewer');
-    expect(rendered).toContain('implementer');
-    expect(rendered).toContain('selected: analyst');
-    expect(rendered).not.toContain('long analysis description');
-    expect(lines.length).toBeLessThanOrEqual(12);
-  });
-
-  it('modal renders a framed compact layout with destination and dirty status', () => {
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: 'analysis agent',
-          modelLabel: 'default: openai/gpt-5.2',
-          effortLabel: 'default: medium',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2' },
-          effectiveEffort: 'medium',
-          explicitProfile: {},
-        },
-        {
-          name: 'reviewer',
-          description: 'review agent',
-          modelLabel: 'orchestrator: openai/gpt-5.2-codex',
-          effortLabel: 'orchestrator: low',
-          effectiveModel: { provider: 'openai', id: 'gpt-5.2-codex' },
-          effectiveEffort: 'low',
-          explicitProfile: {},
-        },
-      ],
-      availableModels: [
-        { provider: 'openai', id: 'gpt-5.2-codex', label: 'GPT Codex' },
-      ],
-      done: () => undefined,
-    });
-
-    const initial = stripAnsi(modal.render(120).join('\n'));
-    expect(initial).toContain('╭');
-    expect(initial).toContain('Subagent model profiles');
-    expect(initial).toContain('target: local/global by subagent scope');
-    expect(initial).toContain('pending: none');
-    expect(initial).toContain('agent');
-    expect(initial).toContain('model');
-    expect(initial).toContain('effort');
-    expect(initial).toContain('selected: analyst');
-    expect(initial).toContain('enter/m model');
-
-    modal.handleInput('e');
-    for (let i = 0; i < 5; i += 1) modal.handleInput('down');
-    modal.handleInput('enter');
-    const dirty = stripAnsi(modal.render(120).join('\n'));
-    expect(dirty).toContain('pending: 1 change');
-    expect(dirty).toContain('* analyst');
-  });
-
-  it('modal keeps unavailable model text discoverable and constrains rendered width', () => {
-    const modal = createSubagentModelProfilesModal({
-      rows: [
-        {
-          name: 'analyst',
-          description: `analysis agent with ${'very '.repeat(20)}long description`,
-          modelLabel: `profile: missing/${'model-'.repeat(20)} (unavailable)`,
-          effortLabel: 'profile: high',
-          effectiveModel: {
-            provider: 'missing',
-            id: `${'model-'.repeat(20)}legacy`,
-          },
-          effectiveEffort: 'high',
-          explicitProfile: {
-            model: { provider: 'missing', id: `${'model-'.repeat(20)}legacy` },
-            effort: 'high',
-          },
-        },
-      ],
-      availableModels: [],
-      done: () => undefined,
-    });
-
-    for (const width of [42, 120]) {
-      const lines = modal.render(width).map(stripAnsi);
-      expect(lines.every((line) => line.length <= width)).toBe(true);
-    }
-    expect(stripAnsi(modal.render(120).join('\n'))).toContain('unavailable');
-  });
-
-  it('returns non-TUI fallback text with the global subagents config path', async () => {
-    const message = buildNonTuiModelProfilesMessage('/home/example/.pi/agent');
-    expect(message).toContain('subagent model profiles require Pi TUI');
-    expect(message).toContain(
-      path.normalize('/home/example/.pi/agent/subagents.json'),
-    );
-
-    await expect(runSubagentModelsCommand({ cwd: tmp })).resolves.toContain(
-      path.join(os.homedir(), '.pi', 'agent', 'subagents.json'),
-    );
-  });
-
-  it.each([
-    'inline',
-    'fullscreen',
-  ])('model command hosts native keys and balanced mouse reporting in %s mode', async (mode) => {
-    writeAgent('analyst');
-    const write = vi.fn();
-    await runSubagentModelsCommand({
-      cwd: tmp,
-      ui: {
-        custom: async (factory: any) => {
-          let result: unknown;
-          const modal = factory(
-            { mode, terminal: { rows: 40, write }, requestRender() {} },
-            { fg: (_role: string, text: string) => text },
-            {},
-            (value: unknown) => {
-              result = value;
-            },
-          );
-          expect(write.mock.calls).toEqual(
-            mode === 'fullscreen' ? [] : [['\x1b[?1000h\x1b[?1006h']],
-          );
-          modal.handleInput('\x1b[13u');
-          expect(modal.render(100).join('\n')).toContain(
-            'Select model provider for analyst',
-          );
-          modal.handleInput('\x1b[27u');
-          modal.handleInput('\x1b[27u');
-          return result;
-        },
-      },
-    });
-    expect(write.mock.calls).toEqual(
-      mode === 'fullscreen'
-        ? []
-        : [['\x1b[?1000h\x1b[?1006h'], ['\x1b[?1006l\x1b[?1000l']],
-    );
-  });
-
-  it('subagent models command closes only its owned overlay and follows terminal height', async () => {
-    for (let index = 0; index < 20; index += 1)
-      writeAgent(`agent-${String(index).padStart(2, '0')}`);
-    let foreignHides = 0;
-    let ownedHides = 0;
-    const tui = {
-      terminal: { rows: 14 },
-      requestRender() {},
-      hideOverlay: () => {
-        foreignHides += 1;
-      },
-    };
-
-    const message = await runSubagentModelsCommand({
-      cwd: tmp,
-      ui: {
-        custom: async (factory: any, options: any) => {
-          let result: any;
-          const modal = factory(
-            tui,
-            { fg: (_role: string, text: string) => text },
-            {},
-            (value: any) => {
-              tui.hideOverlay();
-              result = value;
-            },
-          );
-          options.onHandle?.({
-            hide: () => {
-              ownedHides += 1;
-            },
-          });
-          modal.handleInput('G');
-          expect(modal.render(120).length).toBeLessThanOrEqual(12);
-          expect(stripAnsi(modal.render(120).join('\n'))).toContain('agent-19');
-          tui.terminal.rows = 8;
-          expect(modal.render(120).length).toBeLessThanOrEqual(7);
-          modal.handleInput('s');
-          return result;
-        },
-      },
-    });
-
-    expect(message).toContain('No subagent model profile changes');
-    expect(ownedHides).toBe(1);
-    expect(foreignHides).toBe(0);
-  });
-
-  it('subagent models command custom Save All with no dirty rows writes nothing and notifies exact no-op message', async () => {
-    writeAgent('analyst');
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({ model_profiles: { analyst: { effort: 'medium' } } }),
-    );
-    const before = fs.readFileSync(
-      path.join(agentDir, 'subagents.json'),
-      'utf8',
-    );
-    const notifications: Array<[string, string | undefined]> = [];
-
-    const message = await withAgentDir(agentDir, () =>
-      runSubagentModelsCommand({
-        cwd: tmp,
-        agentDir,
-        modelRegistry: { getAvailable: async () => [] },
-        ui: {
-          custom: async (factory: any) => {
-            let result: any;
-            const component = factory(
-              modalTui(),
-              modalTheme,
-              {},
-              (value: any) => {
-                result = value;
-              },
-            );
-            component.handleInput('s');
-            return result;
-          },
-          notify: (text: string, level?: string) =>
-            notifications.push([text, level]),
-        },
-      }),
-    );
-
-    expect(message).toBe(
-      `No subagent model profile changes to save. Nothing written to ${globalSubagentsConfigPath(agentDir)}.`,
-    );
-    expect(notifications).toEqual([[message, 'info']]);
-    expect(fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8')).toBe(
-      before,
-    );
-  });
-
-  it('subagent models command custom top-level cancel writes nothing and preserves cancel warning', async () => {
-    writeAgent('analyst');
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({ model_profiles: { analyst: { effort: 'medium' } } }),
-    );
-    const before = fs.readFileSync(
-      path.join(agentDir, 'subagents.json'),
-      'utf8',
-    );
-    const notifications: Array<[string, string | undefined]> = [];
-
-    const message = await withAgentDir(agentDir, () =>
-      runSubagentModelsCommand({
-        cwd: tmp,
-        agentDir,
-        modelRegistry: { getAvailable: async () => [] },
-        ui: {
-          custom: async (factory: any) => {
-            let result: any;
-            const component = factory(
-              modalTui(),
-              modalTheme,
-              {},
-              (value: any) => {
-                result = value;
-              },
-            );
-            component.handleInput('e');
-            component.handleInput('down');
-            component.handleInput('enter');
-            component.handleInput('q');
-            expect(result).toBeUndefined();
-            expect(stripAnsi(component.render(120).join('\n'))).toContain(
-              'Discard unsaved draft?',
-            );
-            component.handleInput('d');
-            return result;
-          },
-          notify: (text: string, level?: string) =>
-            notifications.push([text, level]),
-        },
-      }),
-    );
-
-    expect(message).toBe(
-      `Cancelled. No changes written to ${globalSubagentsConfigPath(agentDir)}.`,
-    );
-    expect(notifications).toEqual([[message, 'warning']]);
-    expect(fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8')).toBe(
-      before,
-    );
-  });
-
-  it('fallback select wizard remains usable when custom ui is absent', async () => {
-    writeAgent('analyst');
-    const agentDir = path.join(tmp, 'global-agent');
-    const select = vi.fn(async (prompt: string, choices: string[]) => {
-      if (prompt.startsWith('Select subagent'))
-        return choices.find((choice) => choice.startsWith('analyst'));
-      if (prompt.startsWith('Configure analyst'))
-        return 'Set provider/model/effort';
-      if (prompt.startsWith('Select provider')) return 'openai';
-      if (prompt.startsWith('Select model')) return 'GPT Codex';
-      if (prompt.startsWith('Select effort')) return 'high';
-      if (prompt.startsWith('Save subagent')) return 'Save';
-      return choices[0];
-    });
-
-    const message = await withAgentDir(agentDir, () =>
-      runSubagentModelsCommand({
-        cwd: tmp,
-        agentDir,
-        modelRegistry: {
-          getAvailable: async () => [
-            { provider: 'openai', id: 'gpt-5.2-codex', label: 'GPT Codex' },
-          ],
-        },
-        ui: { select },
-      }),
-    );
-
-    expect(message).toBe(
-      `Saved subagent model profiles to ${path.join(tmp, '.pi', 'subagents.json')}.`,
-    );
-    expect(select).toHaveBeenCalled();
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(tmp, '.pi', 'subagents.json'), 'utf8'),
-      ),
-    ).toEqual({
-      model_profiles: {
-        analyst: { model: 'openai/gpt-5.2-codex', effort: 'high' },
-      },
-    });
-    expect(fs.existsSync(path.join(agentDir, 'subagents.json'))).toBe(false);
-  });
-
-  it.each([
-    {
-      model: 'max-model',
-      capabilities: { reasoning: true, thinkingLevelMap: { max: 'max' } },
-      savedEffort: undefined,
-      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'max'],
-      chosen: 'max',
-      persisted: 'max',
-    },
-    {
-      model: 'xhigh-model',
-      capabilities: { reasoning: true, thinkingLevelMap: { xhigh: 'xhigh' } },
-      savedEffort: undefined,
-      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
-      chosen: 'xhigh',
-      persisted: 'xhigh',
-    },
-    {
-      model: 'limited-model',
-      capabilities: { reasoning: true },
-      savedEffort: undefined,
-      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high'],
-      chosen: 'high',
-      persisted: 'high',
-    },
-    {
-      model: 'unknown-model',
-      capabilities: {},
-      savedEffort: undefined,
-      expected: [
-        'inherit',
-        'off',
-        'minimal',
-        'low',
-        'medium',
-        'high',
-        'xhigh',
-        'max',
-      ],
-      chosen: 'max',
-      persisted: 'max',
-    },
-    {
-      model: 'limited-model',
-      capabilities: { reasoning: true },
-      savedEffort: 'max',
-      expected: [
-        'inherit',
-        'off',
-        'minimal',
-        'low',
-        'medium',
-        'high',
-        'max (current; unsupported, clamped by Pi)',
-      ],
-      chosen: 'max (current; unsupported, clamped by Pi)',
-      persisted: 'max',
-    },
-  ])('fallback effort choices follow staged $model and preserve $savedEffort', async ({
-    model,
-    capabilities,
-    savedEffort,
-    expected,
-    chosen,
-    persisted,
-  }) => {
-    writeAgent('analyst');
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        default_model: 'custom/previous-model',
-        model_profiles: { analyst: { effort: savedEffort } },
-      }),
-    );
-    const select = async (prompt: string, choices: string[]) => {
-      if (prompt.startsWith('Select subagent')) return choices[0];
-      if (prompt.startsWith('Configure analyst'))
-        return 'Set provider/model/effort';
-      if (prompt.startsWith('Select provider')) return 'custom';
-      if (prompt.startsWith('Select model')) return model;
-      if (prompt.startsWith('Select effort')) {
-        expect(choices).toEqual(expected);
-        return chosen;
-      }
-      if (prompt.startsWith('Save subagent')) return 'Save';
-      throw new Error(`Unexpected prompt: ${prompt}`);
-    };
-
-    await runSubagentModelsCommand({
-      cwd: tmp,
-      modelRegistry: {
-        getAvailable: async () => [
-          { provider: 'custom', id: model, ...capabilities },
-          { provider: 'custom', id: 'previous-model', reasoning: false },
-        ],
-      },
-      ui: { select },
-    });
-
-    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
-      model: { provider: 'custom', id: model },
-      effort: persisted,
-    });
-  });
-
-  it.each([
-    'missing',
-    'unavailable',
-  ] as const)('fallback offers the full effort list when the registry is %s', async (registry) => {
-    writeAgent('analyst');
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ default_model: 'unknown/model' }),
-    );
-    const select = async (prompt: string, choices: string[]) => {
-      if (prompt.startsWith('Select subagent')) return choices[0];
-      if (prompt.startsWith('Configure analyst'))
-        return 'Set provider/model/effort';
-      if (prompt.startsWith('Select provider')) return 'inherit/reset model';
-      if (prompt.startsWith('Select effort')) {
-        expect(choices).toEqual([
-          'inherit',
-          'off',
-          'minimal',
-          'low',
-          'medium',
-          'high',
-          'xhigh',
-          'max',
-        ]);
-        return 'max';
-      }
-      if (prompt.startsWith('Save subagent')) return 'Save';
-      throw new Error(`Unexpected prompt: ${prompt}`);
-    };
-
-    const message = await runSubagentModelsCommand({
-      cwd: tmp,
-      ...(registry === 'unavailable'
-        ? {
-            modelRegistry: {
-              getAvailable: async () => {
-                throw new Error('registry unavailable');
-              },
-              find: () => {
-                throw new Error('registry unavailable');
-              },
-            },
-          }
-        : {}),
-      ui: { select },
-    });
-
-    expect(message).toContain('Saved subagent model profiles');
-    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
-      effort: 'max',
-    });
-  });
-
-  it('fallback select wizard cancel writes nothing and non-tui fallback remains compatible', async () => {
-    writeAgent('analyst');
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({ model_profiles: { analyst: { effort: 'medium' } } }),
-    );
-    const before = fs.readFileSync(
-      path.join(agentDir, 'subagents.json'),
-      'utf8',
-    );
-    const select = vi.fn(async (prompt: string, choices: string[]) => {
-      if (prompt.startsWith('Select subagent'))
-        return choices.find((choice) => choice.startsWith('analyst'));
-      if (prompt.startsWith('Configure analyst')) return 'Cancel';
-      return choices[0];
-    });
-
-    const message = await withAgentDir(agentDir, () =>
-      runSubagentModelsCommand({ cwd: tmp, agentDir, ui: { select } }),
-    );
-
-    expect(message).toBe(
-      `Cancelled. No changes written to ${globalSubagentsConfigPath(agentDir)}.`,
-    );
-    expect(fs.readFileSync(path.join(agentDir, 'subagents.json'), 'utf8')).toBe(
-      before,
-    );
-    await expect(
-      runSubagentModelsCommand({ cwd: tmp, agentDir, ui: {} }),
-    ).resolves.toBe(buildNonTuiModelProfilesMessage(agentDir));
   });
 });

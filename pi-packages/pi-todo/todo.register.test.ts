@@ -51,6 +51,30 @@ describe('registerTodoTool — registration shape', () => {
     expect((tool.promptGuidelines as string[]).length).toBeGreaterThan(0);
   });
 
+  it('puts proactive usage and status timing in the description for bridge consumers', () => {
+    const { tool } = setup();
+    expect(tool.description).toContain(
+      'Use for requests with 3+ steps, user-given task lists, delegated work units or SDD phases; capture requirements right after new instructions.',
+    );
+    expect(tool.description).toContain(
+      'Create items up front, mark in_progress BEFORE starting, and completed IMMEDIATELY when done; never batch completions. Keep exactly one task in_progress while working.',
+    );
+    expect(tool.description).toContain(
+      'Skip single trivial tasks and purely conversational turns.',
+    );
+    for (const action of [
+      'create',
+      'update',
+      'list',
+      'get',
+      'delete',
+      'clear',
+    ]) {
+      expect(tool.description).toContain(action);
+    }
+    expect(tool.description).toContain('pending → in_progress → completed');
+  });
+
   it('exposes a typebox parameters schema declaring the six actions', () => {
     const { tool } = setup();
     const raw = JSON.stringify(tool.parameters);

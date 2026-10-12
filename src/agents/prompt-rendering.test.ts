@@ -822,6 +822,36 @@ describe('AI-first prompt rendering', () => {
     });
   });
 
+  test.each([
+    [OPENCODE_PROMPT_DIALECT, 'todowrite'],
+    [CODEX_PROMPT_DIALECT, 'functions.update_plan'],
+    [CLAUDE_CODE_PROMPT_DIALECT, 'TodoWrite'],
+    [PI_PROMPT_DIALECT, 'todo'],
+  ] as const)('%s proactively tracks root progress without giving children ownership', (dialect, tool) => {
+    const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
+    expect(root).toContain(
+      `Track requests with 3+ steps, delegated units or SDD phases with \`${tool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`,
+    );
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const child = renderRolePrompt(sectionsFor(role), dialect);
+      expect(child).toContain(
+        `Do not delegate further or call \`${tool}\`; root owns progress.`,
+      );
+      expect(child).not.toContain('Track requests with 3+ steps');
+    }
+  });
+
+  test('keeps written progress when no native progress tool is configured', () => {
+    const dialect = {
+      ...PI_PROMPT_DIALECT,
+      tools: { ...PI_PROMPT_DIALECT.tools, progressTool: undefined },
+    };
+    const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
+    expect(root).toContain(
+      'Track requests with 3+ steps, delegated units or SDD phases in written progress notes; no native progress tool is configured. Skip single trivial or conversational turns.',
+    );
+  });
+
   test('keeps generated roots compact', () => {
     const piRoot = renderPiRootInstructions();
     expect(piRoot).toContain(
@@ -854,7 +884,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "391ecfe1f8c8cdd899a5eaafd21886e6eff895808168e89a83d31f0a1172c863",
+          "ebaeb38ac50ecdb89f5b1b36847c47d83a9161c1a314854507e8ec13cd0ec485",
           "3c6cec172ead08bbd4f905fe7424ed94b4b251f4798880d53382be50856bd866",
           "8995d957e4e3861aedba4ee4907c1feaa79a865eb9110d447c9aebe30d0f87c7",
           "487a056dad8f88f1258f486d61a043f2fcd7b81a311209ba78d1bcd1fbd2c974",
@@ -865,7 +895,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "6a4c1473be33c545c6777b1bb01459a647109724b1bc615edc08d3c793152f71",
+          "1bbd0f3cfb07fcb023e1efdc71f80085c6ae0902dec972a54a7e129dafcf0bdd",
           "252f9d6277b5637de7982a6d26c673c5c7317d65f2e2c9c846a48669c20fa7e7",
           "a620c249ffa378ff2fd5fd81bcd56321102f4889170a1f58b71f689a4159562d",
           "c291fa15d2e58c5dc06472e3d25b60c5777910abba4d59d8912d0820d4cbe4bc",
@@ -876,7 +906,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "8983b964914d1d83ba4240962188faca2fc71259a474207999381fa218cf38cc",
+          "f10c78aa39101c0ddd1c5c405ad14c3618ad70b93fa699023220e7614e1afcce",
           "0b1ba17e3e1565bed8c29795c0aafcd67d2cbcd08afe21e7a1ee65bf7a23d23f",
           "4ac41f8716aeb883786a0b2e92b46aaf9dab7378f2d7d7fdaa8ef5845b0303dd",
           "db5fa796df7943534ce3a02308b879faa5fd1f351fd994c6daf77c791362ec39",

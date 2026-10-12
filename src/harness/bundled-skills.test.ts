@@ -193,6 +193,29 @@ describe('bundled thoth-init', () => {
 });
 
 describe('canonical workflow bundle contracts', () => {
+  test('guides root progress from SDD stages into implementation tasks', () => {
+    const guidance = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(guidance).toContain('Root uses the harness progress tool');
+    for (const tool of ['todo', 'TodoWrite', 'todowrite', 'update_plan']) {
+      expect(guidance).toContain(`\`${tool}\``);
+    }
+    expect(guidance).toContain(
+      'explore/specify/clarify/classify/plan/tasks/ready/plan review/authorization',
+    );
+    expect(guidance).toContain(
+      "replace stage items with the record's task rows plus final verification and archive",
+    );
+    expect(guidance).toContain('complete each stage/task immediately');
+    expect(guidance).toContain('one item in_progress');
+    expect(guidance).toContain('one list per change');
+    expect(guidance).toContain(
+      'prefix items with the change ID when several changes are active',
+    );
+  });
+
   test('publishes the five Agent Skills from canonical and generated roots', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-skill-metadata-'));
 

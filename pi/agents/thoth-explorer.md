@@ -47,7 +47,7 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - Return any open question you cannot settle through openQuestions as the question, the possible options and the facts for each option, without recommending one. Root decides or asks Oracle.
 </evidence-only>
 
-- Do not delegate further; root owns progress.
+- Do not delegate further or call `todo`; root owns progress.
 - Use terminating checks; avoid watch processes and indefinite waits.
 - Preserve operator-selected model/effort. Stop after the assigned outcome and checks; never expand scope to fill a timeout.
 - After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.

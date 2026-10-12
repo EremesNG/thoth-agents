@@ -23,7 +23,11 @@ export type ProfileEntry = {
   agents: SubagentModelProfiles;
   /** Persisted agents, or undefined for an in-memory draft. */
   base?: SubagentModelProfiles;
-  /** Non-agent keys of the persisted profile, preserved across saves. */
+  /** Working copy of the orchestrator; undefined keeps the session model. */
+  orchestrator?: SubagentModelProfile;
+  /** Persisted orchestrator (undefined for drafts or when unset). */
+  baseOrchestrator?: SubagentModelProfile;
+  /** Other non-agent keys of the persisted profile, preserved across saves. */
   extras: Record<string, unknown>;
   /** A same-name project profile hides this global one from name lookups. */
   shadowed: boolean;
@@ -54,8 +58,18 @@ function cloneAgents(agents: SubagentModelProfiles): SubagentModelProfiles {
   );
 }
 
-const signature = (agents: SubagentModelProfiles): string =>
-  JSON.stringify(
+const cloneOrchestrator = (
+  orchestrator?: SubagentModelProfile,
+): SubagentModelProfile | undefined => {
+  const copy = cloneAgent(orchestrator);
+  return copy.model || copy.effort ? copy : undefined;
+};
+
+const signature = (
+  agents: SubagentModelProfiles,
+  orchestrator?: SubagentModelProfile,
+): string =>
+  JSON.stringify([
     Object.entries(agents)
       .map(([name, agent]) => [
         name,
@@ -63,19 +77,32 @@ const signature = (agents: SubagentModelProfiles): string =>
         agent.effort ?? null,
       ])
       .sort(([a], [b]) => String(a).localeCompare(String(b))),
-  );
+    orchestrator?.model
+      ? `${orchestrator.model.provider}/${orchestrator.model.id}`
+      : null,
+    orchestrator?.effort ?? null,
+  ]);
 
 function extrasOf(profile: NamedModelProfile): Record<string, unknown> {
-  const { agents: _agents, ...extras } = profile;
+  const { agents: _agents, orchestrator: _orchestrator, ...extras } = profile;
   return extras;
 }
+
+type Staged = {
+  agents: SubagentModelProfiles;
+  orchestrator?: SubagentModelProfile;
+};
 
 export const isDraft = (entry: ProfileEntry): boolean =>
   !!entry.scope && !entry.base;
 
 export function isEntryDirty(entry: ProfileEntry): boolean {
   if (!entry.scope) return false;
-  return !entry.base || signature(entry.agents) !== signature(entry.base);
+  return (
+    !entry.base ||
+    signature(entry.agents, entry.orchestrator) !==
+      signature(entry.base, entry.baseOrchestrator)
+  );
 }
 
 /**
@@ -85,7 +112,7 @@ export function isEntryDirty(entry: ProfileEntry): boolean {
 export class ModelProfileWorkspace {
   private saved: ProfileEntry[] = [];
   private drafts: ProfileEntry[] = [];
-  private edits = new Map<string, SubagentModelProfiles>();
+  private edits = new Map<string, Staged>();
   /** Persisted `active` names, cached so rendering never touches the disk. */
   private active: { project?: string; global?: string } = {};
 
@@ -127,8 +154,12 @@ export class ModelProfileWorkspace {
           key,
           name,
           scope,
-          agents: cloneAgents(edited ?? profile.agents),
+          agents: cloneAgents(edited?.agents ?? profile.agents),
           base: cloneAgents(profile.agents),
+          orchestrator: cloneOrchestrator(
+            edited ? edited.orchestrator : profile.orchestrator,
+          ),
+          baseOrchestrator: cloneOrchestrator(profile.orchestrator),
           extras: extrasOf(profile),
           shadowed:
             scope === 'global' &&
@@ -274,6 +305,9 @@ export class ModelProfileWorkspace {
       name: value,
       scope,
       agents,
+      orchestrator: source.scope
+        ? cloneOrchestrator(source.orchestrator)
+        : undefined,
       extras: { ...source.extras },
       shadowed: false,
     };
@@ -296,8 +330,47 @@ export class ModelProfileWorkspace {
     if (!isDraft(entry)) this.trackEdits(entry);
   }
 
+  /** Stage an orchestrator edit; reset clears the field back to the session's. */
+  editOrchestrator(entry: ProfileEntry, edit: AgentEdit): void {
+    this.assertEditable(entry);
+    const next = cloneAgent(entry.orchestrator);
+    if (edit.reset === 'model') delete next.model;
+    if (edit.reset === 'effort') delete next.effort;
+    if (edit.model) next.model = { ...edit.model };
+    if (edit.effort) next.effort = edit.effort;
+    this.stageOrchestrator(entry, next);
+  }
+
+  /** Replace the orchestrator wholesale (e.g. a session capture). */
+  setOrchestrator(
+    entry: ProfileEntry,
+    orchestrator?: SubagentModelProfile,
+  ): void {
+    this.assertEditable(entry);
+    this.stageOrchestrator(entry, orchestrator);
+  }
+
+  private stageOrchestrator(
+    entry: ProfileEntry,
+    orchestrator?: SubagentModelProfile,
+  ): void {
+    entry.orchestrator = cloneOrchestrator(orchestrator);
+    if (!isDraft(entry)) this.trackEdits(entry);
+  }
+
+  /** Persisted orchestrator of the effective profile (what activation applies). */
+  effectiveOrchestrator(): SubagentModelProfile | undefined {
+    const { name, scope } = this.effective();
+    return this.saved.find((e) => e.name === name && e.scope === scope)
+      ?.baseOrchestrator;
+  }
+
   private trackEdits(entry: ProfileEntry): void {
-    if (isEntryDirty(entry)) this.edits.set(entry.key, entry.agents);
+    if (isEntryDirty(entry))
+      this.edits.set(entry.key, {
+        agents: entry.agents,
+        orchestrator: entry.orchestrator,
+      });
     else this.edits.delete(entry.key);
   }
 
@@ -312,7 +385,12 @@ export class ModelProfileWorkspace {
         ...(row.defaultEffort ? { effort: row.defaultEffort } : {}),
         ...cloneAgent(agents[row.key]),
       };
-    const value = { ...entry.extras, agents };
+    const value = {
+      ...entry.extras,
+      agents,
+      // Explicit undefined: store.save merges with the file, so omission would keep it.
+      orchestrator: entry.orchestrator,
+    };
     if (isDraft(entry)) this.store.create(scope, entry.name, value);
     else this.store.save(scope, entry.name, value);
     this.drafts = this.drafts.filter((draft) => draft !== entry);

@@ -328,10 +328,10 @@ Thoth delegation controls, the child `ask_orchestrator` tool and `ask_user_quest
 
 ### Requirement: Named Pi subagent model profiles
 
-Pi `/subagents-model` MUST manage named model profiles (model and effort per subagent) stored in `<agentDir>/thoth/profiles.json` and `<project>/.pi/thoth/profiles.json`, with a read-only virtual `default`, draft-until-save creation from default or another profile, project-over-global name shadowing, and effective selection session → project pin → global active → `default` applied at run time without rewriting agent definitions; `model_profiles` in `subagents.json` MUST NOT be used.
+Pi `/subagents-model` MUST manage named model profiles (model and effort per subagent, plus an optional root orchestrator model and effort) stored in `<agentDir>/thoth/profiles.json` and `<project>/.pi/thoth/profiles.json`, with a read-only virtual `default`, draft-until-save creation from default or another profile, project-over-global name shadowing, and effective selection session → project pin → global active → `default` applied at run time without rewriting agent definitions; `model_profiles` in `subagents.json` MUST NOT be used. A profile orchestrator MUST be applied to the current session on activation and at the start of new sessions only, MUST NOT change the model on resume, reload or fork, MUST leave the model untouched when undefined or unavailable (with a warning when unavailable), and Pi `settings.json` MUST NOT be written.
 
 #### Scenario: Named Pi subagent model profiles
 
-- **GIVEN** a global active profile `openai` and a project pin `claude`
+- **GIVEN** a global active profile `openai` and a project pin `claude` defining orchestrator `anthropic/claude-opus-5-5`
 - **WHEN** a subagent runs in that project without a session selection
-- **THEN** it uses the `claude` profile's model and effort, and selecting `openai` for the session makes later runs in that session, including after resume, use `openai` without changing any config file
+- **THEN** it uses the `claude` profile's model and effort, a new session in that project starts with `anthropic/claude-opus-5-5`, resuming an older session keeps its own model, and selecting `openai` for the session makes later runs in that session, including after resume, use `openai` without changing any config file

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ModelProfileWorkspace } from '../../src/model-profiles/editor.js';
 import {
   ModelProfileStore,
   modelProfilePaths,
@@ -232,4 +233,64 @@ it('honors explicit agentDir before PI_CODING_AGENT_DIR and otherwise uses the P
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
   }
+});
+it('round-trips normalized orchestrator overrides through both stores and CRUD copies', () => {
+  const s = store();
+  s.create('global', 'root', {
+    agents: {},
+    orchestrator: { model: ' openai/gpt/root ', effort: ' HIGH ' },
+  });
+  const expected = {
+    model: { provider: 'openai', id: 'gpt/root' },
+    effort: 'high',
+  };
+  expect(s.read('global').profiles.root.orchestrator).toEqual(expected);
+  expect(
+    JSON.parse(fs.readFileSync(s.paths.global, 'utf8')).profiles.root
+      .orchestrator.model,
+  ).toBe('openai/gpt/root');
+  s.clone('root', 'project', 'copy');
+  s.rename('project', 'copy', 'renamed');
+  s.save('project', 'renamed', s.read('project').profiles.renamed);
+  expect(s.read('project').profiles.renamed.orchestrator).toEqual(expected);
+  expect(s.lookup('default')?.profile.orchestrator).toBeUndefined();
+});
+it.each([
+  null,
+  [],
+  { model: 'bare' },
+  { effort: 'invalid' },
+])('rejects invalid orchestrator %j without changing the store', (orchestrator) => {
+  const s = store();
+  s.create('project', 'valid', { agents: {} });
+  const before = fs.readFileSync(s.paths.project, 'utf8');
+  expect(() =>
+    s.save('project', 'bad', { agents: {}, orchestrator }),
+  ).toThrow();
+  expect(fs.readFileSync(s.paths.project, 'utf8')).toBe(before);
+});
+
+it('preserves orchestrator on workspace clone, default creation and unedited saves', () => {
+  const s = store();
+  s.create('global', 'root', {
+    agents: {},
+    orchestrator: { model: 'openai/gpt', effort: 'low' },
+  });
+  const workspace = new ModelProfileWorkspace(s, []);
+  const source = workspace.entries().find((entry) => entry.name === 'root')!;
+  workspace.save(source);
+  const copy = workspace.createDraft(source, 'copy', 'project');
+  workspace.save(copy);
+  expect(s.read('project').profiles.copy.orchestrator).toEqual(
+    s.read('global').profiles.root.orchestrator,
+  );
+  const plain = workspace.createDraft(
+    workspace.entries()[0],
+    'plain',
+    'project',
+  );
+  workspace.save(plain);
+  expect(s.read('project').profiles.plain.orchestrator).toBeUndefined();
+  s.save('global', 'root', { agents: {} });
+  expect(s.read('global').profiles.root.orchestrator?.effort).toBe('low');
 });

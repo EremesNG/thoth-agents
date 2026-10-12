@@ -218,7 +218,7 @@ Exact names and tools matched by globs reach the child even when inactive in the
 
 If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; there is no fallback to active tools. Exact names and enabled `ask_orchestrator` still apply, with the same missing-implementation reporting and launch failure only when nothing remains. Native `subagent_*` controls remain excluded, and definition `disallowed_tools` applies to every selection form. An omitted `tools` field uses the runtime built-in list; an empty list uses `default_tools` in `subagents.json` through the same resolver, supporting exact names and globs.
 
-Configure model/effort routing in the user-approved global or project `thoth/profiles.json`. Both use this schema; `model` and `effort` are optional per agent:
+Configure model/effort routing in the user-approved global or project `thoth/profiles.json`. Both use this schema; `orchestrator` is optional beside `agents`, and `model` and `effort` are optional in both orchestrator and agent entries:
 
 ```json
 {
@@ -226,6 +226,10 @@ Configure model/effort routing in the user-approved global or project `thoth/pro
   "active": "fast",
   "profiles": {
     "fast": {
+      "orchestrator": {
+        "model": "anthropic/claude-sonnet-4-5",
+        "effort": "medium"
+      },
       "agents": {
         "discovery": {
           "model": "anthropic/claude-sonnet-4-5",
@@ -241,7 +245,11 @@ Optional `active` is the global active profile in the global file, or the projec
 
 `default` is reserved, read-only and virtual: it is never stored and has no overrides, so agents resolve to definition/shipped values and the fallback chain below. Agents or fields absent from a selected profile also fall back through that chain.
 
-In `/subagents-model`, ←/→ browse profiles without activation, ↑/↓ select agents, Enter edits model/effort, `m` edits model only, `e` edits effort only, `n` creates from default, `c` clones, `s` saves, `r` renames, `d` deletes, `u` toggles session selection, `g` toggles global active, and `p` toggles the project pin: pressing on that pointer's current selection clears it. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Picker “reset” restores default's effective model or effort for that agent. New profiles choose global or project scope. New/cloned profiles remain in-memory drafts until save and cannot be activated before saving; saving an unedited new profile persists a full copy of default's effective model/effort for every listed agent. Saved profiles are self-contained snapshots. Editing `default` offers creating a profile; it cannot be renamed/deleted. Renaming carries session, project pin and global active pointers that resolve to the profile to its new name; deleting confirms and clears those pointers; closing with unsaved changes asks for confirmation. Non-overlay fallbacks (`ui.select`, non-TUI) only list/activate profiles; `ui.select` sets selections without toggling them off.
+The optional `orchestrator: { model, effort }` controls the root Pi session, not a subagent named `orchestrator`. It applies live on `u`/`g`/`p` activation using the resulting effective profile. At the start of new sessions (`new`, or `startup` with no message history anywhere in the session), it uses project pin → global active → `default`. It never applies on resume, reload, fork, or startup with existing message history. Profiles without `orchestrator`, including `default`, leave the model untouched. A missing or unauthenticated model warns and keeps the current model and effort; unsupported effort is clamped with a notice.
+
+The extension never writes Pi `settings.json`. Native `/model` behavior is unchanged, including any persistence of defaults it normally performs. A profile orchestrator overrides the starting model of new sessions; `/model` changes act as a session override until another profile activation or a new session applies an orchestrator.
+
+In `/subagents-model`, the orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort. ←/→ browse profiles without activation, ↑/↓ select the orchestrator or an agent, Enter edits model/effort, `m` edits model only, `e` edits effort only, `o` copies the current session model/effort into the selected profile's orchestrator as an unsaved draft (save with `s`; on `default`, it offers creating a profile), `n` creates from default, `c` clones, `s` saves, `r` renames, `d` deletes, `u` toggles session selection, `g` toggles global active, and `p` toggles the project pin: pressing on that pointer's current selection clears it. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Picker “reset” restores default's effective model or effort for that agent. New profiles choose global or project scope. New/cloned profiles remain in-memory drafts until save and cannot be activated before saving; saving an unedited new profile persists a full copy of default's effective model/effort for every listed agent. Saved profiles are self-contained snapshots. Editing `default` offers creating a profile; it cannot be renamed/deleted. Renaming carries session, project pin and global active pointers that resolve to the profile to its new name; deleting confirms and clears those pointers; closing with unsaved changes asks for confirmation. Non-overlay fallbacks (`ui.select`, non-TUI) only list/activate profiles; `ui.select` sets selections without toggling them off.
 
 Model/effort resolution order:
 

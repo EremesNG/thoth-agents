@@ -437,12 +437,12 @@ any tool starting with subagent_
 
 ## Model profile resolution
 
-Named profiles contain model/effort settings for subagents, not the orchestrator or other configuration. Storage:
+Named profiles contain model/effort settings for subagents and an optional root orchestrator, not other configuration. Storage:
 
 - Global: `<agentDir>/thoth/profiles.json`, where `agentDir` honors `PI_CODING_AGENT_DIR` and defaults to `~/.pi/agent`.
 - Project: `<project>/.pi/thoth/profiles.json`.
 
-Both files use this versioned schema (model and effort fields may be omitted):
+Both files use this versioned schema (`orchestrator` is optional, and model and effort fields may be omitted):
 
 ```json
 {
@@ -450,6 +450,10 @@ Both files use this versioned schema (model and effort fields may be omitted):
   "active": "fast",
   "profiles": {
     "fast": {
+      "orchestrator": {
+        "model": "anthropic/claude-sonnet-4-5",
+        "effort": "medium"
+      },
       "agents": {
         "discovery": {
           "model": "anthropic/claude-haiku-4-5",
@@ -467,7 +471,17 @@ Selection precedence is **session selection → project pin → global active �
 
 Session selection is persisted in the Pi session, survives reload/resume, and never writes configuration files. Switching profiles applies at run time to new runs and continuations without rewriting definitions. Agents or fields absent from the selected profile use the same fallback chain.
 
-Effective model resolution order:
+### Profile orchestrator
+
+An optional `orchestrator: { model, effort }` beside `agents` controls the current Pi session, not a subagent named `orchestrator`:
+
+- Activating with `u`, `g`, or `p` applies the effective profile's orchestrator live.
+- New sessions (`new`, or `startup` with no message history anywhere in the session) apply **project pin → global active → `default`**. Resume, reload, fork, and startup with existing message history never apply it.
+- A profile without `orchestrator`, including `default`, leaves the session model untouched. A missing or unauthenticated model warns and keeps the current model and effort; unsupported effort is clamped with a notice.
+
+The extension never writes Pi `settings.json`. Native `/model` behavior is unchanged, including any persistence of defaults it normally performs. A profile orchestrator overrides the starting model of new sessions; `/model` changes act as a session override until another profile activation or a new session applies an orchestrator.
+
+Effective subagent model resolution order:
 
 1. Selected profile's `agents[agent].model`
 2. subagent frontmatter `model`
@@ -682,14 +696,15 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `ctrl+o` | Expand or collapse rendered tool output and subagent responses in the active execution/detail view. |
 | `ctrl+t` | Show or hide assistant thinking blocks in the open subagent execution panel, using Pi's `app.thinking.toggle` keybinding. |
 
-`/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile.
+`/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile. The orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort.
 
 | Key | Action |
 |---|---|
 | ←/→ | Browse profiles. |
-| ↑/↓ | Select an agent. |
-| Enter | Edit the agent's model/effort. |
+| ↑/↓ | Select the orchestrator or an agent. |
+| Enter | Edit the selected row's model/effort. |
 | `m` / `e` | Edit model only / effort only. |
+| `o` | Copy the current session model/effort into the selected profile's orchestrator as an unsaved draft; save with `s`. |
 | `n` / `c` | New from default / clone selected profile; choose global or project scope. |
 | `s` | Save the draft or edits. |
 | `r` / `d` | Rename / delete a profile. |
@@ -697,7 +712,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `g` | Toggle global active. |
 | `p` | Toggle this project's pin. |
 
-Pressing `u`, `g`, or `p` on that pointer's current selection clears it. Picker “reset” restores default's effective model or effort for that agent.
+Pressing `u`, `g`, or `p` on that pointer's current selection clears it and applies the resulting effective profile's orchestrator, if set. Picker “reset” restores default's effective model or effort for that agent. On `default`, `o` offers creating a new profile.
 
 New and cloned profiles are in-memory drafts until `s` and cannot be activated before saving. Saving an unedited new profile stores a full copy of default's effective model/effort for every listed agent; saved profiles are self-contained snapshots. Editing `default` offers creating a new profile instead; it cannot be renamed or deleted. Renaming carries session, project pin and global active pointers that resolve to the profile to its new name; deleting confirms and clears those pointers. Closing with unsaved changes asks for confirmation.
 

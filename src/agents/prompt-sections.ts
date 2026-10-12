@@ -532,10 +532,8 @@ function renderRoleText(
     .replaceAll(
       '{{progressInstruction}}',
       dialect.tools.progressTool
-        ? `Use \`${dialect.tools.progressTool}\` only when the work genuinely has multiple dependent steps.`
-        : dialect.harness === 'pi'
-          ? 'Use an available task/progress tool only when the work genuinely has multiple dependent steps. Follow its actual tool name and schema; if none is available, keep lightweight written progress without blocking work.'
-          : 'Keep written progress notes when the work genuinely has multiple dependent steps; no native planning tool is configured.',
+        ? `Track requests with 3+ steps, delegated units or SDD phases with \`${dialect.tools.progressTool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`
+        : 'Track requests with 3+ steps, delegated units or SDD phases in written progress notes; no native progress tool is configured. Skip single trivial or conversational turns.',
     )
     .replaceAll(
       '{{lifecycleStatusAction}}',

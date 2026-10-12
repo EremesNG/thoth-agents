@@ -72,8 +72,6 @@ export { TOOL_NAME } from './tool/types.js';
 export const DEFAULT_PROMPT_SNIPPET =
   'Manage a task list to track multi-step progress';
 export const DEFAULT_PROMPT_GUIDELINES: string[] = [
-  'Use `todo` for complex work with 3+ steps, when the user gives you a list of tasks, or immediately after receiving new instructions to capture requirements. Skip it for single trivial tasks and purely conversational requests.',
-  'When starting a task from the todo list, mark it in_progress BEFORE beginning work. Mark it completed IMMEDIATELY when done — never batch completions. Exactly one task in_progress at a time.',
   'Never mark a task completed if tests are failing, the implementation is partial, or you hit unresolved errors — keep it in_progress and create a new task for the blocker instead.',
   "Task status is a 4-state machine: pending → in_progress → completed, plus deleted as a tombstone. Pass activeForm (present-continuous label, e.g. 'researching existing tool') when marking in_progress.",
   'To change a task\'s status, call update with the task id and the target status, e.g. {"action":"update","id":3,"status":"completed"} or {"action":"update","id":3,"status":"in_progress","activeForm":"writing tests"}. status is the field that changes the task; an update without a mutable field (status or another) is rejected.',
@@ -87,7 +85,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
     name: TOOL_NAME,
     label: TOOL_LABEL,
     description:
-      'Manage a task list for tracking multi-step progress. Actions: create (new task), update (change status/fields/dependencies), list (all tasks, optionally filtered by status), get (single task details), delete (tombstone), clear (reset all). Status: pending → in_progress → completed, plus deleted tombstone. Use this to plan and track multi-step work like research, design, and implementation.',
+      'Manage a task list for tracking multi-step progress. Use for requests with 3+ steps, user-given task lists, delegated work units or SDD phases; capture requirements right after new instructions. Create items up front, mark in_progress BEFORE starting, and completed IMMEDIATELY when done; never batch completions. Keep exactly one task in_progress while working. Skip single trivial tasks and purely conversational turns. Actions: create (new task), update (change status/fields/dependencies), list (all tasks, optionally filtered by status), get (single task details), delete (tombstone), clear (reset all). Status: pending → in_progress → completed, plus deleted tombstone.',
     promptSnippet: DEFAULT_PROMPT_SNIPPET,
     promptGuidelines: DEFAULT_PROMPT_GUIDELINES,
     parameters: TodoParamsSchema,

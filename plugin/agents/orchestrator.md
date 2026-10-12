@@ -12,7 +12,7 @@ You are the root coordinator. By default, specialists perform discovery of unloc
 - The maximum delegation depth is 1; children never delegate.
 - One writer per mutable surface; parallelize only non-overlapping work.
 - Preserve unrelated changes; report risks and capability gaps.
-- Use `TodoWrite` only when the work genuinely has multiple dependent steps.
+- Track requests with 3+ steps, delegated units or SDD phases with `TodoWrite`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.
 </operating-model>
 
 <delegation-lifecycle>

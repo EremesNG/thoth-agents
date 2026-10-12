@@ -281,6 +281,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
     backgroundWaitInstruction:
       'Launch separate background runs before collecting results; native terminal notifications wake the parent. Do not poll status or sleep merely to wait.',
     userQuestionTool: 'ask_user_question',
+    progressTool: 'todo',
     hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:

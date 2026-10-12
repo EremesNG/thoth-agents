@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { describe, expect, it, vi } from 'vitest';
+import type { ModalSession } from '../../src/model-profiles/command.js';
 import {
   buildNonTuiModelProfilesMessage,
   createSubagentModelProfilesModal,
   runSubagentModelsCommand,
 } from '../../src/model-profiles-ui.js';
+import type { ThinkingEffort } from '../../src/types.js';
 import {
   AVAILABLE_MODELS,
   KEYS,
@@ -16,12 +18,23 @@ import {
 
 const theme = { fg: (_role: string, text: string) => text };
 
-function open(env: ProfileEnv, height = 40) {
+type Live = {
+  model?: { provider: string; id: string };
+  effort?: ThinkingEffort;
+};
+
+function open(
+  env: ProfileEnv,
+  height = 40,
+  session?: ModalSession,
+  availableModels = AVAILABLE_MODELS,
+) {
   const done = vi.fn();
   const workspace = env.workspace();
   const modal = createSubagentModelProfilesModal({
     workspace,
-    availableModels: AVAILABLE_MODELS,
+    session,
+    availableModels,
     theme,
     maxHeight: () => height,
     done,
@@ -176,8 +189,10 @@ describe('named model profile panel', () => {
 
     it('moves between agents with arrows and j/k', () => {
       const { press, text } = open(env());
-      expect(text()).toMatch(/›\s+analyst/);
+      expect(text()).toMatch(/›\s+orchestrator/);
       press(KEYS.down);
+      expect(text()).toMatch(/›\s+analyst/);
+      press('j');
       expect(text()).toMatch(/›\s+reviewer/);
       press('k');
       expect(text()).toMatch(/›\s+analyst/);
@@ -221,7 +236,7 @@ describe('named model profile panel', () => {
     it('intercepts g before the shell treats it as Home', () => {
       seed();
       const { press, text } = open(env());
-      press(KEYS.down); // agent cursor on reviewer
+      press(KEYS.down, KEYS.down); // agent cursor on reviewer
       press('g');
       expect(text()).toMatch(/›\s+reviewer/);
       expect(text()).toContain('Global active profile is default');
@@ -297,7 +312,7 @@ describe('named model profile panel', () => {
       seed();
       const { press, text, workspace } = open(env());
       press(KEYS.right, KEYS.right, KEYS.right); // solo (global)
-      press(KEYS.enter);
+      press(KEYS.down, KEYS.enter); // skip the orchestrator row
       expect(text()).toContain('Select model provider for analyst in solo');
       press(KEYS.down, KEYS.down); // reset, anthropic, openai
       press(KEYS.enter);
@@ -324,7 +339,7 @@ describe('named model profile panel', () => {
     it('resets an agent value to the default effective value', () => {
       seed();
       const { press, workspace } = open(env());
-      press(KEYS.right, KEYS.right, KEYS.right); // solo
+      press(KEYS.right, KEYS.right, KEYS.right, KEYS.down); // solo, analyst
       press('m', KEYS.enter); // "reset to default model"
       const solo = workspace.entries().find((entry) => entry.name === 'solo');
       // analyst default = orchestrator gpt-5.5, so no change versus saved
@@ -505,6 +520,126 @@ describe('named model profile panel', () => {
     });
   });
 
+  describe('combined model and effort editing', () => {
+    const models = [
+      {
+        provider: 'openai',
+        id: 'gpt-5.5',
+        label: 'GPT 5.5',
+        reasoning: true,
+        thinkingLevelMap: {
+          minimal: null,
+          low: null,
+          medium: 'medium',
+          high: 'high',
+          xhigh: null,
+          max: null,
+        },
+      },
+      {
+        provider: 'anthropic',
+        id: 'claude-x',
+        label: 'Claude X',
+        reasoning: false,
+      },
+    ];
+
+    function setup(row: 'orchestrator' | 'analyst', model: string) {
+      env().writeProfiles('global', {
+        profiles: {
+          editable: {
+            orchestrator: { model, effort: 'off' },
+            agents: { analyst: { model, effort: 'off' } },
+          },
+        },
+      });
+      const panel = open(
+        env(),
+        40,
+        { model: () => ({ provider: 'openai', id: 'gpt-5.5' }) },
+        models,
+      );
+      panel.press(KEYS.right);
+      if (row === 'analyst') panel.press(KEYS.down);
+      const entry = panel.workspace
+        .entries()
+        .find((e) => e.name === 'editable');
+      if (!entry) throw new Error('Missing editable profile');
+      const values = () =>
+        row === 'orchestrator' ? entry.orchestrator : entry.agents.analyst;
+      return { ...panel, values };
+    }
+
+    function expectReasoningChoices(text: string) {
+      expect(text).toContain('Choose effort');
+      for (const level of ['off', 'medium', 'high'])
+        expect(text).toMatch(new RegExp(`(?:›| ) +${level} +`));
+      for (const level of ['minimal', 'low', 'xhigh', 'max'])
+        expect(text).not.toMatch(new RegExp(`(?:›| ) +${level} +`));
+    }
+
+    it.each([
+      'orchestrator',
+      'analyst',
+    ] as const)('uses the newly selected reasoning model for %s and stages high', (row) => {
+      const { press, text, values, workspace } = setup(
+        row,
+        'anthropic/claude-x',
+      );
+      press(KEYS.enter, KEYS.down, KEYS.down, KEYS.enter, KEYS.enter);
+      expectReasoningChoices(text());
+      press(KEYS.down, KEYS.down, KEYS.enter); // off -> medium -> high
+      expect(values()).toEqual({
+        model: { provider: 'openai', id: 'gpt-5.5' },
+        effort: 'high',
+      });
+      expect(workspace.pendingCount()).toBe(1);
+      const saved = env().readFile('global').profiles.editable;
+      expect(
+        (row === 'orchestrator' ? saved.orchestrator : saved.agents.analyst)
+          .effort,
+      ).toBe('off');
+    });
+
+    it.each([
+      'orchestrator',
+      'analyst',
+    ] as const)('offers only reset/off after selecting a non-reasoning model for %s', (row) => {
+      const { press, text, values } = setup(row, 'openai/gpt-5.5');
+      press(KEYS.enter, KEYS.down, KEYS.enter, KEYS.enter);
+      expect(text()).toContain('Choose effort');
+      expect(text()).toContain(
+        row === 'orchestrator'
+          ? 'reset to session effort'
+          : 'reset to default effort',
+      );
+      expect(text()).toMatch(/› +off +/);
+      for (const level of ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+        expect(text()).not.toMatch(new RegExp(`(?:›| ) +${level} +`));
+      press(KEYS.enter);
+      expect(values()).toEqual({
+        model: { provider: 'anthropic', id: 'claude-x' },
+        effort: 'off',
+      });
+    });
+
+    it.each([
+      'orchestrator',
+      'analyst',
+    ] as const)('uses the fallback reasoning model after resetting the model for %s', (row) => {
+      const { press, text, values } = setup(row, 'anthropic/claude-x');
+      press(KEYS.enter, KEYS.enter); // reset model, then effort
+      expectReasoningChoices(text());
+      press(KEYS.down, KEYS.down, KEYS.enter);
+      expect(values()?.effort).toBe('high');
+      expect(values()?.model).toEqual(
+        row === 'orchestrator'
+          ? undefined
+          : { provider: 'openai', id: 'gpt-5.5' },
+      );
+    });
+  });
+
   describe('closing', () => {
     it('closes immediately when clean', () => {
       const { press, done } = open(env());
@@ -671,6 +806,254 @@ describe('named model profile panel', () => {
         'Closed model profiles; discarded 2 unsaved drafts/edits.',
       );
       expect(notify).toHaveBeenCalledWith(message, 'warning');
+    });
+  });
+
+  describe('orchestrator', () => {
+    const orch = (model: string, effort?: string) => ({
+      ...profile('openai/gpt-5.5', 'low'),
+      orchestrator: { model, ...(effort ? { effort } : {}) },
+    });
+
+    function seedOrchestrator() {
+      env().writeProfiles('global', {
+        profiles: {
+          solo: profile('openai/gpt-5.5', 'low'),
+          boss: orch('anthropic/claude-x', 'high'),
+        },
+      });
+    }
+
+    /** A mutable live session plus a scripted activation applier. */
+    function live(
+      initial: Live = {},
+      apply?: ModalSession['applyOrchestrator'],
+    ) {
+      const state: Live = {
+        model: { provider: 'openai', id: 'gpt-5.5' },
+        effort: 'low',
+        ...initial,
+      };
+      const session: ModalSession = {
+        model: () => state.model,
+        effort: () => state.effort,
+        applyOrchestrator: apply,
+      };
+      return { state, session };
+    }
+
+    const saved = () => env().readFile('global').profiles;
+    // default, boss, solo (global profiles sort by name)
+    const BOSS = [KEYS.right];
+    const SOLO = [KEYS.right, KEYS.right];
+
+    it('shows the orchestrator as the first row, "session model" when unset', () => {
+      seedOrchestrator();
+      const { press, text } = open(env(), 40, live().session);
+      const wide = text(110);
+      expect(wide).toMatch(/›\s+orchestrator\s+session model\s+session\s/);
+      expect(wide.indexOf('orchestrator')).toBeLessThan(
+        wide.indexOf('analyst'),
+      );
+      press(...BOSS);
+      expect(text(110)).toMatch(/orchestrator\s+anthropic\/claude-x\s+high/);
+      expect(text(70)).toMatch(/orchestrator\s+anthropic\/claude-x\s+high/);
+      expect(text(50)).toContain('orchestrator · anthropic/claude-x');
+      press(KEYS.left);
+      expect(text(50)).toContain('orchestrator · session model · session');
+    });
+
+    it('edits the orchestrator through the pickers, saves and resets it', () => {
+      seedOrchestrator();
+      const { press, text, workspace } = open(env(), 40, live().session);
+      press(...SOLO, KEYS.enter);
+      expect(text()).toContain(
+        'Select model provider for orchestrator in solo',
+      );
+      press(KEYS.down, KEYS.enter, KEYS.enter); // anthropic, claude-x
+      expect(text()).toContain('Choose effort');
+      press(KEYS.down, KEYS.down, KEYS.enter); // inherit, off, minimal
+      expect(workspace.pendingCount()).toBe(1);
+      expect(text()).toContain('solo* (global)');
+      expect(saved().solo.orchestrator).toBeUndefined();
+      press('s');
+      expect(saved().solo.orchestrator).toEqual({
+        model: 'anthropic/claude-x',
+        effort: 'minimal',
+      });
+      // reset in the pickers returns both fields to unset
+      press('m', KEYS.enter);
+      press('e', KEYS.up, KEYS.up, KEYS.enter);
+      expect(text()).toMatch(/orchestrator\s+session model\s+session\s/);
+      expect(workspace.pendingCount()).toBe(1);
+      press('s');
+      expect(saved().solo.orchestrator).toBeUndefined();
+    });
+
+    it('labels reset choices as the session value', () => {
+      seedOrchestrator();
+      const { press, text } = open(env(), 40, live().session);
+      press(...BOSS, 'm');
+      expect(text()).toContain('reset to session model');
+      press(KEYS.esc, 'e');
+      expect(text()).toContain('reset to session effort');
+    });
+
+    it('is read-only in default and offers a new profile', () => {
+      const { press, text, workspace } = open(env(), 40, live().session);
+      press(KEYS.enter);
+      expect(text()).toContain('default is read-only');
+      expect(text()).toContain('edit orchestrator');
+      press(KEYS.enter, ...'fresh'.split(''), KEYS.enter, KEYS.enter);
+      const draft = workspace.entries().find((e) => e.name === 'fresh');
+      expect(draft?.orchestrator).toBeUndefined();
+      press('s');
+      expect(env().readFile('project').profiles.fresh).not.toHaveProperty(
+        'orchestrator',
+      );
+    });
+
+    it('keeps the orchestrator across clone and rename', () => {
+      seedOrchestrator();
+      const { press, typeName, workspace } = open(env(), 40, live().session);
+      press(...BOSS, 'c');
+      typeName('copy');
+      press(KEYS.enter, 's'); // project scope, then save
+      const copied = { model: 'anthropic/claude-x', effort: 'high' };
+      expect(env().readFile('project').profiles.copy.orchestrator).toEqual(
+        copied,
+      );
+      press('r', '\u0015');
+      typeName('renamed');
+      const renamed = workspace.entries().find((e) => e.name === 'renamed');
+      expect(renamed?.orchestrator?.model?.id).toBe('claude-x');
+      expect(env().readFile('project').profiles.renamed.orchestrator).toEqual(
+        copied,
+      );
+    });
+
+    it('flags drift against the live session only when the effective orchestrator differs', () => {
+      seedOrchestrator();
+      env().store.setGlobalActive('boss');
+      const { state, session } = live();
+      const { text } = open(env(), 40, session);
+      expect(text()).toContain(
+        'drift: session openai/gpt-5.5 low ≠ profile anthropic/claude-x high',
+      );
+      state.model = { provider: 'anthropic', id: 'claude-x' };
+      state.effort = 'high';
+      expect(text()).not.toContain('drift:');
+    });
+
+    it('shows no drift without an effective orchestrator', () => {
+      seedOrchestrator();
+      env().store.setGlobalActive('solo');
+      expect(open(env(), 40, live().session).text()).not.toContain('drift:');
+    });
+
+    it('captures the live session as an unsaved draft edit, repeatedly with fresh values', async () => {
+      seedOrchestrator();
+      const apply = vi.fn(async () => ({
+        status: 'applied' as const,
+        message: 'Profile orchestrator applied.',
+      }));
+      const { state, session } = live({}, apply);
+      const { press, text, workspace } = open(env(), 40, session);
+      press(...SOLO, 'o');
+      expect(text()).toContain(
+        'Orchestrator of solo set to openai/gpt-5.5 low',
+      );
+      expect(workspace.pendingCount()).toBe(1);
+      expect(saved().solo.orchestrator).toBeUndefined();
+      press('s');
+      expect(saved().solo.orchestrator).toEqual({
+        model: 'openai/gpt-5.5',
+        effort: 'low',
+      });
+      // activating boss changes the live session; capture must read it fresh
+      press(KEYS.left, 'u');
+      state.model = { provider: 'anthropic', id: 'claude-x' };
+      state.effort = 'high';
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      press(KEYS.right, 'o');
+      expect(text()).toContain('set to anthropic/claude-x high');
+      press('s');
+      expect(saved().solo.orchestrator).toEqual({
+        model: 'anthropic/claude-x',
+        effort: 'high',
+      });
+    });
+
+    it('offers a new profile for o on default and errors without a session model', () => {
+      seedOrchestrator();
+      const first = open(env(), 40, live().session);
+      first.press('o');
+      expect(first.text()).toContain('capture the session model');
+      const none = open(env(), 40, live({ model: undefined }).session);
+      none.press(...SOLO, 'o');
+      expect(none.text()).toContain('No current session model to capture.');
+      expect(none.workspace.pendingCount()).toBe(0);
+    });
+
+    it.each([
+      'applied',
+      'clamped',
+      'unavailable',
+      'untouched',
+    ] as const)('shows the %s activation outcome after u', async (status) => {
+      seedOrchestrator();
+      const message = `outcome ${status}`;
+      const apply = vi.fn(async () => ({ status, message }));
+      const { press, text } = open(env(), 40, live({}, apply).session);
+      press(...BOSS, 'u');
+      await vi.waitFor(() =>
+        expect(text()).toContain(`Session now uses boss. ${message}`),
+      );
+    });
+
+    it('applies after g and p and after toggle-clear, and survives apply failures', async () => {
+      seedOrchestrator();
+      const apply = vi
+        .fn()
+        .mockResolvedValue({ status: 'untouched', message: 'left alone' });
+      const { press, text } = open(env(), 40, live({}, apply).session);
+      press(...BOSS, 'g');
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      press('p');
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
+      press('p'); // toggle-clear the pin
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() =>
+        expect(text()).toContain('Cleared the project pin'),
+      );
+      expect(text()).toContain('left alone');
+      apply.mockRejectedValueOnce(new Error('boom'));
+      press('u');
+      await vi.waitFor(() => expect(text()).toContain('boom'));
+    });
+
+    it('wires live accessors and the applier from the command context', async () => {
+      seedOrchestrator();
+      const apply = vi.fn(async () => ({
+        status: 'unavailable' as const,
+        message: 'Orchestrator x unavailable.',
+      }));
+      const select = vi
+        .fn()
+        .mockImplementationOnce(async (_t: string, c: string[]) =>
+          c.find((choice) => choice.includes('boss (global)')),
+        )
+        .mockImplementationOnce(async () => 'Use for this session');
+      const message = await runSubagentModelsCommand(
+        env().ctx({
+          ui: { select, notify: vi.fn() },
+          applyEffectiveProfileOrchestrator: apply,
+        }),
+      );
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(message).toBe(
+        'Session now uses boss. Orchestrator x unavailable.',
+      );
     });
   });
 });

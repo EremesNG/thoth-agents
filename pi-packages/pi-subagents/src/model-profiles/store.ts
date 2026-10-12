@@ -3,11 +3,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseEffort, parseModel } from '../config.js';
-import type { SubagentModelProfiles } from '../types.js';
+import type { SubagentModelProfile, SubagentModelProfiles } from '../types.js';
 
 export type ProfileScope = 'global' | 'project';
 export type NamedModelProfile = {
   agents: SubagentModelProfiles;
+  orchestrator?: SubagentModelProfile;
   [key: string]: unknown;
 };
 export type ModelProfilesDocument = {
@@ -46,6 +47,20 @@ function validateName(value: unknown, writable = false): string {
     throw new Error('default is a reserved virtual profile');
   return result;
 }
+function parseOverride(value: unknown, label: string): SubagentModelProfile {
+  if (!isObject(value)) throw new Error(`Invalid override for ${label}`);
+  const model = parseModel(value.model);
+  const effort = parseEffort(value.effort);
+  if (value.model !== undefined && !model)
+    throw new Error(`Invalid model for ${label}; expected provider/id`);
+  if (value.effort !== undefined && !effort)
+    throw new Error(`Invalid effort for ${label}`);
+  return {
+    ...value,
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+  };
+}
 function parseProfile(value: unknown): NamedModelProfile {
   if (!isObject(value) || !isObject(value.agents))
     throw new Error('Profile must contain an agents object');
@@ -54,19 +69,15 @@ function parseProfile(value: unknown): NamedModelProfile {
     const agent = key.trim().toLowerCase();
     if (!agent || !isObject(entry) || Object.hasOwn(agents, agent))
       throw new Error(`Invalid or duplicate agent: ${key}`);
-    const model = parseModel(entry.model);
-    const effort = parseEffort(entry.effort);
-    if (entry.model !== undefined && !model)
-      throw new Error(`Invalid model for ${agent}; expected provider/id`);
-    if (entry.effort !== undefined && !effort)
-      throw new Error(`Invalid effort for ${agent}`);
-    agents[agent] = {
-      ...entry,
-      ...(model ? { model } : {}),
-      ...(effort ? { effort } : {}),
-    };
+    agents[agent] = parseOverride(entry, agent);
   }
-  return { ...value, agents };
+  return {
+    ...value,
+    agents,
+    ...(value.orchestrator !== undefined
+      ? { orchestrator: parseOverride(value.orchestrator, 'orchestrator') }
+      : {}),
+  };
 }
 export function parseModelProfilesDocument(
   raw: unknown,
@@ -87,19 +98,28 @@ export function parseModelProfilesDocument(
     profiles,
   };
 }
+function serializeOverride(entry: SubagentModelProfile) {
+  return {
+    ...entry,
+    ...(entry.model
+      ? { model: `${entry.model.provider}/${entry.model.id}` }
+      : {}),
+  };
+}
 function serializeProfile(value: NamedModelProfile) {
   const agents = Object.fromEntries(
     Object.entries(value.agents).map(([agent, entry]) => [
       agent,
-      {
-        ...entry,
-        ...(entry.model
-          ? { model: `${entry.model.provider}/${entry.model.id}` }
-          : {}),
-      },
+      serializeOverride(entry),
     ]),
   );
-  return { ...value, agents };
+  return {
+    ...value,
+    agents,
+    ...(value.orchestrator
+      ? { orchestrator: serializeOverride(value.orchestrator) }
+      : {}),
+  };
 }
 
 export class ModelProfileStore {

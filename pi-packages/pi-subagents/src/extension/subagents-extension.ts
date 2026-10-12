@@ -14,6 +14,7 @@ import {
 } from '../atelier-metadata.js';
 import { readSubagentsConfig, subagentSourceWarnings } from '../config.js';
 import { SubagentManager } from '../manager.js';
+import { applyProfileOrchestrator } from '../model-profiles/orchestrator.js';
 import { SessionModelProfile } from '../model-profiles/session.js';
 import { ModelProfileStore } from '../model-profiles/store.js';
 import { runSubagentModelsCommand } from '../model-profiles-ui.js';
@@ -187,7 +188,7 @@ export default function subagentsExtension(pi: any): void {
     panelCtx = undefined;
   };
 
-  pi.on?.('session_start', async (_event: unknown, ctx: any) => {
+  pi.on?.('session_start', async (event: any, ctx: any) => {
     sessionModelProfile.restore(
       ctx?.sessionManager?.getBranch?.() ??
         ctx?.sessionManager?.getEntries?.() ??
@@ -211,13 +212,28 @@ export default function subagentsExtension(pi: any): void {
     const cwd = ctx?.cwd ?? process.cwd();
     manager.reconcileOrphanedTasks(cwd);
     taskStateEvents?.startSession(cwd, sessionId);
+    const store = new ModelProfileStore({ cwd, agentDir: ctx?.agentDir });
     for (const warning of [
       ...subagentSourceWarnings(cwd),
-      ...new ModelProfileStore({ cwd, agentDir: ctx?.agentDir }).resolve(
-        sessionModelProfile.get(),
-      ).warnings,
+      ...store.resolve(sessionModelProfile.get()).warnings,
     ])
       ctx?.ui?.notify?.(warning, 'warning');
+    // Full history matters: a branch reset can hide existing messages.
+    const history = ctx?.sessionManager?.getEntries?.();
+    const isNew =
+      event?.reason === 'new' ||
+      (event?.reason === 'startup' &&
+        Array.isArray(history) &&
+        !history.some((entry: any) => entry.type === 'message'));
+    if (isNew) {
+      const outcome = await applyProfileOrchestrator(
+        pi,
+        ctx,
+        store.resolve().profile,
+      );
+      if (outcome.status === 'unavailable' || outcome.status === 'clamped')
+        ctx?.ui?.notify?.(outcome.message, 'warning');
+    }
     panelCtx = ctx;
     registerSubagentsPanelOpener((taskId?: string) =>
       openPanel(panelCtx ?? ctx, taskId),
@@ -317,13 +333,27 @@ export default function subagentsExtension(pi: any): void {
   pi.registerCommand?.('subagents-model', {
     description: 'Configure subagent model profiles',
     handler: async (_args: string, ctx: any) =>
-      runSubagentModelsCommand({
-        ...ctx,
-        pi,
-        sessionModelProfile: sessionModelProfile.get(),
-        getSessionModelProfile: () => sessionModelProfile.get(),
-        setSessionModelProfile,
-      }),
+      // Preserve native context getters instead of freezing them with a spread.
+      runSubagentModelsCommand(
+        Object.assign(Object.create(ctx), {
+          pi,
+          getSessionModel: () => ctx.model,
+          getSessionThinkingLevel: () => pi.getThinkingLevel(),
+          getSessionModelProfile: () => sessionModelProfile.get(),
+          setSessionModelProfile,
+          applyEffectiveProfileOrchestrator: () => {
+            const store = new ModelProfileStore({
+              cwd: ctx.cwd ?? process.cwd(),
+              agentDir: ctx.agentDir,
+            });
+            return applyProfileOrchestrator(
+              pi,
+              ctx,
+              store.resolve(sessionModelProfile.get()).profile,
+            );
+          },
+        }),
+      ),
   });
   const checkToolsOwnership = registerToolsCommand(pi);
 }

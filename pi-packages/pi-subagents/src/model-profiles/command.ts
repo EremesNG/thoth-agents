@@ -17,7 +17,11 @@ import {
   panelHintRow,
   renderPanelFrame,
 } from '@thoth-agents/pi-core/panel';
-import type { ModelRef, ThinkingEffort } from '../types.js';
+import type {
+  ModelRef,
+  SubagentModelProfile,
+  ThinkingEffort,
+} from '../types.js';
 import { themeAccent } from '../ui/theme.js';
 import {
   type AgentRow,
@@ -39,6 +43,9 @@ import {
   buildNonTuiModelProfilesMessage,
   describeEntry,
   joinColumns,
+  ORCHESTRATOR_ROW_ID,
+  orchestratorDrift,
+  orchestratorValueText,
   profileEntryLabel,
   renderProfileSidebar,
   scopeTag,
@@ -126,8 +133,20 @@ type ModalComponent = {
   invalidate(): void;
 };
 
+/** Live session accessors; read at render/key time, never snapshotted. */
+export type ModalSession = {
+  model?: () => ModelRef | undefined;
+  effort?: () => ThinkingEffort | undefined;
+  /** Applies the effective profile's orchestrator to the session. */
+  applyOrchestrator?: () => Promise<{
+    status: 'applied' | 'clamped' | 'untouched' | 'unavailable';
+    message: string;
+  }>;
+};
+
 type ModalInput = {
   workspace: ModelProfileWorkspace;
+  session?: ModalSession;
   availableModels?: any[];
   modelContext?: ModelContext;
   tui?: { requestRender?: () => void };
@@ -145,6 +164,16 @@ type Prompt = {
   submit: (value: string) => string | undefined;
 };
 type Choice = { id: string; label: string };
+/** What the pickers edit: a subagent row or the profile's orchestrator. */
+type EditTarget = {
+  name: string;
+  values: SubagentModelProfile;
+  /** Model used to list supported efforts when `values` has none. */
+  fallbackModel?: ModelRef;
+  resetModel: string;
+  resetEffort: string;
+  apply: (edit: AgentEdit) => void;
+};
 
 const POINTER_LABEL: Record<ProfilePointer, string> = {
   session: 'session selection',
@@ -287,13 +316,47 @@ export function createSubagentModelProfilesModal(
       ),
     );
 
-  const applyEdit = (entry: ProfileEntry, row: AgentRow, edit: AgentEdit) =>
-    attempt(() => workspace.edit(entry, row.key, edit));
+  const liveModel = (): ModelRef | undefined => {
+    const model = input.session?.model?.();
+    return model ? { provider: model.provider, id: model.id } : undefined;
+  };
 
-  const effortPicker = (entry: ProfileEntry, row: AgentRow) => {
-    const values = workspace.valuesFor(entry, row);
+  const targetFor = (
+    entry: ProfileEntry,
+    id: string | undefined,
+  ): EditTarget | undefined => {
+    if (id === ORCHESTRATOR_ROW_ID)
+      return {
+        name: 'orchestrator',
+        get values() {
+          return entry.orchestrator ?? {};
+        },
+        fallbackModel: liveModel(),
+        resetModel: 'reset to session model',
+        resetEffort: 'reset to session effort',
+        apply: (edit) => workspace.editOrchestrator(entry, edit),
+      };
+    const row = rowOf(id);
+    return (
+      row && {
+        name: row.name,
+        get values() {
+          return workspace.valuesFor(entry, row);
+        },
+        resetModel: 'reset to default model',
+        resetEffort: 'reset to default effort',
+        apply: (edit) => workspace.edit(entry, row.key, edit),
+      }
+    );
+  };
+
+  const applyEdit = (target: EditTarget, edit: AgentEdit) =>
+    attempt(() => target.apply(edit));
+
+  const effortPicker = (entry: ProfileEntry, target: EditTarget) => {
+    const { values } = target;
     const choices = buildEffortChoices(
-      values.model,
+      values.model ?? target.fallbackModel,
       values.effort,
       input.availableModels ?? [],
       input.modelContext,
@@ -304,23 +367,21 @@ export function createSubagentModelProfilesModal(
         hints: () =>
           ['choose effort', 'enter: select', 'esc/q: back'].join(separator()),
         header: () => [
-          `profile: ${entry.name}${separator()}agent: ${row.name}`,
+          `profile: ${entry.name}${separator()}agent: ${target.name}`,
         ],
         rows: () =>
           choices.map((choice) => ({
             id: choice.value,
             label:
-              choice.value === 'inherit'
-                ? 'reset to default effort'
-                : choice.label,
+              choice.value === 'inherit' ? target.resetEffort : choice.label,
           })),
         onAction: (key, choice) => {
           if (key !== 'enter') return false;
           const effort = choices.find(
             (item) => item.value === choice?.id,
           )?.value;
-          if (effort === 'inherit') applyEdit(entry, row, { reset: 'effort' });
-          else if (effort) applyEdit(entry, row, { effort });
+          if (effort === 'inherit') applyEdit(target, { reset: 'effort' });
+          else if (effort) applyEdit(target, { effort });
           editor.showOverview();
           return true;
         },
@@ -334,7 +395,7 @@ export function createSubagentModelProfilesModal(
 
   const modelPicker = (
     entry: ProfileEntry,
-    row: AgentRow,
+    target: EditTarget,
     provider: string,
     thenEffort: boolean,
   ) => {
@@ -370,7 +431,7 @@ export function createSubagentModelProfilesModal(
           searchText(id).toLowerCase().includes(query),
         ).length;
         return [
-          `Select ${provider} model for ${row.name} in ${entry.name}`,
+          `Select ${provider} model for ${target.name} in ${entry.name}`,
           `provider: ${provider}${separator()}${filter ? `${count}/${models.length} match${count === 1 ? '' : 'es'}` : `${models.length} model${models.length === 1 ? '' : 's'}`}`,
         ];
       },
@@ -378,11 +439,11 @@ export function createSubagentModelProfilesModal(
         if (key !== 'enter') return false;
         const model = choice && modelsById.get(choice.id);
         if (model)
-          applyEdit(entry, row, {
+          applyEdit(target, {
             model: { provider: model.provider, id: model.id },
           });
         editor.showOverview();
-        if (model && thenEffort) effortPicker(entry, row);
+        if (model && thenEffort) effortPicker(entry, target);
         return true;
       },
     });
@@ -390,7 +451,7 @@ export function createSubagentModelProfilesModal(
 
   const providerPicker = (
     entry: ProfileEntry,
-    row: AgentRow,
+    target: EditTarget,
     thenEffort: boolean,
   ) =>
     editor.openPicker({
@@ -399,13 +460,13 @@ export function createSubagentModelProfilesModal(
       hints: () =>
         ['choose provider', 'enter: select', 'esc/q: back'].join(separator()),
       header: () => [
-        `Select model provider for ${row.name} in ${entry.name}`,
+        `Select model provider for ${target.name} in ${entry.name}`,
         ...(!providerNames.length
           ? ['No available models found; reset remains available.']
           : []),
       ],
       rows: () => [
-        { id: 'reset', label: 'reset to default model' },
+        { id: 'reset', label: target.resetModel },
         ...providerNames.map((provider) => ({
           id: `provider:${provider}`,
           label: provider,
@@ -414,13 +475,13 @@ export function createSubagentModelProfilesModal(
       onAction: (key, choice) => {
         if (key !== 'enter') return false;
         if (choice?.id === 'reset') {
-          applyEdit(entry, row, { reset: 'model' });
+          applyEdit(target, { reset: 'model' });
           editor.showOverview();
-          if (thenEffort) effortPicker(entry, row);
+          if (thenEffort) effortPicker(entry, target);
         } else if (choice)
           modelPicker(
             entry,
-            row,
+            target,
             choice.id.slice('provider:'.length),
             thenEffort,
           );
@@ -433,27 +494,43 @@ export function createSubagentModelProfilesModal(
     mode: 'both' | 'model' | 'effort',
   ) => {
     const entry = current();
-    const row = rowOf(agent);
-    if (!row) return;
-    if (!entry.scope) {
-      choose(
-        'default is read-only',
-        [
-          'Edits need a profile of their own.',
-          `Create a new profile from default to edit ${row.name}?`,
-        ],
-        [
-          { id: 'yes', label: 'Create a new profile from default' },
-          { id: 'no', label: 'Cancel' },
-        ],
-        (id) => {
-          if (id === 'yes') startDraft(entry, 'New');
-        },
-      );
-      return;
-    }
-    if (mode === 'effort') effortPicker(entry, row);
-    else providerPicker(entry, row, mode === 'both');
+    const target = targetFor(entry, agent);
+    if (!target) return;
+    if (!entry.scope)
+      return offerDraftFromDefault(entry, `edit ${target.name}`);
+    if (mode === 'effort') effortPicker(entry, target);
+    else providerPicker(entry, target, mode === 'both');
+  };
+
+  const offerDraftFromDefault = (entry: ProfileEntry, purpose: string) =>
+    choose(
+      'default is read-only',
+      [
+        'Edits need a profile of their own.',
+        `Create a new profile from default to ${purpose}?`,
+      ],
+      [
+        { id: 'yes', label: 'Create a new profile from default' },
+        { id: 'no', label: 'Cancel' },
+      ],
+      (id) => {
+        if (id === 'yes') startDraft(entry, 'New');
+      },
+    );
+
+  /** Copy the live session model/effort into the selected orchestrator. */
+  const captureSession = () => {
+    const entry = current();
+    if (!entry.scope)
+      return offerDraftFromDefault(entry, 'capture the session model');
+    const model = liveModel();
+    if (!model) throw new Error('No current session model to capture.');
+    const effort = input.session?.effort?.();
+    workspace.setOrchestrator(entry, { model, ...(effort ? { effort } : {}) });
+    notify(
+      `Orchestrator of ${entry.name} set to ${modelKey(model)}${effort ? ` ${effort}` : ''}; press s to save.`,
+      'warning',
+    );
   };
 
   const save = () => {
@@ -513,8 +590,26 @@ export function createSubagentModelProfilesModal(
 
   const use = (pointer: ProfilePointer) => {
     const entry = current();
-    notify(
-      activationMessage(pointer, entry, workspace.activate(entry, pointer)),
+    const message = activationMessage(
+      pointer,
+      entry,
+      workspace.activate(entry, pointer),
+    );
+    notify(message);
+    input.session?.applyOrchestrator?.().then(
+      (outcome) => {
+        const warn =
+          outcome.status === 'unavailable' || outcome.status === 'clamped';
+        notify(`${message} ${outcome.message}`, warn ? 'warning' : 'success');
+        input.tui?.requestRender?.();
+      },
+      (error) => {
+        notify(
+          `${message} ${error instanceof Error ? error.message : String(error)}`,
+          'error',
+        );
+        input.tui?.requestRender?.();
+      },
     );
   };
 
@@ -528,14 +623,51 @@ export function createSubagentModelProfilesModal(
     };
   };
 
+  const tableLabel = (
+    name: string,
+    model: string,
+    effort: string,
+    context: ListEditorContext,
+  ): string => {
+    if (context.layout === 'compact')
+      return `${name}${separator()}${model}${separator()}${effort}`;
+    const columns = tableColumns(context);
+    return `${padPanelText(name, columns.name)}  ${padPanelText(model, columns.model)}  ${padPanelText(effort, columns.effort)}`;
+  };
+
   const agentLabel = (row: AgentRow, context: ListEditorContext): string => {
     const values = workspace.valuesFor(current(), row);
-    const model = modelText(values.model);
-    const effort = values.effort ?? 'unresolved';
-    if (context.layout === 'compact')
-      return `${row.name}${separator()}${model}${separator()}${effort}`;
-    const columns = tableColumns(context);
-    return `${padPanelText(row.name, columns.name)}  ${padPanelText(model, columns.model)}  ${padPanelText(effort, columns.effort)}`;
+    return tableLabel(
+      row.name,
+      modelText(values.model),
+      values.effort ?? 'unresolved',
+      context,
+    );
+  };
+
+  const orchestratorLabel = (context: ListEditorContext): string => {
+    const text = orchestratorValueText(current().orchestrator, modelText);
+    return tableLabel('orchestrator', text.model, text.effort, context);
+  };
+
+  const orchestratorDirty = (): boolean => {
+    const entry = current();
+    const a = entry.orchestrator;
+    const b = entry.baseOrchestrator;
+    return (
+      !!entry.base &&
+      (a?.model?.provider !== b?.model?.provider ||
+        a?.model?.id !== b?.model?.id ||
+        a?.effort !== b?.effort)
+    );
+  };
+
+  const driftRows = (): PanelRowInput[] => {
+    const text = orchestratorDrift(workspace.effectiveOrchestrator(), {
+      model: liveModel(),
+      effort: input.session?.effort?.(),
+    });
+    return text ? [{ text, tone: 'warning' }] : [];
   };
 
   const rowDirty = (row: AgentRow): boolean => {
@@ -594,20 +726,19 @@ export function createSubagentModelProfilesModal(
         const total = entries().length;
         return [
           panelHintRow(
-            [
-              'n new',
-              'c clone',
-              's save',
-              'r rename',
-              'd delete',
-              'u session',
-              'g global',
-              'p pin',
-            ].join(separator()),
+            ['n new', 'c clone', 's save', 'r rename', 'd delete'].join(
+              separator(),
+            ),
+          ),
+          panelHintRow(
+            ['u session', 'g global', 'p pin', 'o capture session model'].join(
+              separator(),
+            ),
           ),
           {
             text: `profile ${profileIndex + 1}/${total}${separator()}${describeEntry(entry, workspace.markers(entry), input.theme)}`,
           },
+          ...driftRows(),
           ...(stacked ? stackedProfileRows() : []),
           panelHintRow(
             context.layout === 'wide'
@@ -616,20 +747,30 @@ export function createSubagentModelProfilesModal(
           ),
         ];
       },
-      rows: (): ListEditorRow[] =>
-        workspace.rows.map((row) => ({
+      rows: (): ListEditorRow[] => [
+        {
+          id: ORCHESTRATOR_ROW_ID,
+          dirty: orchestratorDirty(),
+          label: orchestratorLabel,
+        },
+        ...workspace.rows.map((row) => ({
           id: row.key,
           dirty: rowDirty(row),
-          label: (context) => agentLabel(row, context),
+          label: (context: ListEditorContext) => agentLabel(row, context),
         })),
+      ],
       footer: ({ index }) => {
-        const row = workspace.rows[index];
+        const row = workspace.rows[index - 1];
         const values = row && workspace.valuesFor(current(), row);
+        const detail =
+          index === 0
+            ? `selected: ${themeAccent(input.theme, 'orchestrator')}${separator()}applied on activation and new sessions; unset keeps the session model`
+            : row && values
+              ? `selected: ${themeAccent(input.theme, row.name)}${separator()}model: ${modelText(values.model)}${separator()}effort: ${values.effort ?? 'unresolved'}`
+              : 'selected: (none)';
         return [
           ...(status ? [{ text: status.text, tone: status.tone }] : []),
-          row && values
-            ? `selected: ${themeAccent(input.theme, row.name)}${separator()}model: ${modelText(values.model)}${separator()}effort: ${values.effort ?? 'unresolved'}`
-            : 'selected: (none)',
+          detail,
         ];
       },
       onAction: (key, choice) => {
@@ -639,6 +780,7 @@ export function createSubagentModelProfilesModal(
         else if (key === 'enter') editAgent(choice?.id, 'both');
         else if (key === 'm') editAgent(choice?.id, 'model');
         else if (key === 'e') editAgent(choice?.id, 'effort');
+        else if (key === 'o') attempt(captureSession);
         else if (key === 'n') startDraft(entries()[0], 'New');
         else if (key === 'c') attempt(() => startDraft(current(), 'Clone'));
         else if (key === 's') attempt(save);
@@ -723,6 +865,17 @@ export function createSubagentModelProfilesModal(
   };
 }
 
+function sessionAccessors(ctx: any): ModalSession {
+  return {
+    model: () => ctx.getSessionModel?.(),
+    effort: () => ctx.getSessionThinkingLevel?.(),
+    applyOrchestrator:
+      typeof ctx.applyEffectiveProfileOrchestrator === 'function'
+        ? () => ctx.applyEffectiveProfileOrchestrator()
+        : undefined,
+  };
+}
+
 async function getAvailableModels(ctx: any): Promise<any[]> {
   try {
     const available = await ctx?.modelRegistry?.getAvailable?.();
@@ -767,11 +920,13 @@ async function selectActivation(ctx: any, workspace: ModelProfileWorkspace) {
   ]);
   const pointer = actions.find(([label]) => label === action)?.[1];
   if (!pointer) return 'Cancelled. No model profile changes.';
-  return activationMessage(
+  const message = activationMessage(
     pointer,
     entry,
     workspace.activate(entry, pointer, false),
   );
+  const outcome = await ctx.applyEffectiveProfileOrchestrator?.();
+  return outcome ? `${message} ${outcome.message}` : message;
 }
 
 export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
@@ -806,6 +961,7 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
       (tui, theme, _keybindings, done, host) =>
         createSubagentModelProfilesModal({
           workspace,
+          session: sessionAccessors(ctx),
           availableModels,
           modelContext: ctx,
           tui,

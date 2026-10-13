@@ -171,6 +171,157 @@ describe('subagent_continue tool', () => {
     expect(renderedExpanded).not.toContain(`id: ${taskId}`);
   });
 
+  it('hands off a cleanup-waiting continuation before delivering a same-session question', async () => {
+    await enableContinue();
+    env.writeAgent('analyst');
+    env.writeAgent('reviewer');
+    const fs = await import('node:fs');
+    const nestedSessionPath = `${env.tmp}/cleanup-resume-session.jsonl`;
+    fs.writeFileSync(nestedSessionPath, JSON.stringify({ type: 'session' }));
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let ask!: () => void;
+    const askGate = new Promise<void>((resolve) => {
+      ask = resolve;
+    });
+    let finishContinuation!: () => void;
+    const continuationGate = new Promise<void>((resolve) => {
+      finishContinuation = resolve;
+    });
+    const events: string[] = [];
+    const deliverQuestion = vi.fn(() => {
+      events.push('question');
+    });
+    const manager = env.createManager(
+      async ({
+        definition,
+        continuation,
+        orchestratorChannel,
+        signal,
+        onActivity,
+      }) => {
+        if (definition.name === 'analyst') {
+          await askGate;
+          await orchestratorChannel!.askQuestion('Approve?', signal);
+        } else if (continuation) {
+          await continuationGate;
+        } else {
+          onActivity?.({
+            message: 'session ready',
+            nested_session_path: nestedSessionPath,
+          } as any);
+          await cleanupGate;
+        }
+        return {
+          result: 'finished',
+          model: 'mock/model',
+          fallback_used: false,
+          nested_session_path: nestedSessionPath,
+        };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (task, question) =>
+        sendSubagentQuestionMessage(
+          { sendMessage: deliverQuestion },
+          task,
+          question,
+        ),
+    );
+    // The session manager takes precedence over a conflicting convenience ID.
+    const ctx = {
+      cwd: env.tmp,
+      sessionId: 'wrong',
+      sessionManager: { getSessionId: () => 'parent' },
+    };
+    const initial = await manager.run(
+      { agent: 'reviewer', task: 'initial', mode: 'background' },
+      ctx,
+    );
+    const taskId = initial.task_ids[0]!;
+    let runTool: any;
+    let continueTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+          if (tool.name === 'subagent_continue') continueTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    let continued: Promise<any> | undefined;
+    let asking: Promise<any> | undefined;
+    try {
+      await vi.waitFor(() =>
+        expect(manager.getTask(taskId)?.nested_session_path).toBe(
+          nestedSessionPath,
+        ),
+      );
+      manager.cancel(taskId, 'cancelled for continuation');
+      continued = continueTool
+        .execute(
+          'continue',
+          { task_id: taskId, prompt: 'resume', mode: 'task' },
+          undefined,
+          undefined,
+          ctx,
+        )
+        .then((result: any) => {
+          events.push('continued');
+          return result;
+        });
+      asking = runTool
+        .execute(
+          'run',
+          { agent: 'analyst', task: 'ask', mode: 'task' },
+          undefined,
+          undefined,
+          ctx,
+        )
+        .then((result: any) => {
+          events.push('asking');
+          return result;
+        });
+      await vi.waitFor(() =>
+        expect(
+          manager.listTasks(env.tmp).find((task) => task.agent === 'analyst')
+            ?.status,
+        ).toBe('running'),
+      );
+      ask();
+      await vi.waitFor(() => expect(events).toContain('asking'));
+      expect(deliverQuestion).not.toHaveBeenCalled();
+      releaseCleanup();
+      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
+      expect(events.indexOf('continued')).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf('continued')).toBeLessThan(
+        events.indexOf('question'),
+      );
+      expect(await continued).toMatchObject({
+        terminate: true,
+        details: { mode: 'background', task_ids: [taskId] },
+      });
+      expect(manager.getTask(taskId)).toMatchObject({
+        mode: 'background',
+        effective_mode: 'background',
+        attempt: 2,
+      });
+    } finally {
+      ask();
+      releaseCleanup();
+      finishContinuation();
+      await manager.close();
+      await Promise.all([continued, asking]);
+    }
+  });
+
   it('returns the continued task-mode question handoff before delivering the question', async () => {
     await enableContinue();
     env.writeAgent('analyst');

@@ -35,6 +35,113 @@ function occurrences(text, needle) {
 }
 
 describe("PromptCaptures", () => {
+	it("forwards selected tools' guidelines in selected tool order", () => {
+		const captures = new PromptCaptures();
+		captures.record("guidelines", capture({
+			selectedTools: ["mem_save", "mem_recall"],
+			toolGuidelines: { mem_recall: ["Recall before exploring."], mem_save: ["Save verified findings."] },
+		}));
+		assert.equal(project(captures, "guidelines"),
+			"<tool_guidelines>\n- Save verified findings.\n- Recall before exploring.\n</tool_guidelines>");
+	});
+	it("excludes hidden and unselected tools and trims, deduplicates and skips empty guidelines", () => {
+		const captures = new PromptCaptures();
+		captures.record("filtered", capture({
+			selectedTools: ["mem_recall", "hidden", "mem_save"],
+			hiddenTools: ["hidden"],
+			toolGuidelines: {
+				mem_recall: ["  Recall first. \n", "", " \t", "Recall first."],
+				hidden: ["Hidden guidance."],
+				unselected: ["Unselected guidance."],
+				mem_save: ["Recall first.", " Save findings. "],
+			},
+			promptGuidelines: ["Do not forward promptGuidelines."],
+		}));
+		assert.equal(project(captures, "filtered"),
+			"<tool_guidelines>\n- Recall first.\n- Save findings.\n</tool_guidelines>");
+	});
+
+	it("omits tool guidelines when none apply", () => {
+		const captures = new PromptCaptures();
+		for (const [i, options] of [
+			{},
+			{ selectedTools: ["read"] },
+			{ toolGuidelines: { read: ["Read carefully."] } },
+			{ selectedTools: ["read"], hiddenTools: ["read"], toolGuidelines: { read: ["Read carefully."] } },
+			{ selectedTools: ["read"], toolGuidelines: { read: [" "] } },
+		].entries()) {
+			captures.record(`empty ${i}`, capture(options));
+			assert.equal(project(captures, `empty ${i}`), undefined);
+		}
+	});
+
+	it("deduplicates tool guidelines across inherited captures and retains child-only guidance", () => {
+		const captures = new PromptCaptures();
+		captures.record(PARENT_KEY, capture({
+			selectedTools: ["mem_recall"],
+			toolGuidelines: { mem_recall: ["Recall first."] },
+		}));
+		captures.record(CHILD_KEY, capture({
+			custom: `${PARENT_KEY}${CHILD_SUFFIX}`,
+			selectedTools: ["mem_save"],
+			toolGuidelines: { mem_save: [" Recall first. ", "Save verified findings."] },
+		}));
+		const result = project(captures, CHILD_KEY);
+		assert.equal(occurrences(result, "- Recall first."), 1);
+		assert.equal(occurrences(result, "- Save verified findings."), 1);
+		assert.ok(result.startsWith(project(captures, PARENT_KEY)));
+	});
+
+	it("lets explicit rules overrides replace generated tool guidance, including empty overrides", () => {
+		const captures = new PromptCaptures();
+		for (const rules of ["User rules.", ""]) {
+			captures.record(`override ${rules}`, capture({
+				sections: { rules },
+				selectedTools: ["mem_recall"],
+				toolGuidelines: { mem_recall: ["Recall first."] },
+			}));
+			assert.equal(project(captures, `override ${rules}`), rules
+				? '<pi_prompt_section name="rules">\nUser rules.\n</pi_prompt_section>'
+				: undefined);
+		}
+	});
+
+	it("deduplicates repeated inherited tool guidance and custom section blocks", () => {
+		const captures = new PromptCaptures();
+		const guidelines = { selectedTools: ["read"], toolGuidelines: { read: ["Read carefully."] } };
+		captures.record(PARENT_KEY, capture(guidelines));
+		captures.record("repeated guidelines", capture({ custom: `${PARENT_KEY}\nseparator\n${PARENT_KEY}`, ...guidelines }));
+		assert.equal(occurrences(project(captures, "repeated guidelines"), "- Read carefully."), 1);
+		const block = "<tool_guidelines>\n- Read carefully.\n</tool_guidelines>";
+		captures.record("custom guidelines", capture({ custom: block, ...guidelines }));
+		assert.equal(project(captures, "custom guidelines"), block);
+		captures.record("section guidelines", capture({ sections: { tool_guidelines: "User guidance." }, ...guidelines }));
+		assert.equal(project(captures, "section guidelines"), "<tool_guidelines>\nUser guidance.\n</tool_guidelines>");
+	});
+
+	it("snapshots tool options and refreshes guidelines on re-record", () => {
+		const captures = new PromptCaptures();
+		const options = {
+			selectedTools: ["read"], hiddenTools: [], toolGuidelines: { read: ["Read carefully."] },
+		};
+		captures.record("snapshot", capture(options));
+		options.selectedTools.length = 0;
+		options.hiddenTools.push("read");
+		options.toolGuidelines.read[0] = "Changed guidance.";
+		assert.equal(project(captures, "snapshot"), "<tool_guidelines>\n- Read carefully.\n</tool_guidelines>");
+		captures.record("snapshot", capture(options));
+		assert.equal(project(captures, "snapshot"), undefined);
+	});
+
+	it("applies the sendable-prompt guard to generated tool guidelines", () => {
+		const captures = new PromptCaptures();
+		captures.record("unsafe guidelines", capture({
+			selectedTools: ["read"],
+			toolGuidelines: { read: ["Consult docs/custom-provider.md and docs/packages.md."] },
+		}));
+		assert.throws(() => project(captures, "unsafe guidelines"), /Found: .* in the tool_guidelines section/);
+	});
+
 	it("keeps parent and child captures isolated", () => {
 		const captures = new PromptCaptures();
 		captures.record(PARENT_KEY, capture({ contextFiles: [{ path: "/AGENTS.md", content: "parent rules" }] }));

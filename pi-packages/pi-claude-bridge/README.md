@@ -172,7 +172,7 @@ When filing a bug about a session-resume failure (e.g. "No conversation found"),
 
 ### Which injection routes reach Claude Code
 
-The bridge forwards pi's structured parts — project context files, skills, custom prompt, appended instructions — and drops the rest. Measured against the request body (`diag/capture-proxy.mjs`):
+The bridge forwards pi's structured parts — project context files, skills, custom prompt, appended instructions, and selected non-hidden tools' `toolGuidelines` — and drops the rest. Tool guidelines are trimmed, deduplicated bullets in a final `<tool_guidelines>` section (omitted when empty). An explicit `sections.rules` override replaces generated tool guidance; a custom `sections.tool_guidelines` override also takes precedence. Pi's default rules/tool sections and `promptGuidelines` are not forwarded; explicit section overrides are preserved. Measured against the request body (`diag/capture-proxy.mjs`):
 
 | Route | Reaches Claude Code |
 |---|---|

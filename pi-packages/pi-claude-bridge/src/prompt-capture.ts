@@ -10,6 +10,9 @@ export type PromptCaptureInput = {
 	custom?: string;
 	append?: string;
 	sections?: Record<string, string>;
+	selectedTools?: string[];
+	hiddenTools?: string[];
+	toolGuidelines?: Record<string, string[]>;
 	contextFiles: { path: string; content: string }[];
 	skills: Skill[];
 };
@@ -87,6 +90,11 @@ export class PromptCaptures {
 		capture.custom = input.custom;
 		capture.append = input.append;
 		capture.sections = { ...input.sections };
+		capture.selectedTools = input.selectedTools ? [...input.selectedTools] : undefined;
+		capture.hiddenTools = input.hiddenTools ? [...input.hiddenTools] : undefined;
+		capture.toolGuidelines = Object.fromEntries(
+			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
+		);
 		capture.contextFiles = input.contextFiles.map((file) => ({ ...file }));
 		capture.skills = [...input.skills];
 		capture.source = source;
@@ -303,7 +311,7 @@ export function projectPromptCapture(
 	capture: PromptCapture,
 	options: { skillReadTool: SkillReadTool },
 ): string | undefined {
-	return projectCapture(capture, options, new Set());
+	return projectCapture(capture, options, new Set(), new Set());
 }
 
 /** Skills visible through inherited prompts, ancestor first and once per file. */
@@ -335,6 +343,7 @@ function projectCapture(
 	capture: PromptCapture,
 	options: { skillReadTool: SkillReadTool },
 	visiting: Set<PromptCapture>,
+	seenGuidelines: Set<string>,
 ): string | undefined {
 	if (visiting.has(capture)) throw new Error("Cyclic prompt inheritance");
 	visiting.add(capture);
@@ -351,11 +360,10 @@ function projectCapture(
 			return true;
 		});
 
-		const custom = projectCustom(capture, options, visiting);
+		const custom = projectCustom(capture, options, visiting, seenGuidelines);
 		const parts: PromptPart[] = [];
 		const sections = capture.sections ?? {};
-		const ownSection = (name: string): string | undefined => {
-			const content = sections[name];
+		const ownSection = (name: string, content = sections[name]): string | undefined => {
 			if (!content) return undefined;
 			const rendered = renderSection(name, content);
 			// Custom text may already carry this section, either from an inherited
@@ -385,6 +393,23 @@ function projectCapture(
 			const text = ownSection(name);
 			if (text) parts.push({ label: `the ${name} section`, text });
 		}
+		const guidelines: string[] = [];
+		// An explicit rules override replaces Pi's generated rules, including tool guidance.
+		const selectedTools = sections.rules !== undefined || sections.tool_guidelines !== undefined
+			? []
+			: capture.selectedTools ?? [];
+		for (const name of selectedTools) {
+			if (capture.hiddenTools?.includes(name)) continue;
+			for (const guideline of capture.toolGuidelines?.[name] ?? []) {
+				const trimmed = guideline.trim();
+				if (trimmed && !seenGuidelines.has(trimmed)) {
+					guidelines.push(trimmed);
+					seenGuidelines.add(trimmed);
+				}
+			}
+		}
+		const toolGuidelines = ownSection("tool_guidelines", guidelines.map((line) => `- ${line}`).join("\n"));
+		if (toolGuidelines) parts.push({ label: "the tool_guidelines section", text: toolGuidelines });
 		assertSendablePrompt(parts, capture);
 		return parts.length > 0 ? parts.map((part) => part.text).join("\n\n") : undefined;
 	} finally {
@@ -431,6 +456,7 @@ function projectCustom(
 	capture: PromptCapture,
 	options: { skillReadTool: SkillReadTool },
 	visiting: Set<PromptCapture>,
+	seenGuidelines: Set<string>,
 ): string | undefined {
 	if (!capture.custom || capture.inherited.length === 0) return capture.custom;
 
@@ -438,7 +464,7 @@ function projectCustom(
 	let cursor = 0;
 	for (const edge of capture.inherited) {
 		result += capture.custom.slice(cursor, edge.start);
-		result += projectCapture(edge.parent, options, visiting) ?? "";
+		result += projectCapture(edge.parent, options, visiting, seenGuidelines) ?? "";
 		cursor = edge.end;
 	}
 	return result + capture.custom.slice(cursor);

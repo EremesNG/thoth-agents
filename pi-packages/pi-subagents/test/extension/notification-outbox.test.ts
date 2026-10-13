@@ -84,6 +84,20 @@ async function fixture() {
     emit,
     sendMessage,
     complete,
+    attention: (id: string) => {
+      const value = {
+        ...task(id, 'running'),
+        attempt: 1,
+        timeout_deadline_generation: 1,
+        timeout_deadline_at: Date.now() + 200,
+        timeout_extensions_used: 0,
+        timeout_max_extensions: 3,
+      };
+      (manager as any).tasks.set(id, value);
+      (manager as any).deadlines.set(id, {});
+      (manager as any).onTimeoutAttention(value, env.tmp, 1, 1);
+      return value;
+    },
     ask,
     busy: () => {
       idle = false;
@@ -102,6 +116,42 @@ async function fixture() {
 }
 
 describe('parent notification outbox', () => {
+  it('holds attention with followUp delivery and drops stale deadline, attempt, status or session', async () => {
+    const host = await fixture();
+    try {
+      host.busy();
+      host.attention('valid');
+      host.manager.reportProgress(
+        'valid',
+        'late checkpoint received while held',
+      );
+      host.attention('extended').timeout_deadline_generation = 2;
+      host.attention('continued').attempt = 2;
+      host.attention('stopped').status = 'stopping';
+      host.attention('foreign').session_id = 'other';
+      expect(host.sendMessage).not.toHaveBeenCalled();
+      await host.settle();
+      expect(host.sendMessage).toHaveBeenCalledOnce();
+      expect(host.sendMessage.mock.calls[0][0]).toMatchObject({
+        customType: 'subagent-attention',
+      });
+      expect(host.sendMessage.mock.calls[0][0].content).toContain(
+        'subagent_extend',
+      );
+      expect(host.sendMessage.mock.calls[0][0].content).toContain(
+        'late checkpoint received while held',
+      );
+      expect(host.sendMessage.mock.calls[0][1]).toEqual({
+        triggerTurn: true,
+        deliverAs: 'followUp',
+      });
+      await host.settle();
+      expect(host.sendMessage).toHaveBeenCalledOnce();
+    } finally {
+      await host.emit('session_shutdown');
+    }
+  });
+
   it('sends immediately during compaction-only busy state without another agent run', async () => {
     const host = await fixture();
     try {

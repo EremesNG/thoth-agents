@@ -404,7 +404,9 @@ describe('subagent_run tool', () => {
       ]);
       const timerCount = vi.getTimerCount();
       controller.abort();
-      expect(vi.getTimerCount()).toBe(timerCount - 1);
+      // Abort clears the heartbeat and both execution-deadline timers
+      // immediately, even while runner cleanup remains pending.
+      expect(vi.getTimerCount()).toBe(timerCount - 3);
       const abortedUpdateCount = onUpdate.mock.calls.length;
       await vi.advanceTimersByTimeAsync(1000);
       expect(onUpdate).toHaveBeenCalledTimes(abortedUpdateCount);

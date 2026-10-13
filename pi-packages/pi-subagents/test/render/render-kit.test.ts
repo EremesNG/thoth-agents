@@ -69,7 +69,7 @@ describe('public subagent tool shells', () => {
     ].flatMap((state) =>
       [false, true].map((expanded) => ({ ...state, expanded })),
     ),
-  )('renders all nine tools with one uniform $role shell and discovers KIT on every render', ({
+  )('renders all ten tools with one uniform $role shell and discovers KIT on every render', ({
     isPartial,
     isError,
     role,
@@ -85,7 +85,7 @@ describe('public subagent tool shells', () => {
       env.createManager(env.mockRunner()),
       env.tmp,
     );
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(10);
     const task = {
       id: 't1',
       agent: 'worker',

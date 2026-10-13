@@ -2,6 +2,7 @@ import { readSubagentsConfig } from '../config.js';
 import type { SubagentManager } from '../manager.js';
 import { createSubagentCancelTool } from './subagent-cancel.js';
 import { createSubagentContinueTool } from './subagent-continue.js';
+import { createSubagentExtendTool } from './subagent-extend.js';
 import { createSubagentListAgentsTool } from './subagent-list-agents.js';
 import { createSubagentListTasksTool } from './subagent-list-tasks.js';
 import { createSubagentReplyTool } from './subagent-reply.js';
@@ -24,11 +25,12 @@ export function registerSubagentTools(
   registerTool(createSubagentRunTool(manager, pi));
   if (config.enable_continue)
     registerTool(createSubagentContinueTool(manager, pi));
-  registerTool(createSubagentStatusTool(manager));
-  registerTool(createSubagentResultTool(manager));
-  registerTool(createSubagentListTasksTool(manager));
-  registerTool(createSubagentCancelTool(manager));
+  registerTool(createSubagentStatusTool(manager, pi));
+  registerTool(createSubagentResultTool(manager, pi));
+  registerTool(createSubagentListTasksTool(manager, pi));
+  registerTool(createSubagentCancelTool(manager, pi));
   registerTool(createSubagentSendMessageTool(manager));
+  registerTool(createSubagentExtendTool(manager));
   if (config.enable_ask_orchestrator)
     registerTool(createSubagentReplyTool(manager));
 }

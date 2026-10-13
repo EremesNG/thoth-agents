@@ -3,6 +3,7 @@ import extension, {
   completionMessage,
   sendSubagentCompletionMessage,
 } from '../../index.js';
+import { continuationAvailable } from '../../src/continuation-availability.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
@@ -17,12 +18,15 @@ describe('completion message render', () => {
     { case: 'running', status: 'running', result: 'partial response' },
     { case: 'error-only', status: 'failed', error: 'execution timed out' },
   ])('marks $case completion content without displaying the marker', (task) => {
-    const content = completionMessage({
-      ...task,
-      id: 'subtask_marker',
-      agent: 'analyst',
-      cwd: env.tmp,
-    });
+    const content = completionMessage(
+      {
+        ...task,
+        id: 'subtask_marker',
+        agent: 'analyst',
+        cwd: env.tmp,
+      },
+      continuationAvailable(env.tmp),
+    );
     expect(content.split('\n')[0]).toBe(notificationMarker);
     const responseHeading =
       task.status === 'completed'
@@ -80,27 +84,74 @@ describe('completion message render', () => {
     }
   });
 
+  it.each([
+    { enabled: true, registered: true, stored: undefined, available: true },
+    { enabled: false, registered: true, stored: true, available: false },
+    { enabled: true, registered: false, stored: true, available: false },
+  ])('keeps timeout availability and resume guidance consistent ($enabled/$registered)', async ({
+    enabled,
+    registered,
+    stored,
+    available,
+  }) => {
+    const fs = await import('node:fs');
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents.json`,
+      JSON.stringify({ enable_continue: enabled }),
+    );
+    const sendMessage = vi.fn();
+    sendSubagentCompletionMessage(
+      {
+        sendMessage,
+        getAllTools: () => (registered ? [{ name: 'subagent_continue' }] : []),
+      },
+      {
+        id: 'subtask_timeout',
+        agent: 'analyst',
+        status: 'failed',
+        cwd: '/wrong-task-cwd',
+        error: 'total timeout',
+        error_metadata: { category: 'total_timeout', message: 'total timeout' },
+        timeout_continue_enabled: stored,
+      },
+      env.tmp,
+    );
+    const message = sendMessage.mock.calls[0][0];
+    const line = `subagent_continue: ${available ? 'enabled' : 'disabled'}`;
+    expect(message.content).toContain(line);
+    expect(message.details.full_result).toContain(line);
+    expect(
+      message.content.includes('can be resumed with `subagent_continue`'),
+    ).toBe(available);
+  });
+
   it('suppresses continuation guidance in failed and cancelled completion messages when continuation is disabled', () => {
     for (const status of ['failed', 'cancelled']) {
-      const message = completionMessage({
-        id: `subtask_${status}`,
-        agent: 'analyst',
-        status,
-        error: `${status} result`,
-        cwd: env.tmp,
-      });
+      const message = completionMessage(
+        {
+          id: `subtask_${status}`,
+          agent: 'analyst',
+          status,
+          error: `${status} result`,
+          cwd: env.tmp,
+        },
+        continuationAvailable(env.tmp),
+      );
       expect(message).not.toContain('subagent_continue');
       expect(message).not.toContain('Ask the user before resuming');
       expect(message).not.toContain('Never switch models automatically');
     }
 
-    const completed = completionMessage({
-      id: 'subtask_completed',
-      agent: 'analyst',
-      status: 'completed',
-      result: 'done',
-      cwd: env.tmp,
-    });
+    const completed = completionMessage(
+      {
+        id: 'subtask_completed',
+        agent: 'analyst',
+        status: 'completed',
+        result: 'done',
+        cwd: env.tmp,
+      },
+      continuationAvailable(env.tmp),
+    );
     expect(completed).not.toContain('subagent_continue');
     expect(completed).not.toContain('Ask the user before resuming');
   });
@@ -114,13 +165,16 @@ describe('completion message render', () => {
     );
 
     for (const status of ['failed', 'cancelled']) {
-      const message = completionMessage({
-        id: `subtask_${status}`,
-        agent: 'analyst',
-        status,
-        error: `${status} result`,
-        cwd: env.tmp,
-      });
+      const message = completionMessage(
+        {
+          id: `subtask_${status}`,
+          agent: 'analyst',
+          status,
+          error: `${status} result`,
+          cwd: env.tmp,
+        },
+        continuationAvailable(env.tmp),
+      );
       expect(message).toContain('can be resumed with `subagent_continue`');
       expect(message).toContain('Ask the user before resuming');
       expect(message).toContain('model and effort');
@@ -521,27 +575,30 @@ describe('completion message render', () => {
   });
 
   it('includes structured error details in completionMessage when error_metadata is present', () => {
-    const message = completionMessage({
-      id: 'subtask_err_details',
-      agent: 'analyst',
-      status: 'failed',
-      error: 'provider auth error',
-      cwd: env.tmp,
-      error_metadata: {
-        category: 'provider_auth_error',
-        message: '503: No capacity available',
-        retryable: false,
-        phase: 'assistant_final',
-        code: 'provider_auth_error',
-        source: {
-          provider: 'antigravity',
-          model: 'gemini-3.8-flash-high',
-          operation: 'session.prompt',
+    const message = completionMessage(
+      {
+        id: 'subtask_err_details',
+        agent: 'analyst',
+        status: 'failed',
+        error: 'provider auth error',
+        cwd: env.tmp,
+        error_metadata: {
+          category: 'provider_auth_error',
+          message: '503: No capacity available',
+          retryable: false,
+          phase: 'assistant_final',
+          code: 'provider_auth_error',
+          source: {
+            provider: 'antigravity',
+            model: 'gemini-3.8-flash-high',
+            operation: 'session.prompt',
+          },
+          partial_result_available: true,
+          details: { error_class: 'Error', provider_code: '503' },
         },
-        partial_result_available: true,
-        details: { error_class: 'Error', provider_code: '503' },
       },
-    });
+      continuationAvailable(env.tmp),
+    );
 
     expect(message).toContain('## error');
     expect(message).toContain('provider auth error');
@@ -558,13 +615,16 @@ describe('completion message render', () => {
   });
 
   it('omits error details section when error_metadata is absent', () => {
-    const message = completionMessage({
-      id: 'subtask_no_meta',
-      agent: 'analyst',
-      status: 'failed',
-      error: 'something went wrong',
-      cwd: env.tmp,
-    });
+    const message = completionMessage(
+      {
+        id: 'subtask_no_meta',
+        agent: 'analyst',
+        status: 'failed',
+        error: 'something went wrong',
+        cwd: env.tmp,
+      },
+      continuationAvailable(env.tmp),
+    );
 
     expect(message).toContain('## error');
     expect(message).toContain('something went wrong');
@@ -622,26 +682,29 @@ describe('completion message render', () => {
   });
 
   it('redacts secrets from error details rendered in completionMessage and UI', () => {
-    const message = completionMessage({
-      id: 'subtask_redact',
-      agent: 'analyst',
-      status: 'failed',
-      error: 'provider api error',
-      cwd: env.tmp,
-      error_metadata: {
-        category: 'provider_auth_error',
-        message:
-          'Authorization: Bearer sk-fake-secret-token fake.user@example.com /tmp/fake-private.txt',
-        retryable: false,
-        phase: 'assistant_final',
-        details: {
-          provider_code: '429',
-          auth_header: 'Authorization: Bearer sk-fake-secret-token',
-          prompt: 'SYSTEM: hidden prompt body',
-          file_path: '/tmp/fake-private.txt',
+    const message = completionMessage(
+      {
+        id: 'subtask_redact',
+        agent: 'analyst',
+        status: 'failed',
+        error: 'provider api error',
+        cwd: env.tmp,
+        error_metadata: {
+          category: 'provider_auth_error',
+          message:
+            'Authorization: Bearer sk-fake-secret-token fake.user@example.com /tmp/fake-private.txt',
+          retryable: false,
+          phase: 'assistant_final',
+          details: {
+            provider_code: '429',
+            auth_header: 'Authorization: Bearer sk-fake-secret-token',
+            prompt: 'SYSTEM: hidden prompt body',
+            file_path: '/tmp/fake-private.txt',
+          },
         },
       },
-    });
+      continuationAvailable(env.tmp),
+    );
 
     expect(message).toContain('## error details');
     expect(message).toContain('- category: provider_auth_error');

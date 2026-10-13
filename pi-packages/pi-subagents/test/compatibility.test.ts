@@ -107,8 +107,9 @@ describe('compatibility smoke', () => {
 
       extension(pi);
 
-      expect(calls.slice(0, 2)).toEqual([
+      expect(calls.slice(0, 3)).toEqual([
         'renderer:subagent-completion',
+        'renderer:subagent-attention',
         'renderer:subagent-question',
       ]);
       expect(tools).toEqual([
@@ -119,6 +120,7 @@ describe('compatibility smoke', () => {
         'subagent_list_tasks',
         'subagent_cancel',
         'subagent_send_message',
+        'subagent_extend',
         'subagent_reply',
       ]);
       expect(events).toEqual([
@@ -173,6 +175,7 @@ describe('compatibility smoke', () => {
           'subagent_list_tasks',
           'subagent_cancel',
           'subagent_send_message',
+          'subagent_extend',
           'subagent_reply',
         ]);
         expect(

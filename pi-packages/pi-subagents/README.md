@@ -368,6 +368,9 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "enable_ask_orchestrator": true,
   "ask_timeout_ms": 600000,
   "timeout_ms": 1200000,
+  "timeout_warning_ms": 180000,
+  "max_total_timeout_ms": 3600000,
+  "max_timeout_extensions": 3,
   "stall_timeout_ms": 240000,
   "stall_suspend_max_ms": 900000,
   "max_concurrency": 5,
@@ -401,10 +404,13 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
 | `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
-| `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but still counts toward total `timeout_ms`. |
-| `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
+| `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but does not pause the execution deadline. |
+| `timeout_ms` | `1200000` | Initial execution deadline per subagent attempt (20 minutes); also the default extension amount. |
+| `timeout_warning_ms` | `180000` | Warning lead time before the current deadline (3 minutes). Normalized to `0` (disabled) when greater than or equal to `timeout_ms`. |
+| `max_total_timeout_ms` | `3600000` | Total execution ceiling including extensions (60 minutes). Raised to `timeout_ms` when lower. |
+| `max_timeout_extensions` | `3` | Maximum number of deadline extensions per attempt. |
 | `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). Suspended during pending orchestrator questions, context compaction, and auto-retry backoff; resuming refreshes both session and active-tool inactivity budgets. |
-| `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; total `timeout_ms` still applies throughout. |
+| `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; the execution deadline still applies throughout. |
 | `max_concurrency` | `5` | Max concurrent subagent tasks per cwd/config pair. |
 | `debug` | `false` | Enable bounded runtime/interaction diagnostics in the executing project's `.pi/subagents-debug.log`. Use temporarily and disable after diagnosis. |
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, adds a metadata-only skill catalog, skips prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |
@@ -580,7 +586,7 @@ Examples:
 
 `subagent_continue` is disabled by default. Set effective `enable_continue: true` and then `/reload` or restart Pi before expecting the tool to appear.
 
-When effective `enable_continue` is `false`, the tool is not registered, direct or stale continuation attempts receive a generic unavailable response, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications do not recommend continuation or mention `subagent_continue`.
+When effective `enable_continue` is `false`, the tool is not registered, direct or stale continuation attempts receive a generic unavailable response, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications do not recommend continuation. Total-timeout partial context still reports `subagent_continue: disabled`; other terminal output does not mention the tool.
 
 Parameters:
 
@@ -604,6 +610,20 @@ Behavior:
 - The shared Work panel shows an `Agents · N running` section while work is active, with one compact row per eligible task and `+N more` counting only eligible overflow. Live tasks and current-prompt failures remain eligible, alongside at most the 3 latest current-prompt completions; earlier terminal tasks stay in history. While idle with no live tasks, it collapses to `Agents · N done · M failed` using session totals. Each row shows a running braille animation (or a distinct queued/terminal glyph), agent, concise task label and tool uses, lifetime input/output tokens, context percentage, average output speed (`N tok/s`) and active elapsed time, plus task cost. Metrics use semantic icons in nerd/unicode modes and text labels in ASCII; reserved widths keep wrapping stable across number-format boundaries. Running/queued rows retain a warning-colored `⚠ N dropped` count when tools were dropped. The task label truncates before warnings and metrics; narrow widths move metrics to continuation rows. Token counts exclude caches. Output speed divides accumulated measured assistant output tokens by generation time, excluding tools and compaction; its counters persist across continuations. Unavailable live values show `?`, while measured zeroes remain visible; persisted history rows omit missing metrics and separators. Resolved model, activity and other details remain in the existing task panel. With an empty root editor, press ← to focus Work, ↑↓ to select across sections, Enter to open the selected task (or history on the collapsed Agents line), or x twice to cancel a running task. Esc/→ return to the editor. Unfocused ↑↓ retain prompt history, and overlays, dialogs and the task panel receive their keys. The pi-core host alone owns the Work widget, navigation listener and running-only refresh lifecycle. Separate foreground task-mode double-Escape and manual handoff listeners reuse the host's editor-focus, overlay and suspension guard without requiring empty input; without an installed Work host they retain their existing handling.
 - When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
 - Model and effort overrides still require an explicit user decision before use.
+
+### Timeout attention and `subagent_extend`
+
+Before the current deadline, the root receives one automated `subagent-attention` follow-up with remaining time, extensions used/remaining, recent progress/checkpoint updates, and a partial output preview tail. Held notices are dropped if the attempt or deadline is no longer current. Like other subagent notifications, attention is child input, not user authorization.
+
+For background runs, a best-effort checkpoint steering request asks the child to report done/pending work and touched files through `ask_orchestrator({ kind: "progress", message: "..." })` when available, then continue. Enqueue does not prove consumption or that a checkpoint arrived.
+
+```ts
+{ task_id: "subtask_reviewer_...", extra_ms: 600000 }
+```
+
+Root-only `subagent_extend({ task_id, extra_ms? })` grants time only to a running task owned by the exact originating parent session. Omitted `extra_ms` defaults to `timeout_ms`; explicit values must be positive integers. Grants are clamped to `max_total_timeout_ms` and limited by `max_timeout_extensions`. Unknown, foreign, terminal, stopping, or already-expired tasks are rejected, as are exhausted extension counts or ceilings. Extend only on evidence of useful progress; silence leaves the deadline in force.
+
+On total timeout, the task remains `failed` with category `total_timeout`. Completion notifications and `subagent_result` include partial context: received progress/checkpoints, preview tail, extensions used, nested-session availability, and whether `subagent_continue` is enabled. This is not a final result or a guarantee of resumability; continuation remains opt-in.
 
 ### `subagent_send_message`
 
@@ -678,7 +698,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 - The tool is injected in-process for every child when `enable_ask_orchestrator` is true unless denied by `disallowed_tools`, regardless of `tools` selection; it is not registered for the root.
 - It always uses `model-only` exposure: direct model calls work with or without codemode, but scripts and native nested-tool calls cannot invoke it.
 - `question` blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
-- Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. Total `timeout_ms` continues, so long human escalation can still exhaust the task's total budget.
+- Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. The execution deadline continues while waiting; only `subagent_extend` grants more time within the configured bounds, so long human escalation can still exhaust the task's total budget.
 - `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. Progress updates remain available in task details and the status/list tools.
 - `subagent_status` and `subagent_list_tasks` expose `pending_question_count`, `pending_questions` (`request_id`, `message`, `created_at`), and recent `progress_updates` in compact details and text. Pending questions are live-only and cannot be answered after the parent session ends.
 - Use questions for material alignment or decisions, not as a substitute for the child's own discovery, and never to delegate. This channel does not change the separate human interaction bridge described below.

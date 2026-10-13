@@ -1,4 +1,5 @@
 import { Type } from 'typebox';
+import { continuationAvailable } from '../continuation-availability.js';
 import type { SubagentManager } from '../manager.js';
 import { formatTask } from '../render/tools/formatting.js';
 import {
@@ -8,7 +9,7 @@ import {
 import { compactTaskForToolResult } from './result-details.js';
 import { fail, ok } from './tool-response.js';
 
-export function createSubagentStatusTool(manager: SubagentManager) {
+export function createSubagentStatusTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_status',
     label: 'Subagent Status',
@@ -23,9 +24,12 @@ export function createSubagentStatusTool(manager: SubagentManager) {
       ctx: any,
     ) {
       try {
+        const available = continuationAvailable(ctx?.cwd ?? process.cwd(), pi);
         const task = manager.getTask(params.task_id, ctx?.cwd ?? process.cwd());
         if (!task) throw new Error('Subagent task not found');
-        return ok(formatTask(task), { task: compactTaskForToolResult(task) });
+        return ok(formatTask(task), {
+          task: compactTaskForToolResult(task, available),
+        });
       } catch (e) {
         return fail(e);
       }

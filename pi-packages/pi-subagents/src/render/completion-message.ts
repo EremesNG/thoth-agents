@@ -3,6 +3,7 @@ import {
   resolveIcon,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
+import { continuationAvailable } from '../continuation-availability.js';
 import { safeErrorMetadataDetails } from '../error-metadata.js';
 import {
   agentIcon,
@@ -24,6 +25,10 @@ import {
 } from '../ui/theme.js';
 import { iconAwareRenderer } from './icon-aware-component.js';
 import { wrapLineToWidth } from './text-width.js';
+import {
+  timeoutPartialContext,
+  totalTimeoutResult,
+} from './timeout-context.js';
 import { toolSelectionWarning } from './tool-selection-warning.js';
 import {
   appendSubagentResumeGuidance,
@@ -90,8 +95,10 @@ function responseHeading(status: unknown): string {
     : 'partial response (task not completed)';
 }
 
-export function completionMessage(task: any): string {
-  const cwd = task?.cwd ?? process.cwd();
+export function completionMessage(
+  task: any,
+  continueAvailable: boolean,
+): string {
   const label = formatTaskLabel(task);
   const warning = toolSelectionWarning(task);
   const hasResp =
@@ -114,7 +121,15 @@ export function completionMessage(task: any): string {
       content.push('', '## error details', ...errorDetails);
     }
   }
-  return appendSubagentResumeGuidance(content.join('\n'), [task], cwd);
+  if (task.error_metadata?.category === 'total_timeout') {
+    if (hasResp && task.error) content.push('', '## error', '', task.error);
+    content.push('', timeoutPartialContext(task, continueAvailable));
+  }
+  return appendSubagentResumeGuidance(
+    content.join('\n'),
+    [task],
+    continueAvailable,
+  );
 }
 
 function safeCompletionErrorMetadata(
@@ -129,13 +144,18 @@ export function sendSubagentCompletionMessage(
   task: any,
   cwd = task?.cwd,
 ): void {
+  const continueAvailable = continuationAvailable(cwd ?? process.cwd(), pi);
   pi.sendMessage?.(
     {
       customType: 'subagent-completion',
-      content: completionMessage({ ...task, cwd }),
+      content: completionMessage({ ...task, cwd }, continueAvailable),
       display: true,
       details: {
-        full_result: task.result ?? task.error ?? task.output_preview,
+        full_result:
+          totalTimeoutResult(task, continueAvailable) ??
+          task.result ??
+          task.error ??
+          task.output_preview,
         task: {
           id: task.id,
           agent: task.agent,

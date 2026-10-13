@@ -41,13 +41,16 @@ describe('structured error metadata contract', () => {
     ]) {
       expect(details.message).not.toContain(secret);
     }
-    const completion = completionMessage({
-      id: 'fixture',
-      agent: 'worker',
-      status: 'failed',
-      error: 'provider auth error',
-      error_metadata: metadata,
-    });
+    const completion = completionMessage(
+      {
+        id: 'fixture',
+        agent: 'worker',
+        status: 'failed',
+        error: 'provider auth error',
+        error_metadata: metadata,
+      },
+      false,
+    );
     expect(completion).toContain('- message: No API key found for fixture');
     expect(completion).not.toContain('sk-fake-secret-token');
   });

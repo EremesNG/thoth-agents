@@ -564,10 +564,10 @@ Root instructions and the bundled SDD skill MUST let the Pi root mark every conc
 
 ### Requirement: Pi subagent timeout attention and extension
 
-The Pi subagent runtime MUST warn the owning root before a running child reaches its total execution deadline with progress context, MUST ask the child to checkpoint, MUST let the root extend the deadline only through `subagent_extend` within a configurable hard total ceiling and extension count, and MUST include available partial progress context in the terminal result of a total timeout.
+The Pi subagent runtime MUST warn the owning root before a running child reaches its total execution deadline with progress context, MUST first hand off every blocking task-mode call of the same parent session to background when the warned child runs in task mode, MUST ask the child to checkpoint, MUST let the root extend the deadline only through `subagent_extend` within a configurable hard total ceiling and extension count, and MUST include available partial progress context in the terminal result of a total timeout.
 
 #### Scenario: Pi subagent timeout attention and extension
 
-- **GIVEN** a running Pi child approaching its deadline
+- **GIVEN** a running Pi child in task or background mode approaching its deadline
 - **WHEN** the warning lead is reached
-- **THEN** the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview 
+- **THEN** task-mode calls of that parent session return as background handoffs, the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview 

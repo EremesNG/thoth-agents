@@ -35,6 +35,7 @@ import {
   preloadPiComponentsForSubagentRendering,
   registerSubagentExternalToolDefinition,
 } from '../thread-view.js';
+import { triggerTaskBackgroundHandoff } from '../tools/background-handoff-state.js';
 import {
   registerSubagentTools,
   triggerClaudeBackgroundHandoff,
@@ -113,7 +114,7 @@ export default function subagentsExtension(pi: any): void {
           : undefined,
       )
     : undefined;
-  const manager = new SubagentManager(
+  const manager: SubagentManager = new SubagentManager(
     undefined,
     undefined,
     (task, cwd) => {
@@ -177,6 +178,7 @@ export default function subagentsExtension(pi: any): void {
         }
       });
     },
+    (taskId) => triggerTaskBackgroundHandoff(manager, taskId, 'attention'),
   );
   const sessionModelProfile = new SessionModelProfile(
     typeof pi.appendEntry === 'function'

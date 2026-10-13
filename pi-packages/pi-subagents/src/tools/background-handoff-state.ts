@@ -8,7 +8,7 @@ type BackgroundHandoffEntry = {
   manager: SubagentManager;
   parentSessionId: string | undefined;
   getTaskIds: () => string[];
-  handoff: () => SubagentTask[];
+  handoff: (reason?: 'attention') => SubagentTask[];
   hasActiveTask: () => boolean;
   toolReturned: Promise<unknown>;
 };
@@ -38,6 +38,7 @@ type QuestionHandoff = {
   taskId: string;
   entries: Set<BackgroundHandoffEntry>;
   backgrounded: boolean;
+  reason?: 'attention';
 };
 const pendingQuestionHandoffs = new Set<QuestionHandoff>();
 let backgroundHandoffSequence = 0;
@@ -67,7 +68,7 @@ function joinQuestionHandoff(
   question: QuestionHandoff,
 ): void {
   question.entries.add(entry);
-  if (entry.handoff().length) question.backgrounded = true;
+  if (entry.handoff(question.reason).length) question.backgrounded = true;
 }
 
 function sendTasksToBackground(
@@ -75,8 +76,9 @@ function sendTasksToBackground(
   manager: SubagentManager,
   getTaskIds: () => string[],
   onBackground: (tasks: SubagentTask[]) => void,
+  reason?: 'attention',
 ): SubagentTask[] {
-  const backgrounded = manager.sendToBackground(getTaskIds());
+  const backgrounded = manager.sendToBackground(getTaskIds(), reason);
   if (!backgrounded.length) return [];
   ctx?.ui?.notify?.(
     backgrounded.length === 1
@@ -101,6 +103,7 @@ export function triggerClaudeBackgroundHandoff(): boolean {
 export async function triggerTaskBackgroundHandoff(
   manager: SubagentManager,
   taskId: string,
+  reason?: 'attention',
 ): Promise<boolean> {
   const question: QuestionHandoff = {
     manager,
@@ -108,6 +111,7 @@ export async function triggerTaskBackgroundHandoff(
     taskId,
     entries: new Set(),
     backgrounded: false,
+    reason,
   };
   pendingQuestionHandoffs.add(question);
   try {
@@ -147,6 +151,7 @@ export function installBackgroundHandoffShortcut(
   getTaskIds: () => string[],
   onBackground: (tasks: SubagentTask[]) => void,
   toolReturned: Promise<unknown>,
+  onUnpublishedAttentionHandoff?: () => void,
 ): () => void {
   const shortcut =
     readSubagentsConfig(ctx?.cwd ?? process.cwd())
@@ -154,9 +159,20 @@ export function installBackgroundHandoffShortcut(
   const terminalInput = ctrlShortcutToTerminalInput(shortcut);
   const parentSessionId = parentSessionIdFromContext(ctx);
   let backgroundRequested = false;
-  const handoff = () => {
+  const handoff = (reason?: 'attention') => {
     backgroundRequested = true;
-    return sendTasksToBackground(ctx, manager, getTaskIds, onBackground);
+    const tasks = sendTasksToBackground(
+      ctx,
+      manager,
+      getTaskIds,
+      onBackground,
+      reason,
+    );
+    if (reason === 'attention' && !getTaskIds().length) {
+      // The continuation owns this latch beyond tool-return listener cleanup.
+      onUnpublishedAttentionHandoff?.();
+    }
+    return tasks;
   };
   // Continuations may publish their tasks only after prior runner cleanup.
   const unsubscribeTaskUpdate = manager.onTaskUpdate(() => {

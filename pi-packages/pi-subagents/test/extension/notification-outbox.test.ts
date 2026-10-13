@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import type { SubagentManager } from '../../src/manager.js';
+import { triggerClaudeBackgroundHandoff } from '../../src/tools/background-handoff-state.js';
+import { createSubagentContinueTool } from '../../src/tools/subagent-continue.js';
+import { createSubagentExtendTool } from '../../src/tools/subagent-extend.js';
 import { createSubagentResultTool } from '../../src/tools/subagent-result.js';
+import { createSubagentRunTool } from '../../src/tools/subagent-run.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const captured = vi.hoisted(() => ({ manager: undefined as any }));
@@ -12,6 +18,7 @@ vi.mock('../../src/tools.js', async (importOriginal) => ({
   },
 }));
 const env = installSubagentTestEnv();
+afterEach(() => vi.useRealTimers());
 
 async function fixture() {
   const handlers = new Map<string, any[]>();
@@ -116,6 +123,363 @@ async function fixture() {
 }
 
 describe('parent notification outbox', () => {
+  it.each([
+    false,
+    true,
+  ])('hands off same-session blocking runs and delivers attention after settlement (steering failure: %s)', async (steeringFails) => {
+    vi.useFakeTimers();
+    env.writeAgent('worker');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_ms: 1000,
+        timeout_warning_ms: 200,
+        stall_timeout_ms: 10000,
+        max_total_timeout_ms: 2000,
+        max_concurrency: 3,
+      }),
+    );
+    const host = await fixture();
+    (host.manager as any).runner = async ({ signal, onActivity }: any) => {
+      if (signal.aborted) throw new Error('aborted');
+      onActivity?.({ message: 'working', output: 'partial output' });
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        }),
+      );
+    };
+    const steering = vi.spyOn(host.manager, 'sendMessage');
+    if (steeringFails)
+      steering.mockRejectedValueOnce(new Error('transport failed'));
+    const tool = createSubagentRunTool(host.manager, {});
+    const results: any[] = [];
+    host.busy();
+    const calls = [0, 1].map((i) =>
+      tool
+        .execute(
+          `run-${i}`,
+          { agent: 'worker', task: 'work', mode: 'task' },
+          undefined,
+          undefined,
+          host.ctx,
+        )
+        .then((result: any) => {
+          results.push(result);
+          return result;
+        }),
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    const foreign = tool.execute(
+      'foreign',
+      { agent: 'worker', task: 'foreign', mode: 'task' },
+      undefined,
+      undefined,
+      { ...host.ctx, sessionId: 'other' },
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(700);
+      expect(results).toHaveLength(2);
+      for (const result of results)
+        expect(result).toMatchObject({
+          terminate: true,
+          details: { mode: 'background' },
+        });
+      const tasks = host.manager.listActiveSessionTasks(env.tmp, 'parent');
+      for (const task of tasks)
+        expect(task).toMatchObject({
+          mode: 'background',
+          effective_mode: 'background',
+          status: 'running',
+        });
+      expect(
+        host.manager.listActiveSessionTasks(env.tmp, 'other')[0].mode,
+      ).toBe('task');
+      if (steeringFails)
+        await expect(steering.mock.results[0].value).rejects.toThrow(
+          'transport failed',
+        );
+      else
+        expect(await steering.mock.results[0].value).toMatchObject({
+          status: 'queued',
+        });
+      expect(
+        results.flatMap((result) => result.details.task_ids).sort(),
+      ).toEqual(tasks.map((task) => task.id).sort());
+      expect(host.sendMessage).not.toHaveBeenCalled();
+      await host.settle();
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) => msg.customType === 'subagent-attention',
+        ),
+      ).toHaveLength(2);
+      const extension = await createSubagentExtendTool(host.manager).execute(
+        'extend',
+        { task_id: tasks[0].id, extra_ms: 500 },
+        undefined,
+        undefined,
+        host.ctx,
+      );
+      expect(extension.details).toMatchObject({ added_ms: 500 });
+      await host.settle();
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) => msg.customType === 'subagent-attention',
+        ),
+      ).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(
+        host.sendMessage.mock.calls.some(
+          ([msg]) =>
+            msg.customType === 'subagent-completion' &&
+            msg.content.includes('Partial context') &&
+            msg.details.task.error_metadata.category === 'total_timeout',
+        ),
+      ).toBe(true);
+    } finally {
+      const shutdown = host.emit('session_shutdown');
+      await vi.advanceTimersByTimeAsync(1000);
+      await shutdown;
+      await Promise.all([...calls, foreign]);
+    }
+  });
+
+  it('settles and delivers attention while sibling continuation cleanup outlasts the warned deadline', async () => {
+    vi.useFakeTimers();
+    env.writeAgent('worker');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_ms: 1000,
+        timeout_warning_ms: 200,
+        stall_timeout_ms: 10000,
+        enable_continue: true,
+      }),
+    );
+    const nested = path.join(env.tmp, 'resume.jsonl');
+    fs.writeFileSync(nested, JSON.stringify({ type: 'session' }));
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const host = await fixture();
+    (host.manager as any).runner = async ({
+      task,
+      continuation,
+      signal,
+      onActivity,
+    }: any) => {
+      if (task === 'initial' && !continuation) {
+        onActivity?.({ message: 'ready', nested_session_path: nested });
+        await cleanup;
+        return {
+          result: 'done',
+          model: 'mock/model',
+          fallback_used: false,
+          nested_session_path: nested,
+        };
+      }
+      if (signal.aborted) throw new Error('aborted');
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        }),
+      );
+    };
+    const initial = await host.manager.run(
+      { agent: 'worker', task: 'initial', mode: 'background' },
+      host.ctx,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const taskId = initial.task_ids[0];
+    host.manager.cancel(taskId);
+    host.busy();
+    let returned: any;
+    const continuing = createSubagentContinueTool(host.manager, {})
+      .execute(
+        'continue',
+        { task_id: taskId, prompt: 'resume', mode: 'task' },
+        undefined,
+        undefined,
+        host.ctx,
+      )
+      .then((result: any) => {
+        returned = result;
+        return result;
+      });
+    let runReturned: any;
+    const running = createSubagentRunTool(host.manager, {})
+      .execute(
+        'run',
+        { agent: 'worker', task: 'warn', mode: 'task' },
+        undefined,
+        undefined,
+        host.ctx,
+      )
+      .then((result: any) => {
+        runReturned = result;
+        return result;
+      });
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      expect(returned).toMatchObject({
+        terminate: true,
+        details: { mode: 'background', task_ids: [taskId] },
+      });
+      expect(runReturned).toMatchObject({ terminate: true });
+      expect(host.manager.getTask(taskId)?.attempt ?? 1).toBe(1);
+      await host.settle();
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) => msg.customType === 'subagent-attention',
+        ),
+      ).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(host.manager.getTask(taskId)?.attempt ?? 1).toBe(1);
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(host.manager.getTask(taskId)).toMatchObject({
+        attempt: 2,
+        mode: 'background',
+        effective_mode: 'background',
+        status: 'running',
+      });
+    } finally {
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      const shutdown = host.emit('session_shutdown');
+      await vi.advanceTimersByTimeAsync(1000);
+      await shutdown;
+      await Promise.all([continuing, running]);
+    }
+  });
+
+  it('releases a published stopping sibling and notifies its terminal result after slow cleanup', async () => {
+    vi.useFakeTimers();
+    env.writeAgent('worker');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_ms: 1000,
+        timeout_warning_ms: 200,
+        stall_timeout_ms: 10000,
+      }),
+    );
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const host = await fixture();
+    (host.manager as any).runner = async ({ task, signal }: any) => {
+      if (task === 'slow cleanup') {
+        await cleanup;
+        throw new Error('cancelled');
+      }
+      if (signal.aborted) throw new Error('aborted');
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        }),
+      );
+    };
+    const tool = createSubagentRunTool(host.manager, {});
+    const handoff = vi.spyOn(host.manager, 'sendToBackground');
+    const returned: any[] = [];
+    host.busy();
+    const slow = tool
+      .execute(
+        'slow',
+        { agent: 'worker', task: 'slow cleanup', mode: 'task' },
+        undefined,
+        undefined,
+        host.ctx,
+      )
+      .then((result: any) => {
+        returned.push(result);
+        return result;
+      });
+    await vi.advanceTimersByTimeAsync(0);
+    const sibling = host.manager.listActiveSessionTasks(env.tmp, 'parent')[0];
+    host.manager.cancel(sibling.id);
+    expect(sibling.status).toBe('stopping');
+    // Shortcut semantics still skip stopping tasks.
+    expect(triggerClaudeBackgroundHandoff()).toBe(false);
+    const warned = tool
+      .execute(
+        'warn',
+        { agent: 'worker', task: 'warn', mode: 'task' },
+        undefined,
+        undefined,
+        host.ctx,
+      )
+      .then((result: any) => {
+        returned.push(result);
+        return result;
+      });
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      expect(returned).toHaveLength(2);
+      expect(await slow).toMatchObject({
+        terminate: true,
+        details: { mode: 'background', task_ids: [sibling.id] },
+      });
+      expect(await warned).toMatchObject({
+        terminate: true,
+        details: { mode: 'background' },
+      });
+      expect(sibling).toMatchObject({
+        status: 'stopping',
+        mode: 'background',
+        effective_mode: 'background',
+      });
+      expect(host.sendMessage).not.toHaveBeenCalled();
+      await host.settle();
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) => msg.customType === 'subagent-attention',
+        ),
+      ).toHaveLength(1);
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) =>
+            msg.customType === 'subagent-completion' &&
+            msg.details.task.id === sibling.id,
+        ),
+      ).toHaveLength(0);
+      expect(triggerClaudeBackgroundHandoff()).toBe(false);
+      const handoffCount = handoff.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(sibling.status).toBe('stopping');
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sibling.status).toBe('cancelled');
+      // Returned tools must not retain task-update handoff listeners.
+      expect(handoff).toHaveBeenCalledTimes(handoffCount);
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) =>
+            msg.customType === 'subagent-completion' &&
+            msg.details.task.id === sibling.id,
+        ),
+      ).toHaveLength(1);
+      await host.settle();
+      expect(
+        host.sendMessage.mock.calls.filter(
+          ([msg]) =>
+            msg.customType === 'subagent-completion' &&
+            msg.details.task.id === sibling.id,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      const shutdown = host.emit('session_shutdown');
+      await vi.advanceTimersByTimeAsync(1000);
+      await shutdown;
+      await Promise.all([slow, warned]);
+    }
+  });
+
   it('holds attention with followUp delivery and drops stale deadline, attempt, status or session', async () => {
     const host = await fixture();
     try {

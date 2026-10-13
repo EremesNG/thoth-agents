@@ -75,6 +75,8 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
           previousTask: existing,
           config,
         });
+        // This input survives tool return while prior runner cleanup is pending.
+        const continuationInput = { ...params };
         const isBackground = effectiveMode === 'background';
         const canBackgroundInTaskMode = effectiveMode === 'task';
         const backgroundShortcut =
@@ -138,12 +140,20 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
                 });
               },
               toolReturned,
+              () => {
+                continuationInput.mode = 'background';
+                active = false;
+                resolveBackground?.({
+                  mode: 'background',
+                  task_ids: [params.task_id],
+                });
+              },
             )
           : () => {};
         try {
           emit();
           const continuePromise = manager.continueTask(
-            params,
+            continuationInput,
             { ...ctx, pi },
             _signal,
             isBackground

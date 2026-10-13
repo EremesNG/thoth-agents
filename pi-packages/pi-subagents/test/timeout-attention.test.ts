@@ -7,6 +7,7 @@ import {
   sendSubagentCompletionMessage,
 } from '../src/render/completion-message.js';
 import { createSubagentResultTool } from '../src/tools/subagent-result.js';
+import { createSubagentRunTool } from '../src/tools/subagent-run.js';
 import { registerSubagentTools } from '../src/tools.js';
 import type { SubagentRunner } from '../src/types.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
@@ -14,7 +15,10 @@ import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 const env = installSubagentTestEnv();
 afterEach(() => vi.useRealTimers());
 
-async function fixture(overrides = {}) {
+async function fixture(
+  overrides = {},
+  handoff?: (taskId: string) => Promise<unknown>,
+) {
   vi.useFakeTimers();
   env.writeAgent('worker');
   fs.writeFileSync(
@@ -46,6 +50,7 @@ async function fixture(overrides = {}) {
     undefined,
     undefined,
     attention,
+    handoff,
   );
   const steering = vi.spyOn(manager, 'sendMessage');
   const response = await manager.run(
@@ -58,6 +63,69 @@ async function fixture(overrides = {}) {
 }
 
 describe('bounded timeout attention', () => {
+  it.each([
+    0, 1000, 2000,
+  ])('does not hand off task calls when warning lead is disabled (%s)', async (lead) => {
+    const handoff = vi.fn();
+    const { manager, attention } = await fixture(
+      { timeout_warning_ms: lead },
+      handoff,
+    );
+    let result: any;
+    const run = createSubagentRunTool(manager, {})
+      .execute(
+        'call',
+        { agent: 'worker', task: 'foreground', mode: 'task' },
+        undefined,
+        undefined,
+        { cwd: env.tmp, sessionId: 'parent' },
+      )
+      .then((value: any) => {
+        result = value;
+      });
+    await vi.advanceTimersByTimeAsync(800);
+    expect(result).toBeUndefined();
+    expect(handoff).not.toHaveBeenCalled();
+    expect(attention).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(300);
+    await run;
+    expect(result.terminate).toBeUndefined();
+  });
+
+  it.each([
+    'generation',
+    'attempt',
+  ])('drops a warning made stale by async handoff (%s)', async (stale) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { manager, attention, steering } = await fixture({}, () => gate);
+    // Run through the real tool, so the warning awaits its handoff hook.
+    const run = createSubagentRunTool(manager, {}).execute(
+      'call',
+      { agent: 'worker', task: 'foreground', mode: 'task' },
+      undefined,
+      undefined,
+      { cwd: env.tmp, sessionId: 'parent' },
+    );
+    await vi.advanceTimersByTimeAsync(800);
+    const task = manager
+      .listActiveSessionTasks(env.tmp, 'parent')
+      .find((value) => value.mode === 'task')!;
+    attention.mockClear();
+    steering.mockClear();
+    if (stale === 'generation') manager.extendDeadline(task.id, 1000, 'parent');
+    else task.attempt = 2;
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(attention).not.toHaveBeenCalled();
+    expect(steering).not.toHaveBeenCalled();
+    manager.cancel(task.id);
+    await vi.advanceTimersByTimeAsync(300);
+    await run;
+  });
+
   it('warns once and requests a checkpoint without stopping the task', async () => {
     const { manager, task, attention, steering } = await fixture();
     manager.reportProgress(
@@ -371,6 +439,14 @@ describe('bounded timeout attention', () => {
     await expect(run).resolves.toMatchObject({
       results: [{ status: 'failed' }],
     });
+  });
+
+  it('does not delay attention behind a pending best-effort checkpoint transport', async () => {
+    const { task, attention, steering } = await fixture();
+    steering.mockImplementationOnce(() => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(800);
+    expect(attention).toHaveBeenCalledOnce();
+    expect(task.status).toBe('running');
   });
 
   it('tolerates a synchronous checkpoint transport throw', async () => {

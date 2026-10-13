@@ -603,6 +603,7 @@ export class SubagentManager {
       attempt: number,
       generation: number,
     ) => void,
+    private onTimeoutBackgroundHandoff?: (taskId: string) => Promise<unknown>,
   ) {}
 
   private atelierRun(
@@ -1052,14 +1053,20 @@ export class SubagentManager {
       .map((task) => this.cancel(task.id, reason));
   }
 
-  sendToBackground(ids: string[]): SubagentTask[] {
+  sendToBackground(ids: string[], reason?: 'attention'): SubagentTask[] {
     const changed: SubagentTask[] = [];
     for (const id of ids) {
       const task = this.tasks.get(id);
       const cwd = this.taskCwds.get(id);
       if (!task || !cwd) continue;
       if (task.mode === 'background') continue;
-      if (task.status !== 'queued' && task.status !== 'running') continue;
+      if (
+        task.status !== 'queued' &&
+        task.status !== 'running' &&
+        !(reason === 'attention' && task.status === 'stopping')
+      )
+        continue;
+      // Mode is the durable notification intent; runner cleanup still owns stopping.
       task.mode = 'background';
       task.effective_mode = 'background';
       this.record(cwd, task, task.last_activity ?? 'running', true);
@@ -1346,21 +1353,32 @@ export class SubagentManager {
               return;
             }
             deadlineState.warnedGeneration = generation;
-            if (config.enable_ask_orchestrator !== false) {
-              void Promise.resolve()
-                .then(() =>
-                  this.sendMessage({
+            void (async () => {
+              if (task.mode === 'task') {
+                try {
+                  await this.onTimeoutBackgroundHandoff?.(task.id);
+                } catch {}
+              }
+              // Handoff barriers may outlive this attempt or deadline generation.
+              if (!this.isAttentionCurrent(task.id, attempt, generation))
+                return;
+              if (config.enable_ask_orchestrator !== false) {
+                try {
+                  // Steering is best-effort: transport must not hold attention.
+                  void this.sendMessage({
                     task_id: task.id,
                     session_id: task.session_id,
                     message:
                       'Please report a concise checkpoint (done, pending, touched files) through ask_orchestrator({ kind: "progress", message: "..." }) if available, then continue working. This is a checkpoint request, not a stop instruction.',
-                  }),
-                )
-                .catch(() => {});
-            }
-            try {
-              this.onTimeoutAttention?.(task, cwd, attempt, generation);
-            } catch {}
+                  }).catch(() => {});
+                } catch {}
+              }
+              if (!this.isAttentionCurrent(task.id, attempt, generation))
+                return;
+              try {
+                this.onTimeoutAttention?.(task, cwd, attempt, generation);
+              } catch {}
+            })();
           },
           Math.min(MAX_TIMER_DELAY_MS, Math.max(0, remaining - lead)),
         );

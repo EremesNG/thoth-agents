@@ -15,7 +15,7 @@ export function createSubagentResultTool(manager: SubagentManager) {
     parameters: Type.Object({ task_id: Type.String() }),
     renderShell: 'self',
     async execute(
-      _id: string,
+      toolCallId: string,
       params: any,
       _signal: any,
       _onUpdate: any,
@@ -29,10 +29,12 @@ export function createSubagentResultTool(manager: SubagentManager) {
         const content = [toolSelectionWarning(task), fullResult]
           .filter(Boolean)
           .join('\n\n');
-        return ok(content, {
+        const response = ok(content, {
           task: compactTaskForToolResult(task),
           full_result: fullResult,
         });
+        manager.stageResultAcknowledgment(toolCallId, task, response.content);
+        return response;
       } catch (e) {
         return fail(e);
       }

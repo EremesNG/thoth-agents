@@ -164,7 +164,10 @@ describe('subagent_result tool', () => {
       error: 'provider api error',
       error_metadata: circular,
     };
-    const manager: any = { getTask: () => task };
+    const manager: any = {
+      getTask: () => task,
+      stageResultAcknowledgment: () => {},
+    };
     let resultTool: any;
     registerSubagentTools(
       {

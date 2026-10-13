@@ -953,6 +953,127 @@ ${f.envelope}`,
     }
   });
 
+  test('accepts ordinary prose and code containing former unresolved words', () => {
+    const f = fixture();
+    const prose =
+      'Use the todo tool for pending questions about unknown flags; ask via `ask_orchestrator` and document unresolved errors.';
+    const prepared = f.before
+      .replace('Inspected source and constraints.', prose)
+      .replace('Deliver explicit behavior.', prose)
+      .replace('No unrelated migration.', prose)
+      .replace('Visible result is checked.', prose)
+      .replace(
+        'No material question remains; accepted intent is settled.',
+        prose,
+      )
+      .replace('Scope and behavior confirmed.', prose)
+      .replace('Update source and test behavior; no process tooling.', prose)
+      .replace('Implement and test the behavior.', prose);
+    writeFileSync(join(f.change, `${f.id}.md`), prepared);
+
+    const result = validate(f.change);
+    expect(result.report.errors).toEqual([]);
+    expect(result.status).toBe(0);
+  });
+
+  test.each([
+    ['section line', 'Deliver explicit behavior.', 'SDD-SECTION'],
+    ['task row', 'Implement and test the behavior.', 'SDD-TASK-COVERAGE'],
+    ['AC description', 'Visible result is checked.', 'SDD-ACCEPTANCE'],
+    [
+      'Clarifications',
+      'No material question remains; accepted intent is settled.',
+      'SDD-DECISION',
+    ],
+    ['Decisions', 'Scope and behavior confirmed.', 'SDD-DECISION'],
+  ])('rejects leading template markers in %s', (_surface, original, code) => {
+    const f = fixture();
+    for (const marker of [
+      'TBD',
+      'tbd: define behavior',
+      'PENDING:',
+      'pending: ask product owner',
+      '**PENDING**',
+      '__pending:__ resolve choice',
+    ]) {
+      writeFileSync(
+        join(f.change, `${f.id}.md`),
+        f.before.replace(original, marker),
+      );
+      expect(
+        validate(f.change).report.errors.map(({ code }) => code),
+        marker,
+      ).toContain(code);
+    }
+  });
+
+  test.each([
+    'TBD   ',
+    '**pending**   ',
+    '- **pending:** choose behavior',
+    '* [ ] **pending:** choose behavior',
+    '+ __pending:__ choose behavior',
+    '1. **pending:** choose behavior',
+    '2) [x] pending: choose behavior',
+    '- [ ] AC-1: **pending:** choose behavior',
+    'Concrete introduction.\n  - pending: choose behavior',
+    'Concrete behavior still has a TBD detail.',
+  ])('rejects positional and uppercase markers in section content: %s', (content) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before.replace('Deliver explicit behavior.', content),
+    );
+    expect(validate(f.change).report.errors.map(({ code }) => code)).toContain(
+      'SDD-SECTION',
+    );
+  });
+
+  test.each([
+    'pending questions are recorded.',
+    'PENDING questions are recorded.',
+    'tbd means to be determined.',
+    'ask the owner about unknown flags.',
+    'todo tool behavior is tested.',
+    'unknown flags are rejected.',
+    'unresolved errors are reported.',
+    '`pending` is a code value.',
+    '`PENDING:` is a code value.',
+    '`tbd:` is a code value.',
+    'ask_orchestrator handles questions.',
+    'A mid-sentence PENDING: label is prose.',
+    'TBD_identifier is an identifier.',
+    'PENDING_identifier is an identifier.',
+  ])('accepts prose and identifiers without a placeholder marker: %s', (content) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.change, `${f.id}.md`),
+      f.before.replace('Deliver explicit behavior.', content),
+    );
+    expect(validate(f.change).report.valid).toBe(true);
+  });
+
+  test.each([
+    ['explore', 'SDD-SECTION'],
+    ['specify', 'SDD-ACCEPTANCE'],
+    ['clarify', 'SDD-DECISION'],
+    ['plan', 'SDD-DECISION'],
+    ['tasks', 'SDD-TASK-COVERAGE'],
+    ['ready', 'SDD-TASK-COVERAGE'],
+    ['verify', 'SDD-REVIEW-SELECTION'],
+    ['closeout', 'SDD-REVIEW-SELECTION'],
+  ])('rejects untouched template placeholders at %s', (gate, code) => {
+    const f = fixture();
+    const template = readFileSync(
+      join(process.cwd(), 'skills/thoth-sdd/templates/change.md'),
+      'utf8',
+    ).replace('# Change: <id>', `# Change: ${f.id}`);
+    writeFileSync(join(f.change, `${f.id}.md`), template);
+    const result = validate(f.change, gate);
+    expect(result.status).toBe(1);
+    expect(result.report.errors.map(({ code }) => code)).toContain(code);
+  });
+
   test('blocks unresolved material intent instead of passing clarification or plan', () => {
     const f = fixture();
     const path = join(f.change, `${f.id}.md`);

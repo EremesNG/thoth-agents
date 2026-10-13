@@ -262,10 +262,16 @@ function preflightDeltas(root, deltas, errors, warnings, recordName) {
 }
 
 function settled(text) {
-  return (
-    Boolean(text?.trim()) &&
-    !/\b(?:pending|unresolved|unknown|ask|tbd|todo)\b/i.test(text)
-  );
+  if (!text?.trim() || /\bTBD\b/.test(text)) return false;
+  return !text.split(/\r?\n/).some((line) => {
+    const content = line
+      .replace(/\*\*|__/g, '')
+      .trim()
+      .replace(/^(?:[-+*]|\d+[.)])\s+/, '')
+      .replace(/^\[[ xX]\]\s*/, '')
+      .replace(/^AC-\d+:\s*/, '');
+    return /^(?:TBD|PENDING)(?=:|\s*$)/i.test(content);
+  });
 }
 
 function coverageErrors(text, ids, errors, recordName) {

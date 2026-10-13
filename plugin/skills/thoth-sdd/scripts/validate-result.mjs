@@ -93,6 +93,17 @@ function parseStrictJSON(source) {
 }
 
 function checkExpectations(options, issue) {
+  if (
+    options.noRecord &&
+    (options.recordSha256 !== undefined ||
+      (options.reviewKind !== undefined &&
+        options.reviewKind !== contract.rules.recordBindingReviewKind))
+  )
+    issue(
+      'EXPECTATION_INVALID',
+      '',
+      'No-record mode requires final-verification without an expected digest.',
+    );
   const expectations = [
     ['role', Object.keys(contract.roles)],
     ['reviewKind', Object.keys(contract.reviewKinds)],
@@ -200,6 +211,17 @@ export function validateResult(message, options = {}) {
     '',
   );
   if (issues.length) return invalid();
+  if (
+    options.noRecord &&
+    envelope.review.kind !== contract.rules.recordBindingReviewKind
+  ) {
+    issue(
+      'EXPECTATION_INVALID',
+      '/review/kind',
+      'No-record mode requires final-verification.',
+    );
+    return invalid();
+  }
   if (options.role && envelope.role !== options.role)
     issue('ROLE_MISMATCH', '/role', 'Role does not match assignment.');
   if (options.reviewKind && envelope.review.kind !== options.reviewKind)
@@ -253,7 +275,16 @@ export function validateResult(message, options = {}) {
         );
     });
   }
-  if (envelope.review.kind === contract.rules.recordBindingReviewKind) {
+  if (options.noRecord) {
+    for (const key of contract.rules.recordBindingForbiddenUnderNoRecord) {
+      if (Object.hasOwn(envelope.review, key))
+        issue(
+          'RECORD_BINDING_FORBIDDEN',
+          `/review/${key}`,
+          'No-record mode forbids reviewed record binding.',
+        );
+    }
+  } else if (envelope.review.kind === contract.rules.recordBindingReviewKind) {
     for (const key of contract.rules.recordBindingRequiredFields) {
       if (!envelope.review[key])
         issue(
@@ -284,7 +315,7 @@ export function validateResult(message, options = {}) {
 }
 
 export const RESULT_VALIDATOR_USAGE =
-  'node validate-result.mjs [--role oracle] [--review-kind plan-review|final-verification] [--record-sha256 <hex>] [--input <path>]';
+  'node validate-result.mjs [--role oracle] [--review-kind plan-review|final-verification] [--record-sha256 <hex>] [--no-record] [--input <path>]';
 function main(args) {
   const options = {};
   let input;
@@ -292,6 +323,7 @@ function main(args) {
     '--role': 'role',
     '--review-kind': 'reviewKind',
     '--record-sha256': 'recordSha256',
+    '--no-record': 'noRecord',
     '--input': 'input',
   };
   const seen = new Set();
@@ -300,8 +332,8 @@ function main(args) {
     if (
       !Object.hasOwn(names, flag) ||
       seen.has(flag) ||
-      !args[index + 1] ||
-      args[index + 1].startsWith('--')
+      (flag !== '--no-record' &&
+        (!args[index + 1] || args[index + 1].startsWith('--')))
     ) {
       console.log(
         JSON.stringify({
@@ -314,6 +346,10 @@ function main(args) {
       return 2;
     }
     seen.add(flag);
+    if (flag === '--no-record') {
+      options.noRecord = true;
+      continue;
+    }
     const value = args[++index];
     if (flag === '--input') input = value;
     else options[names[flag]] = value;
@@ -342,7 +378,10 @@ function main(args) {
   }
   const result = validateResult(message, options);
   console.log(JSON.stringify(result));
-  return result.valid ? 0 : 1;
+  if (result.valid) return 0;
+  return result.issues.some((issue) => issue.code === 'EXPECTATION_INVALID')
+    ? 2
+    : 1;
 }
 if (
   process.argv[1] &&

@@ -313,6 +313,14 @@ describe('canonical workflow bundle contracts', () => {
     expect(sdd).toContain('--review-kind');
     expect(sdd).toContain('--record-sha256');
     expect(sdd).toContain('--input');
+    for (const guidance of [sdd, verify]) {
+      expect(guidance.replace(/\s+/g, ' ')).toContain(
+        'For Oracle final verification of a small change without a record, root passes `--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.',
+      );
+      expect(guidance.replace(/\s+/g, ' ')).toContain(
+        'Do not combine `--no-record` with `--record-sha256` or plan-review.',
+      );
+    }
     expect(sdd).toContain('unchanged native terminal result');
     expect(sdd).toContain('one format-only repair request per assignment');
     expect(sdd).toContain('must not change findings or verdict');

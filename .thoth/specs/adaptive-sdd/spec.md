@@ -174,4 +174,14 @@ Substantial closeout and archive MUST require the record's Verification section 
 
 - **GIVEN** a record whose Verdict field says PASS but whose embedded Oracle envelope says FAIL
 - **WHEN** closeout validation runs
-- **THEN** closeout fails and archive is refused 
+- **THEN** closeout fails and archive is refused
+
+### Requirement: Validate recordless small-change final verification
+
+The bundled result validator MUST accept an explicit no-record mode for final verification of a recordless small change assigned to Oracle, in which the envelope omits record binding, MUST reject binding fields in that mode, and MUST keep requiring record binding for final verification when the mode is not selected.
+
+#### Scenario: Validate recordless small-change final verification
+
+- **GIVEN** a small change without a record that root assigned to Oracle and an Oracle PASS envelope without record binding
+- **WHEN** root validates it with the no-record mode and, separately, without it
+- **THEN** the first validation succeeds and the second fails for missing record binding

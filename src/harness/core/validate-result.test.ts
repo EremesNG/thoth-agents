@@ -302,6 +302,52 @@ describe('strict envelopes and contract rejection', () => {
       ]);
     }
   });
+  it.each([
+    'PASS',
+    'FAIL',
+    'BLOCKED',
+  ])('accepts recordless %s only in explicit no-record mode', (verdict) => {
+    const result = fixture();
+    result.review = { kind: 'final-verification', verdict };
+    expect(validateResult(fence(result), { noRecord: true })).toEqual({
+      valid: true,
+      envelope: result,
+      issues: [],
+    });
+    expect(codes(fence(result))).toEqual([
+      'RECORD_BINDING_REQUIRED',
+      'RECORD_BINDING_REQUIRED',
+    ]);
+  });
+  it.each([
+    { reviewedRecord: 'record.md' },
+    { reviewedRecordSha256: digest },
+    { reviewedRecord: 'record.md', reviewedRecordSha256: digest },
+  ])('forbids present record binding in no-record mode: %j', (binding) => {
+    const result = fixture();
+    result.review = { kind: 'final-verification', verdict: 'PASS', ...binding };
+    expect(validateResult(fence(result), { noRecord: true }).issues).toEqual(
+      Object.keys(binding).map((key) =>
+        expect.objectContaining({
+          code: 'RECORD_BINDING_FORBIDDEN',
+          path: `/review/${key}`,
+        }),
+      ),
+    );
+  });
+  it('keeps normal schema and verdict checks in no-record mode', () => {
+    const result = fixture();
+    result.review = { kind: 'final-verification', verdict: 'OKAY' };
+    expect(codes(fence(result), { noRecord: true })).toEqual([
+      'VERDICT_MISMATCH',
+    ]);
+    result.review = {
+      kind: 'final-verification',
+      verdict: 'PASS',
+      reviewedRecord: null,
+    };
+    expect(codes(fence(result), { noRecord: true })).toEqual(['TYPE_MISMATCH']);
+  });
   it('binds final verification to an assigned record digest', () => {
     const result = fixture('oracle');
     result.review = { kind: 'final-verification', verdict: 'PASS' };
@@ -346,6 +392,53 @@ function cli(
 }
 
 describe('canonical validator CLI', () => {
+  it('validates recordless final verification with an inferred or explicit kind', () => {
+    const result = fixture();
+    result.review = { kind: 'final-verification', verdict: 'PASS' };
+    for (const args of [
+      ['--no-record'],
+      ['--review-kind', 'final-verification', '--no-record'],
+      ['--no-record', '--review-kind', 'final-verification'],
+    ]) {
+      expect(cli(args, fence(result)).status).toBe(0);
+      result.review.reviewedRecord = 'record.md';
+      expect(cli(args, fence(result))).toEqual({
+        status: 1,
+        output: {
+          valid: false,
+          issues: [
+            expect.objectContaining({ code: 'RECORD_BINDING_FORBIDDEN' }),
+          ],
+        },
+      });
+      delete result.review.reviewedRecord;
+    }
+  });
+  it.each(
+    [
+      ['--no-record', '--record-sha256', digest],
+      ['--record-sha256', digest, '--no-record'],
+      ['--no-record', '--review-kind', 'plan-review'],
+      ['--review-kind', 'plan-review', '--no-record'],
+      ['--no-record'],
+    ].map((args) => ({ args })),
+  )('uses exit 2 for incompatible no-record mode: $args', ({ args }) => {
+    expect(cli(args, fence(fixture()))).toEqual({
+      status: 2,
+      output: {
+        valid: false,
+        issues: [expect.objectContaining({ code: 'EXPECTATION_INVALID' })],
+      },
+    });
+  });
+  it('rejects incompatible no-record API expectations', () => {
+    for (const options of [
+      { noRecord: true, recordSha256: digest },
+      { noRecord: true, reviewKind: 'plan-review' },
+      { noRecord: true },
+    ])
+      expect(codes(fence(fixture()), options)).toEqual(['EXPECTATION_INVALID']);
+  });
   it('validates stdin and reports invalid input using exits 0 and 1', () => {
     expect(cli(['--role', 'oracle'], fence(fixture())).status).toBe(0);
     expect(cli([], fence(fixture())).status).toBe(0);
@@ -378,19 +471,23 @@ describe('canonical validator CLI', () => {
     ).toBe(0);
     expect(cli([], fence(fixture('worker'))).status).toBe(1);
   });
-  it.each([
-    ['--bogus'],
-    ['--role'],
-    ['--role', 'root'],
-    ...['explorer', 'librarian', 'designer', 'worker'].map((role) => [
-      '--role',
-      role,
-    ]),
-    ...['diagnosis', 'advice'].map((kind) => ['--review-kind', kind]),
-    ['--review-kind', 'unknown'],
-    ['--record-sha256', 'bad'],
-    ['--role', 'oracle', '--role', 'oracle'],
-  ])('uses exit 2 for usage errors: %j', (args) => {
+  it.each(
+    [
+      ['--bogus'],
+      ['--no-record', '--no-record'],
+      ['--no-record', 'true'],
+      ['--role'],
+      ['--role', 'root'],
+      ...['explorer', 'librarian', 'designer', 'worker'].map((role) => [
+        '--role',
+        role,
+      ]),
+      ...['diagnosis', 'advice'].map((kind) => ['--review-kind', kind]),
+      ['--review-kind', 'unknown'],
+      ['--record-sha256', 'bad'],
+      ['--role', 'oracle', '--role', 'oracle'],
+    ].map((args) => ({ args })),
+  )('uses exit 2 for usage errors: $args', ({ args }) => {
     expect(cli(args, '').status).toBe(2);
   });
   it('reads --input with valid, invalid, and unreadable paths', () => {

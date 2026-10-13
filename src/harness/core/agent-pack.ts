@@ -497,7 +497,7 @@ ${Object.entries(contract.reviewKinds)
   .map(([kind, rule]) => `${kind}: ${rule.verdicts.join('|')}`)
   .join(
     '; ',
-  )}; ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 from the assignment.`;
+  )}; ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 if the assignment names a record; otherwise omit both.`;
   return `${markdown}
 Diagnosis/advice uses markdown fields and cannot approve. Only for assigned plan-review or final-verification, instead return exactly one fenced \`\`\`${contract.fence} JSON block and nothing else. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. No extra keys; ?=optional. evidenceIds reference unique evidence IDs.
 ${fields}${reviewRules}`;

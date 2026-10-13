@@ -8,6 +8,7 @@ export interface ResultValidationOptions {
   role?: SpecialistRole;
   reviewKind?: OracleReviewKind;
   recordSha256?: string;
+  noRecord?: boolean;
 }
 export type ResultIssueCode =
   | 'ENVELOPE_FORMAT'
@@ -25,6 +26,7 @@ export type ResultIssueCode =
   | 'VERDICT_STATUS'
   | 'BLOCKING_RISK'
   | 'RECORD_BINDING_REQUIRED'
+  | 'RECORD_BINDING_FORBIDDEN'
   | 'RECORD_DIGEST_MISMATCH'
   | 'EXPECTATION_INVALID'
   | 'CLI_USAGE'

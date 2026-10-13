@@ -4,7 +4,7 @@
   "files": {
     "agents/thoth-explorer.md": "aba9abe5de59c42f1ee59116652879cd37e47553710678e6a0183d6fba248934",
     "agents/thoth-librarian.md": "6d5ca38b85426489d4c46d2b2ad4d8312bde5ce7ee0b4cbbda82d88f34bd4265",
-    "agents/thoth-oracle.md": "5f4a14d6eedbb7ac26b5d875e266206f1b69f39e29d714807f468c334bd53747",
+    "agents/thoth-oracle.md": "3f6750cf721a293d3bf2aa2e71370ffac77d99ccb0f7b7f6e73c0634aedf784c",
     "agents/thoth-designer.md": "a5558b0bb906c58319dc82560466ede5ef3289b898874b8290b1d27be67b1a4c",
     "agents/thoth-worker.md": "2aae5772320d3f12f5b4ca6fc7e8da7be11e1cd4df91a8d6ad17feddbb6db219"
   }

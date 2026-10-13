@@ -164,7 +164,7 @@ structured envelope. Before recording plan-review `OKAY` or final-verification
 directory, exactly as for `scripts/validate.mjs`, and runs:
 
 ```text
-node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--input <path>]
+node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]
 ```
 
 Pass the unchanged native terminal result via stdin, or `--input <path>` when
@@ -174,6 +174,10 @@ persisted evidence files. Set `--review-kind` to the assigned `plan-review` or
 `--record-sha256` to the independently calculated expected SHA-256 of exact UTF-8
 bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
 Confirm `reviewedRecord` identifies the assigned record.
+For Oracle final verification of a small change without a record, root passes
+`--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.
+Do not combine `--no-record` with `--record-sha256` or plan-review.
+Without `--no-record`, final verification still requires both binding fields.
 
 - Exit **0** means structurally valid only. Root still judges scope, evidence,
   checks, freshness, provenance, independence, and content before recording any

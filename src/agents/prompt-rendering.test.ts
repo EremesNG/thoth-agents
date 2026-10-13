@@ -823,14 +823,14 @@ describe('AI-first prompt rendering', () => {
   });
 
   test.each([
-    [OPENCODE_PROMPT_DIALECT, 'todowrite'],
-    [CODEX_PROMPT_DIALECT, 'functions.update_plan'],
-    [CLAUDE_CODE_PROMPT_DIALECT, 'TodoWrite'],
-    [PI_PROMPT_DIALECT, 'todo'],
-  ] as const)('%s proactively tracks root progress without giving children ownership', (dialect, tool) => {
+    [OPENCODE_PROMPT_DIALECT, 'todowrite', 'keep one in_progress'],
+    [CODEX_PROMPT_DIALECT, 'functions.update_plan', 'keep one in_progress'],
+    [CLAUDE_CODE_PROMPT_DIALECT, 'TodoWrite', 'keep one in_progress'],
+    [PI_PROMPT_DIALECT, 'todo', 'mark each active unit in_progress'],
+  ] as const)('%s proactively tracks root progress without giving children ownership', (dialect, tool, progressStatus) => {
     const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
     expect(root).toContain(
-      `Track requests with 3+ steps, delegated units or SDD phases with \`${tool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`,
+      `Track requests with 3+ steps, delegated units or SDD phases with \`${tool}\`: create items up front, ${progressStatus}, complete each immediately; skip single trivial or conversational turns.`,
     );
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       const child = renderRolePrompt(sectionsFor(role), dialect);

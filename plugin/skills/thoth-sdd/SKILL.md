@@ -92,7 +92,9 @@ Root uses the harness progress tool (Pi `todo`, Claude `TodoWrite`, OpenCode
 `todowrite`, Codex `update_plan`) to show SDD progress. Before implementation,
 create one item per remaining applicable stage:
 explore/specify/clarify/classify/plan/tasks/ready/plan review/authorization.
-Keep the current stage as the one item in_progress; complete each stage/task
+Pi `todo` may hold several in_progress items for concurrently active stages or
+tasks (e.g. parallel delegated units); Claude `TodoWrite`, OpenCode `todowrite`
+and Codex `update_plan` keep one in_progress item; complete each stage/task
 immediately. At implementation, replace stage items with the record's task rows
 plus final verification and archive (for small changes, use the settled work
 steps plus verification). Keep one list per change; prefix items with the change

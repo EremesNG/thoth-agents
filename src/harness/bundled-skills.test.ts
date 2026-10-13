@@ -209,7 +209,9 @@ describe('canonical workflow bundle contracts', () => {
       "replace stage items with the record's task rows plus final verification and archive",
     );
     expect(guidance).toContain('complete each stage/task immediately');
-    expect(guidance).toContain('one item in_progress');
+    expect(guidance).toContain(
+      'Pi `todo` may hold several in_progress items for concurrently active stages or tasks (e.g. parallel delegated units); Claude `TodoWrite`, OpenCode `todowrite` and Codex `update_plan` keep one in_progress item; complete each stage/task immediately.',
+    );
     expect(guidance).toContain('one list per change');
     expect(guidance).toContain(
       'prefix items with the change ID when several changes are active',

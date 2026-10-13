@@ -550,4 +550,14 @@ Only Oracle results that gate SDD transitions (plan review and final verificatio
 
 - **GIVEN** an Explorer answering a user question and an Oracle final verification without a valid envelope
 - **WHEN** root evaluates both
-- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval 
+- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval
+
+### Requirement: Match progress concurrency to the native tool
+
+Root instructions and the bundled SDD skill MUST let the Pi root mark every concurrently active unit or task in_progress in its session task list, and MUST tell OpenCode, Codex and Claude roots to keep one in_progress item in their native progress tool.
+
+#### Scenario: Match progress concurrency to the native tool
+
+- **GIVEN** a Pi root and an OpenCode, Codex or Claude root
+- **WHEN** their root instructions and the bundled SDD skill are rendered
+- **THEN** the Pi guidance permits several concurrent in_progress items and the other harnesses keep one

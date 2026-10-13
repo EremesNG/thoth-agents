@@ -532,7 +532,7 @@ function renderRoleText(
     .replaceAll(
       '{{progressInstruction}}',
       dialect.tools.progressTool
-        ? `Track requests with 3+ steps, delegated units or SDD phases with \`${dialect.tools.progressTool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`
+        ? `Track requests with 3+ steps, delegated units or SDD phases with \`${dialect.tools.progressTool}\`: create items up front, ${dialect.tools.progressStatusInstruction ?? 'keep one in_progress'}, complete each immediately; skip single trivial or conversational turns.`
         : 'Track requests with 3+ steps, delegated units or SDD phases in written progress notes; no native progress tool is configured. Skip single trivial or conversational turns.',
     )
     .replaceAll(

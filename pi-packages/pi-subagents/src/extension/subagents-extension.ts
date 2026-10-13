@@ -86,6 +86,16 @@ export default function subagentsExtension(pi: any): void {
     renderSubagentQuestionMessage,
   );
   let activeSessionId: string | undefined;
+  let rootRunActive = false;
+  let notificationCtx: ExtensionContext | undefined;
+  // Pi followUps cannot be selectively cancelled once queued during a turn.
+  const notificationOutbox: Array<() => void> = [];
+  const deliverNotification = (send: () => void) => {
+    // signal is live before our agent_start handler, unlike the event-owned flag.
+    // Compaction/tree controllers are separate and do not appear in ctx.signal.
+    if (rootRunActive || notificationCtx?.signal) notificationOutbox.push(send);
+    else send();
+  };
   let activeSessionOwner: AtelierSessionOwner | undefined;
   const usageEvents = pi.events
     ? new SubagentUsageEvents(
@@ -104,11 +114,15 @@ export default function subagentsExtension(pi: any): void {
           ? task.session_id
           : undefined;
       if (taskSessionId && taskSessionId !== activeSessionId) return;
-      try {
-        sendSubagentCompletionMessage(pi, task, cwd);
-      } catch (error) {
-        if (!isStaleContextError(error)) throw error;
-      }
+      deliverNotification(() => {
+        if (taskSessionId && taskSessionId !== activeSessionId) return;
+        if (manager.isResultAcknowledged(task)) return;
+        try {
+          sendSubagentCompletionMessage(pi, task, cwd);
+        } catch (error) {
+          if (!isStaleContextError(error)) throw error;
+        }
+      });
     },
     undefined,
     new AtelierMetadataWriter({
@@ -124,15 +138,19 @@ export default function subagentsExtension(pi: any): void {
         throw new Error(
           'The originating parent Pi session is no longer active.',
         );
-      try {
-        sendSubagentQuestionMessage(pi, task, question);
-      } catch (error) {
-        if (isStaleContextError(error))
-          throw new Error(
-            'Parent Pi session shutdown or replacement prevents question delivery.',
-          );
-        throw error;
-      }
+      deliverNotification(() => {
+        if (task.session_id !== activeSessionId) return;
+        if (!manager.isQuestionPending(task.id, question.request_id)) return;
+        try {
+          sendSubagentQuestionMessage(pi, task, question);
+        } catch (error) {
+          if (isStaleContextError(error))
+            throw new Error(
+              'Parent Pi session shutdown or replacement prevents question delivery.',
+            );
+          throw error;
+        }
+      });
     },
   );
   const sessionModelProfile = new SessionModelProfile(
@@ -188,7 +206,38 @@ export default function subagentsExtension(pi: any): void {
     panelCtx = undefined;
   };
 
+  // turn_end carries final tool messages after every message_end interceptor.
+  pi.on?.('turn_end', (event: any, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) === activeSessionId)
+      manager.confirmResultAcknowledgments(event.toolResults ?? []);
+  });
+
+  pi.on?.('agent_start', (_event: unknown, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) === activeSessionId) rootRunActive = true;
+  });
+
+  pi.on?.('agent_settled', (_event: unknown, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) !== activeSessionId) return;
+    manager.clearResultAcknowledgmentCandidates();
+    while (notificationOutbox.length) {
+      const send = notificationOutbox.shift();
+      try {
+        send?.();
+      } catch (error) {
+        console.error(
+          '[pi-subagents] Failed to deliver parent notification:',
+          error,
+        );
+      }
+    }
+    rootRunActive = false;
+  });
+
   pi.on?.('session_start', async (event: any, ctx: any) => {
+    notificationOutbox.length = 0;
+    rootRunActive = false;
+    notificationCtx = ctx;
+    manager.resetResultAcknowledgments();
     sessionModelProfile.restore(
       ctx?.sessionManager?.getBranch?.() ??
         ctx?.sessionManager?.getEntries?.() ??
@@ -265,6 +314,10 @@ export default function subagentsExtension(pi: any): void {
     pi.on?.('agent_end', () => usageEvents.flush());
 
   pi.on?.('session_shutdown', async () => {
+    notificationOutbox.length = 0;
+    rootRunActive = false;
+    notificationCtx = undefined;
+    manager.resetResultAcknowledgments();
     publication?.withdraw();
     publication = undefined;
     activeSessionId = undefined;

@@ -121,7 +121,13 @@ describe('compatibility smoke', () => {
         'subagent_send_message',
         'subagent_reply',
       ]);
-      expect(events).toEqual(['session_start', 'session_shutdown']);
+      expect(events).toEqual([
+        'turn_end',
+        'agent_start',
+        'agent_settled',
+        'session_start',
+        'session_shutdown',
+      ]);
       for (const tool of definitions) {
         expect(tool).toMatchObject({
           exposure: 'model-only',

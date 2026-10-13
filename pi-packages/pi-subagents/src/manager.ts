@@ -545,6 +545,11 @@ export class SubagentManager {
     string,
     Map<string, PendingQuestionEntry>
   >();
+  private acknowledgedResults = new Map<string, Set<number>>();
+  private resultCandidates = new Map<
+    string,
+    { taskId: string; attempt: number; content: string }
+  >();
   private askTimeouts = new Map<string, number>();
   private questionListeners = new Set<QuestionListener>();
   private questionPendingListeners = new Map<
@@ -730,6 +735,62 @@ export class SubagentManager {
     const cwd = this.taskCwds.get(task.id);
     if (cwd) this.record(cwd, task, task.last_activity ?? 'running', true);
     this.notifyTaskUpdate(task.id, undefined, true);
+  }
+
+  isQuestionPending(taskId: string, requestId: string): boolean {
+    return this.pendingQuestions.get(taskId)?.has(requestId) ?? false;
+  }
+
+  stageResultAcknowledgment(
+    toolCallId: string,
+    task: SubagentTask,
+    content: unknown,
+  ): void {
+    if (!isTerminalStatus(task.status)) return;
+    this.resultCandidates.set(toolCallId, {
+      taskId: task.id,
+      attempt: task.attempt ?? 1,
+      content: JSON.stringify(content),
+    });
+  }
+
+  confirmResultAcknowledgments(messages: any[]): void {
+    for (const message of messages) {
+      const candidate = this.resultCandidates.get(message.toolCallId);
+      if (!candidate) continue;
+      this.resultCandidates.delete(message.toolCallId);
+      const task = message.details?.task;
+      if (
+        message.role !== 'toolResult' ||
+        message.toolName !== 'subagent_result' ||
+        message.isError !== false ||
+        task?.id !== candidate.taskId ||
+        (task.attempt ?? 1) !== candidate.attempt ||
+        JSON.stringify(message.content) !== candidate.content
+      )
+        continue;
+      let attempts = this.acknowledgedResults.get(candidate.taskId);
+      if (!attempts) {
+        attempts = new Set();
+        this.acknowledgedResults.set(candidate.taskId, attempts);
+      }
+      attempts.add(candidate.attempt);
+    }
+  }
+
+  clearResultAcknowledgmentCandidates(): void {
+    this.resultCandidates.clear();
+  }
+
+  resetResultAcknowledgments(): void {
+    this.clearResultAcknowledgmentCandidates();
+    this.acknowledgedResults.clear();
+  }
+
+  isResultAcknowledged(task: SubagentTask): boolean {
+    return (
+      this.acknowledgedResults.get(task.id)?.has(task.attempt ?? 1) ?? false
+    );
   }
 
   private async deliverQuestion(

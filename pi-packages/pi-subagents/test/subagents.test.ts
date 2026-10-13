@@ -31,6 +31,10 @@ function createExtensionManagerFake() {
     reconcileOrphanedTasks: vi.fn(),
     close: vi.fn(async () => undefined),
     cancelRunning: vi.fn(),
+    clearResultAcknowledgmentCandidates: vi.fn(),
+    resetResultAcknowledgments: vi.fn(),
+    confirmResultAcknowledgments: vi.fn(),
+    isResultAcknowledged: vi.fn(() => false),
     onTaskUpdate: vi.fn((_listener: () => void) => () => undefined),
     listActiveSessionTasks: vi.fn(() => [] as SubagentTask[]),
     snapshotSessionTaskCounts: vi.fn(() => ({
@@ -143,8 +147,9 @@ describe('subagents smoke', () => {
     }
     expect(count('input')).toBe(0);
     expect(count('before_agent_start')).toBe(0);
-    expect(count('agent_start')).toBe(0);
-    expect(count('agent_settled')).toBe(0);
+    expect(count('agent_start')).toBe(1);
+    // Extension-owned run/outbox listeners remain; UI lifecycle listeners release.
+    expect(count('agent_settled')).toBe(1);
   });
   it('lingers idle outcomes, collapses after linger and the next prompt, and opens existing history from Enter', async () => {
     vi.useFakeTimers();
@@ -475,7 +480,9 @@ describe('subagents smoke', () => {
   });
 
   it('suppresses stale Pi context errors from delayed background completion delivery', async () => {
+    const { handlers, on } = extensionEventBus();
     const pi = {
+      on,
       sendMessage: vi.fn(() => {
         throw new Error(
           'This extension ctx is stale after session replacement or reload',
@@ -488,6 +495,10 @@ describe('subagents smoke', () => {
     };
 
     extension(pi);
+    await handlers.get('session_start')?.(
+      {},
+      { cwd: env.tmp, sessionId: 'parent', ui: {}, isIdle: () => true },
+    );
 
     expect(() =>
       onTerminalBackgroundTask?.(
@@ -518,7 +529,12 @@ describe('subagents smoke', () => {
     extension(pi);
     handlers.get('session_start')?.(
       {},
-      { cwd: env.tmp, sessionId: 'session-new', ui: { setWidget: vi.fn() } },
+      {
+        cwd: env.tmp,
+        sessionId: 'session-new',
+        ui: { setWidget: vi.fn() },
+        isIdle: () => true,
+      },
     );
 
     onTerminalBackgroundTask?.(

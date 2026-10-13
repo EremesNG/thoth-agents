@@ -1,11 +1,11 @@
 import type { Task } from '../tool/types.js';
 
 /**
- * Detect whether merging `newBlockedBy` into `taskId`'s `blockedBy` set would
- * introduce a cycle in the dependency graph.
+ * Detect whether replacing `taskId`'s dependencies with `newBlockedBy` would
+ * leave a cycle in the staged dependency graph.
  *
  * Pure of any module state; takes the existing `taskList` and the proposed
- * additions explicitly so the reducer can ask "would this update cycle?"
+ * adjacency explicitly so the reducer can ask "would this update cycle?"
  * without mutating state first.
  */
 export function detectCycle(
@@ -16,8 +16,7 @@ export function detectCycle(
   const edges = new Map<number, number[]>();
   for (const t of taskList) {
     if (t.id === taskId) {
-      const merged = new Set([...(t.blockedBy ?? []), ...newBlockedBy]);
-      edges.set(t.id, [...merged]);
+      edges.set(t.id, [...newBlockedBy]);
     } else {
       edges.set(t.id, t.blockedBy ? [...t.blockedBy] : []);
     }

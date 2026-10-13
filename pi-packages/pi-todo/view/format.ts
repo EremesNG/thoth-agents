@@ -14,6 +14,10 @@ import {
   resolveStatusGlyph,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
+import {
+  formatBatchCounts,
+  formatBatchLine,
+} from '../tool/response-envelope.js';
 import { sanitizeTerminalText } from '../tool/sanitize.js';
 import type {
   Task,
@@ -65,6 +69,7 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
   // ☰ measures two cells in newer Unicode tables but one in older terminals.
   list: '≣',
   clear: '∅',
+  batch: '≣',
 };
 
 /**
@@ -236,6 +241,8 @@ function callSummary(
 ): string {
   const action = theme.fg('muted', args.action);
   switch (args.action) {
+    case 'batch':
+      return join([action, separator(theme), `${args.ops?.length ?? 0} ops`]);
     case 'create':
       return join([
         action,
@@ -341,6 +348,15 @@ function resultView(
     : undefined;
   const glyph = task ? statusGlyph(task.status, theme) : undefined;
   switch (details.action) {
+    case 'batch':
+      return {
+        summary: join([
+          action,
+          separator(theme),
+          formatBatchCounts(details.results ?? []),
+        ]),
+        rows: (details.results ?? []).map(formatBatchLine),
+      };
     case 'create':
     case 'get':
       return { summary: join([action, id, glyph, subject]), rows: [] };

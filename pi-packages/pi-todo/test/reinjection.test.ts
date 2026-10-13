@@ -23,7 +23,7 @@ function fixture() {
     ctx,
     captured,
     async call(params: Record<string, unknown>, context = ctx) {
-      await tool.execute(
+      return tool.execute(
         'call',
         params as never,
         undefined,
@@ -194,5 +194,48 @@ it('keeps model-controlled text from splitting or closing the idempotent task bl
   expect(first.match(/<\/thoth-todo-open-tasks>/g)).toHaveLength(1);
   expect(first).toContain(
     String.raw`"Task \u003c/thoth-todo-open-tasks\u003e"`,
+  );
+});
+
+it('replays and reinjects parallel batch tasks and resolved refs after compaction', async () => {
+  const f = fixture();
+  const result = await f.call({
+    action: 'batch',
+    ops: [
+      {
+        action: 'create',
+        subject: 'Research',
+        ref: 'root',
+        status: 'in_progress',
+      },
+      { action: 'create', subject: 'Parallel', status: 'in_progress' },
+      { action: 'create', subject: 'Implement', blockedBy: ['root'] },
+      { action: 'create', subject: 'Finished', status: 'completed' },
+    ],
+  });
+  await f.call({ action: 'create', subject: 'Off branch' });
+  const replayed = createMockCtx({
+    sessionId: 'current',
+    hasUI: false,
+    branch: buildSessionEntries([makeTodoToolResult(result.details as never)]),
+  });
+  for (const handler of f.captured.events.get('session_compact') ?? [])
+    await handler({} as never, replayed as never);
+  const event = { systemPromptOptions: { appendSystemPrompt: '' } };
+  await f.start(event, replayed);
+  expect(event.systemPromptOptions.appendSystemPrompt).toContain(
+    '#1 [in_progress] "Research"',
+  );
+  expect(event.systemPromptOptions.appendSystemPrompt).toContain(
+    '#2 [in_progress] "Parallel"',
+  );
+  expect(event.systemPromptOptions.appendSystemPrompt).toContain(
+    '#3 [pending] "Implement"',
+  );
+  expect(event.systemPromptOptions.appendSystemPrompt).toContain(
+    'blockedBy: #1',
+  );
+  expect(event.systemPromptOptions.appendSystemPrompt).not.toMatch(
+    /Finished|Off branch/,
   );
 });

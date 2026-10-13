@@ -5,8 +5,10 @@ import {
   makeTodoToolResult,
   makeUserMessage,
 } from '../test/helpers.js';
+import { buildToolResult } from '../tool/response-envelope.js';
 import type { Task, TaskDetails } from '../tool/types.js';
 import { isTaskDetails, replayFromBranch } from './replay.js';
+import { applyTaskMutation } from './state-reducer.js';
 
 function buildBranch(snapshots: TaskDetails[]) {
   const messages = snapshots.map((s) => makeTodoToolResult(s));
@@ -162,5 +164,33 @@ describe('replayFromBranch', () => {
     const fresh = replayFromBranch(ctx2);
     expect(fresh.tasks).toEqual([]);
     expect(fresh.nextId).toBe(1);
+  });
+});
+
+it('replays a batch snapshot and its following error without interpreting refs or results', () => {
+  const applied = applyTaskMutation({ tasks: [], nextId: 1 }, 'batch', {
+    ops: [
+      { action: 'create', subject: 'Root', ref: 'root', status: 'in_progress' },
+      { action: 'create', subject: 'Child', blockedBy: ['root'] },
+    ],
+  });
+  const success = buildToolResult(
+    'batch',
+    {},
+    applied.state,
+    applied.op,
+  ).details;
+  const failed = applyTaskMutation(applied.state, 'batch', {
+    ops: [{ action: 'delete', id: 'root' }],
+  });
+  const error = buildToolResult('batch', {}, failed.state, failed.op).details;
+  expect(
+    replayFromBranch(createMockCtx({ branch: buildBranch([success, error]) })),
+  ).toEqual({
+    tasks: [
+      { id: 1, subject: 'Root', status: 'in_progress' },
+      { id: 2, subject: 'Child', status: 'pending', blockedBy: [1] },
+    ],
+    nextId: 3,
   });
 });

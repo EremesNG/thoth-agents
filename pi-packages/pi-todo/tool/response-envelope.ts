@@ -3,6 +3,7 @@ import type { Op } from '../state/state-reducer.js';
 import { deriveBlocks } from '../state/task-graph.js';
 import { sanitizeTerminalText } from './sanitize.js';
 import type {
+  BatchResult,
   Task,
   TaskAction,
   TaskDetails,
@@ -51,6 +52,20 @@ function formatGetLines(task: Task, state: TaskState): string {
   return lines.join('\n');
 }
 
+export function formatBatchCounts(results: BatchResult[]): string {
+  const count = (action: BatchResult['action']) =>
+    results.filter((result) => result.action === action).length;
+  return `${count('create')} created, ${count('update')} updated, ${count('delete')} deleted`;
+}
+
+export function formatBatchLine(result: BatchResult): string {
+  const ref =
+    result.ref === undefined
+      ? ''
+      : ` (ref: ${sanitizeTerminalText(result.ref)})`;
+  return `op[${result.index}] ${result.action} #${result.id}${ref}`;
+}
+
 /**
  * Pure formatter: `(op, state) → string`. Closed switch on `op.kind` —
  * adding a new `Op` variant fails to compile here until a branch is added.
@@ -59,11 +74,16 @@ function formatGetLines(task: Task, state: TaskState): string {
  */
 export function formatContent(op: Op, state: TaskState): string {
   switch (op.kind) {
+    case 'batch':
+      return [
+        `Batch: ${formatBatchCounts(op.results)}`,
+        ...op.results.map(formatBatchLine),
+      ].join('\n');
     case 'create': {
       const t = state.tasks.find((x) => x.id === op.taskId);
       // Defensive — `op.taskId` always resolves on success path.
       if (!t) return `Created #${op.taskId}`;
-      return `Created #${t.id}: ${sanitizeTerminalText(t.subject)} (pending)`;
+      return `Created #${t.id}: ${sanitizeTerminalText(t.subject)} (${t.status})`;
     }
     case 'update': {
       if (!op.changed) {
@@ -115,6 +135,7 @@ export function buildToolResult(
     tasks: state.tasks,
     nextId: state.nextId,
     ...(op.kind === 'error' ? { error: op.message } : {}),
+    ...(op.kind === 'batch' ? { results: op.results } : {}),
   };
   return { content: [{ type: 'text', text }], details };
 }

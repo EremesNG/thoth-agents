@@ -76,11 +76,26 @@ task-state channel remains v1.
 
 ## Tool
 
-`todo` supports `create`, `update`, `list`, `get`, `delete`, and `clear`.
+`todo` supports `create`, `update`, `list`, `get`, `delete`, `clear`, and `batch`.
 Statuses are `pending`, `in_progress`, `completed`, and `deleted` (tombstone).
+Create accepts `pending` (default), `in_progress` or `completed`, not `deleted`.
+Multiple tasks may be `in_progress` for parallel work; complete as soon as done.
 Completed tasks cannot reopen; deleted tasks are terminal. The tool supports
 `description`, `activeForm`, `owner`, `metadata`, `blockedBy`, `addBlockedBy`,
 `removeBlockedBy`, and `includeDeleted`. Dependency cycles are rejected.
+Batch applies 1–50 ordered create/update/delete ops atomically; any failure leaves
+state unchanged and reports the failing op index. A create may declare a unique
+call-scoped `ref`. Later `id`, `blockedBy`, `addBlockedBy` and `removeBlockedBy`
+fields accept numeric ids or string refs from earlier creates (even numeric-looking
+strings are refs). Refs are not stored on tasks or available in later calls.
+
+```json
+{"action":"batch","ops":[
+  {"action":"create","subject":"Research","ref":"research","status":"in_progress"},
+  {"action":"create","subject":"Implement","blockedBy":["research"]}
+]}
+```
+
 Tool-result details retain the upstream persistence format, so existing `todo`
 history replays without migration. Do not load both forks in the same session:
 they register the same tool and command.

@@ -1,4 +1,5 @@
 import type {
+  BatchResult,
   Task,
   TaskAction,
   TaskMutationParams,
@@ -18,6 +19,7 @@ import { detectCycle } from './task-graph.js';
  * `op.kind === "error"` without a side-channel boolean.
  */
 export type Op =
+  | { kind: 'batch'; results: BatchResult[] }
   | { kind: 'create'; taskId: number }
   | {
       kind: 'update';
@@ -96,7 +98,80 @@ export function applyTaskMutation(
   params: TaskMutationParams,
 ): ApplyResult {
   switch (action) {
+    case 'batch': {
+      if (!params.ops?.length)
+        return errorResult(state, 'batch requires non-empty ops');
+      if (params.ops.length > 50)
+        return errorResult(state, 'batch supports at most 50 ops');
+      let working = state;
+      const results: BatchResult[] = [];
+      const refs = new Map<string, number>();
+      for (const [index, operation] of params.ops.entries()) {
+        const fail = (reason: string) =>
+          errorResult(state, `op[${index}] ${operation.action}: ${reason}`);
+        if (!['create', 'update', 'delete'].includes(operation.action)) {
+          return fail('unsupported batch action');
+        }
+        if (operation.ref !== undefined) {
+          if (operation.action !== 'create') return fail('ref is create-only');
+          if (refs.has(operation.ref))
+            return fail(`duplicate ref "${operation.ref}"`);
+        }
+        const resolved: Record<string, unknown> = { ...operation };
+        for (const field of [
+          'id',
+          'blockedBy',
+          'addBlockedBy',
+          'removeBlockedBy',
+        ] as const) {
+          const value = operation[field];
+          if (value === undefined) continue;
+          const ids: number[] = [];
+          for (const valueId of Array.isArray(value) ? value : [value]) {
+            if (typeof valueId === 'number') ids.push(valueId);
+            else {
+              const refId = refs.get(valueId);
+              if (refId === undefined)
+                return fail(`unknown or forward ref "${valueId}"`);
+              ids.push(refId);
+            }
+          }
+          resolved[field] = field === 'id' ? ids[0] : ids;
+        }
+        const result = applyTaskMutation(working, operation.action, resolved);
+        if (result.op.kind === 'error') {
+          return fail(result.op.message);
+        }
+        if (
+          result.op.kind !== 'create' &&
+          result.op.kind !== 'update' &&
+          result.op.kind !== 'delete'
+        ) {
+          return fail('unsupported batch action');
+        }
+        working = result.state;
+        const id =
+          result.op.kind === 'create' ? result.op.taskId : result.op.id;
+        if (operation.ref !== undefined) refs.set(operation.ref, id);
+        results.push({
+          index,
+          action: operation.action,
+          id,
+          ...(operation.ref !== undefined ? { ref: operation.ref } : {}),
+        });
+      }
+      return { state: working, op: { kind: 'batch', results } };
+    }
     case 'create': {
+      if (
+        params.status !== undefined &&
+        !['pending', 'in_progress', 'completed'].includes(params.status)
+      ) {
+        return errorResult(
+          state,
+          'create status must be pending, in_progress or completed',
+        );
+      }
       if (!params.subject?.trim()) {
         return errorResult(state, 'subject required for create');
       }
@@ -112,7 +187,7 @@ export function applyTaskMutation(
       const newTask: Task = {
         id: state.nextId,
         subject: params.subject,
-        status: 'pending',
+        status: params.status ?? 'pending',
       };
       if (params.description) newTask.description = params.description;
       if (params.activeForm) newTask.activeForm = params.activeForm;

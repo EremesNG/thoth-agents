@@ -341,3 +341,70 @@ it('drops the request listener on a stale shutdown and reconnects after session 
     'replacement',
   ]);
 });
+
+it('commits a ten-create batch in one result and publishes exactly one snapshot; errors publish nothing', async () => {
+  const f = fixture();
+  await f.emit('session_start');
+  f.snapshots.length = 0;
+  const result = await f.call({
+    action: 'batch',
+    ops: Array.from({ length: 10 }, (_, index) => ({
+      action: 'create',
+      subject: `Task ${index}`,
+      status: index === 0 ? 'in_progress' : 'pending',
+    })),
+  });
+  expect(result.details).toMatchObject({
+    action: 'batch',
+    nextId: 11,
+    tasks: expect.any(Array),
+    results: expect.any(Array),
+  });
+  expect((result.details as { tasks: unknown[] }).tasks).toHaveLength(10);
+  expect(f.snapshots).toHaveLength(1);
+  expect(f.snapshots[0].data).toMatchObject({
+    nextId: 11,
+    counts: { pending: 9, in_progress: 1, completed: 0, deleted: 0 },
+  });
+  expect(result.content).toEqual([
+    {
+      type: 'text',
+      text: expect.stringContaining('10 created, 0 updated, 0 deleted'),
+    },
+  ]);
+  expect((result.content[0] as { text: string }).text.split('\n')).toHaveLength(
+    11,
+  );
+  f.snapshots.length = 0;
+  const failed = await f.call({
+    action: 'batch',
+    ops: [
+      { action: 'delete', id: 1 },
+      { action: 'create', subject: 'Temporary' },
+      { action: 'update', id: 999, status: 'in_progress' },
+    ],
+  });
+  expect(failed.details).toMatchObject({
+    nextId: 11,
+    error: 'op[2] update: #999 not found',
+  });
+  expect(failed.details).not.toHaveProperty('results');
+  expect(f.snapshots).toEqual([]);
+  const retained = await f.call({ action: 'list' });
+  expect(retained.details).toMatchObject({
+    tasks: (result.details as { tasks: unknown[] }).tasks,
+    nextId: 11,
+  });
+});
+
+it('publishes exactly one snapshot even for a successful batch of no-effect updates', async () => {
+  const f = fixture();
+  await f.emit('session_start');
+  await f.call({ action: 'create', subject: 'Task' });
+  f.snapshots.length = 0;
+  await f.call({
+    action: 'batch',
+    ops: [{ action: 'update', id: 1, status: 'pending' }],
+  });
+  expect(f.snapshots).toHaveLength(1);
+});

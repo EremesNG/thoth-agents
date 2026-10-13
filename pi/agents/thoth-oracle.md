@@ -75,7 +75,7 @@ Diagnosis/advice uses markdown fields and cannot approve. Only for assigned plan
 - openQuestions: {question: s, owner: s, options: s[], facts: s[]}[]
 - nextAction: s|null
 - review: {kind: plan-review|final-verification, verdict: s, reviewedRecord?: s+, reviewedRecordSha256?: hex64}
-plan-review: OKAY|REJECT; final-verification: PASS|FAIL|BLOCKED; OKAY|PASS requires complete status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 from the assignment.
+plan-review: OKAY|REJECT; final-verification: PASS|FAIL|BLOCKED; OKAY|PASS requires complete status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 if the assignment names a record; otherwise omit both.
 </return-contract>
 
 Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.

@@ -92,7 +92,9 @@ Root uses the harness progress tool (Pi `todo`, Claude `TodoWrite`, OpenCode
 `todowrite`, Codex `update_plan`) to show SDD progress. Before implementation,
 create one item per remaining applicable stage:
 explore/specify/clarify/classify/plan/tasks/ready/plan review/authorization.
-Keep the current stage as the one item in_progress; complete each stage/task
+Pi `todo` may hold several in_progress items for concurrently active stages or
+tasks (e.g. parallel delegated units); Claude `TodoWrite`, OpenCode `todowrite`
+and Codex `update_plan` keep one in_progress item; complete each stage/task
 immediately. At implementation, replace stage items with the record's task rows
 plus final verification and archive (for small changes, use the settled work
 steps plus verification). Keep one list per change; prefix items with the change
@@ -162,7 +164,7 @@ structured envelope. Before recording plan-review `OKAY` or final-verification
 directory, exactly as for `scripts/validate.mjs`, and runs:
 
 ```text
-node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--input <path>]
+node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]
 ```
 
 Pass the unchanged native terminal result via stdin, or `--input <path>` when
@@ -172,6 +174,10 @@ persisted evidence files. Set `--review-kind` to the assigned `plan-review` or
 `--record-sha256` to the independently calculated expected SHA-256 of exact UTF-8
 bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
 Confirm `reviewedRecord` identifies the assigned record.
+For Oracle final verification of a small change without a record, root passes
+`--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.
+Do not combine `--no-record` with `--record-sha256` or plan-review.
+Without `--no-record`, final verification still requires both binding fields.
 
 - Exit **0** means structurally valid only. Root still judges scope, evidence,
   checks, freshness, provenance, independence, and content before recording any

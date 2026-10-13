@@ -209,7 +209,9 @@ describe('canonical workflow bundle contracts', () => {
       "replace stage items with the record's task rows plus final verification and archive",
     );
     expect(guidance).toContain('complete each stage/task immediately');
-    expect(guidance).toContain('one item in_progress');
+    expect(guidance).toContain(
+      'Pi `todo` may hold several in_progress items for concurrently active stages or tasks (e.g. parallel delegated units); Claude `TodoWrite`, OpenCode `todowrite` and Codex `update_plan` keep one in_progress item; complete each stage/task immediately.',
+    );
     expect(guidance).toContain('one list per change');
     expect(guidance).toContain(
       'prefix items with the change ID when several changes are active',
@@ -311,6 +313,14 @@ describe('canonical workflow bundle contracts', () => {
     expect(sdd).toContain('--review-kind');
     expect(sdd).toContain('--record-sha256');
     expect(sdd).toContain('--input');
+    for (const guidance of [sdd, verify]) {
+      expect(guidance.replace(/\s+/g, ' ')).toContain(
+        'For Oracle final verification of a small change without a record, root passes `--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.',
+      );
+      expect(guidance.replace(/\s+/g, ' ')).toContain(
+        'Do not combine `--no-record` with `--record-sha256` or plan-review.',
+      );
+    }
     expect(sdd).toContain('unchanged native terminal result');
     expect(sdd).toContain('one format-only repair request per assignment');
     expect(sdd).toContain('must not change findings or verdict');

@@ -651,7 +651,7 @@ describe('AI-first prompt rendering', () => {
         expect(contract).toContain('plan-review: OKAY|REJECT');
         expect(contract).toContain('final-verification: PASS|FAIL|BLOCKED');
         expect(contract).toContain(
-          'reviewedRecord and reviewedRecordSha256 from the assignment',
+          'Final-verification requires reviewedRecord and reviewedRecordSha256 if the assignment names a record; otherwise omit both.',
         );
         expect(contract).toContain(
           'Diagnosis/advice uses markdown fields and cannot approve',
@@ -709,7 +709,7 @@ describe('AI-first prompt rendering', () => {
       'Only Oracle gates (plan-review/final-verification)',
     );
     expect(root).toContain(
-      'node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>]',
+      'node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record]',
     );
     expect(root).toContain('validate before recording OKAY/PASS');
     expect(root).toContain(
@@ -823,14 +823,14 @@ describe('AI-first prompt rendering', () => {
   });
 
   test.each([
-    [OPENCODE_PROMPT_DIALECT, 'todowrite'],
-    [CODEX_PROMPT_DIALECT, 'functions.update_plan'],
-    [CLAUDE_CODE_PROMPT_DIALECT, 'TodoWrite'],
-    [PI_PROMPT_DIALECT, 'todo'],
-  ] as const)('%s proactively tracks root progress without giving children ownership', (dialect, tool) => {
+    [OPENCODE_PROMPT_DIALECT, 'todowrite', 'keep one in_progress'],
+    [CODEX_PROMPT_DIALECT, 'functions.update_plan', 'keep one in_progress'],
+    [CLAUDE_CODE_PROMPT_DIALECT, 'TodoWrite', 'keep one in_progress'],
+    [PI_PROMPT_DIALECT, 'todo', 'mark each active unit in_progress'],
+  ] as const)('%s proactively tracks root progress without giving children ownership', (dialect, tool, progressStatus) => {
     const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
     expect(root).toContain(
-      `Track requests with 3+ steps, delegated units or SDD phases with \`${tool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`,
+      `Track requests with 3+ steps, delegated units or SDD phases with \`${tool}\`: create items up front, ${progressStatus}, complete each immediately; skip single trivial or conversational turns.`,
     );
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       const child = renderRolePrompt(sectionsFor(role), dialect);
@@ -884,10 +884,10 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "ebaeb38ac50ecdb89f5b1b36847c47d83a9161c1a314854507e8ec13cd0ec485",
+          "3e8e887c80b0da807d625b8bc26c13c4ef2b2fb588f1d116f8ad5b2a6e83b498",
           "3c6cec172ead08bbd4f905fe7424ed94b4b251f4798880d53382be50856bd866",
           "8995d957e4e3861aedba4ee4907c1feaa79a865eb9110d447c9aebe30d0f87c7",
-          "487a056dad8f88f1258f486d61a043f2fcd7b81a311209ba78d1bcd1fbd2c974",
+          "b8bc33779da36a8504e125f2e6e799e5e1356e7214826f25cce6e8aadd494e66",
           "e7dc4d10d0b579fd0a2caa65e93175abcde8ad391dda9c0853d2e0402a496d85",
           "4820d7da4fd06a281a4bf71fb9f554b524ea48cb119bce762dc7c9e9abc3c3dc",
         ],
@@ -895,10 +895,10 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "1bbd0f3cfb07fcb023e1efdc71f80085c6ae0902dec972a54a7e129dafcf0bdd",
+          "6f31306eb7b0a7634dd4c7c039bf7b08376ebd4fb9e615a86a7bedd938b0fcb4",
           "252f9d6277b5637de7982a6d26c673c5c7317d65f2e2c9c846a48669c20fa7e7",
           "a620c249ffa378ff2fd5fd81bcd56321102f4889170a1f58b71f689a4159562d",
-          "c291fa15d2e58c5dc06472e3d25b60c5777910abba4d59d8912d0820d4cbe4bc",
+          "0565cd0a3e76deee25fe30005b156364bdaa4939a8749926b68d36f019bc63ad",
           "228cc8e0fdba6ed1c899731eb9de8808aca12b5e0c36931edf6ca19b653dd765",
           "c2d360a0d84a68fd02a4f7d86808d8e5d28fc9a75da81849bb3de2f4bc1ffb52",
         ],
@@ -906,10 +906,10 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "f10c78aa39101c0ddd1c5c405ad14c3618ad70b93fa699023220e7614e1afcce",
+          "5ad56de6bc3134a7518e64d9d12ae05d586ee84e25fe4dc9a682bbd701a20d5d",
           "0b1ba17e3e1565bed8c29795c0aafcd67d2cbcd08afe21e7a1ee65bf7a23d23f",
           "4ac41f8716aeb883786a0b2e92b46aaf9dab7378f2d7d7fdaa8ef5845b0303dd",
-          "db5fa796df7943534ce3a02308b879faa5fd1f351fd994c6daf77c791362ec39",
+          "bd18ff47a149bf6b9d48590196c7bb9f5b9b86687077cba709437ff77d0a7d0f",
           "82323b51b8eb6b4edaa8950c64832643c754a5657cba1cddb62f25dccc7a2bf3",
           "e3a6f087bd549c855ba693725fac6b65e28de3908ee7450614a58fbf2e49ace0",
         ],

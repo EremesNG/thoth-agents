@@ -88,6 +88,10 @@ export const SPECIALIST_RESULT_CONTRACT = {
     evidenceReferences: ['verification', 'risks'],
     recordBindingReviewKind: 'final-verification',
     recordBindingRequiredFields: ['reviewedRecord', 'reviewedRecordSha256'],
+    recordBindingForbiddenUnderNoRecord: [
+      'reviewedRecord',
+      'reviewedRecordSha256',
+    ],
   },
 } as const;
 
@@ -120,9 +124,9 @@ export type OracleReview = {
   [K in OracleReviewKind]: {
     kind: K;
     verdict: (typeof SPECIALIST_RESULT_CONTRACT.reviewKinds)[K]['verdicts'][number];
-  } & (K extends 'final-verification'
-    ? { reviewedRecord: string; reviewedRecordSha256: string }
-    : { reviewedRecord?: string; reviewedRecordSha256?: string });
+    reviewedRecord?: string;
+    reviewedRecordSha256?: string;
+  };
 }[OracleReviewKind];
 export type SpecialistResult = ResultCommon & {
   nextAction: string | null;

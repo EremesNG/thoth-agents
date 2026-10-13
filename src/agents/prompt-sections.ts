@@ -249,7 +249,7 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 </artifacts>
 
 <delegation>
-- Only Oracle gates (plan-review/final-verification): validate before recording OKAY/PASS: \`node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>]\` (unchanged stdin; skill path).
+- Only Oracle gates (plan-review/final-verification): validate before recording OKAY/PASS: \`node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record]\` (unchanged stdin; skill path).
 - Invalid: no approval; at most one format-only repair; preserve findings/verdict. No validator: blocks only gate approvals; report drift.
 - Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals. Judge scope, evidence, checks, freshness/provenance.
 </delegation>`),
@@ -532,7 +532,7 @@ function renderRoleText(
     .replaceAll(
       '{{progressInstruction}}',
       dialect.tools.progressTool
-        ? `Track requests with 3+ steps, delegated units or SDD phases with \`${dialect.tools.progressTool}\`: create items up front, keep one in_progress, complete each immediately; skip single trivial or conversational turns.`
+        ? `Track requests with 3+ steps, delegated units or SDD phases with \`${dialect.tools.progressTool}\`: create items up front, ${dialect.tools.progressStatusInstruction ?? 'keep one in_progress'}, complete each immediately; skip single trivial or conversational turns.`
         : 'Track requests with 3+ steps, delegated units or SDD phases in written progress notes; no native progress tool is configured. Skip single trivial or conversational turns.',
     )
     .replaceAll(

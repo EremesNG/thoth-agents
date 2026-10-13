@@ -90,7 +90,7 @@ You are the root coordinator. By default, specialists perform discovery of unloc
 </artifacts>
 
 <delegation>
-- Only Oracle gates (plan-review/final-verification): validate before recording OKAY/PASS: `node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>]` (unchanged stdin; skill path).
+- Only Oracle gates (plan-review/final-verification): validate before recording OKAY/PASS: `node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record]` (unchanged stdin; skill path).
 - Invalid: no approval; at most one format-only repair; preserve findings/verdict. No validator: blocks only gate approvals; report drift.
 - Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals. Judge scope, evidence, checks, freshness/provenance.
 </delegation>

@@ -25,6 +25,7 @@ export interface ToolNomenclature {
   backgroundWaitInstruction?: string;
   userQuestionTool: string;
   progressTool?: string;
+  progressStatusInstruction?: string;
   hostStatusSurface?: string;
   lifecycle: LifecycleNomenclature;
   roleReference(role: AgentPromptRole): string;
@@ -282,6 +283,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       'Launch separate background runs before collecting results; native terminal notifications wake the parent. Do not poll status or sleep merely to wait.',
     userQuestionTool: 'ask_user_question',
     progressTool: 'todo',
+    progressStatusInstruction: 'mark each active unit in_progress',
     hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:

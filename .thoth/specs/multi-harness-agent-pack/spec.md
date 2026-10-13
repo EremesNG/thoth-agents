@@ -561,3 +561,13 @@ Root instructions and the bundled SDD skill MUST let the Pi root mark every conc
 - **GIVEN** a Pi root and an OpenCode, Codex or Claude root
 - **WHEN** their root instructions and the bundled SDD skill are rendered
 - **THEN** the Pi guidance permits several concurrent in_progress items and the other harnesses keep one
+
+### Requirement: Pi subagent timeout attention and extension
+
+The Pi subagent runtime MUST warn the owning root before a running child reaches its total execution deadline with progress context, MUST ask the child to checkpoint, MUST let the root extend the deadline only through `subagent_extend` within a configurable hard total ceiling and extension count, and MUST include available partial progress context in the terminal result of a total timeout.
+
+#### Scenario: Pi subagent timeout attention and extension
+
+- **GIVEN** a running Pi child approaching its deadline
+- **WHEN** the warning lead is reached
+- **THEN** the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview 

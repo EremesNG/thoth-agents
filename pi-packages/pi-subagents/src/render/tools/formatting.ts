@@ -1,6 +1,5 @@
 import { resolveIcon } from '@thoth-agents/pi-core';
 import { truncateToWidth } from '../completion-message.js';
-import { readSubagentsConfig } from '../config.js';
 import { toolSelectionWarning } from '../tool-selection-warning.js';
 import type { SubagentTask } from '../types.js';
 import { resolveExpandHint } from './expansion-hint.js';
@@ -15,9 +14,9 @@ export const SUBAGENT_RESUME_GUIDANCE = [
 export function appendSubagentResumeGuidance(
   text: string,
   tasks: Array<Pick<SubagentTask, 'status'>>,
-  cwd = process.cwd(),
+  continueAvailable: boolean,
 ): string {
-  return readSubagentsConfig(cwd).enable_continue &&
+  return continueAvailable &&
     tasks.some(
       (task) =>
         task.status === 'failed' ||
@@ -274,7 +273,7 @@ export function taskFinalText(
 
 export function formatTaskModeContent(
   tasks: SubagentTask[],
-  cwd = process.cwd(),
+  continueAvailable: boolean,
 ): string {
   const content = [
     `Completed ${tasks.length} subagent task(s):`,
@@ -290,7 +289,7 @@ export function formatTaskModeContent(
         .join('\n');
     }),
   ].join('\n\n');
-  return appendSubagentResumeGuidance(content, tasks, cwd);
+  return appendSubagentResumeGuidance(content, tasks, continueAvailable);
 }
 
 export function backgroundLaunchContent(

@@ -82,6 +82,16 @@ export type SubagentSessionTaskCounts = {
   statusesById: ReadonlyMap<string, SubagentTask['status']>;
 };
 
+const TIMEOUT_COLUMNS = [
+  'timeout_started_at',
+  'timeout_deadline_at',
+  'timeout_extensions_used',
+  'timeout_deadline_generation',
+  'timeout_max_extensions',
+  'timeout_continue_enabled',
+] as const;
+const TIMEOUT_HISTORY_COLUMNS = `progress_updates_json, ${TIMEOUT_COLUMNS.join(', ')}`;
+
 const SESSION_TASK_METADATA_COLUMNS = `
         id,
         display_name,
@@ -120,7 +130,8 @@ const SESSION_TASK_METADATA_COLUMNS = `
         pi_retry_attempts,
         pending_message_count,
         undelivered_message_count,
-        dropped_tools_json
+        dropped_tools_json,
+        ${TIMEOUT_HISTORY_COLUMNS}
 `;
 
 function ensureColumn(
@@ -224,10 +235,11 @@ function upsertTaskRecord(
     }
   }
 
-  const columns =
+  const baseColumns =
     table === 'subagent_tasks'
       ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json'
       : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json';
+  const columns = `${baseColumns}, ${TIMEOUT_HISTORY_COLUMNS}`;
   const placeholders = new Array(columns.split(',').length)
     .fill('?')
     .join(', ');
@@ -310,7 +322,9 @@ function upsertTaskRecord(
 
   db.prepare(`
     INSERT INTO ${table} (${columns}) VALUES (${placeholders})
-    ON CONFLICT(${identity}) DO UPDATE SET ${update}
+    ON CONFLICT(${identity}) DO UPDATE SET ${update},
+      progress_updates_json=excluded.progress_updates_json,
+      ${TIMEOUT_COLUMNS.map((column) => `${column}=excluded.${column}`).join(', ')}
   `).run(
     ...(table === 'subagent_tasks' ? [task.id] : [task.id, task.attempt ?? 1]),
     value(task.display_name),
@@ -358,6 +372,17 @@ function upsertTaskRecord(
     task.dropped_tools === undefined
       ? null
       : JSON.stringify(task.dropped_tools),
+    task.progress_updates === undefined
+      ? null
+      : JSON.stringify(task.progress_updates.slice(-5)),
+    ...TIMEOUT_COLUMNS.map((column) => {
+      const field = task[column];
+      return field === undefined
+        ? null
+        : typeof field === 'boolean'
+          ? Number(field)
+          : field;
+    }),
   );
 }
 
@@ -516,6 +541,11 @@ export class SubagentHistoryStore {
     ensureColumn(db, 'subagent_tasks', 'pending_message_count', 'INTEGER');
     ensureColumn(db, 'subagent_tasks', 'undelivered_message_count', 'INTEGER');
     ensureAttemptColumns(db);
+    for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
+      ensureColumn(db, table, 'progress_updates_json', 'TEXT');
+      for (const column of TIMEOUT_COLUMNS)
+        ensureColumn(db, table, column, 'INTEGER');
+    }
     ensureColumn(db, 'subagent_events', 'attempt', 'INTEGER');
     this.dbs.set(file, db);
     return db;
@@ -716,7 +746,8 @@ export class SubagentHistoryStore {
         pi_retry_attempts,
         pending_message_count,
         undelivered_message_count,
-        dropped_tools_json
+        dropped_tools_json,
+        ${TIMEOUT_HISTORY_COLUMNS}
       FROM subagent_task_attempts
       WHERE cwd = ? AND task_id = ?
       ORDER BY attempt ASC
@@ -734,6 +765,27 @@ function parseDroppedTools(text: unknown): string[] | undefined {
       names.every((name) => typeof name === 'string')
       ? names
       : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseProgressUpdates(raw: unknown): SubagentTask['progress_updates'] {
+  if (typeof raw !== 'string') return undefined;
+  try {
+    const updates: unknown = JSON.parse(raw);
+    if (!Array.isArray(updates)) return undefined;
+    return updates
+      .filter(
+        (update) =>
+          typeof update?.message === 'string' &&
+          typeof update?.created_at === 'string',
+      )
+      .slice(-5)
+      .map((update) => ({
+        message: update.message,
+        created_at: update.created_at,
+      }));
   } catch {
     return undefined;
   }
@@ -803,6 +855,16 @@ function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
         : parseSnapshotJson(row.thread_snapshot_json),
     pi_retry_attempts: row.pi_retry_attempts ?? undefined,
     dropped_tools: parseDroppedTools(row.dropped_tools_json),
+    progress_updates: parseProgressUpdates(row.progress_updates_json),
+    timeout_started_at: row.timeout_started_at ?? undefined,
+    timeout_deadline_at: row.timeout_deadline_at ?? undefined,
+    timeout_extensions_used: row.timeout_extensions_used ?? undefined,
+    timeout_deadline_generation: row.timeout_deadline_generation ?? undefined,
+    timeout_max_extensions: row.timeout_max_extensions ?? undefined,
+    timeout_continue_enabled:
+      row.timeout_continue_enabled == null
+        ? undefined
+        : Boolean(row.timeout_continue_enabled),
     pending_message_count:
       row.pending_message_count === null ||
       row.pending_message_count === undefined

@@ -51,8 +51,8 @@ it('persists dropped tools in task, attempt and metadata history and warns the p
     expect(result.content[0].text).toContain('Warning:');
     expect(result.content[0].text).toContain('missing_fixture_tool');
   }
-  expect(completionMessage(task)).toContain('Warning:');
-  expect(completionMessage(task)).toContain('missing_fixture_tool');
+  expect(completionMessage(task, false)).toContain('Warning:');
+  expect(completionMessage(task, false)).toContain('missing_fixture_tool');
   const messages: any[] = [];
   sendSubagentCompletionMessage(
     { sendMessage: (message: any) => messages.push(message) },

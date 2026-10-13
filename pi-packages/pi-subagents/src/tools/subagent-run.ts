@@ -5,6 +5,7 @@ import {
   readSubagentsConfig,
   resolveEffectiveSubagentMode,
 } from '../config.js';
+import { continuationAvailable } from '../continuation-availability.js';
 import type { SubagentManager } from '../manager.js';
 import {
   appendSubagentResumeGuidance,
@@ -117,6 +118,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
         let active = true;
         let latestTasks: SubagentTask[] = [];
         const cwd = ctx?.cwd ?? process.cwd();
+        const availability = () => continuationAvailable(cwd, pi);
         const subagentsConfig = readSubagentsConfig(cwd);
         const definition = loadSubagents(cwd).find(
           (candidate) => candidate.name === params.agent.toLowerCase(),
@@ -183,7 +185,9 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
                 },
               ],
               details: {
-                tasks: latestTasks.map(compactTaskForToolResult),
+                tasks: latestTasks.map((task) =>
+                  compactTaskForToolResult(task, availability()),
+                ),
                 frame: frame++,
                 backgroundable: canBackgroundInTaskMode,
                 backgroundShortcut,
@@ -240,14 +244,18 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
             : await runPromise;
           if (cancelledByDoubleEscape)
             throw new Error('Subagent run cancelled by double escape');
+          const available = availability();
           if (!('results' in result)) {
             const launchedTasks = result.task_ids
               .map((id) => manager.getTask(id))
               .filter(Boolean) as SubagentTask[];
-            const details = compactResultDetails({
-              ...result,
-              tasks: launchedTasks,
-            } as any);
+            const details = compactResultDetails(
+              {
+                ...result,
+                tasks: launchedTasks,
+              } as any,
+              available,
+            );
             const tasksForLaunch = latestTasks.length
               ? latestTasks
               : launchedTasks.length
@@ -276,15 +284,12 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
           const text =
             result.mode === 'background'
               ? backgroundLaunchContent(tasksForLaunch, 'Started')
-              : formatTaskModeContent(
-                  result.results ?? [],
-                  ctx?.cwd ?? process.cwd(),
-                );
-          const details = compactResultDetails(result as any);
+              : formatTaskModeContent(result.results ?? [], available);
+          const details = compactResultDetails(result as any, available);
           const failureText = appendSubagentResumeGuidance(
             `${failedTasks.length} subagent task(s) failed or were cancelled.\n\n${failedTasks.map(formatTask).join('\n\n')}`,
             failedTasks,
-            ctx?.cwd ?? process.cwd(),
+            available,
           );
           return failedTasks.length
             ? { ...fail(failureText), details }
@@ -296,7 +301,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
             appendSubagentResumeGuidance(
               message,
               latestTasks.length ? latestTasks : [{ status: 'cancelled' }],
-              ctx?.cwd ?? process.cwd(),
+              availability(),
             ),
           );
         } finally {

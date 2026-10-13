@@ -1,4 +1,5 @@
 import { Type } from 'typebox';
+import { continuationAvailable } from '../continuation-availability.js';
 import type { SubagentManager } from '../manager.js';
 import {
   appendSubagentResumeGuidance,
@@ -11,7 +12,7 @@ import {
 import { compactTaskForToolResult } from './result-details.js';
 import { fail, ok } from './tool-response.js';
 
-export function createSubagentCancelTool(manager: SubagentManager) {
+export function createSubagentCancelTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_cancel',
     label: 'Subagent Cancel',
@@ -26,14 +27,11 @@ export function createSubagentCancelTool(manager: SubagentManager) {
       ctx: any,
     ) {
       try {
+        const available = continuationAvailable(ctx?.cwd ?? process.cwd(), pi);
         const task = manager.cancel(params.task_id);
         return ok(
-          appendSubagentResumeGuidance(
-            formatTask(task),
-            [task],
-            ctx?.cwd ?? process.cwd(),
-          ),
-          { task: compactTaskForToolResult(task) },
+          appendSubagentResumeGuidance(formatTask(task), [task], available),
+          { task: compactTaskForToolResult(task, available) },
         );
       } catch (e) {
         return fail(e);

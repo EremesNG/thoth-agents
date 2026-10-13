@@ -35,7 +35,7 @@ function registeredTools(): any[] {
     env.createManager(env.mockRunner()),
     env.tmp,
   );
-  expect(tools).toHaveLength(9);
+  expect(tools).toHaveLength(10);
   return tools;
 }
 
@@ -117,7 +117,7 @@ it.each([
     isError: false,
     expected: 'running',
   },
-])('keeps all parts of all nine tool cards consistent for $status (partial=$isPartial, error=$isError)', ({
+])('keeps all parts of all ten tool cards consistent for $status (partial=$isPartial, error=$isError)', ({
   status,
   isPartial,
   isError,

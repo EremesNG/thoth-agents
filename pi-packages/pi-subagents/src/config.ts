@@ -31,6 +31,9 @@ export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
 ];
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
+export const DEFAULT_TIMEOUT_WARNING_MS = 180000;
+export const DEFAULT_MAX_TOTAL_TIMEOUT_MS = 3600000;
+export const DEFAULT_MAX_TIMEOUT_EXTENSIONS = 3;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
 export const DEFAULT_STALL_SUSPEND_MAX_MS = 15 * 60 * 1000;
 export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -476,7 +479,21 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
   const globalRaw = readJson(subagentsConfigPath());
   const projectRaw = readJson(path.join(cwd, '.pi', 'subagents.json'));
   const raw = { ...globalRaw, ...projectRaw };
+  const timeoutMs = positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS);
+  const warningMs = positiveInteger(
+    raw.timeout_warning_ms,
+    DEFAULT_TIMEOUT_WARNING_MS,
+  );
   return {
+    timeout_warning_ms: warningMs < timeoutMs ? warningMs : 0,
+    max_total_timeout_ms: Math.max(
+      timeoutMs,
+      positiveInteger(raw.max_total_timeout_ms, DEFAULT_MAX_TOTAL_TIMEOUT_MS),
+    ),
+    max_timeout_extensions: positiveInteger(
+      raw.max_timeout_extensions,
+      DEFAULT_MAX_TIMEOUT_EXTENSIONS,
+    ),
     default_model: parseModel(raw.default_model),
     default_effort: parseEffort(
       raw.default_effort ?? raw.default_thinking_level ?? raw.thinkingLevel,

@@ -676,6 +676,45 @@ describe('config and workflow loading', () => {
     expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(900000);
   });
 
+  it('normalizes and cascades bounded timeout settings', () => {
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 180000,
+      max_total_timeout_ms: 3600000,
+      max_timeout_extensions: 3,
+    });
+    fs.mkdirSync(process.env.PI_CODING_AGENT_DIR!, { recursive: true });
+    fs.writeFileSync(
+      path.join(process.env.PI_CODING_AGENT_DIR!, 'subagents.json'),
+      JSON.stringify({ timeout_warning_ms: 10, max_timeout_extensions: 2 }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_ms: 100,
+        timeout_warning_ms: 100,
+        max_total_timeout_ms: 50,
+      }),
+    );
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 0,
+      max_total_timeout_ms: 100,
+      max_timeout_extensions: 2,
+    });
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_warning_ms: 'bad',
+        max_total_timeout_ms: -1,
+        max_timeout_extensions: -1,
+      }),
+    );
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 180000,
+      max_total_timeout_ms: 3600000,
+      max_timeout_extensions: 3,
+    });
+  });
+
   it('falls back for invalid numeric config values', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
@@ -1029,12 +1068,17 @@ Specialist`,
   it('filters delegation tools from subagent tool allowlists', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ntools:\n  - read\n  - subagent_run\n  - subagent_result\n  - memory_search\n---\n# Agent`,
+      `---\nname: analyst\ntools:\n  - read\n  - subagent_run\n  - subagent_result\n  - subagent_extend\n  - memory_search\n---\n# Agent`,
     );
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
       JSON.stringify({
-        default_tools: ['read', 'subagent_run', 'memory_search'],
+        default_tools: [
+          'read',
+          'subagent_run',
+          'subagent_extend',
+          'memory_search',
+        ],
       }),
     );
     const agents = loadSubagents(tmp);

@@ -1,5 +1,6 @@
 import { Type } from 'typebox';
 import { readSubagentsConfig } from '../config.js';
+import { continuationAvailable } from '../continuation-availability.js';
 import { resolveContinuationEffectiveMode } from '../continuation-mode.js';
 import type { SubagentManager } from '../manager.js';
 import {
@@ -66,6 +67,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
         let active = true;
         let latestTasks: SubagentTask[] = [];
         const cwd = ctx?.cwd ?? process.cwd();
+        const availability = () => continuationAvailable(cwd, pi);
         const existing = manager.getTask(params.task_id, cwd);
         const config = readSubagentsConfig(cwd);
         const effectiveMode = resolveContinuationEffectiveMode({
@@ -101,7 +103,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
                 },
               ],
               details: {
-                tasks: latestTasks.map(compactTaskForToolResult),
+                tasks: latestTasks.map((task) =>
+                  compactTaskForToolResult(task, availability()),
+                ),
                 frame: frame++,
                 backgroundable: canBackgroundInTaskMode,
                 backgroundShortcut,
@@ -154,6 +158,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
             : await continuePromise;
           if (cancelledByDoubleEscape)
             throw new Error('Subagent continuation cancelled by double escape');
+          const available = availability();
           if (!('results' in result)) {
             const response = ok(
               [
@@ -167,13 +172,16 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               ]
                 .filter(Boolean)
                 .join('\n\n'),
-              compactResultDetails(result as any),
+              compactResultDetails(result as any, available),
             );
             return isBackground ? response : { ...response, terminate: true };
           }
           const tasks = result.results ?? [];
-          const text = formatTaskModeContent(tasks, ctx?.cwd ?? process.cwd());
-          const details = compactResultDetails({ task: tasks[0], ...result });
+          const text = formatTaskModeContent(tasks, available);
+          const details = compactResultDetails(
+            { task: tasks[0], ...result },
+            available,
+          );
           return tasks.some(
             (task) => task.status === 'failed' || task.status === 'cancelled',
           )
@@ -186,7 +194,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
             appendSubagentResumeGuidance(
               message,
               latestTasks.length ? latestTasks : [{ status: 'cancelled' }],
-              ctx?.cwd ?? process.cwd(),
+              availability(),
             ),
           );
         } finally {

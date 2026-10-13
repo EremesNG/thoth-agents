@@ -75,6 +75,9 @@ export type SubagentsConfig = {
   default_effort?: ThinkingEffort;
   default_mode?: SubagentMode;
   timeout_ms: number;
+  timeout_warning_ms?: number;
+  max_total_timeout_ms?: number;
+  max_timeout_extensions?: number;
   stall_timeout_ms: number;
   stall_suspend_max_ms?: number;
   max_concurrency: number;
@@ -477,6 +480,12 @@ export type SubagentTask = {
   undelivered_message_count?: number;
   pending_questions?: PendingSubagentQuestion[];
   progress_updates?: SubagentProgressUpdate[];
+  timeout_started_at?: number;
+  timeout_deadline_at?: number;
+  timeout_extensions_used?: number;
+  timeout_deadline_generation?: number;
+  timeout_max_extensions?: number;
+  timeout_continue_enabled?: boolean;
   live_activity?: SubagentLiveActivityProjection;
   prompt?: string;
   continuation_prompt?: string;

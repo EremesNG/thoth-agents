@@ -19,6 +19,10 @@ import { SessionModelProfile } from '../model-profiles/session.js';
 import { ModelProfileStore } from '../model-profiles/store.js';
 import { runSubagentModelsCommand } from '../model-profiles-ui.js';
 import {
+  renderSubagentAttentionMessage,
+  sendSubagentAttentionMessage,
+} from '../render/attention-message.js';
+import {
   renderSubagentCompletionMessage,
   sendSubagentCompletionMessage,
 } from '../render/completion-message.js';
@@ -80,6 +84,10 @@ export default function subagentsExtension(pi: any): void {
   pi.registerMessageRenderer?.(
     'subagent-completion',
     renderSubagentCompletionMessage,
+  );
+  pi.registerMessageRenderer?.(
+    'subagent-attention',
+    renderSubagentAttentionMessage,
   );
   pi.registerMessageRenderer?.(
     'subagent-question',
@@ -149,6 +157,23 @@ export default function subagentsExtension(pi: any): void {
               'Parent Pi session shutdown or replacement prevents question delivery.',
             );
           throw error;
+        }
+      });
+    },
+    (task, _cwd, attempt, generation) => {
+      const sessionId = task.session_id;
+      if (!sessionId || sessionId !== activeSessionId) return;
+      deliverNotification(() => {
+        if (
+          sessionId !== activeSessionId ||
+          task.session_id !== sessionId ||
+          !manager.isAttentionCurrent(task.id, attempt, generation)
+        )
+          return;
+        try {
+          sendSubagentAttentionMessage(pi, task);
+        } catch (error) {
+          if (!isStaleContextError(error)) throw error;
         }
       });
     },

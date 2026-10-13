@@ -77,9 +77,9 @@ it('resolves status and spinner frames while raw progress and tool payloads stay
   const payloads = () => [
     formatTask(task),
     formatTaskListSummary([task]),
-    formatTaskModeContent([task]),
+    formatTaskModeContent([task], false),
     backgroundLaunchContent([task]),
-    completionMessage(task),
+    completionMessage(task, false),
     progressText([task]),
     progressText([]),
   ];

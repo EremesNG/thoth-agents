@@ -29,6 +29,7 @@ describe('subagent_list_agents tool', () => {
       'subagent_list_tasks',
       'subagent_cancel',
       'subagent_send_message',
+      'subagent_extend',
       'subagent_reply',
     ]);
 

@@ -935,7 +935,7 @@ describe('manager and history integration', () => {
     const completed = manager.getTask(id);
     expect(completed?.status).toBe('completed');
     expect(notifications.some((n) => n.includes('completed'))).toBe(true);
-    const message = completionMessage(completed);
+    const message = completionMessage(completed, false);
     expect(message).toContain('Read only this final response');
     expect(message).toContain('analyst handled background work');
   });

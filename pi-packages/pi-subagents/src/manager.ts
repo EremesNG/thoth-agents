@@ -10,6 +10,9 @@ import {
 } from './atelier-metadata.js';
 import {
   DEFAULT_ASK_TIMEOUT_MS,
+  DEFAULT_MAX_TIMEOUT_EXTENSIONS,
+  DEFAULT_MAX_TOTAL_TIMEOUT_MS,
+  DEFAULT_TIMEOUT_WARNING_MS,
   loadSubagents,
   parseEffort,
   parseModel,
@@ -70,6 +73,9 @@ type StopDisposition = {
   };
   fallbackError?: string;
 };
+
+// Node timers overflow above this delay; long configured deadlines use chunks.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -192,7 +198,12 @@ function sanitizeUnknown<T>(value: T): T {
 }
 
 function hasPartialResult(task: SubagentTask): boolean {
-  return Boolean(task.output_preview || task.result || task.thread_snapshot);
+  return Boolean(
+    task.output_preview ||
+      task.result ||
+      task.thread_snapshot ||
+      task.progress_updates?.length,
+  );
 }
 
 function enrichTerminalMetadata(
@@ -527,6 +538,17 @@ type LaunchAttemptInput = {
 };
 
 export class SubagentManager {
+  private deadlines = new Map<
+    string,
+    {
+      config: SubagentsConfig;
+      warning?: NodeJS.Timeout;
+      ceiling?: NodeJS.Timeout;
+      warnedGeneration?: number;
+      expire: () => void;
+      arm: () => void;
+    }
+  >();
   private tasks = new Map<string, SubagentTask>();
   private taskCwds = new Map<string, string>();
   private controllers = new Map<string, AbortController>();
@@ -575,6 +597,12 @@ export class SubagentManager {
       message: SubagentAssistantAccountingMessage,
     ) => void,
     private onOrchestratorQuestion?: QuestionListener,
+    private onTimeoutAttention?: (
+      task: SubagentTask,
+      cwd: string,
+      attempt: number,
+      generation: number,
+    ) => void,
   ) {}
 
   private atelierRun(
@@ -1191,6 +1219,156 @@ export class SubagentManager {
     }
   }
 
+  private clearDeadline(taskId: string, remove = true): void {
+    const state = this.deadlines.get(taskId);
+    if (state?.warning) clearTimeout(state.warning);
+    if (state?.ceiling) clearTimeout(state.ceiling);
+    if (remove) this.deadlines.delete(taskId);
+  }
+
+  isAttentionCurrent(
+    taskId: string,
+    attempt: number,
+    generation: number,
+  ): boolean {
+    const task = this.tasks.get(taskId);
+    return Boolean(
+      task &&
+        task.status === 'running' &&
+        (task.attempt ?? 1) === attempt &&
+        task.timeout_deadline_generation === generation &&
+        this.deadlines.has(taskId),
+    );
+  }
+
+  extendDeadline(
+    taskId: string,
+    extraMs: number | undefined,
+    ownerSession?: string,
+  ) {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Subagent task not found: ${taskId}`);
+    if (!ownerSession || task.session_id !== ownerSession)
+      throw new Error(
+        'Only the exact originating parent Pi session may extend this task.',
+      );
+    if (task.status !== 'running')
+      throw new Error(
+        `Subagent task ${taskId} is not running (${task.status}).`,
+      );
+    const state = this.deadlines.get(taskId);
+    if (!state)
+      throw new Error('Subagent task has no active execution deadline.');
+    const { config } = state;
+    const extra = extraMs === undefined ? config.timeout_ms : extraMs;
+    if (!Number.isFinite(extra) || extra <= 0 || !Number.isInteger(extra))
+      throw new Error('extra_ms must be a positive integer.');
+    if (
+      (task.timeout_extensions_used ?? 0) >=
+      (config.max_timeout_extensions ?? DEFAULT_MAX_TIMEOUT_EXTENSIONS)
+    )
+      throw new Error('Maximum timeout extension count exhausted.');
+    const previous = task.timeout_deadline_at!;
+    if (Date.now() >= previous)
+      throw new Error('The execution deadline has already elapsed.');
+    const deadline = Math.min(
+      previous + extra,
+      task.timeout_started_at! +
+        Math.max(
+          config.timeout_ms,
+          config.max_total_timeout_ms ?? DEFAULT_MAX_TOTAL_TIMEOUT_MS,
+        ),
+    );
+    if (deadline <= previous)
+      throw new Error('Maximum total timeout ceiling already reached.');
+    task.timeout_deadline_at = deadline;
+    task.timeout_extensions_used = (task.timeout_extensions_used ?? 0) + 1;
+    task.timeout_deadline_generation =
+      (task.timeout_deadline_generation ?? 1) + 1;
+    state.arm();
+    const cwd = this.taskCwds.get(taskId);
+    if (cwd)
+      this.record(
+        cwd,
+        task,
+        `deadline extended by ${deadline - previous}ms`,
+        true,
+      );
+    this.notifyTaskUpdate(taskId, undefined, true);
+    return {
+      task_id: taskId,
+      added_ms: deadline - previous,
+      deadline_at: deadline,
+      extensions_used: task.timeout_extensions_used,
+      extensions_remaining:
+        (config.max_timeout_extensions ?? DEFAULT_MAX_TIMEOUT_EXTENSIONS) -
+        task.timeout_extensions_used,
+    };
+  }
+
+  private armDeadline(
+    task: SubagentTask,
+    config: SubagentsConfig,
+    cwd: string,
+    expire: () => void,
+  ): void {
+    let state = this.deadlines.get(task.id);
+    if (!state) {
+      state = { config, expire, arm: () => {} };
+      this.deadlines.set(task.id, state);
+    }
+    state.expire = expire;
+    const deadlineState = state;
+    state.arm = () => {
+      this.clearDeadline(task.id, false);
+      const attempt = task.attempt ?? 1;
+      const generation = task.timeout_deadline_generation!;
+      const remaining = task.timeout_deadline_at! - Date.now();
+      deadlineState.ceiling = setTimeout(
+        () => {
+          if (!this.isAttentionCurrent(task.id, attempt, generation)) return;
+          if (Date.now() < task.timeout_deadline_at!) deadlineState.arm();
+          else deadlineState.expire();
+        },
+        Math.min(MAX_TIMER_DELAY_MS, Math.max(0, remaining)),
+      );
+      const lead = config.timeout_warning_ms ?? DEFAULT_TIMEOUT_WARNING_MS;
+      if (
+        lead > 0 &&
+        lead < config.timeout_ms &&
+        deadlineState.warnedGeneration !== generation
+      ) {
+        deadlineState.warning = setTimeout(
+          () => {
+            if (!this.isAttentionCurrent(task.id, attempt, generation)) return;
+            if (Date.now() < task.timeout_deadline_at! - lead) {
+              deadlineState.arm();
+              return;
+            }
+            deadlineState.warnedGeneration = generation;
+            if (config.enable_ask_orchestrator !== false) {
+              void Promise.resolve()
+                .then(() =>
+                  this.sendMessage({
+                    task_id: task.id,
+                    session_id: task.session_id,
+                    message:
+                      'Please report a concise checkpoint (done, pending, touched files) through ask_orchestrator({ kind: "progress", message: "..." }) if available, then continue working. This is a checkpoint request, not a stop instruction.',
+                  }),
+                )
+                .catch(() => {});
+            }
+            try {
+              this.onTimeoutAttention?.(task, cwd, attempt, generation);
+            } catch {}
+          },
+          Math.min(MAX_TIMER_DELAY_MS, Math.max(0, remaining - lead)),
+        );
+      }
+    };
+    state.arm();
+  }
+
   async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
     const task = this.tasks.get(input.task_id);
     if (!task) {
@@ -1508,6 +1686,13 @@ export class SubagentManager {
       session_id: continuationSessionId,
       last_activity_at: nowIso(),
       last_activity: 'queued',
+      timeout_started_at: undefined,
+      timeout_deadline_at: undefined,
+      timeout_extensions_used: undefined,
+      timeout_deadline_generation: undefined,
+      timeout_max_extensions: undefined,
+      timeout_continue_enabled: undefined,
+      progress_updates: undefined,
       started_at: undefined,
       ended_at: undefined,
       output_preview: undefined,
@@ -1595,6 +1780,7 @@ export class SubagentManager {
     cwd?: string,
   ): void {
     if (task.status === 'stopping' || isTerminalStatus(task.status)) return;
+    this.clearDeadline(task.id);
     this.closeTaskLiveState(task, reason);
     task.status = 'stopping';
     task.stop_reason = reason;
@@ -1753,7 +1939,6 @@ export class SubagentManager {
     this.notifyTaskUpdate(id, onTaskUpdate, true);
 
     const run = async () => {
-      let timeout: NodeJS.Timeout | undefined;
       let timedOut = false;
       let acquired = false;
       let activeRunnerSettlement: Promise<void> | undefined;
@@ -1763,6 +1948,14 @@ export class SubagentManager {
         if (controller.signal.aborted) return;
         task.status = 'running';
         task.started_at = nowIso();
+        // Publish deadline metadata with the first running snapshot, not later
+        // during a heartbeat that has no lifecycle update.
+        task.timeout_started_at = Date.parse(task.started_at);
+        task.timeout_deadline_at = task.timeout_started_at + config.timeout_ms;
+        task.timeout_extensions_used = 0;
+        task.timeout_deadline_generation = 1;
+        task.timeout_max_extensions =
+          config.max_timeout_extensions ?? DEFAULT_MAX_TIMEOUT_EXTENSIONS;
         if (atelierRun) {
           atelierStepIndex = atelierRun.beginStep({
             agent: definition.name,
@@ -1944,29 +2137,31 @@ export class SubagentManager {
             () => undefined,
           );
           const timeoutPromise = new Promise<never>((_resolve, reject) => {
-            timeout = setTimeout(() => {
+            this.armDeadline(task, config, cwd, () => {
+              const elapsed =
+                task.timeout_deadline_at! - task.timeout_started_at!;
               timedOut = true;
               this.stopDispositions.set(id, {
                 status: 'failed',
                 metadata: {
                   category: 'total_timeout',
-                  message: `timed out after ${config.timeout_ms}ms`,
+                  message: `timed out after ${elapsed}ms`,
                   phase: 'manager',
                   retryable: false,
-                  partial_result_available: false,
-                  details: { timeout_ms: String(config.timeout_ms) },
+                  partial_result_available: hasPartialResult(task),
+                  details: { timeout_ms: String(elapsed) },
                 },
-                fallbackError: `timed out after ${config.timeout_ms}ms`,
+                fallbackError: `timed out after ${elapsed}ms`,
               });
               this.transitionToStopping(
                 task,
-                `timed out after ${config.timeout_ms}ms`,
+                `timed out after ${elapsed}ms`,
                 cwd,
               );
               this.notifyTaskUpdate(id, onTaskUpdate, true);
               controller.abort();
-              reject(new Error(`timed out after ${config.timeout_ms}ms`));
-            }, config.timeout_ms);
+              reject(new Error(`timed out after ${elapsed}ms`));
+            });
           });
           const abortPromise = new Promise<never>((_resolve, reject) => {
             if (controller.signal.aborted)
@@ -1993,10 +2188,6 @@ export class SubagentManager {
             'generationMs',
           ] as const)
             runnerMetricOffset[key] += runnerMetricHighwater[key];
-          if (timeout) {
-            clearTimeout(timeout);
-            timeout = undefined;
-          }
           if ((task as SubagentTask).status === 'stopping') {
             this.finalizeStop(task, parentSessionId, cwd, onTaskUpdate);
             return;
@@ -2059,7 +2250,10 @@ export class SubagentManager {
           let response: ReturnType<typeof publishInteractionResponse>;
           try {
             response = publishInteractionResponse(
-              await promptMainThreadForInteraction(ctx, interactionRequest),
+              await Promise.race([
+                promptMainThreadForInteraction(ctx, interactionRequest),
+                abortPromise,
+              ]),
             );
           } finally {
             this.onInteractionPromptActive?.(false);
@@ -2179,7 +2373,7 @@ export class SubagentManager {
         if (task.mode === 'background')
           this.onTerminalBackgroundTask?.(task, cwd);
       } finally {
-        if (timeout) clearTimeout(timeout);
+        this.clearDeadline(id);
         this.rejectPendingQuestions(
           id,
           task.stop_reason ?? 'child session shutdown',

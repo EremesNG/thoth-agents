@@ -142,6 +142,53 @@ describe('subagent history persistence and display_name compatibility', () => {
       });
   });
 
+  it('round trips timeout progress and deadline fields across reopen and attempts', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'timeout',
+      agent: 'worker',
+      mode: 'background',
+      status: 'failed',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+      session_id: 'parent',
+      error: 'timed out',
+      error_metadata: {
+        version: 1,
+        category: 'total_timeout',
+        message: 'timed out',
+        retryable: false,
+        partial_result_available: true,
+      },
+      output_preview: 'partial',
+      progress_updates: [{ message: 'checkpoint', created_at: 'now' }],
+      timeout_started_at: 1000,
+      timeout_deadline_at: 3000,
+      timeout_extensions_used: 2,
+      timeout_deadline_generation: 3,
+      timeout_max_extensions: 3,
+      timeout_continue_enabled: true,
+    };
+    store.upsertTask(tmp, task);
+    store.close();
+    const reopened = createHistoryStore();
+    for (const value of [
+      reopened.getTask(tmp, task.id),
+      reopened.listTaskAttempts(tmp, task.id)[0],
+      reopened.listSessionTaskMetadata(tmp, 'parent')[0],
+    ]) {
+      expect(value).toMatchObject({
+        progress_updates: task.progress_updates,
+        timeout_started_at: 1000,
+        timeout_deadline_at: 3000,
+        timeout_extensions_used: 2,
+        timeout_deadline_generation: 3,
+        timeout_max_extensions: 3,
+        timeout_continue_enabled: true,
+      });
+    }
+  });
+
   it('migrates older databases without display_name column and leaves legacy rows with undefined display_name', () => {
     const dbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH!;
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -282,6 +329,8 @@ describe('subagent history persistence and display_name compatibility', () => {
     const legacyTask = store.getTask(tmp, 'subtask_legacy_row');
     expect(legacyTask).toBeDefined();
     expect(legacyTask?.display_name).toBeUndefined();
+    expect(legacyTask?.progress_updates).toBeUndefined();
+    expect(legacyTask?.timeout_extensions_used).toBeUndefined();
     expect(legacyTask?.runtime_metrics).toBeUndefined();
     expect(
       store.listTaskAttempts(tmp, 'subtask_legacy_row')[0]?.runtime_metrics,
@@ -291,6 +340,10 @@ describe('subagent history persistence and display_name compatibility', () => {
     const newTask: SubagentTask = {
       id: 'subtask_post_migration',
       display_name: 'Post Migration Task',
+      progress_updates: [
+        { message: 'saved after migration', created_at: 'now' },
+      ],
+      timeout_extensions_used: 1,
       agent: 'tester',
       mode: 'task',
       status: 'completed',
@@ -302,6 +355,11 @@ describe('subagent history persistence and display_name compatibility', () => {
 
     const fetchedNew = store.getTask(tmp, newTask.id);
     expect(fetchedNew?.display_name).toBe('Post Migration Task');
+    expect(fetchedNew?.progress_updates).toEqual(newTask.progress_updates);
+    expect(fetchedNew?.timeout_extensions_used).toBe(1);
+    expect(
+      store.listTaskAttempts(tmp, newTask.id)[0]?.progress_updates,
+    ).toEqual(newTask.progress_updates);
 
     const all = store.listTasks(tmp);
     expect(all).toHaveLength(2);

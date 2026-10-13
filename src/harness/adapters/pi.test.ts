@@ -286,6 +286,21 @@ describe('Pi adapter', () => {
     expect(shaping).toContain('A pending `subagent-question`');
   });
 
+  test('keeps evidence-gated ceiling extensions and timeout recovery in Pi runtime guidance', () => {
+    const root = renderPiRootInstructions();
+    const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain(
+      '`subagent-attention` means a child ceiling is near',
+    );
+    expect(runtime).toContain(
+      '`subagent_extend` only on evidence of useful progress, else let it apply',
+    );
+    expect(runtime).toContain("resume from the timeout's partial context");
+    expect(
+      root.replace(/<pi-runtime>[\s\S]*?<\/pi-runtime>/, ''),
+    ).not.toContain('subagent-attention');
+  });
+
   test('answers injected child questions without treating them as human input or completion', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];

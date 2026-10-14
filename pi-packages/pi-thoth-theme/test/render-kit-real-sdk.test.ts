@@ -380,7 +380,6 @@ describe('render kit through Pi SDK 1.0.2', () => {
             stall_timeout_ms: 10_000,
             max_concurrency: 1,
             default_tools: ['read'],
-            model_profiles: {},
             session_resources: 'lean',
             enable_ask_orchestrator: false,
             ...(passthrough ? { lifecycle_passthrough: [...passthrough] } : {}),

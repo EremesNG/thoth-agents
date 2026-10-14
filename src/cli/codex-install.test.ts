@@ -385,7 +385,7 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('<implementation-ownership>');
       expect(root).toContain('.thoth/changes/<id>/<id>.md');
       expect(root).toMatch(
-        /unlocated local source, flow, or responsibility goes to Explorer before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+        /unlocated local source\/flow\/responsibility: Explorer before root read\/search\/shell\/git\/CodeGraph/i,
       );
       expect(root).toContain('native liveness');
       expect(root).toContain('maximum delegation depth is 1');
@@ -397,7 +397,7 @@ describe('Codex install setup plan', () => {
         'Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance.',
       );
       expect(root).toMatch(
-        /root retains known low-risk mechanical work, including reviewed commits/i,
+        /direct-work exceptions: known low-risk mechanical work \(reviewed commits included\), no rediscovery/i,
       );
       expect(root).toMatch(
         /explicit user direct-work or no-delegation instruction wins/i,

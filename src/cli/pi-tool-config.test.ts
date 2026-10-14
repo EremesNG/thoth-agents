@@ -70,7 +70,7 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(
     snapshot.roles.map(({ role, defaultTools }) => [role, defaultTools]),
   ).toEqual([
-    ['explorer', ['read', 'bash', 'grep', 'find', 'ls']],
+    ['explorer', ['read', 'bash', 'grep', 'find', 'ls', 'codemode']],
     [
       'librarian',
       [
@@ -79,6 +79,7 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'grep',
         'find',
         'ls',
+        'codemode',
         'resolve-library-id',
         'query-docs',
         'mcp',

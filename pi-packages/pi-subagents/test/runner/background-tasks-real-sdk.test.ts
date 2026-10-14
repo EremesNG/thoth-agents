@@ -30,8 +30,8 @@ const processTree = fileURLToPath(
   new URL('./fixtures/node-process-tree.cjs', import.meta.url),
 );
 const config: SubagentsConfig = {
-  timeout_ms: 60_000,
-  stall_timeout_ms: 60_000,
+  timeout_ms: 90_000,
+  stall_timeout_ms: 90_000,
   max_concurrency: 3,
   default_tools: ['bg_task_spawn'],
   session_resources: 'lean',
@@ -86,14 +86,39 @@ async function stopped(files: string[]): Promise<void> {
     .toEqual([]);
 }
 
+function emergencyCleanup(root: string, files: string[]): void {
+  // Emergency cleanup only after assertions, including when setup fails.
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    for (const pid of pids([file])) {
+      if (!alive(pid)) continue;
+      try {
+        if (process.platform === 'win32')
+          execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+        else process.kill(pid, 'SIGKILL');
+      } catch (error) {
+        if (alive(pid)) throw error;
+      }
+    }
+  }
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
 function backgroundProvider(
   files: string[],
   ending: 'success' | 'failure' | 'wait',
 ) {
   let ready!: () => void;
-  const started = new Promise<void>((resolve) => {
+  let failed!: (error: unknown) => void;
+  const started = new Promise<void>((resolve, reject) => {
     ready = resolve;
+    failed = reject;
   });
+  // The SDK can call the provider before setup attaches its readiness waiter.
+  void started.catch(() => {});
   const finished = fixtureProvider('background fixture completed');
   const provider: ProviderConfig = {
     ...finished,
@@ -132,7 +157,7 @@ function backgroundProvider(
         stream.end(message);
       } else {
         void (async () => {
-          await waitForFixtureJobs(files);
+          await waitForFixtureJobs(files, options?.signal);
           if (!pids(files).every(alive))
             throw new Error('Fixture process tree is not alive');
           ready();
@@ -163,6 +188,7 @@ function backgroundProvider(
             stream.end(message);
           }
         })().catch((error) => {
+          failed(error);
           message.stopReason = 'error';
           message.errorMessage = String(error);
           stream.push({ type: 'error', reason: 'error', error: message });
@@ -272,7 +298,12 @@ async function fixture(hanging = false) {
     rootFiles,
     async startRoot() {
       rootPrompt = parent.session.prompt('Spawn the root fixture.');
-      await rootProvider.started;
+      await Promise.race([
+        rootProvider.started,
+        rootPrompt.then(() => {
+          throw new Error('Root ended before fixture jobs started');
+        }),
+      ]);
     },
     async child(ending: 'success' | 'failure' | 'wait', count = 1) {
       sequence += 1;
@@ -348,38 +379,32 @@ async function fixture(hanging = false) {
       return { manager, taskId: launched.task_ids[0]!, files };
     },
     async close() {
-      await Promise.all(managers.map((manager) => manager.close()));
-      for (const child of children) child.controller.abort();
-      await Promise.all(children.map((child) => child.settled));
-      await parent.session.abort();
-      await rootPrompt;
-      await parent.session.extensionRunner!.emit({
-        type: 'session_shutdown',
-        reason: 'quit',
-      });
-      parent.session.dispose();
-      // Emergency cleanup only after assertions, including when a regression leaves survivors.
-      for (const file of [
-        ...rootFiles,
-        ...managedFiles,
-        ...children.flatMap((child) => child.files),
-      ]) {
-        if (!fs.existsSync(file)) continue;
-        for (const pid of pids([file])) {
-          if (!alive(pid)) continue;
-          try {
-            if (process.platform === 'win32')
-              execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
-                windowsHide: true,
-                stdio: 'ignore',
-              });
-            else process.kill(pid, 'SIGKILL');
-          } catch (error) {
-            if (alive(pid)) throw error;
-          }
-        }
+      try {
+        for (const child of children) child.controller.abort();
+        const outcomes = await Promise.allSettled([
+          ...managers.map((manager) => manager.close()),
+          ...children.map((child) => child.settled),
+          parent.session.abort(),
+          rootPrompt,
+        ]);
+        // Even a rejected setup prompt must not skip session-owned job cleanup.
+        await parent.session.extensionRunner!.emit({
+          type: 'session_shutdown',
+          reason: 'quit',
+        });
+        const errors = outcomes.flatMap((outcome) =>
+          outcome.status === 'rejected' ? [outcome.reason] : [],
+        );
+        if (errors.length)
+          throw new AggregateError(errors, 'Fixture teardown failed');
+      } finally {
+        parent.session.dispose();
+        emergencyCleanup(root, [
+          ...rootFiles,
+          ...managedFiles,
+          ...children.flatMap((child) => child.files),
+        ]);
       }
-      fs.rmSync(root, { recursive: true, force: true });
     },
   };
 }
@@ -408,7 +433,7 @@ it('stops multiple child job trees before disposal despite a preceding hanging p
     vi.restoreAllMocks();
     await parent.close();
   }
-}, 60_000);
+}, 240_000);
 
 it.each([
   'success',
@@ -445,7 +470,7 @@ it.each([
   } finally {
     await parent.close();
   }
-}, 60_000);
+}, 240_000);
 
 it('parent-driven manager teardown stops child job trees while root jobs continue', async () => {
   const parent = await fixture();
@@ -460,4 +485,4 @@ it('parent-driven manager teardown stops child job trees while root jobs continu
   } finally {
     await parent.close();
   }
-}, 60_000);
+}, 240_000);

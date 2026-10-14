@@ -1,17 +1,34 @@
 import fs from 'node:fs';
 
-// Windows bg_task_spawn returns before its cold helper is ready. Allow the
-// helper's 15s readiness window, its 10s launch acknowledgment window, then the
-// original 10s allowance for Node and the grandchild to publish their PID file.
-// Under CPU load the helper took 10.989s and PID publication took 13.376s;
-// the old independent 10s fixture deadline failed an otherwise valid launch.
-export const FIXTURE_JOB_STARTUP_TIMEOUT_MS = 15_000 + 10_000 + 10_000;
+// bg_task_spawn acknowledges queued work, not executing processes. Windows must
+// cold-start the PowerShell/Job Object helper, launch Node, then start a second
+// Node process. The previous 35s budget still expired on hosted Windows runners.
+export const FIXTURE_JOB_STARTUP_TIMEOUT_MS = 60_000;
 
-/** Spawn tools acknowledge background work before the fixture processes run. */
-export async function waitForFixtureJobs(files: string[]): Promise<void> {
+function published(file: string): boolean {
+  try {
+    const { parent, grandchild } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return [parent, grandchild].every(
+      (pid) => Number.isInteger(pid) && pid > 0,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/** The atomic PID file is published only after the grandchild's IPC handshake. */
+export async function waitForFixtureJobs(
+  files: string[],
+  signal?: AbortSignal,
+): Promise<void> {
   const deadline = Date.now() + FIXTURE_JOB_STARTUP_TIMEOUT_MS;
-  while (!files.every((file) => fs.existsSync(file))) {
-    if (Date.now() >= deadline) throw new Error('Fixture jobs did not start');
+  for (;;) {
+    signal?.throwIfAborted();
+    const missing = files.filter((file) => !published(file));
+    if (missing.length === 0) return;
+    if (Date.now() >= deadline)
+      throw new Error(`Fixture jobs did not start: ${missing.join(', ')}`);
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }

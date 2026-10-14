@@ -3,7 +3,7 @@ const fs = require('node:fs');
 
 // Both processes outlive the test's observation window, but cannot leak forever
 // if setup fails before their PIDs are recorded.
-setTimeout(() => process.exit(0), 120_000);
+setTimeout(() => process.exit(0), 300_000);
 
 if (process.argv[2] === 'grandchild') {
   process.send(process.pid);

@@ -414,3 +414,32 @@ it('asks confirm with localized Yes/No and stable values', async () => {
     labels: ['Sí'],
   });
 });
+
+it('includes context before the prompt in sequential select and input dialogs', async () => {
+  const ui = scriptedUI([(options) => options[0]], ['My answer']);
+  await runRpcQuestions(
+    createState({
+      questions: [
+        { ...single, context: '**Shared proposal**' },
+        {
+          id: 'text',
+          header: 'Feedback',
+          type: 'text',
+          context: '## Findings',
+          prompt: 'Your thoughts?',
+        },
+      ],
+    }),
+    ui,
+  );
+  expect(ui.select).toHaveBeenCalledWith(
+    'Plan\n**Shared proposal**\nChoose a plan',
+    expect.any(Array),
+    expect.anything(),
+  );
+  expect(ui.input).toHaveBeenCalledWith(
+    'Feedback\n## Findings\nYour thoughts?',
+    undefined,
+    expect.anything(),
+  );
+});

@@ -22,7 +22,12 @@ export async function runRpcQuestions(
   try {
     signal?.throwIfAborted();
     for (const question of state.questions) {
-      const title = [state.title, question.header, question.prompt]
+      const title = [
+        state.title,
+        question.header,
+        question.context,
+        question.prompt,
+      ]
         .filter(Boolean)
         .join('\n');
       const input = () =>

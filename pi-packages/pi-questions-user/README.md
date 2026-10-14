@@ -12,6 +12,7 @@ development SDK/TUI 1.0.2. Install this package as a Pi extension.
     {
       "id": "approach",
       "header": "Approach",
+      "context": "**Summary:** Small, reviewable changes with tests first.",
       "prompt": "Which approach should we use?",
       "type": "single",
       "required": true,
@@ -29,7 +30,8 @@ development SDK/TUI 1.0.2. Install this package as a Pi extension.
 }
 ```
 
-`title`, `labels`, `type`, `required`, `description`, `preview`, and `recommended` are optional.
+`title`, `labels`, per-question `context`, `type`, `required`, option `description`,
+`preview`, and `recommended` are optional.
 Type defaults to `single`; types are `single`, `multi`, `text`, `confirm`. There
 are no declared maximum counts or string lengths. At least one question is
 required. IDs and option values must be unique (values within each question),
@@ -38,6 +40,24 @@ need options. Text/confirm accept no options (an empty array is also allowed).
 Confirm synthesizes `{value: "yes", label: "Yes"}` and `{value: "no", label: "No"}`
 (values are stable; only the labels localize). `Type something.` and the
 localized `typeSomething` label are reserved option labels.
+
+### Self-contained questions
+
+Always write the proposal, table or findings as **normal visible response text
+before calling the tool**, not inside reasoning/thinking. Keep `prompt` a concise,
+self-contained plain-text question. Reasoning/thinking is not shown as answer text.
+Assistant prose in the same turn may not be visible while the question is open,
+so `context` is a **secondary fallback**: include only a short markdown summary
+needed to answer, never the main place for long proposals or tables. Use option
+`preview` for per-option markdown details.
+`context` must be a string; blank context is treated as absent.
+
+The native questionnaire renders context above the prompt with the same markdown
+renderer as previews, including tables. Context and prompt share the existing
+bounded reading viewport and Alt+arrow scroll controls, with hidden-row indicators;
+options/editors retain their reserved space. The sequential RPC fallback includes
+context before the prompt as source text in dialog titles. Review stays compact
+and shows answer summaries rather than repeating context.
 
 ### Localizable UI labels
 
@@ -51,8 +71,8 @@ language. Keys: `askUser`, `yes`, `no`, `typeSomething`, `yourAnswer`, `submit`,
 `noDescription`, `typeOwn`, `noTextYet`, `note`, `noteForQuestion`, `noteFor`,
 `cancelled`, `cancelledKept`, `error`, `answered`, and the key-hint verbs `move`,
 `pick`, `select`, `toggle`, `next`, `optionNote`, `questionNote`, `clear`,
-`scrollPreview`, `scrollPrompt`, `more`, `switchTab`, `save`, `newline`, `keepDraft`,
-`collapse`, `expand`. The native
+`scrollPreview`, `scrollPrompt`, `scrollContext` (default `context/prompt`), `more`,
+`switchTab`, `save`, `newline`, `keepDraft`, `collapse`, `expand`. The native
 questionnaire, the sequential RPC fallback, synthesized confirm options and the
 transcript result card all use them. When supplied, `labels` is echoed in
 `details.labels` so the result card renders in the same language; it is absent
@@ -142,8 +162,8 @@ package is never a dependency). Expanded height stays stable across options, tab
 and editors for a given questionnaire and terminal size. Its baseline is
 `max(12, floor(rows * 0.4))`; content can grow it up to `floor(rows * 0.65)` (never
 below that baseline). Need is measured across all questions: frame chrome, full
-wrapped prompts, wrapped option labels and previews. Prompts take priority, then
-labels with hanging indents; spare rows go to the preview. At the cap, the narrow
+rendered context and wrapped prompts, wrapped option labels and previews. The
+reading area takes priority, then labels with hanging indents; spare rows go to the preview. At the cap, the narrow
 preview shrinks to a minimum of up to two body rows of actual content, then lists
 scroll by whole options, and finally overflowing prompts scroll with a visible indicator. In tiny terminals
 that cannot fit those minimums, preview rows shrink further to preserve the height
@@ -215,9 +235,9 @@ Questionnaire navigation/action bindings are fixed and **not user-rebindable**:
   `PageUp`/`PageDown`, `Home`/`End`, `Ctrl+Up`/`Down` and the mouse wheel for the
   transcript before the questionnaire sees them, so `Shift+arrows` and `[`/`]`
   are the keys that always work.
-- `Alt+Up` / `Alt+Down`: scroll an overflowing prompt by a line; its indicator
-  shows hidden rows. The hint appears only when a prompt overflows; switching tabs
-  resets prompt scroll.
+- `Alt+Up` / `Alt+Down`: scroll overflowing context/prompt by a line; its indicator
+  shows hidden rows. The hint appears only when the reading viewport overflows;
+  switching tabs resets prompt scroll.
 - `Ctrl+]`: collapse/expand while a question is open, from the editor, questionnaire
   or a history/detail overlay. This terminal-input binding shadows the editor's
   `jumpForward` binding only while the question is open. Kitty repeats/releases

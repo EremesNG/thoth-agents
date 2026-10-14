@@ -9,7 +9,7 @@ interface Entry {
   lines?: string[];
 }
 
-/** Parses each preview once and reuses rendered lines per width. */
+/** Parses each markdown source once and reuses rendered lines per width. */
 export class MarkdownCache {
   private readonly entries = new Map<string, Entry>();
 

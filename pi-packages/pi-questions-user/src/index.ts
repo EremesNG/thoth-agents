@@ -28,8 +28,9 @@ export function createQuestionTool(
     exposure: 'model-only',
     label: 'Ask User Question',
     description:
-      'Ask the user a questionnaire with stable ids, single/multi choices, text or Yes/No confirmation. Required is advisory; recommendations are never preselected.',
+      'Ask the user a questionnaire with stable ids, single/multi choices, text or Yes/No confirmation. Write the proposal/findings as visible response text before calling; keep questions concise, with optional short context summaries. Required is advisory; recommendations are never preselected.',
     promptGuidelines: [
+      'Always write the proposal, table or findings as normal visible response text BEFORE calling this tool, not inside reasoning/thinking; keep `prompt` a concise, self-contained question. Reasoning/thinking is not shown as answer text. Assistant text in the same turn may not be visible while the question is open: use `context` only as a secondary fallback with a short markdown summary needed to answer, never the main place for long proposals or tables. Use option `preview` for per-option markdown details.',
       "When the user does not write in English, pass `labels` with the fixed UI strings (yes, no, typeSomething, submit, backToEdit, cancel, review, skip, done, hints…) translated to the user's language; also write headers, prompts and option labels in that language. Option values and ids stay stable.",
     ],
     parameters: questionParameters,

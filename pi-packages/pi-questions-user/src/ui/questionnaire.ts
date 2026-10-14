@@ -648,11 +648,15 @@ export class QuestionnaireComponent implements Component {
     return this.currentLayout(this.lastWidth).previewBody;
   }
 
+  /** Context and plain-text prompt share one bounded, scrollable reading area. */
   private promptLines(question: Question, width: number): string[] {
-    return wrapTextWithAnsi(
+    const prompt = wrapTextWithAnsi(
       `${question.prompt}${question.required ? this.theme.fg('warning', ` (${this.labels.required})`) : ''}`,
       width,
     );
+    return question.context?.trim()
+      ? [...this.markdown.render(question.context, width), '', ...prompt]
+      : prompt;
   }
 
   /** Wrap to leave room for an inline counter, so scrolling never hides text. */
@@ -1079,7 +1083,9 @@ export class QuestionnaireComponent implements Component {
     const width = layout.inner;
     const l = this.labels;
     const promptHint = layout.promptOverflow
-      ? [`Alt+↑↓ ${l.scrollPrompt}`]
+      ? [
+          `Alt+↑↓ ${this.question?.context?.trim() ? l.scrollContext : l.scrollPrompt}`,
+        ]
       : [];
     let items: string[];
     if (this.edit) {

@@ -40,6 +40,7 @@ export const DEFAULT_LABELS = {
   clear: 'clear',
   scrollPreview: 'preview',
   scrollPrompt: 'prompt',
+  scrollContext: 'context/prompt',
   more: 'more',
   switchTab: 'switch',
   save: 'save',
@@ -79,14 +80,24 @@ export const questionOptionSchema = Type.Object({
   value: Type.String(),
   label: Type.String(),
   description: Type.Optional(Type.String()),
-  preview: Type.Optional(Type.String()),
+  preview: Type.Optional(
+    Type.String({ description: 'Optional markdown details for this option.' }),
+  ),
   recommended: Type.Optional(Type.Boolean()),
 });
 
 export const questionSchema = Type.Object({
   id: Type.String(),
   header: Type.String(),
-  prompt: Type.String(),
+  prompt: Type.String({
+    description: 'Concise, self-contained question in plain text.',
+  }),
+  context: Type.Optional(
+    Type.String({
+      description:
+        'Optional short markdown summary shown above the prompt as a secondary fallback when preceding text may not be visible. First write proposals, tables and findings as normal visible response text before calling the tool, not in reasoning/thinking. Never use context as the main place for long proposals or tables.',
+    }),
+  ),
   type: Type.Optional(
     Type.Union([
       Type.Literal('single'),

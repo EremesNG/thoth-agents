@@ -110,6 +110,7 @@ export function validateQuestions(input: unknown): ValidationResult {
         'Expected single, multi, text or confirm.',
       );
     }
+    optional(question.context, `${path}.context`, 'string');
     optional(question.required, `${path}.required`, 'boolean');
     const options = question.options;
     if (options !== undefined && !Array.isArray(options)) {
@@ -174,8 +175,9 @@ export function validateQuestions(input: unknown): ValidationResult {
     value: {
       ...(params.title !== undefined ? { title: params.title } : {}),
       ...(params.labels !== undefined ? { labels: params.labels } : {}),
-      questions: params.questions.map((question) => ({
+      questions: params.questions.map(({ context, ...question }) => ({
         ...question,
+        ...(context?.trim() ? { context } : {}),
         type: question.type ?? 'single',
       })),
     },

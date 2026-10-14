@@ -269,3 +269,43 @@ it('reserves both the default and the localized free-text label', () => {
 it('advertises labels in the tool schema', () => {
   expect(questionParameters.properties.labels.properties.yes).toBeDefined();
 });
+
+it('advertises self-contained prompts and optional markdown context and previews', () => {
+  const question = questionParameters.properties.questions.items;
+  expect(question.properties.context).toMatchObject({
+    type: 'string',
+    description: expect.stringContaining('short markdown summary'),
+  });
+  expect(question.properties.context).toMatchObject({
+    description: expect.stringContaining('secondary fallback'),
+  });
+  expect(question.properties.prompt).toMatchObject({
+    description: expect.stringContaining('self-contained'),
+  });
+  expect(question.properties.options.items.properties.preview).toMatchObject({
+    description: expect.stringContaining('markdown'),
+  });
+});
+
+it('preserves markdown context, omits blank context and rejects non-string context', () => {
+  expect(
+    validateQuestions({ questions: [{ ...choice, context: '**Proposal**' }] }),
+  ).toMatchObject({
+    valid: true,
+    value: { questions: [{ context: '**Proposal**' }] },
+  });
+  const blank = validateQuestions({
+    questions: [{ ...choice, context: '   ' }],
+  });
+  expect(blank.valid).toBe(true);
+  if (blank.valid)
+    expect(blank.value.questions[0]).not.toHaveProperty('context');
+  for (const context of [null, 3, {}, []]) {
+    expect(
+      validateQuestions({ questions: [{ ...choice, context }] }),
+    ).toMatchObject({
+      valid: false,
+      issues: [{ path: 'questions[0].context', code: 'invalid_type' }],
+    });
+  }
+});

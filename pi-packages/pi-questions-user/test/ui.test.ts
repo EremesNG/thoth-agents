@@ -1884,3 +1884,74 @@ describe('questionnaire UI', () => {
     });
   });
 });
+
+it('renders question context markdown and tables above the plain-text prompt', () => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'context',
+          header: 'Proposal',
+          type: 'single',
+          context:
+            '## Shared proposal\n\n| Plan | Cost |\n| --- | --- |\n| Safe | Low |',
+          prompt: 'Which plan should we use?',
+          options: options(2),
+        },
+      ],
+    },
+    80,
+  );
+  const text = stripTerminalSequences(host.text());
+  expect(text).toContain('Shared proposal');
+  expect(text).not.toContain('## Shared proposal');
+  expect(text).toContain('Safe');
+  expect(text).toContain('Low');
+  expect(text).not.toContain('| --- | --- |');
+  expect(text.indexOf('Shared proposal')).toBeLessThan(
+    text.indexOf('Which plan'),
+  );
+  expect(text).toContain('Option 1');
+});
+
+it.each([
+  80, 140,
+])('scrolls long context at %i columns without hiding usable options', (width) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'context',
+          header: 'Proposal',
+          type: 'single',
+          context: Array.from(
+            { length: 30 },
+            (_, i) => `Context-row-${i}`,
+          ).join('\n\n'),
+          prompt: 'Choose the plan?',
+          options: options(3),
+        },
+      ],
+    },
+    16,
+  );
+  const height = host.component.render(width).length;
+  expect(height).toBe(12);
+  expect(host.text(width)).toContain('Context-row-0');
+  expect(host.text(width)).toContain('Option 1');
+  expect(host.text(width)).toContain('Alt+↑↓ context/prompt');
+  expect(host.text(width)).toMatch(/↓ \d+ more/);
+  const frames: string[] = [];
+  for (let i = 0; i < 100; i++) {
+    const frame = host.component.render(width);
+    expect(frame).toHaveLength(height);
+    expect(frame.every((line) => visibleWidth(line) <= width)).toBe(true);
+    expect(frame.join('\n')).toContain('Option 1');
+    frames.push(stripTerminalSequences(frame.join('\n')));
+    host.send(KEY.altDown);
+  }
+  expect(frames.join('\n')).toContain('Context-row-29');
+  expect(frames.join('\n')).toContain('Choose the plan?');
+  host.send(KEY.down, KEY.enter);
+  expect(host.results[0]?.details.answers.context.values).toEqual(['v2']);
+});

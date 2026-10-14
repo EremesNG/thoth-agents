@@ -742,6 +742,24 @@ it('seeded implemented fixture passes installed verify and is structurally close
       const hash = createHash('sha256')
         .update(record.split('## Authorization')[0])
         .digest('hex');
+      // Keep the seeded fixture unreviewed; synthesize approval only for this gate check.
+      const oracleEnvelope = envelope('final-verification', 'PASS', hash);
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              '../../skills/thoth-sdd/scripts/validate-result.mjs',
+              import.meta.url,
+            ),
+          ),
+          '--review-kind',
+          'final-verification',
+          '--record-sha256',
+          hash,
+        ],
+        { cwd, input: oracleEnvelope, stdio: ['pipe', 'pipe', 'pipe'] },
+      );
       fs.writeFileSync(
         file,
         record
@@ -753,7 +771,7 @@ it('seeded implemented fixture passes installed verify and is structurally close
           .replace('**Verdict**: PENDING', '**Verdict**: PASS')
           .replace(
             '**Reviewed record SHA-256**: PENDING',
-            `**Reviewed record SHA-256**: ${hash}`,
+            `**Reviewed record SHA-256**: ${hash}\n\n**Oracle envelope**:\n${oracleEnvelope}`,
           )
           .replaceAll(
             ': PENDING | check | evidence',

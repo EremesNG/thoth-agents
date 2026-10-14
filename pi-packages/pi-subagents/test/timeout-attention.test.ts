@@ -18,6 +18,10 @@ afterEach(() => vi.useRealTimers());
 async function fixture(
   overrides = {},
   handoff?: (taskId: string) => Promise<unknown>,
+  availability:
+    | boolean
+    | null
+    | ((attempt: number) => boolean | undefined) = true,
 ) {
   vi.useFakeTimers();
   env.writeAgent('worker');
@@ -33,8 +37,19 @@ async function fixture(
     }),
   );
   const attention = vi.fn();
-  const runner: SubagentRunner = async ({ signal, onActivity }) => {
-    onActivity?.({ message: 'working', output: 'partial output' });
+  const runner: SubagentRunner = async ({
+    signal,
+    onActivity,
+    continuation,
+  }) => {
+    onActivity?.({
+      message: 'working',
+      output: 'partial output',
+      notify_orchestrator_available:
+        typeof availability === 'function'
+          ? availability(continuation?.attempt ?? 1)
+          : (availability ?? undefined),
+    });
     return new Promise((_resolve, reject) =>
       signal.addEventListener('abort', () => reject(new Error('aborted')), {
         once: true,
@@ -63,6 +78,44 @@ async function fixture(
 }
 
 describe('bounded timeout attention', () => {
+  it.each([
+    false,
+    null,
+  ])('does not steer without verified notify availability (%s)', async (availability) => {
+    const { steering, attention } = await fixture({}, undefined, availability);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(steering).not.toHaveBeenCalled();
+    expect(attention).toHaveBeenCalledOnce();
+  });
+  it('resets verified availability before continuation readiness', async () => {
+    const { manager, task, steering, attention } = await fixture(
+      { enable_continue: true },
+      undefined,
+      (attempt) => (attempt === 1 ? true : undefined),
+    );
+    const nested = path.join(env.tmp, 'notify-resume.jsonl');
+    fs.writeFileSync(nested, '{}');
+    task.nested_session_path = nested;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(steering).toHaveBeenCalledOnce();
+    await manager.continueTask(
+      { task_id: task.id, prompt: 'resume', mode: 'background' },
+      { cwd: env.tmp, sessionId: 'parent' },
+    );
+    await vi.advanceTimersByTimeAsync(800);
+    expect(
+      manager.getTask(task.id)?.notify_orchestrator_available,
+    ).toBeUndefined();
+    expect(steering).toHaveBeenCalledOnce();
+    expect(attention).toHaveBeenCalledTimes(2);
+    manager.cancel(task.id);
+  });
+  it('steers with verified notify even when ask is disabled', async () => {
+    const { steering } = await fixture({ enable_ask_orchestrator: false });
+    await vi.advanceTimersByTimeAsync(800);
+    expect(steering).toHaveBeenCalledOnce();
+    expect(steering.mock.calls[0][0].message).toContain('notify_orchestrator');
+  });
   it.each([
     0, 1000, 2000,
   ])('does not hand off task calls when warning lead is disabled (%s)', async (lead) => {
@@ -137,7 +190,7 @@ describe('bounded timeout attention', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(attention).toHaveBeenCalledOnce();
     expect(steering).toHaveBeenCalledOnce();
-    expect(steering.mock.calls[0][0].message).toContain('ask_orchestrator');
+    expect(steering.mock.calls[0][0].message).toContain('notify_orchestrator');
     expect(task.status).toBe('running');
     await vi.advanceTimersByTimeAsync(200);
     expect(task).toMatchObject({
@@ -222,7 +275,11 @@ describe('bounded timeout attention', () => {
     expect(attention).toHaveBeenCalledOnce();
     expect(task.status).toBe('running');
     await vi.advanceTimersByTimeAsync(200);
-    const disabled = await fixture({ enable_ask_orchestrator: false });
+    const disabled = await fixture(
+      { enable_notify_orchestrator: false },
+      undefined,
+      false,
+    );
     await vi.advanceTimersByTimeAsync(800);
     expect(disabled.steering).not.toHaveBeenCalled();
     expect(disabled.attention).toHaveBeenCalledOnce();
@@ -393,17 +450,20 @@ describe('bounded timeout attention', () => {
         stall_timeout_ms: 10000,
       }),
     );
-    const runner: SubagentRunner = async () => ({
-      result: 'awaiting confirmation',
-      model: 'mock/model',
-      fallback_used: false,
-      interaction_request: {
-        type: 'interaction_required',
-        requestId: 'confirmation',
-        kind: 'confirm',
-        prompt: { message: 'Continue?' },
-      },
-    });
+    const runner: SubagentRunner = async ({ onActivity }) => {
+      onActivity?.({ message: 'ready', notify_orchestrator_available: true });
+      return {
+        result: 'awaiting confirmation',
+        model: 'mock/model',
+        fallback_used: false,
+        interaction_request: {
+          type: 'interaction_required',
+          requestId: 'confirmation',
+          kind: 'confirm',
+          prompt: { message: 'Continue?' },
+        },
+      };
+    };
     const attention = vi.fn();
     const manager = env.createManager(
       runner,

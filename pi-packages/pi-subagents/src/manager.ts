@@ -967,11 +967,11 @@ export class SubagentManager {
     if (!task) throw new Error(`Subagent task not found: ${taskId}`);
     if (this.closing || task.status !== 'running')
       throw new Error(
-        'ask_orchestrator progress unavailable: task is not running.',
+        'notify_orchestrator progress unavailable: task is not running.',
       );
     const text = sanitizeInteractionTransportText(message ?? '');
     if (!text.trim())
-      throw new Error('ask_orchestrator message must not be empty.');
+      throw new Error('notify_orchestrator message must not be empty.');
     const created_at = nowIso();
     task.progress_updates = [
       ...(task.progress_updates ?? []),
@@ -1362,14 +1362,14 @@ export class SubagentManager {
               // Handoff barriers may outlive this attempt or deadline generation.
               if (!this.isAttentionCurrent(task.id, attempt, generation))
                 return;
-              if (config.enable_ask_orchestrator !== false) {
+              if (task.notify_orchestrator_available === true) {
                 try {
                   // Steering is best-effort: transport must not hold attention.
                   void this.sendMessage({
                     task_id: task.id,
                     session_id: task.session_id,
                     message:
-                      'Please report a concise checkpoint (done, pending, touched files) through ask_orchestrator({ kind: "progress", message: "..." }) if available, then continue working. This is a checkpoint request, not a stop instruction.',
+                      'Please report a concise checkpoint (done, pending, touched files) through notify_orchestrator({ message: "..." }), then continue working. This is a checkpoint request, not a stop instruction.',
                   }).catch(() => {});
                 } catch {}
               }
@@ -1716,6 +1716,7 @@ export class SubagentManager {
       output_preview: undefined,
       continuation_prompt: continuationPrompt,
       dropped_tools: undefined,
+      notify_orchestrator_available: undefined,
       transcript: undefined,
       model: modelRefLabel(effectiveProfile.model.value),
       effort: effectiveProfile.effort.value,
@@ -1936,6 +1937,7 @@ export class SubagentManager {
         ((task.attempt ?? 1) === 1 ? 0 : undefined),
     };
     const controller = new AbortController();
+    task.notify_orchestrator_available = undefined;
     this.tasks.set(id, task);
     this.taskCwds.set(id, cwd);
     this.controllers.set(id, controller);
@@ -2066,7 +2068,8 @@ export class SubagentManager {
             clearLiveBridge: () => this.clearLiveBridge(id, task.attempt ?? 1),
             onQueuedMessageStart: () => this.consumeQueuedMessage(id),
             orchestratorChannel:
-              config.enable_ask_orchestrator !== false
+              config.enable_ask_orchestrator !== false ||
+              config.enable_notify_orchestrator !== false
                 ? {
                     askQuestion: (message, signal) =>
                       this.askOrchestrator(id, message, signal),
@@ -2134,6 +2137,9 @@ export class SubagentManager {
                 task.interaction_request = activity.interaction_request;
               if (activity.nested_session_path)
                 task.nested_session_path = activity.nested_session_path;
+              if (activity.notify_orchestrator_available !== undefined)
+                task.notify_orchestrator_available =
+                  activity.notify_orchestrator_available;
               if (activity.dropped_tools !== undefined)
                 task.dropped_tools = [...activity.dropped_tools];
               if (activity.pi_retry_attempts !== undefined)

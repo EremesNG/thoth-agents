@@ -171,7 +171,7 @@ it.each([
       definition: {
         ...captureDefinition,
         tools,
-        disallowed_tools: ['ask_orchestrator'],
+        disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
       },
       ctx: {
         modelRegistry: parent.modelRegistry,
@@ -732,7 +732,9 @@ it.each([
         tools:
           ending === 'verification-failure' ? ['missing_fixture_tool'] : [],
         disallowed_tools:
-          ending === 'verification-failure' ? ['ask_orchestrator'] : [],
+          ending === 'verification-failure'
+            ? ['ask_orchestrator', 'notify_orchestrator']
+            : [],
         model: { provider: 'session-start-fixture', id: 'fixture' },
       },
       task:
@@ -871,7 +873,7 @@ it('shuts down and disposes a child rejected before prompting for unavailable to
           filePath: fixtureExtension,
           instructions: 'Reply.',
           tools: ['missing_fixture_tool'],
-          disallowed_tools: ['ask_orchestrator'],
+          disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
           model: { provider: 'session-start-fixture', id: 'fixture' },
         },
       }),

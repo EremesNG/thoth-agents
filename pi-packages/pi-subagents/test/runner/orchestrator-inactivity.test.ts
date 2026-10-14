@@ -343,7 +343,7 @@ it('suspends inactivity for pending questions and resumes it after the last answ
         type: 'tool_execution_start',
         toolCallId: 'question-1',
         toolName: 'ask_orchestrator',
-        args: { kind: 'question', message: 'scope?' },
+        args: { message: 'scope?' },
       });
       event({
         type: 'tool_execution_start',

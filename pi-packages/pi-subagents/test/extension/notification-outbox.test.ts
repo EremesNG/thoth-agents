@@ -142,7 +142,11 @@ describe('parent notification outbox', () => {
     const host = await fixture();
     (host.manager as any).runner = async ({ signal, onActivity }: any) => {
       if (signal.aborted) throw new Error('aborted');
-      onActivity?.({ message: 'working', output: 'partial output' });
+      onActivity?.({
+        message: 'working',
+        output: 'partial output',
+        notify_orchestrator_available: true,
+      });
       return new Promise((_resolve, reject) =>
         signal.addEventListener('abort', () => reject(new Error('aborted')), {
           once: true,

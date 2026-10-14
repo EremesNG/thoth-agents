@@ -95,7 +95,7 @@ it.each([
           )!;
           const first = tool.execute(
             'first',
-            { kind: 'question', message: 'first' },
+            { message: 'first' },
             new AbortController().signal,
           );
           if (timing === 'during tool cleanup') {
@@ -105,7 +105,7 @@ it.each([
           }
           const second = tool.execute(
             'second',
-            { kind: 'question', message: 'second' },
+            { message: 'second' },
             new AbortController().signal,
           );
           const replies = await Promise.all([first, second]);
@@ -243,15 +243,18 @@ it('answers repeated injected real-SDK questions through subagent_reply in the s
       const tool = this.agent.state.tools.find(
         (tool) => tool.name === 'ask_orchestrator',
       )!;
-      await tool.execute(
+      const notify = this.agent.state.tools.find(
+        (tool) => tool.name === 'notify_orchestrator',
+      )!;
+      await notify.execute(
         'progress',
-        { kind: 'progress', message: 'Discovery complete' },
+        { message: 'Discovery complete' },
         new AbortController().signal,
       );
       for (const message of ['Which scope?', 'Which check?']) {
         const result = await tool.execute(
           'question',
-          { kind: 'question', message },
+          { message },
           new AbortController().signal,
         );
         childReplies.push((result.content[0] as { text: string }).text);

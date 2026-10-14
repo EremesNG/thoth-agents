@@ -21,7 +21,10 @@ import {
 } from './event-processing.js';
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
 import { leanResources } from './lean-resources.js';
-import { createAskOrchestratorTool } from './orchestrator-tool.js';
+import {
+  createAskOrchestratorTool,
+  createNotifyOrchestratorTool,
+} from './orchestrator-tool.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
 import {
@@ -81,6 +84,7 @@ function resolveConfiguredTools(
   context: any,
   disallowedTools: readonly string[],
   enableAskOrchestrator: boolean,
+  enableNotifyOrchestrator: boolean,
 ): string[] {
   const registered = patterns.some(hasToolGlob)
     ? readToolNames(context, ['getAllTools'])
@@ -89,16 +93,18 @@ function resolveConfiguredTools(
   try {
     const expanded = expandToolPatterns(patterns, registered);
     if (enableAskOrchestrator) expanded.push('ask_orchestrator');
+    if (enableNotifyOrchestrator) expanded.push('notify_orchestrator');
     const denied = new Set(disallowedTools);
     const permitted = [...new Set(expanded)].filter(
       (name) =>
         (enableAskOrchestrator || name !== 'ask_orchestrator') &&
+        (enableNotifyOrchestrator || name !== 'notify_orchestrator') &&
         !denied.has(name) &&
         !name.startsWith('subagent_'),
     );
     if (!permitted.length)
       throw new Error(
-        'The effective permitted tool selection is empty. Check tools, disallowed_tools and enable_ask_orchestrator.',
+        'The effective permitted tool selection is empty. Check tools, disallowed_tools and orchestrator tool flags.',
       );
     return permitted;
   } catch (error) {
@@ -494,9 +500,14 @@ async function createSession(
     model,
     thinkingLevel: effort,
     tools,
-    customTools: tools.includes('ask_orchestrator')
-      ? [createAskOrchestratorTool(orchestratorChannel)]
-      : [],
+    customTools: [
+      ...(tools.includes('ask_orchestrator')
+        ? [createAskOrchestratorTool(orchestratorChannel)]
+        : []),
+      ...(tools.includes('notify_orchestrator')
+        ? [createNotifyOrchestratorTool(orchestratorChannel)]
+        : []),
+    ],
     sessionManager,
   };
   const modelRuntime =
@@ -713,6 +724,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     ctx,
     definition.disallowed_tools ?? [],
     config.enable_ask_orchestrator !== false,
+    config.enable_notify_orchestrator !== false,
   );
   const systemPrompt = definition.instructions;
   const prompt =
@@ -729,6 +741,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
 
   async function attempt(model: any) {
     onActivity?.({
+      notify_orchestrator_available: false,
       message: `starting ${definition.name} with model ${modelLabel(model) ?? 'unknown'}${effort ? ` effort ${effort}` : ''}`,
       prompt,
       system_prompt: systemPrompt,
@@ -758,6 +771,9 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
       onActivity?.({
         message: 'nested session ready',
+        notify_orchestrator_available:
+          tools.includes('notify_orchestrator') &&
+          !dropped_tools.includes('notify_orchestrator'),
         dropped_tools,
         nested_session_path: resolvedNestedSessionPath,
       });

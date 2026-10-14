@@ -93,4 +93,6 @@ Be concise. Return distilled evidence and outcomes, not raw logs or full-file du
 
 - Child tools are filtered by `tools`, configuration, `disallowed_tools`, and native `subagent_*` exclusions with runtime-verified registry filtering; behavioral role limits are instruction-level, not an OS or credential sandbox.
 
+- Optional brief `notify_orchestrator({ message: "…" })` progress/checkpoint updates return immediately, are recorded on this task, and do not trigger a root turn; root still owns progress tracking.
+
 </role-operational-contract>

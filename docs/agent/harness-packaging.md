@@ -117,17 +117,18 @@
   ownership: new Thoth warns once at session start when it is absent, and new
   pi-subagents warns about duplicate owners exposed by Pi's command registry.
   The operator upgrade pairs both packages and finishes with `/reload`; `0.3.0`
-  is the first command-owning pi-subagents release. A child-provided
-  `ask_orchestrator` note
-  describes the channel as subject to `enable_ask_orchestrator` and
-  `disallowed_tools`; it is not a checkbox. The panel does not read runtime
+  is the first command-owning pi-subagents release. Child-provided
+  `ask_orchestrator` and `notify_orchestrator` notes describe the channels as
+  subject to their respective `enable_ask_orchestrator` and
+  `enable_notify_orchestrator` flags and `disallowed_tools`; they are not checkboxes. The panel does not read runtime
   configuration or edit denials.
   Generated defaults are explicit: `read, bash, grep, find, ls` for Oracle;
   Explorer adds `codemode`; Designer and Worker add `edit, write` before the
   search tools; Librarian adds its research tools and `codemode`. All omit `ask_user_question`, `todo` and
   third-party delegation tools. Every enabled child receives `ask_orchestrator`
   regardless of selection form unless denied. Only Oracle's generated definition
-  declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment.
+  declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment
+  while keeping `notify_orchestrator`. All five roles receive notify guidance.
   Other harnesses are unchanged. Manual advanced globs, including `*`, expand
   against all registered root tools (active and inactive), minus native
   `subagent_*` exclusions and the definition's `disallowed_tools`.
@@ -139,8 +140,13 @@
   names are inert. Native exclusions cover only `subagent_*` tools.
   `enable_ask_orchestrator` defaults to true and gates both the child tool and
   root's `subagent_reply`; false removes both. `ask_timeout_ms` defaults to
-  600000. Questions block for root's reply; optional brief progress updates are
-  recorded on the task without triggering a root turn. If the channel is
+  600000. `ask_orchestrator({ message })` carries only questions and blocks for
+  root's reply. Independently, `enable_notify_orchestrator` defaults to true
+  (global/project cascade) and injects `notify_orchestrator({ message })` unless
+  denied. It returns immediately, records progress/checkpoint information on the
+  task (latest five updates), and triggers no root turn or reply. Timeout checkpoint
+  steering uses notify only when it is in the child's verified tool selection.
+  If the question channel is
   unavailable, the rendered child fallback is owned by
   `src/agents/prompt-dialects.ts` and `AGENT_RETURN_CONTRACT` in
   `src/harness/core/agent-pack.ts`; tests: `src/harness/adapters/pi.test.ts`.
@@ -159,7 +165,7 @@
   implementation are dropped and reported as durable warnings on the running
   widget card and in status/results/completion while the child uses the available
   subset. An empty effective permitted selection or unexpected extra child tools
-  still fails; an injected `ask_orchestrator` alone can keep the selection nonempty.
+  still fails; either injected orchestrator tool alone can keep the selection nonempty.
   Explicit names and tools matched by globs reach the child even when inactive
   in the root, allowing roles to activate deferred or advanced tools. Globs are
   edited manually in definition frontmatter. Native TUI/AI modules are declared public peers and
@@ -253,7 +259,7 @@ selected load Pi's public codemode extension in mode `on`, scoped to their other
 selected tools.
 
 Batch independent script-callable reads, research and memory work through
-codemode. Delegation controls, `ask_orchestrator` and `ask_user_question` are
+codemode. Delegation controls, `ask_orchestrator`, `notify_orchestrator` and `ask_user_question` are
 `model-only`: call them directly, never from scripts. They remain direct under
 both `on` and user-selected `only`. Task-list and background-task tools remain
 script-callable; the boundary does not exclude all control-plane tools.

@@ -62,8 +62,13 @@ batches. Results expose `details.answers[id]` with status, values, labels, custo
 text and question/option notes. Skips and cancellation are not approval, and
 `no_ui` is not a human answer; partial recorded answers may survive cancellation.
 Without custom UI it falls back to sequential select/input; without UI it is
-inactive. Children still route questions through `ask_orchestrator`, not human
-dialogs. The CLI removes a conflicting user-scope juicesharp question package
+inactive. Children route questions through `ask_orchestrator({ message })`, which
+waits for the root's reply, not human dialogs. For one-way progress/checkpoint
+updates, `notify_orchestrator({ message })` returns immediately, records the update
+on the task, and triggers no root turn. Both are `model-only` direct calls,
+independently enabled by `enable_ask_orchestrator` and `enable_notify_orchestrator`
+(default true, global/project cascade) and subject to `disallowed_tools`.
+Oracle denies ask by default but keeps notify. The CLI removes a conflicting user-scope juicesharp question package
 natively before installation; project conflicts require manual trust-aware removal.
 Provider-neutral progress guidance treats tools as optional: use an available
 tool according to its exposed contract or lightweight written progress. For Pi,

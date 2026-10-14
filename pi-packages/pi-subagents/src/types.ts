@@ -90,6 +90,7 @@ export type SubagentsConfig = {
   detail_cancel_shortcut?: string;
   enable_continue?: boolean;
   enable_ask_orchestrator?: boolean;
+  enable_notify_orchestrator?: boolean;
   ask_timeout_ms?: number;
   debug?: boolean;
   render_debug?: SubagentsRenderDebugConfig;
@@ -167,6 +168,8 @@ export type SubagentActivity = {
   interaction_request?: SubagentInteractionRequest;
   nested_session_path?: string;
   dropped_tools?: string[];
+  /** Current-attempt registry verification; unknown means unavailable. */
+  notify_orchestrator_available?: boolean;
   pi_retry_attempts?: number;
   live_activity?: SubagentLiveActivityProjection;
 };
@@ -471,6 +474,8 @@ export type SubagentTask = {
   session_id?: string;
   nested_session_path?: string;
   dropped_tools?: string[];
+  /** Current-attempt registry verification; unknown means unavailable. */
+  notify_orchestrator_available?: boolean;
   started_at?: string;
   ended_at?: string;
   last_activity_at?: string;

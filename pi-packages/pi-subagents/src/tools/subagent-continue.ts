@@ -182,7 +182,15 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               ]
                 .filter(Boolean)
                 .join('\n\n'),
-              compactResultDetails(result as any, available),
+              compactResultDetails(
+                {
+                  ...result,
+                  tasks: result.task_ids
+                    .map((id) => manager.getTask(id, cwd))
+                    .filter(Boolean) as SubagentTask[],
+                },
+                available,
+              ),
             );
             return isBackground ? response : { ...response, terminate: true };
           }
@@ -198,15 +206,26 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
             ? { ...fail(text), details }
             : ok(text, details);
         } catch (e) {
-          if (!cancelledByDoubleEscape) return fail(e);
+          const task = manager.getTask(params.task_id, cwd);
+          const tasks = task ? [task] : latestTasks;
+          const available = availability();
           const message = e instanceof Error ? e.message : String(e);
-          return fail(
-            appendSubagentResumeGuidance(
-              message,
-              latestTasks.length ? latestTasks : [{ status: 'cancelled' }],
-              availability(),
-            ),
+          const response = fail(
+            cancelledByDoubleEscape
+              ? appendSubagentResumeGuidance(
+                  message,
+                  tasks.length ? tasks : [{ status: 'cancelled' }],
+                  available,
+                )
+              : e,
           );
+          return {
+            ...response,
+            details: compactResultDetails(
+              { ...response.details, tasks },
+              available,
+            ),
+          };
         } finally {
           active = false;
           uninstallCancel();

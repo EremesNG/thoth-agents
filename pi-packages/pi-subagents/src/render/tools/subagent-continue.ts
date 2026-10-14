@@ -2,6 +2,7 @@ import { resolveIcon } from '@thoth-agents/pi-core';
 import { readSubagentsConfig } from '../config.js';
 import { resolveContinuationEffectiveMode } from '../continuation-mode.js';
 import { iconAwareRenderer } from '../icon-aware-component.js';
+import { taskFromDetails } from '../result-details.js';
 import type { SubagentTask } from '../types.js';
 import { formatTaskLabel } from './formatting.js';
 import {
@@ -34,6 +35,12 @@ export const renderSubagentContinueResult = iconAwareRenderer(
     theme: any,
     context?: any,
   ) {
-    return renderSubagentRunResult(result, options, theme, context);
+    const task = taskFromDetails(result);
+    return renderSubagentRunResult(
+      result,
+      { ...options, resumedAttempt: task ? (task.attempt ?? 1) : undefined },
+      theme,
+      context,
+    );
   },
 );

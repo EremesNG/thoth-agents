@@ -399,6 +399,9 @@ describe('subagent_continue tool', () => {
       expect(result.details).toMatchObject({
         mode: 'background',
         task_ids: [taskId],
+        tasks: [
+          expect.objectContaining({ id: taskId, attempt: 2, agent: 'analyst' }),
+        ],
       });
       expect(result.content[0].text).toContain('question is pending');
       expect(result.content[0].text).toContain('subagent_reply');
@@ -719,6 +722,14 @@ describe('subagent_continue tool', () => {
     expect(abort).toHaveBeenCalledOnce();
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('cancelled by double escape');
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: first.task_ids[0],
+        agent: 'analyst',
+        attempt: 2,
+        status: 'cancelled',
+      }),
+    ]);
     expect(result.content[0].text).toContain(
       'can be resumed with `subagent_continue`',
     );
@@ -1077,6 +1088,15 @@ describe('subagent_continue tool', () => {
     expect(immediateResult.content[0].text).toContain(
       'Continued 1 subagent task(s) to background',
     );
+    expect(immediateResult.details.tasks).toEqual([
+      expect.objectContaining({
+        id: taskId,
+        agent: 'analyst',
+        attempt: 2,
+        mode: 'background',
+        status: 'running',
+      }),
+    ]);
     expect(manager.getTask(taskId, env.tmp)).toMatchObject({
       attempt: 2,
       mode: 'background',
@@ -1155,6 +1175,14 @@ describe('subagent_continue tool', () => {
     expect(result.content[0].text).toContain(
       'Continued 1 subagent task(s) to background',
     );
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: first.task_ids[0],
+        agent: 'analyst',
+        attempt: 2,
+        mode: 'background',
+      }),
+    ]);
     expect(manager.getTask(first.task_ids[0]!, env.tmp)?.mode).toBe(
       'background',
     );
@@ -1257,5 +1285,11 @@ describe('subagent_continue tool', () => {
     expect(result.content[0].text).toContain(
       'missing or unreadable nested session file',
     );
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: 'subtask_legacy_resume',
+        agent: 'analyst',
+      }),
+    ]);
   });
 });

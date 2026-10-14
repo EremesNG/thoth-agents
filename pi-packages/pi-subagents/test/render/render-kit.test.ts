@@ -11,7 +11,9 @@ import {
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import extension from '../../index.js';
+import { registerSubagentsPanelOpener } from '../../src/render/panel-opener.js';
 import { visibleWidth } from '../../src/render/text-width.js';
+import { renderSubagentContinueResult } from '../../src/render/tools/subagent-continue.js';
 import { renderSubagentRunResult } from '../../src/render/tools/subagent-run.js';
 import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agents.js';
 import { registerSubagentTools } from '../../src/tools.js';
@@ -36,6 +38,57 @@ const theme = {
 };
 
 describe('render kit discovery', () => {
+  it.each([
+    'queued',
+    'running',
+  ])('renders a %s continuation as a successful launch with task-panel navigation', (status) => {
+    const kit = createTestRenderKit();
+    const card = vi.spyOn(kit, 'card');
+    const token = registerRenderKit(kit, {});
+    const openPanel = vi.fn();
+    registerSubagentsPanelOpener(openPanel);
+    try {
+      const result = {
+        details: {
+          mode: 'background',
+          tasks: [
+            {
+              id: 'subtask_resumed',
+              agent: 'thoth-worker',
+              attempt: 3,
+              status,
+              model: 'mock/model',
+              effort: 'high',
+            },
+          ],
+        },
+      };
+      const component = renderSubagentContinueResult(result, {}, theme);
+      const lines = component.render(160);
+      expect(lines[0]).toContain(
+        'thoth-worker · resumed #3 · launched (background)',
+      );
+      expect(lines.join('\n')).toContain('model: mock/model');
+      expect(lines.join('\n')).toContain('effort: high');
+      expect(card).toHaveBeenCalledWith(
+        theme,
+        expect.objectContaining({
+          status: 'completed',
+          isSuccess: true,
+          isError: false,
+        }),
+        160,
+      );
+      expect(component.handleMouse?.({ type: 'click' })).toEqual({
+        handled: true,
+      });
+      expect(openPanel).toHaveBeenCalledWith('subtask_resumed');
+      expect(result.details.tasks[0].status).toBe(status);
+    } finally {
+      registerSubagentsPanelOpener(undefined);
+      withdrawRenderKit(token);
+    }
+  });
   it('switches a list result between one native SDK shell and the current KIT on the same component', () => {
     const tool = createSubagentListAgentsTool({} as any);
     const component = tool.renderResult({ details: { agents: [] } }, {}, theme);

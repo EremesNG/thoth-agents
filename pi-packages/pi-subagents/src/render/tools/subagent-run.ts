@@ -134,6 +134,10 @@ export const renderSubagentRunResult = iconAwareRenderer(
         : statusGlyph(statusLabel, result?.details?.frame ?? 0),
     );
     const bgSuffix = isBg ? ' (background)' : '';
+    const resumedSuffix =
+      options?.resumedAttempt != null
+        ? ` ${resolveIcon('separator', '·')} resumed #${options.resumedAttempt}`
+        : '';
 
     if (isPartial) {
       const frame = result?.details?.frame ?? 0;
@@ -181,14 +185,14 @@ export const renderSubagentRunResult = iconAwareRenderer(
         : failed
           ? themeError(theme, 'failed')
           : themeSuccess(theme, 'done');
-    const taskLabel = formatTaskLabel(task, true);
+    const taskLabel = `${formatTaskLabel(task, true)}${resumedSuffix}`;
     const hasResp = hasAgentResponse(task, result);
     const responseText = taskResponseText(task, result);
 
     let title: string;
     if (isRunning) {
       const agentOrName = task?.display_name || task?.agent || 'subagent';
-      title = `${archPrefix} ${themeTitle(theme, `subagent ${resolveIcon('separator', '·')} ${agentOrName} ${resolveIcon('separator', '·')} ${statusLabel}${bgSuffix}`)}`;
+      title = `${archPrefix} ${themeTitle(theme, `subagent ${resolveIcon('separator', '·')} ${agentOrName}${resumedSuffix} ${resolveIcon('separator', '·')} ${statusLabel}${bgSuffix}`)}`;
     } else if (!isExpanded) {
       const titleLabel = failed
         ? themeError(

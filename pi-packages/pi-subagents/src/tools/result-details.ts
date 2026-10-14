@@ -1,5 +1,8 @@
 import { safeErrorMetadataDetails } from '../error-metadata.js';
+import { timeoutPartialContext } from '../render/timeout-context.js';
 import type { SubagentTask } from '../types.js';
+
+export { totalTimeoutResult } from '../render/timeout-context.js';
 
 export function taskFromDetails(result: any): SubagentTask | undefined {
   return (
@@ -23,7 +26,10 @@ function compactErrorMetadataForDetails(
   return safeErrorMetadataDetails(task.error_metadata as any);
 }
 
-function orchestratorDetails(task: SubagentTask): Record<string, unknown> {
+function orchestratorDetails(
+  task: SubagentTask,
+  continueAvailable: boolean,
+): Record<string, unknown> {
   const pending = task.pending_questions ?? [];
   return {
     pending_question_count: pending.length,
@@ -32,6 +38,11 @@ function orchestratorDetails(task: SubagentTask): Record<string, unknown> {
       message,
       created_at,
     })),
+    ...(task.error_metadata?.category === 'total_timeout'
+      ? {
+          partial_context: timeoutPartialContext(task, continueAvailable),
+        }
+      : {}),
     progress_updates: (task.progress_updates ?? [])
       .slice(-5)
       .map((update) => ({ ...update })),
@@ -40,6 +51,7 @@ function orchestratorDetails(task: SubagentTask): Record<string, unknown> {
 
 export function compactTaskForToolResult(
   task: SubagentTask,
+  continueAvailable: boolean,
 ): Record<string, any> {
   const {
     thread_snapshot: _threadSnapshot,
@@ -49,13 +61,14 @@ export function compactTaskForToolResult(
   const error_metadata = compactErrorMetadataForDetails(task);
   return {
     ...compact,
-    ...orchestratorDetails(task),
+    ...orchestratorDetails(task, continueAvailable),
     ...(error_metadata ? { error_metadata } : {}),
   };
 }
 
 export function compactTaskWithoutFinalText(
   task: SubagentTask,
+  continueAvailable: boolean,
 ): Record<string, any> {
   const {
     thread_snapshot: _threadSnapshot,
@@ -68,22 +81,29 @@ export function compactTaskWithoutFinalText(
   const error_metadata = compactErrorMetadataForDetails(task);
   return {
     ...compact,
-    ...orchestratorDetails(task),
+    ...orchestratorDetails(task, continueAvailable),
     ...(error_metadata ? { error_metadata } : {}),
   };
 }
 
 export function compactResultDetails<T extends Record<string, any>>(
   details: T,
+  continueAvailable: boolean,
 ): T {
   return {
     ...details,
-    task: details.task ? compactTaskForToolResult(details.task) : details.task,
+    task: details.task
+      ? compactTaskForToolResult(details.task, continueAvailable)
+      : details.task,
     tasks: Array.isArray(details.tasks)
-      ? details.tasks.map(compactTaskForToolResult)
+      ? details.tasks.map((task) =>
+          compactTaskForToolResult(task, continueAvailable),
+        )
       : details.tasks,
     results: Array.isArray(details.results)
-      ? details.results.map(compactTaskForToolResult)
+      ? details.results.map((task) =>
+          compactTaskForToolResult(task, continueAvailable),
+        )
       : details.results,
   };
 }

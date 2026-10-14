@@ -8,8 +8,9 @@
 | TUI/React | `src/**/*.test.tsx` | Vitest in Node environment | includes snapshot under `src/cli/tui/__snapshots__/` |
 | built runtime | `src/plugin-node-runtime.test.ts` | Vitest | release runs it after build |
 
-`vitest.config.ts` includes only `src/**/*.test.ts` and `src/**/*.test.tsx`; a
-snapshot does not run by itself.
+`vitest.config.ts` includes `src/**/*.test.ts`, `src/**/*.test.tsx`, and
+`evals/**/*.test.ts`; a snapshot does not run by itself. Evaluation tests run
+sequentially in a separate project; `*.live.ts` is excluded.
 
 ## Verified commands
 
@@ -25,6 +26,168 @@ snapshot does not run by itself.
 | packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing five specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
 
 Replace `path/to/test` with a real test; do not literally run the placeholder.
+
+## Project QA evaluation suite
+
+This is developer tooling under [`evals/`](../../evals/), not an additional
+source of product instructions.
+
+- **Deterministic contracts**: [`contracts.json`](../../evals/contracts.json)
+  (v1) and [`contracts.test.ts`](../../evals/contracts.test.ts) run in
+  `pnpm test`. Positive/negative cases check owning product functions and
+  contract text in rendered OpenCode, Codex, Claude and Pi root prompts for
+  plan authorization, independent verification, delegated memory scope and
+  small-change proportionality. These prove schema/function/text consistency,
+  not model compliance; authorization checks are prose checks, not runtime gates.
+- **Offline self-tests**: `evals/pi/*.test.ts` also run in `pnpm test`, using a
+  synthetic provider and real SDK/subagent paths without real model calls.
+  They exercise capture, scripted questions, isolation, caps, child termination,
+  settling and deterministic graders (including negative traces). Allow roughly
+  2–3 minutes locally for the evaluation tests; runner timing varies.
+- **Opt-in live Pi**: `pnpm run eval:pi` uses
+  [`vitest.evals.live.config.ts`](../../vitest.evals.live.config.ts) and real
+  root/subagent extensions loaded from source; no prior build is needed. It is
+  separate from normal tests and never runs in CI. Missing `THOTH_EVAL_MODEL`
+  fails fast without calling a model. Run only with explicit consent to spend
+  real money.
+
+### Live configuration and limits
+
+| Environment variable | Required/default | Meaning |
+| --- | --- | --- |
+| `THOTH_EVAL_MODEL` | required, `provider/model` | Parent model |
+| `THOTH_EVAL_AUTH` | `~/.pi/agent/auth.json` | Auth file read as a source; never modified |
+| `THOTH_EVAL_SKILLS_DIR` | `~/.pi/agent/skills` | Read-only source of the four external required skills |
+| `THOTH_EVAL_CASE` | unset: all six cases | Exact case ID below |
+| `THOTH_EVAL_MAX_TURNS` | `30` | Positive integer parent-turn cap, not child turns |
+| `THOTH_EVAL_CASE_USD` | `1` | Combined parent + child reported USD per case |
+| `THOTH_EVAL_RUN_USD` | `5` | Cumulative reported USD across cases in this invocation |
+| `THOTH_EVAL_TIME_MS` | case override or `600000` | Positive wall-time cap per case (10 minutes by default; substantial cases use 30 minutes) |
+| `THOTH_EVAL_VERBOSE` | unset | Set exactly `1` for bounded console-only trace diagnostics |
+| `THOTH_EVAL_SPECIALIST_MODEL` | unset: production specialist pins | Temporary override for all specialists, `provider/model` |
+
+Numeric caps must be positive and finite. There is one trial per selected case
+per invocation. IDs are `small-no-record`, `plan-review-choice`,
+`verification-fresh-oracle`, `memory-recall-bounded-reads`,
+`plan-review-no-forwarded-skills`, and `designer-project-skill`. The catalog plan
+case requires canonical review choices, a valid Oracle plan-review OKAY, a separate
+Implement/Stop question answered Stop, no implementation writes, and no SKILL.md
+path in the Oracle assignment. The designer case requires a completed designer
+task and a successful native read of the trusted fixture project skill by that
+same designer task, without a forwarded path.
+
+A case's `live.caps` in `contracts.json` may override `timeMs`, `turns` and
+`caseUsd`. Precedence is explicit environment variable, then case override,
+then harness default. Both plan-review cases, `designer-project-skill`, and `verification-fresh-oracle`
+use `timeMs: 1800000` (30 minutes) and `caseUsd: 1`; the per-run USD cap remains
+5. The Vitest case timeout allows the selected wall-time cap plus cleanup margin.
+
+Changing the parent model does **not** change specialist pins: generated
+specialists retain the production `openai-codex/…` presets unless the temporary
+specialist override is set. Auth must support the models actually used; missing
+child credentials can make a case INCONCLUSIVE. Console output includes
+`modelsUsed`; the harness also records specialist pins internally.
+
+Caps are best-effort evaluation controls, not a billing ceiling or sandbox.
+Cost checks use completed parent messages and child usage events; an in-flight
+request can overshoot. Zero-priced models warn because USD caps cannot bound
+unpriced usage; turn/time caps still apply. The parent turn limit does not bound
+child turns. On a cap hit or case end, the harness aborts the parent, emits SDK
+shutdown to cancel/await children, then disposes, with a 10-second cleanup bound.
+Cleanup timeout means child termination is unconfirmed, not safe completion.
+
+Each case uses a temporary fixture/git workspace and agent directory, in-memory
+settings/session, the auth copy, skill assets, and explicitly loaded root and real
+subagent extensions. Parent skill discovery uses exactly the root package manifest's
+`pi.skills` paths (currently five package skills). External required skills (`tdd`,
+`simplify`, `progressive-context-router`, `architectural-grilling`) are copied with
+supporting assets from `THOTH_EVAL_SKILLS_DIR` into the temporary agent directory.
+Missing required skills produce named setup warnings; they are never installed
+or silently substituted. The source directory is read-only to the harness.
+SDK 1.0.2's `noSkills` still accepts explicit `additionalSkillPaths`, so unrelated
+operator skills remain excluded.
+
+Real subagent children use production resource loading. The harness writes only
+its temporary `agent/settings.json`, declaring the repository package by absolute
+path with package extensions disabled (extensions are loaded explicitly). It trusts
+only the disposable workspace, so child catalogs include fixture project skills
+without inheriting operator trust. An offline real-SDK test proves repository
+skills appear in child prompts and project skills appear only when trusted.
+Home, Pi agent, subagent history and temp paths are rebound
+and restored; the operator's `~/.pi/agent` is never written. This isolation is not
+an OS/network/credential sandbox. Questions use scripted answers, not a live UI.
+Grading waits for children to terminate, parent idle, no pending messages and a
+25 ms quiet window so terminal follow-ups settle before teardown.
+
+### Reading results and adding cases
+
+Results are console-only: status, reasons, warnings, reported cost, parent turns
+and models used; no persistent report files. **PASS** means the selected trace
+satisfied deterministic expectations with positive progress, not universal model
+reliability. **FAIL** means an assertion or execution failed. **INCONCLUSIVE**
+means the path could not be established (for example caps, setup/auth, cleanup,
+rejected plan or unavailable verdict evidence); it is never a PASS. Vitest reports
+PASS as passed, FAIL as failed (non-zero exit), and INCONCLUSIVE as skipped with
+its reason. `eval:pi` always uses verbose, non-silent reporting to show per-case
+summaries. A successful command may still contain skipped findings, so read the
+passed/failed/skipped totals and each printed status. Graders use tool calls, questions, task
+results and workspace snapshot diffs (including bash/child writes), not an LLM
+judge. Only Oracle gate results are envelope-graded by the installed
+[`validateResult`](../../skills/thoth-sdd/scripts/validate-result.mjs) API, typed
+through its `.d.mts` declaration. For these gates, the entire native task result must be a valid
+`thoth-result` envelope; preliminary prose or embedded/example fences are not
+extracted to manufacture validity. Oracle approval requires the expected review
+kind and verdict: plan-review OKAY or final-verification PASS. The closeout case
+binds validation to the known record SHA-256 (the exact UTF-8 prefix before
+`## Authorization`). Invalid/missing approval is INCONCLUSIVE without a root
+approval write, but FAIL when the root writes OKAY/PASS anyway. Valid negative
+verdicts without approval writes are also INCONCLUSIVE: the approval path was not
+exercised. Root approval writes must follow the relevant valid completed Oracle
+result; unsafe implementation in plan-only trials still fails. Root approval-write
+detection remains separate from specialist validation. The seeded implemented
+fixture is checked offline against the installed verify and closeout validator.
+Root memory-provider calls are outside this suite's assertions.
+
+Ordinary specialist returns use compact markdown and custom agents keep their own
+format; neither is envelope-graded or counts as approval. The memory case retains
+explicit MEMORY scope checks on every delegation, with no envelope requirement.
+
+For the designer catalog case, claims in the result are **not**
+read evidence. Before cleanup the harness reads eval-owned native child JSONL
+sessions from task `nested_session_path`, pairs `toolCall`/`toolResult` by call ID,
+and retains task attribution. Only a completed non-error `read` of the expected
+project SKILL.md by the completed designer task counts. Negative offline traces
+cover missing reads, failed reads, another task's reads, and forwarded paths.
+
+`THOTH_EVAL_VERBOSE=1` prints parent skill names, ordered tools, scripted
+questions, subagent assignment path flags, task statuses/result excerpts,
+envelope validity and validator issue codes for Oracle gate tasks, task-attributed
+native child tool completions, written paths and final assistant text. Long
+values are marked `[truncated]`. Default output stays summary-only; no persistent
+trace/report files are written. Diagnostics can contain prompt/code/answer
+content, so review before sharing console output.
+
+To diagnose the small typo case (POSIX shell; PowerShell uses `$env:NAME='value'`):
+
+```sh
+THOTH_EVAL_MODEL=openai-codex/gpt-6.1-sol THOTH_EVAL_CASE=small-no-record THOTH_EVAL_VERBOSE=1 pnpm run eval:pi
+```
+
+Its grader requires the corrected README content, tolerating only CRLF/LF and
+a single terminal newline difference; other content changes still fail.
+Workspace snapshots capture edits via bash and real children as well as write
+and edit tools. Temporary git repos pin `core.autocrlf=false` without changing
+operator config.
+
+To add a case, extend `contracts.json` with a unique ID and schema-valid inputs,
+expected outcomes and product/root patterns; preserve positive/negative coverage.
+For a live case, add its `live` prompt/expectations, a fixture under
+`evals/pi/fixtures/`, and the fixture mapping in
+[`live-cases.ts`](../../evals/pi/live-cases.ts). Add any new expectation to
+[`contracts-schema.ts`](../../evals/contracts-schema.ts) and its deterministic
+grader, with positive and negative offline traces. Run the focused contract,
+harness and grader tests plus `pnpm run typecheck`; live execution remains a
+separate, consented check.
 
 ## Selection rules
 

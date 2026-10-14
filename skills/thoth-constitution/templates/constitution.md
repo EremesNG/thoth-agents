@@ -50,7 +50,7 @@ Provider memory is independent of project records.
 
 Delegation depth is one and each mutable surface has one writer. Root accepts
 terminal dependency results before releasing consumers. At substantial `ready`,
-root always offers Oracle plan review (Recommended) or proceeding without review,
+root always offers Oracle plan review (Recommended) or `Proceed without review`,
 even if implementation was authorized; an unanswered offer never means skip.
 After `[OKAY]`, root separately offers the Implement (Recommended) / Stop choice,
 honors prior explicit authorization, and lets explicit Stop supersede it. Record

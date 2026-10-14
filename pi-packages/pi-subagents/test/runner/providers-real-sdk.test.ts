@@ -48,7 +48,6 @@ const config: SubagentsConfig = {
   stall_timeout_ms: 10_000,
   max_concurrency: 1,
   default_tools: [],
-  model_profiles: {},
   session_resources: 'lean',
 };
 
@@ -172,7 +171,7 @@ it.each([
       definition: {
         ...captureDefinition,
         tools,
-        disallowed_tools: ['ask_orchestrator'],
+        disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
       },
       ctx: {
         modelRegistry: parent.modelRegistry,
@@ -733,7 +732,9 @@ it.each([
         tools:
           ending === 'verification-failure' ? ['missing_fixture_tool'] : [],
         disallowed_tools:
-          ending === 'verification-failure' ? ['ask_orchestrator'] : [],
+          ending === 'verification-failure'
+            ? ['ask_orchestrator', 'notify_orchestrator']
+            : [],
         model: { provider: 'session-start-fixture', id: 'fixture' },
       },
       task:
@@ -872,7 +873,7 @@ it('shuts down and disposes a child rejected before prompting for unavailable to
           filePath: fixtureExtension,
           instructions: 'Reply.',
           tools: ['missing_fixture_tool'],
-          disallowed_tools: ['ask_orchestrator'],
+          disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
           model: { provider: 'session-start-fixture', id: 'fixture' },
         },
       }),

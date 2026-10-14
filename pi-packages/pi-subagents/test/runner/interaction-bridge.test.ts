@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { SettingsManager } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import {
   classifyFallbackFailure,
@@ -21,7 +22,11 @@ describe('subagent runner interaction-required bridge', () => {
     vi.resetModules();
     let delegatedPrompt = '';
     const session = {
-      getAllTools: () => [{ name: 'read' }, { name: 'ask_orchestrator' }],
+      getAllTools: () => [
+        { name: 'read' },
+        { name: 'ask_orchestrator' },
+        { name: 'notify_orchestrator' },
+      ],
       systemPrompt: '# Analyst\nSYSTEM_SENTINEL',
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async (prompt: string) => {
@@ -42,6 +47,9 @@ describe('subagent runner interaction-required bridge', () => {
       }
     }
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SettingsManager,
+      DefaultPackageManager: undefined,
+      ProjectTrustStore: undefined,
       ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
@@ -62,7 +70,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
       session_resources: 'lean',
     };
     const activities: any[] = [];
@@ -78,6 +85,14 @@ describe('subagent runner interaction-required bridge', () => {
       onActivity: (activity) => activities.push(activity),
     });
 
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        diagnostic: true,
+        message:
+          'DefaultPackageManager unavailable; child skill catalog omitted.',
+        transcript: expect.stringContaining('child skill catalog omitted'),
+      }),
+    );
     expect(result.result).toBe('lean done');
     expect(loaderInstances).toHaveLength(1);
     expect(loaderInstances[0].reload).toHaveBeenCalledTimes(1);
@@ -85,6 +100,8 @@ describe('subagent runner interaction-required bridge', () => {
       cwd: '/workspace',
       agentDir: '/agent-dir',
       noSkills: true,
+      additionalSkillPaths: [],
+      noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
@@ -104,7 +121,7 @@ describe('subagent runner interaction-required bridge', () => {
       expect.objectContaining({
         resourceLoader: loaderInstances[0],
         cwd: '/workspace',
-        tools: ['read', 'ask_orchestrator'],
+        tools: ['read', 'ask_orchestrator', 'notify_orchestrator'],
         modelRuntime,
       }),
     );
@@ -160,7 +177,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -192,6 +208,9 @@ describe('subagent runner interaction-required bridge', () => {
       dispose: vi.fn(async () => undefined),
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SettingsManager,
+      DefaultPackageManager: undefined,
+      ProjectTrustStore: undefined,
       ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
@@ -216,7 +235,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
         session_resources: 'lean',
       },
       signal: new AbortController().signal,
@@ -341,7 +359,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const activities: Array<{
       transcript?: string;
@@ -457,7 +474,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     });
@@ -538,7 +554,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     });
@@ -579,12 +594,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {
-        'sdd-apply': {
-          model: { provider: 'profile', id: 'model' },
-          effort: 'xhigh',
-        },
-      },
     };
     const profileModel = { provider: 'profile', id: 'model' };
 
@@ -593,13 +602,29 @@ describe('subagent runner interaction-required bridge', () => {
       task: 'apply work',
       cwd: '/workspace',
       ctx: {
-        model: { provider: 'orchestrator', id: 'model' },
-        modelRegistry: {
-          find: vi.fn((provider: string, id: string) =>
-            provider === 'profile' && id === 'model' ? profileModel : undefined,
-          ),
+        ...{
+          model: { provider: 'orchestrator', id: 'model' },
+          modelRegistry: {
+            find: vi.fn((provider: string, id: string) =>
+              provider === 'profile' && id === 'model'
+                ? profileModel
+                : undefined,
+            ),
+          },
+          pi: { getThinkingLevel: () => 'low' },
         },
-        pi: { getThinkingLevel: () => 'low' },
+        modelProfile: {
+          name: 'test',
+          profile: {
+            agents: {
+              'sdd-apply': {
+                model: { provider: 'profile', id: 'model' },
+                effort: 'xhigh',
+              },
+            },
+          },
+          warnings: [],
+        },
       },
       config,
       signal: new AbortController().signal,
@@ -646,7 +671,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: { 'sdd-design': { effort: 'high' } },
     };
     const frontmatterModel = { provider: 'frontmatter', id: 'model' };
 
@@ -655,9 +679,16 @@ describe('subagent runner interaction-required bridge', () => {
       task: 'design work',
       cwd: '/workspace',
       ctx: {
-        modelRegistry: { find: vi.fn(() => frontmatterModel) },
-        model: { provider: 'orchestrator', id: 'model' },
-        thinkingLevel: 'low',
+        ...{
+          modelRegistry: { find: vi.fn(() => frontmatterModel) },
+          model: { provider: 'orchestrator', id: 'model' },
+          thinkingLevel: 'low',
+        },
+        modelProfile: {
+          name: 'test',
+          profile: { agents: { 'sdd-design': { effort: 'high' } } },
+          warnings: [],
+        },
       },
       config,
       signal: new AbortController().signal,
@@ -704,7 +735,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
 
     await sdkSubagentRunner({
@@ -770,17 +800,25 @@ describe('subagent runner interaction-required bridge', () => {
         task: 'apply work',
         cwd: '/workspace',
         ctx: {
-          modelRegistry: { find: vi.fn(() => undefined) },
-          model: { provider: 'orchestrator', id: 'model' },
+          ...{
+            modelRegistry: { find: vi.fn(() => undefined) },
+            model: { provider: 'orchestrator', id: 'model' },
+          },
+          modelProfile: {
+            name: 'test',
+            profile: {
+              agents: {
+                'sdd-apply': { model: { provider: 'missing', id: 'model' } },
+              },
+            },
+            warnings: [],
+          },
         },
         config: {
           timeout_ms: 10_000,
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {
-            'sdd-apply': { model: { provider: 'missing', id: 'model' } },
-          },
         },
         signal: new AbortController().signal,
       }),
@@ -820,7 +858,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
 
     const result = await sdkSubagentRunner({
@@ -894,7 +931,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
@@ -907,6 +943,7 @@ describe('subagent runner interaction-required bridge', () => {
           'tool_hidden',
           'read',
           'ask_orchestrator',
+          'notify_orchestrator',
         ],
       }),
     );
@@ -950,14 +987,18 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['tool_*', 'read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
 
     expect(createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: ['tool_lookup', 'read', 'ask_orchestrator'],
+        tools: [
+          'tool_lookup',
+          'read',
+          'ask_orchestrator',
+          'notify_orchestrator',
+        ],
       }),
     );
   });
@@ -1014,7 +1055,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const input = {
       definition,
@@ -1040,6 +1080,7 @@ describe('subagent runner interaction-required bridge', () => {
         'ask_user_question',
         'todo',
         'ask_orchestrator',
+        'notify_orchestrator',
       ],
       [
         'read',
@@ -1048,6 +1089,7 @@ describe('subagent runner interaction-required bridge', () => {
         'todo',
         'future_extension_tool',
         'ask_orchestrator',
+        'notify_orchestrator',
       ],
     ]);
   });
@@ -1097,13 +1139,14 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: new AbortController().signal,
     } as any);
 
     expect(createAgentSession).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: ['ask_orchestrator'] }),
+      expect.objectContaining({
+        tools: ['ask_orchestrator', 'notify_orchestrator'],
+      }),
     );
   });
 
@@ -1139,7 +1182,6 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: {},
     };
     const run = (selector: string) =>
       sdkSubagentRunner({
@@ -1162,7 +1204,7 @@ describe('subagent runner interaction-required bridge', () => {
 
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([['ask_orchestrator']]);
+    ).toEqual([['ask_orchestrator', 'notify_orchestrator']]);
   });
 
   it('reports all-missing explicit implementations while permitting root-inactive registered tools', async () => {
@@ -1202,7 +1244,7 @@ describe('subagent runner interaction-required bridge', () => {
           filePath: '/tmp/tool-user.md',
           instructions: 'return a concise result',
           tools: ['inactive_extension_tool'],
-          disallowed_tools: ['ask_orchestrator'],
+          disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
         },
         task: 'use explicitly selected inactive tool',
         cwd: '/workspace',
@@ -1215,7 +1257,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
       } as any);
@@ -1255,7 +1296,12 @@ describe('subagent runner interaction-required bridge', () => {
           filePath: '/tmp/reader.md',
           instructions: 'read only',
           tools,
-          disallowed_tools: ['ask_orchestrator', 'ask_user_question', 'todo'],
+          disallowed_tools: [
+            'ask_orchestrator',
+            'notify_orchestrator',
+            'ask_user_question',
+            'todo',
+          ],
         },
         task: 'read a file',
         cwd: '/workspace',
@@ -1265,7 +1311,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
       });
@@ -1357,7 +1402,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: new AbortController().signal,
         registerLiveBridge: (bridge) => bridges.push(bridge),
@@ -1430,7 +1474,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       };
 
       await sdkSubagentRunner({
@@ -1554,7 +1597,6 @@ describe('subagent runner interaction-required bridge', () => {
         stall_timeout_ms: 10_000,
         max_concurrency: 1,
         default_tools: ['read'],
-        model_profiles: {},
       },
       signal: controller.signal,
     });
@@ -1605,7 +1647,6 @@ describe('subagent runner interaction-required bridge', () => {
           stall_timeout_ms: 10_000,
           max_concurrency: 1,
           default_tools: ['read'],
-          model_profiles: {},
         },
         signal: controller.signal,
       }),
@@ -1614,4 +1655,86 @@ describe('subagent runner interaction-required bridge', () => {
     expect(session.abort).toHaveBeenCalledOnce();
     expect(session.prompt).not.toHaveBeenCalled();
   });
+});
+
+it.each([
+  {
+    selection: 'implemented',
+    registered: ['read', 'notify_orchestrator'],
+    denied: [],
+    enabled: true,
+    available: true,
+  },
+  {
+    selection: 'dropped',
+    registered: ['read'],
+    denied: [],
+    enabled: true,
+    available: false,
+  },
+  {
+    selection: 'denied',
+    registered: ['read'],
+    denied: ['notify_orchestrator'],
+    enabled: true,
+    available: false,
+  },
+  {
+    selection: 'disabled',
+    registered: ['read'],
+    denied: [],
+    enabled: false,
+    available: false,
+  },
+])('reports notify availability only from the verified child selection: $selection', async ({
+  registered,
+  denied,
+  enabled,
+  available,
+}) => {
+  vi.resetModules();
+  const activities: any[] = [];
+  vi.doMock('@earendil-works/pi-coding-agent', () => ({
+    ModelRuntime: ModelRuntimeFixture,
+    SessionManager: { inMemory: () => ({}) },
+    createAgentSession: () => ({
+      session: {
+        getAllTools: () => registered.map((name) => ({ name })),
+        subscribe: () => () => {},
+        prompt: async () => {},
+        messages: [{ role: 'assistant', content: 'done' }],
+        dispose: async () => {},
+      },
+    }),
+  }));
+  const { sdkSubagentRunner } = await import('../../src/runner.js');
+  const result = await sdkSubagentRunner({
+    definition: {
+      name: 'reader',
+      description: 'reader',
+      filePath: '/reader.md',
+      instructions: 'read',
+      tools: ['read'],
+      disallowed_tools: denied,
+    },
+    task: 'read',
+    cwd: '/workspace',
+    ctx: { model: { provider: 'test', id: 'model' } },
+    config: {
+      timeout_ms: 10000,
+      stall_timeout_ms: 10000,
+      max_concurrency: 1,
+      default_tools: [],
+      enable_ask_orchestrator: false,
+      enable_notify_orchestrator: enabled,
+    },
+    signal: new AbortController().signal,
+    onActivity: (activity) => activities.push(activity),
+  });
+  expect(
+    activities.find((activity) => activity.message === 'nested session ready'),
+  ).toMatchObject({ notify_orchestrator_available: available });
+  expect(result.dropped_tools).toEqual(
+    enabled && !denied.length && !available ? ['notify_orchestrator'] : [],
+  );
 });

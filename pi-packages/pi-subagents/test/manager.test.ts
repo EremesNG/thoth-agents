@@ -13,8 +13,6 @@ import {
   loadSubagents,
   parseFrontmatter,
   readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
-  saveGlobalSubagentModelProfile,
   subagentSourceWarnings,
 } from '../src/config.js';
 import {
@@ -35,17 +33,13 @@ import {
   SubagentHistoryStore,
 } from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
+import { ModelProfileStore } from '../src/model-profiles/store.js';
 import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
   buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
   createSubagentModelProfilesModal,
   globalSubagentsConfigPath,
   groupAvailableModelsByProvider,
   runSubagentModelsCommand,
-  stageModelProfileEdit,
 } from '../src/model-profiles-ui.js';
 import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
 import {
@@ -297,13 +291,21 @@ describe('manager and history integration', () => {
     writeAgent('analyst');
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).save('project', 'test', {
+      agents: {
+        analyst: { model: 'profile/model', effort: 'xhigh' },
+      },
+    });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).setActive('project', 'test');
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: { model: 'profile/model', effort: 'xhigh' },
-        },
-      }),
+      JSON.stringify({}),
     );
     const seenUpdates: SubagentTask[][] = [];
     let runnerProfile: EffectiveSubagentProfile | undefined;
@@ -311,7 +313,7 @@ describe('manager and history integration', () => {
       runnerProfile = effectiveProfile;
       return {
         result: 'profiled result',
-        model: effectiveProfile?.model.label.replace(/^profile: /, ''),
+        model: effectiveProfile?.model.label.replace(/^profile \(test\): /, ''),
         effort: effectiveProfile?.effort.value,
         fallback_used: false,
       };
@@ -349,9 +351,13 @@ describe('manager and history integration', () => {
       model: {
         value: { provider: 'profile', id: 'model' },
         source: 'profile',
-        label: 'profile: profile/model',
+        label: 'profile (test): profile/model',
       },
-      effort: { value: 'xhigh', source: 'profile', label: 'profile: xhigh' },
+      effort: {
+        value: 'xhigh',
+        source: 'profile',
+        label: 'profile (test): xhigh',
+      },
     });
     expect(result.results?.[0]).toMatchObject({
       model: 'profile/model',
@@ -929,7 +935,7 @@ describe('manager and history integration', () => {
     const completed = manager.getTask(id);
     expect(completed?.status).toBe('completed');
     expect(notifications.some((n) => n.includes('completed'))).toBe(true);
-    const message = completionMessage(completed);
+    const message = completionMessage(completed, false);
     expect(message).toContain('Read only this final response');
     expect(message).toContain('analyst handled background work');
   });
@@ -2928,9 +2934,17 @@ describe('manager and history integration', () => {
     writeAgent('analyst');
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).save('project', 'test', { agents: { analyst: { effort: 'high' } } });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).setActive('project', 'test');
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ model_profiles: { analyst: { effort: 'high' } } }),
+      JSON.stringify({}),
     );
     const manager = createManager(async ({ effectiveProfile }) => ({
       result: 'source-aware result',
@@ -3030,13 +3044,22 @@ describe('manager and history integration', () => {
 
   it('continues a completed task under the same task id, reuses the nested session, and persists attempts across reloads', async () => {
     writeAgent('analyst');
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).save('project', 'test', {
+      agents: {
+        analyst: { model: 'profile/default', effort: 'medium' },
+      },
+    });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).setActive('project', 'test');
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
       JSON.stringify({
         enable_continue: true,
-        model_profiles: {
-          analyst: { model: 'profile/default', effort: 'medium' },
-        },
       }),
     );
     const nestedSessionPath = path.join(tmp, 'nested-session.jsonl');
@@ -3070,7 +3093,7 @@ describe('manager and history integration', () => {
             ? `continued with ${continuation.prompt}`
             : 'initial result',
           model: effectiveProfile?.model.label.replace(
-            /^(?:profile|orchestrator): /,
+            /^(?:profile \(test\)|orchestrator): /,
             '',
           ),
           effort: effectiveProfile?.effort.value,
@@ -3278,7 +3301,7 @@ describe('manager and history integration', () => {
         return {
           result: 'continued with override',
           model: effectiveProfile?.model.label.replace(
-            /^(?:profile|orchestrator): /,
+            /^(?:profile \(test\)|orchestrator): /,
             '',
           ),
           effort: effectiveProfile?.effort.value,
@@ -3287,11 +3310,20 @@ describe('manager and history integration', () => {
         } as any;
       },
     );
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).save('project', 'test', {
+      agents: { analyst: { model: 'profile/after', effort: 'high' } },
+    });
+    new ModelProfileStore({
+      cwd: tmp,
+      agentDir: process.env.PI_CODING_AGENT_DIR,
+    }).setActive('project', 'test');
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
       JSON.stringify({
         enable_continue: true,
-        model_profiles: { analyst: { model: 'profile/after', effort: 'high' } },
       }),
     );
     const manager = createManager(runner);
@@ -3582,6 +3614,10 @@ describe('orchestrator question channel', () => {
 
   it('stores the latest five progress updates without notifying the parent or blocking', async () => {
     writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_ask_orchestrator: false }),
+    );
     const delivered = vi.fn();
     const hook = vi.fn();
     const manager = createManager(

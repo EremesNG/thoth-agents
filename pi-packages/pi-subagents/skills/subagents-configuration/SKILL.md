@@ -62,8 +62,10 @@ Use this block as the machine-readable source for `.pi/skill-registry.json` gene
       "default_mode",
       "enable_continue",
       "enable_ask_orchestrator",
+      "enable_notify_orchestrator",
       "ask_timeout_ms",
       "ask_orchestrator",
+      "notify_orchestrator",
       "disallowed_tools",
       "subagent_reply",
       "subagent_mode",
@@ -113,16 +115,23 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - For answer-only configuration questions, explain the choices and recommended path without editing; asking how configuration works is not authorization to change files.
 - Subagents config resolves as a cascade: project `.pi/subagents.json` overrides global `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`; missing project fields fall back to global config; fields missing from both fall back to built-in defaults. Communicate this precedence to users when explaining config behavior.
 - `enable_continue` is built-in default `false` and follows that same cascade. Project `enable_continue` overrides global only when present; omitting it locally inherits the global value. Continuation guidance and new continuation execution are available only when the effective value is `true`.
-- When effective `enable_continue` is `false`, `subagent_continue` is not registered, direct or stale continuation attempts must be described as generic unavailable behavior, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications must not recommend continuation or mention `subagent_continue`.
+- When effective `enable_continue` is `false`, `subagent_continue` is not registered, direct or stale continuation attempts must be described as generic unavailable behavior, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications must not recommend continuation. Total-timeout partial context still reports `subagent_continue: disabled`; other terminal output must not mention the tool.
 - `enable_ask_orchestrator` defaults to `true` and follows the same global/project cascade. It gates child-provided `ask_orchestrator` and parent `subagent_reply`; changing parent tool exposure requires `/reload` or restart. Every enabled child receives the tool unless its definition denies it, including globs (such as `*`), explicit lists omitting it and empty/default selections. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations.
-- `ask_timeout_ms` defaults to `600000` (10 minutes) and must be a positive integer. Each `ask_orchestrator({ kind: "question", message })` blocks until the exact originating parent session answers via `subagent_reply({ task_id, request_id?, message })`; omit `request_id` only for exactly one pending question. Unknown/stale, ambiguous, anonymous, foreign-session and empty replies are rejected. Questions may repeat in one live session and reject on expiry, cancellation or session shutdown. Waiting suspends `stall_timeout_ms` but counts toward total `timeout_ms`; human escalation can exhaust the total budget.
+- `enable_notify_orchestrator` defaults to `true` and follows the global/project cascade independently of the ask flag. Every child receives `notify_orchestrator` unless disabled or denied by `disallowed_tools`, including Oracle. Both child tools take only `{ message }` and are `model-only`, unavailable to codemode scripts. Availability for timeout steering is unknown until verified and resets on continuation.
+- `ask_timeout_ms` defaults to `600000` (10 minutes) and must be a positive integer. Each `ask_orchestrator({ message })` blocks until the exact originating parent session answers via `subagent_reply({ task_id, request_id?, message })`; omit `request_id` only for exactly one pending question. Unknown/stale, ambiguous, anonymous, foreign-session and empty replies are rejected. Questions may repeat in one live session and reject on expiry, cancellation or session shutdown. Waiting suspends `stall_timeout_ms` but does not pause the execution deadline; only `subagent_extend` grants more time within the configured bounds, so human escalation can exhaust the total budget.
 - `ask_orchestrator` is child-only and need not be named in `tools` or `default_tools`. Resolve one effective permitted list: expand `tools`, add it when enabled (remove it when disabled), subtract exact `disallowed_tools`, then exclude native `subagent_*`. SDK tools, injection and verification all use that list; an empty effective list fails launch. The tool is for material alignment questions, not a substitute for discovery, human dialogs, or delegation. Automated `subagent-question` notifications are subagent input, not user messages or approval; the root may escalate a material user decision through its own question tool before replying.
 - Every definition's frontmatter must be a strict YAML mapping with unique keys, restricted to plain scalars, sequences and mappings. Anchors (`&`), aliases (`*`), merge keys (`<<`) and explicit tags (`!`, `!!` or any custom tag) anywhere in frontmatter fail loading with a source diagnostic and block lower-priority same-filename fallback. Quoted strings containing these characters remain ordinary text. Quote the wildcard as `tools: "*"` (or `tools: ["*"]`) and values containing `: `, such as `description: "worker: x"`. There is no legacy parser or conditional strict mode. Parse errors, duplicate keys, non-mapping/null documents, invalid types for supported fields, and malformed denials also fail closed. Quoted keys and YAML string escapes work normally.
 - Edit definition `disallowed_tools` manually for injected tools and trimming glob results; it accepts a comma-separated string or YAML list of exact names. Absence, an empty value/string or `[]` means no denial. Globs, non-string items, nested values and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are ignored silently. Thoth-generated specialists use explicit lists omitting the interactive question tool, task-list tool and third-party delegation tools; only Oracle declares `disallowed_tools`, denying `ask_orchestrator`. Preserve valid operator tools (including globs) and denials, including an intentional explicit empty override, during synchronization.
-- `ask_orchestrator({ kind: "progress", message })` returns immediately, stores the latest five `progress_updates`, and never sends a parent message or triggers a turn. `subagent_status` / `subagent_list_tasks` surface progress and outstanding `pending_questions` (UUID `request_id`, message, creation time) and `pending_question_count`; the task widget shows the latest progress. Pending questions cannot be answered across sessions or after the parent ends. This channel is distinct from the existing human interaction bridge.
-- `model_profiles` are scoped to the matching subagent definition source: project-local profile entries in `.pi/subagents.json` apply to project-local definitions, while global profile entries apply to global definitions. If a project definition overrides a global definition with the same normalized name, the project definition and its project-local profile win.
-- Prefer configuring subagent `model` and `effort` under `model_profiles` in the config matching the definition scope: project-local definitions use `.pi/subagents.json`; global definitions use `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`. Markdown definitions should usually contain identity, description, tool allowlist, and behavioral instructions only.
-- Nested subagent sessions should use `session_resources: "lean"` by default so the subagent markdown body becomes the nested session system prompt, the delegated user prompt contains only orchestrator context/task, and workflow skills, prompt templates, themes, context files, and startup context injections are not auto-loaded.
+- `timeout_ms` defaults to `1200000` (20 minutes) for the initial deadline per attempt. `timeout_warning_ms` defaults to `180000` (3 minutes before that deadline); it is normalized to `0` (disabled) when greater than or equal to `timeout_ms`. `max_total_timeout_ms` defaults to `3600000` (60 minutes including extensions) and is raised to `timeout_ms` when lower. `max_timeout_extensions` defaults to `3`. These fields follow the global/project cascade.
+- At the warning lead, blocking task-mode calls in the same parent session are handed off to background before checkpoint steering and attention.
+- Before the current deadline, one `subagent-attention` follow-up gives the root remaining time, extensions used/remaining, received progress/checkpoints, and a partial preview tail; stale held notices are dropped. Background children receive a best-effort checkpoint steering request to report through `notify_orchestrator` only when present in the verified child selection for the current attempt, then continue; enqueue is not proof of consumption or a received checkpoint. Root-only `subagent_extend({ task_id, extra_ms? })` defaults to an extra `timeout_ms`, clamps grants to the total ceiling, and enforces the extension count. It requires exact parent ownership and rejects unknown, foreign, terminal, stopping, expired, or exhausted tasks. Extend only on useful progress, not merely elapsed time.
+- Total timeout remains `failed` / `total_timeout`; completion and `subagent_result` include partial context with progress/checkpoints, preview tail, extensions used, nested-session availability, and whether `subagent_continue` is enabled. Partial context is not a final result or a guarantee of resumability; continuation remains opt-in.
+- `notify_orchestrator({ message })` returns immediately, stores the latest five `progress_updates`, and never sends a parent message or triggers a turn. `subagent_status` / `subagent_list_tasks` surface progress and outstanding `pending_questions` (UUID `request_id`, message, creation time) and `pending_question_count`; the task widget shows the latest progress. Pending questions cannot be answered across sessions or after the parent ends. This channel is distinct from the existing human interaction bridge.
+- Named model profiles apply by normalized agent name regardless of definition scope. Selection is session → project pin → global active → read-only virtual `default`; a project profile shadows a same-named global profile. Missing references warn and fall back to the next level.
+- Prefer configuring subagent `model` and `effort` in named profiles: global `<agentDir>/thoth/profiles.json` (`agentDir` honors `PI_CODING_AGENT_DIR`, default `~/.pi/agent`) or project `<project>/.pi/thoth/profiles.json`. The former `model_profiles` field in `subagents.json` is no longer read or written. Markdown definitions should usually contain identity, description, tool allowlist, and behavioral instructions only.
+- Nested subagent sessions should use `session_resources: "lean"` by default so the subagent markdown body becomes the nested session system prompt, the delegated user prompt contains only orchestrator context/task, and prompt templates, themes, context files, append-system files, and startup context injections are not auto-loaded. Lean children receive a metadata-only native skill catalog when `read` or `bash` is available; skill bodies are loaded only on demand.
+- Lean catalogs discover user skills, configured package manifest `pi.skills`, trusted project `.pi/skills` and trusted ancestor `.agents/skills` for the child cwd. Child-local settings never mutate the parent; trust is the parent session decision within its project, otherwise the persisted native decision, otherwise untrusted. Missing packages are skipped without installation, including loader reload; missing SDK APIs and discovery failures produce task-details/transcript diagnostics and omit affected entries. `disable-model-invocation` skills are hidden.
+- Optional definition frontmatter `skills` is a YAML list of names or glob patterns, e.g. `skills: [tdd, "review-*"]`. Omission includes all discovered skills; `[]` includes none. Unmatched patterns are diagnostic only. Global/project `subagents.json` boolean `lean_skills` defaults to `true`; project overrides global, and `false` disables lean catalogs. Explicit skill paths remain valid complements.
 - In lean mode, non-listed extensions retain selected tools and tool-safety hooks (`tool_call`, `tool_result`, `user_bash`); other handlers are stripped except `session_shutdown` for load-time provider owners. `lifecycle_passthrough` is a **trust list** of exact package names, defaulting to `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge", "@thoth-agents/pi-background-tasks", "@thoth-agents/pi-openai-fast"]`; a project array replaces the global array and explicit `[]` disables it. Non-string entries and the adaptive-root injector package `thoth-agents` are rejected with a warning; `thoth-agents` never receives passthrough. Identity uses the nearest `package.json` of the real extension file, stops at the first manifest, and fails closed on missing, unreadable, or invalid manifests.
 - Listed packages retain **all event handlers**, including `session_start`, `session_shutdown`, and `model_select`. Child startup (`reason: "startup"`) is awaited after provider replay and tool-selection verification and before the first prompt. Handler errors become non-fatal task-history diagnostics. Teardown emits shutdown once per child before disposal on success, failure, cancellation, timeout, or verification failure (before startup), with the existing best-effort five-second generic cleanup bound. The listed `@thoth-agents/pi-background-tasks` shutdown handlers run once first through the public child context, with an independent ten-second bound per handler; another package's stalled shutdown cannot skip child-job cleanup before disposal.
 - Listed prompt-shaping events `before_agent_start`, `agent_start`, `turn_start`, `context`, `context_with_system`, `input`, `before_provider_request`, and `before_provider_headers` are observe-only: each invocation receives its own clone of event data, opaque live members such as `AbortSignal` and functions pass through, context is unchanged, and awaited returns are discarded. The one exception is `before_provider_request`: a non-`undefined` return from a listed package replaces the provider payload (an `undefined` return or in-place mutation of the clone leaves it unchanged), which lets `@thoth-agents/pi-openai-fast` apply `service_tier: "priority"` to `-fast` models in children. Other events pass unchanged. This is defense in depth, **not a sandbox**: a trusted listed extension can still change the child session or prompt through its live `SessionManager` or the Pi API. Never list untrusted packages. Commands, flags, and shortcuts remain stripped in lean mode; full resource mode is unchanged.
@@ -134,7 +143,7 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - Runtime behavior to explain: `mode=task` waits and returns the full subagent response to the orchestrator; `mode=background` frees the chat, should not be polled just to wait, and sends an automatic completion/failure notification. Omitted mode follows definition and config values, then defaults to `background`; an explicit `mode=task` is preserved. `subagent_continue` is available only when effective `enable_continue` is true at extension load time, so changing that flag requires `/reload` or restart. When enabled, `subagent_continue` also accepts `mode`, and continuation mode resolves as explicit continuation `mode`, then the previous attempt's `effective_mode`, then the previous persisted `mode`, then `default_mode`, then built-in `background`. `/subagents` opens the session history/detail panel; `ctrl+o` expands/collapses rendered tool output and responses; `subagent_result` reads a stored result when explicitly needed.
 - The old UI config key `mode: "opencode" | "claude"` is removed. Do not recommend it. History, background visibility, and task-to-background handoff are available together without an UI-mode gate.
 - `subagent_send_message` is runtime behavior, not a configurable permission bypass: it only targets a running background task owned by the exact originating parent Pi session, requires supported Pi live steering, uses bounded queues, and reports queue acceptance separately from model consumption. Message text is visible only in the owning task detail timeline, not list/notification/result summary surfaces.
-- After changing subagent markdown/config, package settings, or extension code, tell the user to `/reload` or restart Pi.
+- After changing subagent markdown/config, package settings, or extension code, tell the user to `/reload` or restart Pi. Named-profile switching is applied at run time without rewriting definitions or requiring reload.
 
 Recommended global package setting in `~/.pi/agent/settings.json`:
 
@@ -151,6 +160,9 @@ Recommended `subagents.json` starter:
 ```json
 {
   "timeout_ms": 1200000,
+  "timeout_warning_ms": 180000,
+  "max_total_timeout_ms": 3600000,
+  "max_timeout_extensions": 3,
   "stall_timeout_ms": 240000,
   "max_concurrency": 5,
   "debug": false,
@@ -167,6 +179,7 @@ Recommended `subagents.json` starter:
   "default_mode": "background",
   "enable_continue": false,
   "enable_ask_orchestrator": true,
+  "enable_notify_orchestrator": true,
   "ask_timeout_ms": 600000,
   "default_tools": [
     "read",
@@ -174,8 +187,7 @@ Recommended `subagents.json` starter:
     "memory_search",
     "memory_recall",
     "memory_get"
-  ],
-  "model_profiles": {}
+  ]
 }
 ```
 
@@ -195,7 +207,7 @@ tools:
 Instructions...
 ```
 
-Use explicit exact-name lists by default. Manual advanced globs such as `tools: "*"` and `agent_browser_*` all expand against the root's registered inventory (`getAllTools()`, active and inactive) at each launch. `*` is an ordinary glob, alone or mixed with other entries, not a special dynamic selector; its scope is broader than the previous active-only behavior. Only native `subagent_*` exclusions are hardcoded; trim other tools through manual `disallowed_tools`. Enabled `ask_orchestrator` is added even with an empty or unavailable root inventory, unless denied. Shell-job tools from `@thoth-agents/pi-background-tasks` remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child. Preserve globs rather than expanding them while saving or synchronizing. The removed `@active` selector is rejected with a diagnostic recommending exact names.
+Use explicit exact-name lists by default. Manual advanced globs such as `tools: "*"` and `agent_browser_*` all expand against the root's registered inventory (`getAllTools()`, active and inactive) at each launch. `*` is an ordinary glob, alone or mixed with other entries, not a special dynamic selector; its scope is broader than the previous active-only behavior. Only native `subagent_*` exclusions are hardcoded; trim other tools through manual `disallowed_tools`. Enabled `ask_orchestrator` and `notify_orchestrator` are added even with an empty or unavailable root inventory, unless denied. Shell-job tools from `@thoth-agents/pi-background-tasks` remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child. Preserve globs rather than expanding them while saving or synchronizing. The removed `@active` selector is rejected with a diagnostic recommending exact names.
 
 Edit `disallowed_tools` manually in the definition file. Both denial formats below remove injected `ask_orchestrator` and ordinary `bash` after any selection form, including glob results:
 
@@ -215,24 +227,44 @@ Every selection form—explicit lists and globs (including `*`), alone or mixed�
 
 Exact names and tools matched by globs reach the child even when inactive in the root. For example, `agent_browser_*` includes root-inactive registered browser capabilities that the child may activate. Selected `deferred` and `codemode` tools stay callable through Pi's native nested-tool interface; child verification checks registered implementations, not only the active model tool list.
 
-If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; there is no fallback to active tools. Exact names and enabled `ask_orchestrator` still apply, with the same missing-implementation reporting and launch failure only when nothing remains. Native `subagent_*` controls remain excluded, and definition `disallowed_tools` applies to every selection form. An omitted `tools` field uses the runtime built-in list; an empty list uses `default_tools` in `subagents.json` through the same resolver, supporting exact names and globs.
+If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; there is no fallback to active tools. Exact names and enabled `ask_orchestrator` and `notify_orchestrator` still apply, with the same missing-implementation reporting and launch failure only when nothing remains. Native `subagent_*` controls remain excluded, and definition `disallowed_tools` applies to every selection form. An omitted `tools` field uses the runtime built-in list; an empty list uses `default_tools` in `subagents.json` through the same resolver, supporting exact names and globs.
 
-Configure model/effort routing separately in the matching local or global `subagents.json` when needed. If no matching profile/default is configured, the subagent inherits the current orchestrator model and thinking effort.
+Configure model/effort routing in the user-approved global or project `thoth/profiles.json`. Both use this schema; `orchestrator` is optional beside `agents`, and `model` and `effort` are optional in both orchestrator and agent entries:
 
 ```json
 {
-  "model_profiles": {
-    "discovery": {
-      "model": "anthropic/claude-sonnet-4-5",
-      "effort": "low"
+  "version": 1,
+  "active": "fast",
+  "profiles": {
+    "fast": {
+      "orchestrator": {
+        "model": "anthropic/claude-sonnet-4-5",
+        "effort": "medium"
+      },
+      "agents": {
+        "discovery": {
+          "model": "anthropic/claude-sonnet-4-5",
+          "effort": "low"
+        }
+      }
     }
   }
 }
 ```
 
+Optional `active` is the global active profile in the global file, or the project pin in the project file. Global active must name a global profile (or `default`); a project pin may name either scope (or `default`). Selection is session → project pin → global active → `default`, with project-over-global name shadowing. Session selection is persisted in the Pi session, survives reload/resume, and does not write config files. Switching applies to new runs and continuations without rewriting definitions.
+
+`default` is reserved, read-only and virtual: it is never stored and has no overrides, so agents resolve to definition/shipped values and the fallback chain below. Agents or fields absent from a selected profile also fall back through that chain.
+
+The optional `orchestrator: { model, effort }` controls the root Pi session, not a subagent named `orchestrator`. It applies live on `u`/`g`/`p` activation using the resulting effective profile. At the start of new sessions (`new`, or `startup` with no message history anywhere in the session), it uses project pin → global active → `default`. It never applies on resume, reload, fork, or startup with existing message history. Profiles without `orchestrator`, including `default`, leave the model untouched. A missing or unauthenticated model warns and keeps the current model and effort; unsupported effort is clamped with a notice.
+
+The extension never writes Pi `settings.json`. Native `/model` behavior is unchanged, including any persistence of defaults it normally performs. A profile orchestrator overrides the starting model of new sessions; `/model` changes act as a session override until another profile activation or a new session applies an orchestrator.
+
+In `/subagents-model`, the orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort. ←/→ browse profiles without activation, ↑/↓ select the orchestrator or an agent, Enter edits model/effort, `m` edits model only, `e` edits effort only, `o` copies the current session model/effort into the selected profile's orchestrator as an unsaved draft (save with `s`; on `default`, it offers creating a profile), `n` creates from default, `c` clones, `s` saves, `r` renames, `d` deletes, `u` toggles session selection, `g` toggles global active, and `p` toggles the project pin: pressing on that pointer's current selection clears it. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Picker “reset” restores default's effective model or effort for that agent. New profiles choose global or project scope. New/cloned profiles remain in-memory drafts until save and cannot be activated before saving; saving an unedited new profile persists a full copy of default's effective model/effort for every listed agent. Saved profiles are self-contained snapshots. Editing `default` offers creating a profile; it cannot be renamed/deleted. Renaming carries session, project pin and global active pointers that resolve to the profile to its new name; deleting confirms and clears those pointers; closing with unsaved changes asks for confirmation. Non-overlay fallbacks (`ui.select`, non-TUI) only list/activate profiles; `ui.select` sets selections without toggling them off.
+
 Model/effort resolution order:
 
-1. `model_profiles[agentName]` from the config matching the selected definition scope: `.pi/subagents.json` for project-local definitions, or `$PI_CODING_AGENT_DIR/subagents.json` / `~/.pi/agent/subagents.json` for global definitions.
+1. Selected profile's `agents[agentName].model` / `effort`.
 2. Markdown frontmatter `model` / `effort` only for explicit per-file overrides.
 3. `default_model` / `default_effort` from effective `subagents.json` config.
 4. Current orchestrator model / effort.
@@ -257,7 +289,7 @@ Continuation-mode resolution order (when `enable_continue` is enabled):
 - If the user has not chosen configuration scope, ask: **global for every project, project-local for this workspace, or one subagent definition only?** Do not edit until they choose.
 - If the requested local value differs from an existing global value, explain that local wins and ask whether the user wants an override or wants to change the global default instead.
 - If the user asks to configure a default execution mode, explain that omitted runs currently default to `background` with an automatic completion/failure notification, and ask whether they want to keep it or choose `task`.
-- If the user asks for model profiles, ask which subagent definitions are global versus project-local, then write profiles to the matching config scope. In Pi, `/subagents-model` opens the native editor for those profiles.
+- If the user asks for model profiles, clarify profile storage scope (global or project) and activation scope (session, project pin, or global active), not definition scope. In Pi, `/subagents-model` manages those profiles; switching does not edit definitions.
 - If the user requests a new definition but does not specify `agents` versus `subagents`, recommend `subagents` and ask only when compatibility with another harness may require `agents`.
 - Clarify safeguards before allowing a subagent to modify files, run shell commands, or write memory.
 - If the subagent needs human input, require a structured `interaction_required` request with enough prompt, payload, and expected-response data for the parent to answer.
@@ -265,19 +297,19 @@ Continuation-mode resolution order (when `enable_continue` is enabled):
 
 ## Execution Steps
 
-1. Classify the request as package setup, definition creation, config defaults, per-agent profiles, shortcuts/UI, history/debug, or runtime explanation.
+1. Classify the request as package setup, definition creation, config defaults, named model profiles, shortcuts/UI, history/debug, or runtime explanation.
 2. If scope is not explicit, present the three choices and wait: global (`$PI_CODING_AGENT_DIR` or `~/.pi/agent`), project-local (`.pi`), or one definition's frontmatter. Explain the cascade before asking the user to choose.
 3. For package setup, inspect settings before editing; use `npm:@thoth-agents/pi-subagents@>=0.1.0` for the Thoth-managed runtime, or edit `~/.pi/agent/settings.json` only when the CLI is unavailable/broken. For this monorepo's local checkout, use `pnpm run setup:pi:local` so the fork path is supplied without npm publication.
 4. After scope is approved, read the matching existing config/definition plus the fallback config needed to explain effective values. Check optional `agents` and `subagents` directories for existence before listing them.
 5. Summarize existing effective values, what will be inherited, and exactly which file would change; ask for any missing product choice such as `task` versus `background` before editing.
 6. For new subagents, choose lowercase kebab-case filenames and matching optional `name` values, with clear trigger-focused descriptions. Write definitions in English by default; use another language only when explicitly requested. Prefer `subagents` unless compatibility requires `agents`.
 7. Set minimal explicit exact-name tool allowlists by default; remove any `subagent_*` entries. Treat globs (including `*`) as manual advanced choices over active and inactive registered tools, and use manual `disallowed_tools` for injected tools and glob trimming.
-8. Configure `model_profiles` in the config matching definition scope. Configure `default_model`, `default_effort`, `default_mode`, and `enable_continue` only in the user-approved scope. Explain model/effort inheritance, execution-mode precedence, and that `enable_continue` needs `/reload` or restart before tool exposure changes.
+8. Configure named profiles in the user-approved `thoth/profiles.json` scope and clarify activation scope. Configure `default_model`, `default_effort`, `default_mode`, and `enable_continue` only in the user-approved `subagents.json` scope. Explain profile selection and model/effort fallback, execution-mode precedence, and that `enable_continue` needs `/reload` or restart before tool exposure changes.
 9. Never add the removed UI key `mode: "opencode" | "claude"`. Configure history and handoff independently with `history_panel_shortcut`, `detail_cancel_shortcut`, and `background_handoff_shortcut`.
 10. Configure `debug: true` only for temporary diagnostics; keep it false by default and explain that logs are written under the executing project's `.pi` directory.
 11. Validate JSON syntax and restricted strict YAML Markdown frontmatter (mapping, unique keys, no anchors/aliases/merge keys/explicit tags, valid field types, optional `name` matching the filename case-insensitively) plus body structure. Quote `"*"` and values containing `: `. Preserve unrelated existing keys and definitions.
 12. Explain runtime behavior when relevant: task versus background, automatic notifications, disabled generic continuation unavailability with preserved history and no continuation recommendations in failed/cancelled/interrupted/stopping terminal results or terminal background notifications, then enabled-only continuation mode preservation/override, `/subagents`, configured history shortcut, `ctrl+o`, and same-parent live steering.
-13. Tell the user to `/reload` or restart Pi after changes.
+13. Tell the user to `/reload` or restart Pi after definition/config/runtime changes; named-profile switching takes effect at run time without reload.
 14. If runtime validation is requested after reload, use `subagent_list_agents` for definition/config discovery and run delegated smoke tests only when the user explicitly asks for them.
 
 ## Output Contract

@@ -20,6 +20,65 @@ function expectNativeShell(lines: string[], width: number) {
 }
 
 describe('tool render helpers', () => {
+  it.each([
+    'queued',
+    'running',
+    'completed',
+    'failed',
+  ])('marks %s continuation cards with the resumed attempt and real profile only for continue', (status) => {
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const registered: Record<string, any> = {};
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          registered[tool.name] = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+      env.tmp,
+    );
+    const running = status === 'running' || status === 'queued';
+    const result = {
+      details: {
+        mode: running ? 'background' : 'task',
+        tasks: [
+          {
+            id: 'subtask_resumed',
+            agent: 'thoth-worker',
+            model: 'mock/model',
+            effort: 'high',
+            attempt: 3,
+            mode: running ? 'background' : 'task',
+            status,
+          },
+        ],
+      },
+    };
+    const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
+    const render = (name: string) =>
+      env.stripAnsi(
+        registered[name]
+          .renderResult(result, { expanded: false }, theme)
+          .render(180)
+          .join('\n'),
+      );
+    const continued = render('subagent_continue');
+    expect(continued).toContain('thoth-worker · resumed #3 ·');
+    expect(continued).toContain('model: mock/model');
+    expect(continued).toContain('effort: high');
+    expect(continued).toContain(running ? 'launched (background)' : status);
+    expect(continued).not.toContain('default/current');
+    const launched = render('subagent_run');
+    expect(launched).not.toContain('resumed');
+    expect(launched).toContain(
+      running
+        ? 'subagent · thoth-worker · launched (background)'
+        : `thoth-worker · ${status}`,
+    );
+  });
   it('uses distinct task state glyphs', () => {
     expect(
       [
@@ -1651,7 +1710,7 @@ describe('tool render helpers', () => {
     );
   });
 
-  it('registers all 9 public subagent tools with boxed single-frame contracts (renderShell: self, empty call)', () => {
+  it('registers all 10 public subagent tools with boxed single-frame contracts (renderShell: self, empty call)', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1677,6 +1736,7 @@ describe('tool render helpers', () => {
       'subagent_list_tasks',
       'subagent_cancel',
       'subagent_send_message',
+      'subagent_extend',
       'subagent_reply',
     ];
 
@@ -1705,7 +1765,7 @@ describe('tool render helpers', () => {
     }
   });
 
-  it('renders all 9 public subagent tools with native layout, status/brand header, and width safety in both collapsed and expanded states', () => {
+  it('renders all 10 public subagent tools with native layout, status/brand header, and width safety in both collapsed and expanded states', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1745,6 +1805,15 @@ describe('tool render helpers', () => {
       },
       subagent_list_tasks: { details: { tasks: [sampleTask] } },
       subagent_cancel: { details: { task: sampleTask } },
+      subagent_extend: {
+        details: {
+          task_id: sampleTask.id,
+          added_ms: 1000,
+          deadline_at: 1700000000000,
+          extensions_used: 1,
+          extensions_remaining: 2,
+        },
+      },
       subagent_reply: {
         content: [{ type: 'text', text: 'Replied to the pending question.' }],
         details: {
@@ -1806,6 +1875,67 @@ describe('tool render helpers', () => {
         narrowLines.every((l: string) => [...env.stripAnsi(l)].length <= 35),
         `${name} width safe at 35`,
       ).toBe(true);
+    }
+  });
+
+  it('renders extension grants and failures in a single width-safe frame', () => {
+    const registered: Record<string, any> = {};
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          registered[tool.name] = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+      env.tmp,
+    );
+    const tool = registered.subagent_extend;
+    const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
+    const result = {
+      content: [{ type: 'text', text: 'Extended task by 1000ms.' }],
+      details: {
+        task_id: 'subtask_extended',
+        added_ms: 1000,
+        deadline_at: 1700000000000,
+        extensions_used: 1,
+        extensions_remaining: 0,
+      },
+    };
+    for (const expanded of [false, true]) {
+      const lines = tool.renderResult(result, { expanded }, theme).render(100);
+      expectNativeShell(lines, 100);
+      const text = env.stripAnsi(lines.join('\n'));
+      expect(text).toContain('subagent extend');
+      expect(text).toContain('subtask_extended');
+      expect(text).toContain('1000ms');
+      expect(text).toContain('extensions remaining: 0');
+      if (expanded) {
+        expect(text).toContain('extensions used: 1');
+        expect(text).toContain('deadline_at: 1700000000000');
+      }
+      const failure = {
+        content: [
+          { type: 'text', text: 'Maximum timeout extension count exhausted.' },
+        ],
+        details: { error: 'Maximum timeout extension count exhausted.' },
+        isError: true,
+      };
+      const failedLines = tool
+        .renderResult(failure, { expanded }, theme)
+        .render(100);
+      expectNativeShell(failedLines, 100);
+      const failedText = env.stripAnsi(failedLines.join('\n'));
+      expect(failedText).toContain('subagent extend · failed');
+      expect(failedText).toContain(
+        'Maximum timeout extension count exhausted.',
+      );
+      expect(failedText).not.toContain('undefined');
+      for (const value of [result, failure]) {
+        const narrow = tool.renderResult(value, { expanded }, theme).render(35);
+        expect(
+          narrow.every((line: string) => [...env.stripAnsi(line)].length <= 35),
+        ).toBe(true);
+      }
     }
   });
 

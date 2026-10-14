@@ -58,31 +58,13 @@ The system MUST preserve supported manual model definitions and their explicitly
 
 ### Requirement: Apply role-specific specialist effort
 
-The built-in OpenAI defaults MUST retain the root's configured `xhigh` effort and assign `explorer`: low, `librarian`: high, `oracle` and `designer`: medium, and `worker`: max using `gpt-6-luna` (provider-qualified where required). Valid operator overrides MUST remain effective and every harness that supports effort metadata MUST render it without silently downgrading `max`.
+The built-in OpenAI defaults MUST assign `explorer`, `librarian`, `designer` and `worker` `gpt-6-luna` with `max` effort and `oracle` `gpt-6.1-sol` with `xhigh` effort (provider-qualified where required), and the OpenCode managed orchestrator `gpt-6.1-sol` with `high` effort; other harness roots remain ambient. Claude Code keeps its own aliases with `explorer` at `medium` effort. On update, a role whose installed model and effort equal the previous shipped default MUST advance to the new default, while valid operator overrides MUST remain effective, and every harness that supports effort metadata MUST render it without silently downgrading `max`.
 
-#### Scenario: US2 - Receive consistent routing across harnesses 1
+#### Scenario: Apply role-specific specialist effort
 
-- **GIVEN** a harness exposes an explicit role selector
-- **WHEN** the root delegates
-- **THEN** its instructions require that selector and the selected canonical role
-
-#### Scenario: US2 - Receive consistent routing across harnesses 2
-
-- **GIVEN** a Codex host does not expose an explicit custom-role selector
-- **WHEN** delegation is still available
-- **THEN** the generated guidance uses a bounded
-
-#### Scenario: US3 - Spend specialist effort proportionally 1
-
-- **GIVEN** the built-in OpenAI preset
-- **WHEN** default roles are resolved
-- **THEN** root retains its `xhigh` default while `worker` resolves to `gpt-6-luna` with `max` effort and no legacy quick/deep writer tier
-
-#### Scenario: US3 - Spend specialist effort proportionally 2
-
-- **GIVEN** an operator configures a supported model or effort override
-- **WHEN** artifacts are generated
-- **THEN** the override wins without weakening role
+- **GIVEN** the built-in OpenAI preset and an installed role still on the previous shipped default
+- **WHEN** defaults are resolved or the install is updated
+- **THEN** `worker` resolves to `gpt-6-luna` with `max`, `oracle` to `gpt-6.1-sol` with `xhigh`, and customized roles keep their values 
 
 ### Requirement: Preview shipped model defaults
 

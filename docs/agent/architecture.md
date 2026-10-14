@@ -55,8 +55,8 @@ cwd/session background origin. Subagent v2 adds up to 100 cost-ranked persisted
 session summaries in `history`, not full task detail/history. The theme consumes
 cumulative cost/run count on `thoth:subagents:usage` and requests it through
 `thoth:subagents:usage:request`. The raw `thoth:subagent-usage` bus event is removed
-(the checkpoint type stays); upgrade pi-subagents and pi-thoth-theme to `>=0.3.0`
-together. See [channel contracts and request semantics](harness-packaging.md#pi-task-channels).
+(the checkpoint type stays); the compatible upgrade pairs pi-subagents and
+pi-thoth-theme at `>=0.3.0`. See [channel contracts and request semantics](harness-packaging.md#pi-task-channels).
 
 ## Pi provider observations
 
@@ -80,9 +80,9 @@ subscribe to per-source changes/revisions, read bounded data-only rows and use
 that session's live context for open/history/close actions. The shared host renders
 semantic segments, keyed metrics with reserved widths for stable row heights,
 optional right-aligned columns for sidebar consumers, and status values; providers expose no row
-render callbacks or pre-styled text. Upgrade pi-subagents, pi-background-tasks and
-pi-todo together to `>=0.3.0`: first-owner arbitration hides incompatible v1/v2
-sections. See [the registry contract](harness-packaging.md#pi-work-panel-registry-v2).
+render callbacks or pre-styled text. The v2 upgrade pairs pi-subagents,
+pi-background-tasks and pi-todo at `>=0.3.0`; first-owner arbitration hides
+incompatible v1/v2 sections. See [the registry contract](harness-packaging.md#pi-work-panel-registry-v2).
 
 pi-core's shared `registerEditorSlot` owner (exported from `./panel`) composes
 work-panel rows, editor replacements and terminal-input routing without chaining
@@ -138,23 +138,11 @@ subscription classification. See [controls and compatibility](harness-packaging.
 ## Invariants
 
 - OpenCode is default; OpenCode, Codex, Claude, and Pi guarantees differ.
-- Every change completes proportional understanding before classification.
-  Small clear low-risk work is artifact-free; substantial work uses one
-  `.thoth/changes/<id>/<id>.md` record and loads only the current phase.
-- Native ready work fills capacity before waiting; freed slots are refilled and
-  each consumer starts only after its own accepted fresh dependencies.
-- Recovery reconciles the single record, owned code and native liveness;
-  a file is not an execution lifecycle or proof of acceptance.
-- Persisted work and material risk require fresh independent Oracle verification
-  before closeout. Optional plan review does not replace final verification.
-- Semantic role selection is route-independent: `librarian` handles current or
-  external facts, `designer` material user-facing UI/UX and accessibility,
-  `worker` known bounded non-visual implementation regardless of complexity, and
-  `explorer` unknown local source, flow, or responsibility. Specialists execute
-  by default; root direct work is limited to the documented known-source bounded
-  exception. Native harness execution and lifecycle are the sole authority for
-  fan-out/fan-in, status/wait, steering, cancellation, and terminal results.
-- Delegation depth is one; one writer owns each mutable surface.
+- Workflow classification and phase behavior are owned by
+  `src/harness/core/sdd.ts` and `skills/`; orchestration, task shaping, and role
+  selection by `src/harness/core/agent-pack.ts` and the prompt renderers in
+  `src/agents/`. Tests: `src/harness/core/sdd-protocol.test.ts` and
+  `src/harness/core/agent-pack.test.ts`.
 - OpenCode ships only the OpenAI preset.
 - Owned workflow contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during execution.
@@ -163,9 +151,9 @@ subscription classification. See [controls and compatibility](harness-packaging.
 - Every published harness install requires consistent thoth-mem `complete`
   evidence. An explicit local Pi package install records thoth-agents without
   provider setup; provider assets and recovery remain independently owned.
-- Dispatch memory authorization is `none`, `recall`, or `observe`, independent
-  of workspace mode; root lifecycle never transfers. `.thoth/` is active project
-  governance; historical material remains preserved.
+- Memory authorization is rendered from `src/harness/core/memory-governance.ts`;
+  tests: `src/harness/core/memory-governance.test.ts`. `.thoth/` contains active
+  project governance and preserved historical material.
 - Both marketplaces resolve to the shared `plugin/` bundle; harness-specific
   manifests and MCP surfaces coexist without duplicating canonical skills.
 - Build synchronizes the shared plugin before compilation and schema generation.

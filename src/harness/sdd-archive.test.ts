@@ -46,14 +46,44 @@ function fixture(
     return `- Source: ${path} | sha256:${hash(content)}`;
   });
   const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver behavior.\n\n## Non-goals\n\nNo unrelated edits.\n\n## Acceptance\n\n- AC-1: Tested outcome.\n\n## Clarifications\n\n- Accepted intent is settled; no material question remains.\n\n## Decisions\n\n- Scope confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nChange implementation and tests.\n\n## Tasks\n\n- [x] AC-1: Complete tested behavior.\n\n## Authorization\n\n**Plan review**: OKAY\n**Plan review selection**: EXPLICIT_REVIEW\n**Implementation**: AUTHORIZED\n\n`;
+  const envelope = `\`\`\`thoth-result
+${JSON.stringify({
+  schemaVersion: 1,
+  role: 'oracle',
+  status: 'complete',
+  conclusion: 'Verified.',
+  evidence: [],
+  verification: [],
+  risks: [],
+  openQuestions: [],
+  nextAction: null,
+  review: {
+    kind: 'final-verification',
+    verdict: 'PASS',
+    reviewedRecord: `.thoth/changes/${id}/${id}.md`,
+    reviewedRecordSha256: hash(before.split('## Authorization')[0]),
+  },
+})}
+\`\`\``;
   const verify = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${hash(before.split('## Authorization')[0])}\n\n- AC-1: PASS | pnpm test | observed behavior\n- Source: source.txt | sha256:${hash('reviewed\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
-  writeFileSync(join(change, `${id}.md`), before + verify);
+  writeFileSync(
+    join(change, `${id}.md`),
+    before +
+      verify.replace(
+        '## Closeout',
+        `**Oracle envelope**:\n\n${envelope}\n\n## Closeout`,
+      ),
+  );
   return { root, change, id, before };
 }
-function archive(f: { root: string; change: string }, env = {}) {
+function archive(
+  f: { root: string; change: string },
+  env = {},
+  archiveScript = script,
+) {
   return spawnSync(
     process.execPath,
-    [script, '--change', f.change, '--date', '2026-09-28', '--json'],
+    [archiveScript, '--change', f.change, '--date', '2026-09-28', '--json'],
     { windowsHide: true, encoding: 'utf8', env: { ...process.env, ...env } },
   );
 }
@@ -65,6 +95,168 @@ const addition =
   '- `ADDED widget` **New behavior** — The widget MUST respond.\n  - GIVEN an active widget; WHEN invoked; THEN it responds.';
 
 describe('transactional .thoth change archive', () => {
+  test.each([
+    'skills',
+    'plugin/skills',
+  ])('%s archive refuses an envelope after an intervening H2 without mutations', (skillsRoot) => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const misplaced = readFileSync(record, 'utf8').replace(
+      '**Oracle envelope**:',
+      '## Oracle result\n\n**Oracle envelope**:',
+    );
+    writeFileSync(record, misplaced);
+    const result = archive(
+      f,
+      {},
+      join(process.cwd(), skillsRoot, 'thoth-archive/scripts/archive.mjs'),
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+    expect(readFileSync(record, 'utf8')).toBe(misplaced);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test.each([
+    'skills',
+    'plugin/skills',
+  ])('%s archive accepts an envelope after an intervening H3', (skillsRoot) => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const amended = readFileSync(record, 'utf8').replace(
+      '**Oracle envelope**:',
+      '### Oracle result\n\n**Oracle envelope**:',
+    );
+    writeFileSync(record, amended);
+    const result = archive(
+      f,
+      {},
+      join(process.cwd(), skillsRoot, 'thoth-archive/scripts/archive.mjs'),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(record)).toBe(false);
+    expect(
+      readFileSync(
+        join(f.root, '.thoth/changes/archive/2026-09-28-demo/demo.md'),
+        'utf8',
+      ),
+    ).toBe(amended);
+    expect(
+      readFileSync(join(f.root, '.thoth/specs/widget/spec.md'), 'utf8'),
+    ).toContain('The widget MUST respond.');
+  });
+
+  test('refuses an envelope bound to another record without changing record or specs', () => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const mismatched = readFileSync(record, 'utf8').replace(
+      '.thoth/changes/demo/demo.md',
+      '.thoth/changes/other/other.md',
+    );
+    writeFileSync(record, mismatched);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-RECORD-MISMATCH');
+    expect(readFileSync(record, 'utf8')).toBe(mismatched);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test.each([
+    'FAIL',
+    'PASS',
+  ])('refuses a preceding %s envelope beside the marked PASS without mutations', (verdict) => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const original = readFileSync(record, 'utf8');
+    const envelope = original.match(/```thoth-result\n[\s\S]*?\n```/)![0];
+    const duplicated = original.replace(
+      '**Oracle envelope**:',
+      `${envelope.replace('"verdict":"PASS"', `"verdict":"${verdict}"`)}\n\n**Oracle envelope**:`,
+    );
+    writeFileSync(record, duplicated);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+    expect(readFileSync(record, 'utf8')).toBe(duplicated);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test.each([
+    'THOTH-RESULT',
+    'ThOtH-ReSuLt',
+  ])('refuses a second %s block without mutations', (info) => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const original = readFileSync(record, 'utf8');
+    const envelope = original.match(/```thoth-result\n[\s\S]*?\n```/)![0];
+    const duplicated = `${original}\n${envelope.replace('thoth-result', info)}\n`;
+    writeFileSync(record, duplicated);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+    expect(readFileSync(record, 'utf8')).toBe(duplicated);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test('refuses a FAIL envelope hidden by an example heading without mutations', () => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const original = readFileSync(record, 'utf8');
+    const envelope = original.match(/```thoth-result\n[\s\S]*?\n```/)![0];
+    const duplicated = original.replace(
+      '## Closeout',
+      `\`\`\`\`markdown\n## Hidden heading\n${envelope.replace('"verdict":"PASS"', '"verdict":"FAIL"')}\n\`\`\`\`\n\n## Closeout`,
+    );
+    writeFileSync(record, duplicated);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-DUPLICATE');
+    expect(readFileSync(record, 'utf8')).toBe(duplicated);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
+  test('refuses an envelope inside Authorization without mutations', () => {
+    const f = fixture(addition);
+    const record = join(f.change, `${f.id}.md`);
+    const original = readFileSync(record, 'utf8');
+    const binding = original.match(
+      /\*\*Oracle envelope\*\*:\n\n```thoth-result\n[\s\S]*?\n```\n\n/,
+    )![0];
+    const misplaced = original
+      .replace(binding, '')
+      .replace('## Verification', `${binding}## Verification`);
+    writeFileSync(record, misplaced);
+    const result = archive(f);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SDD-ORACLE-ENVELOPE-MISSING');
+    expect(readFileSync(record, 'utf8')).toBe(misplaced);
+    expect(existsSync(join(f.root, '.thoth/specs/widget/spec.md'))).toBe(false);
+    expect(
+      existsSync(join(f.root, '.thoth/changes/archive/2026-09-28-demo')),
+    ).toBe(false);
+    expect(existsSync(join(f.root, '.thoth/.archive-transaction'))).toBe(false);
+  });
+
   test('archives after Authorization-only bookkeeping edits without a new review', () => {
     const f = fixture();
     const record = join(f.change, `${f.id}.md`);

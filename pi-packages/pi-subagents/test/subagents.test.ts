@@ -27,9 +27,14 @@ vi.mock('../src/manager.js', () => ({ SubagentManager: vi.fn() }));
 
 function createExtensionManagerFake() {
   return {
+    setSessionModelProfile: vi.fn(),
     reconcileOrphanedTasks: vi.fn(),
     close: vi.fn(async () => undefined),
     cancelRunning: vi.fn(),
+    clearResultAcknowledgmentCandidates: vi.fn(),
+    resetResultAcknowledgments: vi.fn(),
+    confirmResultAcknowledgments: vi.fn(),
+    isResultAcknowledged: vi.fn(() => false),
     onTaskUpdate: vi.fn((_listener: () => void) => () => undefined),
     listActiveSessionTasks: vi.fn(() => [] as SubagentTask[]),
     snapshotSessionTaskCounts: vi.fn(() => ({
@@ -142,8 +147,9 @@ describe('subagents smoke', () => {
     }
     expect(count('input')).toBe(0);
     expect(count('before_agent_start')).toBe(0);
-    expect(count('agent_start')).toBe(0);
-    expect(count('agent_settled')).toBe(0);
+    expect(count('agent_start')).toBe(1);
+    // Extension-owned run/outbox listeners remain; UI lifecycle listeners release.
+    expect(count('agent_settled')).toBe(1);
   });
   it('lingers idle outcomes, collapses after linger and the next prompt, and opens existing history from Enter', async () => {
     vi.useFakeTimers();
@@ -391,26 +397,26 @@ describe('subagents smoke', () => {
     expect((bounded?.items[0] as any).text.length).toBeLessThanOrEqual(32);
   });
 
-  it('subagent models command uses custom modal overlay and saves project-local dirty rows locally', async () => {
+  it('subagent models command opens the named-profile overlay and reports the close', async () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ndescription: analyst\nscope: project\n---\nbody`,
+      ['---', 'name: analyst', 'description: analyst', '---', 'body'].join(
+        '\n',
+      ),
     );
     const notifications: any[] = [];
     let capturedOptions: any;
+    let rendered = '';
     const custom = async (factory: any, options: any) => {
       capturedOptions = options;
-      const done = () => undefined;
-      factory({ requestRender: () => undefined }, {}, undefined, done);
-      return {
-        action: 'save',
-        dirtyProfiles: {
-          analyst: {
-            model: { provider: 'openai', id: 'gpt-5.5' },
-            effort: 'high',
-          },
-        },
-      };
+      const panel = factory(
+        { requestRender: () => undefined, terminal: { rows: 40 } },
+        { fg: (_role: string, text: string) => text },
+        undefined,
+        () => undefined,
+      );
+      rendered = panel.render(100).join('\n');
+      return { action: 'close', discarded: 0 };
     };
     const message = await runSubagentModelsCommand({
       cwd: env.tmp,
@@ -431,9 +437,9 @@ describe('subagents smoke', () => {
         maxHeight: '90%',
       },
     });
-    expect(message).toBe(
-      `Saved subagent model profiles to ${path.join(env.tmp, '.pi', 'subagents.json')}.`,
-    );
+    expect(rendered).toContain('Profiles');
+    expect(rendered).toContain('analyst');
+    expect(message).toBe('Closed model profiles.');
     expect(notifications).toEqual([[message, 'info']]);
   });
 
@@ -474,7 +480,9 @@ describe('subagents smoke', () => {
   });
 
   it('suppresses stale Pi context errors from delayed background completion delivery', async () => {
+    const { handlers, on } = extensionEventBus();
     const pi = {
+      on,
       sendMessage: vi.fn(() => {
         throw new Error(
           'This extension ctx is stale after session replacement or reload',
@@ -487,6 +495,10 @@ describe('subagents smoke', () => {
     };
 
     extension(pi);
+    await handlers.get('session_start')?.(
+      {},
+      { cwd: env.tmp, sessionId: 'parent', ui: {}, isIdle: () => true },
+    );
 
     expect(() =>
       onTerminalBackgroundTask?.(
@@ -517,7 +529,12 @@ describe('subagents smoke', () => {
     extension(pi);
     handlers.get('session_start')?.(
       {},
-      { cwd: env.tmp, sessionId: 'session-new', ui: { setWidget: vi.fn() } },
+      {
+        cwd: env.tmp,
+        sessionId: 'session-new',
+        ui: { setWidget: vi.fn() },
+        isIdle: () => true,
+      },
     );
 
     onTerminalBackgroundTask?.(

@@ -539,10 +539,10 @@ provider. The ambient root retains Pi's selected model and effort settings:
 
 | Specialist | Model | Effort |
 | --- | --- | --- |
-| explorer | `openai-codex/gpt-6-luna` | `low` |
-| librarian | `openai-codex/gpt-6-luna` | `high` |
-| oracle | `openai-codex/gpt-6-astra` | `medium` |
-| designer | `openai-codex/gpt-6-sol` | `medium` |
+| explorer | `openai-codex/gpt-6-luna` | `max` |
+| librarian | `openai-codex/gpt-6-luna` | `max` |
+| oracle | `openai-codex/gpt-6.1-sol` | `xhigh` |
+| designer | `openai-codex/gpt-6-luna` | `max` |
 | worker | `openai-codex/gpt-6-luna` | `max` |
 
 Definitions use runtime-supported `model`, `effort`, and `subagent_mode` fields.
@@ -555,21 +555,40 @@ authenticate providers or silently substitute models.
 
 ### Configure subagent model profiles inside Pi
 
-Run `/subagents-model` in Pi's interactive TUI to edit model and effort profiles
-for global or project subagent definitions. The editor saves each profile to the
-configuration scope that owns its definition: global profiles go in
-`~/.pi/agent/subagents.json` (or `$PI_CODING_AGENT_DIR/subagents.json`), while
-project profiles go in `.pi/subagents.json`. Resolution for each model and effort
-field is `model_profiles` first, then definition frontmatter, then the matching
-configuration default, then the parent value. Reload Pi after updating the
-`@thoth-agents/pi-subagents` runtime to register the command. It uses pi-core's
-shared list-editor shell with selectedBg rows, a cursor-centered, height-aware
-viewport, wheel navigation and dirty-discard confirmation; the wide model table
-starts at 102 columns. Profile scope and model filtering are unchanged.
-Both list editors recognize native CSI-u/kitty Enter, Escape and navigation keys
-as well as legacy terminal sequences. Wheel navigation works in regular and
-fullscreen TUI mode; the shared host restores its regular-mode mouse reporting
-when the panel closes.
+Run `/subagents-model` in Pi's interactive TUI to manage named model/effort
+profiles. Global storage is `<agentDir>/thoth/profiles.json` (`agentDir` honors
+`PI_CODING_AGENT_DIR`, default `~/.pi/agent`); project storage is
+`<project>/.pi/thoth/profiles.json`. Both use
+`{ "version": 1, "active": "name", "profiles": { "name": { "agents": { "agent": { "model": "provider/id", "effort": "medium" } } } } }`.
+`active`, `model` and `effort` are optional. Global `active` must name a global
+profile (or `default`); project `active` pins a project or global profile (or
+`default`). The old `model_profiles` field in `subagents.json` is no longer used.
+
+Selection is **session → project pin → global active → `default`**. Project
+profiles shadow same-named global profiles; missing references warn and fall
+back to the next level. Profile fields override definition frontmatter, then
+configuration defaults, then parent values. Missing agents/fields use that
+fallback chain. The reserved, read-only virtual `default` is never stored and
+has no overrides, exposing definition/shipped values and fallbacks. Session
+selection persists in the Pi session across reload/resume, not in config files.
+Switching applies to new runs and continuations without rewriting definitions.
+
+Keys: ←/→ browse profiles (no activation), ↑/↓ select agents, Enter edit,
+`n` new from default, `c` clone, `s` save, `r` rename, `d` delete, `u` use for
+session, `g` global active, `p` pin project. New/cloned profiles are drafts until
+save, with a choice of global or project storage. Saving an unedited new profile
+stores a full copy of default's effective model/effort for every listed agent;
+saved profiles are self-contained snapshots. Editing `default` offers creating
+a profile; it cannot be renamed/deleted. Deletion confirms and clears referenced
+active/pin pointers; closing with unsaved changes asks for confirmation.
+Non-overlay fallbacks (`ui.select`, non-TUI) support only listing/activation.
+
+Reload Pi after updating `@thoth-agents/pi-subagents` to register the command.
+The panel uses pi-core's shared list-editor shell with a profile sidebar at
+90 columns or wider and a stacked layout when narrow, selectedBg rows,
+cursor-centered viewports, wheel navigation and dirty-discard confirmation.
+Both list editors recognize native CSI-u/kitty keys and legacy sequences;
+the shared host restores regular-mode mouse reporting when the panel closes.
 
 ### Configure specialist tools inside Pi
 
@@ -585,9 +604,10 @@ and MCP integrations; Thoth does not maintain a fixed catalog of those tools.
   use Space to toggle a selection. Enter or Escape returns to the overview.
 - Checkboxes edit registered exact names only. Inactive tools are labeled
   `(inactive)` and can be selected; they reach the child even while inactive in
-  the root. The child-provided `ask_orchestrator` channel is an informational
-  note, not a checkbox, and is subject to `enable_ask_orchestrator` and
-  `disallowed_tools`.
+  the root. The child-provided `ask_orchestrator` and `notify_orchestrator`
+  channels are informational notes, not checkboxes, and are subject to their
+  respective `enable_ask_orchestrator` and `enable_notify_orchestrator` flags
+  and `disallowed_tools`.
 - Existing globs (including `*`) and names absent from the registry are shown
   read-only. Edit them manually in the definition file. Saves and partial-save
   retries retain these entries unchanged unless defaults reset replaces the
@@ -639,8 +659,17 @@ names to deny injected tools absent from the panel or trim glob results. For
 example, a broad glob can be paired with
 `disallowed_tools: "ask_user_question, todo"` to keep interaction and progress
 root-owned. Only Oracle's generated definition has this field, denying
-`ask_orchestrator` for independent judgment. Other enabled children receive that
-channel regardless of `tools`. Synchronization keeps operator denials, including
+`ask_orchestrator` for independent judgment, while keeping `notify_orchestrator`.
+Other enabled children receive the question channel regardless of `tools`.
+`ask_orchestrator({ message })` carries questions only and waits for the root's
+`subagent_reply`. Independently, all five roles receive
+`notify_orchestrator({ message })` when enabled and not denied: it returns
+immediately, records progress/checkpoint updates (latest five) on the task, and
+triggers no root turn or reply. Both flags default to true and follow the
+global/project configuration cascade. Both tools are `model-only` direct calls,
+not callable from codemode scripts. Timeout checkpoint steering uses notify only
+when it is in the child's verified tool selection.
+Synchronization keeps operator denials, including
 explicit empty values; absent operator denials acquire the package value (none,
 or `ask_orchestrator` for Oracle).
 

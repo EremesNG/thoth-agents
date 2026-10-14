@@ -63,7 +63,7 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
 type ClaudeCodeSubagentName = keyof typeof CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS;
 
 export const CLAUDE_CODE_SUBAGENT_DEFAULT_EFFORTS = {
-  explorer: 'low',
+  explorer: 'medium',
   designer: 'medium',
   worker: 'medium',
   librarian: 'high',

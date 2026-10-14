@@ -13,9 +13,7 @@ import {
   loadSubagents,
   parseFrontmatter,
   readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
   resolveEffectiveSubagentMode,
-  saveGlobalSubagentModelProfile,
   subagentSourceWarnings,
 } from '../src/config.js';
 import {
@@ -37,16 +35,11 @@ import {
 } from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
 import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
   buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
   createSubagentModelProfilesModal,
   globalSubagentsConfigPath,
   groupAvailableModelsByProvider,
   runSubagentModelsCommand,
-  stageModelProfileEdit,
 } from '../src/model-profiles-ui.js';
 import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
 import {
@@ -531,28 +524,39 @@ describe('config and workflow loading', () => {
     ).toBe('task');
   });
 
-  it('enables orchestrator questions by default and cascades the reply timeout and feature gate', () => {
+  it('enables orchestrator channels by default and cascades the reply timeout and feature gate', () => {
     expect(readSubagentsConfig(tmp)).toMatchObject({
       enable_ask_orchestrator: true,
+      enable_notify_orchestrator: true,
       ask_timeout_ms: 600000,
     });
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(
       path.join(agentDir, 'subagents.json'),
-      JSON.stringify({ enable_ask_orchestrator: false, ask_timeout_ms: 12000 }),
+      JSON.stringify({
+        enable_ask_orchestrator: false,
+        enable_notify_orchestrator: false,
+        ask_timeout_ms: 12000,
+      }),
     );
     withAgentDir(agentDir, () => {
       expect(readSubagentsConfig(tmp)).toMatchObject({
         enable_ask_orchestrator: false,
+        enable_notify_orchestrator: false,
         ask_timeout_ms: 12000,
       });
       fs.writeFileSync(
         path.join(tmp, '.pi', 'subagents.json'),
-        JSON.stringify({ enable_ask_orchestrator: true, ask_timeout_ms: 2500 }),
+        JSON.stringify({
+          enable_ask_orchestrator: true,
+          enable_notify_orchestrator: true,
+          ask_timeout_ms: 2500,
+        }),
       );
       expect(readSubagentsConfig(tmp)).toMatchObject({
         enable_ask_orchestrator: true,
+        enable_notify_orchestrator: true,
         ask_timeout_ms: 2500,
       });
     });
@@ -681,6 +685,45 @@ describe('config and workflow loading', () => {
       JSON.stringify({ stall_suspend_max_ms: -1 }),
     );
     expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(900000);
+  });
+
+  it('normalizes and cascades bounded timeout settings', () => {
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 180000,
+      max_total_timeout_ms: 3600000,
+      max_timeout_extensions: 3,
+    });
+    fs.mkdirSync(process.env.PI_CODING_AGENT_DIR!, { recursive: true });
+    fs.writeFileSync(
+      path.join(process.env.PI_CODING_AGENT_DIR!, 'subagents.json'),
+      JSON.stringify({ timeout_warning_ms: 10, max_timeout_extensions: 2 }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_ms: 100,
+        timeout_warning_ms: 100,
+        max_total_timeout_ms: 50,
+      }),
+    );
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 0,
+      max_total_timeout_ms: 100,
+      max_timeout_extensions: 2,
+    });
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        timeout_warning_ms: 'bad',
+        max_total_timeout_ms: -1,
+        max_timeout_extensions: -1,
+      }),
+    );
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_warning_ms: 180000,
+      max_total_timeout_ms: 3600000,
+      max_timeout_extensions: 3,
+    });
   });
 
   it('falls back for invalid numeric config values', () => {
@@ -853,53 +896,12 @@ describe('config and workflow loading', () => {
     expect(warnings[1]).toContain('local-dup');
   });
 
-  it('merges model_profiles from global and project config with project precedence', () => {
-    const agentDir = path.join(tmp, 'global-agent');
-    fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: { model: 'anthropic/claude-sonnet-4-5', effort: 'high' },
-          reviewer: { model: 'openai/gpt-5.2', effort: 'low' },
-          maxEffort: { model: 'openai/gpt-5.2', effort: 'max' },
-          invalidEffort: { model: 'openai/gpt-5.2', effort: 'extreme' },
-          invalidModel: { model: 'missing-provider', effort: 'low' },
-        },
-      }),
-    );
+  it('ignores obsolete model_profiles in subagents.json', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: {
-            model: { provider: 'openai', id: 'gpt-5.2-codex' },
-            effort: 'medium',
-          },
-          projectOnly: { model: 'anthropic/claude-opus-4-5', effort: 'xhigh' },
-        },
-      }),
+      JSON.stringify({ model_profiles: { analyst: { effort: 'max' } } }),
     );
-
-    const config = withAgentDir(agentDir, () => readSubagentsConfig(tmp));
-
-    expect(config.model_profiles).toEqual({
-      analyst: {
-        model: { provider: 'openai', id: 'gpt-5.2-codex' },
-        effort: 'medium',
-      },
-      reviewer: { model: { provider: 'openai', id: 'gpt-5.2' }, effort: 'low' },
-      maxeffort: {
-        model: { provider: 'openai', id: 'gpt-5.2' },
-        effort: 'max',
-      },
-      invalideffort: { model: { provider: 'openai', id: 'gpt-5.2' } },
-      invalidmodel: { effort: 'low' },
-      projectonly: {
-        model: { provider: 'anthropic', id: 'claude-opus-4-5' },
-        effort: 'xhigh',
-      },
-    });
+    expect(readSubagentsConfig(tmp)).not.toHaveProperty('model_profiles');
   });
 
   it('defaults nested subagent sessions to lean resources and preserves legacy config behavior', () => {
@@ -919,7 +921,7 @@ describe('config and workflow loading', () => {
 
     const config = withAgentDir(agentDir, () => readSubagentsConfig(tmp));
 
-    expect(config.model_profiles).toEqual({});
+    expect(config).not.toHaveProperty('model_profiles');
     expect(config.default_model).toEqual({ provider: 'openai', id: 'gpt-5.2' });
     expect(config.default_effort).toBe('medium');
     expect(config.timeout_ms).toBe(123);
@@ -927,6 +929,37 @@ describe('config and workflow loading', () => {
     expect(config.max_concurrency).toBe(3);
     expect(config.default_tools).toEqual(['read', 'memory_search']);
     expect(config.session_resources).toBe('lean');
+    expect(config.lean_skills).toBe(true);
+  });
+
+  it('project lean_skills overrides global and definitions carry a skill list', () => {
+    const agentDir = path.join(tmp, 'catalog-global');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ lean_skills: false }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ lean_skills: true }),
+    );
+    fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'catalog.md'),
+      `---
+name: catalog
+skills: [tdd, "review-*"]
+---
+Specialist`,
+    );
+    withAgentDir(agentDir, () => {
+      expect(readSubagentsConfig(tmp).lean_skills).toBe(true);
+      expect(
+        loadSubagents(tmp).find((agent) => agent.name === 'catalog')?.skills,
+      ).toEqual(['tdd', 'review-*']);
+      fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), '{}');
+      expect(readSubagentsConfig(tmp).lean_skills).toBe(false);
+    });
   });
 
   it('allows explicitly opting nested subagent sessions back into full resource loading', () => {
@@ -1046,12 +1079,17 @@ describe('config and workflow loading', () => {
   it('filters delegation tools from subagent tool allowlists', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ntools:\n  - read\n  - subagent_run\n  - subagent_result\n  - memory_search\n---\n# Agent`,
+      `---\nname: analyst\ntools:\n  - read\n  - subagent_run\n  - subagent_result\n  - subagent_extend\n  - memory_search\n---\n# Agent`,
     );
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
       JSON.stringify({
-        default_tools: ['read', 'subagent_run', 'memory_search'],
+        default_tools: [
+          'read',
+          'subagent_run',
+          'subagent_extend',
+          'memory_search',
+        ],
       }),
     );
     const agents = loadSubagents(tmp);

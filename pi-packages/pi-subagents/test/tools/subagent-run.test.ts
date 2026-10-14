@@ -404,7 +404,9 @@ describe('subagent_run tool', () => {
       ]);
       const timerCount = vi.getTimerCount();
       controller.abort();
-      expect(vi.getTimerCount()).toBe(timerCount - 1);
+      // Abort clears the heartbeat and both execution-deadline timers
+      // immediately, even while runner cleanup remains pending.
+      expect(vi.getTimerCount()).toBe(timerCount - 3);
       const abortedUpdateCount = onUpdate.mock.calls.length;
       await vi.advanceTimersByTimeAsync(1000);
       expect(onUpdate).toHaveBeenCalledTimes(abortedUpdateCount);
@@ -578,14 +580,21 @@ describe('subagent_run tool', () => {
     });
   });
 
-  it('releases only the asking concurrent task-mode run before delivering its question', async () => {
+  it.each([
+    'run',
+    'continue',
+    'other-session',
+    'concurrent-questions',
+  ])('hands off same-session concurrent %s calls before delivering its question', async (peer) => {
     const fs = await import('node:fs');
     fs.writeFileSync(
       `${env.tmp}/.pi/subagents.json`,
-      JSON.stringify({ default_mode: 'task' }),
+      JSON.stringify({ default_mode: 'task', enable_continue: true }),
     );
     env.writeAgent('analyst');
     env.writeAgent('reviewer');
+    const nestedSessionPath = `${env.tmp}/handoff-session.jsonl`;
+    fs.writeFileSync(nestedSessionPath, JSON.stringify({ type: 'session' }));
     let ask!: () => void;
     const askGate = new Promise<void>((resolve) => {
       ask = resolve;
@@ -599,10 +608,25 @@ describe('subagent_run tool', () => {
       events.push('question');
     });
     const manager = env.createManager(
-      async ({ definition, orchestratorChannel, signal }) => {
+      async ({ definition, continuation, orchestratorChannel, signal }) => {
+        if (
+          definition.name === 'reviewer' &&
+          peer === 'continue' &&
+          !continuation
+        ) {
+          return {
+            result: 'initial',
+            model: 'mock/model',
+            fallback_used: false,
+            nested_session_path: nestedSessionPath,
+          };
+        }
         if (definition.name === 'analyst') {
           await askGate;
           await orchestratorChannel!.askQuestion('Which approach?', signal);
+        } else if (peer === 'concurrent-questions') {
+          await askGate;
+          await orchestratorChannel!.askQuestion('Review scope?', signal);
         } else {
           await reviewerGate;
         }
@@ -625,16 +649,25 @@ describe('subagent_run tool', () => {
         ),
     );
     let runTool: any;
+    let continueTool: any;
     registerSubagentTools(
       {
         registerTool: (tool: any) => {
           if (tool.name === 'subagent_run') runTool = tool;
+          if (tool.name === 'subagent_continue') continueTool = tool;
         },
       },
       manager,
       env.tmp,
     );
     const ctx = { cwd: env.tmp, sessionId: 'parent' };
+    const previous =
+      peer === 'continue'
+        ? await manager.run(
+            { agent: 'reviewer', task: 'initial', mode: 'task' },
+            ctx,
+          )
+        : undefined;
     const first = runTool
       .execute(
         '1',
@@ -648,15 +681,18 @@ describe('subagent_run tool', () => {
         return result;
       });
     let reviewerReturned = false;
-    const second = runTool
+    const second = (peer === 'continue' ? continueTool : runTool)
       .execute(
         '2',
-        { agent: 'reviewer', task: 'waiting' },
+        peer === 'continue'
+          ? { task_id: previous!.task_ids[0], prompt: 'resume', mode: 'task' }
+          : { agent: 'reviewer', task: 'waiting' },
         undefined,
         undefined,
-        ctx,
+        peer === 'other-session' ? { ...ctx, sessionId: 'other' } : ctx,
       )
       .then((result: any) => {
+        events.push('peer-result');
         reviewerReturned = true;
         return result;
       });
@@ -670,13 +706,36 @@ describe('subagent_run tool', () => {
         ).toHaveLength(2),
       );
       ask();
-      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
-      expect(events).toEqual(['result', 'question']);
+      await vi.waitFor(() =>
+        expect(deliverQuestion).toHaveBeenCalledTimes(
+          peer === 'concurrent-questions' ? 2 : 1,
+        ),
+      );
+      expect(events.at(-1)).toBe('question');
+      expect(events).toContain('result');
+      if (peer !== 'other-session') {
+        expect(events.indexOf('peer-result')).toBeLessThan(
+          events.indexOf('question'),
+        );
+      }
+      expect(events.indexOf('result')).toBeLessThan(events.indexOf('question'));
       expect(deliverQuestion).toHaveBeenCalledWith(
         expect.objectContaining({ customType: 'subagent-question' }),
         { triggerTurn: true, deliverAs: 'followUp' },
       );
-      expect(reviewerReturned).toBe(false);
+      expect(reviewerReturned).toBe(peer !== 'other-session');
+      if (peer !== 'other-session') {
+        const peerResult = await second;
+        expect(peerResult.terminate).toBe(true);
+        expect(peerResult.details.mode).toBe('background');
+        if (peer === 'concurrent-questions') {
+          expect(peerResult.content[0].text).toContain('question is pending');
+        } else {
+          expect(peerResult.content[0].text).not.toContain(
+            'question is pending',
+          );
+        }
+      }
       const result = await first;
       const askingTask = manager
         .listTasks(env.tmp)
@@ -696,7 +755,11 @@ describe('subagent_run tool', () => {
       });
       expect(
         manager.listTasks(env.tmp).find((task) => task.agent === 'reviewer'),
-      ).toMatchObject({ mode: 'task', status: 'running' });
+      ).toMatchObject({
+        mode: peer === 'other-session' ? 'task' : 'background',
+        effective_mode: peer === 'other-session' ? 'task' : 'background',
+        status: 'running',
+      });
       manager.replyToQuestion(
         'parent',
         askingTask.id,
@@ -711,7 +774,7 @@ describe('subagent_run tool', () => {
     }
   });
 
-  it('leaves an unrelated task-mode call blocked when a background child asks a question', async () => {
+  it('hands off a same-session task-mode call when a background child asks a question', async () => {
     env.writeAgent('analyst');
     env.writeAgent('reviewer');
     let finishReviewer!: () => void;
@@ -779,10 +842,14 @@ describe('subagent_run tool', () => {
       expect(background.terminate).not.toBe(true);
       expect(background.content[0].text).not.toContain('question is pending');
       await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
-      expect(foregroundReturned).toBe(false);
+      expect(foregroundReturned).toBe(true);
       expect(
         manager.listTasks(env.tmp).find((task) => task.agent === 'reviewer'),
-      ).toMatchObject({ mode: 'task', status: 'running' });
+      ).toMatchObject({
+        mode: 'background',
+        effective_mode: 'background',
+        status: 'running',
+      });
       expect(manager.getTask(background.details.task_ids[0])).toMatchObject({
         mode: 'background',
         status: 'running',

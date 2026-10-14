@@ -236,10 +236,48 @@ describe('formatContent — control characters in model-controlled fields', () =
       }),
     );
     expect(formatContent({ kind: 'create', taskId: 1 }, state)).toBe(
-      'Created #1: evil (pending)',
+      'Created #1: evil (in_progress)',
     );
     expect(formatContent({ kind: 'list', includeDeleted: false }, state)).toBe(
       '[in_progress] #1 evil (clearing)',
     );
   });
+});
+
+it('batch content has counts and one sanitized line per operation with replay-compatible details', () => {
+  const state = stateWith(t({ id: 1, subject: 'Root', status: 'in_progress' }));
+  const results = [
+    { index: 0, action: 'create' as const, id: 1, ref: 'root\nref' },
+    { index: 1, action: 'update' as const, id: 1 },
+    { index: 2, action: 'delete' as const, id: 2 },
+  ];
+  const result = buildToolResult('batch', { ops: [] }, state, {
+    kind: 'batch',
+    results,
+  });
+  expect(result.content).toEqual([
+    {
+      type: 'text',
+      text: 'Batch: 1 created, 1 updated, 1 deleted\nop[0] create #1 (ref: root ref)\nop[1] update #1\nop[2] delete #2',
+    },
+  ]);
+  expect(result.details).toEqual({
+    action: 'batch',
+    params: { ops: [] },
+    tasks: state.tasks,
+    nextId: 2,
+    results,
+  });
+});
+
+it.each([
+  'in_progress',
+  'completed',
+] as const)('create content reports the actual %s status', (status) => {
+  expect(
+    formatContent(
+      { kind: 'create', taskId: 1 },
+      stateWith(t({ id: 1, subject: 'Root', status })),
+    ),
+  ).toBe(`Created #1: Root (${status})`);
 });

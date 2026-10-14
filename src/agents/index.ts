@@ -171,6 +171,9 @@ function applyOverrides(
   override: AgentOverrideConfig,
 ): void {
   if (override.model) {
+    // A model override owns its effort too: omission inherits from the harness,
+    // rather than carrying the shipped model's effort onto a custom model.
+    delete agent.config.variant;
     if (Array.isArray(override.model)) {
       agent._modelArray = normalizeModelArray(override.model);
       agent.config.model = undefined;

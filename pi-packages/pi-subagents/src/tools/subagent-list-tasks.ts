@@ -1,4 +1,5 @@
 import { Type } from 'typebox';
+import { continuationAvailable } from '../continuation-availability.js';
 import type { SubagentManager } from '../manager.js';
 import { emptyComponent } from '../render/tools/components.js';
 import { formatTaskListSummary } from '../render/tools/formatting.js';
@@ -9,7 +10,10 @@ import {
 } from './result-details.js';
 import { fail, ok } from './tool-response.js';
 
-export function createSubagentListTasksTool(manager: SubagentManager) {
+export function createSubagentListTasksTool(
+  manager: SubagentManager,
+  pi?: any,
+) {
   return {
     name: 'subagent_list_tasks',
     label: 'Subagent List Tasks',
@@ -23,12 +27,15 @@ export function createSubagentListTasksTool(manager: SubagentManager) {
       ctx: any,
     ) {
       try {
+        const available = continuationAvailable(ctx?.cwd ?? process.cwd(), pi);
         const cwd = ctx?.cwd ?? process.cwd();
         const tasks = manager.listSessionTasks(
           cwd,
           sessionIdFromToolContext(ctx),
         );
-        const compactTasks = tasks.map(compactTaskWithoutFinalText);
+        const compactTasks = tasks.map((task) =>
+          compactTaskWithoutFinalText(task, available),
+        );
         return ok(formatTaskListSummary(compactTasks as any), {
           tasks: compactTasks,
         });

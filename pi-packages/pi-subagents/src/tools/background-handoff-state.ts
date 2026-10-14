@@ -6,8 +6,9 @@ import type { SubagentTask } from '../types.js';
 type BackgroundHandoffEntry = {
   createdAt: number;
   manager: SubagentManager;
+  parentSessionId: string | undefined;
   getTaskIds: () => string[];
-  handoff: (taskId?: string) => SubagentTask[];
+  handoff: (reason?: 'attention') => SubagentTask[];
   hasActiveTask: () => boolean;
   toolReturned: Promise<unknown>;
 };
@@ -31,15 +32,53 @@ export function withBackgroundHandoffBarrier<Args extends unknown[], Result>(
 }
 
 const activeClaudeBackgroundHandoffs = new Set<BackgroundHandoffEntry>();
+type QuestionHandoff = {
+  manager: SubagentManager;
+  parentSessionId: string | undefined;
+  taskId: string;
+  entries: Set<BackgroundHandoffEntry>;
+  backgrounded: boolean;
+  reason?: 'attention';
+};
+const pendingQuestionHandoffs = new Set<QuestionHandoff>();
 let backgroundHandoffSequence = 0;
+
+// Keep the same identity precedence and validation as the manager.
+function parentSessionIdFromContext(ctx: any): string | undefined {
+  const direct = ctx?.sessionManager?.getSessionId?.() ?? ctx?.sessionId;
+  if (typeof direct === 'string' && direct.length > 0) return direct;
+  const file = ctx?.sessionManager?.getSessionFile?.();
+  return typeof file === 'string' && file.length > 0 ? file : undefined;
+}
+
+function belongsToQuestionSession(
+  entry: BackgroundHandoffEntry,
+  question: QuestionHandoff,
+): boolean {
+  return (
+    entry.manager === question.manager &&
+    (question.parentSessionId
+      ? entry.parentSessionId === question.parentSessionId
+      : entry.getTaskIds().includes(question.taskId))
+  );
+}
+
+function joinQuestionHandoff(
+  entry: BackgroundHandoffEntry,
+  question: QuestionHandoff,
+): void {
+  question.entries.add(entry);
+  if (entry.handoff(question.reason).length) question.backgrounded = true;
+}
 
 function sendTasksToBackground(
   ctx: any,
   manager: SubagentManager,
   getTaskIds: () => string[],
   onBackground: (tasks: SubagentTask[]) => void,
+  reason?: 'attention',
 ): SubagentTask[] {
-  const backgrounded = manager.sendToBackground(getTaskIds());
+  const backgrounded = manager.sendToBackground(getTaskIds(), reason);
   if (!backgrounded.length) return [];
   ctx?.ui?.notify?.(
     backgrounded.length === 1
@@ -64,16 +103,36 @@ export function triggerClaudeBackgroundHandoff(): boolean {
 export async function triggerTaskBackgroundHandoff(
   manager: SubagentManager,
   taskId: string,
+  reason?: 'attention',
 ): Promise<boolean> {
-  for (const entry of activeClaudeBackgroundHandoffs) {
-    if (entry.manager !== manager || !entry.getTaskIds().includes(taskId))
-      continue;
-    const backgrounded = entry.handoff(taskId).length > 0;
-    // Concurrent questions share the barrier even after the first handoff.
-    await entry.toolReturned;
-    return backgrounded;
+  const question: QuestionHandoff = {
+    manager,
+    parentSessionId: manager.getTask(taskId)?.session_id,
+    taskId,
+    entries: new Set(),
+    backgrounded: false,
+    reason,
+  };
+  pendingQuestionHandoffs.add(question);
+  try {
+    // Latch every matching call before awaiting any return, even if a
+    // continuation has not yet published tasks while awaiting runner cleanup.
+    for (const entry of activeClaudeBackgroundHandoffs) {
+      if (belongsToQuestionSession(entry, question))
+        joinQuestionHandoff(entry, question);
+    }
+    let pendingCount: number;
+    do {
+      pendingCount = question.entries.size;
+      await Promise.allSettled(
+        [...question.entries].map((entry) => entry.toolReturned),
+      );
+      // Calls registered while awaiting the barrier join this same handoff.
+    } while (question.entries.size !== pendingCount);
+    return question.backgrounded;
+  } finally {
+    pendingQuestionHandoffs.delete(question);
   }
-  return false;
 }
 
 function ctrlShortcutToTerminalInput(shortcut: string): string | undefined {
@@ -92,21 +151,37 @@ export function installBackgroundHandoffShortcut(
   getTaskIds: () => string[],
   onBackground: (tasks: SubagentTask[]) => void,
   toolReturned: Promise<unknown>,
+  onUnpublishedAttentionHandoff?: () => void,
 ): () => void {
   const shortcut =
     readSubagentsConfig(ctx?.cwd ?? process.cwd())
       .background_handoff_shortcut ?? 'ctrl+h';
   const terminalInput = ctrlShortcutToTerminalInput(shortcut);
-  const handoff = (taskId?: string) =>
-    sendTasksToBackground(
+  const parentSessionId = parentSessionIdFromContext(ctx);
+  let backgroundRequested = false;
+  const handoff = (reason?: 'attention') => {
+    backgroundRequested = true;
+    const tasks = sendTasksToBackground(
       ctx,
       manager,
-      taskId ? () => [taskId] : getTaskIds,
+      getTaskIds,
       onBackground,
+      reason,
     );
+    if (reason === 'attention' && !getTaskIds().length) {
+      // The continuation owns this latch beyond tool-return listener cleanup.
+      onUnpublishedAttentionHandoff?.();
+    }
+    return tasks;
+  };
+  // Continuations may publish their tasks only after prior runner cleanup.
+  const unsubscribeTaskUpdate = manager.onTaskUpdate(() => {
+    if (backgroundRequested) handoff();
+  });
   const entry: BackgroundHandoffEntry = {
     createdAt: ++backgroundHandoffSequence,
     manager,
+    parentSessionId,
     getTaskIds,
     toolReturned,
     handoff,
@@ -121,8 +196,11 @@ export function installBackgroundHandoffShortcut(
       }),
   };
   activeClaudeBackgroundHandoffs.add(entry);
+  for (const question of pendingQuestionHandoffs) {
+    if (belongsToQuestionSession(entry, question))
+      joinQuestionHandoff(entry, question);
+  }
   const unsubscribeQuestion = manager.onQuestion(async (task) => {
-    if (!getTaskIds().includes(task.id)) return;
     await triggerTaskBackgroundHandoff(manager, task.id);
   });
   const unsubscribe = terminalInput
@@ -137,10 +215,12 @@ export function installBackgroundHandoffShortcut(
     : undefined;
   return () => {
     // Tool cleanup runs before its returned promise settles; keep questions gated.
-    void toolReturned.then(() => {
+    const cleanup = () => {
       activeClaudeBackgroundHandoffs.delete(entry);
       unsubscribeQuestion();
-    });
+      unsubscribeTaskUpdate();
+    };
+    void toolReturned.then(cleanup, cleanup);
     if (typeof unsubscribe === 'function') unsubscribe();
   };
 }

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ModelProfileStore } from '../../src/model-profiles/store.js';
 import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agents.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
@@ -28,6 +29,7 @@ describe('subagent_list_agents tool', () => {
       'subagent_list_tasks',
       'subagent_cancel',
       'subagent_send_message',
+      'subagent_extend',
       'subagent_reply',
     ]);
 
@@ -52,14 +54,11 @@ describe('subagent_list_agents tool', () => {
       path.join(agentDir, 'subagents', 'analyst.md'),
       `---\nname: analyst\ndescription: analyst agent\ntools: [read]\n---\n# Analyst\n`,
     );
-    fs.writeFileSync(
-      path.join(agentDir, 'subagents.json'),
-      JSON.stringify({
-        model_profiles: {
-          analyst: { model: 'openai/gpt-5.4', effort: 'high' },
-        },
-      }),
-    );
+    const store = new ModelProfileStore({ cwd: env.tmp, agentDir });
+    store.save('global', 'fast', {
+      agents: { analyst: { model: 'openai/gpt-5.4', effort: 'high' } },
+    });
+    store.setGlobalActive('fast');
     const manager = env.createManager(env.mockRunner() as any);
 
     expect(manager.listAgents(env.tmp, {})).toContainEqual(

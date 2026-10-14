@@ -11,8 +11,6 @@ import type {
   SubagentDefinition,
   SubagentDefinitionScope,
   SubagentMode,
-  SubagentModelProfile,
-  SubagentModelProfiles,
   SubagentSessionResources,
   SubagentsConfig,
   ThinkingEffort,
@@ -33,6 +31,9 @@ export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
 ];
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
+export const DEFAULT_TIMEOUT_WARNING_MS = 180000;
+export const DEFAULT_MAX_TOTAL_TIMEOUT_MS = 3600000;
+export const DEFAULT_MAX_TIMEOUT_EXTENSIONS = 3;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
 export const DEFAULT_STALL_SUSPEND_MAX_MS = 15 * 60 * 1000;
 export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -169,6 +170,18 @@ function validateDefinitionFrontmatter(
     )
       issues.push(AMBIGUOUS_TOOLS_ISSUE);
   }
+  if (
+    Object.hasOwn(data, 'skills') &&
+    !(
+      Array.isArray(data.skills) &&
+      data.skills.every(
+        (skill) => typeof skill === 'string' && skill.trim().length > 0,
+      )
+    )
+  )
+    issues.push(
+      'skills must be a YAML list of non-empty names or glob patterns',
+    );
   return issues;
 }
 
@@ -462,58 +475,30 @@ function parseRenderDebugConfig(
   return { enabled: true, path: merged.path ?? DEFAULT_RENDER_DEBUG_LOG_PATH };
 }
 
-function parseModelProfile(value: unknown): SubagentModelProfile | undefined {
-  if (!isPlainObject(value)) return undefined;
-  const profile: SubagentModelProfile = {};
-  const model = parseModel(value.model);
-  const effort = parseEffort(
-    value.effort ?? value.thinking_level ?? value.thinkingLevel,
-  );
-  if (model) profile.model = model;
-  if (effort) profile.effort = effort;
-  return Object.keys(profile).length ? profile : undefined;
-}
-
-function parseModelProfiles(value: unknown): SubagentModelProfiles {
-  if (!isPlainObject(value)) return {};
-  const profiles: SubagentModelProfiles = {};
-  for (const [name, rawProfile] of Object.entries(value)) {
-    const normalizedName = name.trim().toLowerCase();
-    if (!normalizedName) continue;
-    const profile = parseModelProfile(rawProfile);
-    if (profile) profiles[normalizedName] = profile;
-  }
-  return profiles;
-}
-
-function serializeModelRef(model: ModelRef): string {
-  return `${model.provider}/${model.id}`;
-}
-
-function cleanProfile(
-  profile: SubagentModelProfile,
-): Record<string, string> | undefined {
-  const cleaned: Record<string, string> = {};
-  if (profile.model) cleaned.model = serializeModelRef(profile.model);
-  if (profile.effort) cleaned.effort = profile.effort;
-  return Object.keys(cleaned).length ? cleaned : undefined;
-}
-
 export function readSubagentsConfig(cwd: string): SubagentsConfig {
   const globalRaw = readJson(subagentsConfigPath());
   const projectRaw = readJson(path.join(cwd, '.pi', 'subagents.json'));
   const raw = { ...globalRaw, ...projectRaw };
-  const globalModelProfiles = parseModelProfiles(globalRaw.model_profiles);
-  const projectModelProfiles = parseModelProfiles(projectRaw.model_profiles);
+  const timeoutMs = positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS);
+  const warningMs = positiveInteger(
+    raw.timeout_warning_ms,
+    DEFAULT_TIMEOUT_WARNING_MS,
+  );
   return {
+    timeout_warning_ms: warningMs < timeoutMs ? warningMs : 0,
+    max_total_timeout_ms: Math.max(
+      timeoutMs,
+      positiveInteger(raw.max_total_timeout_ms, DEFAULT_MAX_TOTAL_TIMEOUT_MS),
+    ),
+    max_timeout_extensions: positiveInteger(
+      raw.max_timeout_extensions,
+      DEFAULT_MAX_TIMEOUT_EXTENSIONS,
+    ),
     default_model: parseModel(raw.default_model),
     default_effort: parseEffort(
       raw.default_effort ?? raw.default_thinking_level ?? raw.thinkingLevel,
     ),
     default_mode: parseDefaultMode(raw.default_mode),
-    model_profiles: { ...globalModelProfiles, ...projectModelProfiles },
-    global_model_profiles: globalModelProfiles,
-    project_model_profiles: projectModelProfiles,
     timeout_ms: positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS),
     stall_timeout_ms: positiveInteger(
       raw.stall_timeout_ms,
@@ -535,6 +520,7 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     session_resources: parseSessionResources(
       raw.session_resources ?? raw.sessionResources,
     ),
+    lean_skills: typeof raw.lean_skills === 'boolean' ? raw.lean_skills : true,
     lifecycle_passthrough: parseLifecyclePassthrough(raw.lifecycle_passthrough),
     background_handoff_shortcut: parseBackgroundHandoffShortcut(
       raw.background_handoff_shortcut ?? raw.backgroundHandoffShortcut,
@@ -547,6 +533,10 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
       raw.detail_cancel_shortcut ?? raw.detailCancelShortcut,
     ),
     enable_ask_orchestrator: parseBoolean(raw.enable_ask_orchestrator, true),
+    enable_notify_orchestrator: parseBoolean(
+      raw.enable_notify_orchestrator,
+      true,
+    ),
     ask_timeout_ms:
       Number.isInteger(raw.ask_timeout_ms) && raw.ask_timeout_ms > 0
         ? raw.ask_timeout_ms
@@ -571,90 +561,6 @@ export function resolveEffectiveSubagentMode(input: {
     input.config?.default_mode ??
     'background'
   );
-}
-
-function projectSubagentsConfigPath(cwd: string): string {
-  return path.join(cwd, '.pi', 'subagents.json');
-}
-
-function subagentsConfigPathForScope(input: {
-  scope?: SubagentDefinitionScope;
-  cwd?: string;
-  agentDir?: string;
-}): string {
-  return input.scope === 'project' && input.cwd
-    ? projectSubagentsConfigPath(input.cwd)
-    : subagentsConfigPath(input.agentDir);
-}
-
-export function saveSubagentModelProfile(input: {
-  agentName: string;
-  profile: SubagentModelProfile;
-  scope?: SubagentDefinitionScope;
-  cwd?: string;
-  agentDir?: string;
-}): void {
-  const file = subagentsConfigPathForScope(input);
-  const root = readJson(file);
-  const writableRoot: Record<string, unknown> = isPlainObject(root)
-    ? { ...root }
-    : {};
-  const modelProfiles = isPlainObject(writableRoot.model_profiles)
-    ? { ...writableRoot.model_profiles }
-    : {};
-  const agentName = input.agentName.trim().toLowerCase();
-  const cleaned = cleanProfile(input.profile);
-  if (agentName && cleaned) modelProfiles[agentName] = cleaned;
-  if (Object.keys(modelProfiles).length)
-    writableRoot.model_profiles = modelProfiles;
-  else delete writableRoot.model_profiles;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(writableRoot, null, 2)}\n`, 'utf8');
-}
-
-export function saveGlobalSubagentModelProfile(input: {
-  agentName: string;
-  profile: SubagentModelProfile;
-  agentDir?: string;
-}): void {
-  saveSubagentModelProfile({ ...input, scope: 'global' });
-}
-
-export function resetSubagentModelProfileField(input: {
-  agentName: string;
-  field: 'model' | 'effort';
-  scope?: SubagentDefinitionScope;
-  cwd?: string;
-  agentDir?: string;
-}): void {
-  const file = subagentsConfigPathForScope(input);
-  const root = readJson(file);
-  const writableRoot: Record<string, unknown> = isPlainObject(root)
-    ? { ...root }
-    : {};
-  const modelProfiles = isPlainObject(writableRoot.model_profiles)
-    ? { ...writableRoot.model_profiles }
-    : {};
-  const agentName = input.agentName.trim().toLowerCase();
-  const existing = isPlainObject(modelProfiles[agentName])
-    ? { ...modelProfiles[agentName] }
-    : {};
-  delete existing[input.field];
-  if (Object.keys(existing).length) modelProfiles[agentName] = existing;
-  else delete modelProfiles[agentName];
-  if (Object.keys(modelProfiles).length)
-    writableRoot.model_profiles = modelProfiles;
-  else delete writableRoot.model_profiles;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(writableRoot, null, 2)}\n`, 'utf8');
-}
-
-export function resetGlobalSubagentModelProfileField(input: {
-  agentName: string;
-  field: 'model' | 'effort';
-  agentDir?: string;
-}): void {
-  resetSubagentModelProfileField({ ...input, scope: 'global' });
 }
 
 interface BlockedSubagentDefinition {
@@ -731,6 +637,9 @@ function loadSubagentsFromDir(
           subagent_mode: rawSubagentMode,
           tools,
           disallowed_tools: disallowedTools,
+          skills: Array.isArray(data.skills)
+            ? data.skills.map((skill: string) => skill.trim())
+            : undefined,
           scope,
         },
       ];

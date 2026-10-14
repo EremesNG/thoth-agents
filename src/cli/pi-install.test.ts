@@ -174,6 +174,173 @@ function nativeInstallerFixture(paths: ReturnType<typeof fixture>) {
 }
 
 describe('Pi setup', () => {
+  test('fills absent global codemode settings', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    expect(applyPiSetup(plan).success).toBe(true);
+    expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual({
+      defaultTools: ['+codemode'],
+      codemode: { mode: 'on' },
+    });
+  });
+
+  test.each([
+    { tools: ['+read', '-bash'], expected: ['+read', '-bash', '+codemode'] },
+    { tools: [], expected: ['codemode'] },
+    { tools: ['read', '+grep'], expected: ['read', '+grep', 'codemode'] },
+    { tools: ['+codemode'], expected: ['+codemode'] },
+    { tools: ['codemode'], expected: ['codemode'] },
+    { tools: ['-codemode', '+read'], expected: ['-codemode', '+read'] },
+  ])('preserves tool selection when filling codemode defaults: $tools', ({
+    tools,
+    expected,
+  }) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({ defaultTools: tools }));
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    expect(applyPiSetup(plan).success).toBe(true);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      defaultTools: expected,
+      codemode: { mode: 'on' },
+    });
+  });
+
+  test.each([
+    {
+      existing: { inlineBudget: 2048 },
+      expected: { inlineBudget: 2048, mode: 'on' },
+    },
+    {
+      existing: { inlineBudget: 1024, mode: 'only' },
+      expected: { inlineBudget: 1024, mode: 'only' },
+    },
+  ])('preserves nested codemode choices: $existing', ({
+    existing,
+    expected,
+  }) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        codemode: existing,
+        theme: 'operator-theme',
+        custom: { enabled: false },
+      }),
+    );
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    expect(applyPiSetup(plan).success).toBe(true);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      defaultTools: ['+codemode'],
+      codemode: expected,
+      theme: 'operator-theme',
+      custom: { enabled: false },
+    });
+  });
+
+  test.each([
+    { defaultTools: null },
+    { defaultTools: ['read', 1] },
+    { codemode: 'only' },
+  ])('blocks malformed codemode settings without mutation: %j', (settings) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const content = JSON.stringify(settings);
+    writeFileSync(settingsPath, content);
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    expect(plan.ready).toBe(false);
+    expect(applyPiSetup(plan).success).toBe(false);
+    expect(native.mutations).toEqual([]);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(content);
+  });
+
+  test('re-reads codemode settings after native package writes', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const options = {
+      ...paths,
+      commandExecutor: (command: string, args: readonly string[]) => {
+        const result = native.commandExecutor(command, args);
+        if (args[0] === 'install') {
+          mkdirSync(dirname(settingsPath), { recursive: true });
+          writeFileSync(
+            settingsPath,
+            JSON.stringify({
+              packages: [...native.packages.values()].map(
+                ({ source }) => source,
+              ),
+              theme: 'written-by-native-install',
+              defaultTools: ['read'],
+              codemode: { mode: 'only', inlineBudget: 512 },
+            }),
+          );
+        }
+        return result;
+      },
+    };
+    const plan = buildPiSetupPlan(options);
+    const preview = plan.items.find(({ target }) => target === settingsPath);
+    expect(JSON.parse(preview?.content ?? '{}')).toEqual({
+      defaultTools: ['+codemode'],
+      codemode: { mode: 'on' },
+    });
+    expect(existsSync(settingsPath)).toBe(false);
+    expect(applyPiSetup(plan).success).toBe(true);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      packages: [
+        'npm:thoth-agents@0.3.12',
+        ...PI_PACKAGE_SPECS.map(({ source }) => source),
+      ],
+      theme: 'written-by-native-install',
+      defaultTools: ['read', 'codemode'],
+      codemode: { mode: 'only', inlineBudget: 512 },
+    });
+  });
+
+  test('rejects settings symlink introduced after preview without writing its target', () => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: native.commandExecutor,
+    });
+    const target = join(paths.homeDir, 'operator-settings.json');
+    const content = JSON.stringify({ theme: 'untouched' });
+    writeFileSync(target, content);
+    mkdirSync(dirname(plan.paths.settingsPath), { recursive: true });
+    symlinkSync(target, plan.paths.settingsPath, 'file');
+    const result = applyPiSetup(plan);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('symlink');
+    expect(native.mutations).toEqual([]);
+    expect(readFileSync(target, 'utf8')).toBe(content);
+    expect(
+      buildPiSetupPlan({ ...paths, commandExecutor: native.commandExecutor })
+        .ready,
+    ).toBe(false);
+  });
+
   test.each([
     'local',
     'pinned',
@@ -383,6 +550,9 @@ describe('Pi setup', () => {
     native.mutations.length = 0;
     const second = applyPiSetup(buildPiSetupPlan(options));
     expect(second.success).toBe(true);
+    expect(second.changed).not.toContain(
+      join(paths.homeDir, '.pi', 'agent', 'settings.json'),
+    );
     expect(second.installedPackages).toEqual(first.installedPackages);
     // Root receipt/reinstall behavior is intentionally unchanged.
     expect(native.mutations).toEqual([
@@ -586,7 +756,11 @@ describe('Pi setup', () => {
       expect(result.installedPackages).toContain(source);
       expect(native.mutations.flat()).not.toContain(source);
     }
-    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      ...JSON.parse(settings),
+      defaultTools: ['+codemode'],
+      codemode: { mode: 'on' },
+    });
   });
 
   test.each([
@@ -928,6 +1102,7 @@ describe('Pi setup', () => {
       'package',
       'package',
       'package',
+      'settings',
       'settings',
       'mcp',
       'agent',
@@ -1573,7 +1748,12 @@ describe('Pi setup', () => {
     expect(calls).toEqual([]);
     expect(applyPiSetup(plan)).toMatchObject({ success: true });
     expect(calls.some(([, action]) => action === 'remove')).toBe(false);
-    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      ...JSON.parse(settings),
+      ...(scope === 'user'
+        ? { defaultTools: ['+codemode'], codemode: { mode: 'on' } }
+        : {}),
+    });
     expect(readFileSync(promptPath, 'utf8')).toBe('Review this code.');
   });
 
@@ -2180,9 +2360,11 @@ describe('Pi setup', () => {
         .filter(({ kind }) => kind === 'agent')
         .every(({ target }) => existsSync(target)),
     ).toBe(true);
-    expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual(
-      settings,
-    );
+    expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual({
+      ...settings,
+      defaultTools: ['+codemode'],
+      codemode: { mode: 'on' },
+    });
     expect(JSON.parse(readFileSync(subagentsConfigPath, 'utf8'))).toEqual({
       session_resources: 'lean',
       enable_continue: false,

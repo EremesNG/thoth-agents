@@ -20,7 +20,11 @@ import {
   structuredMetadataFromError,
 } from './event-processing.js';
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
-import { createAskOrchestratorTool } from './orchestrator-tool.js';
+import { leanResources } from './lean-resources.js';
+import {
+  createAskOrchestratorTool,
+  createNotifyOrchestratorTool,
+} from './orchestrator-tool.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
 import {
@@ -80,6 +84,7 @@ function resolveConfiguredTools(
   context: any,
   disallowedTools: readonly string[],
   enableAskOrchestrator: boolean,
+  enableNotifyOrchestrator: boolean,
 ): string[] {
   const registered = patterns.some(hasToolGlob)
     ? readToolNames(context, ['getAllTools'])
@@ -88,16 +93,18 @@ function resolveConfiguredTools(
   try {
     const expanded = expandToolPatterns(patterns, registered);
     if (enableAskOrchestrator) expanded.push('ask_orchestrator');
+    if (enableNotifyOrchestrator) expanded.push('notify_orchestrator');
     const denied = new Set(disallowedTools);
     const permitted = [...new Set(expanded)].filter(
       (name) =>
         (enableAskOrchestrator || name !== 'ask_orchestrator') &&
+        (enableNotifyOrchestrator || name !== 'notify_orchestrator') &&
         !denied.has(name) &&
         !name.startsWith('subagent_'),
     );
     if (!permitted.length)
       throw new Error(
-        'The effective permitted tool selection is empty. Check tools, disallowed_tools and enable_ask_orchestrator.',
+        'The effective permitted tool selection is empty. Check tools, disallowed_tools and orchestrator tool flags.',
       );
     return permitted;
   } catch (error) {
@@ -473,6 +480,7 @@ async function createSession(
   nestedSessionPath?: string,
   onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
   orchestratorChannel?: SubagentOrchestratorChannel,
+  skillFilter?: string[],
 ) {
   const piSdk = await loadPiSdkModule();
   const { createAgentSession, SessionManager } = piSdk;
@@ -492,9 +500,14 @@ async function createSession(
     model,
     thinkingLevel: effort,
     tools,
-    customTools: tools.includes('ask_orchestrator')
-      ? [createAskOrchestratorTool(orchestratorChannel)]
-      : [],
+    customTools: [
+      ...(tools.includes('ask_orchestrator')
+        ? [createAskOrchestratorTool(orchestratorChannel)]
+        : []),
+      ...(tools.includes('notify_orchestrator')
+        ? [createNotifyOrchestratorTool(orchestratorChannel)]
+        : []),
+    ],
     sessionManager,
   };
   const modelRuntime =
@@ -511,15 +524,38 @@ async function createSession(
       throw new Error(
         'Subagent lean session resources require DefaultResourceLoader from Pi SDK.',
       );
+    const diagnostic = (message: string) =>
+      onActivity?.({
+        diagnostic: true,
+        message,
+      });
+    const resources = await leanResources(
+      piSdk,
+      cwd,
+      agentDir,
+      ctx,
+      config.lean_skills !== false,
+      skillFilter,
+      diagnostic,
+    );
+    options.settingsManager = resources.settingsManager;
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir,
-      settingsManager: ctx?.settingsManager,
+      settingsManager: resources.loaderSettings,
+      noExtensions: true,
+      extensionFactories: tools.includes('codemode')
+        ? [piSdk.createCodemodeExtension({ mode: 'on' })]
+        : [],
+      additionalExtensionPaths: resources.additionalExtensionPaths,
+      additionalSkillPaths: resources.additionalSkillPaths,
+      skillsOverride: resources.skillsOverride,
       noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
       systemPromptOverride: () => systemPrompt,
+      appendSystemPromptOverride: () => [],
       extensionsOverride: (base: any) =>
         isolateSubagentExtensions(
           base,
@@ -528,6 +564,10 @@ async function createSession(
         ),
     });
     await resourceLoader.reload();
+    for (const entry of resourceLoader.getSkills?.().diagnostics ?? [])
+      diagnostic(
+        `Skill discovery: ${entry.message}${entry.path ? ` (${entry.path})` : ''}`,
+      );
     options.agentDir = agentDir;
     options.resourceLoader = resourceLoader;
   }
@@ -650,14 +690,30 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   orchestratorChannel,
   onActivity,
 }) => {
+  // Event processing emits cumulative transcript snapshots. Keep diagnostics in
+  // each snapshot so later execution updates cannot overwrite their evidence.
+  if (config.session_resources === 'lean') {
+    const diagnostics: string[] = [];
+    const reportActivity = onActivity;
+    onActivity = (activity) => {
+      if (activity.diagnostic) diagnostics.push(activity.message);
+      const transcript =
+        diagnostics.length && (activity.transcript || activity.diagnostic)
+          ? `# child resource diagnostics\n\n${diagnostics.join('\n')}\n\n${activity.transcript ?? ''}`
+          : activity.transcript;
+      reportActivity?.({ ...activity, transcript });
+    };
+  }
   const profile =
     effectiveProfile ??
     resolveEffectiveSubagentProfile({
       agentName: definition.name,
       definition,
       config,
-      ctx,
+      ctx: { ...ctx, cwd },
     });
+  for (const warning of profile.warnings ?? [])
+    onActivity?.({ message: warning, diagnostic: true });
   const preferred = selectedModel({ ctx, definition, profile });
   const effort = profile.effort.value;
   const configuredTools = definition.tools?.length
@@ -668,6 +724,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     ctx,
     definition.disallowed_tools ?? [],
     config.enable_ask_orchestrator !== false,
+    config.enable_notify_orchestrator !== false,
   );
   const systemPrompt = definition.instructions;
   const prompt =
@@ -684,6 +741,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
 
   async function attempt(model: any) {
     onActivity?.({
+      notify_orchestrator_available: false,
       message: `starting ${definition.name} with model ${modelLabel(model) ?? 'unknown'}${effort ? ` effort ${effort}` : ''}`,
       prompt,
       system_prompt: systemPrompt,
@@ -705,6 +763,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       nested_session_path,
       onActivity,
       orchestratorChannel,
+      definition.skills,
     );
     const abortBridge = createSessionAbortBridge(session, signal);
     let unregisterInteractionSession = () => {};
@@ -712,6 +771,9 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
       onActivity?.({
         message: 'nested session ready',
+        notify_orchestrator_available:
+          tools.includes('notify_orchestrator') &&
+          !dropped_tools.includes('notify_orchestrator'),
         dropped_tools,
         nested_session_path: resolvedNestedSessionPath,
       });

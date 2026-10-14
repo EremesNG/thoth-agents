@@ -1,6 +1,6 @@
 ---
 name: thoth-sdd
-description: Apply proportional understanding and risk-aware SDD classification, with one ID-named record for substantial changes.
+description: Governs SDD changes, including the single ID-named record for substantial work. Use for any change requiring proportional understanding and risk-aware classification, whether small or substantial.
 license: MIT
 compatibility: Requires Node.js >=22.19 for bundled product validation.
 metadata:
@@ -74,7 +74,7 @@ At substantial `ready`, first show the user a concise plan summary (goal,
 acceptance, key decisions, units, risks, record path), then always offer
 `Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation was already authorized.
 Silence is never an explicit review skip; run a fresh read-only review only when
-selected. After a selected `[OKAY]`, separately offer `Implement (Recommended)` /
+selected. After a validated plan-review `OKAY`, separately offer `Implement (Recommended)` /
 `Stop`; prior explicit authorization remains valid, while an explicit later
 `Stop` supersedes it. Record the plan-review selection as
 `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`; `SKIPPED`
@@ -87,6 +87,19 @@ user forbids delegation, perform authorized work directly but report unavailable
 independent review; never claim independent PASS or archive.
 
 ## Bounded execution
+
+Root uses the harness progress tool (Pi `todo`, Claude `TodoWrite`, OpenCode
+`todowrite`, Codex `update_plan`) to show SDD progress. Before implementation,
+create one item per remaining applicable stage:
+explore/specify/clarify/classify/plan/tasks/ready/plan review/authorization.
+Pi `todo` may hold several in_progress items for concurrently active stages or
+tasks (e.g. parallel delegated units); Claude `TodoWrite`, OpenCode `todowrite`
+and Codex `update_plan` keep one in_progress item; complete each stage/task
+immediately. At implementation, replace stage items with the record's task rows
+plus final verification and archive (for small changes, use the settled work
+steps plus verification). Keep one list per change; prefix items with the change
+ID when several changes are active. This native progress view is not a sidecar
+record and never replaces SDD gates or authorization.
 
 Apply these rules across all workflow stages. Each assignment names one
 independently acceptable outcome, exact known entrypoints and skill paths,
@@ -143,11 +156,53 @@ parent. Read only the current phase under
 plan review and archive are sibling skill contracts. Use installed local assets
 only; do not provision skills or run a network installer mid-workflow.
 
+## Specialist result validation
+
+Only Oracle gate assignments (plan-review and final-verification) return a
+structured envelope. Before recording plan-review `OKAY` or final-verification
+`PASS`, root resolves `<skill-dir>` from the installed thoth-sdd SKILL.md
+directory, exactly as for `scripts/validate.mjs`, and runs:
+
+```text
+node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]
+```
+
+Pass the unchanged native terminal result via stdin, or `--input <path>` when
+piping is impractical; do not extract, rewrite, or wrap the envelope, or create
+persisted evidence files. Set `--review-kind` to the assigned `plan-review` or
+`final-verification`. For final verification of a substantial record, set
+`--record-sha256` to the independently calculated expected SHA-256 of exact UTF-8
+bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
+Confirm `reviewedRecord` identifies the assigned record.
+For Oracle final verification of a small change without a record, root passes
+`--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.
+Do not combine `--no-record` with `--record-sha256` or plan-review.
+Without `--no-record`, final verification still requires both binding fields.
+
+- Exit **0** means structurally valid only. Root still judges scope, evidence,
+  checks, freshness, provenance, independence, and content before recording any
+  approval, and presents accepted results to the user in readable prose.
+- Exit **1** means no approval. Allow at most one format-only repair request per assignment,
+  shared with any runtime enforcement; it must not change findings or verdict.
+  Exhaustion is a contract failure reported truthfully, never converted into an Oracle `BLOCKED` judgment.
+- Exit **2** or an unavailable skill/validator means validation cannot be completed:
+  report the error (missing assets are installation drift). This blocks only gate approvals;
+  ordinary delegations proceed. Do not provision replacements mid-workflow.
+
+Other Thoth specialist returns use compact markdown fields and are judged on content,
+not validated for format. User-defined custom agents retain their own free format;
+neither ordinary specialist results nor custom agents are rejected for format or
+count as approvals. Oracle `diagnosis` and `advice` never authorize implementation
+or closeout and return compact markdown, not envelopes. Approval comes only from
+the validated gate review field, never free text; validation itself is not user authorization.
+
 ## Gates and CLI
 
 ```text
 node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <explore|specify|clarify|plan|tasks|checklist|ready|verify|closeout> --json
 ```
+
+Substantial records must not contain other `thoth-result` fences or `**Oracle envelope**:` marker lines anywhere in the file; write examples inline instead.
 
 The early gates validate the one record proportionally. `plan` validates without
 requiring tasks. `tasks` and `ready` require concrete coverage of every accepted
@@ -159,6 +214,16 @@ implementation authorization, and reviewed source digests/baselines. It permits
 final-review and Archive placeholders. `closeout` additionally requires a fresh
 independent Oracle PASS, every acceptance outcome with concrete PASS
 check/evidence, exactly one matching record SHA-256 field, and Archive READY.
+Order: `verify` → fresh final Oracle → root validates and pastes → `closeout` → archive.
+After accepting a validated PASS, root pastes the Oracle's unchanged
+final-verification envelope under `**Oracle envelope**:` in the record's
+Verification section (post-PASS bookkeeping in Verification; no new review).
+Plan-review envelopes are not embedded. Closeout fails without exactly one valid
+PASS envelope matching the record path and prefix digest, consistent with
+`**Verdict**` and `**Reviewed record SHA-256**`. Preserve the envelope unchanged
+when archiving; archived validation accepts its original active record path.
+Historical archived records are not retrofitted or re-validated by this rule.
+
 The initial `PENDING` selection placeholder is allowed before `verify` only.
 `SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
 `DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected by a durable delta must

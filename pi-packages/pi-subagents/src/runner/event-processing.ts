@@ -896,9 +896,10 @@ export async function promptWithInactivity(
 }
 
 export function collectAssistantText(messages: any[]): string {
-  const parts: string[] = [];
-  for (const msg of messages) {
-    if (msg.role !== 'assistant') continue;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const msg = messages[index];
+    if (msg?.role !== 'assistant') continue;
+    const parts: string[] = [];
     const content = msg.content;
     if (typeof content === 'string') parts.push(content);
     if (Array.isArray(content)) {
@@ -906,8 +907,10 @@ export function collectAssistantText(messages: any[]): string {
         if (part?.type === 'text' && typeof part.text === 'string')
           parts.push(part.text);
     }
+    const text = parts.join('\n').trim();
+    if (text) return text;
   }
-  return parts.join('\n').trim();
+  return '';
 }
 
 export function structuredMetadataFromError(

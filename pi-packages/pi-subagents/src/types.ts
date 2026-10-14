@@ -42,6 +42,8 @@ export type ResolvedProfileField<T> = {
 };
 
 export type EffectiveSubagentProfile = {
+  profileName?: string;
+  warnings?: string[];
   agent: string;
   model: ResolvedProfileField<ModelRef>;
   effort: ResolvedProfileField<ThinkingEffort>;
@@ -57,6 +59,7 @@ export type SubagentDefinition = {
   subagent_mode?: SubagentMode;
   tools: string[];
   disallowed_tools?: string[];
+  skills?: string[];
   scope?: SubagentDefinitionScope;
 };
 
@@ -71,21 +74,23 @@ export type SubagentsConfig = {
   default_model?: ModelRef;
   default_effort?: ThinkingEffort;
   default_mode?: SubagentMode;
-  model_profiles: SubagentModelProfiles;
-  global_model_profiles?: SubagentModelProfiles;
-  project_model_profiles?: SubagentModelProfiles;
   timeout_ms: number;
+  timeout_warning_ms?: number;
+  max_total_timeout_ms?: number;
+  max_timeout_extensions?: number;
   stall_timeout_ms: number;
   stall_suspend_max_ms?: number;
   max_concurrency: number;
   default_tools: string[];
   session_resources?: SubagentSessionResources;
+  lean_skills?: boolean;
   lifecycle_passthrough?: string[];
   background_handoff_shortcut?: string;
   history_panel_shortcut?: string;
   detail_cancel_shortcut?: string;
   enable_continue?: boolean;
   enable_ask_orchestrator?: boolean;
+  enable_notify_orchestrator?: boolean;
   ask_timeout_ms?: number;
   debug?: boolean;
   render_debug?: SubagentsRenderDebugConfig;
@@ -163,6 +168,8 @@ export type SubagentActivity = {
   interaction_request?: SubagentInteractionRequest;
   nested_session_path?: string;
   dropped_tools?: string[];
+  /** Current-attempt registry verification; unknown means unavailable. */
+  notify_orchestrator_available?: boolean;
   pi_retry_attempts?: number;
   live_activity?: SubagentLiveActivityProjection;
 };
@@ -467,6 +474,8 @@ export type SubagentTask = {
   session_id?: string;
   nested_session_path?: string;
   dropped_tools?: string[];
+  /** Current-attempt registry verification; unknown means unavailable. */
+  notify_orchestrator_available?: boolean;
   started_at?: string;
   ended_at?: string;
   last_activity_at?: string;
@@ -476,6 +485,12 @@ export type SubagentTask = {
   undelivered_message_count?: number;
   pending_questions?: PendingSubagentQuestion[];
   progress_updates?: SubagentProgressUpdate[];
+  timeout_started_at?: number;
+  timeout_deadline_at?: number;
+  timeout_extensions_used?: number;
+  timeout_deadline_generation?: number;
+  timeout_max_extensions?: number;
+  timeout_continue_enabled?: boolean;
   live_activity?: SubagentLiveActivityProjection;
   prompt?: string;
   continuation_prompt?: string;

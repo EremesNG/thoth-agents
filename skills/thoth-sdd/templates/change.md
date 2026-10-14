@@ -82,6 +82,14 @@ exactly one SHA field line; put notes on separate lines below the fields.
 **Verdict**: PENDING
 **Reviewed record SHA-256**: PENDING
 
+**Oracle envelope**:
+
+```thoth-result
+PENDING
+```
+
+After PASS, root pastes the Oracle's unchanged final-verification envelope here.
+
 - AC-1: PENDING | check | evidence
 - Source: relative/path | sha256:<actual-source-digest>
 - Source: .thoth/specs/<capability>/spec.md | sha256:<actual-source-digest>

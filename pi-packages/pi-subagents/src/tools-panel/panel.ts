@@ -32,8 +32,10 @@ export interface ToolsPanelOptions {
   maxHeight?(): number;
   theme?: PanelTheme;
 }
-const ORCHESTRATOR_NOTE =
-  'ask_orchestrator: child-provided; subject to enable_ask_orchestrator and disallowed_tools.';
+const ORCHESTRATOR_NOTES = [
+  'ask_orchestrator: child-provided; subject to enable_ask_orchestrator and disallowed_tools.',
+  'notify_orchestrator: child-provided; subject to enable_notify_orchestrator and disallowed_tools.',
+];
 const sameTools = (left: readonly string[], right: readonly string[]) =>
   JSON.stringify(left) === JSON.stringify(right);
 export function isEligibleTool(name: string): boolean {
@@ -56,6 +58,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   const tools = options.discoveredTools.filter((tool) => {
     if (
       tool.name === 'ask_orchestrator' ||
+      tool.name === 'notify_orchestrator' ||
       !isEligibleTool(tool.name) ||
       editableNames.has(tool.name)
     )
@@ -102,7 +105,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           text: `row: ${role.role} · ${role.tools.length} selected`,
           tone: 'accent',
         },
-        panelHintRow(ORCHESTRATOR_NOTE),
+        ...ORCHESTRATOR_NOTES.map((note) => panelHintRow(note)),
         ...readOnly(role),
       ],
       rows: () =>
@@ -187,7 +190,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           panelHintRow(
             'Child specialists do not inherit root tools automatically.',
           ),
-          panelHintRow(ORCHESTRATOR_NOTE),
+          ...ORCHESTRATOR_NOTES.map((note) => panelHintRow(note)),
           ...(role
             ? [
                 panelHintRow(`Definition: ${role.scope} · ${role.filePath}`),

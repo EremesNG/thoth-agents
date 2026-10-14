@@ -178,7 +178,7 @@ describe('OpenCode operations adapter v0.3', () => {
     const mainBefore = readFileSync(mainConfigPath(), 'utf8');
     const plan = buildRestoreModelPlan(
       'opencode',
-      ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'].map((model) => ({
+      ['gpt-6-luna', 'gpt-6.1-sol'].map((model) => ({
         id: `openai/${model}`,
         catalogId: `openai/${model}`,
         label: model,

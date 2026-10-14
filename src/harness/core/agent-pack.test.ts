@@ -3,6 +3,7 @@ import {
   AGENT_ROLE_NAMES,
   getAgentPackContract,
   getAgentRole,
+  renderSpecialistResultContract,
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
@@ -52,7 +53,7 @@ describe('agent-pack contract', () => {
       /known source.*bounded question/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
-      /bounded direct-work exception.*root retains known low-risk mechanical work.*reviewed commits/i,
+      /direct-work exceptions.*known low-risk mechanical work.*reviewed commits/i,
     );
     expect(ownership.directException.join(' ')).not.toMatch(
       /another search or dependency.*ends/i,
@@ -71,19 +72,25 @@ describe('agent-pack contract', () => {
         ' ',
       );
 
-    expect(consultation).toMatch(/one known source.*one bounded question/i);
+    expect(consultation).toMatch(/one known source and bounded question/i);
     expect(consultation).toMatch(
-      /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
+      /new path.*unlocated dependency.*exhausted allowance.*delegate the missing evidence/i,
     );
     expect(consultation).toMatch(
-      /experimental cumulative.*two source fragments.*approximately 200 code lines.*per user request/i,
+      /two source fragments.*about 200 code lines per user request/i,
     );
-    expect(consultation).toMatch(/across tools, files, and subtasks/i);
+    expect(consultation).toMatch(/across tools, files and subtasks/i);
     expect(consultation).toMatch(
-      /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
+      /required instructions.*coordination artifacts excluded.*source or log dumps/i,
     );
-    expect(consultation).toMatch(/not runtime enforcement/i);
-    expect(consultation).toMatch(/never waives independent verification/i);
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    expect(ownership.delegationFailure.join(' ')).toMatch(
+      /not runtime enforcement/i,
+    );
+    expect(ownership.evidenceHandling.join(' ')).toMatch(
+      /independent verification stays mandatory/i,
+    );
     const anotherConsultation =
       getAgentPackContract().orchestrationPolicy.implementationOwnership
         .directConsultation;
@@ -98,7 +105,7 @@ describe('agent-pack contract', () => {
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
     expect(ownership.discovery.join(' ')).toMatch(
-      /unlocated.*source.*flow.*responsibility.*Explorer.*before any root.*search.*file read.*shell\/git inspection.*CodeGraph query/i,
+      /unlocated.*source.*flow.*responsibility.*Explorer.*before any root.*search.*read.*shell\/git.*CodeGraph call/i,
     );
     expect(ownership.discovery.join(' ')).toMatch(/unknown location/i);
     expect(ownership.writerRouting.join(' ')).toMatch(
@@ -119,10 +126,10 @@ describe('agent-pack contract', () => {
       /uncertainty, and next action instead/i,
     );
     expect(ownership.evidenceHandling.join(' ')).toMatch(
-      /must not repeat delegated discovery/i,
+      /never repeat delegated discovery/i,
     );
     expect(ownership.evidenceHandling.join(' ')).toMatch(
-      /missing support.*targeted/i,
+      /gaps.*targeted request/i,
     );
     expect(ownership.delegationFailure.join(' ')).toMatch(
       /truthful.*not.*unrestricted root/i,
@@ -231,7 +238,15 @@ describe('agent-pack contract', () => {
         'openQuestions',
       ]);
     }
-    for (const role of ['oracle', 'designer', 'worker'] as const) {
+    expect(contract.oracle).toEqual([
+      'conclusion',
+      'evidence',
+      'verification',
+      'risks',
+      'openQuestions',
+      'nextAction',
+    ]);
+    for (const role of ['designer', 'worker'] as const) {
       expect(contract[role]).toEqual([
         'conclusion',
         'evidence',
@@ -239,11 +254,33 @@ describe('agent-pack contract', () => {
         'risks',
         'openQuestions',
         'nextAction',
+        'changedFiles',
       ]);
     }
     const anotherContract = getAgentPackContract().returnContract;
     for (const role of AGENT_ROLE_NAMES) {
       expect(contract[role]).not.toBe(anotherContract[role]);
     }
+  });
+  test('keeps all role renderers loadable without non-gate envelope schemas', () => {
+    for (const role of [
+      'explorer',
+      'librarian',
+      'designer',
+      'worker',
+    ] as const) {
+      expect(renderSpecialistResultContract(role)).toBe(
+        `Return compact markdown fields (no JSON): ${getAgentPackContract().returnContract[role].join(', ')}.`,
+      );
+    }
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'plan-review: OKAY|REJECT',
+    );
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'final-verification: PASS|FAIL|BLOCKED',
+    );
+    expect(renderSpecialistResultContract('oracle')).toContain(
+      'Diagnosis/advice uses markdown fields and cannot approve',
+    );
   });
 });

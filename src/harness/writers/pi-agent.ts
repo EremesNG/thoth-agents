@@ -11,6 +11,7 @@ export interface PiAgentDefinitionInput {
   instructions: string;
   model?: string;
   effort?: string;
+  skills?: readonly string[];
   subagentMode: 'task' | 'background';
 }
 
@@ -33,6 +34,7 @@ export function getPiSpecialistDefaultTools(role: PiSpecialistRole): string[] {
     'grep',
     'find',
     'ls',
+    ...(role === 'explorer' || role === 'librarian' ? ['codemode'] : []),
     ...(role === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
   ];
 }
@@ -53,6 +55,9 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
       : []),
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
     ...(input.effort ? [`effort: ${yamlScalar(input.effort)}`] : []),
+    ...(input.skills !== undefined
+      ? [`skills: ${JSON.stringify(input.skills)}`]
+      : []),
     `subagent_mode: ${yamlScalar(input.subagentMode)}`,
     `managed-by: ${PI_MANAGED_OWNER}`,
     '---',

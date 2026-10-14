@@ -5,10 +5,10 @@ The mandatory Codex CLI setup creates five user custom-agent TOMLs under
 
 | Role | Model | Reasoning effort |
 | --- | --- | --- |
-| `explorer` | `gpt-6-luna` | `low` |
-| `librarian` | `gpt-6-luna` | `high` |
-| `oracle` | `gpt-6-astra` | `medium` |
-| `designer` | `gpt-6-sol` | `medium` |
+| `explorer` | `gpt-6-luna` | `max` |
+| `librarian` | `gpt-6-luna` | `max` |
+| `oracle` | `gpt-6.1-sol` | `xhigh` |
+| `designer` | `gpt-6-luna` | `max` |
 | `worker` | `gpt-6-luna` | `max` |
 
 The ambient Codex session is root and has no child TOML.

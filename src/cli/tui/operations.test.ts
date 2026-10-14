@@ -248,8 +248,8 @@ describe('TUI operations', () => {
       getOpenCodeModelRoles().find(({ role }) => role === 'orchestrator'),
     ).toEqual({
       role: 'orchestrator',
-      model: 'openai/gpt-6-sol',
-      effort: { kind: 'effort', value: 'xhigh' },
+      model: 'openai/gpt-6.1-sol',
+      effort: { kind: 'effort', value: 'high' },
     });
   });
 
@@ -639,10 +639,10 @@ describe('shipped model restoration', () => {
   test('projects exact defaults for each harness independently of installed roles', async () => {
     const { getShippedModelRoles } = await import('../model-defaults');
     const expected = [
-      ['explorer', 'gpt-6-luna', 'low'],
-      ['librarian', 'gpt-6-luna', 'high'],
-      ['oracle', 'gpt-6-astra', 'medium'],
-      ['designer', 'gpt-6-sol', 'medium'],
+      ['explorer', 'gpt-6-luna', 'max'],
+      ['librarian', 'gpt-6-luna', 'max'],
+      ['oracle', 'gpt-6.1-sol', 'xhigh'],
+      ['designer', 'gpt-6-luna', 'max'],
       ['worker', 'gpt-6-luna', 'max'],
     ];
     const compact = (harness: HarnessId) =>
@@ -660,7 +660,7 @@ describe('shipped model restoration', () => {
       ]),
     );
     expect(compact('opencode')).toEqual([
-      ['orchestrator', 'openai/gpt-6-sol', 'xhigh'],
+      ['orchestrator', 'openai/gpt-6.1-sol', 'high'],
       ...expected.map(([role, model, effort]) => [
         role,
         `openai/${model}`,
@@ -668,7 +668,7 @@ describe('shipped model restoration', () => {
       ]),
     ]);
     expect(compact('claude')).toEqual([
-      ['explorer', 'haiku', 'low'],
+      ['explorer', 'haiku', 'medium'],
       ['librarian', 'sonnet', 'high'],
       ['oracle', 'opus', 'high'],
       ['designer', 'sonnet', 'medium'],
@@ -700,7 +700,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
         ({ code }) => code === 'codex-effort-model-unsupported',
       ),
     ).toBe(true);
-    const catalog = ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'].map((model) => ({
+    const catalog = ['gpt-6-luna', 'gpt-6.1-sol'].map((model) => ({
       id: model,
       catalogId: `openai/${model}`,
       label: model,
@@ -713,10 +713,10 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
     expect(
       ready.items.map(({ preview }) => JSON.parse(preview ?? '{}')),
     ).toEqual([
-      { role: 'explorer', model: 'gpt-6-luna', effort: 'low' },
-      { role: 'librarian', model: 'gpt-6-luna', effort: 'high' },
-      { role: 'oracle', model: 'gpt-6-astra', effort: 'medium' },
-      { role: 'designer', model: 'gpt-6-sol', effort: 'medium' },
+      { role: 'explorer', model: 'gpt-6-luna', effort: 'max' },
+      { role: 'librarian', model: 'gpt-6-luna', effort: 'max' },
+      { role: 'oracle', model: 'gpt-6.1-sol', effort: 'xhigh' },
+      { role: 'designer', model: 'gpt-6-luna', effort: 'max' },
       { role: 'worker', model: 'gpt-6-luna', effort: 'max' },
     ]);
     expect(existsSync(join(root, '.codex'))).toBe(false);

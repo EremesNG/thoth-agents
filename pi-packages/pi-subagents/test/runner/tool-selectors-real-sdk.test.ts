@@ -12,6 +12,7 @@ interface PermittedChildRegistryCase {
   tools: string[];
   expected: string[];
   enabled?: boolean;
+  notifyEnabled?: boolean;
   active?: string[];
   registered?: string[] | null;
   defaultTools?: string[];
@@ -29,6 +30,41 @@ interface PermittedChildRegistryCase {
 }
 
 it.each<PermittedChildRegistryCase>([
+  {
+    selection: 'notify with ask disabled',
+    tools: ['read'],
+    enabled: false,
+    notifyEnabled: true,
+    expected: ['read', 'notify_orchestrator'],
+  },
+  {
+    selection: 'notify with ask denied',
+    tools: ['*'],
+    notifyEnabled: true,
+    denials: 'disallowed_tools: ask_orchestrator',
+    expected: ['read', 'bash', 'notify_orchestrator'],
+  },
+  {
+    selection: 'notify denied',
+    tools: ['read'],
+    notifyEnabled: true,
+    denials: 'disallowed_tools: notify_orchestrator',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'explicit notify disabled',
+    tools: ['read', 'notify_orchestrator'],
+    notifyEnabled: false,
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'notify with empty inventory',
+    tools: ['*'],
+    registered: null,
+    enabled: false,
+    notifyEnabled: true,
+    expected: ['notify_orchestrator'],
+  },
   {
     selection: 'explicit',
     tools: ['read', 'ask_orchestrator'],
@@ -267,6 +303,7 @@ it.each<PermittedChildRegistryCase>([
 ])('uses one effective permitted child registry: $selection', async ({
   tools,
   enabled = true,
+  notifyEnabled = false,
   expected,
   active = ['read', 'bash'],
   registered: inventory = ['read', 'bash'],
@@ -326,18 +363,22 @@ it.each<PermittedChildRegistryCase>([
       this: InstanceType<typeof AgentSession>,
     ) {
       registered.push(...this.getAllTools().map((tool) => tool.name));
+      const notify = this.agent.state.tools.find(
+        (tool) => tool.name === 'notify_orchestrator',
+      );
+      if (notify)
+        await notify.execute(
+          'notify',
+          { message: 'Scope selected' },
+          new AbortController().signal,
+        );
       const tool = this.agent.state.tools.find(
         (tool) => tool.name === 'ask_orchestrator',
       );
       if (tool) {
         childResult = await tool.execute(
           'question',
-          { kind: 'question', message: 'Which scope?' },
-          new AbortController().signal,
-        );
-        await tool.execute(
-          'progress',
-          { kind: 'progress', message: 'Scope selected' },
+          { message: 'Which scope?' },
           new AbortController().signal,
         );
       }
@@ -373,9 +414,9 @@ it.each<PermittedChildRegistryCase>([
         stall_timeout_ms: 10000,
         max_concurrency: 1,
         default_tools: defaultTools,
-        model_profiles: {},
         session_resources: 'lean',
         enable_ask_orchestrator: enabled,
+        enable_notify_orchestrator: notifyEnabled,
       },
       signal: new AbortController().signal,
       orchestratorChannel: {
@@ -411,11 +452,12 @@ it.each<PermittedChildRegistryCase>([
         'Which scope?',
         expect.any(AbortSignal),
       );
-      expect(reportProgress).toHaveBeenCalledWith('Scope selected');
     } else {
       expect(askQuestion).not.toHaveBeenCalled();
-      expect(reportProgress).not.toHaveBeenCalled();
     }
+    if (expected.includes('notify_orchestrator'))
+      expect(reportProgress).toHaveBeenCalledWith('Scope selected');
+    else expect(reportProgress).not.toHaveBeenCalled();
   } finally {
     prompt.mockRestore();
     vi.unstubAllEnvs();
@@ -585,12 +627,13 @@ it.each([
         stall_timeout_ms: 10000,
         max_concurrency: 1,
         default_tools: ['agent_browser_*'],
-        model_profiles: {},
         session_resources: 'lean',
       },
       signal: new AbortController().signal,
     });
-    expect([...registered].sort()).toEqual([...expected].sort());
+    expect([...registered].sort()).toEqual(
+      [...expected, 'notify_orchestrator'].sort(),
+    );
     expect(active).toContain('agent_browser_action');
     expect(actionResult).toMatchObject({
       content: [{ type: 'text', text: 'agent_browser_action executed' }],
@@ -632,8 +675,8 @@ it.each([
         stall_timeout_ms: 1000,
         max_concurrency: 1,
         default_tools: [],
-        model_profiles: {},
         enable_ask_orchestrator: enabled,
+        enable_notify_orchestrator: false,
       },
       signal: new AbortController().signal,
     }),
@@ -1056,5 +1099,198 @@ it('keeps orchestration controls model-visible and refuses nested execution befo
     if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it.each([
+  true,
+  false,
+])('loads codemode only when selected in a lean child (selected=%s)', async (selected) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-codemode-'));
+  const agentDir = path.join(root, 'agent');
+  const cwd = path.join(root, 'workspace');
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.writeFileSync(path.join(cwd, 'selected.txt'), 'selected read marker');
+  vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
+  vi.stubEnv('PI_SUBAGENTS_HISTORY_HOME', path.join(root, 'history'));
+  const { AgentSession, ModelRuntime, SettingsManager } = await import(
+    '@earendil-works/pi-coding-agent'
+  );
+  const { runToolCall } = await import('@earendil-works/pi-agent-core');
+  const tools = selected
+    ? ['read', 'codemode', 'ask_orchestrator', 'notify_orchestrator']
+    : ['read', 'ask_orchestrator', 'notify_orchestrator'];
+  const askQuestion = vi.fn(async () => 'direct alignment reply');
+  const reportProgress = vi.fn();
+  const modelRuntime = await ModelRuntime.create({
+    modelsPath: null,
+    authPath: path.join(agentDir, 'auth.json'),
+    allowModelNetwork: false,
+  });
+  // Preserve assertion failures that the runner otherwise normalizes as provider errors.
+  let promptFailure: unknown;
+  const prompt = vi
+    .spyOn(AgentSession.prototype, 'prompt')
+    .mockImplementation(async function (
+      this: InstanceType<typeof AgentSession>,
+    ) {
+      try {
+        expect(
+          this.getAllTools()
+            .map((tool) => tool.name)
+            .sort(),
+        ).toEqual([...tools].sort());
+        expect(this.getActiveToolNames().sort()).toEqual([...tools].sort());
+        const assistantMessage: AssistantMessage = {
+          role: 'assistant',
+          content: [],
+          api: 'openai-completions',
+          provider: 'test',
+          model: 'fixture',
+          stopReason: 'toolUse',
+          timestamp: 0,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+        };
+        this.agent.state.messages = [assistantMessage];
+        const executeTool = (name: string, args: Record<string, string>) =>
+          runToolCall(
+            { type: 'toolCall', id: 'fixture-call', name, arguments: args },
+            {
+              tools: this.agent.state.tools,
+              assistantMessage,
+              context: {
+                messages: this.messages,
+                tools: this.agent.state.tools,
+              },
+              beforeToolCall: this.agent.beforeToolCall,
+              afterToolCall: this.agent.afterToolCall,
+            },
+          );
+        if (selected) {
+          const executeScript = (code: string) =>
+            executeTool('codemode', { code });
+          const read = await executeScript(
+            'text(await tools.read({ path: "selected.txt" }));',
+          );
+          expect(read.isError).toBe(false);
+          expect(read.result.content).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                type: 'text',
+                text: expect.stringContaining('selected read marker'),
+              }),
+            ]),
+          );
+          expect(read.result.details).toMatchObject({
+            calls: [{ name: 'read', status: 'ok' }],
+          });
+          const excluded = await executeScript(
+            'await tools.bash({ command: "echo excluded" });',
+          );
+          expect(excluded.isError).toBe(true);
+          expect(this.getCallableToolNames()).not.toContain('bash');
+          const denied = await executeScript(
+            'await tools.ask_orchestrator({ message: "Script question" });',
+          );
+          expect(denied.isError).toBe(true);
+          const deniedNotify = await executeScript(
+            'await tools.notify_orchestrator({ message: "Script progress" });',
+          );
+          expect(deniedNotify.isError).toBe(true);
+          expect(askQuestion).not.toHaveBeenCalled();
+          expect(reportProgress).not.toHaveBeenCalled();
+        }
+        expect(this.getCallableToolNames()).not.toContain('ask_orchestrator');
+        expect(this.getCallableToolNames()).not.toContain(
+          'notify_orchestrator',
+        );
+        const notification = await executeTool('notify_orchestrator', {
+          message: 'Direct progress',
+        });
+        expect(notification.isError).toBe(false);
+        expect(reportProgress).toHaveBeenCalledExactlyOnceWith(
+          'Direct progress',
+        );
+        const direct = await executeTool('ask_orchestrator', {
+          message: 'Direct question',
+        });
+        expect(direct.isError).toBe(false);
+        expect(direct.result.content).toContainEqual({
+          type: 'text',
+          text: 'direct alignment reply',
+        });
+        expect(askQuestion).toHaveBeenCalledExactlyOnceWith(
+          'Direct question',
+          undefined,
+        );
+        this.agent.state.messages.push({
+          role: 'assistant',
+          content: [{ type: 'text', text: 'done' }],
+        } as AssistantMessage);
+      } catch (error) {
+        promptFailure = error;
+        throw error;
+      }
+    });
+  try {
+    const result = await sdkSubagentRunner({
+      definition: {
+        name: 'fixture',
+        description: 'Fixture',
+        instructions: 'Bounded fixture',
+        tools,
+        filePath: path.join(cwd, 'fixture.md'),
+      },
+      task: 'Read selected fixture',
+      taskId: 'subtask_codemode',
+      cwd,
+      ctx: {
+        modelRuntime,
+        settingsManager: SettingsManager.inMemory({
+          codemode: { mode: 'only' },
+        }),
+        pi: {
+          getAllTools: () =>
+            ['read', 'bash', 'codemode'].map((name) => ({ name })),
+          getActiveTools: () => ['read'],
+        },
+      },
+      config: {
+        timeout_ms: 10000,
+        stall_timeout_ms: 10000,
+        max_concurrency: 1,
+        default_tools: [],
+        session_resources: 'lean',
+        enable_ask_orchestrator: true,
+      },
+      signal: new AbortController().signal,
+      orchestratorChannel: {
+        askQuestion,
+        reportProgress,
+        close: vi.fn(),
+        onPendingChange: () => () => {},
+      },
+    });
+    expect(result.dropped_tools).toEqual([]);
+  } catch (error) {
+    throw promptFailure ?? error;
+  } finally {
+    prompt.mockRestore();
+    vi.unstubAllEnvs();
+    fs.rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);

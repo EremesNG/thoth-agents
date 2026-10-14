@@ -214,4 +214,14 @@ Packages under `pi-packages/` MUST be pnpm workspace members installed by the ro
 
 - **GIVEN** a clean checkout
 - **WHEN** `pnpm install --frozen-lockfile` runs at the root and CI proceeds
-- **THEN** every `pi-packages/*` package has its dependencies installed without per-package npm lockfiles AND CI fails if any package typecheck or offline test fails 
+- **THEN** every `pi-packages/*` package has its dependencies installed without per-package npm lockfiles AND CI fails if any package typecheck or offline test fails
+
+### Requirement: Opt-in live behavioral evaluations
+
+The repository provides deterministic contract evaluation cases in the normal test suite and an opt-in live Pi evaluation command that is capped by turns, cost and time, grades tool calls deterministically and never runs in CI.
+
+#### Scenario: Opt-in live behavioral evaluations
+
+- **GIVEN** a developer without `THOTH_EVAL_MODEL`
+- **WHEN** they run `pnpm test` or `pnpm run eval:pi`
+- **THEN** no real model is called and the live command explains the required configuration 

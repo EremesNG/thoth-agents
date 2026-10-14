@@ -51,7 +51,8 @@
     ]
   },
   "scripts": {
-    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema && pnpm run build:pi-extensions",
+    "build": "pnpm run generate:result-contract && pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema && pnpm run build:pi-extensions",
+    "generate:result-contract": "tsx scripts/generate-result-contract.ts",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
@@ -59,8 +60,9 @@
     "setup:codex:local": "pnpm run build && tsx scripts/setup-codex-local.ts",
     "setup:pi:local": "pnpm run build && node scripts/setup-pi-local.mjs",
     "release:notes": "tsx scripts/generate-release-notes.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.evals.json",
     "test": "vitest run",
+    "eval:pi": "vitest run --config vitest.evals.live.config.ts --reporter=verbose --silent=false",
     "test:pi-extensions": "node --test --test-timeout=110000 scripts/pi-extension-bundles.test.mjs",
     "lint": "biome lint .",
     "format": "biome format . --write",

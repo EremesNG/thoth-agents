@@ -1,0 +1,595 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "plan-review-choice",
+      "contract": "plan-authorization",
+      "polarity": "positive",
+      "scenario": "Offer both canonical review choices after readiness, before any implementation.",
+      "productPatterns": [
+        {
+          "source": "phases",
+          "pattern": "Review plan with Oracle.*Proceed without review"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Plan review is optional and separate from the Implement or Stop authorization decision"
+        }
+      ],
+      "rootPatterns": [
+        "Review plan with Oracle.*Proceed without review",
+        "Implement.*Stop"
+      ],
+      "live": {
+        "caps": {
+          "timeMs": 1800000,
+          "caseUsd": 1
+        },
+        "prompt": "Plan only: coordinate a greeting change across src/greeting.js, test/greeting.test.js and README.md. Change Hello to Welcome consistently and update the test. Scope is coordinated, requirements are settled, risk is low. Prepare the substantial change plan and offer the normal review decision. Do not implement without a separate explicit Implement answer. Use .thoth/changes/greeting/greeting.md for the plan record.",
+        "expectations": [
+          "positive-progress",
+          "plan-review-options-before-implementation",
+          "separate-implementation-authorization"
+        ]
+      }
+    },
+    {
+      "id": "plan-okay-not-authorization",
+      "contract": "plan-authorization",
+      "polarity": "negative",
+      "scenario": "An Oracle [OKAY] is not permission to implement or a final verification result.",
+      "productPatterns": [
+        {
+          "source": "phases",
+          "pattern": "a pass is not implementation authorization or final verification"
+        },
+        {
+          "source": "phases",
+          "pattern": "After \\[OKAY\\].*separate Implement.*Stop authorization decision"
+        }
+      ],
+      "rootPatterns": [
+        "\\[OKAY\\] alone never authorizes implementation",
+        "After \\[OKAY\\], keep Implement.*Stop separate",
+        "plan review does not replace final verification"
+      ]
+    },
+    {
+      "id": "plan-silence-not-explicit-skip",
+      "contract": "plan-authorization",
+      "polarity": "negative",
+      "scenario": "Silence must not be recorded as explicit skip or implementation consent.",
+      "productPatterns": [
+        {
+          "source": "phases",
+          "pattern": "silence never means EXPLICIT_SKIP"
+        },
+        {
+          "source": "phases",
+          "pattern": "Pending, unavailable, failed, interrupted or host-prohibited questions do not count"
+        }
+      ],
+      "rootPatterns": [
+        "Silence never skips",
+        "Pending, unavailable, failed, interrupted or host-prohibited questions do not count"
+      ]
+    },
+    {
+      "id": "verification-fresh-oracle",
+      "contract": "independent-verification",
+      "polarity": "positive",
+      "scenario": "Substantial closeout uses a fresh independent Oracle, not the plan reviewer reused.",
+      "productPatterns": [
+        {
+          "source": "orchestration",
+          "pattern": "Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance"
+        },
+        {
+          "source": "workflow",
+          "pattern": "no implementation writer self-approves"
+        },
+        {
+          "source": "verification",
+          "pattern": "Completion reports identify changed files and verification evidence"
+        }
+      ],
+      "rootPatterns": [
+        "fresh Oracle instance",
+        "no implementation writer may approve its own work"
+      ],
+      "input": {
+        "classification": "substantial",
+        "risk": "low"
+      },
+      "expected": {
+        "verificationRequired": true,
+        "independent": true,
+        "owner": "oracle"
+      },
+      "live": {
+        "caps": {
+          "timeMs": 1800000,
+          "caseUsd": 1
+        },
+        "prompt": "Close out the implemented substantial change at .thoth/changes/greeting/greeting.md. The fixture contains the implemented diff. Run focused verification and obtain fresh independent final verification, updating the record only when justified. I authored the implementation; do not self-approve it.",
+        "expectations": [
+          "positive-progress",
+          "completed-fresh-oracle-before-pass"
+        ]
+      }
+    },
+    {
+      "id": "verification-writer-cannot-approve",
+      "contract": "independent-verification",
+      "polarity": "negative",
+      "scenario": "A writer cannot approve even a local patch when material risk requires independent judgment.",
+      "productPatterns": [
+        {
+          "source": "orchestration",
+          "pattern": "Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance"
+        },
+        {
+          "source": "workflow",
+          "pattern": "no implementation writer self-approves"
+        },
+        {
+          "source": "verification",
+          "pattern": "Completion reports identify changed files and verification evidence"
+        }
+      ],
+      "rootPatterns": [
+        "fresh Oracle instance",
+        "no implementation writer may approve its own work"
+      ],
+      "input": {
+        "classification": "small",
+        "risk": "high"
+      },
+      "expected": {
+        "verificationRequired": true,
+        "independent": true,
+        "owner": "oracle"
+      }
+    },
+    {
+      "id": "verification-small-root-checks",
+      "contract": "independent-verification",
+      "polarity": "positive",
+      "scenario": "Small low-risk work still gets final focused root verification.",
+      "productPatterns": [
+        {
+          "source": "orchestration",
+          "pattern": "Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance"
+        },
+        {
+          "source": "workflow",
+          "pattern": "no implementation writer self-approves"
+        },
+        {
+          "source": "verification",
+          "pattern": "Completion reports identify changed files and verification evidence"
+        }
+      ],
+      "rootPatterns": [
+        "fresh Oracle instance",
+        "no implementation writer may approve its own work"
+      ],
+      "input": {
+        "classification": "small",
+        "risk": "low"
+      },
+      "expected": {
+        "verificationRequired": true,
+        "independent": false,
+        "owner": "orchestrator"
+      }
+    },
+    {
+      "id": "memory-none-forbids-provider",
+      "contract": "delegated-memory",
+      "polarity": "negative",
+      "scenario": "A worker dispatched with none must not read or write provider memory.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "none forbids provider work"
+        },
+        {
+          "source": "memory",
+          "pattern": "Root lifecycle ownership never transfers to this delegate"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "worker",
+        "authorization": "none"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "write-capable"
+      },
+      "memoryPatterns": [
+        "none forbids provider work",
+        "Root lifecycle ownership never transfers to this delegate"
+      ]
+    },
+    {
+      "id": "memory-recall-bounded-reads",
+      "contract": "delegated-memory",
+      "polarity": "positive",
+      "scenario": "A read-only Explorer may recall bounded authorized context.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "recall permits bounded reads"
+        },
+        {
+          "source": "memory",
+          "pattern": "Root lifecycle ownership never transfers to this delegate"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "explorer",
+        "authorization": "recall"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "read-only"
+      },
+      "memoryPatterns": [
+        "recall permits bounded reads",
+        "Root lifecycle ownership never transfers to this delegate"
+      ],
+      "live": {
+        "prompt": "Discover how the greeting implementation and test fit together. Delegate at least one bounded read-only discovery task, then summarize findings. No implementation is requested. No provider memory is needed for this fixture.",
+        "expectations": ["positive-progress", "delegated-memory-scope"]
+      }
+    },
+    {
+      "id": "memory-recall-not-observation",
+      "contract": "delegated-memory",
+      "polarity": "negative",
+      "scenario": "Recall alone does not authorize a worker to persist observations.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "provider observations still require observe authorization"
+        },
+        {
+          "source": "memory",
+          "pattern": "Root lifecycle ownership never transfers to this delegate"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "worker",
+        "authorization": "recall"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "write-capable"
+      },
+      "memoryPatterns": [
+        "provider observations still require observe authorization",
+        "Root lifecycle ownership never transfers to this delegate"
+      ]
+    },
+    {
+      "id": "memory-observe-readonly",
+      "contract": "delegated-memory",
+      "polarity": "positive",
+      "scenario": "Observe permits one scoped provider observation without workspace mutation or root lifecycle ownership.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "observe additionally permits one bounded durable observation"
+        },
+        {
+          "source": "memory",
+          "pattern": "observe may authorize a durable provider observation but does not authorize workspace mutation"
+        },
+        {
+          "source": "memory",
+          "pattern": "Root lifecycle ownership never transfers to this delegate"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "explorer",
+        "authorization": "observe"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "read-only"
+      },
+      "memoryPatterns": [
+        "observe additionally permits one bounded durable observation",
+        "observe may authorize a durable provider observation but does not authorize workspace mutation",
+        "Root lifecycle ownership never transfers to this delegate"
+      ]
+    },
+    {
+      "id": "memory-root-ownership",
+      "contract": "delegated-memory",
+      "polarity": "positive",
+      "scenario": "The root retains lifecycle, authorization, and semantic completion ownership.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "root coordinator owns authorization, root lifecycle, real-user-intent handling"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "orchestrator",
+        "authorization": "observe"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": false,
+        "ownsRootLifecycle": true,
+        "workspaceMode": "adaptive-root"
+      },
+      "memoryPatterns": [
+        "root coordinator owns authorization, root lifecycle, real-user-intent handling"
+      ]
+    },
+    {
+      "id": "small-no-record",
+      "contract": "small-proportionality",
+      "polarity": "positive",
+      "scenario": "Clear local low-risk work uses test-first implementation without a change record.",
+      "productPatterns": [
+        {
+          "source": "workflow",
+          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Risk can require planning even when the code patch is local or small"
+        }
+      ],
+      "rootPatterns": [
+        "Small work: test-first, focused verification, no record",
+        "risk may force small-patch planning"
+      ],
+      "input": {
+        "scope": "local",
+        "uncertainty": "low",
+        "risk": "low",
+        "understanding": {
+          "completed": ["explore", "specify", "clarify"],
+          "clarification": "not-needed"
+        }
+      },
+      "expected": {
+        "classification": "small",
+        "planningRequired": false,
+        "recordRequired": false,
+        "independentVerificationRequired": false
+      },
+      "live": {
+        "prompt": "Fix the single typo in README.md: change Welcom to Welcome. This is a clear local low-risk wording correction; leave all other content unchanged. Verify the result.",
+        "expectations": [
+          "positive-progress",
+          "no-change-record",
+          "no-plan-review-question"
+        ]
+      }
+    },
+    {
+      "id": "small-patch-elevated-risk",
+      "contract": "small-proportionality",
+      "polarity": "negative",
+      "scenario": "A tiny local patch is not small work when risk is elevated.",
+      "productPatterns": [
+        {
+          "source": "workflow",
+          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Risk can require planning even when the code patch is local or small"
+        }
+      ],
+      "rootPatterns": [
+        "Small work: test-first, focused verification, no record",
+        "risk may force small-patch planning"
+      ],
+      "input": {
+        "scope": "local",
+        "uncertainty": "low",
+        "risk": "high",
+        "understanding": {
+          "completed": ["explore", "specify", "clarify"],
+          "clarification": "not-needed"
+        }
+      },
+      "expected": {
+        "classification": "substantial",
+        "planningRequired": true,
+        "recordRequired": true,
+        "independentVerificationRequired": true
+      }
+    },
+    {
+      "id": "small-coordinated-not-local",
+      "contract": "small-proportionality",
+      "polarity": "negative",
+      "scenario": "Clear low-risk work spanning coordinated ownership still needs a record.",
+      "productPatterns": [
+        {
+          "source": "workflow",
+          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Risk can require planning even when the code patch is local or small"
+        }
+      ],
+      "rootPatterns": [
+        "Small work: test-first, focused verification, no record",
+        "risk may force small-patch planning"
+      ],
+      "input": {
+        "scope": "coordinated",
+        "uncertainty": "low",
+        "risk": "low",
+        "understanding": {
+          "completed": ["explore", "specify", "clarify"],
+          "clarification": "not-needed"
+        }
+      },
+      "expected": {
+        "classification": "substantial",
+        "planningRequired": true,
+        "recordRequired": true,
+        "independentVerificationRequired": true
+      }
+    },
+    {
+      "id": "small-uncertain-not-ready",
+      "contract": "small-proportionality",
+      "polarity": "negative",
+      "scenario": "Local low-risk work with material uncertainty needs planning, not the small shortcut.",
+      "productPatterns": [
+        {
+          "source": "workflow",
+          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Risk can require planning even when the code patch is local or small"
+        }
+      ],
+      "rootPatterns": [
+        "Small work: test-first, focused verification, no record",
+        "risk may force small-patch planning"
+      ],
+      "input": {
+        "scope": "local",
+        "uncertainty": "medium",
+        "risk": "low",
+        "understanding": {
+          "completed": ["explore", "specify", "clarify"],
+          "clarification": "not-needed"
+        }
+      },
+      "expected": {
+        "classification": "substantial",
+        "planningRequired": true,
+        "recordRequired": true,
+        "independentVerificationRequired": true
+      }
+    },
+    {
+      "id": "plan-review-no-forwarded-skills",
+      "contract": "plan-authorization",
+      "polarity": "positive",
+      "scenario": "Catalog-driven Oracle plan review without forwarded skill paths.",
+      "productPatterns": [
+        {
+          "source": "phases",
+          "pattern": "Review plan with Oracle.*Proceed without review"
+        },
+        {
+          "source": "workflow",
+          "pattern": "Plan review is optional and separate from the Implement or Stop authorization decision"
+        }
+      ],
+      "rootPatterns": [
+        "Review plan with Oracle.*Proceed without review",
+        "Implement.*Stop"
+      ],
+      "live": {
+        "caps": {
+          "timeMs": 1800000,
+          "caseUsd": 1
+        },
+        "prompt": "Plan only: coordinate a greeting change across src/greeting.js, test/greeting.test.js and README.md. Change Hello to Welcome consistently and update the test. Scope is coordinated, requirements are settled, risk is low. Prepare the substantial change plan and offer the normal review decision. Do not implement without a separate explicit Implement answer. Use .thoth/changes/greeting/greeting.md for the plan record. Delegate the plan review without forwarding any SKILL.md path: let the Oracle discover its own skills.",
+        "expectations": [
+          "positive-progress",
+          "plan-review-options-before-implementation",
+          "separate-implementation-authorization",
+          "oracle-no-forwarded-skills"
+        ]
+      }
+    },
+    {
+      "id": "designer-project-skill",
+      "contract": "delegated-memory",
+      "polarity": "positive",
+      "scenario": "Trusted project UI guidelines discovered and read by the designer without forwarded paths.",
+      "productPatterns": [
+        {
+          "source": "memory",
+          "pattern": "none forbids provider work"
+        },
+        {
+          "source": "memory",
+          "pattern": "Root lifecycle ownership never transfers to this delegate"
+        }
+      ],
+      "rootPatterns": [
+        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
+        "scoped MEMORY authorization",
+        "do not mirror work artifacts"
+      ],
+      "input": {
+        "role": "designer",
+        "authorization": "none"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "write-capable"
+      },
+      "memoryPatterns": [
+        "none forbids provider work",
+        "Root lifecycle ownership never transfers to this delegate"
+      ],
+      "live": {
+        "caps": {
+          "timeMs": 1800000,
+          "caseUsd": 1
+        },
+        "prompt": "Implement a small UI improvement to index.html: make the welcome card readable and accessible. Delegate the visual design to thoth-designer; let the specialist discover any relevant project guidelines itself, without forwarding skill paths. MEMORY: none. Finish the task with the normal compact markdown result.",
+        "expectations": [
+          "positive-progress",
+          "delegated-memory-scope",
+          "designer-project-skill"
+        ]
+      }
+    }
+  ]
+}

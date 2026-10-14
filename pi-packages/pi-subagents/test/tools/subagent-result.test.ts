@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeErrorMetadata,
@@ -9,6 +10,80 @@ import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 const env = installSubagentTestEnv();
 
 describe('subagent_result tool', () => {
+  it.each([
+    {
+      name: 'legacy row',
+      stored: undefined,
+      enabled: true,
+      registered: true,
+      available: true,
+    },
+    {
+      name: 'stale enabled snapshot',
+      stored: true,
+      enabled: false,
+      registered: true,
+      available: false,
+    },
+    {
+      name: 'enabled but unregistered',
+      stored: true,
+      enabled: true,
+      registered: false,
+      available: false,
+    },
+  ])('uses current continuation availability for $name', async ({
+    stored,
+    enabled,
+    registered,
+    available,
+  }) => {
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents.json`,
+      JSON.stringify({ enable_continue: enabled }),
+    );
+    const store = env.createHistoryStore();
+    const task: any = {
+      id: 'subtask_timeout_history',
+      agent: 'analyst',
+      mode: 'background',
+      status: 'failed',
+      task: 'timeout',
+      cwd: env.tmp,
+      created_at: new Date().toISOString(),
+      error: 'total timeout',
+      error_metadata: { category: 'total_timeout', message: 'total timeout' },
+      timeout_continue_enabled: stored,
+    };
+    store.upsertTask(env.tmp, task);
+    const manager: any = {
+      getTask: () => store.getTask(env.tmp, task.id),
+      stageResultAcknowledgment: () => {},
+    };
+    let resultTool: any;
+    registerSubagentTools(
+      {
+        getAllTools: () => (registered ? [{ name: 'subagent_continue' }] : []),
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_result') resultTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    const result = await resultTool.execute(
+      'timeout',
+      { task_id: task.id },
+      undefined,
+      undefined,
+      { cwd: env.tmp },
+    );
+    const line = `subagent_continue: ${available ? 'enabled' : 'disabled'}`;
+    expect(result.content[0].text).toContain(line);
+    expect(result.details.full_result).toContain(line);
+    expect(result.details.task.partial_context).toContain(line);
+  });
+
   it('returns subagent_result with full content for the orchestrator and collapsed/expanded user render', async () => {
     env.writeAgent('analyst');
     const rawResponse =
@@ -164,7 +239,10 @@ describe('subagent_result tool', () => {
       error: 'provider api error',
       error_metadata: circular,
     };
-    const manager: any = { getTask: () => task };
+    const manager: any = {
+      getTask: () => task,
+      stageResultAcknowledgment: () => {},
+    };
     let resultTool: any;
     registerSubagentTools(
       {

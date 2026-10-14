@@ -171,6 +171,157 @@ describe('subagent_continue tool', () => {
     expect(renderedExpanded).not.toContain(`id: ${taskId}`);
   });
 
+  it('hands off a cleanup-waiting continuation before delivering a same-session question', async () => {
+    await enableContinue();
+    env.writeAgent('analyst');
+    env.writeAgent('reviewer');
+    const fs = await import('node:fs');
+    const nestedSessionPath = `${env.tmp}/cleanup-resume-session.jsonl`;
+    fs.writeFileSync(nestedSessionPath, JSON.stringify({ type: 'session' }));
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let ask!: () => void;
+    const askGate = new Promise<void>((resolve) => {
+      ask = resolve;
+    });
+    let finishContinuation!: () => void;
+    const continuationGate = new Promise<void>((resolve) => {
+      finishContinuation = resolve;
+    });
+    const events: string[] = [];
+    const deliverQuestion = vi.fn(() => {
+      events.push('question');
+    });
+    const manager = env.createManager(
+      async ({
+        definition,
+        continuation,
+        orchestratorChannel,
+        signal,
+        onActivity,
+      }) => {
+        if (definition.name === 'analyst') {
+          await askGate;
+          await orchestratorChannel!.askQuestion('Approve?', signal);
+        } else if (continuation) {
+          await continuationGate;
+        } else {
+          onActivity?.({
+            message: 'session ready',
+            nested_session_path: nestedSessionPath,
+          } as any);
+          await cleanupGate;
+        }
+        return {
+          result: 'finished',
+          model: 'mock/model',
+          fallback_used: false,
+          nested_session_path: nestedSessionPath,
+        };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (task, question) =>
+        sendSubagentQuestionMessage(
+          { sendMessage: deliverQuestion },
+          task,
+          question,
+        ),
+    );
+    // The session manager takes precedence over a conflicting convenience ID.
+    const ctx = {
+      cwd: env.tmp,
+      sessionId: 'wrong',
+      sessionManager: { getSessionId: () => 'parent' },
+    };
+    const initial = await manager.run(
+      { agent: 'reviewer', task: 'initial', mode: 'background' },
+      ctx,
+    );
+    const taskId = initial.task_ids[0]!;
+    let runTool: any;
+    let continueTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+          if (tool.name === 'subagent_continue') continueTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    let continued: Promise<any> | undefined;
+    let asking: Promise<any> | undefined;
+    try {
+      await vi.waitFor(() =>
+        expect(manager.getTask(taskId)?.nested_session_path).toBe(
+          nestedSessionPath,
+        ),
+      );
+      manager.cancel(taskId, 'cancelled for continuation');
+      continued = continueTool
+        .execute(
+          'continue',
+          { task_id: taskId, prompt: 'resume', mode: 'task' },
+          undefined,
+          undefined,
+          ctx,
+        )
+        .then((result: any) => {
+          events.push('continued');
+          return result;
+        });
+      asking = runTool
+        .execute(
+          'run',
+          { agent: 'analyst', task: 'ask', mode: 'task' },
+          undefined,
+          undefined,
+          ctx,
+        )
+        .then((result: any) => {
+          events.push('asking');
+          return result;
+        });
+      await vi.waitFor(() =>
+        expect(
+          manager.listTasks(env.tmp).find((task) => task.agent === 'analyst')
+            ?.status,
+        ).toBe('running'),
+      );
+      ask();
+      await vi.waitFor(() => expect(events).toContain('asking'));
+      expect(deliverQuestion).not.toHaveBeenCalled();
+      releaseCleanup();
+      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
+      expect(events.indexOf('continued')).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf('continued')).toBeLessThan(
+        events.indexOf('question'),
+      );
+      expect(await continued).toMatchObject({
+        terminate: true,
+        details: { mode: 'background', task_ids: [taskId] },
+      });
+      expect(manager.getTask(taskId)).toMatchObject({
+        mode: 'background',
+        effective_mode: 'background',
+        attempt: 2,
+      });
+    } finally {
+      ask();
+      releaseCleanup();
+      finishContinuation();
+      await manager.close();
+      await Promise.all([continued, asking]);
+    }
+  });
+
   it('returns the continued task-mode question handoff before delivering the question', async () => {
     await enableContinue();
     env.writeAgent('analyst');
@@ -248,6 +399,9 @@ describe('subagent_continue tool', () => {
       expect(result.details).toMatchObject({
         mode: 'background',
         task_ids: [taskId],
+        tasks: [
+          expect.objectContaining({ id: taskId, attempt: 2, agent: 'analyst' }),
+        ],
       });
       expect(result.content[0].text).toContain('question is pending');
       expect(result.content[0].text).toContain('subagent_reply');
@@ -357,8 +511,18 @@ describe('subagent_continue tool', () => {
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
     ).toEqual([
-      ['read', 'missing_fixture_tool', 'ask_orchestrator'],
-      ['read', 'current_extension_tool', 'ask_orchestrator'],
+      [
+        'read',
+        'missing_fixture_tool',
+        'ask_orchestrator',
+        'notify_orchestrator',
+      ],
+      [
+        'read',
+        'current_extension_tool',
+        'ask_orchestrator',
+        'notify_orchestrator',
+      ],
     ]);
     const attempts = env.createHistoryStore().listTaskAttempts(env.tmp, taskId);
     expect(attempts.map((attempt) => attempt.dropped_tools)).toEqual([
@@ -568,6 +732,14 @@ describe('subagent_continue tool', () => {
     expect(abort).toHaveBeenCalledOnce();
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('cancelled by double escape');
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: first.task_ids[0],
+        agent: 'analyst',
+        attempt: 2,
+        status: 'cancelled',
+      }),
+    ]);
     expect(result.content[0].text).toContain(
       'can be resumed with `subagent_continue`',
     );
@@ -926,6 +1098,15 @@ describe('subagent_continue tool', () => {
     expect(immediateResult.content[0].text).toContain(
       'Continued 1 subagent task(s) to background',
     );
+    expect(immediateResult.details.tasks).toEqual([
+      expect.objectContaining({
+        id: taskId,
+        agent: 'analyst',
+        attempt: 2,
+        mode: 'background',
+        status: 'running',
+      }),
+    ]);
     expect(manager.getTask(taskId, env.tmp)).toMatchObject({
       attempt: 2,
       mode: 'background',
@@ -1004,6 +1185,14 @@ describe('subagent_continue tool', () => {
     expect(result.content[0].text).toContain(
       'Continued 1 subagent task(s) to background',
     );
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: first.task_ids[0],
+        agent: 'analyst',
+        attempt: 2,
+        mode: 'background',
+      }),
+    ]);
     expect(manager.getTask(first.task_ids[0]!, env.tmp)?.mode).toBe(
       'background',
     );
@@ -1106,5 +1295,11 @@ describe('subagent_continue tool', () => {
     expect(result.content[0].text).toContain(
       'missing or unreadable nested session file',
     );
+    expect(result.details.tasks).toEqual([
+      expect.objectContaining({
+        id: 'subtask_legacy_resume',
+        agent: 'analyst',
+      }),
+    ]);
   });
 });

@@ -386,13 +386,13 @@ Pi root instructions MUST use ask_user_question for material user choices, follo
 
 ### Requirement: Keep Pi progress session-owned
 
-Pi root instructions MUST use the session-local task-list tool for useful multi-step progress, with the extension owning session-local task state. That tool MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root, and Thoth-generated Pi child definitions MUST use explicit tool lists that omit that tool, while operators whose selections use globs deny it through `disallowed_tools`. A child MAY report interim progress through `ask_orchestrator` progress updates, which are recorded on its task without triggering a root turn; otherwise it reports through its return contract.
+Pi root instructions MUST use the session-local task-list tool for useful multi-step progress, with the extension owning session-local task state. That tool MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root, and Thoth-generated Pi child definitions MUST use explicit tool lists that omit that tool, while operators whose selections use globs deny it through `disallowed_tools`. A child MAY report interim progress through `notify_orchestrator`, which records it on its task without triggering a root turn or waiting for a reply; otherwise it reports through its return contract.
 
 #### Scenario: Keep Pi progress session-owned
 
 - **GIVEN** a Thoth-generated child with its default explicit tool list and the task-list tool active in the root
 - **WHEN** it launches and later has progress
-- **THEN** the task-list tool is absent from the child, and its progress update is recorded on its task without triggering a root turn
+- **THEN** the task-list tool is absent from the child, and its `notify_orchestrator` update is recorded on its task without triggering a root turn 
 
 ### Requirement: Expose complementary Pi web tools
 
@@ -434,13 +434,13 @@ Default roots MUST delegate unlocated local discovery before searching and MUST 
 
 ### Requirement: Configure adopted Pi subagents natively
 
-Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same shared list-editor shell with safe tool persistence, both registered by pi-subagents; /subagents-tools MUST persist only the definition `tools` field generically and MAY receive reset defaults and managed-file ownership validation from a registered adapter, which thoth-agents provides for its managed specialist definitions; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST edit exact tool names only, list the root's registered tools (active and inactive) and the child-provided `ask_orchestrator`, offer no dynamic `*` mode, reject `@active`, and preserve glob entries and unrecognized names unchanged on save. Tool selections MAY contain globs, where `*` is an ordinary glob; every glob expands against the root's registered tools, active and inactive, excluding the native `subagent_*` tools and the definition's `disallowed_tools`. Explicitly selected tools MUST reach the child even when inactive in the root, unless removed by configuration, `disallowed_tools` or native exclusions. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve operator tool selections including globs and an operator-set `disallowed_tools`, and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the running task's widget card and on its status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains. When thoth-agents and pi-subagents versions do not form a supported pair for /subagents-tools ownership, the user MUST receive a truthful diagnostic with upgrade guidance instead of silent command loss.
+Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same shared list-editor shell with safe tool persistence, both registered by pi-subagents; /subagents-tools MUST persist only the definition `tools` field generically and MAY receive reset defaults and managed-file ownership validation from a registered adapter, which thoth-agents provides for its managed specialist definitions; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST edit exact tool names only, list the root's registered tools (active and inactive) and the child-provided `ask_orchestrator` and `notify_orchestrator`, offer no dynamic `*` mode, reject `@active`, and preserve glob entries and unrecognized names unchanged on save. Tool selections MAY contain globs, where `*` is an ordinary glob; every glob expands against the root's registered tools, active and inactive, excluding the native `subagent_*` tools and the definition's `disallowed_tools`. Explicitly selected tools MUST reach the child even when inactive in the root, unless removed by configuration, `disallowed_tools` or native exclusions. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve operator tool selections including globs and an operator-set `disallowed_tools`, and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the running task's widget card and on its status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains. When thoth-agents and pi-subagents versions do not form a supported pair for /subagents-tools ownership, the user MUST receive a truthful diagnostic with upgrade guidance instead of silent command loss.
 
 #### Scenario: Configure adopted Pi subagents natively
 
 - **GIVEN** exact names and globs including `*` and `agent_browser_*`, with root tools that are inactive or lack a child implementation, and pi-subagents with or without the Thoth adapter
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** only the `tools` field changes, exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, the child fails only when nothing remains, and reset-to-defaults is offered only when the adapter supplies defaults
+- **THEN** only the `tools` field changes, exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, the child fails only when nothing remains, and reset-to-defaults is offered only when the adapter supplies defaults 
 
 ### Requirement: Run visible background Pi specialists
 
@@ -504,13 +504,13 @@ Default root orchestrator instructions MUST state that subagent completion notif
 
 ### Requirement: Pi children query the root orchestrator
 
-When enabled, every Pi child whose definition does not list it in `disallowed_tools` receives `ask_orchestrator` regardless of its tool selection form, may pose to its owning root a blocking question and continue in the same live session with the root's `subagent_reply` answer; non-blocking progress updates do not trigger a root turn. Pi agent definitions MAY declare `disallowed_tools`, exact tool names removed after `tools` resolution for every selection form including injected tools, while the native `subagent_*` exclusions always apply; denied names that are not installed are ignored and malformed values fail closed. Explicit exact-name `tools` lists are the default; globs, including `*`, are manual selections over all registered root tools, and `disallowed_tools` is edited manually in the definition file for injected tools and glob trimming. Pi agent definition frontmatter MUST parse as strict YAML; a definition that does not fails to load with a diagnostic and does not fall back to a lower-priority definition. Frontmatter is restricted to plain scalars, sequences and mappings; anchors, aliases, merge keys and explicit tags are errors. A definition's identity is its filename; a `name` that differs from it is an error. Selection-dependent wording elsewhere means this effective permitted selection. Thoth's generated specialist definitions use explicit tool lists, and only Oracle's declares `disallowed_tools`, denying `ask_orchestrator` to preserve independent judgment; children still never delegate.
+When enabled, every Pi child whose definition does not list it in `disallowed_tools` receives `ask_orchestrator` regardless of its tool selection form and may pose to its owning root a blocking question, continuing in the same live session with the root's `subagent_reply` answer; `ask_orchestrator` carries questions only. Independently, when `enable_notify_orchestrator` is enabled, every child whose definition does not deny it receives `notify_orchestrator`, a one-way message to its owning root that returns immediately and does not trigger a root turn. Pi agent definitions MAY declare `disallowed_tools`, exact tool names removed after `tools` resolution for every selection form including injected tools, while the native `subagent_*` exclusions always apply; denied names that are not installed are ignored and malformed values fail closed. Explicit exact-name `tools` lists are the default; globs, including `*`, are manual selections over all registered root tools, and `disallowed_tools` is edited manually in the definition file for injected tools and glob trimming. Pi agent definition frontmatter MUST parse as strict YAML; a definition that does not fails to load with a diagnostic and does not fall back to a lower-priority definition. Frontmatter is restricted to plain scalars, sequences and mappings; anchors, aliases, merge keys and explicit tags are errors. A definition's identity is its filename; a `name` that differs from it is an error. Selection-dependent wording elsewhere means this effective permitted selection. Thoth's generated specialist definitions use explicit tool lists, and only Oracle's declares `disallowed_tools`, denying `ask_orchestrator` to preserve independent judgment while keeping `notify_orchestrator`; children still never delegate.
 
 #### Scenario: Pi children query the root orchestrator
 
-- **GIVEN** `enable_ask_orchestrator` true and Thoth-generated worker and Oracle definitions
+- **GIVEN** `enable_ask_orchestrator` and `enable_notify_orchestrator` true and Thoth-generated worker and Oracle definitions
 - **WHEN** both launch
-- **THEN** only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call
+- **THEN** both receive `notify_orchestrator`, only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call 
 
 ### Requirement: Pi conversation language anchor
 
@@ -531,3 +531,43 @@ The root thoth-agents package and every Pi package under pi-packages MUST declar
 - **GIVEN** the repository manifests and root lockfile
 - **WHEN** Pi SDK dependencies are inspected
 - **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer
+
+### Requirement: Pi lean children discover a filtered skill catalog
+
+Lean Pi children MUST keep the specialist prompt and lean isolation while receiving a metadata-only skill catalog from offline native discovery for the child cwd, including user, configured package and trusted project skills and excluding untrusted project skills; an optional per-specialist `skills` filter MAY narrow it and `lean_skills: false` MAY disable it; explicit skill paths in assignments remain valid, and a specialist that cannot load a protocol-required skill MUST return a blocker.
+
+#### Scenario: Pi lean children discover a filtered skill catalog
+
+- **GIVEN** a trusted project with a designer skill and a lean designer child without a filter
+- **WHEN** the child starts
+- **THEN** its effective prompt lists that skill's name, description and location without context files or root injection
+
+### Requirement: Structured specialist results
+
+Only Oracle results that gate SDD transitions (plan review and final verification) MUST end with exactly one fenced `thoth-result` JSON envelope conforming to the gate contract, and root MUST validate it with the bundled validator before recording plan-review OKAY or final-verification PASS, treat a missing or malformed envelope as no approval, allow at most one format-only repair, and still judge the content; other Thoth specialist results use compact fields judged by root, user-defined agent results keep their own free format, and neither is rejected for format nor counts as an approval.
+
+#### Scenario: Structured specialist results
+
+- **GIVEN** an Explorer answering a user question and an Oracle final verification without a valid envelope
+- **WHEN** root evaluates both
+- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval
+
+### Requirement: Match progress concurrency to the native tool
+
+Root instructions and the bundled SDD skill MUST let the Pi root mark every concurrently active unit or task in_progress in its session task list, and MUST tell OpenCode, Codex and Claude roots to keep one in_progress item in their native progress tool.
+
+#### Scenario: Match progress concurrency to the native tool
+
+- **GIVEN** a Pi root and an OpenCode, Codex or Claude root
+- **WHEN** their root instructions and the bundled SDD skill are rendered
+- **THEN** the Pi guidance permits several concurrent in_progress items and the other harnesses keep one
+
+### Requirement: Pi subagent timeout attention and extension
+
+The Pi subagent runtime MUST warn the owning root before a running child reaches its total execution deadline with progress context, MUST first hand off every blocking task-mode call of the same parent session to background when the warned child runs in task mode, MUST ask the child to checkpoint through `notify_orchestrator` only when that tool is in the child's verified selection, MUST let the root extend the deadline only through `subagent_extend` within a configurable hard total ceiling and extension count, and MUST include available partial progress context in the terminal result of a total timeout.
+
+#### Scenario: Pi subagent timeout attention and extension
+
+- **GIVEN** a running Pi child in task or background mode approaching its deadline
+- **WHEN** the warning lead is reached
+- **THEN** task-mode calls of that parent session return as background handoffs, a checkpoint request is sent only if the child has `notify_orchestrator`, the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview 

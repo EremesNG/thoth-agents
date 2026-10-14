@@ -18,13 +18,13 @@ Durable behavior for pi-ecosystem.
 
 ### Requirement: Thoth Pi task-list extension
 
-The Thoth Pi task-list package (published under the `@thoth-agents` scope as a fork of the juicesharp rpiv 2.12.0 task-list package) MUST register the session task-list tool with the upstream 2.12.0 schema and transition rules, MUST reconstruct the session list from the branch on session start, tree navigation and compaction, MUST publish its full session snapshot on the pi-core task-list state channel after each change and in answer to a request, MUST add the open tasks to the model context before each agent start when any exist using an API detected at runtime that degrades without failing on the minimum supported Pi, and MUST show only the current session's list through its pi-core work-panel section; that Todos section MUST list the current list with completed tasks marked and a done/total counter, dropping completed tasks first on overflow with an exact `+N done` line; Enter on any Todos row, heading or summary line and the `/todos` command when custom UI is available MUST open one panel built on the pi-core history panel shell with the full current list grouped by status, while `/todos` without custom UI keeps its text output; once every task is completed the list MUST remain shown until the next recognized prompt epoch and then disappear from the section and panel without altering task state.
+The Thoth Pi task-list package (published under the `@thoth-agents` scope as a fork of the juicesharp rpiv 2.12.0 task-list package) MUST register the session task-list tool with the upstream 2.12.0 schema and transition rules extended by an atomic `batch` action whose ordered create/update/delete ops may reference tasks created earlier in the same call through call-scoped refs, and by a create-time status of the initial status, in_progress or completed, without limiting how many tasks are in progress; it MUST reconstruct the session list from the branch on session start, tree navigation and compaction, MUST publish its full session snapshot on the pi-core task-list state channel after each change and in answer to a request, MUST add the open tasks to the model context before each agent start when any exist using an API detected at runtime that degrades without failing on the minimum supported Pi, and MUST show only the current session's list through its pi-core work-panel section; that Todos section MUST list the current list with completed tasks marked and a done/total counter, dropping completed tasks first on overflow with an exact `+N done` line; Enter on any Todos row, heading or summary line and the `/todos` command when custom UI is available MUST open one panel built on the pi-core history panel shell with the full current list grouped by status, while `/todos` without custom UI keeps its text output; once every task is completed the list MUST remain shown until the next recognized prompt epoch and then disappear from the section and panel without altering task state.
 
 #### Scenario: Thoth Pi task-list extension
 
-- **GIVEN** a session list with 3 of 7 tasks completed that is later compacted
-- **WHEN** the agent starts again and the user selects the Todos `+N done` line or runs `/todos`
-- **THEN** the list is reconstructed, the open tasks are present in the model context, a fresh state snapshot is published on the pi-core task-list state channel, and a panel lists all seven tasks grouped by status with a `3/7 completed` header
+- **GIVEN** an empty session list
+- **WHEN** the agent sends one batch call creating seven tasks, two of them in_progress and one depending on another through a ref, and the list is later compacted
+- **THEN** one snapshot is published with seven tasks and both in_progress tasks, the dependency points to the created id, and the reconstructed list, model context and `/todos` panel show the same seven tasks grouped by status
 
 ### Requirement: Thoth Pi render kit
 
@@ -285,3 +285,53 @@ the shared work-panel renderer MUST decide multi-line metric wrapping from reser
 - **GIVEN** a running subagent row whose tokens, context percent, speed and elapsed values cross format boundaries such as 99→100 tok/s and 9s→10s
 - **WHEN** the work panel and the sidebar render it at any width
 - **THEN** while every value stays within its reserved range the row keeps the same number of lines and rows below it do not move
+
+### Requirement: Codemode compact rendering
+
+When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by the Thoth render kit as a card of its nested calls without replacing or wrapping Pi's builtin codemode extension.
+
+#### Scenario: Codemode compact rendering
+
+- **GIVEN** a codemode call whose details list nested calls
+- **WHEN** it renders collapsed
+- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors
+
+### Requirement: Codemode default activation
+
+The Pi installer enables codemode with mode `on` in global settings unless the user already configured codemode.
+
+#### Scenario: Codemode default activation
+
+- **GIVEN** global settings without codemode configuration
+- **WHEN** thoth-agents installs for Pi
+- **THEN** `defaultTools` selects codemode (`+codemode` additively, or plain `codemode` in an empty or replacement list) and `codemode.mode` is `on`, while existing user codemode choices and unrelated settings are preserved
+
+### Requirement: Codemode in lean subagent children
+
+A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi's public codemode extension so the tool is available, scoped to the child's selected tools.
+
+#### Scenario: Codemode in lean subagent children
+
+- **GIVEN** a lean child whose tools include `codemode` and `read`
+- **WHEN** its session starts
+- **THEN** the `codemode` tool is registered and a script can call `read`, but cannot call unselected tools or `model-only` delegation controls
+
+### Requirement: Codemode delegation boundary
+
+Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work.
+
+#### Scenario: Codemode delegation boundary
+
+- **GIVEN** codemode is active in mode `on` or `only`
+- **WHEN** the root delegates, replies to a child or asks the user, or a child asks or notifies the orchestrator
+- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script 
+
+### Requirement: Named Pi subagent model profiles
+
+Pi `/subagents-model` MUST manage named model profiles (model and effort per subagent, plus an optional root orchestrator model and effort) stored in `<agentDir>/thoth/profiles.json` and `<project>/.pi/thoth/profiles.json`, with a read-only virtual `default`, draft-until-save creation from default or another profile, project-over-global name shadowing, and effective selection session → project pin → global active → `default` applied at run time without rewriting agent definitions; `model_profiles` in `subagents.json` MUST NOT be used. A profile orchestrator MUST be applied to the current session on activation and at the start of new sessions only, MUST NOT change the model on resume, reload or fork, MUST leave the model untouched when undefined or unavailable (with a warning when unavailable), and Pi `settings.json` MUST NOT be written.
+
+#### Scenario: Named Pi subagent model profiles
+
+- **GIVEN** a global active profile `openai` and a project pin `claude` defining orchestrator `anthropic/claude-opus-5-5`
+- **WHEN** a subagent runs in that project without a session selection
+- **THEN** it uses the `claude` profile's model and effort, a new session in that project starts with `anthropic/claude-opus-5-5`, resuming an older session keeps its own model, and selecting `openai` for the session makes later runs in that session, including after resume, use `openai` without changing any config file

@@ -17,6 +17,7 @@ import {
   parseRequirementDelta,
   preflightRequirementDeltas,
 } from './durable-deltas.mjs';
+import { validateResult } from './validate-result.mjs';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const gates = [
@@ -261,10 +262,16 @@ function preflightDeltas(root, deltas, errors, warnings, recordName) {
 }
 
 function settled(text) {
-  return (
-    Boolean(text?.trim()) &&
-    !/\b(?:pending|unresolved|unknown|ask|tbd|todo)\b/i.test(text)
-  );
+  if (!text?.trim() || /\bTBD\b/.test(text)) return false;
+  return !text.split(/\r?\n/).some((line) => {
+    const content = line
+      .replace(/\*\*|__/g, '')
+      .trim()
+      .replace(/^(?:[-+*]|\d+[.)])\s+/, '')
+      .replace(/^\[[ xX]\]\s*/, '')
+      .replace(/^AC-\d+:\s*/, '');
+    return /^(?:TBD|PENDING)(?=:|\s*$)/i.test(content);
+  });
 }
 
 function coverageErrors(text, ids, errors, recordName) {
@@ -291,6 +298,184 @@ function coverageErrors(text, ids, errors, recordName) {
     );
   }
   return rows;
+}
+
+// Whole-file textual binding: Markdown containers never hide candidates or markers.
+function scanOracleEnvelope(text) {
+  let offset = 0;
+  const lines = text.split(/(?<=\n)/).map((raw) => {
+    const entry = { raw, offset, line: raw.replace(/\r?\n$/, '') };
+    if (offset === 0) entry.line = entry.line.replace(/^\uFEFF/, '');
+    offset += raw.length;
+    return entry;
+  });
+  const markers = [];
+  const fences = [];
+  const authorization = lines.findIndex(
+    ({ line }) => line === '## Authorization',
+  );
+  const verification = lines.findIndex(
+    ({ line }) => line === '## Verification',
+  );
+  const closeout = lines.findIndex(
+    ({ line }, index) => index > verification && line === '## Closeout',
+  );
+  const verificationEnd = lines.findIndex(
+    ({ line }, index) => index > verification && line.startsWith('## '),
+  );
+  for (const [index, { line }] of lines.entries()) {
+    if (line.trim() === '**Oracle envelope**:') markers.push(index);
+    const opening =
+      /^(\s*)(?:[>*+-]\s*|\d+[.)]\s*)*(`{3,}|~{3,})\s*thoth-result/i.exec(line);
+    if (!opening) continue;
+    let end = index + 1;
+    for (; end < lines.length; end++) {
+      const closing = /^(\s*)(`{3,}|~{3,})[ \t]*$/.exec(lines[end].line);
+      if (
+        closing &&
+        closing[1] === opening[1] &&
+        closing[2][0] === opening[2][0] &&
+        closing[2].length >= opening[2].length
+      )
+        break;
+    }
+    fences.push({
+      index,
+      end,
+      closed: end < lines.length,
+      block: lines
+        .slice(index, end + 1)
+        .map(({ raw }) => raw)
+        .join(''),
+    });
+  }
+  let next = markers[0] + 1;
+  while (next < lines.length && !lines[next].line.trim()) next++;
+  const positioned =
+    verification >= 0 &&
+    closeout > verification &&
+    markers[0] > verification &&
+    markers[0] < verificationEnd &&
+    fences[0]?.index === next &&
+    next < verificationEnd &&
+    (!fences[0]?.closed || fences[0].end < verificationEnd);
+  return {
+    markers,
+    fences,
+    positioned,
+    authorizationOffset: lines[authorization]?.offset,
+  };
+}
+
+function validateOracleEnvelope({
+  extraction,
+  verificationFields,
+  recordSha256,
+  reviewedDigest,
+  expectedRecord,
+  errors,
+  recordName,
+}) {
+  const { markers, fences, positioned } = extraction;
+  if (markers.length > 1 || fences.length > 1) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-DUPLICATE',
+        'Exactly one Oracle envelope marker and block are required',
+        recordName,
+      ),
+    );
+    return;
+  }
+  if (!markers.length || !fences.length || !positioned) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-MISSING',
+        'Oracle envelope marker followed by a final-verification block is required',
+        recordName,
+      ),
+    );
+    return;
+  }
+  if (!fences[0].closed) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-INVALID',
+        'Oracle envelope fence is unclosed',
+        recordName,
+      ),
+    );
+    return;
+  }
+  // Preserve the original wrapper and line endings for shared-contract validation.
+  const result = validateResult(fences[0].block, {
+    reviewKind: 'final-verification',
+    recordSha256: recordSha256,
+  });
+  if (!result.valid) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-INVALID',
+        result.issues
+          .map((entry) => `${entry.code}: ${entry.message}`)
+          .join('; '),
+        recordName,
+      ),
+    );
+    if (
+      result.issues.some((entry) => entry.code === 'RECORD_DIGEST_MISMATCH')
+    ) {
+      errors.push(
+        issue(
+          'SDD-ORACLE-ENVELOPE-DIGEST-MISMATCH',
+          'Oracle envelope digest does not match the reviewed record prefix',
+          recordName,
+        ),
+      );
+    }
+    return;
+  }
+  const { review } = result.envelope;
+  if (review.verdict !== 'PASS') {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-NOT-PASS',
+        'Oracle final-verification verdict must be PASS',
+        recordName,
+      ),
+    );
+  }
+  if (review.reviewedRecord !== expectedRecord) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-RECORD-MISMATCH',
+        `Oracle envelope must review ${expectedRecord}`,
+        recordName,
+      ),
+    );
+  }
+  if (review.reviewedRecordSha256 !== reviewedDigest) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-DIGEST-MISMATCH',
+        'Oracle envelope and Reviewed record SHA-256 field must agree',
+        recordName,
+      ),
+    );
+  }
+  const verdictLines = verificationFields.match(/^\*\*Verdict\*\*:.*$/gm) ?? [];
+  if (
+    verdictLines.length !== 1 ||
+    verdictLines[0] !== `**Verdict**: ${review.verdict}`
+  ) {
+    errors.push(
+      issue(
+        'SDD-ORACLE-ENVELOPE-VERDICT-MISMATCH',
+        'Oracle envelope and Verdict field must agree',
+        recordName,
+      ),
+    );
+  }
 }
 
 export function validate({ change, through }) {
@@ -358,7 +543,7 @@ export function validate({ change, through }) {
     !new RegExp(
       `^# Change: ${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`,
       'm',
-    ).test(text) ||
+    ).test(text.replace(/^\uFEFF/, '')) ||
     !/^\*\*Classification\*\*: substantial$/m.test(text) ||
     !/^\*\*Scope\*\*: (?:local|coordinated|cross-cutting)$/m.test(text) ||
     !/^\*\*Uncertainty\*\*: (?:low|medium|high)$/m.test(text) ||
@@ -534,9 +719,18 @@ export function validate({ change, through }) {
     }
     const verificationText =
       section(text, 'Verification', { trim: false }) ?? '';
-    const verified = verificationText.trim();
+    // Envelope contents are not record fields, AC rows, or reviewed source lines.
+    const extraction = scanOracleEnvelope(text);
+    const verificationFields =
+      through === 'closeout'
+        ? verificationText.replace(extraction.fences[0]?.block ?? '', '')
+        : verificationText;
+    const verified = verificationFields.trim();
     if (through === 'closeout') {
-      const prefix = text.slice(0, authorizationHeading?.index ?? text.length);
+      const prefix = text.slice(
+        0,
+        extraction.authorizationOffset ?? text.length,
+      );
       if (
         !/^\*\*Reviewer\*\*: oracle$/m.test(verified) ||
         !/^\*\*Independent from implementer\*\*: Yes$/m.test(verified) ||
@@ -551,7 +745,8 @@ export function validate({ change, through }) {
         );
       }
       const digestLines =
-        verificationText.match(/^\*\*Reviewed record SHA-256\*\*:.*$/gm) ?? [];
+        verificationFields.match(/^\*\*Reviewed record SHA-256\*\*:.*$/gm) ??
+        [];
       const reviewedDigest =
         digestLines.length === 1
           ? /^\*\*Reviewed record SHA-256\*\*: ([a-f0-9]{64})$/.exec(
@@ -567,6 +762,16 @@ export function validate({ change, through }) {
           ),
         );
       }
+      validateOracleEnvelope({
+        extraction,
+        verificationFields,
+        recordSha256: sha(prefix),
+        reviewedDigest,
+        // Archived records retain the active path reviewed by the Oracle.
+        expectedRecord: `.thoth/changes/${id}/${id}.md`,
+        errors,
+        recordName,
+      });
       const rows = verified
         .split(/\r?\n/)
         .filter((line) => /^- AC-/.test(line));

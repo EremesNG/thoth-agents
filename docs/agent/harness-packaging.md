@@ -77,9 +77,30 @@
   fields; they do not claim fresh-context or depth enforcement. Omitted run mode
   follows the selected definition and configuration, with background as the
   runtime fallback; an explicit `mode: "task"` continues to wait. The
-  `/subagents-model` command edits model profiles for global or project
-  definitions in their matching config scope. `model_profiles` takes precedence
-  over definition fields, configuration defaults, and the parent model/effort.
+  `/subagents-model` manages named model/effort profiles independently of
+  definition scope. Storage is global `<agentDir>/thoth/profiles.json`
+  (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) or project
+  `<project>/.pi/thoth/profiles.json`, with schema
+  `{version:1, active?, profiles:{name:{agents:{agent:{model?,effort?}}}}}`.
+  Global `active` names a global profile (or `default`); project `active` pins
+  either scope (or `default`). Selection is session → project pin → global
+  active → read-only virtual `default`, with project-over-global name shadowing
+  and warning/fallback for missing references. Profile fields override
+  definition fields, configuration defaults, then parent model/effort;
+  missing agents/fields use that fallback chain. `default` is never stored
+  and exposes definition/shipped values without overrides. Session selection
+  persists in the Pi session across reload/resume; switching applies at run
+  time to new runs/continuations without rewriting definitions. The old
+  `model_profiles` field in `subagents.json` is no longer used.
+  Keys: ←/→ browse profiles, ↑/↓ agents, Enter edit, `n` new, `c` clone,
+  `s` save, `r` rename, `d` delete, `u` session, `g` global active, `p` project
+  pin. New/cloned profiles are drafts until save; unedited new saves copy all
+  listed agents' default effective model/effort into a self-contained profile.
+  Editing `default` offers creation instead; rename/delete are forbidden.
+  Referenced deletion confirms and clears active/pin pointers; unsaved close
+  confirms discard. Non-overlay fallbacks only list/activate. See
+  [installation](../installation.md#configure-subagent-model-profiles-inside-pi)
+  for panel and storage details.
   pi-subagents registers both `/subagents-model` and `/subagents-tools`; the
   tools command lives in `pi-packages/pi-subagents/src/tools-panel/`, not the
   root extension. It edits the resolved global/project definitions, changing
@@ -95,31 +116,40 @@
   There is no `*` control or dynamic mode. The registry also publishes command
   ownership: new Thoth warns once at session start when it is absent, and new
   pi-subagents warns about duplicate owners exposed by Pi's command registry.
-  Upgrade both packages together and `/reload`; `0.3.0` is the first
-  command-owning pi-subagents release. A child-provided `ask_orchestrator` note
-  describes the channel as subject to `enable_ask_orchestrator` and
-  `disallowed_tools`; it is not a checkbox. The panel does not read runtime
+  The operator upgrade pairs both packages and finishes with `/reload`; `0.3.0`
+  is the first command-owning pi-subagents release. Child-provided
+  `ask_orchestrator` and `notify_orchestrator` notes describe the channels as
+  subject to their respective `enable_ask_orchestrator` and
+  `enable_notify_orchestrator` flags and `disallowed_tools`; they are not checkboxes. The panel does not read runtime
   configuration or edit denials.
-  Generated defaults are explicit: `read, bash, grep, find, ls` for Explorer and
-  Oracle; Designer and Worker add `edit, write` before the search tools;
-  Librarian adds its research tools. All omit `ask_user_question`, `todo` and
+  Generated defaults are explicit: `read, bash, grep, find, ls` for Oracle;
+  Explorer adds `codemode`; Designer and Worker add `edit, write` before the
+  search tools; Librarian adds its research tools and `codemode`. All omit `ask_user_question`, `todo` and
   third-party delegation tools. Every enabled child receives `ask_orchestrator`
   regardless of selection form unless denied. Only Oracle's generated definition
-  declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment.
+  declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment
+  while keeping `notify_orchestrator`. All five roles receive notify guidance.
   Other harnesses are unchanged. Manual advanced globs, including `*`, expand
   against all registered root tools (active and inactive), minus native
   `subagent_*` exclusions and the definition's `disallowed_tools`.
   `disallowed_tools` is a comma-separated string or YAML list of exact names,
-  subtracted after resolution, including injected tools. Edit it manually for
-  injected tools absent from the panel and for trimming glob results. Absent or
+  subtracted after resolution, including injected tools. Manual frontmatter
+  editing covers injected tools absent from the panel and trimming glob results.
+  Absent or
   explicitly empty means no denial; malformed values fail closed and uninstalled denied
   names are inert. Native exclusions cover only `subagent_*` tools.
   `enable_ask_orchestrator` defaults to true and gates both the child tool and
   root's `subagent_reply`; false removes both. `ask_timeout_ms` defaults to
-  600000. Questions block for root's reply; optional brief progress updates are
-  recorded on the task without triggering a root turn. If the channel is
-  unavailable, children use their return contract's `openQuestions`, not a user
-  dialog or delegation.
+  600000. `ask_orchestrator({ message })` carries only questions and blocks for
+  root's reply. Independently, `enable_notify_orchestrator` defaults to true
+  (global/project cascade) and injects `notify_orchestrator({ message })` unless
+  denied. It returns immediately, records progress/checkpoint information on the
+  task (latest five updates), and triggers no root turn or reply. Timeout checkpoint
+  steering uses notify only when it is in the child's verified tool selection.
+  If the question channel is
+  unavailable, the rendered child fallback is owned by
+  `src/agents/prompt-dialects.ts` and `AGENT_RETURN_CONTRACT` in
+  `src/harness/core/agent-pack.ts`; tests: `src/harness/adapters/pi.test.ts`.
   Tool filtering is not a sandbox: shell and MCP tools can still launch agents
   indirectly. `src/cli/pi-tool-config.ts` supplies the Thoth adapter's
   managed-file validation and defaults; pi-subagents owns panel persistence.
@@ -135,7 +165,7 @@
   implementation are dropped and reported as durable warnings on the running
   widget card and in status/results/completion while the child uses the available
   subset. An empty effective permitted selection or unexpected extra child tools
-  still fails; an injected `ask_orchestrator` alone can keep the selection nonempty.
+  still fails; either injected orchestrator tool alone can keep the selection nonempty.
   Explicit names and tools matched by globs reach the child even when inactive
   in the root, allowing roles to activate deferred or advanced tools. Globs are
   edited manually in definition frontmatter. Native TUI/AI modules are declared public peers and
@@ -169,7 +199,21 @@
   Global `<agent-dir>/subagents.json` therefore requests
   `session_resources: "lean"` and `enable_continue: false`; lean filters
   `before_agent_start` and `session_start`, while full child resources are
-  unsupported. Trusted packages in `lifecycle_passthrough` (default: the two
+  unsupported. Lean children retain their specialist prompt and receive a
+  metadata-only skill catalog (name, description, location), not skill bodies,
+  context files, prompt templates, themes, or root injection. Discovery uses
+  native user skills, configured packages, and trusted project/ancestor skills
+  for the child cwd, offline without installing packages. Parent project trust
+  is reused for children inside that project; other child directories consult
+  persisted native trust, with unknown trust treated as untrusted. Discovery
+  failures produce diagnostics; `disable-model-invocation` skills stay hidden.
+  Optional agent frontmatter `skills` lists names or globs: omitted means all
+  discovered skills, `[]` means none, and unmatched entries produce diagnostics.
+  Thoth config `agents.<role>.skills` generates that Pi-only field; sync preserves
+  operator-edited filters. Global/project `lean_skills` defaults to true;
+  `lean_skills: false` disables child catalogs without enabling full resources.
+  Explicit assignment paths remain available alongside catalog discovery.
+  Trusted packages in `lifecycle_passthrough` (default: the two
   provider bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
   thoth-agents) are the exception: they keep their full lifecycle in children,
   with prompt-shaping events observe-only as defense in depth except that a
@@ -183,18 +227,42 @@
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app
   uses `pi-mcp-adapter`, through the exact attributable global server entry.
 - Pi safely merges `session_resources: "lean"` and `enable_continue: false`
-  into global `subagents.json` without replacing unrelated keys. Detected
+  into global `subagents.json` without replacing unrelated keys, including an
+  operator's `lean_skills` choice; Thoth does not write that default. Detected
   incumbent `pi-subagents` or former `pi-subagents-j0k3r` packages block before
   mutation with manual recovery; setup never removes them or installs both
   delegation runtimes.
 - Pi requires the first-party `@thoth-agents/pi-questions-user` provider of
   `ask_user_question` for root-owned interaction; the CLI also
-  installs the first-party `@thoth-agents/pi-todo` task extension. Progress
-  instructions use any available task tool through its actual contract, or
-  written progress when unavailable; children report to root.
-  Only root and librarian receive `web_search`, `fetch_content`,
-  `get_search_content`, and `source_check` guidance, and package presence remains
-  distinct from live UI/provider availability.
+  installs the first-party `@thoth-agents/pi-todo` task extension. Role-specific
+  progress and research guidance is rendered by `src/agents/prompt-sections.ts`
+  and `src/agents/prompt-dialects.ts`; tests: `src/agents/prompt-rendering.test.ts`.
+  Package presence remains distinct from live UI/provider availability.
+
+## Pi codemode
+
+The Pi installer fills global `settings.json` codemode defaults after native
+package installs, re-reading the file so package entries and unrelated settings
+are preserved. An absent `defaultTools` becomes `["+codemode"]`; a non-empty list
+containing only `+`/`-` selectors gains `+codemode`. Empty or replacement lists
+gain plain `codemode`. Existing `codemode`, `+codemode` or `-codemode` entries
+are unchanged. An absent `codemode.mode` becomes `"on"`; existing modes and nested
+fields such as `inlineBudget` are preserved. Reinstallation is idempotent, and
+managed-write safety rejects symlinked settings.
+
+With theme tool rendering enabled, pi-thoth-theme renders the builtin codemode
+tool as a compact card of nested calls (name, status and duration; up to eight
+collapsed, plus a remaining count). Expansion shows the script, output and
+errors. The renderer does not replace or wrap Pi's builtin implementation.
+Explorer and Librarian select codemode by default; lean children with codemode
+selected load Pi's public codemode extension in mode `on`, scoped to their other
+selected tools.
+
+Batch independent script-callable reads, research and memory work through
+codemode. Delegation controls, `ask_orchestrator`, `notify_orchestrator` and `ask_user_question` are
+`model-only`: call them directly, never from scripts. They remain direct under
+both `on` and user-selected `only`. Task-list and background-task tools remain
+script-callable; the boundary does not exclude all control-plane tools.
 
 ## Pi question dock and editor slot
 
@@ -256,8 +324,9 @@ truncation. The optional degrading `metricLayout: 'columns'` remains available.
 Semantic metric
 icons include `elapsed`; ASCII retains labels. Selection, focus and keys are unchanged.
 
-Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
-`/reload`. The version-independent ownership slot remains first-owner-wins:
+The v2 upgrade procedure pairs pi-subagents, pi-background-tasks and pi-todo
+at `>=0.3.0`, followed by `/reload`. The version-independent ownership slot
+remains first-owner-wins:
 incompatible v1/v2 copies install no host, register no section and expose no
 discovery, so mixed versions hide incompatible sections regardless of load order.
 Subagent state is v2; background state, usage, requests and Render KIT remain v1. See
@@ -319,7 +388,8 @@ stack shapes conservatively use `hasOverlay()`.
 Unversioned editor-slot/work-panel ownership remains first-owner-wins. Old
 closures cannot be upgraded in place: the regular adapter refuses detected
 pre-feature owners instead of blocking editor input; old fullscreen hosts may
-not honor absorption. Upgrade related extensions together and `/reload`.
+not honor absorption. The compatible upgrade pairs related extensions and
+finishes with `/reload`.
 See [controls, config schema and limitations](../../pi-packages/pi-sidebar/README.md),
 [core APIs](../../pi-packages/pi-core/README.md#sidebar-ui-preferences-and-decorative-overlays)
 and [closeout checks](testing.md#local-closeout-gate). Provider quota panels
@@ -355,9 +425,10 @@ executable options, times out after 30 seconds and closes its CLI query on all
 paths. Missing API/plan data is reported explicitly; nothing periodically fetches
 quota or puts it in sidebar state. `/agy quota` remains the Antigravity command.
 agy 1.3.2 starts configured global MCP servers even in print-mode `/usage`, despite
-custom-agent MCP exclusions. On Windows their `.cmd` shims may flash; prefer
-native executables or `node.exe` with the server's actual JS entrypoint where
-supported. This is upstream process startup, not a bridge spawn-option change;
+custom-agent MCP exclusions. On Windows their `.cmd` shims may flash; a possible
+operator workaround uses native executables or `node.exe` with the server's
+actual JS entrypoint where supported. This is upstream process startup, not a
+bridge spawn-option change;
 a visible flash and this workaround still need live validation. See
 [Claude quota](../../pi-packages/pi-claude-bridge/README.md#rate-limits-and-claude-quota)
 and [Windows quota diagnosis](../../pi-packages/pi-antigravity-bridge/README.md#windows-quota-console-diagnosis).
@@ -416,9 +487,10 @@ subscriptions. See [pi-core's exact payload contracts](../../pi-packages/pi-core
 
 The raw `thoth:subagent-usage` bus event and raw request handler are removed;
 only its checkpoint custom-entry discriminator is retained. The status line
-subscribes to the usage envelope and requests it on session start. Upgrade
-pi-subagents and pi-thoth-theme to `>=0.3.0` together and `/reload`; mixed old/new
-versions lose the subagent cost display. No dual publication is provided.
+subscribes to the usage envelope and requests it on session start. The compatible
+upgrade pairs pi-subagents and pi-thoth-theme at `>=0.3.0`, followed by `/reload`;
+mixed old/new versions lose the subagent cost display. No dual publication is
+provided.
 
 ## Pi Render KIT and workspace releases
 
@@ -461,7 +533,7 @@ as legacy terminal sequences.
 See [the panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor).
 
 Pi packages are versioned and published independently of the root package.
-Use `pnpm pack` / `pnpm publish` to convert `workspace:^` dependencies to semver
+`pnpm pack` / `pnpm publish` converts `workspace:^` dependencies to semver
 ranges.
 
 ### Release flow
@@ -514,8 +586,9 @@ npmjs.com/org/create), a fresh `pnpm login` after creating it (older tokens may
 lack write access to the new scope and also yield `E404`), and a clean checkout of the merged commit with
 `pnpm install --frozen-lockfile`.
 
-Publish in dependency order, each from its own directory (pnpm rewrites
-`workspace:^`; it prompts for an OTP, or pass `--otp <code>`):
+The bootstrap procedure publishes in dependency order, each from its own
+directory (pnpm rewrites `workspace:^`; its OTP prompt also accepts
+`--otp <code>`):
 
 ```
 cd pi-packages/<pkg>
@@ -528,26 +601,26 @@ pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme, pi-sideba
 
 New packages can take a few minutes to appear in public registry reads
 (`npm view` returns `E404` meanwhile; `npm access list packages @thoth-agents`
-already lists them). Wait until all versions are visible before cutting the root
-release: the release decides what to publish from registry reads, and republishing
+already lists them). The root release follows visibility of all versions: the
+release decides what to publish from registry reads, and republishing
 an existing version fails the run before the root is published.
 
-Then, per package:
+Per-package trusted-publisher configuration follows publication:
 
 ```
 npm trust github @thoth-agents/<pkg> --file release.yml --repository EremesNG/thoth-agents --yes --allow-publish
 ```
 
-Verify flag names with `npm trust --help` (syntax: `npm trust github [package]
+`npm trust --help` documents flag names (syntax: `npm trust github [package]
 --file [--repo|--repository] [--env|--environment] [--allow-publish]
 [--allow-stage-publish] [-y|--yes]`). Configurations created after 2026-09-03
 default to stage-publish only, so `--allow-publish` is needed for direct
-`npm publish` from CI. Confirm on npmjs.com → package → Settings → Trusted
-publishing. The root `thoth-agents` trusted publisher must also reference
+`npm publish` from CI. Confirmation is available on npmjs.com → package →
+Settings → Trusted publishing. The root `thoth-agents` trusted publisher also references
 `release.yml` (already in use).
 
-For the new sidebar specifically, from a clean merged checkout after the frozen
-install and build. The sidebar bundle inlines pi-core, so pi-core does not need
+The sidebar bootstrap uses a clean merged checkout after the frozen install
+and build. The sidebar bundle inlines pi-core, so pi-core does not need
 to be published first:
 
 ```sh
@@ -557,10 +630,10 @@ npm view @thoth-agents/pi-sidebar@0.3.0 version
 npm trust github @thoth-agents/pi-sidebar --file release.yml --repository EremesNG/thoth-agents --yes --allow-publish
 ```
 
-Confirm the sidebar's npm Settings → Trusted publishing references this
-repository and `release.yml` with direct publishing enabled. Wait until registry
-reads see 0.3.0 before cutting the next approved root release. Do not republish an
-existing version or bump versions merely to run the local gate. The next root
+The sidebar's npm Settings → Trusted publishing configuration references this
+repository and `release.yml` with direct publishing enabled. The next approved
+root release follows registry visibility of 0.3.0. Republishing an existing
+version fails; local validation does not require version bumps. The next root
 tag triggers `release.yml`; reconciliation creates missing package tags/releases
 for manually bootstrapped versions, and later versions use trusted publishing.
 

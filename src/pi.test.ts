@@ -308,6 +308,12 @@ describe('native Pi extension', () => {
     expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_START);
     expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_END);
     expect(systemPromptOptions.appendSystemPrompt).toContain('<pi-runtime>');
+    expect(systemPromptOptions.appendSystemPrompt).toContain(
+      'When `codemode` is available, batch independent reads, research and memory calls in one script',
+    );
+    expect(systemPromptOptions.appendSystemPrompt).toContain(
+      'delegation (`subagent_*`), child replies and user questions stay direct calls',
+    );
     expect(systemPromptOptions.customPrompt).toBe('user replacement prompt');
     expect(systemPromptOptions).not.toHaveProperty('forceSystemPrompt');
     expect(event.systemPrompt).toBe('user replacement prompt');

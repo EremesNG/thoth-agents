@@ -16,8 +16,12 @@ beforeEach(() => {
       constructor(...args: any[]) {
         deliverQuestion = args[6];
         Object.assign(this, {
+          setSessionModelProfile: vi.fn(),
           reconcileOrphanedTasks: vi.fn(),
           close: vi.fn(),
+          clearResultAcknowledgmentCandidates: vi.fn(),
+          resetResultAcknowledgments: vi.fn(),
+          isQuestionPending: () => true,
         });
       }
     } as unknown as typeof SubagentManager,
@@ -122,13 +126,13 @@ describe('question message render and delivery', () => {
     const { pi, handlers } = install();
     handlers.get('session_start')!(
       {},
-      { cwd: env.tmp, sessionId: 'parent-a', ui: {} },
+      { cwd: env.tmp, sessionId: 'parent-a', ui: {}, isIdle: () => true },
     );
     deliverQuestion(task, question);
     expect(pi.sendMessage).toHaveBeenCalledOnce();
     handlers.get('session_start')!(
       {},
-      { cwd: env.tmp, sessionId: 'parent-b', ui: {} },
+      { cwd: env.tmp, sessionId: 'parent-b', ui: {}, isIdle: () => true },
     );
     expect(() => deliverQuestion(task, question)).toThrow(
       /originating parent.*no longer active/,
@@ -136,7 +140,7 @@ describe('question message render and delivery', () => {
     expect(pi.sendMessage).toHaveBeenCalledOnce();
     handlers.get('session_start')!(
       {},
-      { cwd: env.tmp, sessionId: 'parent-a', ui: {} },
+      { cwd: env.tmp, sessionId: 'parent-a', ui: {}, isIdle: () => true },
     );
     pi.sendMessage.mockImplementation(() => {
       throw new Error('extension ctx is stale');

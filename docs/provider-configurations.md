@@ -7,11 +7,11 @@ ZAI/GLM, and mixed-provider mappings are intentionally absent.
 
 | Role | Model | Effort/variant |
 | --- | --- | --- |
-| `orchestrator` | `openai/gpt-6-sol` | `xhigh` |
-| `explorer` | `openai/gpt-6-luna` | `low` |
-| `librarian` | `openai/gpt-6-luna` | `high` |
-| `oracle` | `openai/gpt-6-astra` | `medium` |
-| `designer` | `openai/gpt-6-sol` | `medium` |
+| `orchestrator` | `openai/gpt-6.1-sol` | `high` |
+| `explorer` | `openai/gpt-6-luna` | `max` |
+| `librarian` | `openai/gpt-6-luna` | `max` |
+| `oracle` | `openai/gpt-6.1-sol` | `xhigh` |
+| `designer` | `openai/gpt-6-luna` | `max` |
 | `worker` | `openai/gpt-6-luna` | `max` |
 
 Model IDs and supported variants remain subject to the active harness catalog.

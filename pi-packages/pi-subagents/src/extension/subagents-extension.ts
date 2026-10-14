@@ -14,7 +14,14 @@ import {
 } from '../atelier-metadata.js';
 import { readSubagentsConfig, subagentSourceWarnings } from '../config.js';
 import { SubagentManager } from '../manager.js';
+import { applyProfileOrchestrator } from '../model-profiles/orchestrator.js';
+import { SessionModelProfile } from '../model-profiles/session.js';
+import { ModelProfileStore } from '../model-profiles/store.js';
 import { runSubagentModelsCommand } from '../model-profiles-ui.js';
+import {
+  renderSubagentAttentionMessage,
+  sendSubagentAttentionMessage,
+} from '../render/attention-message.js';
 import {
   renderSubagentCompletionMessage,
   sendSubagentCompletionMessage,
@@ -28,6 +35,7 @@ import {
   preloadPiComponentsForSubagentRendering,
   registerSubagentExternalToolDefinition,
 } from '../thread-view.js';
+import { triggerTaskBackgroundHandoff } from '../tools/background-handoff-state.js';
 import {
   registerSubagentTools,
   triggerClaudeBackgroundHandoff,
@@ -79,10 +87,24 @@ export default function subagentsExtension(pi: any): void {
     renderSubagentCompletionMessage,
   );
   pi.registerMessageRenderer?.(
+    'subagent-attention',
+    renderSubagentAttentionMessage,
+  );
+  pi.registerMessageRenderer?.(
     'subagent-question',
     renderSubagentQuestionMessage,
   );
   let activeSessionId: string | undefined;
+  let rootRunActive = false;
+  let notificationCtx: ExtensionContext | undefined;
+  // Pi followUps cannot be selectively cancelled once queued during a turn.
+  const notificationOutbox: Array<() => void> = [];
+  const deliverNotification = (send: () => void) => {
+    // signal is live before our agent_start handler, unlike the event-owned flag.
+    // Compaction/tree controllers are separate and do not appear in ctx.signal.
+    if (rootRunActive || notificationCtx?.signal) notificationOutbox.push(send);
+    else send();
+  };
   let activeSessionOwner: AtelierSessionOwner | undefined;
   const usageEvents = pi.events
     ? new SubagentUsageEvents(
@@ -92,7 +114,7 @@ export default function subagentsExtension(pi: any): void {
           : undefined,
       )
     : undefined;
-  const manager = new SubagentManager(
+  const manager: SubagentManager = new SubagentManager(
     undefined,
     undefined,
     (task, cwd) => {
@@ -101,11 +123,15 @@ export default function subagentsExtension(pi: any): void {
           ? task.session_id
           : undefined;
       if (taskSessionId && taskSessionId !== activeSessionId) return;
-      try {
-        sendSubagentCompletionMessage(pi, task, cwd);
-      } catch (error) {
-        if (!isStaleContextError(error)) throw error;
-      }
+      deliverNotification(() => {
+        if (taskSessionId && taskSessionId !== activeSessionId) return;
+        if (manager.isResultAcknowledged(task)) return;
+        try {
+          sendSubagentCompletionMessage(pi, task, cwd);
+        } catch (error) {
+          if (!isStaleContextError(error)) throw error;
+        }
+      });
     },
     undefined,
     new AtelierMetadataWriter({
@@ -121,17 +147,48 @@ export default function subagentsExtension(pi: any): void {
         throw new Error(
           'The originating parent Pi session is no longer active.',
         );
-      try {
-        sendSubagentQuestionMessage(pi, task, question);
-      } catch (error) {
-        if (isStaleContextError(error))
-          throw new Error(
-            'Parent Pi session shutdown or replacement prevents question delivery.',
-          );
-        throw error;
-      }
+      deliverNotification(() => {
+        if (task.session_id !== activeSessionId) return;
+        if (!manager.isQuestionPending(task.id, question.request_id)) return;
+        try {
+          sendSubagentQuestionMessage(pi, task, question);
+        } catch (error) {
+          if (isStaleContextError(error))
+            throw new Error(
+              'Parent Pi session shutdown or replacement prevents question delivery.',
+            );
+          throw error;
+        }
+      });
     },
+    (task, _cwd, attempt, generation) => {
+      const sessionId = task.session_id;
+      if (!sessionId || sessionId !== activeSessionId) return;
+      deliverNotification(() => {
+        if (
+          sessionId !== activeSessionId ||
+          task.session_id !== sessionId ||
+          !manager.isAttentionCurrent(task.id, attempt, generation)
+        )
+          return;
+        try {
+          sendSubagentAttentionMessage(pi, task);
+        } catch (error) {
+          if (!isStaleContextError(error)) throw error;
+        }
+      });
+    },
+    (taskId) => triggerTaskBackgroundHandoff(manager, taskId, 'attention'),
   );
+  const sessionModelProfile = new SessionModelProfile(
+    typeof pi.appendEntry === 'function'
+      ? (type, data) => pi.appendEntry(type, data)
+      : undefined,
+  );
+  const setSessionModelProfile = (profile?: string) => {
+    sessionModelProfile.set(profile);
+    manager.setSessionModelProfile(sessionModelProfile.get());
+  };
   registerSubagentTools(pi, manager, process.cwd());
   const taskStateEvents = pi.events
     ? new SubagentsStatePublisher(pi.events, manager)
@@ -176,7 +233,44 @@ export default function subagentsExtension(pi: any): void {
     panelCtx = undefined;
   };
 
-  pi.on?.('session_start', async (_event: unknown, ctx: any) => {
+  // turn_end carries final tool messages after every message_end interceptor.
+  pi.on?.('turn_end', (event: any, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) === activeSessionId)
+      manager.confirmResultAcknowledgments(event.toolResults ?? []);
+  });
+
+  pi.on?.('agent_start', (_event: unknown, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) === activeSessionId) rootRunActive = true;
+  });
+
+  pi.on?.('agent_settled', (_event: unknown, ctx: ExtensionContext) => {
+    if (currentSessionId(ctx) !== activeSessionId) return;
+    manager.clearResultAcknowledgmentCandidates();
+    while (notificationOutbox.length) {
+      const send = notificationOutbox.shift();
+      try {
+        send?.();
+      } catch (error) {
+        console.error(
+          '[pi-subagents] Failed to deliver parent notification:',
+          error,
+        );
+      }
+    }
+    rootRunActive = false;
+  });
+
+  pi.on?.('session_start', async (event: any, ctx: any) => {
+    notificationOutbox.length = 0;
+    rootRunActive = false;
+    notificationCtx = ctx;
+    manager.resetResultAcknowledgments();
+    sessionModelProfile.restore(
+      ctx?.sessionManager?.getBranch?.() ??
+        ctx?.sessionManager?.getEntries?.() ??
+        [],
+    );
+    manager.setSessionModelProfile(sessionModelProfile.get());
     checkToolsOwnership(ctx);
     if (ctx.hasUI && !publication)
       publication = publishToolDefinitions(definitions);
@@ -194,8 +288,28 @@ export default function subagentsExtension(pi: any): void {
     const cwd = ctx?.cwd ?? process.cwd();
     manager.reconcileOrphanedTasks(cwd);
     taskStateEvents?.startSession(cwd, sessionId);
-    for (const warning of subagentSourceWarnings(cwd))
+    const store = new ModelProfileStore({ cwd, agentDir: ctx?.agentDir });
+    for (const warning of [
+      ...subagentSourceWarnings(cwd),
+      ...store.resolve(sessionModelProfile.get()).warnings,
+    ])
       ctx?.ui?.notify?.(warning, 'warning');
+    // Full history matters: a branch reset can hide existing messages.
+    const history = ctx?.sessionManager?.getEntries?.();
+    const isNew =
+      event?.reason === 'new' ||
+      (event?.reason === 'startup' &&
+        Array.isArray(history) &&
+        !history.some((entry: any) => entry.type === 'message'));
+    if (isNew) {
+      const outcome = await applyProfileOrchestrator(
+        pi,
+        ctx,
+        store.resolve().profile,
+      );
+      if (outcome.status === 'unavailable' || outcome.status === 'clamped')
+        ctx?.ui?.notify?.(outcome.message, 'warning');
+    }
     panelCtx = ctx;
     registerSubagentsPanelOpener((taskId?: string) =>
       openPanel(panelCtx ?? ctx, taskId),
@@ -227,6 +341,10 @@ export default function subagentsExtension(pi: any): void {
     pi.on?.('agent_end', () => usageEvents.flush());
 
   pi.on?.('session_shutdown', async () => {
+    notificationOutbox.length = 0;
+    rootRunActive = false;
+    notificationCtx = undefined;
+    manager.resetResultAcknowledgments();
     publication?.withdraw();
     publication = undefined;
     activeSessionId = undefined;
@@ -295,7 +413,27 @@ export default function subagentsExtension(pi: any): void {
   pi.registerCommand?.('subagents-model', {
     description: 'Configure subagent model profiles',
     handler: async (_args: string, ctx: any) =>
-      runSubagentModelsCommand({ ...ctx, pi }),
+      // Preserve native context getters instead of freezing them with a spread.
+      runSubagentModelsCommand(
+        Object.assign(Object.create(ctx), {
+          pi,
+          getSessionModel: () => ctx.model,
+          getSessionThinkingLevel: () => pi.getThinkingLevel(),
+          getSessionModelProfile: () => sessionModelProfile.get(),
+          setSessionModelProfile,
+          applyEffectiveProfileOrchestrator: () => {
+            const store = new ModelProfileStore({
+              cwd: ctx.cwd ?? process.cwd(),
+              agentDir: ctx.agentDir,
+            });
+            return applyProfileOrchestrator(
+              pi,
+              ctx,
+              store.resolve(sessionModelProfile.get()).profile,
+            );
+          },
+        }),
+      ),
   });
   const checkToolsOwnership = registerToolsCommand(pi);
 }

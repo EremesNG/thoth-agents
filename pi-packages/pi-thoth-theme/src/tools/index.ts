@@ -9,6 +9,7 @@ import {
   type ThemeConfig,
 } from '../shared/config.ts';
 import { createCustomBashTool } from './bash.ts';
+import { createCodemodeRenderer } from './codemode.ts';
 import { createCustomEditTool } from './edit.ts';
 import { createCustomFindTool } from './find.ts';
 import { createGenericTool } from './generic.ts';
@@ -31,6 +32,7 @@ export function createToolRendererResolver(
   cwd = process.cwd(),
 ): ToolRendererResolver {
   const renderers = new Map<string, ToolRenderers>([
+    ['codemode', createCodemodeRenderer(config)],
     ['read', createCustomReadTool(cwd, config)],
     ['bash', createCustomBashTool(cwd, config)],
     ['powershell', createCustomPowerShellTool(cwd, config)],

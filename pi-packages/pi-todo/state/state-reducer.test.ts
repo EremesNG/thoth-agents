@@ -334,3 +334,34 @@ describe('isTransitionValid', () => {
     expect(isTransitionValid('completed', 'deleted')).toBe(true);
   });
 });
+
+describe('create-time status', () => {
+  it.each([
+    'pending',
+    'in_progress',
+    'completed',
+  ] as const)('honors %s on create without an in_progress limit', (status) => {
+    const initial = stateWith(
+      task({ id: 1, subject: 'Already running', status: 'in_progress' }),
+    );
+    const result = applyTaskMutation(initial, 'create', {
+      subject: 'New',
+      status,
+    });
+    expect(result.op.kind).toBe('create');
+    expect(result.state.tasks[1].status).toBe(status);
+    expect(initial.tasks).toHaveLength(1);
+  });
+  it('rejects deleted on create', () => {
+    const initial = emptyState();
+    const result = applyTaskMutation(initial, 'create', {
+      subject: 'New',
+      status: 'deleted',
+    });
+    expect(result.op).toEqual({
+      kind: 'error',
+      message: 'create status must be pending, in_progress or completed',
+    });
+    expect(result.state).toBe(initial);
+  });
+});

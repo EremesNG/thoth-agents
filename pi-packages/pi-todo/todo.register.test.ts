@@ -51,7 +51,41 @@ describe('registerTodoTool — registration shape', () => {
     expect((tool.promptGuidelines as string[]).length).toBeGreaterThan(0);
   });
 
-  it('exposes a typebox parameters schema declaring the six actions', () => {
+  it('puts proactive usage and status timing in the description for bridge consumers', () => {
+    const { tool } = setup();
+    expect(tool.description).toContain(
+      'Use for requests with 3+ steps, user-given task lists, delegated work units or SDD phases; capture requirements right after new instructions.',
+    );
+    expect(tool.description).toContain(
+      'Create items up front, mark in_progress BEFORE starting, and complete as soon as done. Parallel tasks may be in_progress together.',
+    );
+    expect(tool.description).toContain(
+      'Skip single trivial tasks and purely conversational turns.',
+    );
+    for (const action of [
+      'create',
+      'update',
+      'list',
+      'get',
+      'delete',
+      'clear',
+      'batch',
+    ]) {
+      expect(tool.description).toContain(action);
+    }
+    expect(tool.description).toContain('pending → in_progress → completed');
+    const guidance = [
+      tool.description,
+      tool.promptSnippet,
+      ...(tool.promptGuidelines ?? []),
+    ].join(' ');
+    expect(guidance).toContain('refs');
+    expect(guidance).toContain('50');
+    expect(guidance).not.toMatch(/exactly one|never batch completions/);
+    expect(guidance).toContain('"action":"batch"');
+  });
+
+  it('exposes a typebox parameters schema declaring the seven actions', () => {
     const { tool } = setup();
     const raw = JSON.stringify(tool.parameters);
     for (const action of [
@@ -61,6 +95,7 @@ describe('registerTodoTool — registration shape', () => {
       'get',
       'delete',
       'clear',
+      'batch',
     ]) {
       expect(raw).toContain(action);
     }
@@ -196,5 +231,51 @@ describe('registerTodoTool — renderResult', () => {
       undefined as never,
     );
     expect(node?.render(120).join(' ')).toContain('✓');
+  });
+});
+
+describe('batch rendering', () => {
+  it('renders batch op count and expands per-op outcomes under summary counts', async () => {
+    const { tool } = setup();
+    const args = {
+      action: 'batch',
+      ops: [
+        {
+          action: 'create',
+          subject: 'Root',
+          ref: 'root',
+          status: 'in_progress',
+        },
+        { action: 'create', subject: 'Child', blockedBy: ['root'] },
+        { action: 'update', id: 'root', subject: 'Updated root' },
+        { action: 'delete', id: 2 },
+      ],
+    };
+    expect(
+      tool
+        .renderCall?.(args as never, theme, undefined as never)
+        ?.render(160)
+        .join(' '),
+    ).toContain('batch · 4 ops');
+    const result = await call(tool, args);
+    const collapsed = tool
+      .renderResult?.(result as never, {} as never, theme, undefined as never)
+      ?.render(160)
+      .join('\n');
+    expect(collapsed).toContain('batch · 2 created, 1 updated, 1 deleted');
+    expect(collapsed).toContain('ctrl+o to expand');
+    expect(collapsed).not.toContain('op[0]');
+    const expanded = tool
+      .renderResult?.(
+        result as never,
+        { expanded: true } as never,
+        theme,
+        undefined as never,
+      )
+      ?.render(160)
+      .join('\n');
+    expect(expanded).toContain('op[0] create #1 (ref: root)');
+    expect(expanded).toContain('op[2] update #1');
+    expect(expanded).toContain('op[3] delete #2');
   });
 });

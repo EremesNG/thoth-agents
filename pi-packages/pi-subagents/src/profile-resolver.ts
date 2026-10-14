@@ -1,3 +1,7 @@
+import {
+  type ModelProfileSelection,
+  ModelProfileStore,
+} from './model-profiles/store.js';
 import type {
   EffectiveSubagentProfile,
   ModelRef,
@@ -50,31 +54,12 @@ function field<T>(
   return { value, source, label: profileSourceLabel(source, value, format) };
 }
 
-function profileForDefinition(
-  definition: SubagentDefinition,
-  config: SubagentsConfig,
-) {
-  if (definition.scope === 'project')
-    return (
-      config.project_model_profiles?.[definition.name] ??
-      (config.project_model_profiles
-        ? undefined
-        : config.model_profiles[definition.name])
-    );
-  return (
-    config.global_model_profiles?.[definition.name] ??
-    (config.global_model_profiles
-      ? undefined
-      : config.model_profiles[definition.name])
-  );
-}
-
 function resolveModel(
   definition: SubagentDefinition,
   config: SubagentsConfig,
   ctx: any,
 ): ResolvedProfileField<ModelRef> {
-  const profile = profileForDefinition(definition, config);
+  const profile = ctx?.modelProfile?.profile.agents[definition.name];
   if (profile?.model) return field('profile', profile.model, modelLabel);
   if (definition.model)
     return field('definition', definition.model, modelLabel);
@@ -91,7 +76,7 @@ function resolveEffort(
   config: SubagentsConfig,
   ctx: any,
 ): ResolvedProfileField<ThinkingEffort> {
-  const profile = profileForDefinition(definition, config);
+  const profile = ctx?.modelProfile?.profile.agents[definition.name];
   if (profile?.effort) return field('profile', profile.effort, String);
   if (definition.effort) return field('definition', definition.effort, String);
   if (config.default_effort)
@@ -102,19 +87,56 @@ function resolveEffort(
   return field('unresolved', undefined, String);
 }
 
-export function resolveEffectiveSubagentProfile(input: {
+export type SubagentProfileInput = {
   agentName: string;
   definition: SubagentDefinition;
   config: SubagentsConfig;
   ctx: any;
-}): EffectiveSubagentProfile {
+};
+
+/** Definition/scalar/parent chain, explicitly excluding named profiles. */
+export function resolveDefaultSubagentProfile(
+  input: SubagentProfileInput,
+): EffectiveSubagentProfile {
   const definition = {
     ...input.definition,
-    name: input.agentName.toLowerCase(),
+    name: input.agentName.trim().toLowerCase(),
   };
+  const ctx = { ...input.ctx, modelProfile: undefined };
   return {
     agent: definition.name,
-    model: resolveModel(definition, input.config, input.ctx),
-    effort: resolveEffort(definition, input.config, input.ctx),
+    model: resolveModel(definition, input.config, ctx),
+    effort: resolveEffort(definition, input.config, ctx),
+  };
+}
+
+export function resolveEffectiveSubagentProfile(
+  input: SubagentProfileInput,
+): EffectiveSubagentProfile {
+  const definition = {
+    ...input.definition,
+    name: input.agentName.trim().toLowerCase(),
+  };
+  const selection: ModelProfileSelection =
+    input.ctx?.modelProfile ??
+    new ModelProfileStore({
+      cwd: input.ctx?.cwd ?? process.cwd(),
+      agentDir: input.ctx?.agentDir,
+    }).resolve(input.ctx?.sessionModelProfile);
+  const ctx = { ...input.ctx, modelProfile: selection };
+  const model = resolveModel(definition, input.config, ctx);
+  const effort = resolveEffort(definition, input.config, ctx);
+  for (const resolved of [model, effort])
+    if (resolved.source === 'profile')
+      resolved.label = resolved.label.replace(
+        'profile:',
+        `profile (${selection.name}):`,
+      );
+  return {
+    agent: definition.name,
+    model,
+    effort,
+    profileName: selection.name,
+    warnings: selection.warnings,
   };
 }

@@ -1,6 +1,6 @@
 ---
 name: thoth-constitution
-description: Create or explicitly amend the active .thoth constitution with SemVer and sync-impact lifecycle validation.
+description: Creates or amends the active .thoth constitution with versioned governance validation. Use only on an explicit constitution creation or amendment request, not for routine implementation or implicit governance changes.
 license: MIT
 compatibility: Requires Node.js >=22.19 for bundled validation.
 metadata:

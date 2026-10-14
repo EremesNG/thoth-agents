@@ -198,12 +198,27 @@ it('keeps counts when only the numstat read fails and falls back on status failu
 });
 
 it('bounds each git command with a timeout', async () => {
-  const { dir } = repo();
+  // Without input, git waits for EOF on stdin until the runner kills it.
+  // This read-only command needs no temporary repository or directory cleanup.
   await expect(
-    createGitRunner(1)(['status', '--porcelain=v2'], dir),
-  ).rejects.toThrow();
-  const outcome = await readWorkspace(dir, undefined, createGitRunner(1));
-  expect(outcome.note).toBe('Git status unavailable');
+    createGitRunner(50)(['hash-object', '--stdin'], process.cwd()),
+  ).rejects.toMatchObject({ killed: true, signal: 'SIGTERM' });
+});
+
+it('reports unavailable git status when the runner times out', async () => {
+  const { dir } = repo();
+  const timeout = Object.assign(new Error('Command failed: git status'), {
+    killed: true,
+    signal: 'SIGTERM',
+    code: null,
+  });
+  const run = vi.fn().mockRejectedValue(timeout);
+  expect(await readWorkspace(dir, undefined, run)).toEqual({
+    cwd: dir,
+    branch: 'main',
+    note: 'Git status unavailable',
+  });
+  expect(run).toHaveBeenCalledTimes(1);
 });
 
 it('retains the HEAD branch when git is unavailable', async () => {

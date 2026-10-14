@@ -178,7 +178,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt.length).toBeLessThanOrEqual(12_500);
     expect(prompt).toContain('root coordinator');
     expect(prompt).toContain(
-      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
     expect(prompt).toContain(
       'By default, specialists perform discovery of unlocated source, external research and substantive implementation',

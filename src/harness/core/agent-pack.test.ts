@@ -47,7 +47,7 @@ describe('agent-pack contract', () => {
       /goal.*constraints.*decisions.*coordination.*acceptance.*synthesis/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
-      /minimal authorized low-risk edit.*scope.*verification.*known.*no discovery.*independent judgment/i,
+      /minimal authorized low-risk edit.*known scope.*verification.*no discovery.*independent judgment/i,
     );
     expect(ownership.directConsultation.join(' ')).toMatch(
       /known source.*bounded question/i,
@@ -59,7 +59,7 @@ describe('agent-pack contract', () => {
       /another search or dependency.*ends/i,
     );
     expect(ownership.userDirection).toMatch(
-      /no-delegation instruction wins.*preserve operator-selected model and effort/i,
+      /no-delegation instruction wins.*preserve operator-selected model\/effort/i,
     );
     expect(ownership.insufficientSignals.join(' ')).toMatch(
       /file count.*targeted search/i,
@@ -72,16 +72,16 @@ describe('agent-pack contract', () => {
         ' ',
       );
 
-    expect(consultation).toMatch(/one known source and bounded question/i);
+    expect(consultation).toMatch(/one known source, bounded question/i);
     expect(consultation).toMatch(
-      /new path.*unlocated dependency.*exhausted allowance.*delegate the missing evidence/i,
+      /new path.*unlocated dependency.*exhausted allowance.*delegate missing evidence/i,
     );
     expect(consultation).toMatch(
-      /two source fragments.*about 200 code lines per user request/i,
+      /two fragments.*~200 code lines per user request/i,
     );
-    expect(consultation).toMatch(/across tools, files and subtasks/i);
+    expect(consultation).toMatch(/across tools\/files\/subtasks/i);
     expect(consultation).toMatch(
-      /required instructions.*coordination artifacts excluded.*source or log dumps/i,
+      /instructions.*coordination artifacts excluded.*source\/log dumps/i,
     );
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
@@ -105,11 +105,11 @@ describe('agent-pack contract', () => {
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
     expect(ownership.discovery.join(' ')).toMatch(
-      /unlocated.*source.*flow.*responsibility.*Explorer.*before any root.*search.*read.*shell\/git.*CodeGraph call/i,
+      /unlocated.*source.*flow.*responsibility.*Explorer.*before root.*read.*search.*shell\/git.*CodeGraph/i,
     );
     expect(ownership.discovery.join(' ')).toMatch(/unknown location/i);
     expect(ownership.writerRouting.join(' ')).toMatch(
-      /known.*bounded.*directly.*designer.*worker.*without.*Explorer/i,
+      /known.*bounded.*directly.*designer.*worker.*no mandatory Explorer/i,
     );
   });
 
@@ -120,7 +120,7 @@ describe('agent-pack contract', () => {
       /conclusions.*localized evidence.*uncertainty/i,
     );
     expect(ownership.evidenceHandling.join(' ')).toMatch(
-      /next action only from Oracle, Worker and Designer/i,
+      /next action only from Oracle\/Worker\/Designer/i,
     );
     expect(ownership.evidenceHandling.join(' ')).not.toMatch(
       /uncertainty, and next action instead/i,
@@ -132,7 +132,7 @@ describe('agent-pack contract', () => {
       /gaps.*targeted request/i,
     );
     expect(ownership.delegationFailure.join(' ')).toMatch(
-      /truthful.*not.*unrestricted root/i,
+      /truthful.*no unrestricted root/i,
     );
   });
 

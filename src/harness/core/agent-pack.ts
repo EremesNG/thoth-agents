@@ -278,26 +278,26 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
     'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
   ],
   discovery: [
-    'Unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell/git or CodeGraph call; name the unknown location in the assignment instead of pre-reading. Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
-    'Before the first read/search/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch.',
+    'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph; name the unknown location in the assignment, no pre-reading. Navigation/fallbacks govern investigators, not root.',
+    'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch. Memory recall is not source discovery; precedes dispatch, exempt from this rule.',
   ],
   directConsultation: [
-    'Direct consultation: one known source and bounded question; at most two source fragments, about 200 code lines per user request across tools, files and subtasks (required instructions and coordination artifacts excluded; never source or log dumps). On a new path, unlocated dependency or exhausted allowance, delegate the missing evidence.',
+    'Direct consultation: one known source, bounded question; at most two fragments/~200 code lines per user request across tools/files/subtasks (instructions/coordination artifacts excluded; no source/log dumps). On new path/unlocated dependency/exhausted allowance: delegate missing evidence.',
   ],
   directException: [
-    'Direct-work exceptions: known low-risk mechanical work, including reviewed commits, without reopening completed discovery; and a minimal authorized low-risk edit when scope and verification are known and no discovery or independent judgment is needed.',
+    'Direct-work exceptions: known low-risk mechanical work (reviewed commits included), no rediscovery; minimal authorized low-risk edits with known scope/verification, no discovery/independent judgment.',
   ],
   writerRouting: [
-    'Known bounded implementation goes directly to designer or worker without a mandatory Explorer stage; use librarian for external evidence and Oracle for independent judgment, never a fixed all-role pipeline.',
+    'Known bounded implementation: directly to designer/worker, no mandatory Explorer; librarian: external evidence; Oracle: independent judgment; no fixed all-role pipeline.',
   ],
   evidenceHandling: [
-    'Request conclusions, localized evidence and uncertainty, not full files, source dumps or logs; request next action only from Oracle, Worker and Designer. Never repeat delegated discovery; fill gaps with a targeted request or bounded inspection of identified evidence. Independent verification stays mandatory.',
+    'Conclusions, localized evidence, uncertainty—not files/source/log dumps; next action only from Oracle/Worker/Designer. Never repeat delegated discovery; fill gaps via targeted requests or bounded inspection of identified evidence. Independent verification stays mandatory.',
   ],
   delegationFailure: [
-    'Report delegation failure truthfully; it does not authorize unrestricted root execution. This ownership policy is prompt guidance, not runtime enforcement.',
+    'Report delegation failure truthfully; no unrestricted root execution. Prompt guidance, not runtime enforcement.',
   ],
   userDirection:
-    'Explicit user direct-work or no-delegation instruction wins. Preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed. Disclose unavailable independent review; never self-approve.',
+    'Explicit user direct-work or no-delegation instruction wins. Preserve operator-selected model/effort, including max; adjust scope/supervision, never lower effort for speed. Disclose unavailable independent review; never self-approve.',
   insufficientSignals: [
     'workflow persistence choice',
     'file count or an additional targeted search alone',
@@ -341,7 +341,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       unitOutcome:
         'Each exploration, research, planning, implementation or verification unit has one independently acceptable outcome',
       unitEnvelope:
-        'Each assignment names its phase, the change record when one exists, applicable requirements, accepted upstream inputs and result produced; bounds owned writes and requires compatible reads, interfaces and shared resources; includes focused checks with pass evidence, a native return milestone, a stop condition and scoped MEMORY authorization (`none`, `recall` or `observe`)',
+        'Assignment: phase, record if any, requirements, accepted upstream inputs, result produced; owned writes, compatible reads/interfaces/shared resources; focused checks with pass evidence, native return milestone, stop condition; MEMORY (`none`/`recall`/`observe`) verified project/root session identity (or `unavailable`), verbatim',
       phaseSplitting:
         'Split phases with separately acceptable outcomes before dispatch; keep cohesive tiny edits together',
       independentDiscovery:

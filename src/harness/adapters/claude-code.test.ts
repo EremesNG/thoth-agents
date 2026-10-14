@@ -45,34 +45,26 @@ describe('Claude Code adapter v0.3', () => {
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
-        'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
+        'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
       ),
     );
     expect
       .soft(block)
-      .toMatch(
-        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
+      .toContain(
+        'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph',
       );
+    expect
+      .soft(block)
+      .toContain('name the unknown location in the assignment, no pre-reading');
+    expect
+      .soft(block)
+      .toContain('Navigation/fallbacks govern investigators, not root.');
     expect
       .soft(block)
       .toContain(
-        'name the unknown location in the assignment instead of pre-reading',
+        'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch',
       );
-    expect
-      .soft(block)
-      .toContain(
-        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
-      );
-    expect
-      .soft(block)
-      .toMatch(
-        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
-      );
-    expect
-      .soft(block)
-      .toContain(
-        'This ownership policy is prompt guidance, not runtime enforcement.',
-      );
+    expect.soft(block).toContain('Prompt guidance, not runtime enforcement.');
     for (const phrase of [
       'If delegating',
       'Boundaries alone do not require delegation',
@@ -182,7 +174,7 @@ describe('Claude Code adapter v0.3', () => {
       /specialists perform discovery.*you direct, decide, accept/is,
     );
     expect(instructions).toContain(
-      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
     expect(instructions).toContain(
       'By default, specialists perform discovery of unlocated source, external research and substantive implementation',

@@ -137,13 +137,13 @@ describe('AI-first prompt rendering', () => {
     );
     const defaultIndex = block.indexOf('Unlocated local source');
     const mechanicalIndex = block.indexOf(
-      'Direct-work exceptions: known low-risk mechanical work, including reviewed commits',
+      'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
     const consultationIndex = block.indexOf(
-      'Direct consultation: one known source and bounded question',
+      'Direct consultation: one known source, bounded question',
     );
     const budgetIndex = block.indexOf(
-      'at most two source fragments, about 200 code lines per user request across tools, files and subtasks',
+      'at most two fragments/~200 code lines per user request across tools/files/subtasks',
     );
     const userIndex = block.indexOf(
       'Explicit user direct-work or no-delegation instruction wins',
@@ -199,29 +199,21 @@ describe('AI-first prompt rendering', () => {
       )?.[1] ?? '';
     expect
       .soft(block)
-      .toMatch(
-        /unlocated local source, flow, or responsibility goes to Explorer before any root search, read, shell\/git or CodeGraph call/i,
+      .toContain(
+        'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph',
       );
+    expect
+      .soft(block)
+      .toContain('name the unknown location in the assignment, no pre-reading');
+    expect
+      .soft(block)
+      .toContain('Navigation/fallbacks govern investigators, not root.');
     expect
       .soft(block)
       .toContain(
-        'name the unknown location in the assignment instead of pre-reading',
+        'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch',
       );
-    expect
-      .soft(block)
-      .toContain(
-        'Navigation instructions (CodeGraph, webstorm-index, rg, docs routers) and their fallbacks govern the investigator, never make root one.',
-      );
-    expect
-      .soft(block)
-      .toMatch(
-        /before the first read\/search\/shell call of a turn, check for a known bounded source within a direct-work exception; otherwise dispatch/i,
-      );
-    expect
-      .soft(block)
-      .toContain(
-        'This ownership policy is prompt guidance, not runtime enforcement.',
-      );
+    expect.soft(block).toContain('Prompt guidance, not runtime enforcement.');
   });
 
   test.each(
@@ -328,37 +320,51 @@ describe('AI-first prompt rendering', () => {
   'renders director-default edge cases in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toMatch(
-      /unlocated local source, flow, or responsibility.*Explorer.*before any root.*search/is,
+      /unlocated local source\/flow\/responsibility.*Explorer before root.*search/is,
     );
     expect(prompt).toMatch(/unknown location in the assignment/is);
     expect(prompt).toMatch(
-      /known.*bounded implementation.*directly.*designer.*worker.*without.*Explorer/is,
+      /known.*bounded implementation.*directly.*designer.*worker.*no mandatory Explorer/is,
     );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).toMatch(
       /direct-work exceptions: known low-risk mechanical work/i,
     );
     expect(prompt).toMatch(/never repeat delegated discovery/i);
-    expect(prompt).toMatch(/fill gaps with a targeted request/i);
+    expect(prompt).toMatch(/fill gaps via targeted requests/i);
     expect(prompt).toMatch(
-      /delegation failure.*truthful.*does not authorize unrestricted root/is,
+      /delegation failure.*truthful.*no unrestricted root/is,
     );
     expect(prompt).toMatch(
       /by default, specialists perform discovery of unlocated source, external research and substantive implementation/i,
     );
-    expect(prompt).toMatch(/one known source and bounded question/i);
+    expect(prompt).toMatch(/one known source, bounded question/i);
     expect(prompt).toMatch(
-      /new path, unlocated dependency or exhausted allowance, delegate the missing evidence/i,
+      /new path\/unlocated dependency\/exhausted allowance: delegate missing evidence/i,
     );
+    expect(prompt).toMatch(/two fragments\/~200 code lines per user request/i);
+    expect(prompt).toMatch(/across tools\/files\/subtasks/i);
     expect(prompt).toMatch(
-      /two source fragments, about 200 code lines per user request/i,
-    );
-    expect(prompt).toMatch(/across tools, files and subtasks/i);
-    expect(prompt).toMatch(
-      /required instructions and coordination artifacts excluded; never source or log dumps/i,
+      /instructions\/coordination artifacts excluded; no source\/log dumps/i,
     );
     expect(prompt).toMatch(/not runtime enforcement/i);
     expect(prompt).toMatch(/independent verification stays mandatory/i);
+    expect(prompt).toContain(
+      'no rediscovery; minimal authorized low-risk edits with known scope/verification, no discovery/independent judgment',
+    );
+    expect(prompt).toContain(
+      'Preserve operator-selected model/effort, including max; adjust scope/supervision, never lower effort for speed.',
+    );
+    expect(prompt).toContain(
+      'Disclose unavailable independent review; never self-approve.',
+    );
+    expect(prompt).toContain(
+      'Conclusions, localized evidence, uncertainty—not files/source/log dumps; next action only from Oracle/Worker/Designer.',
+    );
+    expect(prompt).toContain(
+      'librarian: external evidence; Oracle: independent judgment; no fixed all-role pipeline',
+    );
+
     expect(prompt).toMatch(
       /each exploration, research, planning, implementation or verification unit has one independently acceptable outcome/i,
     );
@@ -392,7 +398,7 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).not.toMatch(
       /another search or dependency ends|only root mutation exception/i,
     );
-    expect(prompt).toMatch(/preserve operator-selected model and effort/i);
+    expect(prompt).toMatch(/preserve operator-selected model\/effort/i);
     expect(prompt).toMatch(/one independently acceptable outcome/i);
     expect(prompt).toMatch(/exact known.*skill paths/i);
     expect(prompt).toMatch(/two consecutive.*without new evidence/i);
@@ -496,12 +502,12 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     for (const field of [
-      'names its phase, the change record when one exists, applicable requirements',
-      'accepted upstream inputs and result produced',
-      'bounds owned writes',
+      'phase, record if any, requirements',
+      'accepted upstream inputs, result produced',
+      'owned writes',
       'focused checks with pass evidence',
-      'a native return milestone, a stop condition',
-      'scoped MEMORY authorization (`none`, `recall` or `observe`)',
+      'native return milestone, stop condition',
+      'MEMORY (`none`/`recall`/`observe`) verified project/root session identity (or `unavailable`), verbatim',
     ])
       expect(prompt).toContain(field);
     expect(prompt).not.toContain('<phase-dispatch>');
@@ -572,6 +578,31 @@ describe('AI-first prompt rendering', () => {
     expect(worker).toContain('Edit only the assigned work-unit surface');
     expect(oracle).toContain('independent judgment');
     expect(oracle).toContain('cannot substitute');
+  });
+
+  test.each(
+    ROOT_RENDERERS,
+  )('%s proactively recalls and saves verified memory', (_harness, render) => {
+    const root = render();
+    expect(root).toContain(
+      'Unprompted: recall prior project memory with task key terms before exploring/planning/dispatching non-trivial work; skip trivial/conversational turns.',
+    );
+    expect(root).toContain(
+      'Save durable knowledge once verified, unprompted: decisions, discoveries/findings, bugs with root cause/fix, what worked/failed, non-obvious conventions and lessons from accepted specialist results.',
+    );
+    expect(root).toContain(
+      "Recovered handoff's pending action done: record its outcome.",
+    );
+    expect(root).toContain(
+      'Follow installed `thoth-mem` skill; never invent its protocol.',
+    );
+    expect(root).toContain(
+      'Root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY.',
+    );
+    expect(root).toContain(
+      'Memory recall is not source discovery; precedes dispatch, exempt from this rule.',
+    );
+    expect(root).not.toContain('Resume/prior work:');
   });
 
   test('keeps project work evidence independent from provider memory', () => {
@@ -674,15 +705,33 @@ describe('AI-first prompt rendering', () => {
     }
   });
 
-  test('keeps child memory authorization and compact return fields', () => {
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('keeps child memory authorization and compact return fields in $harness', (dialect) => {
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
-      const prompt = renderRolePrompt(
-        sectionsFor(role),
-        OPENCODE_PROMPT_DIALECT,
-      );
+      const prompt = renderRolePrompt(sectionsFor(role), dialect);
       expect(prompt).toContain('`none`');
       expect(prompt).toContain('`recall`');
       expect(prompt).toContain('`observe`');
+      expect(prompt).toContain(
+        '`none`: no provider work; `recall`: bounded reads; `observe`: + bounded durable observation in scope.',
+      );
+      expect(prompt).toContain(
+        'do not invent provider mechanics/claim unconfirmed effects.',
+      );
+      expect(prompt).toContain(
+        '`.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.',
+      );
+      expect(prompt).toContain(
+        'Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.',
+      );
+      expect(prompt).toContain(
+        'Only dispatch identity, verbatim; never derive. If missing, report memory unavailable.',
+      );
+      expect(prompt).toContain(
+        'MEMORY: no workspace mutation or root lifecycle/real-user-intent authority.',
+      );
       for (const field of [
         'conclusion',
         'evidence',
@@ -884,34 +933,34 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "3e8e887c80b0da807d625b8bc26c13c4ef2b2fb588f1d116f8ad5b2a6e83b498",
-          "3c6cec172ead08bbd4f905fe7424ed94b4b251f4798880d53382be50856bd866",
-          "8995d957e4e3861aedba4ee4907c1feaa79a865eb9110d447c9aebe30d0f87c7",
-          "b8bc33779da36a8504e125f2e6e799e5e1356e7214826f25cce6e8aadd494e66",
-          "e7dc4d10d0b579fd0a2caa65e93175abcde8ad391dda9c0853d2e0402a496d85",
-          "4820d7da4fd06a281a4bf71fb9f554b524ea48cb119bce762dc7c9e9abc3c3dc",
+          "736bdaba23a892f2690bed1dfdbf10bf3673d19cad43ee0d08b507670f2b5c29",
+          "a10821acadc00a4da671aafd6b437fa9b6932d5e3e9a8e0bd1dfb610b42a52e4",
+          "634bafad130132eeb0b0a6ba1f3688922ea18439201b9adbd365fcb4685d2383",
+          "5a7e7a2d890e939bb5aa8ef1b2a5dd04c708894a15ca0d0b0beb81be6f8246ad",
+          "6d8e7d01a0e742e7f989369c461293e3779295a3362a9cea56795fd0732c622d",
+          "01783cedf8970a26d39c0ecc6bc97782fbc3f6a33f0108f86789e0208a2758ed",
         ],
       ],
       [
         "codex",
         [
-          "6f31306eb7b0a7634dd4c7c039bf7b08376ebd4fb9e615a86a7bedd938b0fcb4",
-          "252f9d6277b5637de7982a6d26c673c5c7317d65f2e2c9c846a48669c20fa7e7",
-          "a620c249ffa378ff2fd5fd81bcd56321102f4889170a1f58b71f689a4159562d",
-          "0565cd0a3e76deee25fe30005b156364bdaa4939a8749926b68d36f019bc63ad",
-          "228cc8e0fdba6ed1c899731eb9de8808aca12b5e0c36931edf6ca19b653dd765",
-          "c2d360a0d84a68fd02a4f7d86808d8e5d28fc9a75da81849bb3de2f4bc1ffb52",
+          "18ab1118dcb40d7f86124a5cfa6a5e564f20fe236ca1d97eec08f6f8e11a858b",
+          "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
+          "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
+          "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
+          "cc4a7ec4dd203f3ace7eb4450fa551b6688969e8cdae462dab69ea46c33db642",
+          "b41cdf68428ceeb294d50524c851c16e9bc746207943aae2c0b0a25cc85bfacc",
         ],
       ],
       [
         "claude",
         [
-          "5ad56de6bc3134a7518e64d9d12ae05d586ee84e25fe4dc9a682bbd701a20d5d",
-          "0b1ba17e3e1565bed8c29795c0aafcd67d2cbcd08afe21e7a1ee65bf7a23d23f",
-          "4ac41f8716aeb883786a0b2e92b46aaf9dab7378f2d7d7fdaa8ef5845b0303dd",
-          "bd18ff47a149bf6b9d48590196c7bb9f5b9b86687077cba709437ff77d0a7d0f",
-          "82323b51b8eb6b4edaa8950c64832643c754a5657cba1cddb62f25dccc7a2bf3",
-          "e3a6f087bd549c855ba693725fac6b65e28de3908ee7450614a58fbf2e49ace0",
+          "7b290f045f5cb723e30f5e58842b6effd92838f720206ab0fba44c386815b2ac",
+          "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
+          "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
+          "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
+          "f59818220fa23a1eea08bb0f2898c69d06328eff143633d2aee2508d281ecf32",
+          "c6b902fa08901c214fdb24f842dd1f48a2ae1edd54ab2d8697fa1469babd8a47",
         ],
       ],
     ]

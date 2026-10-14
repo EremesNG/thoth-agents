@@ -238,8 +238,10 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 </external-skills>
 
 <memory>
-- Resume/prior work: load the installed \`thoth-mem\` skill; never invent its protocol.
-- Save reusable facts at semantic boundaries; root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY.
+- Unprompted: recall prior project memory with task key terms before exploring/planning/dispatching non-trivial work; skip trivial/conversational turns.
+- Save durable knowledge once verified, unprompted: decisions, discoveries/findings, bugs with root cause/fix, what worked/failed, non-obvious conventions and lessons from accepted specialist results.
+- Recovered handoff's pending action done: record its outcome.
+- Follow installed \`thoth-mem\` skill; never invent its protocol. Root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY.
 - \`.thoth/\` holds active project work, not provider memory; do not mirror work artifacts. Memory failure does not block unrelated work.
 </memory>
 
@@ -439,11 +441,12 @@ function renderSubagentRules(
 
   if (section.memoryAccess === 'dispatch-scoped') {
     rules.push(
-      '- Dispatch MEMORY: `none` forbids provider work; `recall` allows bounded reads; `observe` also allows a bounded durable observation within scope.',
-      '- `recall`/`observe`: follow installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
-      '- MEMORY never authorizes workspace mutation or transfers root lifecycle/real-user-intent ownership.',
-      '- `.thoth/`: active work, durable specs/constitution, preserved history—not provider memory. Never mirror work artifacts.',
-      '- Report unavailable/degraded/stale/contradictory/insufficient memory evidence; continue unrelated safe work.',
+      '- `none`: no provider work; `recall`: bounded reads; `observe`: + bounded durable observation in scope.',
+      '- `recall`/`observe`: installed `thoth-mem` skill; do not invent provider mechanics/claim unconfirmed effects.',
+      '- Only dispatch identity, verbatim; never derive. If missing, report memory unavailable.',
+      '- MEMORY: no workspace mutation or root lifecycle/real-user-intent authority.',
+      '- `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.',
+      '- Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.',
     );
   }
 

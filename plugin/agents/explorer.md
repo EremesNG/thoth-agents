@@ -54,11 +54,12 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.
 - Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.
 - Never discard or overwrite unrelated working-tree changes.
-- Dispatch MEMORY: `none` forbids provider work; `recall` allows bounded reads; `observe` also allows a bounded durable observation within scope.
-- `recall`/`observe`: follow installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.
-- MEMORY never authorizes workspace mutation or transfers root lifecycle/real-user-intent ownership.
-- `.thoth/`: active work, durable specs/constitution, preserved history—not provider memory. Never mirror work artifacts.
-- Report unavailable/degraded/stale/contradictory/insufficient memory evidence; continue unrelated safe work.
+- `none`: no provider work; `recall`: bounded reads; `observe`: + bounded durable observation in scope.
+- `recall`/`observe`: installed `thoth-mem` skill; do not invent provider mechanics/claim unconfirmed effects.
+- Only dispatch identity, verbatim; never derive. If missing, report memory unavailable.
+- MEMORY: no workspace mutation or root lifecycle/real-user-intent authority.
+- `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.
+- Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
 <questions>
 Use `AskUserQuestion` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first, then escalate the unresolved question to the root through openQuestions as the question, the possible options and the facts for each option, without recommending one.

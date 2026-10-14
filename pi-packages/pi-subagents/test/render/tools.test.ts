@@ -20,6 +20,65 @@ function expectNativeShell(lines: string[], width: number) {
 }
 
 describe('tool render helpers', () => {
+  it.each([
+    'queued',
+    'running',
+    'completed',
+    'failed',
+  ])('marks %s continuation cards with the resumed attempt and real profile only for continue', (status) => {
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const registered: Record<string, any> = {};
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          registered[tool.name] = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+      env.tmp,
+    );
+    const running = status === 'running' || status === 'queued';
+    const result = {
+      details: {
+        mode: running ? 'background' : 'task',
+        tasks: [
+          {
+            id: 'subtask_resumed',
+            agent: 'thoth-worker',
+            model: 'mock/model',
+            effort: 'high',
+            attempt: 3,
+            mode: running ? 'background' : 'task',
+            status,
+          },
+        ],
+      },
+    };
+    const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
+    const render = (name: string) =>
+      env.stripAnsi(
+        registered[name]
+          .renderResult(result, { expanded: false }, theme)
+          .render(180)
+          .join('\n'),
+      );
+    const continued = render('subagent_continue');
+    expect(continued).toContain('thoth-worker · resumed #3 ·');
+    expect(continued).toContain('model: mock/model');
+    expect(continued).toContain('effort: high');
+    expect(continued).toContain(running ? 'launched (background)' : status);
+    expect(continued).not.toContain('default/current');
+    const launched = render('subagent_run');
+    expect(launched).not.toContain('resumed');
+    expect(launched).toContain(
+      running
+        ? 'subagent · thoth-worker · launched (background)'
+        : `thoth-worker · ${status}`,
+    );
+  });
   it('uses distinct task state glyphs', () => {
     expect(
       [

@@ -120,6 +120,178 @@ ${byName('Reconcile Pi releases').run}`,
   }
 }
 
+describe('release workflow CI gate', () => {
+  const script = byName('Wait for CI').run ?? '';
+
+  function runWait({
+    status = 'completed',
+    conclusion = 'success',
+    failedJobs = '',
+    found = true,
+    runId = '42',
+    jobsError = false,
+    waitAttempts = 270,
+  } = {}) {
+    // Mock CLI responses, not the workflow's control flow. jq is not installed
+    // on every development host; selection/filter expressions are pinned below.
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+    return spawnSync(
+      'bash',
+      ['--noprofile', '--norc', '-e', '-o', 'pipefail'],
+      {
+        encoding: 'utf8',
+        timeout: 30000,
+        input: `
+HEAD_SHA=tagged-sha RELEASE_BRANCH=master GITHUB_REPOSITORY=owner/repo GITHUB_OUTPUT=/dev/null
+status=${quote(status)} conclusion=${quote(conclusion)} failed_jobs_fixture=${quote(failedJobs)}
+run_id_fixture=${quote(runId)} CI_WAIT_ATTEMPTS=${waitAttempts}
+gh() {
+  if [ "$1" = api ]; then echo fixture; return; fi
+  echo jobs-request >&2
+  ${jobsError ? 'return 1' : 'printf \'%s\' "$failed_jobs_fixture"'}
+}
+jq() {
+  while IFS= read -r line; do :; done
+  if [ "$1" != -r ]; then ${found ? 'echo selected-run' : ':'}; return; fi
+  case "$2" in
+    .status) echo "$status" ;;
+    '.conclusion // empty') echo "$conclusion" ;;
+    '.id // empty') echo "$run_id_fixture" ;;
+    .html_url) echo https://example.test/run/42 ;;
+    *) exit 2 ;;
+  esac
+}
+sleep() { echo "sleep $*" >&2; status=completed; conclusion=success; }
+${script}`,
+      },
+    );
+  }
+
+  test.skipIf(!hasGnuTimeout)(
+    'waits for pending CI and accepts only completed success',
+    () => {
+      const result = runWait({ status: 'in_progress', conclusion: '' });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(0);
+      expect(result.stderr.trim().split('\n')).toEqual([
+        'jobs-request',
+        'sleep 10',
+      ]);
+    },
+  );
+
+  test
+    .skipIf(!hasGnuTimeout)
+    .each(['failure', 'cancelled', 'timed_out', 'neutral', 'skipped', ''])(
+    'fails immediately for completed conclusion %s',
+    (conclusion) => {
+      const result = runWait({ conclusion });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        `CI did not pass for tagged-sha: ${conclusion || 'unknown'}`,
+      );
+      expect(result.stderr).toBe('');
+    },
+  );
+
+  test.skipIf(!hasGnuTimeout)(
+    'fails before sleeping when a job fails in an unfinished run',
+    () => {
+      const result = runWait({
+        status: 'in_progress',
+        conclusion: '',
+        failedJobs: 'Linux: failure',
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('CI jobs did not pass for tagged-sha');
+      expect(result.stdout).toContain('Linux: failure');
+      expect(result.stderr.trim()).toBe('jobs-request');
+    },
+  );
+
+  test.skipIf(!hasGnuTimeout)(
+    'fails closed when job inspection fails or the run id is absent',
+    () => {
+      const inspection = runWait({ status: 'in_progress', jobsError: true });
+      expect(inspection.error).toBeUndefined();
+      expect(inspection.status).toBe(1);
+      expect(inspection.stderr.trim()).toBe('jobs-request');
+      const missingId = runWait({ runId: '' });
+      expect(missingId.status).toBe(1);
+      expect(missingId.stdout).toContain('CI run id was missing');
+      expect(missingId.stderr).toBe('');
+    },
+  );
+
+  test.skipIf(!hasGnuTimeout)(
+    'times out after the configured polls when no eligible push run appears',
+    () => {
+      const result = runWait({ found: false, waitAttempts: 3 });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        'Timed out waiting for CI to complete for tagged-sha.',
+      );
+      expect(result.stderr.trim().split('\n')).toEqual(
+        Array(3).fill('sleep 10'),
+      );
+    },
+  );
+
+  test('allows 45 minutes of polling with headroom for publishing', () => {
+    const workflow = parse(raw);
+    expect(script).toContain('wait_attempts=${CI_WAIT_ATTEMPTS:-270}');
+    expect(script).toContain(
+      'for ((attempt = 1; attempt <= wait_attempts; attempt++)); do',
+    );
+    expect(script).toContain('sleep 10');
+    expect(workflow.jobs.publish['timeout-minutes']).toBe(90);
+  });
+
+  test('only accepts the latest push CI run for the release branch and SHA', () => {
+    expect(script).toContain('head_sha=${HEAD_SHA}&event=push&per_page=20');
+    expect(script).toContain('.head_branch == $branch and .head_sha == $sha');
+    expect(script).toContain('sort_by(.created_at)');
+    expect(script).toContain('last // empty');
+    expect(script).toContain('CI run id was missing');
+    expect(script).toContain('echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"');
+  });
+
+  test('rejects completed non-success runs before checking jobs or sleeping', () => {
+    expect(script).toMatch(
+      /if \[ "\$status" = "completed" \]; then\s+if \[ "\$conclusion" = "success" \]; then[\s\S]+?exit 0\s+fi\s+echo "CI did not pass for \$\{HEAD_SHA\}: \$\{conclusion:-unknown\} \(\$\{url\}\)"\s+exit 1\s+fi/,
+    );
+    expect(script.indexOf('CI did not pass')).toBeLessThan(
+      script.indexOf('gh run view'),
+    );
+  });
+
+  test('rejects failed jobs while the rest of CI is still running', () => {
+    expect(script).toContain(
+      'gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json jobs',
+    );
+    expect(script).toContain('.status == "completed"');
+    for (const conclusion of [
+      'failure',
+      'cancelled',
+      'timed_out',
+      'action_required',
+      'startup_failure',
+      'stale',
+    ]) {
+      expect(script).toContain(`.conclusion == "${conclusion}"`);
+    }
+    // Skipped/neutral jobs need not prevent a successful workflow run.
+    expect(script).not.toContain('.conclusion == "skipped"');
+    expect(script).not.toContain('.conclusion == "neutral"');
+    expect(script).toMatch(
+      /if \[ -n "\$failed_jobs" \]; then\s+echo "CI jobs did not pass[^\n]+\n\s+echo "\$failed_jobs"\s+exit 1\s+fi\s+sleep 10/,
+    );
+  });
+});
+
 describe('release workflow Pi packages', () => {
   test('publishes Pi packages before root npm publish', () => {
     const pi = byName('Publish Pi packages');

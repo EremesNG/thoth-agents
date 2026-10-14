@@ -538,7 +538,17 @@ ranges.
 
 ### Release flow
 
-`release.yml` runs on the root `v*.*.*` tag, after CI, build and the runtime test:
+`release.yml` runs on the root `v*.*.*` tag, after CI, build and the runtime test.
+Its CI gate selects the latest `push` run at the tagged SHA on the verified
+main/master release branch; manual CI does not satisfy it. Polling allows roughly
+45 minutes (270 attempts, 10-second sleeps), with a 90-minute publish-job timeout
+leaving room for build and publishing. Completed non-success runs fail immediately.
+While CI is still running, `gh run view --json jobs` also rejects completed jobs
+with failure, cancelled, timed_out, action_required, startup_failure or stale
+conclusions, reporting the job names and CI URL without waiting for other jobs.
+Skipped/neutral jobs do not by themselves block a successful run.
+
+After the gate:
 
 1. **Publish Pi packages** in dependency order (pi-core first), only versions not
    yet on npm, via trusted publishing.

@@ -225,7 +225,12 @@ one step per command so a failure cannot be masked; the root suite runs only on 
 Its vitest steps pass `--retry=2` so an isolated slow-runner failure does not block
 a release, while a consistent failure still fails; fix flakes at their cause
 rather than relying on retries. `workflow_dispatch` allows manual CI runs (for
-example repeated Windows stability checks); `release.yml` only waits for `push` runs.
+example repeated Windows stability checks); `release.yml` only waits for `push` runs
+at the tagged SHA on the verified release branch, never manual runs. It polls
+up to 270 times at 10-second intervals (roughly 45 minutes), within a 90-minute
+publish-job timeout. It fails immediately on a completed non-success CI run or
+a completed failed/cancelled/timed-out job while other CI jobs are still running;
+skipped/neutral jobs alone do not fail the gate.
 Both CI jobs provision Bun `1.3.14` for the pi-subagents Bun runtime compatibility test.
 
 CI also runs a PR-only, non-blocking "Pi version bump" warning step

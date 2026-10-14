@@ -13,6 +13,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -63,7 +64,9 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           RELEASE_BRANCH: ${{ steps.release-branch.outputs.name }}
         run: |
-          for attempt in {1..90}; do
+          # Allow roughly 45 minutes for both Linux and Windows CI jobs.
+          wait_attempts=${CI_WAIT_ATTEMPTS:-270}
+          for ((attempt = 1; attempt <= wait_attempts; attempt++)); do
             runs=$(
               gh api \
                 "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&per_page=20"
@@ -97,18 +100,34 @@ jobs:
               exit 1
             fi
 
-            if [ "$status" != "completed" ]; then
-              sleep 10
-              continue
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              echo "CI did not pass for ${HEAD_SHA}: ${conclusion:-unknown} (${url})"
+              exit 1
             fi
 
-            if [ "$conclusion" = "success" ]; then
-              echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
-              exit 0
+            # A failed job cannot be rescued by other jobs still running.
+            # Skipped/neutral jobs do not necessarily fail the workflow.
+            failed_jobs=$(
+              gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json jobs \
+                --jq '.jobs[]
+                  | select(.status == "completed")
+                  | select(.conclusion == "failure" or .conclusion == "cancelled"
+                    or .conclusion == "timed_out" or .conclusion == "action_required"
+                    or .conclusion == "startup_failure" or .conclusion == "stale")
+                  | "\(.name): \(.conclusion)"'
+            )
+            if [ -n "$failed_jobs" ]; then
+              echo "CI jobs did not pass for ${HEAD_SHA} (${url}):"
+              echo "$failed_jobs"
+              exit 1
             fi
 
-            echo "CI did not pass for ${HEAD_SHA}: ${conclusion}"
-            exit 1
+            sleep 10
           done
 
           echo "Timed out waiting for CI to complete for ${HEAD_SHA}."

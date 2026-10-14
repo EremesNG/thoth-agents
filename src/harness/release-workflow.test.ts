@@ -30,9 +30,9 @@ const byName = (name: string) => steps[indexOf(name)];
 
 // The workflow runs on Ubuntu; exercise its CLI boundary wherever GNU timeout exists.
 const hasGnuTimeout =
-  spawnSync('bash', ['-c', 'timeout --version'], {
+  spawnSync('bash', ['--noprofile', '--norc', '-c', 'timeout --version'], {
     encoding: 'utf8',
-    timeout: 5000,
+    timeout: 30000,
   }).stdout?.includes('GNU coreutils') ?? false;
 
 function runReconcile({
@@ -63,8 +63,20 @@ function runReconcile({
     }
     for (const [command, body] of Object.entries({
       npm: `echo "npm $*" >> "$TRACE"\n${npmScript}`,
-      sleep: 'echo "sleep $*" >> "$TRACE"\nexec "$REAL_SLEEP" "$@"',
-      timeout: 'echo "timeout $*" >> "$TRACE"\nexec "$REAL_TIMEOUT" "$@"',
+      sleep: `echo "sleep $*" >> "$TRACE"
+"$REAL_SLEEP" "$@"
+status=$?
+printf '%s\\n' "$(( $(<"$CLOCK") + $1 ))" > "$CLOCK"
+exit "$status"`,
+      timeout: `echo "timeout $*" >> "$TRACE"
+"$REAL_TIMEOUT" "$@"
+status=$?
+echo "timeout-status $status" >> "$TRACE"
+if [ "$status" = 124 ] || [ "$status" = 137 ]; then
+  duration="\${2%s}"
+  printf '%s\\n' "$(( $(<"$CLOCK") + duration ))" > "$CLOCK"
+fi
+exit "$status"`,
       git: 'echo "git $*" >> "$TRACE"\nif [ "$1" = "ls-remote" ]; then echo existing-tag; fi',
       gh: 'echo "gh $*" >> "$TRACE"',
     })) {
@@ -73,27 +85,38 @@ function runReconcile({
       });
     }
     writeFileSync(join(root, 'trace'), '');
-    const started = Date.now();
+    writeFileSync(join(root, 'clock'), '0');
     const result = spawnSync('bash', ['--noprofile', '--norc'], {
       cwd: root,
       encoding: 'utf8',
-      timeout: 10000,
-      env: {
-        ...process.env,
-        PI_PUBLISH_OUTCOME: outcome,
-        PI_PUBLISH_WAIT_SECONDS: String(waitSeconds),
-      },
+      timeout: 30000,
+      // Set fixture variables inside Bash: Windows' WSL launcher does not forward
+      // arbitrary spawn env variables unless they are listed in WSLENV.
       input: `export REAL_SLEEP="$(command -v sleep)" REAL_TIMEOUT="$(command -v timeout)"
-export PATH="$PWD/bin:$PATH" TRACE="$PWD/trace" TMPDIR="$PWD"
+export PATH="$PWD/bin:$PATH" TRACE="$PWD/trace" TMPDIR="$PWD" CLOCK="$PWD/clock"
+export PI_PUBLISH_OUTCOME='${outcome.replaceAll("'", "'\\''")}' PI_PUBLISH_WAIT_SECONDS=${waitSeconds}
+# Advance the deadline clock only after mocked sleep/timeout operations. Real
+# GNU timeout and sleep still run, but metadata startup and CI load cannot spend
+# the propagation budget before npm has even started. Unsetting SECONDS removes
+# its special wall-clock behavior; DEBUG refreshes it before each workflow command.
+unset SECONDS
+SECONDS=0
+trap 'SECONDS=$(<"$CLOCK")' DEBUG
 ${byName('Reconcile Pi releases').run}`,
     });
     return {
       ...result,
-      elapsedMs: Date.now() - started,
+      clockSeconds: Number(readFileSync(join(root, 'clock'), 'utf8')),
       trace: readFileSync(join(root, 'trace'), 'utf8').trim().split('\n'),
     };
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    // spawnSync has reaped Bash; WSL/Windows may release its cwd handle later.
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 }
 
@@ -171,18 +194,22 @@ describe('release workflow Pi packages', () => {
     () => {
       const result = runReconcile({
         waitSeconds: 1,
-        npmScript: 'trap "" TERM\n"$REAL_SLEEP" 4\necho 1.0.0',
+        npmScript:
+          'trap "" TERM\necho npm-ready >> "$TRACE"\nexec "$REAL_SLEEP" 6',
       });
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(1);
-      expect(result.elapsedMs).toBeLessThan(5000);
+      // SIGKILL status proves timeout escalation, independent of host scheduling.
+      expect(result.clockSeconds).toBe(1);
       expect(result.stdout.match(/Timed out waiting for/g)).toHaveLength(9);
+      expect(result.trace).toContain('npm-ready');
+      expect(result.trace).toContain('timeout-status 137');
       expect(
         result.trace.filter((line) => line.startsWith('npm ')),
       ).toHaveLength(1);
       expect(result.trace.some((line) => line.startsWith('gh '))).toBe(false);
     },
-    10000,
+    30000,
   );
 
   test.skipIf(!hasGnuTimeout)(
@@ -191,18 +218,19 @@ describe('release workflow Pi packages', () => {
       const result = runReconcile({ npmScript: 'exit 1' });
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(1);
-      expect(result.elapsedMs).toBeLessThan(5000);
+      expect(result.clockSeconds).toBe(2);
       expect(result.stdout.match(/Timed out waiting for/g)).toHaveLength(9);
       const npmCalls = result.trace.filter((line) => line.startsWith('npm '));
       // Once the budget expires, no registry checks start for later packages.
       expect(new Set(npmCalls.map((line) => line.split(' ')[2])).size).toBe(1);
       const sleeps = result.trace.filter((line) => line.startsWith('sleep '));
-      expect(sleeps.length).toBeGreaterThan(0);
+      // The single clamped sleep spends the entire shared budget, not nine budgets.
+      expect(sleeps).toEqual(['sleep 2']);
       for (const sleep of sleeps) {
         expect(Number(sleep.split(' ')[1])).toBeLessThanOrEqual(2);
       }
     },
-    15000,
+    30000,
   );
 
   test.skipIf(!hasGnuTimeout).each(['failure', 'cancelled', 'skipped'])(

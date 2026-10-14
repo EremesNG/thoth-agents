@@ -22,7 +22,11 @@ describe('subagent runner interaction-required bridge', () => {
     vi.resetModules();
     let delegatedPrompt = '';
     const session = {
-      getAllTools: () => [{ name: 'read' }, { name: 'ask_orchestrator' }],
+      getAllTools: () => [
+        { name: 'read' },
+        { name: 'ask_orchestrator' },
+        { name: 'notify_orchestrator' },
+      ],
       systemPrompt: '# Analyst\nSYSTEM_SENTINEL',
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async (prompt: string) => {
@@ -117,7 +121,7 @@ describe('subagent runner interaction-required bridge', () => {
       expect.objectContaining({
         resourceLoader: loaderInstances[0],
         cwd: '/workspace',
-        tools: ['read', 'ask_orchestrator'],
+        tools: ['read', 'ask_orchestrator', 'notify_orchestrator'],
         modelRuntime,
       }),
     );
@@ -939,6 +943,7 @@ describe('subagent runner interaction-required bridge', () => {
           'tool_hidden',
           'read',
           'ask_orchestrator',
+          'notify_orchestrator',
         ],
       }),
     );
@@ -988,7 +993,12 @@ describe('subagent runner interaction-required bridge', () => {
 
     expect(createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: ['tool_lookup', 'read', 'ask_orchestrator'],
+        tools: [
+          'tool_lookup',
+          'read',
+          'ask_orchestrator',
+          'notify_orchestrator',
+        ],
       }),
     );
   });
@@ -1070,6 +1080,7 @@ describe('subagent runner interaction-required bridge', () => {
         'ask_user_question',
         'todo',
         'ask_orchestrator',
+        'notify_orchestrator',
       ],
       [
         'read',
@@ -1078,6 +1089,7 @@ describe('subagent runner interaction-required bridge', () => {
         'todo',
         'future_extension_tool',
         'ask_orchestrator',
+        'notify_orchestrator',
       ],
     ]);
   });
@@ -1132,7 +1144,9 @@ describe('subagent runner interaction-required bridge', () => {
     } as any);
 
     expect(createAgentSession).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: ['ask_orchestrator'] }),
+      expect.objectContaining({
+        tools: ['ask_orchestrator', 'notify_orchestrator'],
+      }),
     );
   });
 
@@ -1190,7 +1204,7 @@ describe('subagent runner interaction-required bridge', () => {
 
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([['ask_orchestrator']]);
+    ).toEqual([['ask_orchestrator', 'notify_orchestrator']]);
   });
 
   it('reports all-missing explicit implementations while permitting root-inactive registered tools', async () => {
@@ -1230,7 +1244,7 @@ describe('subagent runner interaction-required bridge', () => {
           filePath: '/tmp/tool-user.md',
           instructions: 'return a concise result',
           tools: ['inactive_extension_tool'],
-          disallowed_tools: ['ask_orchestrator'],
+          disallowed_tools: ['ask_orchestrator', 'notify_orchestrator'],
         },
         task: 'use explicitly selected inactive tool',
         cwd: '/workspace',
@@ -1282,7 +1296,12 @@ describe('subagent runner interaction-required bridge', () => {
           filePath: '/tmp/reader.md',
           instructions: 'read only',
           tools,
-          disallowed_tools: ['ask_orchestrator', 'ask_user_question', 'todo'],
+          disallowed_tools: [
+            'ask_orchestrator',
+            'notify_orchestrator',
+            'ask_user_question',
+            'todo',
+          ],
         },
         task: 'read a file',
         cwd: '/workspace',
@@ -1636,4 +1655,86 @@ describe('subagent runner interaction-required bridge', () => {
     expect(session.abort).toHaveBeenCalledOnce();
     expect(session.prompt).not.toHaveBeenCalled();
   });
+});
+
+it.each([
+  {
+    selection: 'implemented',
+    registered: ['read', 'notify_orchestrator'],
+    denied: [],
+    enabled: true,
+    available: true,
+  },
+  {
+    selection: 'dropped',
+    registered: ['read'],
+    denied: [],
+    enabled: true,
+    available: false,
+  },
+  {
+    selection: 'denied',
+    registered: ['read'],
+    denied: ['notify_orchestrator'],
+    enabled: true,
+    available: false,
+  },
+  {
+    selection: 'disabled',
+    registered: ['read'],
+    denied: [],
+    enabled: false,
+    available: false,
+  },
+])('reports notify availability only from the verified child selection: $selection', async ({
+  registered,
+  denied,
+  enabled,
+  available,
+}) => {
+  vi.resetModules();
+  const activities: any[] = [];
+  vi.doMock('@earendil-works/pi-coding-agent', () => ({
+    ModelRuntime: ModelRuntimeFixture,
+    SessionManager: { inMemory: () => ({}) },
+    createAgentSession: () => ({
+      session: {
+        getAllTools: () => registered.map((name) => ({ name })),
+        subscribe: () => () => {},
+        prompt: async () => {},
+        messages: [{ role: 'assistant', content: 'done' }],
+        dispose: async () => {},
+      },
+    }),
+  }));
+  const { sdkSubagentRunner } = await import('../../src/runner.js');
+  const result = await sdkSubagentRunner({
+    definition: {
+      name: 'reader',
+      description: 'reader',
+      filePath: '/reader.md',
+      instructions: 'read',
+      tools: ['read'],
+      disallowed_tools: denied,
+    },
+    task: 'read',
+    cwd: '/workspace',
+    ctx: { model: { provider: 'test', id: 'model' } },
+    config: {
+      timeout_ms: 10000,
+      stall_timeout_ms: 10000,
+      max_concurrency: 1,
+      default_tools: [],
+      enable_ask_orchestrator: false,
+      enable_notify_orchestrator: enabled,
+    },
+    signal: new AbortController().signal,
+    onActivity: (activity) => activities.push(activity),
+  });
+  expect(
+    activities.find((activity) => activity.message === 'nested session ready'),
+  ).toMatchObject({ notify_orchestrator_available: available });
+  expect(result.dropped_tools).toEqual(
+    enabled && !denied.length && !available ? ['notify_orchestrator'] : [],
+  );
 });

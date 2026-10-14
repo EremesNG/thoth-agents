@@ -3614,6 +3614,10 @@ describe('orchestrator question channel', () => {
 
   it('stores the latest five progress updates without notifying the parent or blocking', async () => {
     writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_ask_orchestrator: false }),
+    );
     const delivered = vi.fn();
     const hook = vi.fn();
     const manager = createManager(

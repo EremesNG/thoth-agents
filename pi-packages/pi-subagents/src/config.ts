@@ -533,6 +533,10 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
       raw.detail_cancel_shortcut ?? raw.detailCancelShortcut,
     ),
     enable_ask_orchestrator: parseBoolean(raw.enable_ask_orchestrator, true),
+    enable_notify_orchestrator: parseBoolean(
+      raw.enable_notify_orchestrator,
+      true,
+    ),
     ask_timeout_ms:
       Number.isInteger(raw.ask_timeout_ms) && raw.ask_timeout_ms > 0
         ? raw.ask_timeout_ms

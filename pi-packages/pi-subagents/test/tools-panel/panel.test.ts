@@ -58,6 +58,7 @@ const sampleDiscovered: ToolsPanelDiscoveredTool[] = [
   },
   { name: 'todo', description: 'Root progress tool', active: true },
   { name: 'ask_orchestrator', active: false },
+  { name: 'notify_orchestrator', active: false },
 ];
 
 function successfulSave(
@@ -194,7 +195,11 @@ describe('global Pi tools panel', () => {
     expect(text).toContain('Read-only: *, agent_browser_*, retired_tool');
     expect(text).toContain('ask_orchestrator: child-provided');
     expect(text).toContain('enable_ask_orchestrator');
-    expect(text).not.toMatch(/\[[x ]\] (?:ask_orchestrator|retired_tool|\*)/);
+    expect(text).toContain('notify_orchestrator: child-provided');
+    expect(text).toContain('enable_notify_orchestrator');
+    expect(text).not.toMatch(
+      /\[[x ]\] (?:ask_orchestrator|notify_orchestrator|retired_tool|\*)/,
+    );
     expect(text).toContain('[ ] custom_inactive (inactive)');
     panel.handleInput('*');
     panel.handleInput(' '); // exact read only

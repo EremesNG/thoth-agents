@@ -10,7 +10,7 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - `subagent_run` for task-mode or background delegation to one agent per call.
 - Optional `subagent_continue` for resuming the exact persisted nested session with optional mode/model/effort overrides when `enable_continue: true`.
 - `subagent_send_message` for live same-parent steering of owned background tasks on supported Pi runtimes.
-- Child-provided `ask_orchestrator` for blocking questions and non-blocking progress, with parent `subagent_reply` (enabled by default for every child unless denied).
+- Child-provided `ask_orchestrator` for blocking questions with parent `subagent_reply`, and independent `notify_orchestrator` for non-blocking progress (both enabled by default unless denied).
 - Status/result/list/cancel tools for delegated tasks.
 - Isolated in-memory agent sessions for each subagent run.
 - Subagent markdown used as system prompt, with delegated task/context as the user prompt.
@@ -203,7 +203,7 @@ Supported frontmatter:
 |---|---|
 | `name` | Optional name; must match the filename stem after trimming and case-insensitive normalization. Identity always comes from the filename. A mismatch fails loading; rename the file to `<name>.md` or change `name`. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Explicit exact-name lists are the recommended default. Manual advanced globs, including `*`, match all registered root tools (active and inactive); exact names also work when root-inactive. The runner then adds enabled `ask_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
+| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Explicit exact-name lists are the recommended default. Manual advanced globs, including `*`, match all registered root tools (active and inactive); exact names also work when root-inactive. The runner then adds enabled `ask_orchestrator` and `notify_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
 | `disallowed_tools` | Manually configured exact tool names removed after allowlist resolution, for injected tools and trimming glob results. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
@@ -220,7 +220,7 @@ starts at 84 columns and the cursor-centered viewport follows terminal height.
 The editor targets the global/project definitions currently resolved by this
 extension, including project overrides. It discovers all registered root tools
 (active and inactive) on each open and identifies the child-provided
-`ask_orchestrator` separately. Native `subagent_*` controls are not selectable.
+`ask_orchestrator` and `notify_orchestrator` separately. Native `subagent_*` controls are not selectable.
 There is no dynamic `*` mode, and `@active` is rejected. Existing globs and
 unrecognized names remain read-only and are preserved on normal save.
 
@@ -277,7 +277,7 @@ Globs are manual advanced selections, not the default. Every glob, including `to
 
 The runtime natively excludes only `subagent_*`, for every selection form. Other packages' tools, including `ask_user_question`, `todo` and third-party delegation tools, are selectable unless the definition denies them. Shell-job tools from `@thoth-agents/pi-background-tasks` remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child.
 
-With `enable_ask_orchestrator: true` (the default), every child receives the child-provided `ask_orchestrator` unless its `disallowed_tools` denies it. This includes globs (including `*`), explicit lists that omit it, and empty/default selections; even an empty or unavailable root inventory under `*` yields the injected tool alone. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations. The same effective permitted list controls SDK tools, custom-tool injection and registry verification. An empty effective selection fails launch.
+With `enable_ask_orchestrator: true` (the default), every child receives the child-provided `ask_orchestrator` unless its `disallowed_tools` denies it. This includes globs (including `*`), explicit lists that omit it, and empty/default selections; even an empty or unavailable root inventory under `*` still yields the enabled injected tools. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations. The same effective permitted list controls SDK tools, custom-tool injection and registry verification. An empty effective selection fails launch. Independently, `enable_notify_orchestrator: true` injects `notify_orchestrator` under the same selection and denial rules; disabling ask does not disable notify.
 
 Edit `disallowed_tools` manually in the definition file to deny injected tools or trim glob results. For example, either format removes injected `ask_orchestrator` and ordinary `bash`:
 
@@ -299,7 +299,7 @@ For every selection form—explicit lists and globs (including `*`), alone or mi
 
 Exact names and tools matched by globs reach the child even when inactive in the root. For example, `agent_browser_*` includes root-inactive registered browser capabilities that the child may activate. All selections are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected tools with `deferred` or `codemode` exposure remain callable through Pi's native nested-tool interface. When the effective selection includes the `codemode` tool, lean children load Pi's public codemode extension in mode `on`; scripts can call only the child's selected script-callable tools. Children without `codemode` selected do not load that extension. Excluded and prohibited tools are absent from the child's registered inventory.
 
-If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; exact names and enabled `ask_orchestrator` still apply. There is no fallback to the root's active inventory. Native `subagent_*` controls remain excluded, and `disallowed_tools` applies to every form. Missing child implementations use the same durable warning rules; launch fails only when no permitted implemented tool remains.
+If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; exact names and enabled `ask_orchestrator` and `notify_orchestrator` still apply. There is no fallback to the root's active inventory. Native `subagent_*` controls remain excluded, and `disallowed_tools` applies to every form. Missing child implementations use the same durable warning rules; launch fails only when no permitted implemented tool remains.
 
 Do not mix the formats or declare `tools` more than once:
 
@@ -366,6 +366,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "default_mode": "background",
   "enable_continue": false,
   "enable_ask_orchestrator": true,
+  "enable_notify_orchestrator": true,
   "ask_timeout_ms": 600000,
   "timeout_ms": 1200000,
   "timeout_warning_ms": 180000,
@@ -403,6 +404,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
 | `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
+| `enable_notify_orchestrator` | `true` | Independently inject child-provided `notify_orchestrator` unless denied by the definition. Follows the global/project cascade. |
 | `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
 | `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but does not pause the execution deadline. |
 | `timeout_ms` | `1200000` | Initial execution deadline per subagent attempt (20 minutes); also the default extension amount. |
@@ -615,7 +617,7 @@ Behavior:
 
 Before the current deadline, the root receives one automated `subagent-attention` follow-up with remaining time, extensions used/remaining, recent progress/checkpoint updates, and a partial output preview tail. Held notices are dropped if the attempt or deadline is no longer current. Like other subagent notifications, attention is child input, not user authorization.
 
-For background runs, a best-effort checkpoint steering request asks the child to report done/pending work and touched files through `ask_orchestrator({ kind: "progress", message: "..." })` when available, then continue. Enqueue does not prove consumption or that a checkpoint arrived.
+For background runs, a best-effort checkpoint steering request asks the child to report done/pending work and touched files through `notify_orchestrator({ message: "..." })` only when it is in the verified child selection for the current attempt, then continue. Enqueue does not prove consumption or that a checkpoint arrived.
 
 ```ts
 { task_id: "subtask_reviewer_...", extra_ms: 600000 }
@@ -686,22 +688,30 @@ Only the exact originating parent Pi session may reply. `request_id` may be omit
 
 Questions arrive as automated `subagent-question` messages with task id, agent, UUID request id, and question text. They trigger a parent turn using follow-up delivery, like completion notifications. They are subagent input, **not user messages or user authorization**. The orchestrator may ask the human a material decision with its own user-question tool before answering through `subagent_reply`.
 
-## Tool exposed only to selected children
+## Tools exposed only to selected children
 
 ### `ask_orchestrator`
 
 ```ts
-{ kind: "question", message: "Does the approved scope include a migration?" }
-{ kind: "progress", message: "Discovery complete; implementation is underway." }
+{ message: "Does the approved scope include a migration?" }
 ```
 
 - The tool is injected in-process for every child when `enable_ask_orchestrator` is true unless denied by `disallowed_tools`, regardless of `tools` selection; it is not registered for the root.
 - It always uses `model-only` exposure: direct model calls work with or without codemode, but scripts and native nested-tool calls cannot invoke it.
-- `question` blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
+- A question blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
 - Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. The execution deadline continues while waiting; only `subagent_extend` grants more time within the configured bounds, so long human escalation can still exhaust the task's total budget.
-- `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. Progress updates remain available in task details and the status/list tools.
 - `subagent_status` and `subagent_list_tasks` expose `pending_question_count`, `pending_questions` (`request_id`, `message`, `created_at`), and recent `progress_updates` in compact details and text. Pending questions are live-only and cannot be answered after the parent session ends.
 - Use questions for material alignment or decisions, not as a substitute for the child's own discovery, and never to delegate. This channel does not change the separate human interaction bridge described below.
+
+### `notify_orchestrator`
+
+```ts
+{ message: "Discovery complete; implementation is underway." }
+```
+
+- Injected for every child when `enable_notify_orchestrator` is true (default), unless denied by `disallowed_tools`, independently of `enable_ask_orchestrator` and the tool selection form. Oracle can notify while ask remains denied.
+- Returns immediately and keeps the latest five `progress_updates` on the task without injecting a parent message or triggering a turn. Progress remains available in task details, status/list tools and timeout context.
+- Like ask, it is child-only and `model-only`: codemode scripts cannot invoke it. Both tools take only `{ message }`; ask carries questions only.
 
 ## Commands and shortcuts
 

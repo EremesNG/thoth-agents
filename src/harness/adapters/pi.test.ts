@@ -141,16 +141,14 @@ describe('Pi adapter', () => {
     'librarian',
     'designer',
     'worker',
-  ])('bounds ask_orchestrator questions and progress for %s', (role) => {
+  ])('bounds questions-only ask_orchestrator for %s', (role) => {
     const child = piAdapter
       .render({ projectRoot: process.cwd() })
       .artifacts.find(({ path }) => path === `agents/thoth-${role}.md`);
     const contract = child?.content.match(
       /<role-operational-contract>([\s\S]*?)<\/role-operational-contract>/,
     )?.[1];
-    expect(contract).toContain(
-      'ask_orchestrator({ kind: "question", message: "…" })',
-    );
+    expect(contract).toContain('ask_orchestrator({ message: "…" })');
     expect(contract).toContain(
       'only for material alignment or clarification ambiguity that blocks this assignment',
     );
@@ -163,18 +161,33 @@ describe('Pi adapter', () => {
       "If the tool is unavailable, use the return contract's `openQuestions`",
     );
     expect(contract).toContain('without opening a user dialog');
-    expect(contract).toContain(
-      'Optional brief `ask_orchestrator({ kind: "progress", message: "…" })` updates return immediately',
-    );
-    expect(contract).toContain(
-      'are recorded on this task, and do not trigger a root turn',
-    );
+    expect(contract).not.toContain('kind:');
     if (role === 'explorer' || role === 'librarian') {
       expect(contract).toContain('Questions and progress report facts only');
       expect(contract).toContain(
         'without recommending fixes, designs, defaults, or next actions',
       );
     }
+  });
+
+  test.each([
+    'explorer',
+    'librarian',
+    'oracle',
+    'designer',
+    'worker',
+  ])('gives %s one-way progress without a root turn', (role) => {
+    const child = piAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(({ path }) => path === `agents/thoth-${role}.md`);
+    expect(child?.content).toContain(
+      'Optional brief `notify_orchestrator({ message: "…" })` progress/checkpoint updates return immediately',
+    );
+    expect(child?.content).toContain(
+      'are recorded on this task, and do not trigger a root turn',
+    );
+    expect(child?.content).toContain('root still owns progress tracking');
+    expect(child?.content).not.toContain('kind: "progress"');
   });
 
   test('leaves child tool configuration to the subagents-configuration skill', () => {

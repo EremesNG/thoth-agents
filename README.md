@@ -90,7 +90,12 @@ lists, including registered active and inactive extension and MCP tools. Thoth
 supplies managed-specialist validation and reset defaults through an optional adapter. Globs (including `*`) are
 manual advanced selections over all registered root tools; the panel preserves
 them read-only. Edit `disallowed_tools` manually for injected tools and trimming
-globs; only Oracle denies `ask_orchestrator` by default. See
+globs; only Oracle denies `ask_orchestrator` by default, while all five roles keep
+`notify_orchestrator`. Child `ask_orchestrator({ message })` carries blocking
+questions only; `notify_orchestrator({ message })` records one-way progress or
+checkpoints and returns immediately without a root turn. Both are `model-only`
+direct calls, independently controlled by `enable_ask_orchestrator` and
+`enable_notify_orchestrator` (default true, global/project cascade) and denials. See
 [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
 
 Pi setup currently supports the default `~/.pi/agent` root. See the

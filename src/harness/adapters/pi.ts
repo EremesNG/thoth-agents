@@ -103,11 +103,11 @@ function roleArtifacts(config?: PluginConfig): HarnessArtifact[] {
             '- Child tools are filtered by `tools`, configuration, `disallowed_tools`, and native `subagent_*` exclusions with runtime-verified registry filtering; behavioral role limits are instruction-level, not an OS or credential sandbox.',
             ...(role.name !== 'oracle'
               ? [
-                  '- When available, use `ask_orchestrator({ kind: "question", message: "…" })` only for material alignment or clarification ambiguity that blocks this assignment. Never use it as a substitute for your own discovery, to delegate, or to request other agents. Keep questions concise.',
+                  '- When available, use `ask_orchestrator({ message: "…" })` only for material alignment or clarification ambiguity that blocks this assignment. Never use it as a substitute for your own discovery, to delegate, or to request other agents. Keep questions concise.',
                   "- A question waits for the root reply in this same session. If the tool is unavailable, use the return contract's `openQuestions`; continue safe non-blocked work without opening a user dialog.",
-                  '- Optional brief `ask_orchestrator({ kind: "progress", message: "…" })` updates return immediately, are recorded on this task, and do not trigger a root turn; root still owns progress tracking.',
                 ]
               : []),
+            '- Optional brief `notify_orchestrator({ message: "…" })` progress/checkpoint updates return immediately, are recorded on this task, and do not trigger a root turn; root still owns progress tracking.',
             ...(role.name === 'explorer' || role.name === 'librarian'
               ? [
                   '- Questions and progress report facts only: include options and evidence without recommending fixes, designs, defaults, or next actions.',

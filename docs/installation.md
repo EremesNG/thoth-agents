@@ -604,9 +604,10 @@ and MCP integrations; Thoth does not maintain a fixed catalog of those tools.
   use Space to toggle a selection. Enter or Escape returns to the overview.
 - Checkboxes edit registered exact names only. Inactive tools are labeled
   `(inactive)` and can be selected; they reach the child even while inactive in
-  the root. The child-provided `ask_orchestrator` channel is an informational
-  note, not a checkbox, and is subject to `enable_ask_orchestrator` and
-  `disallowed_tools`.
+  the root. The child-provided `ask_orchestrator` and `notify_orchestrator`
+  channels are informational notes, not checkboxes, and are subject to their
+  respective `enable_ask_orchestrator` and `enable_notify_orchestrator` flags
+  and `disallowed_tools`.
 - Existing globs (including `*`) and names absent from the registry are shown
   read-only. Edit them manually in the definition file. Saves and partial-save
   retries retain these entries unchanged unless defaults reset replaces the
@@ -658,8 +659,17 @@ names to deny injected tools absent from the panel or trim glob results. For
 example, a broad glob can be paired with
 `disallowed_tools: "ask_user_question, todo"` to keep interaction and progress
 root-owned. Only Oracle's generated definition has this field, denying
-`ask_orchestrator` for independent judgment. Other enabled children receive that
-channel regardless of `tools`. Synchronization keeps operator denials, including
+`ask_orchestrator` for independent judgment, while keeping `notify_orchestrator`.
+Other enabled children receive the question channel regardless of `tools`.
+`ask_orchestrator({ message })` carries questions only and waits for the root's
+`subagent_reply`. Independently, all five roles receive
+`notify_orchestrator({ message })` when enabled and not denied: it returns
+immediately, records progress/checkpoint updates (latest five) on the task, and
+triggers no root turn or reply. Both flags default to true and follow the
+global/project configuration cascade. Both tools are `model-only` direct calls,
+not callable from codemode scripts. Timeout checkpoint steering uses notify only
+when it is in the child's verified tool selection.
+Synchronization keeps operator denials, including
 explicit empty values; absent operator denials acquire the package value (none,
 or `ask_orchestrator` for Oracle).
 

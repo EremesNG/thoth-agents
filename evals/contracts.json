@@ -200,8 +200,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {
@@ -235,8 +235,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {
@@ -274,8 +274,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {
@@ -313,8 +313,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {
@@ -345,8 +345,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {
@@ -560,8 +560,8 @@
         }
       ],
       "rootPatterns": [
-        "root owns verified identity, lifecycle, intent and authorization; children get only scoped MEMORY",
-        "scoped MEMORY authorization",
+        "root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY",
+        "MEMORY .{0,40}verified project/root session identity",
         "do not mirror work artifacts"
       ],
       "input": {

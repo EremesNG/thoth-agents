@@ -16,14 +16,16 @@ const PROVIDER_OPERATION_PATTERN =
   /mem_(?:save|recall|get|context|project|session)\s*\(/;
 
 describe('memory governance contract', () => {
-  test('uses the Pi question tool without requiring a progress tool', () => {
+  test('uses the Pi question tool and keeps todo progress coordinator-owned', () => {
     const prompt = renderMemoryGovernanceInstructions(
       getAgentRole('worker'),
       PI_PROMPT_DIALECT,
     );
     expect(prompt).toContain('`ask_user_question`');
-    expect(prompt).toContain('tracking in written progress notes');
-    expect(prompt).not.toContain('tracking in todo');
+    expect(prompt).toContain(
+      'Progress ownership remains with the coordinator; report memory-governance verification for tracking in todo.',
+    );
+    expect(prompt).not.toContain('tracking in written progress notes');
     expect(prompt).not.toContain('undefined');
     expect(prompt).not.toContain('tracking in subagent_status');
   });

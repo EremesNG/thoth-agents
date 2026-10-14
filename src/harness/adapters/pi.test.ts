@@ -99,10 +99,9 @@ describe('Pi adapter', () => {
   test('keeps question dialogs and session progress root-owned', () => {
     const root = renderPiRootInstructions();
     expect(root).toContain(
-      'Use an available task/progress tool only when the work genuinely has multiple dependent steps.',
+      'Track requests with 3+ steps, delegated units or SDD phases with `todo`: create items up front, mark each active unit in_progress, complete each immediately; skip single trivial or conversational turns.',
     );
-    expect(root).toContain('actual tool name and schema');
-    expect(root).toContain('lightweight written progress');
+    expect(root).not.toContain('no native progress tool is configured');
     expect(root).not.toContain('rpiv-todo');
     expect(root).toContain('ask_user_question');
     expect(root).toContain('`recommended` (never preselected)');
@@ -118,7 +117,7 @@ describe('Pi adapter', () => {
     const children = piAdapter.render({ projectRoot: process.cwd() }).artifacts;
     for (const child of children) {
       expect(child.content).toContain(
-        'Do not delegate further; root owns progress.',
+        'Do not delegate further or call `todo`; root owns progress.',
       );
       expect(child.content).toContain(
         'escalate the unresolved question to the root',

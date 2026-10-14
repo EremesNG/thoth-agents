@@ -24,7 +24,7 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** an empty session list
 - **WHEN** the agent sends one batch call creating seven tasks, two of them in_progress and one depending on another through a ref, and the list is later compacted
-- **THEN** one snapshot is published with seven tasks and both in_progress tasks, the dependency points to the created id, and the reconstructed list, model context and `/todos` panel show the same seven tasks grouped by status 
+- **THEN** one snapshot is published with seven tasks and both in_progress tasks, the dependency points to the created id, and the reconstructed list, model context and `/todos` panel show the same seven tasks grouped by status
 
 ### Requirement: Thoth Pi render kit
 
@@ -318,13 +318,13 @@ A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi'
 
 ### Requirement: Codemode delegation boundary
 
-Thoth delegation controls, the child `ask_orchestrator` tool and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work.
+Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work.
 
 #### Scenario: Codemode delegation boundary
 
 - **GIVEN** codemode is active in mode `on` or `only`
-- **WHEN** the root delegates, replies to a child or asks the user, or a child asks the orchestrator
-- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script
+- **WHEN** the root delegates, replies to a child or asks the user, or a child asks or notifies the orchestrator
+- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script 
 
 ### Requirement: Named Pi subagent model profiles
 

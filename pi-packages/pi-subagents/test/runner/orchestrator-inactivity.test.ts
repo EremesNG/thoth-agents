@@ -5,6 +5,7 @@ import type { SubagentOrchestratorChannel } from '../../src/types.js';
 function inactivitySession(
   stallSuspendMaxMs?: number,
   onQuestionPendingChange?: SubagentOrchestratorChannel['onPendingChange'],
+  toolStallTimeoutMs = 1000,
 ) {
   let event: (event: any) => void = () => {};
   let finish: () => void = () => {};
@@ -42,6 +43,7 @@ function inactivitySession(
     undefined,
     onQuestionPendingChange,
     stallSuspendMaxMs,
+    toolStallTimeoutMs,
   ).catch((error) => error);
   return {
     session,
@@ -299,6 +301,19 @@ it('distinguishes session-event age from tool-update age and resets settlement o
     'work',
     200,
     new AbortController().signal,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'delegated_task',
+    'work',
+    1,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    200,
   ).catch((error) => error);
   try {
     await vi.advanceTimersByTimeAsync(100);
@@ -379,6 +394,8 @@ it('suspends inactivity for pending questions and resumes it after the last answ
       listener(false);
       return unsubscribePending;
     },
+    undefined,
+    1000,
   );
   const outcome = promise.catch((error) => error);
   try {
@@ -399,6 +416,67 @@ it('suspends inactivity for pending questions and resumes it after the last answ
   } finally {
     finishPrompt();
     await outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('keeps session-idle stalls on the session budget without active tools', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(undefined, undefined, 5000);
+  try {
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_budget_kind: 'session',
+      stall_budget_ms: '1000',
+    });
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('checks each tool budget rather than only the oldest update and refreshes updates', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(undefined, undefined, 5000);
+  try {
+    run.event({
+      type: 'tool_execution_start',
+      toolCallId: 'long',
+      toolName: 'bash',
+      args: { timeout: 1000 },
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    run.event({
+      type: 'tool_execution_start',
+      toolCallId: 'short',
+      toolName: 'read',
+      args: {},
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    run.event({
+      type: 'tool_execution_update',
+      toolCallId: 'short',
+      toolName: 'read',
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    const error = await run.outcome;
+    expect(error.error_metadata.details).toMatchObject({
+      stall_budget_kind: 'tool',
+      stall_budget_ms: '5000',
+    });
+    expect(error.message).toContain('budget=tool; budget_ms=5000');
+    expect(error.message).toContain('stalled for 5000ms');
+  } finally {
+    run.finish();
+    await run.outcome;
     vi.useRealTimers();
   }
 });

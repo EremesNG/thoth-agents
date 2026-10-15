@@ -79,6 +79,7 @@ export type SubagentsConfig = {
   max_total_timeout_ms?: number;
   max_timeout_extensions?: number;
   stall_timeout_ms: number;
+  tool_stall_timeout_ms?: number;
   stall_suspend_max_ms?: number;
   max_concurrency: number;
   default_tools: string[];

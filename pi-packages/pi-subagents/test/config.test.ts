@@ -641,6 +641,46 @@ describe('config and workflow loading', () => {
     expect(warnings).toContainEqual(expect.stringContaining('background'));
   });
 
+  it('defaults, cascades, normalizes and floors tool stall budgets', () => {
+    expect(readSubagentsConfig(tmp).tool_stall_timeout_ms).toBe(900000);
+    const agentDir = process.env.PI_CODING_AGENT_DIR!;
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ tool_stall_timeout_ms: 7000 }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_timeout_ms: 1000 }),
+    );
+    expect(readSubagentsConfig(tmp).tool_stall_timeout_ms).toBe(7000);
+    for (const [value, expected] of [
+      [8000, 8000],
+      ['2345', 2345],
+      [3456.9, 3456],
+      [0.5, 1000],
+      [-1, 900000],
+      [0, 900000],
+      [null, 900000],
+      ['bad', 900000],
+      ['Infinity', 900000],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({
+          stall_timeout_ms: 1000,
+          tool_stall_timeout_ms: value,
+        }),
+      );
+      expect(readSubagentsConfig(tmp).tool_stall_timeout_ms).toBe(expected);
+    }
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_timeout_ms: 1000000 }),
+    );
+    expect(readSubagentsConfig(tmp).tool_stall_timeout_ms).toBe(1000000);
+  });
+
   it('defaults the stall suspension safety ceiling to fifteen minutes', () => {
     expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(900000);
   });

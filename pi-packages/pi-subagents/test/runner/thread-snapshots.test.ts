@@ -486,7 +486,13 @@ describe('subagent runner thread snapshots', () => {
     expect(JSON.stringify(latest?.live_activity)).not.toContain('sentinel');
   });
 
-  it('stalls long-running tool calls when they stop sending updates', async () => {
+  it.each([
+    { args: {}, budget: 900000 },
+    { args: { timeout: 1000 }, budget: 1030000 },
+    { args: { timeout_seconds: 1000 }, budget: 1030000 },
+    { args: { timeout: 0 }, budget: 900000 },
+    { args: { timeout: 10000 }, budget: 1100000 },
+  ])('allows silent tools their own budget: %j', async ({ args, budget }) => {
     vi.useFakeTimers();
     let subscriber: ((event: unknown) => void) | undefined;
     let resolvePrompt: (() => void) | undefined;
@@ -499,8 +505,8 @@ describe('subagent runner thread snapshots', () => {
         subscriber?.({
           type: 'tool_execution_start',
           toolCallId: 'read-1',
-          toolName: 'read',
-          args: { path: 'openspec/changes/websearch-extension/spec.md' },
+          toolName: 'bash',
+          args,
         });
         return new Promise<void>((resolve) => {
           resolvePrompt = resolve;
@@ -540,7 +546,12 @@ describe('subagent runner thread snapshots', () => {
         task: 'apply work that stalls inside a tool',
         cwd: '/workspace',
         ctx: { model: { provider: 'test', id: 'model' } },
-        config: { ...config, stall_timeout_ms: 20 },
+        config: {
+          ...config,
+          stall_timeout_ms: 240000,
+          timeout_ms: 2000000,
+          max_total_timeout_ms: args.timeout === 10000 ? 1100000 : 3600000,
+        },
         signal: new AbortController().signal,
       });
       const rejection = promise.then(
@@ -550,12 +561,23 @@ describe('subagent runner thread snapshots', () => {
 
       await vi.dynamicImportSettled();
       expect(session.prompt).toHaveBeenCalledOnce();
-      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(300000);
+      expect(session.abort).not.toHaveBeenCalled();
+      if (budget === 1030000) {
+        await vi.advanceTimersByTimeAsync(660000);
+        expect(session.abort).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(budget - 960000);
+      } else {
+        await vi.advanceTimersByTimeAsync(budget - 300000);
+      }
+      expect(session.abort).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5000);
       const error = await rejection;
       expect(error).toBeInstanceOf(Error);
       expect(error.error_metadata).toMatchObject({
         category: 'stall_timeout',
         phase: 'runner_session',
+        details: { stall_budget_kind: 'tool', stall_budget_ms: String(budget) },
       });
       expect(session.abort).toHaveBeenCalledOnce();
     } finally {

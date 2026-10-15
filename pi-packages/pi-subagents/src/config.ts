@@ -35,6 +35,7 @@ export const DEFAULT_TIMEOUT_WARNING_MS = 180000;
 export const DEFAULT_MAX_TOTAL_TIMEOUT_MS = 3600000;
 export const DEFAULT_MAX_TIMEOUT_EXTENSIONS = 3;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
+export const DEFAULT_TOOL_STALL_TIMEOUT_MS = 900000;
 export const DEFAULT_STALL_SUSPEND_MAX_MS = 15 * 60 * 1000;
 export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_BACKGROUND_HANDOFF_SHORTCUT = 'ctrl+h';
@@ -480,6 +481,10 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
   const projectRaw = readJson(path.join(cwd, '.pi', 'subagents.json'));
   const raw = { ...globalRaw, ...projectRaw };
   const timeoutMs = positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS);
+  const stallTimeoutMs = positiveInteger(
+    raw.stall_timeout_ms,
+    DEFAULT_STALL_TIMEOUT_MS,
+  );
   const warningMs = positiveInteger(
     raw.timeout_warning_ms,
     DEFAULT_TIMEOUT_WARNING_MS,
@@ -500,9 +505,10 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     ),
     default_mode: parseDefaultMode(raw.default_mode),
     timeout_ms: positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS),
-    stall_timeout_ms: positiveInteger(
-      raw.stall_timeout_ms,
-      DEFAULT_STALL_TIMEOUT_MS,
+    stall_timeout_ms: stallTimeoutMs,
+    tool_stall_timeout_ms: Math.max(
+      stallTimeoutMs,
+      positiveInteger(raw.tool_stall_timeout_ms, DEFAULT_TOOL_STALL_TIMEOUT_MS),
     ),
     stall_suspend_max_ms: positiveInteger(
       raw.stall_suspend_max_ms,

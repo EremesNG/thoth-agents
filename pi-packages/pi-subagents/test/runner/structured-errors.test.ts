@@ -209,7 +209,11 @@ describe('subagent runner structured errors', () => {
           dispose: vi.fn(async () => undefined),
         }),
         {
-          config: { ...config, stall_timeout_ms: 20 },
+          config: {
+            ...config,
+            stall_timeout_ms: 20,
+            tool_stall_timeout_ms: 20,
+          },
           ctx: { model: undefined },
         },
       );
@@ -224,6 +228,8 @@ describe('subagent runner structured errors', () => {
         retryable: false,
         details: {
           stall_timeout_ms: '20',
+          stall_budget_kind: 'tool',
+          stall_budget_ms: '20',
           ms_since_last_session_event: '500',
           last_session_event_type: 'agent_settled',
           active_tools: 'read (500ms since update)',
@@ -234,6 +240,7 @@ describe('subagent runner structured errors', () => {
       expect(error.message).toContain(
         'Subagent stalled for 20ms without final response.',
       );
+      expect(error.message).toContain('budget=tool; budget_ms=20');
       expect(error.message).toContain('last_event=agent_settled');
       expect(error.message).toContain('last_event_age_ms=500');
       expect(error.message).toContain('active_tools=read (500ms since update)');
@@ -321,6 +328,7 @@ describe('subagent runner structured errors', () => {
       expect(task.error).toContain('last_event=agent_settled');
       expect(task.error).toContain('last_event_age_ms=500');
       expect(task.error).toContain('active_tools=none');
+      expect(task.error).toContain('budget=session; budget_ms=20');
       expect(task.error).toContain('settled_after_last_start=true');
       expect(task.error).toContain('outstanding_orchestrator_questions=0');
       expect(task.error_metadata).toMatchObject({

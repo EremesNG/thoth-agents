@@ -324,7 +324,7 @@ Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator
 
 - **GIVEN** codemode is active in mode `on` or `only`
 - **WHEN** the root delegates, replies to a child or asks the user, or a child asks or notifies the orchestrator
-- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script 
+- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script
 
 ### Requirement: Named Pi subagent model profiles
 
@@ -335,3 +335,13 @@ Pi `/subagents-model` MUST manage named model profiles (model and effort per sub
 - **GIVEN** a global active profile `openai` and a project pin `claude` defining orchestrator `anthropic/claude-opus-5-5`
 - **WHEN** a subagent runs in that project without a session selection
 - **THEN** it uses the `claude` profile's model and effort, a new session in that project starts with `anthropic/claude-opus-5-5`, resuming an older session keeps its own model, and selecting `openai` for the session makes later runs in that session, including after resume, use `openai` without changing any config file
+
+### Requirement: Tool-aware subagent stall budgets
+
+For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_timeout_ms` only when no tool is active; while tools are active its ordinary inactivity check MUST fire only when an active tool exceeds its own budget, defaulting to `tool_stall_timeout_ms` (default 900000, never below `stall_timeout_ms`) and extended to the declared seconds timeout plus 30 seconds for `bash`/`powershell` `timeout` or any `timeout_seconds` argument, capped at `max_total_timeout_ms`; maintenance suspension ceilings and execution deadlines are unaffected; the final stall error MUST identify the applied budget.
+
+#### Scenario: Tool-aware subagent stall budgets
+
+- **GIVEN** a child running a silent `bash` command with `timeout: 1000`, default config, and a deadline beyond 20 minutes
+- **WHEN** 16 minutes pass without tool updates
+- **THEN** no stall fires, and a stall fires once 1030 seconds pass without updates, with the final error naming the tool budget of 1030000 ms

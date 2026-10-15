@@ -1,4 +1,8 @@
-import { DEFAULT_STALL_SUSPEND_MAX_MS } from '../config.js';
+import {
+  DEFAULT_MAX_TOTAL_TIMEOUT_MS,
+  DEFAULT_STALL_SUSPEND_MAX_MS,
+  DEFAULT_TOOL_STALL_TIMEOUT_MS,
+} from '../config.js';
 import { writeSubagentsDebugLog } from '../debug.js';
 import {
   classifyAssistantFailure,
@@ -32,6 +36,7 @@ import {
   SubagentRuntimeMetricsTracker,
   ThreadSnapshotBuilder,
 } from './snapshot-builder.js';
+import { resolveToolStallBudget } from './tool-stall-budget.js';
 
 function emptyUsage(): UsageStats {
   return {
@@ -349,6 +354,8 @@ export async function promptWithInactivity(
   previousSnapshot?: SubagentThreadSnapshot,
   onQuestionPendingChange?: SubagentOrchestratorChannel['onPendingChange'],
   stallSuspendMaxMs = DEFAULT_STALL_SUSPEND_MAX_MS,
+  toolStallTimeoutMs = DEFAULT_TOOL_STALL_TIMEOUT_MS,
+  maxTotalTimeoutMs = DEFAULT_MAX_TOTAL_TIMEOUT_MS,
 ): Promise<{
   result: string;
   usage: UsageStats;
@@ -387,7 +394,7 @@ export async function promptWithInactivity(
   let sawInitialUserMessage = false;
   const activeToolCalls = new Map<
     string,
-    { name: string; startTime: number; lastUpdate: number }
+    { name: string; startTime: number; lastUpdate: number; budgetMs: number }
   >();
   const refreshInactivityBudget = (now = Date.now()): void => {
     lastActivity = now;
@@ -478,6 +485,12 @@ export async function promptWithInactivity(
             name: event.toolName ?? event.name ?? 'tool',
             startTime: observedAt,
             lastUpdate: observedAt,
+            budgetMs: resolveToolStallBudget(
+              event.toolName ?? event.name ?? 'tool',
+              event.args,
+              Math.max(toolStallTimeoutMs, stallTimeoutMs),
+              maxTotalTimeoutMs,
+            ),
           });
         if (event.type === 'tool_execution_update' && toolCallId) {
           const toolCall = activeToolCalls.get(toolCallId);
@@ -663,6 +676,8 @@ export async function promptWithInactivity(
           : retryBackoffStartedAt !== undefined
             ? { reason: 'auto_retry', startedAt: retryBackoffStartedAt }
             : undefined;
+      let budgetKind = 'session';
+      let budgetMs = stallTimeoutMs;
       // Questions pause ordinary inactivity, not the maintenance safety ceiling.
       if (suspension) {
         if (stalledAt - suspension.startedAt <= stallSuspendMaxMs) return;
@@ -671,15 +686,23 @@ export async function promptWithInactivity(
         if (activeToolCalls.size === 0) {
           if (stalledAt - lastActivity <= stallTimeoutMs) return;
         } else {
-          const oldestToolUpdate = Math.min(
-            ...[...activeToolCalls.values()].map((entry) => entry.lastUpdate),
+          const expiredTool = [...activeToolCalls.values()].find(
+            (tool) => stalledAt - tool.lastUpdate > tool.budgetMs,
           );
-          if (stalledAt - oldestToolUpdate <= stallTimeoutMs) return;
+          if (!expiredTool) return;
+          budgetKind = 'tool';
+          budgetMs = expiredTool.budgetMs;
         }
       }
       // Capture before abort: cleanup can emit events and clear tracked tools.
       stallDetails = {
         stall_timeout_ms: String(stallTimeoutMs),
+        ...(!suspension
+          ? {
+              stall_budget_kind: budgetKind,
+              stall_budget_ms: String(budgetMs),
+            }
+          : {}),
         ...(suspension
           ? {
               stall_suspend_max_ms: String(stallSuspendMaxMs),
@@ -704,7 +727,7 @@ export async function promptWithInactivity(
       stalled = true;
       const stallMessage = suspension
         ? `stalled during ${suspension.reason} for ${stallSuspendMaxMs}ms; aborting session`
-        : `stalled for ${stallTimeoutMs}ms; aborting session`;
+        : `stalled for ${budgetMs}ms (${budgetKind} budget); aborting session`;
       transcript += `\n\n--- stall ---\n${stallMessage}\n`;
       emitActivity({
         message: stallMessage,

@@ -814,6 +814,8 @@ export const sdkSubagentRunner: SubagentRunner = async ({
         continuation?.previous_snapshot,
         orchestratorChannel?.onPendingChange,
         config.stall_suspend_max_ms,
+        config.tool_stall_timeout_ms,
+        config.max_total_timeout_ms,
       );
       if (signal.aborted) {
         await abortBridge.abortSession();

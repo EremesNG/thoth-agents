@@ -373,6 +373,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "max_total_timeout_ms": 3600000,
   "max_timeout_extensions": 3,
   "stall_timeout_ms": 240000,
+  "tool_stall_timeout_ms": 900000,
   "stall_suspend_max_ms": 900000,
   "max_concurrency": 5,
   "debug": false,
@@ -411,7 +412,8 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `timeout_warning_ms` | `180000` | Warning lead time before the current deadline (3 minutes). Normalized to `0` (disabled) when greater than or equal to `timeout_ms`. |
 | `max_total_timeout_ms` | `3600000` | Total execution ceiling including extensions (60 minutes). Raised to `timeout_ms` when lower. |
 | `max_timeout_extensions` | `3` | Maximum number of deadline extensions per attempt. |
-| `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). Suspended during pending orchestrator questions, context compaction, and auto-retry backoff; resuming refreshes both session and active-tool inactivity budgets. |
+| `stall_timeout_ms` | `240000` | Inactivity timeout when no tools are active (4 minutes). Suspended during pending orchestrator questions, context compaction, and auto-retry backoff; resuming refreshes both session and active-tool inactivity budgets. |
+| `tool_stall_timeout_ms` | `900000` | Positive integer inactivity budget per active tool (15 minutes), raised to at least `stall_timeout_ms`. Uses the same numeric normalization, invalid-value fallback, and global/project cascade. Each tool update refreshes that tool's inactivity timer. |
 | `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; the execution deadline still applies throughout. |
 | `max_concurrency` | `5` | Max concurrent subagent tasks per cwd/config pair. |
 | `debug` | `false` | Enable bounded runtime/interaction diagnostics in the executing project's `.pi/subagents-debug.log`. Use temporarily and disable after diagnosis. |
@@ -422,6 +424,10 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
 | `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Explicit exact-name lists are recommended; supports the same manual globs (including ordinary `*`) over all registered root tools as frontmatter `tools`; all forms drop missing child implementations with a durable warning, failing only if every selected tool is missing. Omitted frontmatter `tools` uses the built-in default list. |
+
+While tools are active, ordinary inactivity is checked against each tool's own budget, not the session budget. At tool start, finite positive numeric `timeout` seconds on `bash`/`powershell`, or `timeout_seconds` on any tool, extend the budget to the larger of `tool_stall_timeout_ms` and the declared timeout plus 30000 ms grace, capped at normalized `max_total_timeout_ms`. If both declarations are valid, the larger applies. Invalid, zero, negative, non-numeric, or absent declarations leave the tool budget unchanged; generic `timeout` on other tools is ignored. For example, `bash` with `timeout: 1000` gets 1030000 ms by default. Stall errors identify the applied session/tool budget in milliseconds.
+
+Pending questions, compaction, and auto-retry backoff suspend ordinary inactivity as before. The maintenance suspension ceiling and execution deadline remain independent and can abort earlier; `subagent_extend` changes only the execution deadline, not stall budgets.
 
 Default tools:
 

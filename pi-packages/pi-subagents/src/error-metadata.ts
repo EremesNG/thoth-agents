@@ -167,15 +167,22 @@ function safeMessage(
         ? `timed out after ${details.timeout_ms}ms`
         : 'timed out';
     case 'stall_timeout': {
+      const budgetMs = details?.stall_budget_ms ?? details?.stall_timeout_ms;
       const base =
         details?.stall_suspend_reason && details.stall_suspend_max_ms
           ? `Subagent stalled during ${limitCodePoints(details.stall_suspend_reason, 32)} for ${limitCodePoints(details.stall_suspend_max_ms, 32)}ms without final response.`
-          : details?.stall_timeout_ms
-            ? `Subagent stalled for ${limitCodePoints(details.stall_timeout_ms, 32)}ms without final response.`
+          : budgetMs
+            ? `Subagent stalled for ${limitCodePoints(budgetMs, 32)}ms without final response.`
             : 'Subagent stalled without final response.';
       if (!details?.last_session_event_type) return base;
       // Bound each field so long tool/event names cannot hide later diagnostics.
       const diagnostics = [
+        ...(details.stall_budget_kind && details.stall_budget_ms
+          ? [
+              `budget=${limitCodePoints(details.stall_budget_kind, 16)}`,
+              `budget_ms=${limitCodePoints(details.stall_budget_ms, 32)}`,
+            ]
+          : []),
         `last_event=${limitCodePoints(details.last_session_event_type, 80)}`,
         `last_event_age_ms=${limitCodePoints(details.ms_since_last_session_event, 32) ?? 'unknown'}`,
         `active_tools=${limitCodePoints(details.active_tools, 512) ?? 'none'}`,

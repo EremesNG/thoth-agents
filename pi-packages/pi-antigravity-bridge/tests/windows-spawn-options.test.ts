@@ -32,17 +32,24 @@ afterEach(() => {
 	resetAgyVersionCache();
 });
 
-test("AskAntigravity hides the detached delegation console", async () => {
-	const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => fakeChild("offline answer"));
-	vi.stubEnv("AGY_BIN", "offline-agy");
-	let tool: any;
-	await registerAskAntigravityTool({ registerTool: (value: unknown) => { tool = value; } } as unknown as ExtensionAPI, [], undefined, "private");
-	const result = await tool.execute("console-test", {
-		prompt: "offline delegation", conversationId: "console-test",
-	}, undefined, undefined, { cwd: process.cwd() });
-	assert.match(result.content[0].text, /offline answer/);
-	assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
-	assert.equal(spawn.mock.calls[0][2]?.detached, true);
+test.each(["win32", "linux", "darwin"])("AskAntigravity uses a hidden direct spawn with platform-specific detachment on %s", async (platform) => {
+	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { value: platform });
+	try {
+		const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => fakeChild("offline answer"));
+		vi.stubEnv("AGY_BIN", "offline-agy");
+		let tool: any;
+		await registerAskAntigravityTool({ registerTool: (value: unknown) => { tool = value; } } as unknown as ExtensionAPI, [], undefined, "private");
+		const result = await tool.execute("console-test", {
+			prompt: "offline delegation", conversationId: "console-test",
+		}, undefined, undefined, { cwd: process.cwd() });
+		assert.match(result.content[0].text, /offline answer/);
+		assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
+		assert.equal(spawn.mock.calls[0][2]?.shell, false);
+		assert.equal(spawn.mock.calls[0][2]?.detached, platform !== "win32");
+	} finally {
+		Object.defineProperty(process, "platform", platformDescriptor);
+	}
 });
 
 test("the CLI version probe hides its console", async () => {

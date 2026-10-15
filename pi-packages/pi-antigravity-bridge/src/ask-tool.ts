@@ -806,7 +806,7 @@ export async function registerAskAntigravityTool(
 						cwd,
 						stdio: ["ignore", "pipe", "pipe"],
 						shell: false,
-						detached: true,
+						detached: process.platform !== "win32",
 						windowsHide: true,
 					});
 					proc.stdout?.setEncoding("utf8");

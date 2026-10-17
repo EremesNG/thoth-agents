@@ -484,3 +484,23 @@ describe('theme render kit', () => {
     expect(kit.indicator(theme).text).toBe('pending');
   });
 });
+
+it.each([
+  ['timedOut', '◷', 'warning'],
+  ['resolved', '↻', 'muted'],
+  ['expectedExit', '✓', 'dim'],
+] as const)('%s renders a terminal footer and status glyph with its own role', (status, glyph, role) => {
+  const unicodeKit = createRenderKit({}, undefined, 'unicode');
+  expect(unicodeKit.statusGlyph(styledTheme, status)).toBe(
+    `<${role}>${glyph}</${role}>`,
+  );
+  expect(
+    unicodeKit.toolFooter?.(styledTheme, {
+      status,
+      elapsedMs: 2250,
+      summary: 'result',
+    }),
+  ).toBe(
+    `<${role}>${glyph}</${role}><dim> · </dim><dim>2s</dim><dim> · </dim><dim>result</dim>`,
+  );
+});

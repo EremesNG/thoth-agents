@@ -353,6 +353,9 @@ describe('semantic icon resolvers', () => {
       running: '◐',
       completed: '✓',
       failed: '✗',
+      timedOut: '◷',
+      resolved: '↻',
+      expectedExit: '✓',
       cancelled: '■',
       interrupted: '■',
       stopping: '■',
@@ -826,4 +829,28 @@ it('falls back natively for elapsed when a v1 kit omits or rejects the new icon'
     expect(resolveIcon('elapsed', 'time')).toBe('time');
     if (token) withdrawRenderKit(token);
   }
+});
+
+describe('distinct terminal statuses', () => {
+  it.each([
+    ['timedOut', '◷'],
+    ['resolved', '↻'],
+    ['expectedExit', '✓'],
+  ] as const)('%s resolves natively and in the test kit and freezes elapsed time', (status, glyph) => {
+    expect(resolveStatusGlyph(status)).toBe(glyph);
+    expect(kit.statusGlyph(theme, status)).toBe(glyph);
+    const state = { startedAt: 1000 };
+    vi.useFakeTimers();
+    vi.setSystemTime(3250);
+    const options = {
+      status,
+      context: { state, executionStarted: true },
+      summary: 'result',
+    };
+    expect(renderToolFooter(undefined, theme, options)).toBe(
+      `${glyph} · 2s · result`,
+    );
+    vi.setSystemTime(9000);
+    expect(getToolElapsedMs(options)).toBe(2250);
+  });
 });

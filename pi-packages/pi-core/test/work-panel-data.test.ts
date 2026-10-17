@@ -364,3 +364,30 @@ it('can discover rows beyond the provider display cap without changing the defau
     getWorkPanelSourceRows('uncapped', { maxRows: 4, respectRowCap: false }),
   ).toHaveLength(4);
 });
+
+it.each([
+  ['timedOut', '◷', 'warning'],
+  ['resolved', '↻', 'muted'],
+  ['expectedExit', '✓', 'dim'],
+] as const)('renders %s through status and semantic override with its native role', async (status, glyph, role) => {
+  const { renderWorkPanelRow, workPanelRenderStatus } = await import(
+    '../src/panel.js'
+  );
+  const theme = {
+    fg: (name: string, text: string) => `<${name}>${text}</${name}>`,
+  };
+  for (const row of [
+    { id: status, primary: 'result', status },
+    { id: status, primary: 'result', status: 'failed', statusGlyph: status },
+  ]) {
+    expect(workPanelRenderStatus(row)).toBe(status);
+    expect(
+      renderWorkPanelRow(row, {
+        width: 80,
+        now: 0,
+        theme,
+        clip: (text) => text,
+      })[0],
+    ).toContain(`<${role}>${glyph}</${role}>`);
+  }
+});

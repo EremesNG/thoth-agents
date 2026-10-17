@@ -6,6 +6,7 @@ import {
   withdrawRenderKit,
 } from '../src/index.js';
 import {
+  createWorkPanelColumnPlan,
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
@@ -131,7 +132,7 @@ it('grows monotonically beyond the reserved ranges', () => {
   }
 });
 
-it('right-aligns stable sidebar columns and drops tokens, cost, model before elapsed', () => {
+it('right-aligns stable sidebar columns, model at 10 cells, and drops cost, model, tokens before elapsed', () => {
   const row: WorkPanelRow = {
     id: 'columns',
     primary: 'worker',
@@ -144,11 +145,11 @@ it('right-aligns stable sidebar columns and drops tokens, cost, model before ela
   };
   const wide = render(row, 70, 'columns');
   expect(wide).toHaveLength(1);
-  expect(wide[0]).toContain('sonnet high');
+  expect(wide[0]).toContain('sonnet hi…');
   expect(panelVisibleWidth(wide[0])).toBe(70);
-  const narrower = render(row, 44, 'columns').join('\n');
+  const narrower = render(row, 30, 'columns').join('\n');
   expect(narrower).not.toContain('↑9');
-  expect(narrower).toContain('$0.001');
+  expect(narrower).not.toContain('$0.001');
   const narrow = render(row, 24, 'columns').join('\n');
   expect(narrow).not.toContain('$0.001');
   expect(narrow).not.toContain('sonnet');
@@ -252,4 +253,77 @@ it('keeps columns-only metrics out of greedy inline and wrapped host layouts', (
     );
   }
   expect(render(row, 100, 'columns').join('')).toContain('sonnet·hi');
+});
+
+const summaryRow = (status: WorkPanelRow['status'], summary: string) =>
+  ({
+    id: 'summary',
+    primary: summary,
+    status,
+    identity: [
+      { text: 'worker', role: 'primary' },
+      { text: ` · ${summary}`, role: 'secondary' },
+    ],
+    metrics: [
+      { key: 'tokens', segments: [{ text: '↑9 ↓9', role: 'meta' }] },
+      { key: 'cost', segments: [{ text: '$0.01', role: 'meta' }] },
+      { key: 'elapsed', segments: [{ text: '◷ 9s', role: 'meta' }] },
+    ],
+  }) satisfies WorkPanelRow;
+
+it('renders elapsed without a clock icon in columns, keeping ◷ for the timed-out status only', () => {
+  const row = summaryRow('timedOut', 'timed out');
+  const plain = render(row, 60, 'columns').join('');
+  expect(plain.match(/◷/g)).toHaveLength(1);
+  expect(plain).toContain(' 9s');
+  const token = registerRenderKit(createTestRenderKit(), {});
+  try {
+    expect(render(row, 60, 'columns').join('').match(/◷/g)).toHaveLength(1);
+  } finally {
+    withdrawRenderKit(token);
+  }
+  // Greedy/host rendering still shows the metric as the provider wrote it.
+  expect(render(row, 60).join('')).toContain('◷ 9s');
+});
+
+it('shows T for the timed-out status when the kit resolves ASCII glyphs', () => {
+  const kit = createTestRenderKit();
+  const base = kit.statusGlyph;
+  kit.statusGlyph = (theme, status) =>
+    status === 'timedOut' ? 'T' : base(theme, status);
+  const token = registerRenderKit(kit, {});
+  try {
+    const text = render(
+      summaryRow('timedOut', 'timed out'),
+      60,
+      'columns',
+    ).join('');
+    expect(text).toContain('T');
+    expect(text).not.toContain('◷');
+  } finally {
+    withdrawRenderKit(token);
+  }
+});
+
+it('drops optional columns before the summary falls under 12 cells, from reserved widths only', () => {
+  const summary = 'mapping the repository';
+  for (let width = 20; width <= 140; width++) {
+    const kept = (live: string) => {
+      const row = summaryRow('running', summary);
+      row.metrics[0].segments[0].text = live;
+      const plan = createWorkPanelColumnPlan([row], width, panelVisibleWidth);
+      return { plan, line: render(row, width, 'columns')[0] };
+    };
+    const a = kept('↑9 ↓9');
+    const b = kept('↑99k ↓100');
+    expect(a.plan).toEqual(b.plan);
+    const optional = a.plan.some(({ key }) => key !== 'elapsed');
+    const visible = /mapping[^·]*/.exec(a.line)?.[0].trimEnd() ?? '';
+    // With any optional column kept, the summary shows >= 12 cells.
+    if (optional) expect(panelVisibleWidth(visible)).toBeGreaterThanOrEqual(12);
+    expect(panelVisibleWidth(a.line)).toBeLessThanOrEqual(width);
+  }
+  // A shorter summary is only ever shown in full.
+  const short = summaryRow('running', 'ok');
+  expect(render(short, 40, 'columns')[0]).toContain('· ok');
 });

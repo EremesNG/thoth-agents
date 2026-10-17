@@ -18,6 +18,9 @@ export type RenderStatus =
   | 'running'
   | 'completed'
   | 'failed'
+  | 'timedOut'
+  | 'resolved'
+  | 'expectedExit'
   | 'cancelled'
   | 'interrupted'
   | 'stopping'
@@ -327,6 +330,9 @@ const nativeStatusGlyphs: Record<RenderStatus, string> = {
   running: '◐',
   completed: '✓',
   failed: '✗',
+  timedOut: '◷',
+  resolved: '↻',
+  expectedExit: '✓',
   cancelled: '■',
   interrupted: '■',
   stopping: '■',
@@ -355,10 +361,13 @@ export function resolveStatusGlyph(
   return fallback ?? nativeStatusGlyphs[status];
 }
 
-const terminalFooterGlyphs: Partial<Record<RenderStatus, '✓' | '✗'>> = {
+const terminalFooterGlyphs: Partial<Record<RenderStatus, string>> = {
   completed: '✓',
   deleted: '✓',
   failed: '✗',
+  timedOut: '◷',
+  resolved: '↻',
+  expectedExit: '✓',
   cancelled: '✗',
   interrupted: '✗',
   blocked: '✗',

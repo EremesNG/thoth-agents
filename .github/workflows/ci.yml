@@ -100,6 +100,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
           pnpm --filter @thoth-agents/pi-antigravity-bridge run test
 
+      - name: Check pi-askcodex
+        run: |
+          pnpm --filter @thoth-agents/pi-askcodex run typecheck
+          pnpm --filter @thoth-agents/pi-askcodex run test
+
       - name: Check pi-background-tasks
         run: |
           pnpm --filter @thoth-agents/pi-background-tasks run typecheck
@@ -193,6 +198,12 @@ jobs:
 
       - name: Test pi-antigravity-bridge
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test --retry=2
+
+      - name: Typecheck pi-askcodex
+        run: pnpm --filter @thoth-agents/pi-askcodex run typecheck
+
+      - name: Test pi-askcodex
+        run: pnpm --filter @thoth-agents/pi-askcodex run test --retry=2
 
       - name: Typecheck pi-background-tasks
         run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck

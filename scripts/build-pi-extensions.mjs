@@ -14,6 +14,7 @@ const packages = {
     assets: ['src/windows-job-helper.ps1', 'src/windows-job-helper.cs'],
   },
   'pi-antigravity-bridge': { entry: 'extensions/index.ts' },
+  'pi-askcodex': { entry: 'src/index.ts' },
   'pi-claude-bridge': {
     entry: 'src/index.ts',
     // The SDK locates its native executable relative to its own module.

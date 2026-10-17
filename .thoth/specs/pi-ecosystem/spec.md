@@ -355,3 +355,13 @@ For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_
 - **GIVEN** Codex Desktop running, `notepad.exe` allowlisted and no Pi UI
 - **WHEN** `AskCodex` asks Codex to type text into Notepad and Codex requests Computer Use approval for Notepad and later a command approval outside the sandbox
 - **THEN** the Notepad request is accepted with session persistence, the command approval is declined, both decisions appear in the result, and the result includes the final message and a continuation id
+
+### Requirement: Shared Pi question service
+
+`@thoth-agents/pi-core` MUST provide a process-wide question-service registry keyed by its contract version where a provider registers an ask function through a per-instance handle that withdraws only its own registration and consumers resolve the most recent compatible provider, receiving none when absent or when the stored record has an incompatible shape; `@thoth-agents/pi-questions-user` MUST register its question UI as provider only in sessions with UI, withdraw it on shutdown, support disabling free-text answers per question and resolve an aborted request as cancelled after disposing its UI; `@thoth-agents/pi-askcodex` MUST present approval prompts through a compatible provider as a single-choice question without a recommended option or free text and with a preview of the command, working directory or app identifier, MUST fall back to the native select dialog when no compatible provider exists, and MUST decline on cancellation, abort or any answer other than an allow option.
+
+#### Scenario: Shared Pi question service
+
+- **GIVEN** a Pi UI session with pi-questions-user and pi-askcodex loaded
+- **WHEN** Codex requests approval for a command outside the sandbox
+- **THEN** the question UI shows the command and working directory in its preview with `Allow once` and `Decline`, no option is marked recommended, free text is not offered, and choosing `Decline` declines the request

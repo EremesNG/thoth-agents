@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Render approval prompts through the Thoth question UI when pi-questions-user provides the shared service, with command/cwd/reason or app-name/identifier previews, no recommended option, and no free-text answer. Fall back to native select when no compatible provider or dock is available; approval policy, cancellation/abort decline, and no-UI behavior are unchanged.
 - Defer Computer Use methods to Codex's own bundled `computer-use` skill; AskCodex developer instructions retain only delegation and approval notes instead of prescribing routing or APIs.
 
 ## [0.1.0] - 2026-10-16

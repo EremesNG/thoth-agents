@@ -30,6 +30,18 @@ function elicitation(
   };
 }
 
+function nativeAdapter(
+  select: (
+    title: string,
+    options: string[],
+    signal: AbortSignal,
+  ) => Promise<string | undefined>,
+): ApprovalUi {
+  return {
+    ask: (prompt, signal) => select(prompt.title, prompt.options, signal),
+  };
+}
+
 const signal = () => new AbortController().signal;
 const command: ServerRequest = {
   id: 2,
@@ -87,6 +99,33 @@ const generic = elicitation('', {
 });
 
 describe('createApprovalHandler', () => {
+  it.each([
+    [
+      file,
+      'Codex wants to change files outside the sandbox',
+      'Grant root: /project/src\n\nItem: file\n\nReason: Edit files',
+    ],
+    [
+      permissions,
+      'Codex requests additional permissions',
+      'Requested permissions: {\n  "network": {\n    "enabled": true\n  },\n  "fileSystem": {\n    "read": [\n      "/data"\n    ],\n    "write": [\n      "/out"\n    ]\n  }\n}\n\nWorking directory: /project\n\nReason: Need access',
+    ],
+  ] as const)('provides a concise prompt and detailed preview for %j', async (request, prompt, preview) => {
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    const receivedSignal = signal();
+    await createApprovalHandler({ allowedApps: [], ui: { ask } })(request, {
+      signal: receivedSignal,
+    });
+    expect(ask).toHaveBeenCalledWith(
+      {
+        title: expect.any(String),
+        prompt,
+        preview,
+        options: ['Allow once', 'Allow for this session', 'Decline'],
+      },
+      receivedSignal,
+    );
+  });
   it.each([
     [
       elicitation('other.exe'),
@@ -197,7 +236,7 @@ describe('createApprovalHandler', () => {
     const records: ApprovalDecisionRecord[] = [];
     const handler = createApprovalHandler({
       allowedApps: [],
-      ui: { select: async () => answer },
+      ui: { ask: async () => answer },
       onDecision: (d) => records.push(d),
     });
     expect(decide(request, { allowedApps: [], hasUi: true })).toBe('ask');
@@ -216,7 +255,7 @@ describe('createApprovalHandler', () => {
     const handler = createApprovalHandler({
       allowedApps: [],
       ui: {
-        select: async (_title, _options, received) => {
+        ask: async (_prompt, received) => {
           expect(received).toBe(controller.signal);
           opened();
           return new Promise<string>((resolve) => {
@@ -239,10 +278,16 @@ describe('createApprovalHandler', () => {
   it('does not ask or auto-accept when already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
-    const select = vi.fn<ApprovalUi['select']>(async () => 'Allow once');
+    const select = vi.fn<
+      (
+        title: string,
+        options: string[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
+    >(async () => 'Allow once');
     const handler = createApprovalHandler({
       allowedApps: ['notepad.exe'],
-      ui: { select },
+      ui: nativeAdapter(select),
     });
     expect(
       await handler(elicitation('notepad.exe'), { signal: controller.signal }),
@@ -257,7 +302,7 @@ describe('createApprovalHandler', () => {
     const handler = createApprovalHandler({
       allowedApps: [],
       ui: {
-        select: async () => {
+        ask: async () => {
           throw new Error('UI closed');
         },
       },
@@ -287,7 +332,10 @@ describe('createApprovalHandler', () => {
       },
     };
     const select = vi.fn(async () => answer);
-    const handler = createApprovalHandler({ allowedApps: [], ui: { select } });
+    const handler = createApprovalHandler({
+      allowedApps: [],
+      ui: nativeAdapter(select),
+    });
     expect(await handler(restricted, { signal: signal() })).toEqual({
       decision: 'decline',
     });
@@ -306,7 +354,10 @@ describe('createApprovalHandler', () => {
       tool_params_display: [{ name: 'app', value: 'Bloc de notas' }],
     });
     const select = vi.fn(async () => 'Allow for this session');
-    const handler = createApprovalHandler({ allowedApps: [], ui: { select } });
+    const handler = createApprovalHandler({
+      allowedApps: [],
+      ui: nativeAdapter(select),
+    });
     expect(await handler(request, { signal: signal() })).toEqual({
       action: 'accept',
       content: { persist: 'session' },
@@ -320,8 +371,17 @@ describe('createApprovalHandler', () => {
   });
 
   it('never asks the UI for unknown methods', async () => {
-    const select = vi.fn<ApprovalUi['select']>(async () => 'Allow once');
-    const handler = createApprovalHandler({ allowedApps: [], ui: { select } });
+    const select = vi.fn<
+      (
+        title: string,
+        options: string[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
+    >(async () => 'Allow once');
+    const handler = createApprovalHandler({
+      allowedApps: [],
+      ui: nativeAdapter(select),
+    });
     expect(decide(unknown, { allowedApps: [], hasUi: true })).toBe('decline');
     expect(await handler(unknown, { signal: signal() })).toMatchObject({
       error: { code: -32601 },
@@ -342,10 +402,19 @@ describe('createApprovalHandler', () => {
         additionalPermissions: permissions.params.permissions,
       },
     };
-    const select = vi.fn<ApprovalUi['select']>(async () => 'Decline');
-    await createApprovalHandler({ allowedApps: [], ui: { select } })(request, {
-      signal: signal(),
-    });
+    const select = vi.fn<
+      (
+        title: string,
+        options: string[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
+    >(async () => 'Decline');
+    await createApprovalHandler({ allowedApps: [], ui: nativeAdapter(select) })(
+      request,
+      {
+        signal: signal(),
+      },
+    );
     expect(select.mock.calls[0][0]).toContain('git status');
     expect(select.mock.calls[0][0]).toContain('/project');
     expect(select.mock.calls[0][0]).toContain('/out');
@@ -367,12 +436,18 @@ describe('createApprovalHandler', () => {
         elicitationId: 'auth',
       },
     };
-    const select = vi.fn<ApprovalUi['select']>(async () => 'Allow once');
+    const select = vi.fn<
+      (
+        title: string,
+        options: string[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
+    >(async () => 'Allow once');
     expect(
-      await createApprovalHandler({ allowedApps: [], ui: { select } })(
-        request,
-        { signal: signal() },
-      ),
+      await createApprovalHandler({
+        allowedApps: [],
+        ui: nativeAdapter(select),
+      })(request, { signal: signal() }),
     ).toEqual({ action: 'accept', content: null, _meta: null });
     expect(select.mock.calls[0][0]).toContain('https://example.test/auth');
     expect(select.mock.calls[0][0]).toContain('remote');
@@ -391,7 +466,7 @@ describe('createApprovalHandler', () => {
     expect(
       await createApprovalHandler({
         allowedApps: [],
-        ui: { select: async () => 'Allow once' },
+        ui: { ask: async () => 'Allow once' },
       })(request, { signal: signal() }),
     ).toEqual({ permissions: {}, scope: 'turn' });
   });
@@ -401,10 +476,16 @@ describe('createApprovalHandler', () => {
     true,
   ])('accepts wildcard-allowlisted Computer Use with session persistence and reports the source (UI: %s)', async (hasUi) => {
     const records: ApprovalDecisionRecord[] = [];
-    const select = vi.fn<ApprovalUi['select']>(async () => 'Decline');
+    const select = vi.fn<
+      (
+        title: string,
+        options: string[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
+    >(async () => 'Decline');
     const handler = createApprovalHandler({
       allowedApps: ['*'],
-      ...(hasUi ? { ui: { select } } : {}),
+      ...(hasUi ? { ui: nativeAdapter(select) } : {}),
       onDecision: (d) => records.push(d),
     });
     expect(

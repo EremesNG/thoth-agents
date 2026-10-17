@@ -9,7 +9,7 @@ import {
   type WorkPanelRow,
 } from "@thoth-agents/pi-core";
 import { actionableFailures, failureLabel, readFailureState } from "./shared-failure-observations.js";
-import { failurePath, failureView } from "./failures.js";
+import { failurePath, failureView, isDeclaredExpectedExit } from "./failures.js";
 import { formatDuration } from "./format-duration.js";
 import { showBackgroundTasksHistory } from './history-panel.js';
 import { readLog } from "./logs.js";
@@ -26,12 +26,21 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
   let notifyChanged: (() => void) | undefined;
   let activeOrigin: BackgroundTaskCallbackOrigin | undefined;
   let generation = 0;
+  let unsubscribeRegistry: (() => void) | undefined;
+  let snapshot: Array<{ meta: BackgroundTaskMeta; classification: TaskClassification }> | undefined;
 
   async function ensureBackgroundTasksNavigator(ctx: ExtensionContext): Promise<void> {
     const current = ++generation;
     releasePanel?.();
     releasePanel = undefined;
     activeOrigin = getNavigatorOrigin(ctx);
+    snapshot = undefined;
+    // A successful retry can recover another task's journal without rewriting its metadata.
+    // Treat every registry notification as a new classification generation for the whole session.
+    unsubscribeRegistry ??= onMetaChanged(() => {
+      snapshot = undefined;
+      notifyChanged?.();
+    });
     // Headless instances must not replace the root session's registered UI provider.
     if (ctx.hasUI && ctx.mode === "tui" && !unregister) {
       unregister = registerWorkPanelProvider(pi, provider);
@@ -54,15 +63,17 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     open: (id, ctx) => openHistory(ctx, id),
     openHistory: (ctx) => openHistory(ctx),
     summary: () => {
-      const metas = sessionMetas();
+      const tasks = sessionSnapshot();
       return {
-        running: metas.filter((meta) => meta.status === "running").length,
-        failed: metas.filter((meta) => meta.status === "failed" || meta.status === "timed_out" || meta.status === "cancelled").length,
-        completed: metas.filter((meta) => meta.status === "succeeded").length,
+        running: tasks.filter(({ meta }) => meta.status === "running").length,
+        failed: tasks.filter(({ classification }) => classification.glyph === "failed" || classification.glyph === "timedOut").length,
+        completed: tasks.filter(({ classification }) => classification.glyph === "completed" || classification.glyph === "expectedExit").length,
+        cancelled: tasks.filter(({ classification }) => classification.glyph === "cancelled").length,
       };
     },
-    visibleCount: () => visibleMetas().filter((meta) => meta.status === "running").length,
-    listRows: (now) => visibleMetas().map((meta) => rowFromMeta(meta, now)),
+    visibleCount: () => sessionSnapshot().filter(({ meta }) => meta.dismissedAt === undefined && meta.status === "running").length,
+    listRows: (now) => sessionSnapshot().filter(({ meta }) => meta.dismissedAt === undefined)
+      .map(({ meta, classification }) => rowFromMeta(meta, now, classification)),
     detail: (id, now, options) => detailFromMeta(readActiveMeta(id), now, options),
     armCloseLabel: (row) => row.status === "running" ? "stop" : "dismiss",
     close: (id) => {
@@ -78,9 +89,7 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     },
     onVisibleChanged: (notify) => {
       notifyChanged = notify;
-      const unsubscribe = onMetaChanged(notify);
       return () => {
-        unsubscribe();
         if (notifyChanged === notify) notifyChanged = undefined;
       };
     },
@@ -91,12 +100,10 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     return meta && activeOrigin && belongsToOrigin(meta, activeOrigin) ? meta : undefined;
   }
 
-  function sessionMetas(): BackgroundTaskMeta[] {
-    return activeOrigin ? listMetasForOrigin(activeOrigin) : [];
-  }
-
-  function visibleMetas(): BackgroundTaskMeta[] {
-    return sessionMetas().filter((meta) => meta.dismissedAt === undefined);
+  function sessionSnapshot() {
+    return snapshot ??= (activeOrigin ? listMetasForOrigin(activeOrigin) : [])
+      .sort((a, b) => b.startedAt - a.startedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(meta => ({ meta, classification: classifyTask(meta) }));
   }
 
   function openHistory(ctx: ExtensionContext, selectedTaskId?: string): Promise<void> {
@@ -111,6 +118,9 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     dispose() {
       generation += 1;
       activeOrigin = undefined;
+      snapshot = undefined;
+      unsubscribeRegistry?.();
+      unsubscribeRegistry = undefined;
       releasePanel?.();
       releasePanel = undefined;
       unregister?.();
@@ -135,8 +145,28 @@ function getNavigatorOrigin(ctx: ExtensionContext): BackgroundTaskCallbackOrigin
   return { cwd: ctx.cwd, sessionId };
 }
 
-function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
-  const facts = factsForMeta(meta, now);
+interface TaskClassification {
+  glyph: WorkPanelRow["statusGlyph"];
+  incidentFact?: string;
+}
+
+function classifyTask(meta: BackgroundTaskMeta): TaskClassification {
+  const state = readFailureState(failurePath(meta.id));
+  const incident = actionableFailures(state)[0];
+  let glyph: TaskClassification["glyph"] = meta.status === 'running' ? 'running'
+    : meta.status === 'succeeded' ? 'completed' : meta.status === 'timed_out' ? 'timedOut'
+    : meta.status === 'cancelled' ? 'cancelled' : 'failed';
+  if (meta.status === 'failed') {
+    const incidents = [...Object.values(state.observations), ...Object.values(state.history ?? {})];
+    if (incidents.some(x => x.status === 'unresolved')) glyph = 'failed';
+    else if (isDeclaredExpectedExit(meta, meta.lastExitCode) || (incidents.length > 0 && incidents.every(x => x.status === 'expected'))) glyph = 'expectedExit';
+    else if (incidents.some(x => x.status === 'resolved' || x.status === 'superseded')) glyph = 'resolved';
+  }
+  return { glyph, incidentFact: incident ? `${failureLabel(incident)}: ${incident.summary}` : undefined };
+}
+
+function rowFromMeta(meta: BackgroundTaskMeta, now: number, classification: TaskClassification): WorkPanelRow {
+  const facts = factsForMeta(meta, now, classification);
   const statusText = facts.join(` ${resolveIcon('separator', '·')} `) || statusLabel(meta);
   const elapsed = formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000);
   return {
@@ -144,12 +174,19 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     id: meta.id,
     name: meta.name,
     status: meta.status,
+    statusGlyph: classification.glyph,
     state: meta.status === 'running' ? 'running' : meta.status === 'succeeded' ? 'done' : 'failed',
     endedAt: meta.endedAt,
-    statusTone: toneForStatus(meta.status),
+    statusTone: classification.glyph === 'expectedExit' || classification.glyph === 'resolved' ? 'muted' : toneForStatus(meta.status),
     kind: meta.kind === "command_watch" ? "watch" : "process",
     elapsed,
     primary: statusText,
+    identity: [
+      { text: meta.name || meta.id, role: "primary" },
+      { text: ` ${resolveIcon('separator', '·')} `, role: "meta" },
+      { text: statusText, role: "secondary" },
+    ],
+    metrics: [{ key: "elapsed", segments: [{ text: elapsed, role: "meta" }] }],
     segments: [
       { text: meta.name || meta.id, role: "primary" },
       { text: ` ${resolveIcon('separator', '·')} ${statusText}`, role: "secondary" },
@@ -251,10 +288,12 @@ function secondaryLabel(meta: BackgroundTaskMeta): string | undefined {
   return parts.length ? parts.join(` ${resolveIcon('separator', '·')} `) : undefined;
 }
 
-function factsForMeta(meta: BackgroundTaskMeta, now: number): string[] {
+function factsForMeta(meta: BackgroundTaskMeta, now: number, classification: TaskClassification): string[] {
   const facts: string[] = [];
-  const incident = actionableFailures(readFailureState(failurePath(meta.id)))[0];
-  if (incident) facts.push(`${failureLabel(incident)}: ${incident.summary}`);
+  if (classification.glyph === 'timedOut') facts.push('timed out');
+  else if (classification.glyph === 'expectedExit') facts.push(meta.lastExitCode == null ? 'expected exit' : `exit ${meta.lastExitCode} expected`);
+  else if (classification.glyph === 'resolved') facts.push('failed, resolved');
+  else if (classification.incidentFact) facts.push(classification.incidentFact);
   if (meta.status === "running") {
     const stall = observeBackgroundTaskStall(meta, now);
     if (stall.state === "stalled") facts.push("stalled");

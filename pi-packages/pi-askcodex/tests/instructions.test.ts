@@ -2,47 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { buildDeveloperInstructions } from '../src/instructions.js';
 
 describe('developer instructions', () => {
-  it('sets autonomous delegation boundaries and conditional Computer Use routing', () => {
+  it('sets autonomous delegation boundaries and defers Computer Use to the bundled skill', () => {
     const instructions = buildDeveloperInstructions();
     for (const required of [
-      'Pi agent (another coding agent)',
-      'self-contained task',
-      'Do not ask the user questions',
-      'plan/read-only mode',
-      'do not attempt mutations',
-      'including through MCP or GUI actions',
-      'files changed',
-      'commands run',
-      'anything not verified',
-      'Only when the task requires',
-      'cua_repl',
-      'cua.getState()',
-      'Edge/Chrome',
-      'Desktop is closed',
-      'node_repl',
-      "await import('@oai/sky')",
-      'Codex Desktop running',
-      'SKILL.md',
-      'docs/guidance.md',
-      'docs/api.md',
-      'docs/confirmations.md',
-      'node_repl fs',
-      'not via shell',
-      'globalThis',
-      'const/let',
-      're-list windows',
-      'explicitly by id',
-      'observe -> act -> observe',
-      'fresh screenshot/window state',
-      'accessibility state may be null',
-      'was not approved',
-      'report it and stop',
-      'PowerShell/SendKeys',
-      "other apps' documents or windows",
+      'You were delegated a self-contained task by a Pi agent (another coding agent).',
+      'Work autonomously within the given task scope, sandbox, and mode.',
+      'Do not ask the user questions: there is no interactive human in the loop beyond approvals.',
+      'In plan/read-only mode, do not attempt mutations, including through MCP or GUI actions.',
+      'Finish with a concise final answer reporting results, files changed, commands run,',
+      'and anything not verified; do not claim success without evidence.',
+      'When the task requires Computer Use, follow your bundled computer-use skill.',
+      'App access approvals are handled by the host or the user; if access is denied, report it and stop.',
     ]) {
       expect(instructions, required).toContain(required);
     }
-    expect(instructions.trim().split('\n').length).toBeGreaterThanOrEqual(25);
-    expect(instructions.trim().split('\n').length).toBeLessThanOrEqual(45);
+  });
+
+  it('does not prescribe a Computer Use method', () => {
+    const instructions = buildDeveloperInstructions();
+    for (const method of [
+      'node_repl',
+      '@oai/sky',
+      'cua_repl',
+      'globalThis',
+      'screenshot',
+    ]) {
+      expect(instructions, method).not.toContain(method);
+    }
   });
 });

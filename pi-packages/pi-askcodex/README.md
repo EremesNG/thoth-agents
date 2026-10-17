@@ -13,8 +13,9 @@ pi install npm:@thoth-agents/pi-askcodex
 Requires Pi `>=0.99.0`, Node `>=22.19.0`, and Codex Desktop installed with a working Codex login. Install this package manually; the Thoth installer does not manage it. `AskCodex` is enabled by default; set `enabled: false` to disable registration.
 
 - Prefer the **Desktop-bundled `codex.exe`**, not a standalone CLI install.
-- **Native-app Computer Use requires Codex Desktop running**, using Codex's `node_repl` + `@oai/sky` integration.
-- **Browser Computer Use works without Desktop running**, through Codex's `cua_repl` browser surface and the configured Codex browser extension in the user's Edge/Chrome browser.
+- **Native-app Computer Use requires Codex Desktop running**.
+- **Browser Computer Use works without Desktop running**, with the configured Codex browser extension in the user's Edge/Chrome browser.
+- Codex follows its own bundled `computer-use` skill for Computer Use methods. AskCodex only adds delegation and approval notes to the developer instructions; it does not prescribe how Codex performs Computer Use. App access approvals are handled by the host or the user; if access is denied, Codex is instructed to report it and stop.
 - Computer Use still requires the corresponding Codex tools/plugin and browser extension to be available. Installing AskCodex does not install those integrations.
 
 ## Binary resolution
@@ -143,7 +144,7 @@ Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known
 | Native Computer Use unavailable | Start Codex Desktop and confirm Codex's Computer Use integration is configured. The best-effort probe checks the Codex app process (Store: `ChatGPT.exe` under `WindowsApps/OpenAI.Codex_*`), not CLI/helper processes. Inaccessible paths produce unknown, not a stopped-app warning; detection is not a capability guarantee. |
 | Blank screenshots, no typing, or read-only shell setup errors | Inspect `details.binary`; switch from a standalone PATH CLI to the Desktop-bundled executable. |
 | App access denied | Inspect `details.approvals` for the exact app identifier, including Notepad's packaged-app id. Use interactive Pi approval or deliberately add that identifier to `allowedApps`. Headless calls decline non-allowlisted requests. |
-| Browser tools unavailable | Check the Codex browser extension connection and `cua_repl` setup. Desktop need not be running for browser Computer Use. |
+| Browser tools unavailable | Check the Codex browser extension connection and follow Codex's bundled `computer-use` skill. Desktop need not be running for browser Computer Use. |
 | Handshake/protocol failure after an update | Inspect returned errors and `stderrTail` when present; check the selected binary/version. Use a compatible Desktop bundle or update AskCodex; do not bypass approval handling. |
 | Call times out while awaiting approval | Answer in Pi UI, use a narrow app allowlist for unattended Computer Use, or increase `timeoutMinutes`. Other approvals still decline without UI. |
 | No final answer or process exited mid-turn | Treat the returned failure as failure, not success; inspect errors and stderr. Resume only with a returned `conversationId` and verify any partial effects. |

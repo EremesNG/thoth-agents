@@ -30,7 +30,7 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
-  The root package and all ten `pi-packages/*` members declare Pi SDK peers
+  The root package and all eleven `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
@@ -449,6 +449,30 @@ The Claude/Antigravity bridges and pi-openai-fast are **manual installs**, not
 installer-managed packages. See [manual Pi provider installation](../installation.md#manual-pi-provider-extensions)
 for the three `pi install` commands and authentication requirements.
 
+## Pi AskCodex delegation
+
+`@thoth-agents/pi-askcodex` (`pi-packages/pi-askcodex`) is a manually installed
+`AskCodex` tool, not a model provider or installer-managed package. It delegates
+to the user's local `codex app-server --stdio` harness. Start with the
+[package README](../../pi-packages/pi-askcodex/README.md) for installation,
+parameters, configuration, and troubleshooting; implementation and offline
+fake-server tests live under the package's `src/` and `tests/` directories.
+
+Configuration is `~/.pi/agent/askcodex/config.json`; overrides are `ASKCODEX_BIN`,
+`ASKCODEX_ENABLED`, `ASKCODEX_DEFAULT_MODEL`, and `ASKCODEX_DEFAULT_EFFORT`.
+Binary resolution prefers the explicit env/config path, then the newest Windows
+Desktop-bundled executable, then PATH with a warning. Native-app Computer Use
+requires Codex Desktop running; browser Computer Use via the Codex browser
+extension does not. `plan` selects a read-only shell sandbox, **not read-only MCP
+or GUI actions**; `accept-edits` selects workspace-write. Exact app identifiers
+in `allowedApps` receive session approval only; other approvals ask through Pi UI
+or decline without it, never granting "always" persistence. Non-ephemeral
+`conversationId` threads persist in `~/.codex/sessions` and may appear in Desktop
+history. The experimental app-server protocol and alpha Desktop binary can drift;
+unknown requests are rejected and protocol failures fail closed. Standalone PATH
+Codex on Windows may have blank screenshots, missing typing, or read-only shell
+sandbox errors; prefer the Desktop bundle.
+
 ## Pi task channels
 
 pi-core defines these channels and their validators: subagent state is v2;
@@ -607,7 +631,8 @@ npm view @thoth-agents/<pkg> version
 ```
 
 Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
-pi-background-tasks, pi-claude-bridge, pi-openai-fast, pi-thoth-theme, pi-sidebar.
+pi-background-tasks, pi-claude-bridge, pi-askcodex, pi-openai-fast, pi-thoth-theme,
+pi-sidebar.
 
 New packages can take a few minutes to appear in public registry reads
 (`npm view` returns `E404` meanwhile; `npm access list packages @thoth-agents`

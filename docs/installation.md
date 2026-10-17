@@ -109,14 +109,24 @@ needed for activation, not for cache garbage collection.
 
 The remaining CLI setup manages:
 
-- `~/.codex/AGENTS.md`: one bounded orchestrator block;
-- `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,worker}.toml`;
-- `~/.codex/agents/.thoth-agents-managed-models.json`;
-- `~/.codex/config.toml`: the managed feature merge; and
+- five thin `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,worker}.toml` role definitions;
+- `~/.codex/agents/.thoth-agents-managed-models.json` for ownership and model state;
+- `~/.codex/config.toml`: request-user-input feature, six-child capacity with
+  prior value recorded for uninstall, and optional consented hook trust; and
 - mandatory external skills in the Codex global skill root via `npx skills add`.
 
 After those thoth-agents-owned operations, the CLI invokes thoth-mem's Codex
 setup and preserves its diagnostics, manual actions, and receipt path.
+
+The plugin's `codex-hooks/` delivers root instructions via `SessionStart` and
+role prompts via `SubagentStart`; Node >=22.19 must be on Codex's PATH.
+Untrusted hooks are silently skipped: consent via `--trust-hooks`, the CLI y/N
+prompt or TUI step, or review in Codex via `/hooks` / **Trust all and continue**.
+Trusted hooks can run outside the sandbox. The CLI no longer writes root
+instructions to `~/.codex/AGENTS.md`; legacy blocks are removed with a `.bak`
+only after the enabled plugin passes hook-capability checks. Sync fails and
+asks for update if the installed plugin is too old. See
+[Codex installation](codex-install.md) for trust, doctor and uninstall details.
 
 The ambient Codex session is root, so no orchestrator child TOML exists. The CLI
 does not copy a plugin into a personal manager cache or bypass Codex trust; it
@@ -750,7 +760,7 @@ constitution; historical material remains preserved. Project work is not mirrore
 | Harness | Limitation |
 | --- | --- |
 | OpenCode | CLI installation is required for global owned skills, external skills, and thoth-mem setup; npm plugins cannot declare package-relative native skill roots, and only the OpenAI built-in preset ships. |
-| Codex | Plugin manifests cannot install custom agents or write `~/.codex/AGENTS.md`; the CLI layer and provider setup are mandatory. Installed-role selection and some permissions remain instruction-level. |
+| Codex | Plugins cannot register agent roles; the CLI supplies thin global TOMLs and config, while trusted plugin hooks supply root/role prompts. CLI and provider setup remain mandatory. Installed-role selection and some permissions remain instruction-level. |
 | Claude Code | Native marketplace/install steps must precede the CLI and provider setup. Native tool denials protect read-only roles, but fine-grained write-path restriction remains instruction-level. |
 | Pi | Pi extensions execute with the invoking user's system permissions; tool allowlists are not an OS sandbox, project-local resources require trust, and continuation/live steering depend on the installed delegation runtime. |
 

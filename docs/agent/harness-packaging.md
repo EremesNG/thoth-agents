@@ -18,9 +18,49 @@
 - OpenCode npm plugin loading does not expose package-relative native skills;
   the CLI synchronizes the five canonical owned skill trees into
   `~/.config/opencode/skills/`. Init never creates project-local skill copies.
-- Codex uses ambient root plus five global TOMLs created by the mandatory CLI.
-  Its plugin manifest carries skills/MCP but cannot install custom agents or
-  `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
+- Codex uses plugin-hook developer context: `SessionStart` injects the ambient
+  root on startup/resume/clear/compact; `SubagentStart` selects five role prompts
+  by `agent_type`. The manifest explicitly references `codex-hooks/hooks.json`;
+  `codex-hooks/context.cjs` loads six generated `codex-hooks/payloads/*.md`
+  files with no default context-size limit. This path avoids Claude Code's
+  automatic `hooks/hooks.json` discovery in the shared bundle. Node >=22.19 on
+  PATH is required, including for Desktop hooks.
+- Codex plugins carry skills/MCP/hooks but cannot register agent roles
+  (openai/codex #18308/#36855). The mandatory CLI therefore writes five thin
+  global TOMLs with name, description, hook-context pointer, model/effort and
+  sandbox. It preserves operator model/effort and records ownership digests in
+  managed state. No root is written to `~/.codex/AGENTS.md`; a valid legacy
+  managed block is removed with a `.bak` and surrounding bytes preserved.
+  Migration requires an enabled installed plugin with declarations, loader and
+  all six payloads; install/update do the plugin step first, while sync fails
+  and asks for update if the bundle is not hook-capable. `$thoth-init` creates
+  project governance only.
+- Codex global config merges set `features.default_mode_request_user_input`
+  and `agents.max_concurrent_threads_per_session = 6` (six children plus root),
+  recording prior capacity once and preserving later operator changes.
+  Optional `[hooks.state]` entries require `--trust-hooks`, the CLI default-No
+  y/N prompt or TUI consent, disclosing that hooks can run outside the sandbox.
+  Without trust, Codex silently skips hooks: thoth root/role orchestration does
+  nothing until native `/hooks` review or **Trust all and continue**. Trust hashes
+  cover declarations, not payloads/version, so prompt updates need no re-trust.
+  Hashing is version-coupled to Codex 0.162.1; doctor reports mismatches as
+  `modified` and directs native review.
+- Codex delegates with `fork_turns: "none"`, bounds spawns by observed free
+  capacity, and permits completed-child `followup_task` reuse only for the same
+  role, objective and SDD phase, unchanged mutable surface (or read-only work),
+  and no independent judgment. Oracle plan reviews and verifications are always
+  fresh; never `send_message` to completed children. On `agent thread limit
+  reached`, inspect `list_agents`, reconcile native liveness and report the
+  limit truthfully. Capacity is fixed per session; restart after config changes.
+- `thoth-agents doctor --agent=codex` is read-only: plugin presence/enablement/
+  version, hook capability/trust, Node, TOML drift, threads and legacy root
+  leftovers, with fixes. `thoth-agents uninstall --agent=codex [--dry-run]`
+  uses the native plugin manager and removes attributable TOMLs, managed/
+  recovery state, the Codex ledger entry, valid legacy blocks and recorded
+  hash-matching trust. It restores prior capacity only if still managed, and
+  preserves/reports operator changes or unverifiable ownership. It retains the
+  request-user-input feature, provider thoth-mem surfaces, external skills and
+  marketplace registration. See [Codex installation](../codex-install.md).
 - Claude packages root plus five generated namespaced subagents.
 - Pi is published from the same `thoth-agents` npm artifact with exactly
   `./dist/pi.js` and `./skills` in `package.json#pi`. Generation writes five

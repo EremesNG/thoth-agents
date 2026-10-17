@@ -137,6 +137,8 @@ export type QuestionOption = Static<typeof questionOptionSchema>;
 export type QuestionType = NonNullable<Static<typeof questionSchema>['type']>;
 export type Question = Omit<Static<typeof questionSchema>, 'type'> & {
   type: QuestionType;
+  /** Internal service option; not part of the model-facing tool schema. */
+  allowCustom?: boolean;
 };
 export interface Questionnaire {
   title?: string;

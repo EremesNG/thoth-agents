@@ -515,3 +515,23 @@ Complete Pi installation and applied Update MUST install and individually verify
 - **GIVEN** a Pi profile without the sidebar
 - **WHEN** Install runs
 - **THEN** `@thoth-agents/pi-sidebar` is installed and verified, and a dry-run performs no mutation
+
+### Requirement: Consent-gated Codex hook trust and capacity
+
+Codex install and update MUST write `agents.max_concurrent_threads_per_session` while recording its prior value, and MUST write Codex `hooks.state` trust entries for thoth-agents plugin hooks only after explicit operator consent through interactive confirmation or `--trust-hooks`; without consent no trust entry is written and the operator is directed to Codex's native hook review; dry-run reports both without mutation.
+
+#### Scenario: Consent-gated Codex hook trust and capacity
+
+- **GIVEN** a Codex install without `--trust-hooks` in a non-interactive run
+- **WHEN** it completes
+- **THEN** `config.toml` contains the threads key but no thoth-agents `hooks.state` entry and the output names the hook review step
+
+### Requirement: Codex uninstall and doctor
+
+The CLI MUST provide Codex `uninstall`, removing only attributable thoth-agents surfaces (fingerprinted agent TOMLs, managed state, legacy root block, owned hook trust entries, the threads key restored to its prior value) and the plugin through the native manager while preserving unrelated content, and Codex `doctor`, reporting plugin, hook trust, Node availability, TOML drift, capacity setting and legacy root-block state with actionable remediation and no mutation.
+
+#### Scenario: Codex uninstall and doctor
+
+- **GIVEN** an operator-edited agent TOML and an unrelated hook trust entry
+- **WHEN** `uninstall --agent=codex` runs
+- **THEN** the edited TOML and the unrelated entry are preserved and reported, and every unmodified thoth-owned surface is removed

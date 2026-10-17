@@ -3,7 +3,7 @@ import { makeNodeFixture } from "./helpers/node-fixture.js";
 //
 // Covers read/writeModelsCache round-trip + validation, and the three
 // loadModelCatalogRaw branches (fresh -> no spawn, no-cache -> spawn + persist,
-// stale -> serve cached + background refresh). Spawning uses a temp fake `agy`
+// stale -> discover for the current load). Spawning uses a temp fake `agy`
 // binary so no real agy is needed.
 // Run: npm test
 
@@ -14,11 +14,12 @@ import path from "node:path";
 import { test } from "vitest";
 import {
 	entriesFromRaw,
+	FALLBACK_MODELS,
 	loadModelCatalogRaw,
 	MODELS_CACHE_TTL_MS,
 	MODELS_OUTPUT_CAP_BYTES,
 	refreshModelsInBackground,
- refreshModelCatalogIfNeeded,
+	refreshModelCatalogIfNeeded,
 	spawnAgyModelsRaw,
 	toPiModel,
 } from "../src/models.js";
@@ -75,31 +76,29 @@ test("loadModelCatalogRaw: fresh cache is returned without spawning agy", async 
 
 // --- loadModelCatalogRaw: no cache -> spawn + persist -----------------------
 
-test("loadModelCatalogRaw: no cache returns fallback input without spawning", async () => {
+test("loadModelCatalogRaw: no cache discovers and persists the current catalog", async () => {
 	const cachePath = tempCachePath();
-	const bin = makeFakeAgy("Gemini 3.6 Flash (Medium)");
+	const bin = makeFakeAgy(`gemini-4-argon-low
+gemini-4-argon-high`);
 
 	const raw = await loadModelCatalogRaw(bin, cachePath);
-	assert.equal(raw, "");
-	assert.equal(readCacheRaw(cachePath), null);
+	assert.equal(raw, `gemini-4-argon-low
+gemini-4-argon-high`);
+	assert.equal(readCacheRaw(cachePath), raw);
 });
 
-// --- loadModelCatalogRaw: stale cache -> serve + background refresh ---------
+// --- loadModelCatalogRaw: stale cache -> discover before registration ---------
 
-test("loadModelCatalogRaw: stale cache is served without spawning; first use refreshes", async () => {
+test("loadModelCatalogRaw: stale cache discovers Argon for the current load", async () => {
 	const cachePath = tempCachePath();
-	// Stale: savedAt well past the TTL.
-	const staleSavedAt = Date.now() - MODELS_CACHE_TTL_MS - 60_000;
-	fs.writeFileSync(cachePath, JSON.stringify({ raw: "OLD", savedAt: staleSavedAt }));
-	const bin = makeFakeAgy("NEW");
-
-	const raw = await loadModelCatalogRaw(bin, cachePath);
-	assert.equal(raw, "OLD"); // returned the stale cache without waiting
-
-	// The background refresh updates the cache for the next load.
-	assert.equal(readCacheRaw(cachePath), "OLD");
- await refreshModelCatalogIfNeeded(bin, cachePath);
- assert.equal(readCacheRaw(cachePath), "NEW");
+	fs.writeFileSync(cachePath, JSON.stringify({ raw: "gemini-3.6-flash-low", savedAt: 0 }));
+	const fresh = `gemini-4-argon-low
+gemini-4-argon-medium
+gemini-4-argon-high`;
+	const raw = await loadModelCatalogRaw(makeFakeAgy(fresh), cachePath);
+	assert.equal(raw, fresh);
+	assert.equal(readCacheRaw(cachePath), fresh);
+	assert.equal(entriesFromRaw(raw)[0].full, "gemini-4-argon");
 });
 
 // --- refreshModelsInBackground: writes the cache on success -----------------
@@ -113,14 +112,14 @@ test("refreshModelsInBackground: persists agy output to the cache", async () => 
 
 // --- corrupt / missing cache -----------------------------------------------
 
-test("loadModelCatalogRaw: corrupt cache returns fallback input without spawning", async () => {
+test("loadModelCatalogRaw: corrupt cache discovers and persists a replacement", async () => {
 	const cachePath = tempCachePath();
 	fs.writeFileSync(cachePath, "{not valid json");
-	const bin = makeFakeAgy("RECOVERED");
+	const bin = makeFakeAgy("gemini-4-argon-low");
 
 	const raw = await loadModelCatalogRaw(bin, cachePath);
-	assert.equal(raw, "");
-	assert.equal(readCacheRaw(cachePath), null);
+	assert.equal(raw, "gemini-4-argon-low");
+	assert.equal(readCacheRaw(cachePath), raw);
 });
 
 // --- entriesFromRaw: collapses effort-driven bases, keeps fixed models -------
@@ -258,7 +257,7 @@ test("toPiModel: effort-driven base shows toggle restricted to its tiers", () =>
 // --- spawnAgyModelsRaw stdout cap -------------------------------------------
 
 /** Fake `agy` streams `chunks` x 64KiB, awaiting each write's drain so the
- *  cap exercises the live process rather than racing an early natural exit. */
+	*  cap exercises the live process rather than racing an early natural exit. */
 function makeStreamingFakeAgy(chunks: number): string {
 	return makeNodeFixture(`for(let i=0;i<${chunks};i++) await new Promise(r => process.stdout.write('x'.repeat(65536), r));`);
 }
@@ -277,3 +276,47 @@ test("spawnAgyModelsRaw keeps output at exactly the cap (strict > boundary)", as
 	assert.equal(raw.length, MODELS_OUTPUT_CAP_BYTES);
 	assert.match(raw, /^x+$/);
 });
+
+test("loadModelCatalogRaw: discovery failures retain stale cache or select static fallback", async () => {
+	for (const output of ["", "Available models:"]) {
+		const bin = makeFakeAgy(output);
+		const cachePath = tempCachePath();
+		assert.equal(await loadModelCatalogRaw(bin, cachePath), "");
+		fs.writeFileSync(cachePath, JSON.stringify({ raw: "gemini-3.6-flash-low", savedAt: 0 }));
+		assert.equal(await loadModelCatalogRaw(bin, cachePath), "gemini-3.6-flash-low");
+		assert.equal(readCacheRaw(cachePath), "gemini-3.6-flash-low");
+	}
+	assert.equal(await loadModelCatalogRaw(path.join(os.tmpdir(), "missing-agy-binary"), tempCachePath()), "");
+});
+
+test("loadModelCatalogRaw: unwritable cache does not discard successful discovery", async () => {
+	const cachePath = tempCachePath();
+	fs.writeFileSync(cachePath, "parent is a file");
+	const raw = await loadModelCatalogRaw(makeFakeAgy("gemini-4-argon-low"), path.join(cachePath, "child.json"));
+	assert.equal(raw, "gemini-4-argon-low");
+});
+
+test("fallback catalog exposes Argon with all three efforts", () => {
+	assert.deepEqual(FALLBACK_MODELS.find(e => e.full === "gemini-4-argon"), {
+		full: "gemini-4-argon", id: "gemini-4-argon", efforts: ["low", "medium", "high"],
+	});
+});
+
+test("loadModelCatalogRaw: concurrent stale loads share discovery and persist once", async () => {
+	const cachePath = tempCachePath();
+	const marker = path.join(path.dirname(cachePath), "launches");
+	const bin = makeNodeFixture(`import fs from 'node:fs'; fs.appendFileSync(${JSON.stringify(marker)}, 'x'); setTimeout(() => console.log('gemini-4-argon-low'), 50);`);
+	const results = await Promise.all([loadModelCatalogRaw(bin, cachePath), loadModelCatalogRaw(bin, cachePath), refreshModelCatalogIfNeeded(bin, cachePath)]);
+	assert.equal(results[0], "gemini-4-argon-low\n");
+	assert.equal(results[1], results[0]);
+	assert.equal(fs.readFileSync(marker, "utf8"), "x");
+});
+
+test("loadModelCatalogRaw: hung discovery times out and retains stale cache", async () => {
+	const cachePath = tempCachePath();
+	fs.writeFileSync(cachePath, JSON.stringify({ raw: "gemini-3.6-flash-low", savedAt: 0 }));
+	const start = Date.now();
+	const raw = await loadModelCatalogRaw(makeNodeFixture("setInterval(() => {}, 1000);"), cachePath);
+	assert.equal(raw, "gemini-3.6-flash-low");
+	assert.ok(Date.now() - start < 11000, "discovery and termination must remain bounded");
+}, 12000);

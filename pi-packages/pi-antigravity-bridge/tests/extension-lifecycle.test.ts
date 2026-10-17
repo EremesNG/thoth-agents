@@ -270,7 +270,7 @@ test("private model-at-start writes unique private discovery, no global entries,
 	const spawn = fixture();
 	const a = session(); const b = session();
 	await extension(a.pi); await extension(b.pi);
-	assert.equal(spawn.mock.calls.length, 0, "loading must not launch agy");
+	assert.ok(spawn.mock.calls.every(([, args]) => args?.includes("models")), "loading may only launch catalog discovery");
 	await Promise.all([a.emit("session_start"), b.emit("session_start")]);
 	const configs = privateConfigs();
 	assert.equal(configs.length, 2);
@@ -420,11 +420,12 @@ test("shutdown during the deferred version check cancels later startup and leave
 	}) as typeof childProcess.spawn);
 	const s = session("anthropic");
 	await extension(s.pi);
+	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("models")).length, 1, "missing cache is discovered before registration");
 	const turn = s.turn("shutdown-during-version");
 	await versionStarted;
 	await s.emit("session_shutdown");
 	assert.match((await turn).join("\n"), /shut down during startup/);
-	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("models")).length, 0, "cancelled startup must not begin a catalog subprocess");
+	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("models")).length, 1, "cancelled startup must not begin another catalog subprocess");
 	assert.equal(privateConfigs().length, 0);
 	for (const child of children) assert.ok(child.exitCode !== null || child.signalCode !== null, "owned subprocess exited before shutdown returned");
 	assert.match((await s.turn("shutdown-refused")).join("\n"), /shut down/);

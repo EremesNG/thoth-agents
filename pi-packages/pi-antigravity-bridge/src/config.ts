@@ -97,7 +97,7 @@ export interface AgyConfig {
 	 *  DANGEROUS: lets agy run arbitrary commands (including destructive ones)
 	 *  without review. Turn off only if you also set mode=plan (no execution). */
 	skipPermissions: boolean;
-	/** AskAntigravity tool: default model alias (flash/pro/gemini or exact). */
+	/** AskAntigravity tool: default model alias (flash/pro/argon/gemini or exact). */
 	defaultModel: string;
 	/** AskAntigravity tool: default thinking tier when the alias names none. */
 	defaultThinking: ThinkingTier;

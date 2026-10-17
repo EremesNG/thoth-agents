@@ -8,7 +8,7 @@ The provider ships two turn engines behind one contract (`TurnDriver`,
 `src/driver-types.ts`): the default **stream-json engine** (below) and the
 opt-in **ACP engine** (bottom of this doc). Turns are fed over stdin; agy emits NDJSON events on stdout; the driver parses them and streams text into pi token by token. Conversation binding comes from the `init` event, tool steps arrive as typed events (no protobuf decoding), and token usage is live.
 
-Shared infrastructure: session binding (`sessions.json`), runtime config, the `AskAntigravity` tool, the MCP tool bridge surface, and the G1 context digest (off by default - see below). Discovery defaults to private per-instance names for root and children. Loading reads the cached/fallback model catalog without spawning agy; bridge startup is lazy and model-gated, and shutdown removes only acquired, unique descriptor-cache keys. See [BRIDGE-LIFECYCLE.md](./BRIDGE-LIFECYCLE.md).
+Shared infrastructure: session binding (`sessions.json`), runtime config, the `AskAntigravity` tool, the MCP tool bridge surface, and the G1 context digest (off by default - see below). Discovery defaults to private per-instance names for root and children. Loading uses a fresh cached model catalog or awaits bounded discovery before registering both catalogs (stale cache/static fallback on failure); bridge startup is lazy and model-gated, and shutdown removes only acquired, unique descriptor-cache keys. See [BRIDGE-LIFECYCLE.md](./BRIDGE-LIFECYCLE.md).
 
 ## Module map
 

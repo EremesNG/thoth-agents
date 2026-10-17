@@ -16,9 +16,9 @@ agy uses `mcp_<server>_<tool>` names with a 64-character limit. The advertised c
 
 ## Lazy start
 
-Loading the extension never spawns agy. The registered model catalog comes only from `models-cache.json` (fresh or stale) or the built-in fallback. First Antigravity use refreshes a missing/stale cache for the next load; provider model lists remain fixed until `/reload`.
+Loading the extension reads a fresh `models-cache.json` without spawning agy. Missing/stale caches await `agy models` (eight-second timeout, capped stdout) before provider and AskAntigravity registration, so new models are available in this session. Failed discovery retains stale data, then the built-in fallback. Concurrent loads sharing the binary/cache coalesce discovery; cache-write failures do not discard discovered models.
 
-Bridge startup is model-gated for every instance: `session_start` with an Antigravity model, `model_select` to Antigravity, or the first provider stream if lifecycle events have not reached the instance. Startup is single-flight, awaited before engine launch, and fenced against concurrent shutdown. MCP configuration and approval hooks are ready before agy launches or ACP opens a session. The stream-json version check is also deferred until first use. Non-Antigravity sessions do not start bridges or spawn agy; explicit commands/tools and existing interactive onboarding remain separately user-initiated operations.
+Bridge startup is model-gated for every instance: `session_start` with an Antigravity model, `model_select` to Antigravity, or the first provider stream if lifecycle events have not reached the instance. Startup is single-flight, awaited before engine launch, and fenced against concurrent shutdown. MCP configuration and approval hooks are ready before agy launches or ACP opens a session. The stream-json version check is also deferred until first use. Non-Antigravity sessions do not start bridges; load-time catalog discovery may still spawn agy when the cache is missing/stale; explicit commands/tools and existing interactive onboarding remain separately user-initiated operations.
 
 ## Owned shutdown
 

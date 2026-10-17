@@ -178,8 +178,8 @@ export async function spawnAgyModelsRaw(binary: string): Promise<string> {
 //
 // `agy models` can take seconds (OAuth refresh, cold start) and its output
 // rarely changes. We persist it to ~/.pi/agent/antigravity-bridge/models-
-// cache.json with a short TTL so reloads serve instantly and only re-spawn in
-// the background when stale. Only successful (non-empty) output is cached, so
+// cache.json with a short TTL so fresh reloads serve instantly. Stale loads
+// await bounded discovery before registration. Only valid output is cached, so
 // a broken agy is never sticky.
 
 export const MODELS_CACHE_TTL_MS = 5 * 60_000;
@@ -219,9 +219,9 @@ function readModelsCache(cachePath: string = MODELS_CACHE_PATH): ModelsCache | n
 /** Atomically persist the raw catalog text (temp + rename, mode 0o600).
  *  Best-effort: a write failure just means the next load re-spawns. */
 function writeModelsCache(raw: string, cachePath: string = MODELS_CACHE_PATH): void {
-	fs.mkdirSync(path.dirname(cachePath), { recursive: true });
 	const tmp = `${cachePath}.${process.pid}.tmp`;
 	try {
+		fs.mkdirSync(path.dirname(cachePath), { recursive: true });
 		fs.writeFileSync(tmp, JSON.stringify({ raw, savedAt: Date.now() }, null, 2) + "\n", {
 			mode: 0o600,
 		});
@@ -250,16 +250,29 @@ export function refreshModelsInBackground(
 		});
 }
 
-/** Load-time catalog read only: even a missing or stale cache never spawns agy.
- *  Empty text selects FALLBACK_MODELS. Provider lists are static until reload. */
+/** Resolve the catalog BEFORE provider/tool registration. Discovery is bounded
+ *  by spawnAgyModelsRaw; failures retain stale data, then the static fallback.
+ *  Return discovered text even if persistence fails (e.g. a read-only cache). */
 export async function loadModelCatalogRaw(
-	_binary: string,
+	binary: string,
 	cachePath: string = MODELS_CACHE_PATH,
 ): Promise<string> {
-	return readModelsCache(cachePath)?.raw ?? "";
+	const cache = readModelsCache(cachePath);
+	if (cache && Date.now() - cache.savedAt < MODELS_CACHE_TTL_MS) return cache.raw;
+	const key = `${binary}\u0000${path.resolve(cachePath)}`;
+	let flight = catalogRefreshes.get(key);
+	if (!flight) {
+		flight = spawnAgyModelsRaw(binary).then((raw) => {
+			if (entriesFromRaw(raw).length === 0) return "";
+			writeModelsCache(raw, cachePath);
+			return raw;
+		}).catch(() => "").finally(() => { catalogRefreshes.delete(key); });
+		catalogRefreshes.set(key, flight);
+	}
+	return (await flight) || cache?.raw || "";
 }
 
-const catalogRefreshes = new Map<string, Promise<void>>();
+const catalogRefreshes = new Map<string, Promise<string>>();
 
 /** First Antigravity use refreshes missing/stale catalogs for the NEXT load.
  *  Coalesce in-process instances sharing the same cache. Failed refreshes retain
@@ -268,17 +281,7 @@ export async function refreshModelCatalogIfNeeded(
 	binary: string,
 	cachePath: string = MODELS_CACHE_PATH,
 ): Promise<void> {
-	const cache = readModelsCache(cachePath);
-	if (cache && Date.now() - cache.savedAt < MODELS_CACHE_TTL_MS) return;
-	const key = `${binary}\u0000${path.resolve(cachePath)}`;
-	let flight = catalogRefreshes.get(key);
-	if (!flight) {
-		flight = spawnAgyModelsRaw(binary).then((raw) => {
-			if (raw) writeModelsCache(raw, cachePath);
-		}).catch(() => { /* best effort */ }).finally(() => { catalogRefreshes.delete(key); });
-		catalogRefreshes.set(key, flight);
-	}
-	await flight;
+	await loadModelCatalogRaw(binary, cachePath);
 }
 
 /** Parse raw `agy models` text into the provider's model entries.
@@ -385,6 +388,7 @@ export function toPiModel(entry: AgyModelEntry, input: Array<"text" | "image"> =
  *  can still select a model and get a clear runtime error instead of an empty
  *  list. Update these when agy ships new Gemini versions. */
 export const FALLBACK_MODELS: AgyModelEntry[] = [
+	{ full: "gemini-4-argon", id: "gemini-4-argon", efforts: ["low", "medium", "high"] },
 	{ full: "gemini-3.7-flash", id: "gemini-3-7-flash", efforts: ["low", "medium", "high"] },
 	{ full: "gemini-3.1-pro", id: "gemini-3-1-pro", efforts: ["low", "high"] },
 	{ full: "claude-sonnet-4-6", id: "claude-sonnet-4-6" },

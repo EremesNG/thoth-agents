@@ -130,9 +130,9 @@ Or specify a model directly:
 /model antigravity/gemini-3-6-flash-medium
 ```
 
-Model ids are slugified from the `agy models` output (`Gemini 3.6 Flash (Medium)` becomes `gemini-3-6-flash-medium`). Extension load reads only `models-cache.json` (fresh or stale) or the built-in fallback; it never spawns agy. First Antigravity use refreshes a missing/stale cache, and `/reload` then registers that catalog. After an `agy update`, use Antigravity to refresh a stale cache before reloading.
+Model ids are slugified from the `agy models` output (`Gemini 3.6 Flash (Medium)` becomes `gemini-3-6-flash-medium`). Extension load uses `models-cache.json` while fresh (five-minute TTL). Missing/stale caches trigger bounded `agy models` discovery (eight-second timeout) before registering provider and AskAntigravity models in the current session. Discovery failure retains the stale cache, then uses the built-in fallback (including Gemini 4 Argon). After an `agy update`, reload once the cache is stale to discover new models.
 
-If no usable cached catalog exists, the built-in fallback populates the picker. Bridge startup and the stream-json version check are deferred until an Antigravity model is used, so binary/auth/network failures surface at first use rather than triggering discovery at load.
+If discovery fails and no usable cached catalog exists, the built-in fallback populates the picker. Bridge startup and the stream-json version check are deferred until an Antigravity model is used, so binary/auth/network failures surface at first use.
 
 ### Bridge surface
 
@@ -171,7 +171,7 @@ The `activate_skill` catalog mirrors pi's directory-based skill discovery: the t
 /agy mode accept-edits    agy applies edits directly (default)
 /agy permissions on|off   auto-approve / prompt for tool calls (see warning)
 /agy ask on|off           register the AskAntigravity delegation tool (default off: only the provider and models, even with pi-ask-antigravity installed)
-/agy model flash|pro|gemini   fallback model for the AskAntigravity tool; callers may override per call
+/agy model flash|pro|argon|gemini   fallback model for the AskAntigravity tool; callers may override per call
 /agy thinking low|medium|high fallback thinking tier for the AskAntigravity tool; callers may override per call
 /agy digest on|off        inject pi-side context into agy prompts (default off; see table above)
 /agy system-prompt on|off send pi's system prompt + AGENTS.md + the Pi Bridge tool-priority note to new agy conversations (default on)
@@ -224,7 +224,7 @@ For isolation when running any agent that executes commands without a confirmati
 | `AGY_MODE` | Override execution mode: `plan` (review-only) or `accept-edits` (default). Wins over the config file. |
 | `AGY_SKIP_PERMISSIONS` | `1`/`true` (default) to pass `--dangerously-skip-permissions` so commands don't hang on an unanswerable prompt in `-p` mode. `0`/`false` to prompt (hangs any `run_command` non-interactively). Wins over the config file. |
 | `AGY_USAGE_ESTIMATE` | ACP token display: `estimate` (default; live client-side per-delta estimates), `direct` (pass through the server's own per-delta counts when it sends them), `off` (no usage display). Anything else falls back to `estimate`. Wins over the config file. |
-| `AGY_DEFAULT_MODEL` | Default model alias for the `AskAntigravity` tool (`flash`/`pro`/`gemini`, or a tier/version qualifier). Wins over the config file. |
+| `AGY_DEFAULT_MODEL` | Default model alias for the `AskAntigravity` tool (`flash`/`pro`/`argon`/`gemini`, or a tier/version qualifier). Wins over the config file. |
 | `AGY_DEFAULT_THINKING` | Default thinking tier for the `AskAntigravity` tool: `low`/`medium`/`high`. Anything else falls back to `medium`. Wins over the config file. |
 | `AGY_DEBUG` | `1`/`true`/`on` writes the full trail to the daily log (driver lifecycle, raw bridge traffic). Default off: **only `error` records land on disk** - routine disk writes are zero for regular users, and warnings surface as UI toasts instead. |
 | `AGY_APPROVALS` | Approval gate mode: `auto` (default; gate on only when a pi permission extension is detected), `shadow` (force the shadow-tool gate on), `dedicated`, `off`. Unknown values fall back to `auto`, so a typo can never force the gate on. Wins over `config.approvals.gateMode`. |

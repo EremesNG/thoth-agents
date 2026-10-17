@@ -345,3 +345,13 @@ For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_
 - **GIVEN** a child running a silent `bash` command with `timeout: 1000`, default config, and a deadline beyond 20 minutes
 - **WHEN** 16 minutes pass without tool updates
 - **THEN** no stall fires, and a stall fires once 1030 seconds pass without updates, with the final error naming the tool budget of 1030000 ms
+
+### Requirement: AskCodex app-server delegation
+
+`@thoth-agents/pi-askcodex` MUST register an `AskCodex` tool, unless disabled by configuration, that delegates a task to the local Codex harness through `codex app-server` over stdio, resolving the binary from explicit configuration, then the Codex Desktop-bundled executable, then PATH with a warning; it MUST map `plan` to a read-only sandbox and `accept-edits` to workspace-write, return the final agent message, a continuation id that resumes the same Codex thread, token usage and every approval decision; it MUST answer Computer Use app elicitations by accepting allowlisted apps with session scope only, asking the user through Pi UI for other approvals when UI is available and declining them otherwise, never granting persistent approval; and it MUST interrupt the turn and terminate its own process tree on abort or timeout.
+
+#### Scenario: AskCodex app-server delegation
+
+- **GIVEN** Codex Desktop running, `notepad.exe` allowlisted and no Pi UI
+- **WHEN** `AskCodex` asks Codex to type text into Notepad and Codex requests Computer Use approval for Notepad and later a command approval outside the sandbox
+- **THEN** the Notepad request is accepted with session persistence, the command approval is declined, both decisions appear in the result, and the result includes the final message and a continuation id

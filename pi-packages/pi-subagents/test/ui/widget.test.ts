@@ -118,8 +118,10 @@ describe('Agents work-panel rows', () => {
     expect(rows.find((row) => row.id === '0')?.endedAt).toBeUndefined();
     expect(agents.summary!()).toMatchObject({
       completed: 1,
-      failed: 3,
-      running: 3,
+      failed: 1,
+      running: 2,
+      queued: 1,
+      cancelled: 2,
       total: 7,
     });
     expect(
@@ -429,28 +431,25 @@ describe('Agents work-panel rows', () => {
     session.theme.fg = (role, text) => currentTheme.fg(role, text);
     for (const width of [200, 80, 24, 12]) {
       const line = session.render(width + 4)[1]!;
-      expect(line).toContain(
-        width === 12
-          ? '\x1b[33m⚠ 1 dropped\x1b[0m'
-          : '\x1b[33m · ⚠ 1 dropped\x1b[0m',
-      );
+      expect(line).toContain(`[33m⚠ 1 dropped[0m`);
+
       expect(visibleWidth(line)).toBeLessThanOrEqual(width + 4);
     }
-    expect(fg).toHaveBeenCalledWith('warning', ' · ⚠ 1 dropped');
+    expect(fg).toHaveBeenCalledWith('warning', '⚠ 1 dropped');
     currentTheme.fg = (_role, text) => `\x1b[93m${text}\x1b[0m`;
-    expect(session.render(204)[1]).toContain('\x1b[93m · ⚠ 1 dropped\x1b[0m');
+    expect(session.render(204)[1]).toContain('\x1b[93m⚠ 1 dropped\x1b[0m');
     expect(session.render(5)[1]).toContain('⚠');
     expect(session.render(0)).toEqual([]);
     item.status = 'completed';
     expect(agents.listRows(now)[0]?.identity).not.toContainEqual({
-      text: ' · ⚠ 1 dropped',
+      text: '⚠ 1 dropped',
       role: 'warning',
     });
     item.status = 'running';
     item.dropped_tools = [];
     expect(session.render(204)[1]).not.toContain('dropped');
     expect(row.identity).toContainEqual({
-      text: ' · ⚠ 1 dropped',
+      text: '⚠ 1 dropped',
       role: 'warning',
     });
   });
@@ -467,7 +466,7 @@ describe('Agents work-panel rows', () => {
       const agents = provider([task({ dropped_tools: ['missing_read'] })]);
       const row = agents.listRows(now)[0]!;
       expect(row.identity).toContainEqual({
-        text: ' · ⚠ 1 dropped',
+        text: '⚠ 1 dropped',
         role: 'warning',
       });
       expect(JSON.stringify(row)).not.toContain('\\u001b');

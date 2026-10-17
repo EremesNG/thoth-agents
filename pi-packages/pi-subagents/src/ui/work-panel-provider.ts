@@ -1,6 +1,7 @@
 import {
   getRenderKit,
   type RenderKitTheme,
+  type RenderStatus,
   resolveIcon,
   type SemanticGlyphName,
   WORK_PANEL_VERSION,
@@ -26,6 +27,17 @@ function taskState(task: SubagentTask): WorkPanelItemState {
   return task.status === 'completed' ? 'done' : 'failed';
 }
 
+function taskRenderStatus(task: SubagentTask): RenderStatus {
+  if (task.status === 'cancelled' || task.status === 'interrupted')
+    return 'cancelled';
+  if (
+    task.status === 'failed' &&
+    task.error_metadata?.category === 'total_timeout'
+  )
+    return 'timedOut';
+  return task.status;
+}
+
 function completionTime(task: SubagentTask): number | undefined {
   const endedAt = task.ended_at ? Date.parse(task.ended_at) : NaN;
   return Number.isFinite(endedAt) ? endedAt : undefined;
@@ -42,6 +54,7 @@ function taskRow(
   limitWarning?: string,
 ): WorkPanelRow {
   const summary = formatTaskSummary(task);
+  const status = taskRenderStatus(task);
   const separator = ` ${resolveIcon('separator', '·')} `;
   const metrics = task.runtime_metrics;
   const speed = generationSpeed(metrics);
@@ -91,17 +104,19 @@ function taskRow(
     add('tools', `${label('tool', 'tools')} `, String(metrics.toolUses));
   else if (live) add('tools', `${label('tool', 'tools')} `, '?');
   const tokens: WorkPanelSegment[] = [];
-  for (const [value, icon, text] of [
-    [task.usage?.input, 'tokensIn', 'in '],
-    [task.usage?.output, 'tokensOut', 'out '],
+  for (const [value, icon, text, direction] of [
+    [task.usage?.input, 'tokensIn', 'in ', 'in'],
+    [task.usage?.output, 'tokensOut', 'out ', 'out'],
   ] as const) {
     if (!finiteNonnegative(value) && !live) continue;
     if (tokens.length) tokens.push({ text: ' ', role: 'meta' });
+    // The direction marker, not the glyph or position, drives the host's token colors.
     tokens.push(
-      { text: ascii ? text : resolveIcon(icon), role: 'meta' },
+      { text: ascii ? text : resolveIcon(icon), role: 'meta', direction },
       {
         text: finiteNonnegative(value) ? formatTokens(value) : '?',
         role: 'meta',
+        direction,
       },
     );
   }
@@ -140,21 +155,27 @@ function taskRow(
     id: task.id,
     name: task.agent,
     primary: summary,
-    status: task.status,
+    status,
     state: taskState(task),
     endedAt: completionTime(task),
-    statusGlyph: task.status,
+    sortStartedAt: Date.parse(task.created_at),
+    statusGlyph: status,
     identity: [
       { text: task.agent.replace(/\s+/g, ' ').trim(), role: 'primary' },
       ...(summary
-        ? [{ text: `${separator}${summary}`, role: 'secondary' as const }]
+        ? [
+            { text: separator, role: 'meta' as const },
+            { text: summary, role: 'secondary' as const },
+          ]
         : []),
-      ...(warning
-        ? [{ text: `${separator}${warning}`, role: 'warning' as const }]
-        : []),
-      ...(limitWarning
-        ? [{ text: `${separator}${limitWarning}`, role: 'warning' as const }]
-        : []),
+      ...[warning, limitWarning].flatMap((text) =>
+        text
+          ? [
+              { text: separator, role: 'meta' as const },
+              { text, role: 'warning' as const },
+            ]
+          : [],
+      ),
     ],
     metrics: parts,
   };
@@ -162,8 +183,8 @@ function taskRow(
 
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
-  /** Bounded session metadata read, cached here outside the render path. */
-  listSessionTasks?(): SubagentTask[];
+  /** Bounded launch-ranked metadata read, cached outside the render path. */
+  listLaunchRankedSessionTasks?(): SubagentTask[];
   persistedCounts?: SubagentSessionTaskCounts;
   providerLimits?: Pick<SubagentProviderLimitCache, 'warningText' | 'onChange'>;
   onTaskUpdate(notify: () => void): () => void;
@@ -172,7 +193,7 @@ export function createSubagentsWorkPanelProvider(source: {
   openHistory?: WorkPanelProvider['openHistory'];
   theme?: () => RenderKitTheme;
 }): WorkPanelProvider {
-  let historyTasks = source.listSessionTasks?.() ?? [];
+  let historyTasks = source.listLaunchRankedSessionTasks?.() ?? [];
   const terminalSignature = () =>
     JSON.stringify(
       source
@@ -185,7 +206,7 @@ export function createSubagentsWorkPanelProvider(source: {
     const signature = terminalSignature();
     if (signature === lastTerminalSignature) return;
     lastTerminalSignature = signature;
-    historyTasks = source.listSessionTasks?.() ?? [];
+    historyTasks = source.listLaunchRankedSessionTasks?.() ?? [];
   };
   const dismissed = new Set<string>();
   const listeners = new Set<() => void>();
@@ -215,7 +236,7 @@ export function createSubagentsWorkPanelProvider(source: {
         .filter((task) => taskState(task) !== 'running')
         .sort(
           (a, b) =>
-            (completionTime(b) ?? 0) - (completionTime(a) ?? 0) ||
+            Date.parse(b.created_at) - Date.parse(a.created_at) ||
             b.id.localeCompare(a.id),
         )
         .slice(0, 5),
@@ -267,9 +288,11 @@ export function createSubagentsWorkPanelProvider(source: {
       return {
         text: parts.map(({ text }) => text).join(''),
         segments: parts,
-        running: count('running') + count('queued') + count('stopping'),
+        running: count('running') + count('stopping'),
+        queued: count('queued'),
         completed: count('completed'),
-        failed: count('failed') + count('cancelled') + count('interrupted'),
+        failed: count('failed'),
+        cancelled: count('cancelled') + count('interrupted'),
         total: Object.values(counts).reduce((sum, total) => sum + total, 0),
       };
     },

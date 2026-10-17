@@ -253,6 +253,12 @@ describe('subagents v2 render parity', () => {
         '✗ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
       [
+        'failed',
+        'Agents · 0 running · 1 failed',
+        '◷ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
+        true,
+      ],
+      [
         'cancelled',
         'Agents · 0 running · 1 cancelled',
         '■ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
@@ -263,8 +269,17 @@ describe('subagents v2 render parity', () => {
         '■ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
     ] as const;
-    for (const [status, heading, body] of golden) {
+    for (const [status, heading, body, timeout] of golden) {
       item.status = status;
+      item.error_metadata = timeout
+        ? {
+            version: 1,
+            category: 'total_timeout',
+            message: 'timed out',
+            retryable: true,
+            partial_result_available: false,
+          }
+        : undefined;
       const expected = [
         `${themed ? '' : '◆ '}${heading}`,
         `${themed ? '  └─ ' : '  '}${themed ? body.replace('tools 5', '* 5').replace('75 tok/s', 'tok/s 75').replace('elapsed ', '◷ ') : body}`,

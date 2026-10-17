@@ -1,5 +1,6 @@
 import {
   type AgentRoleName,
+  DEFAULT_DELEGATION_LIFECYCLE,
   getAgentPackContract,
   getAgentRole,
   getImplementationOwnershipInstructions,
@@ -201,10 +202,7 @@ ${policy.implementationOwnership.rootIdentity}
 </operating-model>
 
 <delegation-lifecycle>
-- New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions via {{lifecycleFreshDelegation}}; {{lifecycleIndependentContext}}. These are fresh-session boundaries, not permission for root execution; completed agents are not a reusable role pool.
-- Use {{lifecycleSameAssignmentContinuation}} only to steer, complete or clarify the same bounded assignment.
-- {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment.
-- Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. Existing ones only clarify their findings.
+{{delegationLifecycle}}
 </delegation-lifecycle>
 
 <routing>
@@ -508,6 +506,10 @@ function renderRoleText(
   dialect: HarnessPromptDialect,
 ): string {
   return section.template
+    .replaceAll(
+      '{{delegationLifecycle}}',
+      dialect.tools.lifecycle.rootInstructions ?? DEFAULT_DELEGATION_LIFECYCLE,
+    )
     .replaceAll(
       '{{assignmentSkillGuidance}}',
       dialect.harness === 'pi'

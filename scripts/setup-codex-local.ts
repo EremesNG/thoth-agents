@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -8,7 +7,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -16,8 +14,9 @@ import { pathToFileURL } from 'node:url';
 import { applyCodexSetup, buildCodexSetupPlan } from '../src/cli/codex-install';
 import {
   type CodexCommandExecutor,
-  getCodexCommand,
+  defaultCommandExecutor,
 } from '../src/cli/codex-plugin-install';
+import { safeAtomicWriteFileSync } from '../src/cli/safe-atomic-write';
 
 const PACKAGE_NAME = 'thoth-agents';
 const EXACT_SEMVER = /^\d+\.\d+\.\d+$/u;
@@ -36,6 +35,7 @@ export interface SyncCodexLocalSetupOptions {
   homeDirectory?: string;
   codexHome?: string;
   cachebuster?: string;
+  replaceLegacyAgents?: boolean;
   inspectPluginState?: boolean;
   pluginStateExecutor?: CodexCommandExecutor;
   rename?: typeof renameSync;
@@ -66,7 +66,7 @@ function readJson(path: string): JsonRecord {
 }
 
 function writeJson(path: string, value: JsonRecord): void {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  safeAtomicWriteFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function defaultCachebuster(): string {
@@ -216,26 +216,6 @@ function rewritePluginVersion(stagingRoot: string, version: string): void {
   }
 }
 
-const defaultPluginStateExecutor: CodexCommandExecutor = (
-  command,
-  args,
-  commandOptions,
-) => {
-  const invocation =
-    command === 'codex' ? getCodexCommand(args) : { command, args: [...args] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: commandOptions.cwd,
-    encoding: 'utf8',
-    shell: false,
-    windowsHide: true,
-  });
-  return {
-    exitCode: result.status ?? (result.error ? 1 : 0),
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? result.error?.message ?? '',
-  };
-};
-
 function inspectPluginSelection(
   executor: CodexCommandExecutor,
   projectRoot: string,
@@ -311,26 +291,37 @@ export function syncCodexLocalSetup(
     options.inspectPluginState === false
       ? []
       : inspectPluginSelection(
-          options.pluginStateExecutor ?? defaultPluginStateExecutor,
+          options.pluginStateExecutor ?? defaultCommandExecutor,
           repositoryRoot,
           marketplace.pluginId,
         );
   const plan = buildCodexSetupPlan({
     dryRun: false,
     reset: false,
+    replaceLegacyAgents: options.replaceLegacyAgents,
     scope: 'user',
     projectRoot: repositoryRoot,
     packageRoot: repositoryRoot,
     homeDir: homeDirectory,
     codexHome,
+    pluginId: marketplace.pluginId,
+    localPluginBundlePath: pluginTarget,
   });
 
   const targetParent = dirname(pluginTarget);
   mkdirSync(targetParent, { recursive: true });
+  const backupRoot = `${pluginTarget}.backup-${process.pid}-${Date.now()}`;
+  try {
+    lstatSync(backupRoot);
+    throw new Error(
+      `Unsafe backup destination (must be absent): ${backupRoot}`,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   const stagingRoot = mkdtempSync(
     join(targetParent, `.${PACKAGE_NAME}-local-`),
   );
-  const backupRoot = `${pluginTarget}.backup-${process.pid}-${Date.now()}`;
   assertSafeDirectory(stagingRoot, homeDirectory, 'Plugin staging root');
   assertSafeDirectory(backupRoot, homeDirectory, 'Plugin backup root');
 
@@ -360,7 +351,12 @@ export function syncCodexLocalSetup(
       ...marketplace,
       version: localVersion,
       changed: [pluginTarget, ...applied.changed],
-      warnings,
+      warnings: [
+        ...warnings,
+        ...applied.diagnostics.filter((message) =>
+          /^Preserved /u.test(message),
+        ),
+      ],
     };
   } catch (error) {
     if (existsSync(stagingRoot)) {
@@ -383,7 +379,9 @@ const isMain =
 
 if (isMain) {
   try {
-    const result = syncCodexLocalSetup();
+    const result = syncCodexLocalSetup({
+      replaceLegacyAgents: process.argv.includes('--replace-legacy-agents'),
+    });
     for (const warning of result.warnings) {
       process.stderr.write(`Warning: ${warning}\n`);
     }

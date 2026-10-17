@@ -81,6 +81,7 @@ export interface TuiOperations {
   plan(
     harness: HarnessId,
     action: Exclude<TuiAction, 'status' | 'list'>,
+    options?: { trustHooks?: boolean },
   ): OperationPlan;
   modelPlan(harness: HarnessId, roles: ModelRoleInput[]): OperationPlan;
   restoreModelPlan(
@@ -129,7 +130,9 @@ export function getCodexModelRoles(
       ({ role, model: defaultModel }) => {
         const item = plan.items.find(
           (candidate) =>
-            candidate.action === 'write-role-toml' && candidate.role === role,
+            (candidate.action === 'write-role-toml' ||
+              candidate.action === 'preserve-role-toml') &&
+            candidate.role === role,
         );
         const content =
           item && existsSync(item.targetPath)
@@ -296,7 +299,7 @@ export const defaultTuiOperations: TuiOperations = {
   modelOptions(harness) {
     return getModelOptions(harness);
   },
-  plan(harness, action) {
+  plan(harness, action, options) {
     if (harness === 'opencode') {
       if (action === 'install') return buildOpenCodeInstallPlan(context);
       if (action === 'update') return buildOpenCodeUpdatePlan(context);
@@ -325,8 +328,12 @@ export const defaultTuiOperations: TuiOperations = {
       return buildTuiModelPlan(harness, getPiModelRoles());
     }
 
-    if (action === 'install') return buildCodexInstallPlan(codexContext);
-    if (action === 'update') return buildCodexUpdatePlan(codexContext);
+    const consentContext = {
+      ...codexContext,
+      trustHooks: options?.trustHooks === true,
+    };
+    if (action === 'install') return buildCodexInstallPlan(consentContext);
+    if (action === 'update') return buildCodexUpdatePlan(consentContext);
     if (action === 'sync') return buildCodexSyncPlan(codexContext);
     return buildTuiModelPlan(harness, getCodexModelRoles(codexContext));
   },

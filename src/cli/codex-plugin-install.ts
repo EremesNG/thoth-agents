@@ -6,13 +6,14 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { getCodexHome } from './codex-paths';
 
 const PLUGIN_NAME = 'thoth-agents';
 const MARKETPLACE_NAME = 'thoth-plugins';
 const MARKETPLACE_SOURCE = 'https://github.com/EremesNG/thoth-plugins.git';
-const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
+export const CODEX_PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
+const PLUGIN_ID = CODEX_PLUGIN_ID;
 const LEGACY_MARKETPLACE_SOURCE =
   'https://github.com/EremesNG/thoth-agents.git';
 const LEGACY_MARKETPLACE_NAMES = [PLUGIN_NAME, `${PLUGIN_NAME}-codex`];
@@ -128,6 +129,7 @@ interface CodexManagerInspection {
   ready: boolean;
   marketplace: 'absent' | 'installed' | 'conflict' | 'unknown';
   plugin: 'absent' | 'installed' | 'disabled' | 'outdated' | 'unknown';
+  enabledPluginVersions?: unknown[];
   legacyPluginIds: string[];
   legacyMarketplaceNames: string[];
   legacyMarketplaceConflicts: string[];
@@ -148,7 +150,7 @@ export function getCodexCommand(
   };
 }
 
-function defaultCommandExecutor(
+export function defaultCommandExecutor(
   command: string,
   args: readonly string[],
   options: CodexCommandOptions,
@@ -160,11 +162,12 @@ function defaultCommandExecutor(
     encoding: 'utf8',
     shell: false,
     windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024,
   });
   return {
-    exitCode: result.status ?? (result.error ? 1 : 0),
+    exitCode: result.status ?? 1,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? result.error?.message ?? '',
+    stderr: [result.stderr, result.error?.message].filter(Boolean).join('\n'),
   };
 }
 
@@ -407,6 +410,7 @@ function inspectCodexManager(
   executor: CodexCommandExecutor,
   cwd: string,
   expectedVersion: string,
+  pluginId = PLUGIN_ID,
 ): CodexManagerInspection {
   const marketplaceResult = executor(
     'codex',
@@ -500,7 +504,7 @@ function inspectCodexManager(
   }
 
   const matchingPlugins = installedPlugins.filter(
-    (entry) => entry.pluginId === PLUGIN_ID,
+    (entry) => entry.pluginId === pluginId,
   );
   let plugin: CodexManagerInspection['plugin'] = 'absent';
   if (
@@ -520,11 +524,122 @@ function inspectCodexManager(
       marketplace !== 'conflict' && legacyMarketplaceConflicts.length === 0,
     marketplace,
     plugin,
+    enabledPluginVersions: matchingPlugins
+      .filter((entry) => entry.enabled === true)
+      .map((entry) => entry.version),
     legacyPluginIds,
     legacyMarketplaceNames,
     legacyMarketplaceConflicts,
     diagnostics,
   };
+}
+
+export interface CodexHookCapabilityConfig {
+  pluginId?: string;
+  /** Local development only: verify the synchronized bundle, not manager selection.
+   * Selection remains a separately reported warning in setup-codex-local.
+   */
+  localPluginBundlePath?: string;
+  codexHome?: string;
+  homeDir?: string;
+  projectRoot: string;
+  commandExecutor?: CodexCommandExecutor;
+}
+
+export interface CodexHookCapabilityResult {
+  success: boolean;
+  diagnostics: string[];
+  error?: string;
+  bundlePath?: string;
+}
+
+/** Shared migration prerequisite; hook trust is deliberately not inspected. */
+export function checkCodexHookCapability(
+  config: CodexHookCapabilityConfig,
+): CodexHookCapabilityResult {
+  const failure = (reason: string): CodexHookCapabilityResult => ({
+    success: false,
+    diagnostics: [],
+    error: `Codex hook prerequisite failed: ${reason}. Legacy prompt surfaces were preserved. Run thoth-agents update --agent=codex.`,
+  });
+  try {
+    const pluginId = config.pluginId ?? PLUGIN_ID;
+    const identity =
+      /^([a-zA-Z0-9][a-zA-Z0-9._+-]*)@([a-zA-Z0-9][a-zA-Z0-9._+-]*)$/.exec(
+        pluginId,
+      );
+    const pluginName = identity?.[1];
+    const marketplaceName = identity?.[2];
+    if (!pluginName || !marketplaceName)
+      return failure('the plugin identity is unsafe');
+    let bundlePath: string;
+    let base: string;
+    let bundleParts: string[];
+    if (config.localPluginBundlePath !== undefined) {
+      if (!config.pluginId)
+        return failure(
+          'local bundle verification requires an explicit plugin identity',
+        );
+      bundlePath = resolve(config.localPluginBundlePath);
+      base = parse(bundlePath).root;
+      bundleParts = relative(base, bundlePath).split(sep);
+    } else {
+      const inspection = inspectCodexManager(
+        config.commandExecutor ?? defaultCommandExecutor,
+        config.projectRoot,
+        '',
+        pluginId,
+      );
+      const versions = inspection.enabledPluginVersions ?? [];
+      if (!inspection.ready || versions.length !== 1)
+        return failure(
+          `${pluginId} must be installed and enabled with one unambiguous version`,
+        );
+      const version = versions[0];
+      if (
+        typeof version !== 'string' ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._+-]*$/.test(version)
+      )
+        return failure('the installed plugin version is unavailable or unsafe');
+      base = getCodexHome(config);
+      bundleParts = ['plugins', 'cache', marketplaceName, pluginName, version];
+      bundlePath = join(base, ...bundleParts);
+    }
+    const files = [
+      'hooks.json',
+      'context.cjs',
+      ...['root', 'designer', 'explorer', 'librarian', 'oracle', 'worker'].map(
+        (role) => `payloads/${role}.md`,
+      ),
+    ];
+    for (const file of files) {
+      const parts = [...bundleParts, 'codex-hooks', ...file.split('/')];
+      let path = base;
+      for (const [index, part] of parts.entries()) {
+        path = join(path, part);
+        const stat = lstatIfPresent(path);
+        if (
+          !stat ||
+          stat.isSymbolicLink() ||
+          (index === parts.length - 1 ? !stat.isFile() : !stat.isDirectory())
+        )
+          return failure(
+            `the installed plugin is not hook-capable (missing or unsafe codex-hooks/${file})`,
+          );
+      }
+    }
+    return {
+      success: true,
+      bundlePath,
+      diagnostics: [
+        `Codex hook prerequisite passed: ${pluginId} ${config.localPluginBundlePath ? 'local bundle' : 'enabled installed bundle'} contains all eight codex-hooks artifacts; hook trust is a separate review.`,
+      ],
+    };
+  } catch (error) {
+    return failure(
+      `installed plugin inspection failed (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
 }
 
 function centralPluginVerified(inspection: CodexManagerInspection): boolean {

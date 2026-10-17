@@ -64,6 +64,40 @@ afterEach(() => {
 });
 
 describe('Codex local development setup', () => {
+  test('surfaces preserved legacy roles and supports explicit backup recovery', async () => {
+    const { renderLegacyCodexAgentArtifacts } = await import(
+      './adapters/codex'
+    );
+    const homeDirectory = temporaryHome();
+    personalMarketplace(homeDirectory);
+    const path = join(
+      homeDirectory,
+      '.codex',
+      'agents',
+      'thoth-agents-worker.toml',
+    );
+    mkdirSync(dirname(path), { recursive: true });
+    const original = String(
+      renderLegacyCodexAgentArtifacts().find((a) =>
+        a.path.endsWith('worker.toml'),
+      )?.content,
+    ).replace('Be concise.', 'Historical revision. Be concise.');
+    writeFileSync(path, original);
+    const options = {
+      homeDirectory,
+      inspectPluginState: false,
+      cachebuster: 'recovery-test',
+    };
+    const first = syncCodexLocalSetup(options);
+    expect(first.warnings.join('\n')).toContain(
+      'legacy full TOML (migratable)',
+    );
+    expect(readFileSync(path, 'utf8')).toBe(original);
+    syncCodexLocalSetup({ ...options, replaceLegacyAgents: true });
+    expect(readFileSync(`${path}.bak`, 'utf8')).toBe(original);
+    expect(readFileSync(path, 'utf8')).not.toContain('Historical revision.');
+  });
+
   test('exposes the local synchronization through the package command', () => {
     const packageManifest = JSON.parse(
       readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
@@ -125,9 +159,7 @@ describe('Codex local development setup', () => {
 
     const rootInstructions = readFileSync(join(codexHome, 'AGENTS.md'), 'utf8');
     expect(rootInstructions).toContain('# User instructions');
-    expect(rootInstructions).toContain(
-      '<!-- thoth-agents:codex-root:start -->',
-    );
+    expect(rootInstructions).toBe('# User instructions\n');
     for (const role of CODEX_ROLE_NAMES) {
       expect(
         readFileSync(
@@ -335,6 +367,37 @@ describe('Codex local development setup', () => {
     ]);
   });
 
+  test('verifies the synchronized local hook bundle before changing legacy prompts', () => {
+    const homeDirectory = temporaryHome();
+    personalMarketplace(homeDirectory);
+    const pluginTarget = join(homeDirectory, 'plugins', 'thoth-agents');
+    const codexHome = join(homeDirectory, '.codex');
+    mkdirSync(pluginTarget, { recursive: true });
+    writeFileSync(join(pluginTarget, 'stale.txt'), 'preserve me');
+    mkdirSync(codexHome, { recursive: true });
+    const root =
+      '# Operator\n<!-- thoth-agents:codex-root:start -->\nlegacy\n<!-- thoth-agents:codex-root:end -->\n';
+    writeFileSync(join(codexHome, 'AGENTS.md'), root);
+
+    expect(() =>
+      syncCodexLocalSetup({
+        repositoryRoot: process.cwd(),
+        homeDirectory,
+        inspectPluginState: false,
+        rename: (source, destination) => {
+          renameSync(source, destination);
+          if (destination === pluginTarget) {
+            rmSync(join(pluginTarget, 'codex-hooks', 'context.cjs'));
+          }
+        },
+      }),
+    ).toThrow(/missing or unsafe codex-hooks\/context.cjs/);
+    expect(readFileSync(join(codexHome, 'AGENTS.md'), 'utf8')).toBe(root);
+    expect(readFileSync(join(pluginTarget, 'stale.txt'), 'utf8')).toBe(
+      'preserve me',
+    );
+  });
+
   test('rejects a plugin target whose parent escapes through a link', () => {
     const homeDirectory = temporaryHome();
     personalMarketplace(homeDirectory);
@@ -356,4 +419,30 @@ describe('Codex local development setup', () => {
       ),
     ).toThrow();
   });
+});
+
+test('refuses a dangling local-plugin backup junction before moving the installed bundle', () => {
+  const homeDirectory = temporaryHome();
+  personalMarketplace(homeDirectory);
+  const target = join(homeDirectory, 'plugins/thoth-agents');
+  mkdirSync(target, { recursive: true });
+  writeFileSync(join(target, 'operator.txt'), 'keep');
+  const now = vi.spyOn(Date, 'now').mockReturnValue(123456789);
+  try {
+    symlinkSync(
+      join(homeDirectory, 'missing'),
+      `${target}.backup-${process.pid}-123456789`,
+      'junction',
+    );
+    expect(() =>
+      syncCodexLocalSetup({
+        homeDirectory,
+        inspectPluginState: false,
+        cachebuster: 'backup-test',
+      }),
+    ).toThrow('Unsafe backup destination');
+    expect(readFileSync(join(target, 'operator.txt'), 'utf8')).toBe('keep');
+  } finally {
+    now.mockRestore();
+  }
 });

@@ -8,6 +8,7 @@ export interface InstallArgs {
   localPiRuntimeRoot?: string;
   tmux?: BooleanArg;
   dryRun?: boolean;
+  trustHooks?: boolean;
   reset?: boolean;
 }
 
@@ -27,14 +28,18 @@ export interface CliModelRoleArg {
 }
 
 export interface OperationArgs {
+  replaceLegacyAgents?: boolean;
   harness?: OperationHarnessArg;
   all?: boolean;
   apply?: boolean;
   dryRun?: boolean;
+  trustHooks?: boolean;
   roles: CliModelRoleArg[];
 }
 
 export type CliOperationCommand =
+  | 'uninstall'
+  | 'doctor'
   | 'status'
   | 'list'
   | 'update'

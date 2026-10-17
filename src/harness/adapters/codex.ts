@@ -12,6 +12,7 @@ import { CONTEXT7_MCP_URL } from '../../mcp/context7';
 import { exa } from '../../mcp/exa';
 import { GREP_APP_MCP_URL } from '../../mcp/grep-app';
 import type { McpConfig } from '../../mcp/types';
+import { renderCodexHookScript } from '../codex-hook-script';
 import {
   type AgentRoleContract,
   getAgentPackContract,
@@ -32,6 +33,7 @@ import type {
 } from '../types';
 import { renderCodexPluginPackage } from '../writers/codex-plugin-package';
 import { renderCodexToml } from '../writers/codex-toml';
+import { LEGACY_CODEX_AGENT_ARTIFACTS } from './codex-legacy-agents';
 import {
   codexSurfaceDiagnostic,
   getCodexSurfaceRecords,
@@ -120,15 +122,13 @@ export const CODEX_CAPABILITIES: HarnessCapabilities =
 function codexRuntimeGuidance(): string {
   return [
     '<codex-runtime>',
-    '- The ambient Codex session is the adaptive root; no orchestrator child TOML is generated.',
-    '- When delegation is selected under the shared ownership policy, use `collaboration.spawn_agent`; honor explicit direct-work instructions.',
-    '- Collaboration tools are direct tools and must not be called from inside `functions.exec`.',
-    '- When the active `collaboration.spawn_agent` schema exposes `agent_type`, set it to the selected canonical role. When it does not, use a role-prefixed `task_name` plus a self-contained bounded envelope; that fallback is instruction-only.',
-    '- Keep maximum depth 1: children do not delegate. Use one writer per mutable surface and parallelize only independent work.',
-    '- A `collaboration.wait_agent` timeout is nonterminal; inspect `collaboration.list_agents` for the same task before rerouting or interrupting it.',
-    '- Use `request_user_input` only for blocking material choices and always omit `autoResolutionMs` entirely.',
-    '- Generated custom-agent TOMLs carry model and sandbox defaults, but permissions and role matching may remain instruction-level in the active host.',
-    '- Installed provider guidance owns memory, persistence, hooks, MCP lifecycle, and recovery mechanics.',
+    '- The ambient session is root; no orchestrator TOML. Use collaboration tools directly, never inside `functions.exec`.',
+    '- Set `spawn_agent.agent_type` to the selected canonical role; always set `fork_turns: "none"`.',
+    '- Bound parallel spawns by observed availability: never exceed free native capacity; refill as children complete. The thread limit is fixed per session, not guaranteed by config.',
+    '- On `agent thread limit reached`, inspect `list_agents`; prefer allowed reuse or wait for a running child to finish; report the limit truthfully; never execute delegated work inline.',
+    '- A `wait_agent` timeout is nonterminal; inspect `list_agents` for the same task before rerouting or interrupting.',
+    '- For blocking choices use `request_user_input`; omit `autoResolutionMs` entirely.',
+    '- TOMLs carry model/sandbox defaults; permissions and role matching may be instruction-level. Installed provider guidance owns memory, persistence, hooks, MCP and recovery.',
     '</codex-runtime>',
   ].join('\n');
 }
@@ -159,7 +159,7 @@ function roleInstructions(
   ].join('\n\n');
 }
 
-export function renderCodexRootInstructions(config?: PluginConfig): string {
+function codexRootPayload(config?: PluginConfig): string {
   const rootOverride = getAgentOverride(config, 'orchestrator');
   const rootPrompt = renderConfiguredRolePrompt({
     role: 'orchestrator',
@@ -168,13 +168,63 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     model: rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
   });
 
-  return [
-    CODEX_ROOT_START,
-    rootPrompt,
-    codexRuntimeGuidance(),
-    CODEX_ROOT_END,
-    '',
-  ].join('\n');
+  return [rootPrompt, codexRuntimeGuidance()].join('\n');
+}
+
+export function renderCodexRootInstructions(config?: PluginConfig): string {
+  return [CODEX_ROOT_START, codexRootPayload(config), CODEX_ROOT_END, ''].join(
+    '\n',
+  );
+}
+
+function codexHookPackage(config?: PluginConfig) {
+  // These exact role names also populate the TOML name field, not the TOML filenames.
+  const roles = getAgentPackContract().roles.filter(
+    (role) => role.name !== 'orchestrator',
+  );
+  const command = `node -e "require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))"`;
+  const handler = {
+    type: 'command',
+    command,
+    commandWindows: command,
+    timeout: 10,
+    additionalContextLimit: 0,
+  };
+  return {
+    asset: {
+      surfaceId: 'plugin-hooks-json',
+      manifestField: 'hooks',
+      path: '.codex-plugin/codex-hooks/hooks.json',
+      hookDefinitions: [
+        {
+          event: 'SessionStart',
+          matcher: '^(startup|resume|clear|compact)$',
+          handler,
+          outputFields: ['additionalContext'],
+        },
+        {
+          event: 'SubagentStart',
+          matcher: `^(${roles.map((role) => role.name).join('|')})$`,
+          handler,
+          outputFields: ['additionalContext'],
+        },
+      ],
+    },
+    files: [
+      {
+        path: '.codex-plugin/codex-hooks/context.cjs',
+        content: renderCodexHookScript(roles.map((role) => role.name)),
+      },
+      {
+        path: '.codex-plugin/codex-hooks/payloads/root.md',
+        content: codexRootPayload(config),
+      },
+      ...roles.map((role) => ({
+        path: `.codex-plugin/codex-hooks/payloads/${role.name}.md`,
+        content: `These are the authoritative ${role.name} instructions; they supersede any inherited orchestrator context.\n\n${roleInstructions(role, config)}`,
+      })),
+    ],
+  };
 }
 
 function getCodexAgentModel(
@@ -214,6 +264,11 @@ function hasCodexPackageRoot(
   );
 }
 
+/** @internal Exact pre-hook rendering, retained only for ownership attribution. */
+export function renderLegacyCodexAgentArtifacts(): HarnessArtifact[] {
+  return LEGACY_CODEX_AGENT_ARTIFACTS.map((artifact) => ({ ...artifact }));
+}
+
 function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
   artifacts: HarnessArtifact[];
   diagnostics: HarnessDiagnostic[];
@@ -230,7 +285,8 @@ function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
       values: {
         name: role.name,
         description: renderAgentRoutingDescription(role),
-        developer_instructions: roleInstructions(role, config),
+        developer_instructions:
+          'Role instructions are delivered as developer context at session start by the thoth-agents plugin hook.',
         ...(model ? { model } : {}),
         ...(effort ? { model_reasoning_effort: effort } : {}),
         sandbox_mode: role.canMutateWorkspace ? 'workspace-write' : 'read-only',
@@ -355,9 +411,12 @@ export const codexAdapter: HarnessAdapter = {
     const config = hasCodexConfig(context) ? context.config : undefined;
     const agentArtifacts = renderAgentArtifacts({ config });
     const configArtifacts = renderConfigArtifacts();
+    const hooks = codexHookPackage(config);
     const pluginPackage = renderCodexPluginPackage({
+      hookFiles: hooks.files,
       manifest: createCodexPluginPackageManifest(context),
       assets: [
+        hooks.asset,
         {
           surfaceId: 'plugin-skills-directory',
           manifestField: 'skills',

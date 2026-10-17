@@ -9,6 +9,7 @@ import {
   type CodexInstallConfig,
   type CodexSetupPlan,
   type CodexSetupPlanItem,
+  isMigratableLegacyRole,
   MANAGED_MODEL_STATE_VERSION,
   normalizeCodexRuntimeModel,
   parseRoleTomlModel,
@@ -19,6 +20,7 @@ import {
   buildCodexPluginSetupPlan,
   type CodexCommandExecutor,
   type CodexPluginSetupPlan,
+  checkCodexHookCapability,
 } from '../codex-plugin-install';
 import {
   type FinalizeHarnessInstallOptions,
@@ -28,6 +30,11 @@ import {
   getInstallLedgerPath,
   type InstallLedgerOptions,
 } from '../install-ledger';
+import {
+  isLegacyManagedModelState,
+  managedModelStatesEqual,
+  readManagedModelState,
+} from '../managed-state-io';
 import {
   type ExecutingPackageVersionResult,
   resolveExecutingPackageVersion,
@@ -62,6 +69,8 @@ import {
 } from './types';
 
 export interface CodexOperationContext extends OperationContext {
+  trustHooks?: boolean;
+  replaceLegacyAgents?: boolean;
   scope?: CodexInstallScope;
   homeDir?: string;
   codexHome?: string;
@@ -105,6 +114,25 @@ const codexModelSources = new WeakMap<
 >();
 
 const codexActions: HarnessAction[] = [
+  {
+    id: 'codex-doctor',
+    kind: 'doctor',
+    label: 'Doctor (CLI)',
+    description: 'Run thoth-agents doctor --agent=codex (read-only)',
+    dryRun: false,
+    requiresConfirmation: false,
+    supported: true,
+  },
+  {
+    id: 'codex-uninstall',
+    kind: 'uninstall',
+    label: 'Uninstall (CLI)',
+    description:
+      'Run thoth-agents uninstall --agent=codex; preview with --dry-run',
+    dryRun: true,
+    requiresConfirmation: true,
+    supported: true,
+  },
   {
     id: 'codex-status',
     kind: 'status',
@@ -182,6 +210,9 @@ function codexConfig(
     codexHome: context.codexHome,
     packageRoot: context.packageRoot,
     pluginId: context.pluginId,
+    trustHooks: context.trustHooks,
+    replaceLegacyAgents: context.replaceLegacyAgents,
+    commandExecutor: context.codexPluginCommandExecutor,
   };
 }
 
@@ -246,23 +277,10 @@ function backupForItem(item: CodexSetupPlanItem): BackupExpectation {
   };
 }
 
-function rootBlockState(item: CodexSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (!existsSync(item.targetPath))
-    return { state: 'missing', observed: 'absent' };
-  const content = readFileSync(item.targetPath, 'utf8');
-  if (item.content && content.includes(item.content)) {
-    return { state: 'installed', observed: 'managed root block present' };
-  }
-  if (content.includes('thoth-agents:codex-root:start')) {
-    return { state: 'drift', observed: 'managed root block differs' };
-  }
-  return { state: 'missing', observed: 'managed root block absent' };
-}
-
-function managedModelState(item: CodexSetupPlanItem): {
+function managedModelState(
+  item: CodexSetupPlanItem,
+  setupItems: CodexSetupPlanItem[],
+): {
   state: ManagedState;
   observed: string;
 } {
@@ -277,13 +295,29 @@ function managedModelState(item: CodexSetupPlanItem): {
       parsed.version !== MANAGED_MODEL_STATE_VERSION ||
       !parsed.models ||
       typeof parsed.models !== 'object' ||
-      Array.isArray(parsed.models)
+      Array.isArray(parsed.models) ||
+      !Object.values(parsed.models).every((model) => typeof model === 'string')
     ) {
       return { state: 'unknown', observed: 'invalid managed model state' };
     }
-    return item.content === readFileSync(item.targetPath, 'utf8')
-      ? { state: 'installed', observed: 'managed model state current' }
-      : { state: 'drift', observed: 'managed model state differs' };
+    const refreshedRoleKeys = setupItems
+      .filter((role) => role.action === 'write-role-toml')
+      .map((role) => basename(role.targetPath));
+    if (
+      managedModelStatesEqual(
+        readFileSync(item.targetPath, 'utf8'),
+        item.content ?? '',
+        MANAGED_MODEL_STATE_VERSION,
+        refreshedRoleKeys,
+      )
+    )
+      return { state: 'installed', observed: 'managed model state current' };
+    if (isLegacyManagedModelState(parsed, MANAGED_MODEL_STATE_VERSION))
+      return {
+        state: 'outdated',
+        observed: 'legacy managed model state; digest migration planned',
+      };
+    return { state: 'drift', observed: 'managed model state differs' };
   } catch {
     return { state: 'unknown', observed: 'unparseable managed model state' };
   }
@@ -317,6 +351,13 @@ function contentState(item: CodexSetupPlanItem): {
   const observed = readFileSync(item.targetPath, 'utf8');
   if (item.content === observed)
     return { state: 'installed', observed: 'current' };
+  // The setup planner already proved ownership (or explicit legacy consent).
+  // Preserved/unattributed roles must continue to report drift below.
+  if (item.action === 'write-role-toml')
+    return {
+      state: 'outdated',
+      observed: 'owned role content; migration planned',
+    };
   if (item.role) {
     const currentModel = parseRoleTomlModel(observed);
     const expectedModel = parseRoleTomlModel(item.content ?? '');
@@ -330,16 +371,24 @@ function contentState(item: CodexSetupPlanItem): {
   return { state: 'drift', observed: 'content differs' };
 }
 
-function classifyItem(item: CodexSetupPlanItem): {
+function classifyItem(
+  item: CodexSetupPlanItem,
+  setupItems: CodexSetupPlanItem[] = [],
+): {
   state: ManagedState;
   observed: string;
 } {
   if (item.action === 'diagnose-only') {
     return { state: 'unknown', observed: 'diagnostic guidance only' };
   }
-  if (item.action === 'merge-managed-block') return rootBlockState(item);
+  if (item.action === 'remove-legacy-root-block')
+    return {
+      state: 'outdated',
+      observed:
+        'legacy root block present; removal planned after hook prerequisite',
+    };
   if (item.action === 'write-managed-model-state') {
-    return managedModelState(item);
+    return managedModelState(item, setupItems);
   }
   if (item.action === 'write-install-recovery') {
     if (!existsSync(item.targetPath))
@@ -461,7 +510,7 @@ export function getCodexStatus(
 
   const classified = plan.items
     .filter((item) => item.action !== 'diagnose-only')
-    .map((item) => ({ item, ...classifyItem(item) }));
+    .map((item) => ({ item, ...classifyItem(item, plan.items) }));
   const requiredSkills = codexRequiredSkillStatus(context);
   const state = aggregateState([
     ...classified.map((item) => item.state),
@@ -545,6 +594,14 @@ function codexLedgerOptions(
   );
 }
 
+function hasRecordedRoleOwnership(path: string): boolean {
+  const state = readManagedModelState(path, MANAGED_MODEL_STATE_VERSION);
+  return (
+    Object.keys(state.roleDigests ?? {}).length > 0 ||
+    Object.keys(state.roleStructureDigests ?? {}).length > 0
+  );
+}
+
 function planFromSetup(
   id: string,
   action: OperationPlan['action'],
@@ -555,10 +612,46 @@ function planFromSetup(
   completion?: { pluginPlan: CodexPluginSetupPlan; version: string },
 ): OperationPlan {
   const status = getCodexStatus(context);
+  // Opt-in authorizes only the legacy recovery transition, not arbitrary drift.
+  const recoverableLegacyDrift =
+    context.replaceLegacyAgents === true &&
+    status.state === 'drift' &&
+    setupPlan.items.some(
+      (item) =>
+        item.action === 'write-role-toml' &&
+        item.role &&
+        isMigratableLegacyRole(item.expectedContent ?? '', item.role),
+    ) &&
+    setupPlan.items.every(
+      (item) =>
+        classifyItem(item).state !== 'drift' ||
+        item.action === 'write-managed-model-state' ||
+        (item.action === 'write-role-toml' &&
+          item.role &&
+          isMigratableLegacyRole(item.expectedContent ?? '', item.role)),
+    );
+  // Digest changes are expected when all role writes are ownership-approved.
+  // Do not waive genuine role/config drift or malformed state.
+  const ownedRoleMigration =
+    status.state === 'drift' &&
+    setupPlan.items.some(
+      (item) =>
+        item.action === 'write-role-toml' &&
+        classifyItem(item).state === 'outdated',
+    ) &&
+    setupPlan.items.every(
+      (item) =>
+        item.action !== 'preserve-role-toml' &&
+        (classifyItem(item).state !== 'drift' ||
+          (item.action === 'write-managed-model-state' &&
+            hasRecordedRoleOwnership(item.targetPath))),
+    );
   const canApply =
     (status.state === 'installed' ||
       status.state === 'missing' ||
-      status.state === 'outdated') &&
+      status.state === 'outdated' ||
+      ownedRoleMigration ||
+      recoverableLegacyDrift) &&
     (completion?.pluginPlan.ready ?? true);
   const providerCommand = getThothMemSetupCommand('codex', true);
   const nativePluginItems: OperationPlanItem[] = completion
@@ -691,6 +784,15 @@ function buildCompleteCodexPlan(
       warning(packageVersion.error.message, 'codex-package-version-unresolved'),
     );
   }
+  const capability = checkCodexHookCapability(setupPlan.hookCapabilityConfig);
+  plan.warnings.push(
+    ...(capability.success
+      ? capability.diagnostics
+      : [
+          `${capability.error} Planned migration is conditional on the plugin step passing this prerequisite.`,
+        ]
+    ).map((message) => warning(message, 'codex-hook-prerequisite-preview')),
+  );
   if (!pluginPlan.ready) {
     plan.canApply = false;
     plan.warnings.push(
@@ -714,14 +816,31 @@ export function buildCodexSyncPlan(
 ): OperationPlan {
   const buildSetup = context.buildCodexSetupPlan ?? buildCodexSetupPlan;
   const setupPlan = buildSetup(codexConfig(context, true));
-  return planFromSetup(
+  const plan = planFromSetup(
     'codex-sync-preview',
     'sync',
     'Sync Codex managed configuration',
-    'Preview Codex managed root instructions, subagents, feature gates, and native marketplace guidance.',
+    'Preview legacy Codex root-block removal, subagents, feature gates, and native marketplace guidance.',
     setupPlan,
     context,
   );
+  const capability = checkCodexHookCapability(setupPlan.hookCapabilityConfig);
+  if (!capability.success) {
+    plan.canApply = false;
+    plan.warnings.push(
+      warning(
+        capability.error ?? 'Codex hook prerequisite failed.',
+        'codex-hook-prerequisite-failed',
+      ),
+    );
+  } else {
+    plan.warnings.push(
+      ...capability.diagnostics.map((message) =>
+        warning(message, 'codex-hook-prerequisite-passed'),
+      ),
+    );
+  }
+  return plan;
 }
 
 export function buildCodexInstallPlan(
@@ -1046,6 +1165,11 @@ export function applyCodexPlan(plan: OperationPlan): OperationApplyResult {
 
   const applySetup = source.context.applyCodexSetup ?? applyCodexSetup;
   const result = applySetup({ ...source.setupPlan, dryRun: false });
+  warnings.push(
+    ...result.diagnostics.map((message) =>
+      warning(message, 'codex-setup-diagnostic'),
+    ),
+  );
   const requiredSkillWarnings: OperationWarning[] = [];
   const requiredSkillTargets: ManagedTarget[] = [];
   if (result.success) {

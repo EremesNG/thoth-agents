@@ -1,6 +1,7 @@
-import type {
-  AgentDispatchMethod,
-  AgentRoleName,
+import {
+  type AgentDispatchMethod,
+  type AgentRoleName,
+  CODEX_DELEGATION_LIFECYCLE,
 } from '../harness/core/agent-pack';
 import { piSpecialistName } from '../harness/pi-specialists';
 import type { HarnessCapabilities, HarnessId } from '../harness/types';
@@ -8,6 +9,7 @@ import type { HarnessCapabilities, HarnessId } from '../harness/types';
 export type AgentPromptRole = AgentRoleName;
 
 export interface LifecycleNomenclature {
+  rootInstructions?: string;
   freshDelegation: string;
   sameAssignmentContinuation: string;
   independentContext: string;
@@ -185,11 +187,12 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'functions.update_plan',
     hostStatusSurface: 'collaboration.list_agents',
     lifecycle: {
-      freshDelegation: '`collaboration.spawn_agent` with `fork_turns="none"`',
+      rootInstructions: CODEX_DELEGATION_LIFECYCLE,
+      freshDelegation: '`collaboration.spawn_agent` with `fork_turns: "none"`',
       sameAssignmentContinuation:
         '`collaboration.followup_task` for the existing agent',
       independentContext:
-        '`fork_turns="none"` prevents parent-history inheritance',
+        'children get role instructions from the plugin hook, not inherited history',
       statusAction: 'wait and inspect status',
       terminalState: 'terminal mailbox completion or failure update',
       nonterminalState: 'collaboration.wait_agent timeout or silence',

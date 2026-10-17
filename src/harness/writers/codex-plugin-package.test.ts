@@ -6,6 +6,83 @@ import { renderCodexPluginPackage } from './codex-plugin-package';
 const fixtureRoot = path.join(process.cwd(), 'src/harness/__fixtures__/codex');
 
 describe('Codex plugin package writer', () => {
+  test('preserves native context handler fields and isolated hook assets', () => {
+    const handler = {
+      type: 'command',
+      command: 'node context.cjs',
+      commandWindows: 'node context.cjs',
+      timeout: 10,
+      additionalContextLimit: 0,
+    };
+    for (const raw of [false, true]) {
+      const result = renderCodexPluginPackage({
+        manifest: { name: 'pkg' },
+        assets: [
+          {
+            surfaceId: 'plugin-hooks-json',
+            manifestField: 'hooks',
+            path: '.codex-plugin/codex-hooks/hooks.json',
+            ...(raw
+              ? {
+                  content: JSON.stringify({
+                    hooks: {
+                      SubagentStart: [
+                        { matcher: '^oracle$', hooks: [handler] },
+                      ],
+                    },
+                  }),
+                }
+              : {
+                  hookDefinitions: [
+                    {
+                      event: 'SubagentStart',
+                      matcher: '^oracle$',
+                      handler,
+                      outputFields: ['additionalContext'],
+                    },
+                  ],
+                }),
+          },
+        ],
+        hookFiles: [
+          {
+            path: '.codex-plugin/codex-hooks/context.cjs',
+            content: '// script',
+          },
+          {
+            path: '.codex-plugin/codex-hooks/payloads/oracle.md',
+            content: 'Oracle instructions',
+          },
+          { path: '.codex-plugin/codex-hooks/../../escape', content: 'unsafe' },
+          { path: '.codex-plugin/hooks/context.cjs', content: 'not isolated' },
+        ],
+      });
+      const byPath = new Map(
+        result.artifacts.map((a) => [a.path, String(a.content)]),
+      );
+      expect(
+        JSON.parse(byPath.get('.codex-plugin/codex-hooks/hooks.json') ?? '{}'),
+      ).toEqual({
+        hooks: { SubagentStart: [{ matcher: '^oracle$', hooks: [handler] }] },
+      });
+      expect(
+        JSON.parse(byPath.get('.codex-plugin/plugin.json') ?? '{}').hooks,
+      ).toBe('./codex-hooks/hooks.json');
+      expect(byPath.get('.codex-plugin/codex-hooks/context.cjs')).toBe(
+        '// script',
+      );
+      expect(byPath.get('.codex-plugin/codex-hooks/payloads/oracle.md')).toBe(
+        'Oracle instructions',
+      );
+      expect([...byPath.keys()]).not.toContain(
+        '.codex-plugin/codex-hooks/../../escape',
+      );
+      expect([...byPath.keys()]).not.toContain(
+        '.codex-plugin/hooks/context.cjs',
+      );
+    }
+  });
+
   test('renders deterministic plugin.json with official fields and plugin-root assets', () => {
     const result = renderCodexPluginPackage({
       manifest: {

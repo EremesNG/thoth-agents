@@ -1,8 +1,10 @@
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +13,7 @@ import { describe, expect, test } from 'vitest';
 import {
   mergeCodexManagedConfig,
   parseCodexToml,
+  patchScalar,
   writeCodexConfigMerge,
 } from './codex-config-io';
 
@@ -324,6 +327,359 @@ trust_level = "trusted"
       expect(readFileSync(configPath, 'utf8')).toContain(
         'default_mode_request_user_input = true',
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('capacity and consented trust preserve unrelated config bytes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-capacity-'));
+  const configPath = join(dir, 'capacity.toml');
+  const before =
+    '# operator\r\n[agents] # keep\r\nmax_concurrent_threads_per_session = 4  # prior\r\nother = "yes"\r\n[hooks.state."other:hook"]\r\ntrusted_hash = "sha256:other"\r\n';
+  try {
+    writeFileSync(configPath, before);
+    const result = writeCodexConfigMerge({
+      configPath,
+      manageThreads: true,
+      trustedHooks: { 'thoth:session_start:0:0': 'sha256:abc' },
+    });
+    expect(result.success).toBe(true);
+    expect(result.priorThreadsValue).toBe('4');
+    expect(readFileSync(configPath, 'utf8')).toBe(
+      before.replace('= 4  # prior', '= 6  # prior') +
+        '\r\n[features]\r\ndefault_mode_request_user_input = true\r\n\r\n[hooks.state."thoth:session_start:0:0"]\r\ntrusted_hash = "sha256:abc"\r\n',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('capacity absence is captured once and operator removal or edits survive updates', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-capacity-'));
+  const configPath = join(dir, 'config.toml');
+  try {
+    const first = writeCodexConfigMerge({ configPath, manageThreads: true });
+    expect(first.priorThreadsValue).toBeNull();
+    expect(
+      writeCodexConfigMerge({
+        configPath,
+        manageThreads: true,
+        priorThreadsValue: null,
+      }).priorThreadsValue,
+    ).toBeNull();
+    writeFileSync(
+      configPath,
+      '# removed by operator\n[features]\ndefault_mode_request_user_input = true\n',
+    );
+    const before = readFileSync(configPath, 'utf8');
+    const updated = writeCodexConfigMerge({
+      configPath,
+      manageThreads: true,
+      priorThreadsValue: null,
+    });
+    expect(updated.warnings.join(' ')).toContain('Preserved operator-modified');
+    expect(updated.priorThreadsValue).toBeNull();
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('patches dotted capacity and existing trust without rewriting neighboring bytes; dry-run is inert', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-capacity-'));
+  const configPath = join(dir, 'config.toml');
+  const before =
+    'agents.max_concurrent_threads_per_session = 2 # cap\n[features]\ndefault_mode_request_user_input = true\n[hooks.state.\'owned\'] # trust\ntrusted_hash = "sha256:old"  # reviewed\nenabled = false\n[hooks.state.other]\ntrusted_hash = "sha256:keep"\n';
+  const options = {
+    configPath,
+    manageThreads: true,
+    trustedHooks: { owned: 'sha256:new' },
+  };
+  try {
+    writeFileSync(configPath, before);
+    expect(
+      writeCodexConfigMerge({ ...options, dryRun: true }).priorThreadsValue,
+    ).toBe('2');
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+    expect(existsSync(`${configPath}.bak`)).toBe(false);
+    expect(writeCodexConfigMerge(options).success).toBe(true);
+    expect(readFileSync(configPath, 'utf8')).toBe(
+      before
+        .replace('= 2 # cap', '= 6 # cap')
+        .replace('sha256:old', 'sha256:new'),
+    );
+    expect(
+      writeCodexConfigMerge({ ...options, priorThreadsValue: '2' }).changed,
+    ).toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('refuses inline-table capacity instead of creating conflicting TOML', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-inline-'));
+  const configPath = join(dir, 'config.toml');
+  const before = 'agents = { max_concurrent_threads_per_session = 4 }\n';
+  try {
+    writeFileSync(configPath, before);
+    const result = writeCodexConfigMerge({ configPath, manageThreads: true });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Unsupported inline');
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const structuralConfig = readFileSync(
+  new URL('./fixtures/codex-config-structural.toml', import.meta.url),
+  'utf8',
+);
+test('reads native quoted hook headers and skips multiline values', () => {
+  expect(parseCodexToml(structuralConfig)).toMatchObject({
+    hooks: {
+      state: {
+        'computer-use@openai-bundled:plugin.json#hooks[0]:stop:0:0': {
+          trusted_hash: 'placeholder#hash',
+        },
+        'escaped"quote.[]#@:=key': { trusted_hash: 'placeholder' },
+      },
+    },
+    agents: { max_concurrent_threads_per_session: 6 },
+  });
+});
+test('patches only threads, feature and hook values in structural config, preserving CRLF bytes', async () => {
+  const {
+    patchScalar,
+    patchCodexDefaultModeUserInputFeature,
+    readCodexThreadsValue,
+  } = await import('./codex-config-io');
+  const source = structuralConfig.replaceAll('\n', '\r\n');
+  expect(readCodexThreadsValue(source)).toBe('6');
+  const threads = patchScalar(
+    source,
+    ['agents', 'max_concurrent_threads_per_session'],
+    '8',
+  );
+  expect(threads).toBe(source.replace('= 6 # retained', '= 8 # retained'));
+  const key = 'computer-use@openai-bundled:plugin.json#hooks[0]:stop:0:0';
+  const hooked = patchScalar(
+    threads,
+    ['hooks', 'state', key, 'trusted_hash'],
+    '"new#hash"',
+  );
+  expect(hooked).toBe(threads.replace('"placeholder#hash"', '"new#hash"'));
+  expect(parseCodexToml(hooked)).toMatchObject({
+    hooks: { state: { [key]: { trusted_hash: 'new#hash' } } },
+  });
+  expect(patchCodexDefaultModeUserInputFeature(source)).toBe(
+    source.replace(
+      '[features] # retained\r\nother = true',
+      '[features] # retained\r\nother = true\r\ndefault_mode_request_user_input = true',
+    ),
+  );
+});
+
+test.each([
+  [
+    '"computer-use@openai-bundled:plugin.json#hooks[0]:stop:0:0"',
+    'computer-use@openai-bundled:plugin.json#hooks[0]:stop:0:0',
+  ],
+  ["'literal.[]#@:=key'", 'literal.[]#@:=key'],
+  [
+    String.raw`"escaped\"quote\\slash\u002E\U0001F600"`,
+    String.raw`escaped"quote\slash.😀`,
+  ],
+  ['""', ''],
+])('tokenizes quoted header %s and quoted assignment keys without altering comments', async (raw, key) => {
+  const { patchScalar } = await import('./codex-config-io');
+  const source = `[ hooks . "state" . ${raw} ] # retained\n"trusted_hash" = "old#[]" # retained\n[[unrelated."array]#"]] # retained\nvalue = 'placeholder'\n`;
+  expect(parseCodexToml(source)).toMatchObject({
+    hooks: { state: { [key]: { trusted_hash: 'old#[]' } } },
+  });
+  expect(
+    patchScalar(source, ['hooks', 'state', key, 'trusted_hash'], '"new"'),
+  ).toBe(source.replace('"old#[]"', '"new"'));
+});
+test('does not interpret arrays of tables as the managed threads table or rewrite multiline target values', async () => {
+  const { patchScalar, readCodexThreadsValue } = await import(
+    './codex-config-io'
+  );
+  const source =
+    '[[agents]] # unrelated array\nmax_concurrent_threads_per_session = 9\n';
+  expect(() => readCodexThreadsValue(source)).toThrow('array table parent');
+  expect(() =>
+    patchScalar(source, ['agents', 'max_concurrent_threads_per_session'], '6'),
+  ).toThrow('array table parent');
+  expect(() =>
+    patchScalar(
+      '[hooks.state.key]\ntrusted_hash = """\nplaceholder\n"""\n',
+      ['hooks', 'state', 'key', 'trusted_hash'],
+      '"new"',
+    ),
+  ).toThrow('Unsupported multiline');
+});
+
+test('refuses a symlink config backup without changing config or its target', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-config-backup-'));
+  try {
+    const configPath = join(dir, 'config.toml');
+    const unrelated = join(dir, 'operator.txt');
+    writeFileSync(configPath, '# original');
+    writeFileSync(unrelated, 'operator');
+    symlinkSync(unrelated, `${configPath}.bak`);
+    expect(
+      writeCodexConfigMerge({ configPath, manageThreads: true }).success,
+    ).toBe(false);
+    expect(readFileSync(configPath, 'utf8')).toBe('# original');
+    expect(readFileSync(unrelated, 'utf8')).toBe('operator');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  'symlink',
+  'dangling',
+  'regular',
+] as const)('config staging preserves a pre-existing %s at the legacy temp path', (kind) => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-staging-'));
+  const configPath = join(dir, 'config.toml');
+  const unrelated = join(dir, 'unrelated');
+  const staging = `${configPath}.tmp`;
+  try {
+    writeFileSync(configPath, '# original\n');
+    if (kind === 'regular') writeFileSync(staging, 'operator staging');
+    else {
+      if (kind === 'symlink') writeFileSync(unrelated, 'operator content');
+      symlinkSync(unrelated, staging, 'file');
+    }
+    const result = writeCodexConfigMerge({ configPath, manageThreads: true });
+    expect(result.success).toBe(true);
+    expect(readFileSync(configPath, 'utf8')).toContain(
+      'max_concurrent_threads_per_session = 6',
+    );
+    expect(lstatSync(configPath).isSymbolicLink()).toBe(false);
+    if (kind === 'regular')
+      expect(readFileSync(staging, 'utf8')).toBe('operator staging');
+    else {
+      expect(lstatSync(staging).isSymbolicLink()).toBe(true);
+      if (kind === 'symlink')
+        expect(readFileSync(unrelated, 'utf8')).toBe('operator content');
+      else expect(existsSync(unrelated)).toBe(false);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe('semantic scalar insertion', () => {
+  test.each([
+    [
+      'agents.max_threads = 4\n',
+      ['agents', 'max_concurrent_threads_per_session'],
+      '6',
+      'agents.max_concurrent_threads_per_session = 6',
+    ],
+    [
+      '"agents" . x = 4\n[profiles.work]\nmodel = "gpt-5"\n',
+      ['agents', 'max_concurrent_threads_per_session'],
+      '6',
+      'agents.max_concurrent_threads_per_session = 6',
+    ],
+    [
+      'features.other = true\n[profiles.work]\nmodel = "gpt-5"\n',
+      ['features', 'default_mode_request_user_input'],
+      'true',
+      'features.default_mode_request_user_input = true',
+    ],
+    [
+      'hooks.state.other.trusted_hash = "keep"\n[profiles.work]\nmodel = "gpt-5"\n',
+      ['hooks', 'state', 'owned', 'trusted_hash'],
+      '"hash"',
+      'hooks.state.owned.trusted_hash = "hash"',
+    ],
+    [
+      '[hooks]\nstate.owned.other = true\n[profiles.work]\nmodel = "gpt-5"\n',
+      ['hooks', 'state', 'owned', 'trusted_hash'],
+      '"hash"',
+      'state.owned.trusted_hash = "hash"',
+    ],
+    [
+      '[hooks.state]\nowned.other = true\n',
+      ['hooks', 'state', 'owned', 'trusted_hash'],
+      '"hash"',
+      'owned.trusted_hash = "hash"',
+    ],
+  ])('inserts relative to the defining section: %s', (source, path, value, inserted) => {
+    const after = patchScalar(source, path, value);
+    expect(after).toContain(inserted);
+    const header = after.indexOf('[profiles.work]');
+    if (header >= 0) expect(after.indexOf(inserted)).toBeLessThan(header);
+    expect(patchScalar(after, path, value)).toBe(after);
+    expect(after).not.toContain(`[${path.slice(0, -1).join('.')}]`);
+  });
+
+  test('merges root-dotted namespaces together without redefining any table', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-dotted-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const source =
+        'agents.max_threads = 4\nfeatures.other = true\nhooks.state.owned.other = true\n[profiles.work]\nmodel = "gpt-5"\n';
+      writeFileSync(configPath, source);
+      const options = {
+        configPath,
+        manageThreads: true,
+        trustedHooks: { owned: 'hash' },
+      };
+      const result = writeCodexConfigMerge(options);
+      expect(result.success).toBe(true);
+      expect(result.priorThreadsValue).toBeNull();
+      const after = readFileSync(configPath, 'utf8');
+      expect(after).toContain(
+        'agents.max_concurrent_threads_per_session = 6\n',
+      );
+      expect(after).toContain(
+        'features.default_mode_request_user_input = true\n',
+      );
+      expect(after).toContain('hooks.state.owned.trusted_hash = "hash"\n');
+      expect(after).not.toMatch(/\[(?:agents|features|hooks)/);
+      expect(writeCodexConfigMerge(options).changed).toBe(false);
+      expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(source);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not confuse dotted keys inside unrelated tables with root keys', () => {
+    const source =
+      '[profiles.work]\nagents.max_threads = 4\nfeatures.other = true\nhooks.state.other.trusted_hash = "keep"\n';
+    expect(
+      patchScalar(
+        source,
+        ['agents', 'max_concurrent_threads_per_session'],
+        '6',
+      ),
+    ).toBe(`${source}\n[agents]\nmax_concurrent_threads_per_session = 6\n`);
+  });
+
+  test.each([
+    ['agents = { max_threads = 4 }\n', { manageThreads: true }],
+    ['features = { other = true }\n', {}],
+    ['hooks = { state = {} }\n', { trustedHooks: { owned: 'hash' } }],
+    ['[hooks]\nstate = {}\n', { trustedHooks: { owned: 'hash' } }],
+  ])('fails closed without a backup for inline parent: %s', (source, options) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-inline-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      writeFileSync(configPath, source);
+      const result = writeCodexConfigMerge({ configPath, ...options });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Unsupported inline or scalar parent');
+      expect(readFileSync(configPath, 'utf8')).toBe(source);
+      expect(existsSync(`${configPath}.bak`)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

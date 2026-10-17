@@ -30,6 +30,15 @@ describe('CLI harness surface', () => {
     });
   });
 
+  test('accepts explicit hook trust for Codex install and update', () => {
+    expect(
+      parseCliArgs(['install', '--agent=codex', '--trust-hooks']),
+    ).toMatchObject({ installArgs: { trustHooks: true } });
+    expect(
+      parseCliArgs(['update', '--agent=codex', '--trust-hooks', '--apply']),
+    ).toMatchObject({ operationArgs: { trustHooks: true } });
+  });
+
   test('parses explicit install agents and rejects unsupported values', () => {
     expect(parseCliArgs(['install', '--agent=opencode'])).toEqual({
       command: 'install',

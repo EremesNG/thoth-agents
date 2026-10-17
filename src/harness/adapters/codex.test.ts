@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import {
   getAgentPackContract,
@@ -8,6 +9,7 @@ import {
   CODEX_CAPABILITIES,
   codexAdapter,
   renderCodexRootInstructions,
+  renderLegacyCodexAgentArtifacts,
 } from './codex';
 
 function render() {
@@ -143,24 +145,25 @@ describe('Codex adapter v0.3', () => {
     const root = renderCodexRootInstructions();
 
     expect(root).toContain(
-      '`collaboration.spawn_agent` with `fork_turns="none"`',
+      '`collaboration.spawn_agent` with `fork_turns: "none"`',
     );
     expect(root).toContain(
       '`collaboration.followup_task` for the existing agent',
     );
     expect(root).toContain(
-      '`fork_turns="none"` prevents parent-history inheritance',
+      'children get role instructions from the plugin hook, not inherited history',
     );
     expect(root).not.toContain('task_id');
     expect(root).not.toContain('SendMessage');
   });
 
-  test('uses conditional agent_type selection with a bounded instruction-only fallback', () => {
+  test('selects the native role with history-free spawning', () => {
     const root = renderCodexRootInstructions();
-    expect(root).toContain('schema exposes `agent_type`');
-    expect(root).toContain('role-prefixed `task_name`');
-    expect(root).toContain('fallback is instruction-only');
-    expect(root).not.toMatch(/Codex (?:always|universally).*agent_type/i);
+    expect(root).toContain(
+      '`spawn_agent.agent_type` to the selected canonical role',
+    );
+    expect(root).toContain('always set `fork_turns: "none"`');
+    expect(root).not.toContain('role-prefixed `task_name`');
   });
 
   test('renders canonical routable descriptions for every specialist', () => {
@@ -184,9 +187,9 @@ describe('Codex adapter v0.3', () => {
     const worker = agentContent('worker');
 
     expect(explorer).toContain('sandbox_mode = "read-only"');
-    expect(explorer).toContain('Mode: read-only');
+    expect(explorer).not.toContain('<role>');
     expect(worker).toContain('sandbox_mode = "workspace-write"');
-    expect(worker).toContain('write-capable');
+    expect(worker).not.toContain('<role>');
   });
 
   test('does not bundle a memory provider MCP', () => {
@@ -200,15 +203,67 @@ describe('Codex adapter v0.3', () => {
     expect(content).not.toContain('thoth_mem');
   });
 
-  test('does not emit hook diagnostics when the package has no hooks', () => {
-    const hookDiagnostics = render().diagnostics.filter((diagnostic) =>
-      diagnostic.code.includes('hooks'),
+  test('packages stable Codex-only hooks with canonical root and authoritative role payloads', () => {
+    const result = render();
+    const content = (path: string) =>
+      String(artifact(result.artifacts, path)?.content);
+    const hooks = JSON.parse(content('codex-hooks/hooks.json')).hooks;
+    const command = `node -e "require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))"`;
+    const handler = {
+      type: 'command',
+      command,
+      commandWindows: command,
+      timeout: 10,
+      additionalContextLimit: 0,
+    };
+    expect(hooks.SessionStart).toEqual([
+      { matcher: '^(startup|resume|clear|compact)$', hooks: [handler] },
+    ]);
+    expect(hooks.SubagentStart).toHaveLength(1);
+    expect(hooks.SubagentStart[0].hooks).toEqual([handler]);
+    const matcher = new RegExp(hooks.SubagentStart[0].matcher);
+    const tomls = result.artifacts.filter((a) => a.kind === 'agent-config');
+    expect(tomls).toHaveLength(5);
+    for (const toml of tomls) {
+      const name = String(toml.content).match(/^name = "([^"]+)"/m)?.[1] ?? '';
+      expect(matcher.test(name)).toBe(true);
+      expect(matcher.test(`thoth-agents-${name}`)).toBe(false);
+      expect(matcher.test(`${name}-extra`)).toBe(false);
+      const payload = content(`codex-hooks/payloads/${name}.md`);
+      expect(
+        payload.startsWith(
+          `These are the authoritative ${name} instructions; they supersede any inherited orchestrator context.`,
+        ),
+      ).toBe(true);
+      expect(String(toml.content)).toContain(
+        'developer_instructions = "Role instructions are delivered as developer context at session start by the thoth-agents plugin hook."',
+      );
+      expect(String(toml.content)).not.toContain('<role>');
+      expect(String(toml.content).split('\n').filter(Boolean)).toHaveLength(6);
+      expect(payload).toContain('<role>');
+    }
+    for (const unknown of ['orchestrator', 'default', 'unknown', ''])
+      expect(matcher.test(unknown)).toBe(false);
+    const root = content('codex-hooks/payloads/root.md');
+    expect(root).toBe(
+      renderCodexRootInstructions()
+        .replace(/^<!-- thoth-agents:codex-root:start -->\n/, '')
+        .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
-
-    expect(
-      render().artifacts.some((entry) => entry.kind === 'hook-config'),
-    ).toBe(false);
-    expect(hookDiagnostics).toEqual([]);
+    expect(root.length).toBeLessThanOrEqual(13_800);
+    expect(root).not.toContain('<!-- thoth-agents:codex-root:');
+    const configured = codexAdapter.render({
+      projectRoot: process.cwd(),
+      config: { agents: { oracle: { model: 'openai/gpt-5.4' } } },
+    });
+    expect(content('codex-hooks/hooks.json')).toBe(
+      String(artifact(configured.artifacts, 'codex-hooks/hooks.json')?.content),
+    );
+    expect(result.diagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'codex.hooks.event.unsupported' }),
+      ]),
+    );
   });
 
   test('declares the thoth-owned bundled skill directory', () => {
@@ -222,4 +277,13 @@ describe('Codex adapter v0.3', () => {
       result.artifacts.some((entry) => entry.path === '.codex-plugin/skills/'),
     ).toBe(false);
   });
+});
+
+// Captured before AC-4: full 0.7.0 artifacts must not follow current prompt edits.
+test('retains exact 0.7.0 full TOMLs for legacy ownership matching', () => {
+  expect(
+    createHash('sha256')
+      .update(JSON.stringify(renderLegacyCodexAgentArtifacts()))
+      .digest('hex'),
+  ).toBe('4bd406e6ffeeafe576464901fba9f2aea44fadf12f1f631f5274a684ea778d46');
 });

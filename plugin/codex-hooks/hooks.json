@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "additionalContextLimit": 0,
+            "command": "node -e \"require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))\"",
+            "commandWindows": "node -e \"require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))\"",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "^(startup|resume|clear|compact)$"
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "additionalContextLimit": 0,
+            "command": "node -e \"require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))\"",
+            "commandWindows": "node -e \"require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))\"",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "^(explorer|librarian|oracle|designer|worker)$"
+      }
+    ]
+  }
+}

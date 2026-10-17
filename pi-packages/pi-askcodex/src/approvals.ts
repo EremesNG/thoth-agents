@@ -125,10 +125,20 @@ export function decide(
 ): 'accept-session' | 'ask' | 'decline' {
   if (request.method === 'unknown') return 'decline';
   const app = computerApp(request)?.trim().toLowerCase();
-  if (app && allowedApps.some((entry) => entry.trim().toLowerCase() === app)) {
+  if (app && allowedApps.some((entry) => matchesApp(entry, app))) {
     return 'accept-session';
   }
   return hasUi ? 'ask' : 'decline';
+}
+
+function matchesApp(entry: string, app: string): boolean {
+  const pattern = entry.trim().toLowerCase();
+  if (!pattern) return false;
+  const expression = pattern
+    .replace(/[\\^$+.[\]{}()|]/g, '\\$&')
+    .replace(/\*/g, '[\\s\\S]*')
+    .replace(/\?/g, '[\\s\\S]');
+  return new RegExp(`^${expression}$`, 'u').test(app);
 }
 
 function describe(

@@ -58,7 +58,7 @@ All supported keys and defaults, cross-checked against `src/config.ts`:
 | `defaultEffort` | Unset (Codex default) | Reasoning effort; overridden by `ASKCODEX_DEFAULT_EFFORT`. Calls validate `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 | `defaultMode` | `"accept-edits"` | `"plan"` or `"accept-edits"`; other values fall back to `"accept-edits"`. |
 | `defaultTimeoutMinutes` | `15` | Positive finite number; calls also enforce the supported timer range. |
-| `allowedApps` | `[]` | Exact Computer Use app identifiers allowed for session-scoped approval. |
+| `allowedApps` | `[]` | Computer Use app identifier patterns allowed for session-scoped approval (`*` and `?` wildcards supported). |
 | `webSearch` | `"disabled"` | `"disabled"`, `"cached"`, or `"live"`; search is opt-in. |
 | `extraArgs` | Unset (no extra arguments) | String array appended to the app-server launch arguments; advanced use only. |
 
@@ -102,12 +102,15 @@ Both modes use Codex's `on-request` approval policy with the user as reviewer. A
 
 ### Approval policy
 
-- `allowedApps` matches only Computer Use app elicitations, using the exact requested `tool_params.app` identifier (case-insensitive, surrounding whitespace trimmed). No wildcard, prefix, substring, or display-name matching.
+- `allowedApps` covers **only Computer Use app-access approvals**, matching the whole requested `tool_params.app` identifier, not a display name. Matching is case-insensitive; entries are trimmed and empty entries ignored. `*` matches any sequence (including empty), `?` matches exactly one character, and everything else is literal (no regular-expression syntax). Entries without wildcards remain exact matches: `"notepad.exe"` does not match `notepad.exe.bak`.
+- For example, `"msedge*"` matches `msedge.exe`, not `xmsedge.exe`; `"msedge_*"` does not match `msedge.exe`. `"?otepad.exe"` matches `notepad.exe`. `"*"` matches any app identifier, including packaged-app ids.
 - Matching apps are auto-accepted with **session scope only**, including without Pi UI.
 - Other app requests, MCP elicitations, command/file approvals, and permission requests ask through Pi's UI. Without UI they are declined; cancelled, dismissed, or failed prompts also decline. Unknown server requests are rejected and reported.
 - Computer Use offers session approval; other prompts offer once/session only as supported by the request. **Persistent/"always" approval is never granted.** Every decision is recorded in result `details.approvals`.
 
-For Notepad, `"notepad.exe"` may not be sufficient: Codex may also request its **packaged-app id**. Add both exact identifiers observed in approval details if you intend to allow both; do not guess the packaged id or broaden the allowlist. Start with an empty list and inspect the requested identifiers through an interactive Pi call.
+For Notepad, `"notepad.exe"` may not be sufficient: Codex may also request its **packaged-app id**, such as `Microsoft.WindowsNotepad_8wekyb3d8bbwe!App`. To allow both, add both observed identifiers or use `["notepad.exe", "Microsoft.WindowsNotepad_*"]`. Requested identifiers are visible in `details.approvals` (the `subject` for Computer Use decisions). Start with an empty list and inspect them through an interactive Pi call.
+
+**Warning:** `"allowedApps": ["*"]` lets unattended/no-UI calls control **any app** requested through Computer Use. Use narrow patterns unless that is intentional. Wildcard approvals are still session-only, never persistent/"always", and do not cover other approval kinds.
 
 ### Results, continuation, and cancellation
 

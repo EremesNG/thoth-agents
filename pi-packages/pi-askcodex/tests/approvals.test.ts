@@ -99,9 +99,100 @@ const generic = elicitation('', {
 });
 
 describe('createApprovalHandler', () => {
-  it('shows the decoded Windows shell display command without changing the decision subject', async () => {
-    // Decoded command value from rpc-general-write.jsonl item/started.
-    const raw = String.raw`"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command 'Get-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt'`;
+  // Captured approval params.command (Desktop 896a0166b774037a, 2026-10-17).
+  // Expected script/path also match commandActions/proposedExecpolicyAmendment.
+  // The screenshot transcription is lossy; never repair malformed input.
+  it.each([
+    [
+      'captured approval wire payload',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-wire-test.txt\', \\"prueba "\'`"wire`"`n")\'',
+      '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command\n[System.IO.File]::WriteAllText(\'C:\\Users\\EremesNG\\askcodex-wire-test.txt\', "prueba `"wire`"`n")',
+    ],
+    [
+      'corrected shell-joined transcription with leading whitespace',
+      '  "C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test3.txt\', \\"prueba de vista previa."\'`n", [System.Text.UTF8Encoding]::new($false))\'',
+      '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command\n[System.IO.File]::WriteAllText(\'C:\\Users\\EremesNG\\askcodex-approval-test3.txt\', "prueba de vista previa.`n", [System.Text.UTF8Encoding]::new($false))',
+    ],
+    [
+      'malformed screenshot transcription',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test3.txt\', \\"prueba de vista previa.\\"\'`n", [System.Text.UTF8Encoding]::new($false))\'',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test3.txt\', \\"prueba de vista previa.\\"\'`n", [System.Text.UTF8Encoding]::new($false))\'',
+    ],
+    [
+      'previous single-quoted script',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command \'Get-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt\'',
+      '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command\nGet-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt',
+    ],
+    [
+      'previous non-shell-joined backtick script stays raw',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
+      '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
+    ],
+    ['plain argv', 'echo "C:\\\\temp"', 'echo C:\\temp'],
+    [
+      'literal backslashes in double quotes',
+      '"C:\\Tools\\pwsh.exe" -Command "C:\\temp"',
+      'C:\\Tools\\pwsh.exe -Command\nC:\\temp',
+    ],
+    [
+      'non-shell argv',
+      '"C:\\\\Tools\\\\other.exe" -Command "C:\\\\temp"',
+      'C:\\Tools\\other.exe -Command C:\\temp',
+    ],
+    [
+      'unknown double-quote escape',
+      '"C:\\\\Tools\\\\pwsh.exe" -Command "unknown\\q"',
+      'C:\\Tools\\pwsh.exe -Command\nunknown\\q',
+    ],
+    [
+      'single-quoted literals',
+      '"C:\\\\Tools\\\\pwsh.exe" -Command \'echo "C:\\\\temp"\'',
+      'C:\\Tools\\pwsh.exe -Command\necho "C:\\\\temp"',
+    ],
+    [
+      'adjacent segments and escaped whitespace',
+      "echo pre\"middle \"'suffix' one\\ two ''",
+      'echo "premiddle suffix" "one two" ""',
+    ],
+    [
+      'double-quoted special escapes',
+      'echo "\\\\ \\" \\$ \\` \\q"',
+      'echo "\\ " $ ` \\q"',
+    ],
+    ['double-quoted continuation', 'sh -c "echo a\\\nb"', 'sh -c\necho ab'],
+    ['unquoted continuation', 'echo a\\\nb', 'echo ab'],
+    ['unterminated double quote', '  echo "unfinished', '  echo "unfinished'],
+    ['unterminated single quote', "echo 'unfinished", "echo 'unfinished"],
+    ['trailing escape', 'echo tail\\', 'echo tail\\'],
+    [
+      'shell syntax is not an argv join',
+      'echo hi; rm file',
+      'echo hi; rm file',
+    ],
+    ['expansion is not an argv join', 'echo "$HOME"', 'echo "$HOME"'],
+    ['backtick expansion is not an argv join', 'echo `date`', 'echo `date`'],
+    ['empty command', '  ', '  '],
+    [
+      'multiline script and fence',
+      "bash -c 'echo first\necho ```'",
+      'bash -c\necho first\necho ```',
+    ],
+    [
+      'cmd wrapper',
+      '"C:\\\\Windows\\\\System32\\\\cmd.exe" /c "echo hello"',
+      'C:\\Windows\\System32\\cmd.exe /c\necho hello',
+    ],
+    [
+      'powershell alias',
+      'powershell -c \'echo "hi"\'',
+      'powershell -c\necho "hi"',
+    ],
+    [
+      'extra shell arguments are not hidden',
+      "bash -c 'echo hi' name",
+      'bash -c "echo hi" name',
+    ],
+  ])('renders command argv safely: %s', async (_name, raw, expected) => {
     if (command.method !== 'item/commandExecution/requestApproval')
       throw new Error('fixture');
     const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
@@ -114,48 +205,11 @@ describe('createApprovalHandler', () => {
       { ...command, params: { ...command.params, command: raw } },
       { signal: signal() },
     );
+    const fence = expected.includes('```') ? '````' : '```';
     expect(ask.mock.calls[0][0].preview).toBe(
-      [
-        '```',
-        String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -Command 'Get-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt'`,
-        '```',
-        '',
-        'Working directory: /project',
-      ].join('\n'),
+      [fence, expected, fence, '', 'Working directory: /project'].join('\n'),
     );
     expect(records[0].subject).toBe(`${raw} (cwd: /project)`);
-  });
-  it.each([
-    [
-      String.raw`"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "[System.IO.File]::WriteAllText('C:\\Users\\EremesNG\\askcodex-approval-test2.txt', \"prueba de permisos con estilo.\"${'`'}n\", [System.Text.Encoding]::UTF8)"`,
-      String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -Command "[System.IO.File]::WriteAllText('C:\Users\EremesNG\askcodex-approval-test2.txt', "prueba de permisos con estilo."${'`'}n", [System.Text.Encoding]::UTF8)"`,
-    ],
-    [String.raw`echo "C:\\temp"`, String.raw`echo "C:\\temp"`],
-    [
-      String.raw`"C:\Tools\pwsh.exe" -Command "C:\temp"`,
-      String.raw`"C:\Tools\pwsh.exe" -Command "C:\temp"`,
-    ],
-    [
-      String.raw`"C:\\Tools\\other.exe" -Command "C:\\temp"`,
-      String.raw`"C:\\Tools\\other.exe" -Command "C:\\temp"`,
-    ],
-    [
-      String.raw`"C:\\Tools\\pwsh.exe" -Command "unknown\q"`,
-      String.raw`"C:\\Tools\\pwsh.exe" -Command "unknown\q"`,
-    ],
-    [
-      String.raw`"C:\\Tools\\pwsh.exe" -Command 'echo "C:\\temp"'`,
-      String.raw`"C:\Tools\pwsh.exe" -Command 'echo "C:\\temp"'`,
-    ],
-  ])('decodes only recognized shell display quoting and preserves ambiguous commands: %s', async (raw, expected) => {
-    if (command.method !== 'item/commandExecution/requestApproval')
-      throw new Error('fixture');
-    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
-    await createApprovalHandler({ allowedApps: [], ui: { ask } })(
-      { ...command, params: { ...command.params, command: raw } },
-      { signal: signal() },
-    );
-    expect(ask.mock.calls[0][0].preview).toContain(`\n${expected}\n`);
   });
 
   it.each([

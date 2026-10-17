@@ -226,29 +226,75 @@ function titleFor(request: ServerRequest): string {
   return `Codex requests ${kind}: ${subject}`;
 }
 
-function commandPreview(command: string): string {
-  // Spike RPC commandExecution items contain Rust-Debug-style quoted Windows
-  // shell paths even after JSON decoding. Approval bindings expose no argv;
-  // commandActions are best-effort script fragments, not the full invocation.
-  // Decode only this recognized shell wrapper; uncertain quoting stays verbatim.
-  const wrapper =
-    /^("(?:[^"\\]|\\["\\])*") -Command ('[^']*'|"(?:[^"\\]|\\["\\])*")$/.exec(
-      command,
-    );
-  if (!wrapper || !wrapper[1].includes('\\\\')) return command;
-  try {
-    const executable: string = JSON.parse(wrapper[1]);
-    if (
-      !/^[a-z]:\\(?:[^\\\r\n]+\\)*(?:pwsh|powershell)\.exe$/i.test(executable)
-    )
-      return command;
-    const script = wrapper[2].startsWith('"')
-      ? `"${JSON.parse(wrapper[2])}"`
-      : wrapper[2];
-    return `"${executable}" -Command ${script}`;
-  } catch {
-    return command;
+/** Decode the POSIX shell-word join used by app-server, never shell expansions. */
+function commandArgv(command: string): string[] | undefined {
+  const argv: string[] = [];
+  let word = '';
+  let started = false;
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index];
+    if (quote === "'") {
+      if (char === "'") quote = undefined;
+      else word += char;
+      continue;
+    }
+    if (char === '\\') {
+      const next = command[index + 1];
+      if (next === undefined) return undefined;
+      if (!quote || '\\"$`\n'.includes(next)) {
+        index++;
+        if (next !== '\n') {
+          word += next;
+          started = true;
+        }
+      } else word += char;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') quote = undefined;
+      else if (char === '$' || char === '`') return undefined;
+      else word += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      started = true;
+    } else if (/\s/u.test(char)) {
+      if (started) argv.push(word);
+      word = '';
+      started = false;
+    } else {
+      // Operators, expansions and comments are not serialized argv literals.
+      if (/[|&;<>()$`*?[\]{}~#]/u.test(char)) return undefined;
+      word += char;
+      started = true;
+    }
   }
+  if (quote) return undefined;
+  if (started) argv.push(word);
+  return argv.length && argv[0] ? argv : undefined;
+}
+
+function displayArg(arg: string): string {
+  return !arg || /\s/u.test(arg) ? `"${arg}"` : arg;
+}
+
+function commandPreview(command: string): string {
+  // Approval commandActions are best-effort fragments, not the full invocation.
+  // Parse only the display join; malformed or non-literal shell input stays raw.
+  const argv = commandArgv(command);
+  if (!argv) return command;
+  const [executable, flag, script] = argv;
+  const basename = executable.split(/[\\/]/u).at(-1) ?? '';
+  const shellCommand =
+    (/^(?:pwsh|powershell)(?:\.exe)?$/iu.test(basename) &&
+      /^-(?:command|c)$/iu.test(flag ?? '')) ||
+    (/^cmd\.exe$/iu.test(basename) && /^\/c$/iu.test(flag ?? '')) ||
+    (/^(?:bash|sh)$/u.test(basename) && flag === '-c');
+  if (argv.length === 3 && shellCommand)
+    return `${displayArg(executable)} ${flag}\n${script}`;
+  return argv.map(displayArg).join(' ');
 }
 
 function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {

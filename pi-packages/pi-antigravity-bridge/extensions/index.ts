@@ -151,14 +151,15 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 
 	const binary = resolveAgyBinary();
 
-	// Loading never spawns agy: use the cached catalog (even stale) or the
-	// built-in fallback. First Antigravity use refreshes the cache for /reload.
-	// Provider and AskAntigravity derive their catalogs from the same raw text.
+	// Await bounded discovery on stale/missing cache before registering either
+	// catalog. Failures retain stale data, then use the shared static fallback.
 	const raw = await loadModelCatalogRaw(binary);
 	const discovered = entriesFromRaw(raw);
-	const toolModels = toolModelsFromRaw(raw);
 	const usingFallback = discovered.length === 0;
 	const entries: AgyModelEntry[] = usingFallback ? FALLBACK_MODELS : discovered;
+	const toolModels = toolModelsFromRaw(usingFallback
+		? entries.flatMap((entry) => entry.efforts?.map((effort) => `${entry.full}-${effort}`) ?? [entry.full]).join("\n")
+		: raw);
 	// Engine latched at load: /agy engine takes effect on the next pi start
 	// (documented). Everything below resolves from THIS value - per-call
 	// config reads would let a mid-session flip leave ToolRoundTrips,
@@ -1728,7 +1729,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					const next = saveConfig({ defaultModel: val });
 					notifyUi(ui, `AskAntigravity default model set to ${next.defaultModel}`, "info");
 				} else {
-					notifyUi(ui, `AskAntigravity model: ${loadConfig().defaultModel} (fallback; callers may override per call)\nusage: /agy model flash|pro|gemini|<exact>`, "info");
+					notifyUi(ui, `AskAntigravity model: ${loadConfig().defaultModel} (fallback; callers may override per call)\nusage: /agy model flash|pro|argon|gemini|<exact>`, "info");
 				}
 				return;
 			}
@@ -1863,9 +1864,9 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 			id: "model",
 			label: "AskAntigravity model",
 			description:
-				"AskAntigravity one-shot delegation tool: model used when its caller omits the model param. Callers may override per call; this is only the fallback. flash/pro/gemini, or an exact id. Does not affect the provider model you pick in /model.",
+				"AskAntigravity one-shot delegation tool: model used when its caller omits the model param. Callers may override per call; this is only the fallback. flash/pro/argon/gemini, another catalogued Gemini family, or an exact id. Does not affect the provider model you pick in /model.",
 			currentValue: config.defaultModel,
-			values: ["flash", "pro", "gemini"],
+			values: ["flash", "pro", "argon", "gemini"],
 		},
 		{
 			id: "thinking",

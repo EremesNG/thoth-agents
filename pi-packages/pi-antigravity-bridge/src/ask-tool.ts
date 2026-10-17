@@ -94,7 +94,7 @@ THINKING LEVEL (params: thinking, effort - SYNONYMS for one knob):
 
 // --- Types -----------------------------------------------------------------
 
-type Family = "flash" | "pro" | "other";
+type Family = string;
 
 interface ModelEntry {
 	full: string; // exact agy slug, e.g. "gemini-3.6-flash-medium"
@@ -144,12 +144,10 @@ function parseModelLine(line: string): ModelEntry | null {
 	const full = line.trim().split(/\s+/)[0] ?? "";
 	if (!full) return null;
 	const lower = full.toLowerCase();
-	const family: Family = lower.includes("flash")
-		? "flash"
-		: lower.includes("pro")
-			? "pro"
-			: "other";
-	const versionMatch = lower.match(/(\d+\.\d+)/);
+	const family: Family = lower.startsWith("gemini-")
+		? lower.replace(/^gemini-(?:\d+(?:\.\d+)?-)?/, "").replace(/-(low|medium|high)$/, "")
+		: "other";
+	const versionMatch = lower.match(/\b(\d+(?:\.\d+)?)\b/);
 	const version = versionMatch ? versionMatch[1] : null;
 	const tierMatch = lower.match(/-(low|medium|high)$/);
 	const tier = tierMatch ? (tierMatch[1] as ThinkingTier) : null;
@@ -202,17 +200,18 @@ export function resolveModel(
 		return toResolved(fromCatalog?.full ?? target, fromCatalog?.tier ?? null);
 	}
 
-	let family: Family | null = lower.includes("flash")
-		? "flash"
-		: lower.includes("pro")
-			? "pro"
-			: null;
-	const versionMatch = lower.match(/(\d+\.\d+)/);
+	const words = lower.replace(/[^a-z0-9.]+/g, " ").split(/\s+/);
+	let family: Family | null = entries.find((e) =>
+		e.family !== "other" && words.includes(e.family),
+	)?.family ?? null;
+	const versionMatch = lower.match(/\b(\d+(?:\.\d+)?)\b/);
 	const version = versionMatch ? versionMatch[1] : null;
 	const tierMatch = lower.match(/\b(low|medium|high)\b/);
 	const tier = tierMatch ? (tierMatch[1] as ThinkingTier) : null;
 
-	if (!family && (/gemini/.test(lower) || lower === "" || lower === "default")) {
+	if (!family && words.every((word) =>
+		word === "" || ["gemini", "default", "low", "medium", "high"].includes(word) || /^\d+(?:\.\d+)?$/.test(word),
+	)) {
 		family = "flash";
 	}
 	if (!family) return null;
@@ -248,7 +247,7 @@ export function resolveModel(
 	const preferred =
 		preferredTier ??
 		tier ??
-		(familyTiers.has(defaultThinking) ? defaultThinking : FAMILY_DEFAULT_TIER[family]);
+		(familyTiers.has(defaultThinking) ? defaultThinking : (FAMILY_DEFAULT_TIER[family] ?? "medium"));
 	const chosenTier = nearestTier([...familyTiers], preferred);
 	const picked = candidates.find((e) => e.tier === chosenTier) ?? candidates[0];
 	return toResolved(picked.full, picked.tier);
@@ -420,7 +419,7 @@ export async function registerAskAntigravityTool(
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model alias or exact id. Friendly: 'flash', 'pro', 'gemini'. Add a tier: 'flash high'. Pin a version: '3.5 flash'. Exact: 'gemini-3.6-flash-medium'. Omit for the configured default.",
+						"Model alias or exact id. Friendly: 'flash', 'pro', 'argon', 'gemini', or another catalogued Gemini family. Add a tier: 'flash high'. Pin a version: '3.5 flash'. Exact: 'gemini-3.6-flash-medium'. Omit for the configured default.",
 				}),
 			),
 			thinking: Type.Optional(

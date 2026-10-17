@@ -375,3 +375,20 @@ test("execute: plan run with agent staging failed falls back to no agent, no ski
 			);
 		},
 	));
+
+test("resolveModel: integer-version Argon aliases use their own family and default effort", () => {
+	const catalog = toolModelsFromRaw([RAW,
+		"gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high",
+		"gemini-5-argon-low", "gemini-5-argon-high",
+		"gemini-4-nova-low", "gemini-4-nova-high",
+	].join("\n"));
+	for (const alias of ["gemini-4-argon", "Gemini 4 Argon", "4 argon"]) {
+		assert.deepEqual(resolveModel(alias, catalog, "medium"), { model: "gemini-4-argon", effort: "medium" });
+	}
+	assert.deepEqual(resolveModel("Argon", catalog.filter(e => e.version !== "5"), "medium"), { model: "gemini-4-argon", effort: "medium" });
+	assert.deepEqual(resolveModel("argon high", catalog, "medium"), { model: "gemini-5-argon", effort: "high" });
+	assert.deepEqual(resolveModel("gemini-4-argon-high", catalog, "low"), { model: "gemini-4-argon", effort: "high" });
+	assert.deepEqual(resolveModel("4 argon high", catalog, "medium", "low"), { model: "gemini-4-argon", effort: "low" });
+	assert.deepEqual(resolveModel("Gemini 4 Nova", catalog, "medium"), { model: "gemini-4-nova", effort: "high" });
+	assert.equal(resolveModel("gemini-4-unknown", catalog, "medium"), null);
+});

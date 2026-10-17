@@ -396,6 +396,34 @@ describe('createApprovalHandler', () => {
     ).toEqual({ permissions: {}, scope: 'turn' });
   });
 
+  it.each([
+    false,
+    true,
+  ])('accepts wildcard-allowlisted Computer Use with session persistence and reports the source (UI: %s)', async (hasUi) => {
+    const records: ApprovalDecisionRecord[] = [];
+    const select = vi.fn<ApprovalUi['select']>(async () => 'Decline');
+    const handler = createApprovalHandler({
+      allowedApps: ['*'],
+      ...(hasUi ? { ui: { select } } : {}),
+      onDecision: (d) => records.push(d),
+    });
+    expect(
+      await handler(elicitation('Microsoft.WindowsNotepad_8wekyb3d8bbwe!App'), {
+        signal: signal(),
+      }),
+    ).toEqual({
+      action: 'accept',
+      content: { persist: 'session' },
+      _meta: null,
+    });
+    expect(records[0]).toMatchObject({
+      kind: 'computer-use',
+      decision: 'accept-session',
+      source: 'allowlist',
+    });
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it('accepts allowlisted Computer Use with session persistence and reports the decision', async () => {
     const records: ApprovalDecisionRecord[] = [];
     const handler = createApprovalHandler({
@@ -424,6 +452,21 @@ describe('createApprovalHandler', () => {
 });
 
 describe('decide', () => {
+  it.each([
+    generic,
+    command,
+    file,
+    permissions,
+    unknown,
+    elicitation(''),
+  ])('does not let a universal wildcard bypass other approval policies: %j', (request) => {
+    expect(decide(request, { allowedApps: ['*'], hasUi: false })).toBe(
+      'decline',
+    );
+    expect(decide(request, { allowedApps: ['*'], hasUi: true })).toBe(
+      request.method === 'unknown' ? 'decline' : 'ask',
+    );
+  });
   it.each([
     null,
     [],
@@ -458,7 +501,34 @@ describe('decide', () => {
     ],
     ['notepad.exe.evil', ['notepad.exe'], false, 'decline'],
     ['notepad.exe', ['notepad'], true, 'ask'],
-    ['notepad.exe', ['*.exe'], false, 'decline'],
+    ['notepad.exe', ['*.exe'], false, 'accept-session'],
+    ['msedge.exe', [' MSEDGE* '], false, 'accept-session'],
+    ['msedge', ['msedge*'], false, 'accept-session'],
+    ['xmsedge.exe', ['msedge*'], false, 'decline'],
+    ['xmsedge.exe', ['msedge*'], true, 'ask'],
+    ['msedge.exe', ['msedge_*'], false, 'decline'],
+    ['notepad.exe.bak', ['notepad.exe'], false, 'decline'],
+    [
+      'Microsoft.WindowsNotepad_8wekyb3d8bbwe!App',
+      ['Microsoft.WindowsNotepad_*'],
+      false,
+      'accept-session',
+    ],
+    ['notepad.exe', ['?otepad.exe'], false, 'accept-session'],
+    ['📝.exe', ['?.exe'], false, 'accept-session'],
+    ['otepad.exe', ['?otepad.exe'], false, 'decline'],
+    ['nnotepad.exe', ['?otepad.exe'], false, 'decline'],
+    ['a+b.exe', ['a+b.exe'], false, 'accept-session'],
+    ['aaab.exe', ['a+b.exe'], false, 'decline'],
+    ['(x)', ['(x)'], false, 'accept-session'],
+    ['x', ['(x)'], false, 'decline'],
+    ['a[b]{2}^$|\\\\.exe', ['a[b]{2}^$|\\\\.exe'], false, 'accept-session'],
+    ['ab.exe', ['a[b].exe'], false, 'decline'],
+    ['notepadXexe', ['notepad.exe'], false, 'decline'],
+    ['a+b.exe.bak', ['a+b.exe*'], false, 'accept-session'],
+    ['aaab.exe.bak', ['a+b.exe*'], false, 'decline'],
+    ['notepad.exe', ['', '   '], false, 'decline'],
+    ['notepad.exe', ['', '  ', 'notepad*'], false, 'accept-session'],
     ['notepad.exe', [], true, 'ask'],
     ['', [''], false, 'decline'],
   ] as const)('matches %s against %j with UI %s: %s', (app, allowedApps, hasUi, expected) => {

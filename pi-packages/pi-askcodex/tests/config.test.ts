@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
 describe('loadConfig', () => {
+  it('passes allowed app patterns through unchanged', () => {
+    const allowedApps = ['*', ' msedge* ', '?otepad.exe', '', 'a+b.exe'];
+    const warn = vi.fn();
+    expect(
+      loadConfig({
+        env: {},
+        fs: { readFileSync: () => JSON.stringify({ allowedApps }) },
+        warn,
+      }).allowedApps,
+    ).toEqual(allowedApps);
+    expect(warn).not.toHaveBeenCalled();
+  });
   it('handles non-Error filesystem failures without throwing', () => {
     expect(
       loadConfig({

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Whole-identifier, case-insensitive `*` and `?` wildcard patterns in `allowedApps` for session-only Computer Use app-access approvals, including packaged-app ids. `*` allows any app even without UI; other approval policies are unchanged.
+
 ### Changed
 
 - Defer Computer Use methods to Codex's own bundled `computer-use` skill; AskCodex developer instructions retain only delegation and approval notes instead of prescribing routing or APIs.

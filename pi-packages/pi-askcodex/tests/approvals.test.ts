@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { stripVTControlCharacters } from 'node:util';
+import { initTheme } from '@earendil-works/pi-coding-agent';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { MarkdownCache } from '../../pi-questions-user/src/ui/markdown-cache.js';
 import {
   type ApprovalDecisionRecord,
   type ApprovalUi,
@@ -98,7 +101,96 @@ const generic = elicitation('', {
   tool_params: { app: 'notepad.exe' },
 });
 
+beforeAll(() => initTheme('dark'));
+
+function renderPreview(preview: string): string {
+  return new MarkdownCache()
+    .render(preview, 2000)
+    .map((line) => stripVTControlCharacters(line).trimEnd())
+    .join('\n');
+}
+
 describe('createApprovalHandler', () => {
+  it.each([
+    String.raw`C:\_tools\paint.exe`,
+    '*paint*_editor.exe',
+    '`paint`_editor.exe',
+    '``paint```_editor.exe`',
+    ' leading space',
+    'first line\n*second*_line with ```ticks```',
+  ])('renders app metadata literally: %j', async (app) => {
+    const display = '*Paint*_display with `ticks`';
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    await createApprovalHandler({ allowedApps: [], ui: { ask } })(
+      elicitation(app, {
+        connector_id: 'computer-use',
+        tool_params: { app },
+        tool_params_display: [{ name: 'app', value: display }],
+      }),
+      { signal: signal() },
+    );
+    const rendered = renderPreview(ask.mock.calls[0][0].preview);
+    for (const line of app.split('\n')) expect(rendered).toContain(line);
+    expect(rendered).toContain(display);
+  });
+
+  it.each([
+    command,
+    file,
+    permissions,
+  ])('renders approval metadata literally for $method', async (request) => {
+    const cwd = String.raw`C:\_work\repo`;
+    const reason = '*Need access* to _private_ files with `ticks`';
+    const root = String.raw`C:\_grant\*files*`;
+    const itemId = '*item*_with_`ticks`';
+    const permissionEntries = {
+      network: null,
+      fileSystem: { read: ['/data/*private*_`files`'], write: [root] },
+    };
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    const changed: ServerRequest =
+      request.method === 'item/commandExecution/requestApproval'
+        ? {
+            ...request,
+            params: {
+              ...request.params,
+              cwd,
+              reason,
+              additionalPermissions: permissionEntries,
+            },
+          }
+        : request.method === 'item/fileChange/requestApproval'
+          ? {
+              ...request,
+              params: { ...request.params, grantRoot: root, itemId, reason },
+            }
+          : {
+              ...permissions,
+              params: {
+                ...permissions.params,
+                cwd,
+                reason,
+                permissions: permissionEntries,
+              },
+            };
+    await createApprovalHandler({ allowedApps: [], ui: { ask } })(changed, {
+      signal: signal(),
+    });
+    const rendered = renderPreview(ask.mock.calls[0][0].preview);
+    expect(rendered).toContain(reason);
+    if (request.method === 'item/fileChange/requestApproval') {
+      expect(rendered).toContain(root);
+      expect(rendered).toContain(itemId);
+    } else {
+      expect(rendered).toContain(cwd);
+      const summary = JSON.stringify(
+        permissionEntries,
+        null,
+        request.method === 'item/permissions/requestApproval' ? 2 : undefined,
+      );
+      for (const line of summary.split('\n')) expect(rendered).toContain(line);
+    }
+  });
   // Captured approval params.command (Desktop 896a0166b774037a, 2026-10-17).
   // Expected script/path also match commandActions/proposedExecpolicyAmendment.
   // The screenshot transcription is lossy; never repair malformed input.
@@ -128,7 +220,7 @@ describe('createApprovalHandler', () => {
       '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
       '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
     ],
-    ['plain argv', 'echo "C:\\\\temp"', 'echo C:\\temp'],
+    ['plain argv', 'echo "C:\\\\temp"', 'echo "C:\\\\temp"'],
     [
       'literal backslashes in double quotes',
       '"C:\\Tools\\pwsh.exe" -Command "C:\\temp"',
@@ -137,7 +229,7 @@ describe('createApprovalHandler', () => {
     [
       'non-shell argv',
       '"C:\\\\Tools\\\\other.exe" -Command "C:\\\\temp"',
-      'C:\\Tools\\other.exe -Command C:\\temp',
+      '"C:\\\\Tools\\\\other.exe" -Command "C:\\\\temp"',
     ],
     [
       'unknown double-quote escape',
@@ -152,15 +244,15 @@ describe('createApprovalHandler', () => {
     [
       'adjacent segments and escaped whitespace',
       "echo pre\"middle \"'suffix' one\\ two ''",
-      'echo "premiddle suffix" "one two" ""',
+      "echo pre\"middle \"'suffix' one\\ two ''",
     ],
     [
       'double-quoted special escapes',
       'echo "\\\\ \\" \\$ \\` \\q"',
-      'echo "\\ " $ ` \\q"',
+      'echo "\\\\ \\" \\$ \\` \\q"',
     ],
     ['double-quoted continuation', 'sh -c "echo a\\\nb"', 'sh -c\necho ab'],
-    ['unquoted continuation', 'echo a\\\nb', 'echo ab'],
+    ['unquoted continuation', 'echo a\\\nb', 'echo a\\\nb'],
     ['unterminated double quote', '  echo "unfinished', '  echo "unfinished'],
     ['unterminated single quote', "echo 'unfinished", "echo 'unfinished"],
     ['trailing escape', 'echo tail\\', 'echo tail\\'],
@@ -190,8 +282,52 @@ describe('createApprovalHandler', () => {
     [
       'extra shell arguments are not hidden',
       "bash -c 'echo hi' name",
-      'bash -c "echo hi" name',
+      "bash -c 'echo hi' name",
     ],
+    ...[
+      ['bare LF', 'echo safe\nrm important.txt'],
+      ['bare CRLF', 'echo safe\r\nrm important.txt'],
+      ['semicolon', 'echo safe; rm important.txt'],
+      ['conditional', 'echo safe && rm important.txt'],
+      ['pipeline', 'echo safe | rm important.txt'],
+      ['space argument', "touch 'a b'"],
+      ['literal quote arguments', `touch '"a' 'b"'`],
+      ['literal double quotes', `printf '%s' '""'`],
+      ['empty argument', "printf %s ''"],
+      ['quoted executable', `'/tmp/a"b/sh' -c 'echo hi'`],
+      ['multiline executable', "'/tmp/a\nb/sh' -c 'echo hi'"],
+      ...[
+        'pwsh -Command',
+        'powershell -c',
+        'cmd /c',
+        'cmd.exe /c',
+        'sh -c',
+      ].map((wrapper) => [
+        'extra wrapper arguments',
+        `${wrapper} 'echo hi' extra`,
+      ]),
+      ['cmd alias', 'cmd /c "echo hi"', 'cmd /c\necho hi'],
+      ...[
+        '\n',
+        '\r\n',
+        '\r',
+        '\v',
+        '\f',
+        '\u0085',
+        '\u00a0',
+        '\u2028',
+        '\u0000',
+      ].map((separator) => [
+        'unsupported wrapper separator',
+        `sh${separator}-c 'echo hi'`,
+      ]),
+      ...[';', '&', '&&', '|', '<', '>', '(', ')', '`', '$'].map((operator) => [
+        'wrapper operator',
+        `sh -c echo${operator}hi`,
+      ]),
+      ['unquoted wrapper continuation', "sh\\\n -c 'echo hi'"],
+      ['space/tab wrapper separator', "sh\t-c 'echo hi'", 'sh -c\necho hi'],
+    ].map(([name, raw, expected]) => [name, raw, expected ?? raw]),
   ])('renders command argv safely: %s', async (_name, raw, expected) => {
     if (command.method !== 'item/commandExecution/requestApproval')
       throw new Error('fixture');
@@ -207,7 +343,9 @@ describe('createApprovalHandler', () => {
     );
     const fence = expected.includes('```') ? '````' : '```';
     expect(ask.mock.calls[0][0].preview).toBe(
-      [fence, expected, fence, '', 'Working directory: /project'].join('\n'),
+      [fence, expected, fence, '', 'Working directory: ```/project```'].join(
+        '\n',
+      ),
     );
     expect(records[0].subject).toBe(`${raw} (cwd: /project)`);
   });
@@ -216,12 +354,12 @@ describe('createApprovalHandler', () => {
     [
       file,
       'Codex wants to change files outside the sandbox',
-      'Grant root: /project/src\n\nItem: file\n\nReason: Edit files',
+      'Grant root: ```/project/src```\n\nItem: ```file```\n\nReason: ```Edit files```',
     ],
     [
       permissions,
       'Codex requests additional permissions',
-      'Requested permissions: {\n  "network": {\n    "enabled": true\n  },\n  "fileSystem": {\n    "read": [\n      "/data"\n    ],\n    "write": [\n      "/out"\n    ]\n  }\n}\n\nWorking directory: /project\n\nReason: Need access',
+      'Requested permissions: \n\n```\n{\n  "network": {\n    "enabled": true\n  },\n  "fileSystem": {\n    "read": [\n      "/data"\n    ],\n    "write": [\n      "/out"\n    ]\n  }\n}\n```\n\nWorking directory: ```/project```\n\nReason: ```Need access```',
     ],
   ] as const)('provides a concise prompt and detailed preview for %j', async (request, prompt, preview) => {
     const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
@@ -477,7 +615,7 @@ describe('createApprovalHandler', () => {
     );
     expect(ask.mock.calls[0][0]).toMatchObject({
       prompt: `Allow Codex to use ${display?.trim() ? display : app}?`,
-      preview: `App: ${display?.trim() ? display : app}\n\nIdentifier: ${app}`,
+      preview: `App: \`\`\`${display?.trim() ? display : app}\`\`\`\n\nIdentifier: \`\`\`${app}\`\`\``,
     });
     expect(ask.mock.calls[0][0].preview).not.toContain('Allow Codex');
   });

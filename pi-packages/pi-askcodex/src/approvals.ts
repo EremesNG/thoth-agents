@@ -300,6 +300,19 @@ function commandPreview(command: string): string {
   return `${executableLine} ${flag}\n${script}`;
 }
 
+function literalPreview(value: string): string {
+  const fence = '`'.repeat(
+    (value.match(/`+/g) ?? []).reduce(
+      (length, run) => Math.max(length, run.length + 1),
+      3,
+    ),
+  );
+  if (/[\r\n]/u.test(value)) return `\n\n${fence}\n${value}\n${fence}`;
+  // CommonMark strips one padding space on each side of a nonblank code span.
+  const padding = /^[` ]|[` ]$/u.test(value) && !/^ *$/u.test(value) ? ' ' : '';
+  return `${fence}${padding}${value}${padding}${fence}`;
+}
+
 function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
   const title = titleFor(request);
   const app = computerApp(request);
@@ -309,7 +322,7 @@ function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
       title,
       prompt,
       options,
-      preview: `App: ${appLabel(request, app)}\n\nIdentifier: ${app}`,
+      preview: `App: ${literalPreview(appLabel(request, app))}\n\nIdentifier: ${literalPreview(app)}`,
     };
   }
   let prompt: string;
@@ -329,27 +342,27 @@ function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
         ),
       );
       prompt = 'Codex wants to run a command outside the sandbox';
-      preview = `${fence}\n${command}\n${fence}\n\nWorking directory: ${cwd ?? 'unspecified'}`;
-      if (reason) preview += `\n\nReason: ${reason}`;
+      preview = `${fence}\n${command}\n${fence}\n\nWorking directory: ${literalPreview(cwd ?? 'unspecified')}`;
+      if (reason) preview += `\n\nReason: ${literalPreview(reason)}`;
       if (additionalPermissions)
-        preview += `\n\nPermissions: ${JSON.stringify(additionalPermissions)}`;
+        preview += `\n\nPermissions: ${literalPreview(JSON.stringify(additionalPermissions))}`;
       break;
     }
     case 'item/fileChange/requestApproval':
       prompt = 'Codex wants to change files outside the sandbox';
-      preview = `Grant root: ${request.params.grantRoot ?? 'unspecified'}\n\nItem: ${request.params.itemId}`;
+      preview = `Grant root: ${literalPreview(request.params.grantRoot ?? 'unspecified')}\n\nItem: ${literalPreview(request.params.itemId)}`;
       if (request.params.reason)
-        preview += `\n\nReason: ${request.params.reason}`;
+        preview += `\n\nReason: ${literalPreview(request.params.reason)}`;
       break;
     case 'item/permissions/requestApproval':
       prompt = 'Codex requests additional permissions';
-      preview = `Requested permissions: ${JSON.stringify(request.params.permissions, null, 2)}\n\nWorking directory: ${request.params.cwd}`;
+      preview = `Requested permissions: ${literalPreview(JSON.stringify(request.params.permissions, null, 2))}\n\nWorking directory: ${literalPreview(request.params.cwd)}`;
       if (request.params.reason)
-        preview += `\n\nReason: ${request.params.reason}`;
+        preview += `\n\nReason: ${literalPreview(request.params.reason)}`;
       break;
     default:
       prompt = 'Codex requests approval';
-      preview = describe(request).subject;
+      preview = literalPreview(describe(request).subject);
   }
   return { title, prompt, options, preview };
 }

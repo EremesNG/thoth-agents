@@ -1955,3 +1955,27 @@ it.each([
   host.send(KEY.down, KEY.enter);
   expect(host.results[0]?.details.answers.context.values).toEqual(['v2']);
 });
+
+it('disables the custom-answer row and keyboard activation when allowCustom is false', () => {
+  const ui = setup({
+    questions: [
+      {
+        id: 'approval',
+        header: 'Approval',
+        prompt: 'Allow?',
+        type: 'single',
+        allowCustom: false,
+        options: [
+          { value: 'allow', label: 'Allow' },
+          { value: 'deny', label: 'Decline' },
+        ],
+      },
+    ],
+  });
+  expect(ui.text()).not.toContain(DEFAULT_LABELS.typeSomething);
+  ui.send('3');
+  expect(ui.text()).not.toContain(DEFAULT_LABELS.yourAnswer);
+  ui.send(KEY.down, KEY.down, KEY.enter);
+  expect(ui.results[0]?.details.answers.approval.values).toEqual(['deny']);
+  expect(ui.results[0]?.details.answers.approval.customText).toBeUndefined();
+});

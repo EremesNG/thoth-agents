@@ -108,6 +108,18 @@ Both modes use Codex's `on-request` approval policy with the user as reviewer. A
 - Other app requests, MCP elicitations, command/file approvals, and permission requests ask through Pi's UI. Without UI they are declined; cancelled, dismissed, or failed prompts also decline. Unknown server requests are rejected and reported.
 - Computer Use offers session approval; other prompts offer once/session only as supported by the request. **Persistent/"always" approval is never granted.** Every decision is recorded in result `details.approvals`.
 
+When `@thoth-agents/pi-questions-user` is installed and loaded in a UI session,
+approval prompts use the Thoth question UI through pi-core's shared question
+service. Each prompt is single-choice, with no recommended option or free-text
+answer. The preview shows the full command, working directory and Codex's reason
+when supplied, or the app display name and exact identifier for Computer Use.
+The existing allow/decline choices and approval policy are unchanged.
+
+Without a compatible provider, or when its dock is unavailable, prompts fall back
+to Pi's native select dialog. Cancellation, abort, unexpected answers and prompt
+failures decline rather than opening another prompt; no-UI requests still decline
+unless covered by the app allowlist.
+
 For Notepad, `"notepad.exe"` may not be sufficient: Codex may also request its **packaged-app id**, such as `Microsoft.WindowsNotepad_8wekyb3d8bbwe!App`. To allow both, add both observed identifiers or use `["notepad.exe", "Microsoft.WindowsNotepad_*"]`. Requested identifiers are visible in `details.approvals` (the `subject` for Computer Use decisions). Start with an empty list and inspect them through an interactive Pi call.
 
 **Warning:** `"allowedApps": ["*"]` lets unattended/no-UI calls control **any app** requested through Computer Use. Use narrow patterns unless that is intentional. Wildcard approvals are still session-only, never persistent/"always", and do not cover other approval kinds.

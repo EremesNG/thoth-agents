@@ -9,11 +9,20 @@ import { initTheme } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
 import {
   getPublishedToolDefinition,
+  getQuestionService,
   getToolDefinitionRegistryVersion,
 } from '@thoth-agents/pi-core';
 import { expect, it, vi } from 'vitest';
-import { buildResult, selectOption } from '../src/answers.js';
+import {
+  buildResult,
+  selectOption,
+  setCustomText,
+  setOptionNote,
+  setQuestionNote,
+  toggleOption,
+} from '../src/answers.js';
 import registerQuestions, { createQuestionTool } from '../src/index.js';
+import { createQuestionServiceProvider } from '../src/question-service.js';
 
 const params = {
   title: 'Planning',
@@ -531,4 +540,231 @@ it('the tool schema declares labels so hosts do not drop them', () => {
   expect(Object.keys(schema.properties.labels.properties ?? {})).toEqual(
     expect.arrayContaining(['yes', 'no', 'typeSomething', 'submit']),
   );
+});
+
+it('maps service answers by stable id through the dock', async () => {
+  const provider = createQuestionServiceProvider(
+    (session) => (_tui, _theme, _keys, done) => {
+      queueMicrotask(() =>
+        done(buildResult(selectOption(session.state, 'approval', 'allow'))),
+      );
+      return { render: () => [], invalidate() {} };
+    },
+  );
+  const result = await provider.ask(
+    questionContext(),
+    {
+      questions: [
+        {
+          id: 'approval',
+          header: 'Approval',
+          prompt: 'Allow?',
+          type: 'single',
+          allowCustom: false,
+          options: [{ value: 'allow', label: 'Allow' }],
+        },
+      ],
+    },
+    {},
+  );
+  expect(result).toEqual({
+    status: 'answered',
+    answers: {
+      approval: { status: 'answered', values: ['allow'], labels: ['Allow'] },
+    },
+  });
+});
+
+it('registers a service only for UI sessions and withdraws only its own provider', async () => {
+  const first = extensionHost();
+  const second = extensionHost();
+  expect(getQuestionService()).toBeUndefined();
+  await first.emit('session_start', context(false));
+  expect(getQuestionService()).toBeUndefined();
+  try {
+    await first.emit('session_start');
+    const provider = getQuestionService();
+    expect(provider?.ask).toBeTypeOf('function');
+    await first.emit('session_start');
+    expect(getQuestionService()).toBe(provider);
+    await second.emit('session_start');
+    expect(getQuestionService()).not.toBe(provider);
+    await first.emit('session_shutdown');
+    expect(getQuestionService()?.ask).toBeTypeOf('function');
+  } finally {
+    await first.emit('session_shutdown');
+    await second.emit('session_shutdown');
+  }
+  expect(getQuestionService()).toBeUndefined();
+});
+
+const serviceRequest = {
+  questions: [
+    {
+      id: 'approval',
+      header: 'Approval',
+      prompt: 'Allow?',
+      type: 'single' as const,
+      allowCustom: false,
+      options: [
+        { value: 'allow', label: 'Allow' },
+        { value: 'deny', label: 'Decline' },
+      ],
+    },
+  ],
+};
+
+it('the service default UI preserves allowCustom=false and returns an option answer', async () => {
+  let rendered = '';
+  const ctx = questionContext(['3', '2'], (text) => {
+    rendered = text;
+  });
+  const result = await createQuestionServiceProvider().ask(
+    ctx,
+    serviceRequest,
+    {},
+  );
+  expect(rendered).not.toContain('Type something.');
+  expect(result).toMatchObject({
+    status: 'answered',
+    answers: { approval: { values: ['deny'], labels: ['Decline'] } },
+  });
+});
+
+it('the service reports unavailable without opening select/input for unmountable or missing UI', async () => {
+  const rpc = questionContext();
+  rpc.ui.setEditorComponent = vi.fn();
+  for (const ctx of [context(), context(false), rpc, undefined]) {
+    const result = await createQuestionServiceProvider().ask(
+      ctx,
+      serviceRequest,
+      {},
+    );
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      answers: { approval: { values: [] } },
+    });
+    if (ctx) {
+      expect(ctx.ui.select).not.toHaveBeenCalled();
+      expect(ctx.ui.input).not.toHaveBeenCalled();
+    }
+  }
+  expect(
+    await createQuestionServiceProvider(() => undefined).ask(
+      questionContext(),
+      serviceRequest,
+      {},
+    ),
+  ).toMatchObject({ status: 'unavailable' });
+});
+
+it('the service cancels an already aborted request without invoking the UI hook or mounting', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const hook = vi.fn(() => undefined);
+  const ctx = questionContext();
+  const mount = vi.spyOn(ctx.ui, 'setEditorComponent');
+  expect(
+    await createQuestionServiceProvider(hook).ask(ctx, serviceRequest, {
+      signal: controller.signal,
+    }),
+  ).toMatchObject({ status: 'cancelled' });
+  expect(hook).not.toHaveBeenCalled();
+  expect(mount).not.toHaveBeenCalled();
+});
+
+it('the service disposes the dock on abort and preserves recorded answers', async () => {
+  const controller = new AbortController();
+  const dispose = vi.fn();
+  const provider = createQuestionServiceProvider((session) => () => {
+    session.onStateChange(selectOption(session.state, 'approval', 'allow'));
+    return { render: () => [], invalidate() {}, dispose };
+  });
+  const ctx = questionContext();
+  const original = ctx.ui.getEditorComponent();
+  const pending = provider.ask(ctx, serviceRequest, {
+    signal: controller.signal,
+  });
+  expect(ctx.ui.getEditorComponent()).not.toBe(original);
+  controller.abort();
+  expect(await pending).toMatchObject({
+    status: 'cancelled',
+    answers: { approval: { values: ['allow'] } },
+  });
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(ctx.ui.getEditorComponent()).toBe(original);
+});
+
+it('the service maps user cancellation and disposes a late asynchronous mount after abort', async () => {
+  expect(
+    await createQuestionServiceProvider().ask(
+      questionContext(['']),
+      serviceRequest,
+      {},
+    ),
+  ).toMatchObject({ status: 'cancelled' });
+  const controller = new AbortController();
+  const dispose = vi.fn();
+  let finishMount!: (component: Component & { dispose(): void }) => void;
+  const provider = createQuestionServiceProvider(
+    () => () =>
+      new Promise((resolve) => {
+        finishMount = resolve;
+      }),
+  );
+  const pending = provider.ask(questionContext(), serviceRequest, {
+    signal: controller.signal,
+  });
+  controller.abort();
+  expect(await pending).toMatchObject({ status: 'cancelled' });
+  finishMount({ render: () => [], invalidate() {}, dispose });
+  await Promise.resolve();
+  expect(dispose).toHaveBeenCalledOnce();
+});
+
+it('the service maps custom text, notes, multi answers and skipped ids without tool-only option notes', async () => {
+  const provider = createQuestionServiceProvider(
+    (session) => (_tui, _theme, _keys, done) => {
+      let state = toggleOption(session.state, 'choices', 'one');
+      state = setCustomText(state, 'choices', 'Other');
+      state = setQuestionNote(state, 'choices', 'Explanation');
+      state = setOptionNote(state, 'choices', 'one', 'Tool-only annotation');
+      queueMicrotask(() => done(buildResult(state)));
+      return { render: () => [], invalidate() {} };
+    },
+  );
+  const result = await provider.ask(
+    questionContext(),
+    {
+      questions: [
+        {
+          id: 'choices',
+          header: 'Choices',
+          prompt: 'Pick',
+          type: 'multi',
+          options: [{ value: 'one', label: 'One' }],
+        },
+        {
+          id: 'later',
+          header: 'Later',
+          prompt: 'Anything else?',
+          type: 'text',
+        },
+      ],
+    },
+    {},
+  );
+  expect(result).toEqual({
+    status: 'answered',
+    answers: {
+      choices: {
+        status: 'answered',
+        values: ['one'],
+        labels: ['One'],
+        customText: 'Other',
+        note: 'Explanation',
+      },
+      later: { status: 'skipped', values: [], labels: [] },
+    },
+  });
 });

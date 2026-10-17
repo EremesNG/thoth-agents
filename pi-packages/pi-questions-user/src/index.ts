@@ -4,11 +4,14 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import {
   publishToolDefinitions,
+  type QuestionServiceHandle,
+  registerQuestionService,
   type ToolDefinitionHandle,
 } from '@thoth-agents/pi-core';
 import { buildResult, createState, type QuestionDetails } from './answers.js';
 import { getQuestionUIFactory, type QuestionUIHook } from './custom-ui.js';
 import { openQuestionDock } from './question-dock.js';
+import { createQuestionServiceProvider } from './question-service.js';
 import {
   createQuestionRenderBridge,
   createQuestionRenderers,
@@ -80,12 +83,18 @@ export default function registerQuestions(pi: ExtensionAPI): void {
   const tool = createQuestionTool();
   pi.registerTool(tool);
   let publication: ToolDefinitionHandle | undefined;
+  let service: QuestionServiceHandle | undefined;
   pi.on('session_start', (_event, ctx) => {
-    if (ctx.hasUI) publication ??= publishToolDefinitions([tool]);
+    if (ctx.hasUI) {
+      publication ??= publishToolDefinitions([tool]);
+      service ??= registerQuestionService(createQuestionServiceProvider());
+    }
   });
   pi.on('session_shutdown', () => {
     publication?.withdraw();
     publication = undefined;
+    service?.withdraw();
+    service = undefined;
   });
   pi.on('before_agent_start', (_event, ctx) => {
     if (!ctx.hasUI)

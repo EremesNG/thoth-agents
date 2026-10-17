@@ -4,9 +4,11 @@ import path from 'node:path';
 import {
   buildSessionContext,
   type ExtensionAPI,
+  type ExtensionToolContext,
 } from '@earendil-works/pi-coding-agent';
 import {
   formatDuration,
+  getQuestionService,
   getRenderKit,
   renderToolFooter,
 } from '@thoth-agents/pi-core';
@@ -17,6 +19,7 @@ import {
 } from './app-server-client.js';
 import {
   type ApprovalDecisionRecord,
+  type ApprovalPrompt,
   createApprovalHandler,
 } from './approvals.js';
 import {
@@ -300,8 +303,8 @@ export function registerAskCodexTool(
             allowedApps: config.allowedApps,
             ui: ctx.hasUI
               ? {
-                  select: (title, options, approvalSignal) =>
-                    ctx.ui.select(title, options, { signal: approvalSignal }),
+                  ask: (prompt, approvalSignal) =>
+                    askApproval(ctx, prompt, approvalSignal),
                 }
               : undefined,
             onDecision: (d) => details.approvals.push(d),
@@ -465,6 +468,53 @@ export function registerAskCodexTool(
           : '');
       return { content: [{ type: 'text', text }], details };
     },
+  });
+}
+
+/** Use the shared questionnaire when available; only unavailable permits fallback. */
+async function askApproval(
+  ctx: ExtensionToolContext,
+  prompt: ApprovalPrompt,
+  approvalSignal: AbortSignal,
+): Promise<string | undefined> {
+  const provider = getQuestionService();
+  if (provider) {
+    const result = await provider.ask(
+      ctx,
+      {
+        questions: [
+          {
+            id: 'approval',
+            header: 'Codex approval',
+            prompt: prompt.prompt,
+            type: 'single',
+            allowCustom: false,
+            options: prompt.options.map((label) => ({
+              value: label,
+              label,
+              preview: prompt.preview,
+            })),
+          },
+        ],
+      },
+      { signal: approvalSignal },
+    );
+    if (approvalSignal.aborted) return undefined;
+    if (result?.status !== 'unavailable') {
+      const answer = result?.answers?.approval;
+      return result?.status === 'answered' &&
+        answer?.status === 'answered' &&
+        answer.customText === undefined &&
+        Array.isArray(answer.values) &&
+        answer.values.length === 1 &&
+        prompt.options.includes(answer.values[0])
+        ? answer.values[0]
+        : undefined;
+    }
+  }
+  if (approvalSignal.aborted) return undefined;
+  return ctx.ui.select(prompt.title, prompt.options, {
+    signal: approvalSignal,
   });
 }
 

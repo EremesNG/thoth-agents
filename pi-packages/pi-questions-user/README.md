@@ -3,6 +3,23 @@
 First-party `ask_user_question` for Pi. MIT; Node >=22.19.0, Pi peers >=0.99.0;
 development SDK/TUI 1.0.2. Install this package as a Pi extension.
 
+## Shared question service
+
+In UI sessions, this extension also provides its framed questionnaire, previews,
+and editor dock to other Thoth packages through pi-core's versioned question
+service. It registers on `session_start` and withdraws its own provider on
+shutdown; headless sessions do not register one.
+
+Service callers can set per-question `allowCustom: false` to hide free-text
+answers. Requests return structured `answered`, `cancelled`, or `unavailable`
+results. Aborting disposes the dock and resolves as `cancelled`; if the dock cannot
+mount (including RPC contexts), the service returns `unavailable` so the caller
+can choose its fallback. The service itself does not open sequential dialogs.
+
+This does not change the `ask_user_question` tool's schema or behavior described
+below: its single/multi questions still offer free text, and its sequential
+select/input fallback remains available.
+
 ## Parameters
 
 ```json

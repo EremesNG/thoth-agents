@@ -7,14 +7,19 @@ import type {
   ExtensionToolContext,
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import { getPublishedToolDefinition } from '@thoth-agents/pi-core';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  getPublishedToolDefinition,
+  type QuestionServiceHandle,
+  registerQuestionService,
+} from '@thoth-agents/pi-core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppServerClient } from '../src/app-server-client.js';
 import { registerAskCodexTool } from '../src/ask-tool.js';
 import type { DesktopStatus } from '../src/binary.js';
 import { loadConfig } from '../src/config.js';
 import askCodex from '../src/index.js';
 import { buildDeveloperInstructions } from '../src/instructions.js';
+import type { ServerRequest } from '../src/protocol.js';
 
 const fixture = fileURLToPath(
   new URL('./fixtures/fake-app-server.mjs', import.meta.url),
@@ -24,6 +29,7 @@ function setup(
   overrides = {},
   trace?: string,
   desktopStatus: DesktopStatus = false,
+  approvalRequest?: ServerRequest,
 ) {
   let tool!: ToolDefinition;
   const config = {
@@ -47,6 +53,13 @@ function setup(
       createClient: (options) =>
         new AppServerClient({
           ...options,
+          serverRequestHandler: approvalRequest
+            ? (_request, context) => {
+                if (!options.serverRequestHandler)
+                  throw new Error('Missing approval handler');
+                return options.serverRequestHandler(approvalRequest, context);
+              }
+            : options.serverRequestHandler,
           commandPrefixArgs: [fixture],
           env: {
             ...process.env,
@@ -73,6 +86,317 @@ function setup(
   };
 }
 describe('AskCodex', () => {
+  let provider: QuestionServiceHandle | undefined;
+  afterEach(() => {
+    provider?.withdraw();
+    provider = undefined;
+  });
+
+  it('presents app approvals through the question service with exact identifier and no custom or recommended option', async () => {
+    const ask = vi.fn(async () => ({
+      status: 'answered' as const,
+      answers: {
+        approval: {
+          status: 'answered' as const,
+          values: ['Allow for this session'],
+        },
+      },
+    }));
+    provider = registerQuestionService({ ask });
+    const { run, ctx } = setup('computer-use', {}, undefined, false, {
+      id: 1,
+      method: 'mcpServer/elicitation/request',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        serverName: 'node_repl',
+        mode: 'form',
+        message: 'Approve?',
+        requestedSchema: {},
+        _meta: {
+          connector_id: 'computer-use',
+          tool_params: { app: 'packaged!Paint' },
+          tool_params_display: [{ name: 'app', value: 'Paint' }],
+        },
+      },
+    });
+    ctx.hasUI = true;
+    const select = vi.fn();
+    ctx.ui = { select } as unknown as typeof ctx.ui;
+    const result = await run({ prompt: 'task' });
+    expect(result.details).toMatchObject({
+      approvals: [{ decision: 'accept-session' }],
+    });
+    expect(select).not.toHaveBeenCalled();
+    expect(ask).toHaveBeenCalledWith(
+      ctx,
+      {
+        questions: [
+          {
+            id: 'approval',
+            header: 'Codex approval',
+            type: 'single',
+            prompt: 'Allow Codex to use Paint?',
+            allowCustom: false,
+            options: [
+              {
+                value: 'Allow for this session',
+                label: 'Allow for this session',
+                preview:
+                  '## App\n\nAllow Codex to use Paint?\n\nIdentifier: packaged!Paint',
+              },
+              {
+                value: 'Decline',
+                label: 'Decline',
+                preview:
+                  '## App\n\nAllow Codex to use Paint?\n\nIdentifier: packaged!Paint',
+              },
+            ],
+          },
+        ],
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it('preserves an unescaped command, cwd and reason in the service preview', async () => {
+    const ask = vi.fn(async () => ({
+      status: 'answered' as const,
+      answers: {
+        approval: { status: 'answered' as const, values: ['Allow once'] },
+      },
+    }));
+    provider = registerQuestionService({ ask });
+    const request: ServerRequest = {
+      id: 1,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        kind: 'command',
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        itemId: 'cmd',
+        startedAtMs: 0,
+        environmentId: null,
+        command: 'echo "hello" && cat C:\\work\\notes.txt\necho ```',
+        cwd: 'C:\\work',
+        reason: 'Read the requested notes',
+        availableDecisions: ['accept', 'decline'],
+      },
+    };
+    const { run, ctx } = setup('elicitation', {}, undefined, false, request);
+    ctx.hasUI = true;
+    const select = vi.fn();
+    ctx.ui = { select } as unknown as typeof ctx.ui;
+    expect((await run({ prompt: 'task' })).details).toMatchObject({
+      approvals: [{ decision: 'accept-once' }],
+    });
+    expect(ask).toHaveBeenCalledWith(
+      ctx,
+      {
+        questions: [
+          {
+            id: 'approval',
+            header: 'Codex approval',
+            type: 'single',
+            allowCustom: false,
+            prompt: 'Codex wants to run a command outside the sandbox',
+            options: ['Allow once', 'Decline'].map((label) => ({
+              value: label,
+              label,
+              preview:
+                '````\necho "hello" && cat C:\\work\\notes.txt\necho ```\n````\n\nWorking directory: C:\\work\n\nReason: Read the requested notes',
+            })),
+          },
+        ],
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'once',
+      {
+        status: 'answered',
+        answers: { approval: { status: 'answered', values: ['Allow once'] } },
+      },
+      'accept-once',
+    ],
+    [
+      'decline',
+      {
+        status: 'answered',
+        answers: { approval: { status: 'answered', values: ['Decline'] } },
+      },
+      'decline',
+    ],
+    [
+      'unknown',
+      {
+        status: 'answered',
+        answers: { approval: { status: 'answered', values: ['accept'] } },
+      },
+      'decline',
+    ],
+    [
+      'unoffered session',
+      {
+        status: 'answered',
+        answers: {
+          approval: { status: 'answered', values: ['Allow for this session'] },
+        },
+      },
+      'decline',
+    ],
+    [
+      'cancelled',
+      {
+        status: 'cancelled',
+        answers: { approval: { status: 'answered', values: ['Allow once'] } },
+      },
+      'decline',
+    ],
+    [
+      'skipped',
+      {
+        status: 'answered',
+        answers: { approval: { status: 'skipped', values: ['Allow once'] } },
+      },
+      'decline',
+    ],
+    [
+      'custom',
+      {
+        status: 'answered',
+        answers: {
+          approval: {
+            status: 'answered',
+            values: ['Allow once'],
+            customText: 'yes',
+          },
+        },
+      },
+      'decline',
+    ],
+    [
+      'empty custom',
+      {
+        status: 'answered',
+        answers: {
+          approval: {
+            status: 'answered',
+            values: ['Allow once'],
+            customText: '',
+          },
+        },
+      },
+      'decline',
+    ],
+    [
+      'multiple',
+      {
+        status: 'answered',
+        answers: {
+          approval: { status: 'answered', values: ['Allow once', 'Decline'] },
+        },
+      },
+      'decline',
+    ],
+    ['missing', { status: 'answered', answers: {} }, 'decline'],
+    [
+      'malformed values',
+      {
+        status: 'answered',
+        answers: { approval: { status: 'answered', values: 'Allow once' } },
+      },
+      'decline',
+    ],
+    ['undefined', undefined, 'decline'],
+    ['null', null, 'decline'],
+    ['throw', new Error('Provider failed'), 'decline'],
+  ])('fails closed for service result %s', async (_name, response, decision) => {
+    const ask = vi.fn(async () => {
+      if (response instanceof Error) throw response;
+      return response;
+    });
+    provider = registerQuestionService({ ask } as Parameters<
+      typeof registerQuestionService
+    >[0]);
+    const { run, ctx } = setup('elicitation');
+    ctx.hasUI = true;
+    const select = vi.fn().mockResolvedValue('Allow once');
+    ctx.ui = { select } as unknown as typeof ctx.ui;
+    expect((await run({ prompt: 'task' })).details).toMatchObject({
+      approvals: [{ decision }],
+    });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    false,
+    true,
+  ])('falls back to native select on unavailable, failing closed if select fails (%s)', async (fails) => {
+    provider = registerQuestionService({
+      ask: async () => ({ status: 'unavailable', answers: {} }),
+    });
+    const { run, ctx } = setup('elicitation');
+    ctx.hasUI = true;
+    const select = fails
+      ? vi.fn().mockRejectedValue(new Error('UI closed'))
+      : vi.fn().mockResolvedValue('Allow once');
+    ctx.ui = { select } as unknown as typeof ctx.ui;
+    expect((await run({ prompt: 'task' })).details).toMatchObject({
+      approvals: [{ decision: fails ? 'decline' : 'accept-once' }],
+    });
+    expect(select).toHaveBeenCalledWith(
+      'Codex requests elicitation: node_repl: Approve?',
+      ['Allow once', 'Decline'],
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it('does not call a registered provider without UI', async () => {
+    const ask = vi.fn();
+    provider = registerQuestionService({ ask });
+    expect(
+      (await setup('elicitation').run({ prompt: 'task' })).details,
+    ).toMatchObject({ approvals: [{ decision: 'decline', source: 'no-ui' }] });
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('passes the approval signal to the service and declines if it aborts before an unavailable response', async () => {
+    let received: AbortSignal | undefined;
+    provider = registerQuestionService({
+      ask: async (_ctx, _request, options) => {
+        received = options.signal;
+        // Simulate the app-server closing its approval while the provider is pending.
+        controller.abort();
+        const approvalSignal = received;
+        if (!approvalSignal) throw new Error('Missing approval signal');
+        await new Promise<void>((resolve) =>
+          approvalSignal.addEventListener('abort', () => resolve(), {
+            once: true,
+          }),
+        );
+        return { status: 'unavailable', answers: {} };
+      },
+    });
+    const controller = new AbortController();
+    const { run, ctx } = setup('elicitation');
+    ctx.hasUI = true;
+    const select = vi.fn().mockResolvedValue('Allow once');
+    ctx.ui = { select } as unknown as typeof ctx.ui;
+    const result = await run({ prompt: 'task' }, controller.signal);
+    expect(received).toBeInstanceOf(AbortSignal);
+    expect(received?.aborted).toBe(true);
+    expect(result.details).toMatchObject({
+      approvals: [{ decision: 'decline' }],
+      aborted: true,
+    });
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it.each([
     true,
     false,

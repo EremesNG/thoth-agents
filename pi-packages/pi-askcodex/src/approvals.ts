@@ -1,11 +1,15 @@
 import type { ServerRequest, ServerRequestHandler } from './protocol.js';
 
+export interface ApprovalPrompt {
+  /** Native select title, retained for fallback compatibility. */
+  title: string;
+  prompt: string;
+  options: string[];
+  preview: string;
+}
+
 export interface ApprovalUi {
-  select(
-    title: string,
-    options: string[],
-    signal: AbortSignal,
-  ): Promise<string | undefined>;
+  ask(prompt: ApprovalPrompt, signal: AbortSignal): Promise<string | undefined>;
 }
 
 export interface ApprovalDecisionRecord {
@@ -37,7 +41,7 @@ export function createApprovalHandler(options: {
       policy === 'accept-session' ? policy : 'decline';
     if (policy === 'ask' && options.ui && !signal.aborted) {
       const choices = choicesFor(request);
-      const answer = await ask(options.ui, titleFor(request), choices, signal);
+      const answer = await ask(options.ui, promptFor(request, choices), signal);
       if (answer && choices.includes(answer)) {
         if (answer === 'Allow once') decision = 'accept-once';
         if (answer === 'Allow for this session') decision = 'accept-session';
@@ -217,11 +221,60 @@ function titleFor(request: ServerRequest): string {
   return `Codex requests ${kind}: ${subject}`;
 }
 
+function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
+  const title = titleFor(request);
+  const app = computerApp(request);
+  if (app) {
+    const prompt = title.replace(/ \(this session\)$/, '');
+    return {
+      title,
+      prompt,
+      options,
+      preview: `## App\n\n${prompt}\n\nIdentifier: ${app}`,
+    };
+  }
+  let prompt: string;
+  let preview: string;
+  switch (request.method) {
+    case 'item/commandExecution/requestApproval': {
+      const { command, cwd, reason, additionalPermissions } = request.params;
+      // A longer fence keeps commands containing backticks intact.
+      const fence = '`'.repeat(
+        (command?.match(/`+/g) ?? []).reduce(
+          (length, run) => Math.max(length, run.length + 1),
+          3,
+        ),
+      );
+      prompt = 'Codex wants to run a command outside the sandbox';
+      preview = `${fence}\n${command ?? request.params.kind}\n${fence}\n\nWorking directory: ${cwd ?? 'unspecified'}`;
+      if (reason) preview += `\n\nReason: ${reason}`;
+      if (additionalPermissions)
+        preview += `\n\nPermissions: ${JSON.stringify(additionalPermissions)}`;
+      break;
+    }
+    case 'item/fileChange/requestApproval':
+      prompt = 'Codex wants to change files outside the sandbox';
+      preview = `Grant root: ${request.params.grantRoot ?? 'unspecified'}\n\nItem: ${request.params.itemId}`;
+      if (request.params.reason)
+        preview += `\n\nReason: ${request.params.reason}`;
+      break;
+    case 'item/permissions/requestApproval':
+      prompt = 'Codex requests additional permissions';
+      preview = `Requested permissions: ${JSON.stringify(request.params.permissions, null, 2)}\n\nWorking directory: ${request.params.cwd}`;
+      if (request.params.reason)
+        preview += `\n\nReason: ${request.params.reason}`;
+      break;
+    default:
+      prompt = 'Codex requests approval';
+      preview = describe(request).subject;
+  }
+  return { title, prompt, options, preview };
+}
+
 /** Resolve promptly even if a UI adapter ignores cancellation or rejects. */
 function ask(
   ui: ApprovalUi,
-  title: string,
-  options: string[],
+  prompt: ApprovalPrompt,
   signal: AbortSignal,
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -236,9 +289,7 @@ function ask(
       return;
     }
     Promise.resolve()
-      .then(() =>
-        signal.aborted ? undefined : ui.select(title, options, signal),
-      )
+      .then(() => (signal.aborted ? undefined : ui.ask(prompt, signal)))
       .then(finish, () => finish());
   });
 }

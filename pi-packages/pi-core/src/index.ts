@@ -42,6 +42,18 @@ export {
   subscribeProviderLimits,
 } from './provider-limits.js';
 export type {
+  QuestionServiceAnswer,
+  QuestionServiceHandle,
+  QuestionServiceProvider,
+  QuestionServiceQuestion,
+  QuestionServiceRequest,
+  QuestionServiceResult,
+} from './question-service.js';
+export {
+  getQuestionService,
+  registerQuestionService,
+} from './question-service.js';
+export type {
   RenderCardOptions,
   RenderCardSection,
   RenderCollapseOptions,

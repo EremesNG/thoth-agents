@@ -88,7 +88,7 @@ function fixed(lines: string[], rows: number): string[] {
 
 /** Free-text row index for questions that accept typed answers; absent for confirm. */
 function hasFreeText(question: Question): boolean {
-  return question.type !== 'confirm';
+  return question.type !== 'confirm' && question.allowCustom !== false;
 }
 
 function rowCount(question: Question): number {
@@ -210,6 +210,7 @@ export class QuestionnaireComponent implements Component {
     const question = this.question;
     if (
       question?.type === 'text' &&
+      hasFreeText(question) &&
       getAnswer(this.state, question.id).status !== 'answered'
     ) {
       this.openEditor({ kind: 'custom', id: question.id });

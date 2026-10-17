@@ -1,0 +1,65 @@
+{
+  "name": "@thoth-agents/pi-askcodex",
+  "version": "0.1.0",
+  "description": "Delegate Pi tasks to the local Codex app-server harness.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "codex"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "EstebanForge",
+    "email": "esteban@attitude.cl",
+    "url": "https://actitud.xyz"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-askcodex"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run test",
+    "build": "node ../../scripts/build-pi-extensions.mjs pi-askcodex"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.99.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typebox": "^1.3.4",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9",
+    "@thoth-agents/pi-core": "workspace:^"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

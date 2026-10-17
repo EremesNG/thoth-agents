@@ -208,17 +208,47 @@ function choicesFor(request: ServerRequest): string[] {
   return ['Allow once', 'Allow for this session', 'Decline'];
 }
 
+function appLabel(request: ServerRequest, app: string): string {
+  if (request.method !== 'mcpServer/elicitation/request') return app;
+  const displays = object(request.params._meta)?.tool_params_display;
+  const display = Array.isArray(displays)
+    ? displays.map(object).find((item) => item?.name === 'app')?.value
+    : undefined;
+  return typeof display === 'string' && display.trim() ? display : app;
+}
+
 function titleFor(request: ServerRequest): string {
   const app = computerApp(request);
-  if (app && request.method === 'mcpServer/elicitation/request') {
-    const displays = object(request.params._meta)?.tool_params_display;
-    const display = Array.isArray(displays)
-      ? displays.map(object).find((item) => item?.name === 'app')?.value
-      : undefined;
-    return `Allow Codex to use ${typeof display === 'string' && display.trim() ? display : app}? (this session)`;
+  if (app) {
+    return `Allow Codex to use ${appLabel(request, app)}? (this session)`;
   }
   const { kind, subject } = describe(request);
   return `Codex requests ${kind}: ${subject}`;
+}
+
+function commandPreview(command: string): string {
+  // Spike RPC commandExecution items contain Rust-Debug-style quoted Windows
+  // shell paths even after JSON decoding. Approval bindings expose no argv;
+  // commandActions are best-effort script fragments, not the full invocation.
+  // Decode only this recognized shell wrapper; uncertain quoting stays verbatim.
+  const wrapper =
+    /^("(?:[^"\\]|\\["\\])*") -Command ('[^']*'|"(?:[^"\\]|\\["\\])*")$/.exec(
+      command,
+    );
+  if (!wrapper || !wrapper[1].includes('\\\\')) return command;
+  try {
+    const executable: string = JSON.parse(wrapper[1]);
+    if (
+      !/^[a-z]:\\(?:[^\\\r\n]+\\)*(?:pwsh|powershell)\.exe$/i.test(executable)
+    )
+      return command;
+    const script = wrapper[2].startsWith('"')
+      ? `"${JSON.parse(wrapper[2])}"`
+      : wrapper[2];
+    return `"${executable}" -Command ${script}`;
+  } catch {
+    return command;
+  }
 }
 
 function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
@@ -230,23 +260,27 @@ function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {
       title,
       prompt,
       options,
-      preview: `## App\n\n${prompt}\n\nIdentifier: ${app}`,
+      preview: `App: ${appLabel(request, app)}\n\nIdentifier: ${app}`,
     };
   }
   let prompt: string;
   let preview: string;
   switch (request.method) {
     case 'item/commandExecution/requestApproval': {
-      const { command, cwd, reason, additionalPermissions } = request.params;
+      const { cwd, reason, additionalPermissions } = request.params;
+      const command =
+        request.params.command == null
+          ? request.params.kind
+          : commandPreview(request.params.command);
       // A longer fence keeps commands containing backticks intact.
       const fence = '`'.repeat(
-        (command?.match(/`+/g) ?? []).reduce(
+        (command.match(/`+/g) ?? []).reduce(
           (length, run) => Math.max(length, run.length + 1),
           3,
         ),
       );
       prompt = 'Codex wants to run a command outside the sandbox';
-      preview = `${fence}\n${command ?? request.params.kind}\n${fence}\n\nWorking directory: ${cwd ?? 'unspecified'}`;
+      preview = `${fence}\n${command}\n${fence}\n\nWorking directory: ${cwd ?? 'unspecified'}`;
       if (reason) preview += `\n\nReason: ${reason}`;
       if (additionalPermissions)
         preview += `\n\nPermissions: ${JSON.stringify(additionalPermissions)}`;

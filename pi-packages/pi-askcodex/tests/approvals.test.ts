@@ -99,6 +99,65 @@ const generic = elicitation('', {
 });
 
 describe('createApprovalHandler', () => {
+  it('shows the decoded Windows shell display command without changing the decision subject', async () => {
+    // Decoded command value from rpc-general-write.jsonl item/started.
+    const raw = String.raw`"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command 'Get-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt'`;
+    if (command.method !== 'item/commandExecution/requestApproval')
+      throw new Error('fixture');
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    const records: ApprovalDecisionRecord[] = [];
+    await createApprovalHandler({
+      allowedApps: [],
+      ui: { ask },
+      onDecision: (record) => records.push(record),
+    })(
+      { ...command, params: { ...command.params, command: raw } },
+      { signal: signal() },
+    );
+    expect(ask.mock.calls[0][0].preview).toBe(
+      [
+        '```',
+        String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -Command 'Get-Content -LiteralPath README.md -Raw; Test-Path -LiteralPath hello.txt'`,
+        '```',
+        '',
+        'Working directory: /project',
+      ].join('\n'),
+    );
+    expect(records[0].subject).toBe(`${raw} (cwd: /project)`);
+  });
+  it.each([
+    [
+      String.raw`"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "[System.IO.File]::WriteAllText('C:\\Users\\EremesNG\\askcodex-approval-test2.txt', \"prueba de permisos con estilo.\"${'`'}n\", [System.Text.Encoding]::UTF8)"`,
+      String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -Command "[System.IO.File]::WriteAllText('C:\Users\EremesNG\askcodex-approval-test2.txt', "prueba de permisos con estilo."${'`'}n", [System.Text.Encoding]::UTF8)"`,
+    ],
+    [String.raw`echo "C:\\temp"`, String.raw`echo "C:\\temp"`],
+    [
+      String.raw`"C:\Tools\pwsh.exe" -Command "C:\temp"`,
+      String.raw`"C:\Tools\pwsh.exe" -Command "C:\temp"`,
+    ],
+    [
+      String.raw`"C:\\Tools\\other.exe" -Command "C:\\temp"`,
+      String.raw`"C:\\Tools\\other.exe" -Command "C:\\temp"`,
+    ],
+    [
+      String.raw`"C:\\Tools\\pwsh.exe" -Command "unknown\q"`,
+      String.raw`"C:\\Tools\\pwsh.exe" -Command "unknown\q"`,
+    ],
+    [
+      String.raw`"C:\\Tools\\pwsh.exe" -Command 'echo "C:\\temp"'`,
+      String.raw`"C:\Tools\pwsh.exe" -Command 'echo "C:\\temp"'`,
+    ],
+  ])('decodes only recognized shell display quoting and preserves ambiguous commands: %s', async (raw, expected) => {
+    if (command.method !== 'item/commandExecution/requestApproval')
+      throw new Error('fixture');
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    await createApprovalHandler({ allowedApps: [], ui: { ask } })(
+      { ...command, params: { ...command.params, command: raw } },
+      { signal: signal() },
+    );
+    expect(ask.mock.calls[0][0].preview).toContain(`\n${expected}\n`);
+  });
+
   it.each([
     [
       file,
@@ -344,6 +403,29 @@ describe('createApprovalHandler', () => {
       ['Decline'],
       expect.any(AbortSignal),
     );
+  });
+
+  it.each([
+    'Paint',
+    ' ',
+    undefined,
+  ])('shows app and identifier without repeating the prompt (display: %s)', async (display) => {
+    const app = 'Microsoft.Paint_8wekyb3d8bbwe!App';
+    const ask = vi.fn<ApprovalUi['ask']>(async () => 'Decline');
+    await createApprovalHandler({ allowedApps: [], ui: { ask } })(
+      elicitation(app, {
+        connector_id: 'computer-use',
+        tool_params: { app },
+        tool_params_display:
+          display === undefined ? [] : [{ name: 'app', value: display }],
+      }),
+      { signal: signal() },
+    );
+    expect(ask.mock.calls[0][0]).toMatchObject({
+      prompt: `Allow Codex to use ${display?.trim() ? display : app}?`,
+      preview: `App: ${display?.trim() ? display : app}\n\nIdentifier: ${app}`,
+    });
+    expect(ask.mock.calls[0][0].preview).not.toContain('Allow Codex');
   });
 
   it('uses the app display label in a session-only prompt without offering permanent acceptance', async () => {

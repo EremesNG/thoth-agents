@@ -142,14 +142,12 @@ describe('AskCodex', () => {
               {
                 value: 'Allow for this session',
                 label: 'Allow for this session',
-                preview:
-                  '## App\n\nAllow Codex to use Paint?\n\nIdentifier: packaged!Paint',
+                preview: 'App: Paint\n\nIdentifier: packaged!Paint',
               },
               {
                 value: 'Decline',
                 label: 'Decline',
-                preview:
-                  '## App\n\nAllow Codex to use Paint?\n\nIdentifier: packaged!Paint',
+                preview: 'App: Paint\n\nIdentifier: packaged!Paint',
               },
             ],
           },

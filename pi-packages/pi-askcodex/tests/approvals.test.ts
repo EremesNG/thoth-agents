@@ -128,7 +128,7 @@ describe('createApprovalHandler', () => {
       '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
       '"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe" -Command "[System.IO.File]::WriteAllText(\'C:\\\\Users\\\\EremesNG\\\\askcodex-approval-test2.txt\', \\"prueba de permisos con estilo.\\"`n\\", [System.Text.Encoding]::UTF8)"',
     ],
-    ['plain argv', 'echo "C:\\\\temp"', 'echo C:\\temp'],
+    ['plain argv', 'echo "C:\\\\temp"', 'echo "C:\\\\temp"'],
     [
       'literal backslashes in double quotes',
       '"C:\\Tools\\pwsh.exe" -Command "C:\\temp"',
@@ -137,7 +137,7 @@ describe('createApprovalHandler', () => {
     [
       'non-shell argv',
       '"C:\\\\Tools\\\\other.exe" -Command "C:\\\\temp"',
-      'C:\\Tools\\other.exe -Command C:\\temp',
+      '"C:\\\\Tools\\\\other.exe" -Command "C:\\\\temp"',
     ],
     [
       'unknown double-quote escape',
@@ -152,15 +152,15 @@ describe('createApprovalHandler', () => {
     [
       'adjacent segments and escaped whitespace',
       "echo pre\"middle \"'suffix' one\\ two ''",
-      'echo "premiddle suffix" "one two" ""',
+      "echo pre\"middle \"'suffix' one\\ two ''",
     ],
     [
       'double-quoted special escapes',
       'echo "\\\\ \\" \\$ \\` \\q"',
-      'echo "\\ " $ ` \\q"',
+      'echo "\\\\ \\" \\$ \\` \\q"',
     ],
     ['double-quoted continuation', 'sh -c "echo a\\\nb"', 'sh -c\necho ab'],
-    ['unquoted continuation', 'echo a\\\nb', 'echo ab'],
+    ['unquoted continuation', 'echo a\\\nb', 'echo a\\\nb'],
     ['unterminated double quote', '  echo "unfinished', '  echo "unfinished'],
     ['unterminated single quote', "echo 'unfinished", "echo 'unfinished"],
     ['trailing escape', 'echo tail\\', 'echo tail\\'],
@@ -190,8 +190,52 @@ describe('createApprovalHandler', () => {
     [
       'extra shell arguments are not hidden',
       "bash -c 'echo hi' name",
-      'bash -c "echo hi" name',
+      "bash -c 'echo hi' name",
     ],
+    ...[
+      ['bare LF', 'echo safe\nrm important.txt'],
+      ['bare CRLF', 'echo safe\r\nrm important.txt'],
+      ['semicolon', 'echo safe; rm important.txt'],
+      ['conditional', 'echo safe && rm important.txt'],
+      ['pipeline', 'echo safe | rm important.txt'],
+      ['space argument', "touch 'a b'"],
+      ['literal quote arguments', `touch '"a' 'b"'`],
+      ['literal double quotes', `printf '%s' '""'`],
+      ['empty argument', "printf %s ''"],
+      ['quoted executable', `'/tmp/a"b/sh' -c 'echo hi'`],
+      ['multiline executable', "'/tmp/a\nb/sh' -c 'echo hi'"],
+      ...[
+        'pwsh -Command',
+        'powershell -c',
+        'cmd /c',
+        'cmd.exe /c',
+        'sh -c',
+      ].map((wrapper) => [
+        'extra wrapper arguments',
+        `${wrapper} 'echo hi' extra`,
+      ]),
+      ['cmd alias', 'cmd /c "echo hi"', 'cmd /c\necho hi'],
+      ...[
+        '\n',
+        '\r\n',
+        '\r',
+        '\v',
+        '\f',
+        '\u0085',
+        '\u00a0',
+        '\u2028',
+        '\u0000',
+      ].map((separator) => [
+        'unsupported wrapper separator',
+        `sh${separator}-c 'echo hi'`,
+      ]),
+      ...[';', '&', '&&', '|', '<', '>', '(', ')', '`', '$'].map((operator) => [
+        'wrapper operator',
+        `sh -c echo${operator}hi`,
+      ]),
+      ['unquoted wrapper continuation', "sh\\\n -c 'echo hi'"],
+      ['space/tab wrapper separator', "sh\t-c 'echo hi'", 'sh -c\necho hi'],
+    ].map(([name, raw, expected]) => [name, raw, expected ?? raw]),
   ])('renders command argv safely: %s', async (_name, raw, expected) => {
     if (command.method !== 'item/commandExecution/requestApproval')
       throw new Error('fixture');

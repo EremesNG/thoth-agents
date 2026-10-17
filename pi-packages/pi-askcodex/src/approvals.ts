@@ -232,6 +232,7 @@ function commandArgv(command: string): string[] | undefined {
   let word = '';
   let started = false;
   let quote: "'" | '"' | undefined;
+  const unsupportedWhitespace = /(?![ \t])[\s\p{Cc}\p{Cf}]/u;
   for (let index = 0; index < command.length; index++) {
     const char = command[index];
     if (quote === "'") {
@@ -239,9 +240,12 @@ function commandArgv(command: string): string[] | undefined {
       else word += char;
       continue;
     }
+    // Only space/tab delimit shell words; never hide command boundaries.
+    if (!quote && unsupportedWhitespace.test(char)) return undefined;
     if (char === '\\') {
       const next = command[index + 1];
-      if (next === undefined) return undefined;
+      if (next === undefined || (!quote && unsupportedWhitespace.test(next)))
+        return undefined;
       if (!quote || '\\"$`\n'.includes(next)) {
         index++;
         if (next !== '\n') {
@@ -260,7 +264,7 @@ function commandArgv(command: string): string[] | undefined {
     if (char === "'" || char === '"') {
       quote = char;
       started = true;
-    } else if (/\s/u.test(char)) {
+    } else if (char === ' ' || char === '\t') {
       if (started) argv.push(word);
       word = '';
       started = false;
@@ -276,25 +280,24 @@ function commandArgv(command: string): string[] | undefined {
   return argv.length && argv[0] ? argv : undefined;
 }
 
-function displayArg(arg: string): string {
-  return !arg || /\s/u.test(arg) ? `"${arg}"` : arg;
-}
-
 function commandPreview(command: string): string {
   // Approval commandActions are best-effort fragments, not the full invocation.
   // Parse only the display join; malformed or non-literal shell input stays raw.
   const argv = commandArgv(command);
-  if (!argv) return command;
+  if (!argv || argv.length !== 3) return command;
   const [executable, flag, script] = argv;
+  if (/["\p{Cc}\p{Cf}]/u.test(executable)) return command;
   const basename = executable.split(/[\\/]/u).at(-1) ?? '';
   const shellCommand =
     (/^(?:pwsh|powershell)(?:\.exe)?$/iu.test(basename) &&
       /^-(?:command|c)$/iu.test(flag ?? '')) ||
-    (/^cmd\.exe$/iu.test(basename) && /^\/c$/iu.test(flag ?? '')) ||
+    (/^cmd(?:\.exe)?$/iu.test(basename) && /^\/c$/iu.test(flag ?? '')) ||
     (/^(?:bash|sh)$/u.test(basename) && flag === '-c');
-  if (argv.length === 3 && shellCommand)
-    return `${displayArg(executable)} ${flag}\n${script}`;
-  return argv.map(displayArg).join(' ');
+  if (!shellCommand) return command;
+  const executableLine = /\s/u.test(executable)
+    ? `"${executable}"`
+    : executable;
+  return `${executableLine} ${flag}\n${script}`;
 }
 
 function promptFor(request: ServerRequest, options: string[]): ApprovalPrompt {

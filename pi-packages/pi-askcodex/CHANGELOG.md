@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Defer Computer Use methods to Codex's own bundled `computer-use` skill; AskCodex developer instructions retain only delegation and approval notes instead of prescribing routing or APIs.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

@@ -34,6 +34,11 @@ import {
 import { SidebarControls } from './controls.js';
 import { openCostCurves } from './curves.js';
 import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+} from './layout/adapter.js';
+import {
   createFullscreenAdapter,
   createInlineAdapter,
   type LayoutAdapter,
@@ -58,7 +63,7 @@ export class SidebarSession {
   private preference: symbol | undefined;
   private absorbed = '';
   private renderedSignature = '';
-  private appliedWidth = 44;
+  private appliedWidth = DEFAULT_SIDEBAR_WIDTH;
   private resizeStatus: string | undefined;
   private resizeInputRelease: (() => void) | undefined;
   private animationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -107,8 +112,9 @@ export class SidebarSession {
     // Set visibility before mounting to avoid a briefly visible overlay at startup off.
     this.adapter.setVisible(this.controls.sync(tui.terminal.columns));
     this.appliedWidth = this.controls.effectiveWidth(tui.terminal.columns);
-    this.mounted = this.adapter.mount(this.panels, this.appliedWidth);
+    this.mounted = this.adapter.mount(this.panels, this.controls.width);
     if (!this.mounted) return;
+    this.adapter.setWidth(this.controls.width, this.appliedWidth);
     this.releases.push(
       subscribeWorkPanelRegistry(() => {
         this.discover();
@@ -178,7 +184,7 @@ export class SidebarSession {
     const width = this.controls.effectiveWidth(this.tui.terminal.columns);
     if (this.appliedWidth !== width) {
       this.appliedWidth = width;
-      this.adapter.setWidth(width);
+      this.adapter.setWidth(this.controls.width, width);
     }
     this.setResizeStatus(this.controls.resizing);
     this.adapter.setVisible(visible);
@@ -268,7 +274,7 @@ export class SidebarSession {
       this.resizeInputRelease = undefined;
     }
     const status = active
-      ? `Sidebar width ${this.controls.effectiveWidth(this.tui.terminal.columns)} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`
+      ? `Sidebar width ${this.controls.effectiveWidth(this.tui.terminal.columns)} (${MIN_SIDEBAR_WIDTH}–${MAX_SIDEBAR_WIDTH}) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`
       : undefined;
     if (status === this.resizeStatus) return;
     this.resizeStatus = status;
@@ -408,7 +414,7 @@ export class SidebarSession {
     const saved = await openSettings(ctx, {
       panels: this.config.panels,
       startup: this.config.startup,
-      width: this.config.width ?? 44,
+      width: this.config.width ?? DEFAULT_SIDEBAR_WIDTH,
       unavailable: (id) =>
         !['session', 'workspace', 'cost'].includes(id) &&
         !listWorkPanelSources().some((source) => source.id === id),

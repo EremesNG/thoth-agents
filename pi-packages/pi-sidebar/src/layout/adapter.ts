@@ -3,7 +3,8 @@ import type { Component, TuiMouseEvent } from '@earendil-works/pi-tui';
 export interface LayoutAdapter {
   /** Mount once. False means no sidebar was installed; one diagnostic is emitted. */
   mount(component: Component, width: number): boolean;
-  setWidth(width: number): void;
+  /** effectiveWidth preserves the main pane on terminals narrower than the preference. */
+  setWidth(width: number, effectiveWidth?: number): void;
   setVisible(visible: boolean): void;
   /** Recheck ownership and visibility; notify the session when display changes. */
   isDisplayed(): boolean;
@@ -26,10 +27,20 @@ export function observeDisplay(
   };
 }
 
-export function sidebarWidth(width: number): number {
-  return Number.isFinite(width)
-    ? Math.max(28, Math.min(72, Math.round(width)))
-    : 44;
+export const DEFAULT_SIDEBAR_WIDTH = 50;
+export const MIN_SIDEBAR_WIDTH = 36;
+export const MAX_SIDEBAR_WIDTH = 72;
+
+export function sidebarWidth(width: number, effectiveWidth?: number): number {
+  const preferred = Number.isFinite(width)
+    ? Math.max(
+        MIN_SIDEBAR_WIDTH,
+        Math.min(MAX_SIDEBAR_WIDTH, Math.round(width)),
+      )
+    : DEFAULT_SIDEBAR_WIDTH;
+  return effectiveWidth !== undefined && Number.isFinite(effectiveWidth)
+    ? Math.min(preferred, Math.max(0, Math.round(effectiveWidth)))
+    : preferred;
 }
 
 export function diagnosticOnce(report: LayoutDiagnostic): LayoutDiagnostic {

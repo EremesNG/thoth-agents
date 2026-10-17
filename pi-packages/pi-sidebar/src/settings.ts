@@ -20,8 +20,6 @@ const NAMES: Record<string, string> = {
   cost: 'Cost',
 };
 const STARTUPS: readonly Startup[] = ['auto', 'manual', 'off'];
-const MIN_WIDTH = 28;
-const MAX_WIDTH = 72;
 
 export interface SettingsDraft {
   panels: PanelPreference[];
@@ -134,10 +132,7 @@ export function createSettingsPanel(options: SettingsOptions): Component {
       draft.startup =
         STARTUPS[(at + Math.sign(delta) + STARTUPS.length) % STARTUPS.length];
     } else if (id === 'width') {
-      draft.width = Math.max(
-        MIN_WIDTH,
-        Math.min(MAX_WIDTH, draft.width + delta),
-      );
+      draft.width = sidebarWidth(draft.width + delta);
     } else return;
     editor.invalidate();
   };

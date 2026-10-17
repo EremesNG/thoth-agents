@@ -23,9 +23,9 @@ it('reserves a right column and wraps the transcript at the remaining width on t
   expect(adapter.mount(sidebar, 32)).toBe(true);
   tui.start();
   tui.renderNow(true);
-  expect(widths.at(-1)).toBe(88);
-  expect(sidebar.widths.at(-1)).toBe(32);
-  expect(text.render(88).length).toBeGreaterThan(text.render(120).length);
+  expect(widths.at(-1)).toBe(84);
+  expect(sidebar.widths.at(-1)).toBe(36);
+  expect(text.render(84).length).toBeGreaterThan(text.render(120).length);
   expect(tui.getScreenLines()[0]).toContain('Sidebar');
   adapter.setWidth(40);
   tui.renderNow(true);
@@ -145,7 +145,11 @@ it('clamps widths and gives the main pane at least 64 columns on a narrow termin
   adapter.mount(side, 1);
   tui.start();
   tui.renderNow(true);
-  expect(widths.at(-1)).toBe(92);
+  expect(widths.at(-1)).toBe(84);
+  expect(side.widths.at(-1)).toBe(36);
+  adapter.setWidth(Number.NaN);
+  tui.renderNow(true);
+  expect(side.widths.at(-1)).toBe(50);
   adapter.setWidth(100);
   terminal.columns = 140;
   terminal.resize();

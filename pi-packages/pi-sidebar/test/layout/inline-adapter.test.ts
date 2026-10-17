@@ -31,8 +31,12 @@ it('patches the concrete main-screen render through the real proxy and reserves 
   cleanups.push(() => adapter.dispose());
   expect(adapter.mount(sidebar, 32)).toBe(true);
   tui.renderNow(true);
-  expect(widths.at(-1)).toBe(88);
-  expect(sidebar.widths.at(-1)).toBe(32);
+  expect(widths.at(-1)).toBe(84);
+  expect(sidebar.widths.at(-1)).toBe(36);
+  adapter.setWidth(Number.NaN);
+  tui.renderNow(true);
+  expect(widths.at(-1)).toBe(70);
+  expect(sidebar.widths.at(-1)).toBe(50);
   expect(tui.getFocusedComponent()).toBe(editor);
   expect(hasBlockingOverlay(proxy)).toBe(false);
   adapter.dispose();

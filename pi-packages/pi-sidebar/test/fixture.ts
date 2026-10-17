@@ -32,6 +32,8 @@ export const context = () =>
 
 type Summary = {
   running?: number;
+  queued?: number;
+  cancelled?: number;
   completed?: number;
   failed?: number;
   total?: number;
@@ -80,7 +82,19 @@ export function agentRow(
     identity: [{ text: name, role: 'primary' }],
     metrics: Object.entries(metrics).map(([key, text]) => ({
       key: key as never,
-      segments: [{ text, role: 'meta' }],
+      // Providers mark each token direction explicitly; the gap stays unmarked.
+      segments:
+        key === 'tokens' && text.includes(' ')
+          ? text.split(/( )/u).map((part, index) => ({
+              text: part,
+              role: 'meta' as const,
+              ...(part === ' '
+                ? {}
+                : {
+                    direction: index === 0 ? ('in' as const) : ('out' as const),
+                  }),
+            }))
+          : [{ text, role: 'meta' }],
     })),
   };
 }

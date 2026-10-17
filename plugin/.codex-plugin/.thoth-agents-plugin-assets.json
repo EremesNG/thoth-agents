@@ -2,6 +2,54 @@
   "generatedBy": "thoth-agents",
   "assets": [
     {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/context.cjs",
+      "reference": "./codex-hooks/context.cjs",
+      "sha256": "sha256:901a20e570eeb8581c5263132bc9948ea14fe071a9ed7b9880f7288c02771057"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/hooks.json",
+      "reference": "./codex-hooks/hooks.json",
+      "sha256": "sha256:b2949fe8110fdc7552bc09788d4b0b0543c9276f8fb90f155b5e974da91b8ece"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/designer.md",
+      "reference": "./codex-hooks/payloads/designer.md",
+      "sha256": "sha256:785a57e0bc7d2fbc7cda3ba4601f04049d2c0f1895967d152b727d62dd30f50b"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/explorer.md",
+      "reference": "./codex-hooks/payloads/explorer.md",
+      "sha256": "sha256:841c34e941ad58b4b2a261b5d5caf73676b58eb9ff8a12d8113cb8effb72c5ef"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/librarian.md",
+      "reference": "./codex-hooks/payloads/librarian.md",
+      "sha256": "sha256:344400219caf36240df6b31ae3c548fcad4f74de6ab806deb5568539006bd99d"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/oracle.md",
+      "reference": "./codex-hooks/payloads/oracle.md",
+      "sha256": "sha256:48220f91c7bce79977322caa59d0ae6c8a1b06c45e8ec5d73d3a8a57b3b3a876"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/root.md",
+      "reference": "./codex-hooks/payloads/root.md",
+      "sha256": "sha256:c67aa5a0d5259f080aced50ece183bfe9aad8221a41274aed854e72300ea97b9"
+    },
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/codex-hooks/payloads/worker.md",
+      "reference": "./codex-hooks/payloads/worker.md",
+      "sha256": "sha256:33da3932bbd5a17fff962d01d55743151fcbd26da2e082ff72a552a005994adf"
+    },
+    {
       "field": "mcpServers",
       "path": ".codex-plugin/codex.mcp.json",
       "reference": "./codex.mcp.json",

@@ -114,12 +114,13 @@ native manager.
 
 ### Requirement: Generate the shared plugin from canonical source
 
-Claude agents MUST be generated from `src/agents/`. The shared bundle MUST
-receive one copy of the canonical thoth-owned `skills/` tree and MUST contain
-separate harness-specific manifests and MCP surfaces. The Codex plugin manifest
-MUST NOT declare generated role TOMLs; the CLI writer remains their canonical
-delivery surface. Build and npm version lifecycle commands MUST synchronize the
-generated shared plugin output.
+Claude agents MUST be generated from `src/agents/`. The shared bundle MUST receive one copy of the canonical thoth-owned `skills/` tree and MUST contain separate harness-specific manifests, MCP surfaces and Codex hook declarations with their payload files placed outside any path another harness auto-discovers and referenced explicitly by the Codex manifest. The Codex plugin manifest MUST NOT declare generated role TOMLs; the CLI writer remains their canonical delivery surface. Build and npm version lifecycle commands MUST synchronize the generated shared plugin output, including Codex hook payloads.
+
+#### Scenario: Generate the shared plugin from canonical source
+
+- **GIVEN** a changed canonical role prompt
+- **WHEN** the build runs
+- **THEN** the Codex hook payload for that role in `plugin/codex-hooks/` is regenerated while `codex-hooks/hooks.json` declarations remain byte-identical and no `plugin/hooks/hooks.json` exists for Claude Code to auto-discover
 
 ### Requirement: Preserve native plugin-manager ownership
 
@@ -232,25 +233,13 @@ The canonical orchestration policy MUST make a fresh subagent instance the defau
 
 ### Requirement: Bounded continuation exception
 
-The canonical orchestration policy MUST permit resuming or steering an existing subagent only for the exact same bounded assignment and MUST NOT treat completed role instances as a reusable pool.
+The canonical orchestration policy MUST permit resuming or steering an existing subagent only for the exact same bounded assignment and MUST NOT treat completed role instances as a reusable pool, except that the Codex dialect MAY reuse a completed child through `followup_task` for a later unit of the same role only when the objective, SDD phase and mutable surface are unchanged (or the work is read-only) and no independent judgment is required, because Codex multi-agent capacity is bounded per session; this exception MUST NOT override `Fresh delegation at work boundaries`, `Status is not reuse` or `Fresh independent judgment`, and Oracle plan reviews and verification rounds MUST remain fresh. Other harnesses' rendered lifecycle instructions remain unchanged.
 
-#### Scenario: US2 - Continue only the same bounded assignment 1
+#### Scenario: Bounded continuation exception
 
-- **GIVEN** a specialist is still executing a bounded assignment
-- **WHEN** the root supplies a correction or missing context for that same assignment
-- **THEN** the root may continue the existing session
-
-#### Scenario: US2 - Continue only the same bounded assignment 2
-
-- **GIVEN** a specialist completed a bounded assignment
-- **WHEN** the root requests clarification or completion of that unchanged assignment and no independent judgment is required
-- **THEN** the root may resume it deliberately
-
-#### Scenario: US2 - Continue only the same bounded assignment 3
-
-- **GIVEN** the root is waiting for a running task
-- **WHEN** it uses the harness status or wait surface
-- **THEN** that operation is treated as collection of the existing assignment rather than permission to reuse the session for later work
+- **GIVEN** a Codex root whose completed Explorer child mapped one area during the explore phase of the current objective
+- **WHEN** the root needs another read-only Explorer question in that same phase
+- **THEN** it MAY send it with `followup_task` to that child, while a new phase, a different mutable surface or any Oracle verification uses a newly spawned child
 
 ### Requirement: Fresh independent judgment
 
@@ -392,7 +381,7 @@ Pi root instructions MUST use the session-local task-list tool for useful multi-
 
 - **GIVEN** a Thoth-generated child with its default explicit tool list and the task-list tool active in the root
 - **WHEN** it launches and later has progress
-- **THEN** the task-list tool is absent from the child, and its `notify_orchestrator` update is recorded on its task without triggering a root turn 
+- **THEN** the task-list tool is absent from the child, and its `notify_orchestrator` update is recorded on its task without triggering a root turn
 
 ### Requirement: Expose complementary Pi web tools
 
@@ -440,7 +429,7 @@ Pi MUST expose /subagents-model using native profiles and /subagents-tools using
 
 - **GIVEN** exact names and globs including `*` and `agent_browser_*`, with root tools that are inactive or lack a child implementation, and pi-subagents with or without the Thoth adapter
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** only the `tools` field changes, exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, the child fails only when nothing remains, and reset-to-defaults is offered only when the adapter supplies defaults 
+- **THEN** only the `tools` field changes, exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, the child fails only when nothing remains, and reset-to-defaults is offered only when the adapter supplies defaults
 
 ### Requirement: Run visible background Pi specialists
 
@@ -510,7 +499,7 @@ When enabled, every Pi child whose definition does not list it in `disallowed_to
 
 - **GIVEN** `enable_ask_orchestrator` and `enable_notify_orchestrator` true and Thoth-generated worker and Oracle definitions
 - **WHEN** both launch
-- **THEN** both receive `notify_orchestrator`, only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call 
+- **THEN** both receive `notify_orchestrator`, only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call
 
 ### Requirement: Pi conversation language anchor
 
@@ -570,4 +559,14 @@ The Pi subagent runtime MUST warn the owning root before a running child reaches
 
 - **GIVEN** a running Pi child in task or background mode approaching its deadline
 - **WHEN** the warning lead is reached
-- **THEN** task-mode calls of that parent session return as background handoffs, a checkpoint request is sent only if the child has `notify_orchestrator`, the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview 
+- **THEN** task-mode calls of that parent session return as background handoffs, a checkpoint request is sent only if the child has `notify_orchestrator`, the root receives one attention notification with progress context and may call `subagent_extend`, bounded by `max_total_timeout_ms` and `max_timeout_extensions`, otherwise the ceiling applies and the timeout result carries the latest checkpoint and preview
+
+### Requirement: Deliver Codex orchestration through plugin hooks
+
+The Codex plugin MUST deliver the ambient root prompt through a `SessionStart` hook and each specialist role prompt through a `SubagentStart` hook keyed by `agent_type`, using shell-independent commands, unlimited additional-context size and payload files generated from canonical prompts; the CLI MUST NOT write root instructions to `~/.codex/AGENTS.md` and MUST write only thin agent TOMLs carrying name, description, a pointer instruction, model/effort and sandbox.
+
+#### Scenario: Deliver Codex orchestration through plugin hooks
+
+- **GIVEN** a trusted thoth-agents Codex plugin and thin agent TOMLs
+- **WHEN** a Codex session starts and spawns `thoth-agents-oracle`
+- **THEN** the root receives the orchestrator prompt as developer context, the child receives the Oracle role prompt as developer context, and no thoth content exists in `~/.codex/AGENTS.md`

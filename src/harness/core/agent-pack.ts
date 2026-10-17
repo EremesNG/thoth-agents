@@ -393,6 +393,19 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   ],
 };
 
+// Rendering seam: the canonical policy remains fresh-per-unit outside Codex.
+export const DEFAULT_DELEGATION_LIFECYCLE = `- New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions via {{lifecycleFreshDelegation}}; {{lifecycleIndependentContext}}. These are fresh-session boundaries, not permission for root execution; completed agents are not a reusable role pool.
+- Use {{lifecycleSameAssignmentContinuation}} only to steer, complete or clarify the same bounded assignment.
+- {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment.
+- Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. Existing ones only clarify their findings.`;
+
+export const CODEX_DELEGATION_LIFECYCLE = [
+  '- New objectives, SDD phases, mutable surfaces or independent judgments require fresh specialists via {{lifecycleFreshDelegation}}; {{lifecycleIndependentContext}}. These are fresh-session boundaries, not permission for root execution. Fresh work units default to new children, subject only to the continuation exception below.',
+  '- Use {{lifecycleSameAssignmentContinuation}} to steer, complete or clarify the same bounded assignment; a later unit may reuse a completed child of the same role ONLY when objective and SDD phase are unchanged, mutable surface is unchanged (or the work is read-only), and no independent judgment is required. Never cross objectives or phases.',
+  '- Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. Existing ones only clarify their findings.',
+  '- `wait_agent`/`list_agents` collect status, not reuse permission. Never `send_message` to a completed child: it blocks slot eviction.',
+].join('\n');
+
 const EVIDENCE_RETURN_FIELDS = [
   'conclusion',
   'evidence',

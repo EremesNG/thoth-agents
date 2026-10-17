@@ -20,11 +20,13 @@ persistence, receipts, state, and recovery remain outside this package.
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
-3. Codex CLI setup invokes the native manager to install the plugin, then
-   materializes global custom-agent TOMLs, `~/.codex/AGENTS.md`, and config
-   because the manifest cannot install them, installs external skills, and
-   invokes provider-owned thoth-mem setup. `$thoth-init` creates project
-   governance only.
+3. Codex CLI setup invokes the native manager to install the plugin, whose
+   trusted `SessionStart`/`SubagentStart` hooks deliver root/role prompts. The CLI
+   writes thin global role TOMLs (plugins cannot register roles), managed state
+   and feature/capacity config, with hook trust only on consent. It migrates
+   legacy `~/.codex/AGENTS.md` root blocks away with a `.bak`, installs external
+   skills, and invokes provider-owned thoth-mem setup. `$thoth-init` creates
+   project governance only.
 4. Claude marketplace installation exposes its generated agents and owned
    skills; mandatory CLI setup installs external skills and invokes thoth-mem
    setup, while namespaced init creates project governance only.

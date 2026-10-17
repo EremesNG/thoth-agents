@@ -645,6 +645,8 @@ describe('interactive TUI', () => {
 
     await press(stdin, 'j');
     await press(stdin, '\r');
+    expect(lastFrame()).toContain('Trust Codex hooks?');
+    await press(stdin, '\r');
     expect(lastFrame()).toContain('Preview update');
     await press(stdin, 'c');
     await press(stdin, 'j');
@@ -705,10 +707,38 @@ describe('interactive TUI', () => {
     expect(lastFrame()).not.toContain('Update preview');
 
     await press(stdin, '\r');
+    expect(lastFrame()).toContain('Trusted hooks can run outside the sandbox');
+    expect(lastFrame()).toContain('No — review in Codex');
+    expect(ops.planned).toHaveLength(0);
+    await press(stdin, '\r');
     expect(ops.planned.at(-1)).toEqual({
       harness: 'codex',
       action: 'install',
     });
+    expect(lastFrame()).toContain('Preview install');
+  });
+
+  test('Codex hook trust requires a separate Yes choice and still does not apply the plan', async () => {
+    const base = operations(undefined, { codex: missingStatus('codex') });
+    let consent: boolean | undefined;
+    const ops: TuiOperations = {
+      ...base,
+      plan(harness, action, options) {
+        consent = options?.trustHooks;
+        return base.plan(harness, action);
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await openManageCodex(stdin);
+    await press(stdin, '\r');
+    expect(consent).toBeUndefined();
+    expect(lastFrame()).toContain('Trusted hooks can run outside the sandbox');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+    expect(consent).toBe(true);
+    expect(base.applied).toHaveLength(0);
     expect(lastFrame()).toContain('Preview install');
   });
 

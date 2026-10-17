@@ -112,12 +112,12 @@ describe('prompt dialects', () => {
   });
 
   test('models portable lifecycle status and same-session probe terminology', () => {
-    expect(CODEX_PROMPT_DIALECT.tools.lifecycle).toEqual({
-      freshDelegation: '`collaboration.spawn_agent` with `fork_turns="none"`',
+    expect(CODEX_PROMPT_DIALECT.tools.lifecycle).toMatchObject({
+      freshDelegation: '`collaboration.spawn_agent` with `fork_turns: "none"`',
       sameAssignmentContinuation:
         '`collaboration.followup_task` for the existing agent',
       independentContext:
-        '`fork_turns="none"` prevents parent-history inheritance',
+        'children get role instructions from the plugin hook, not inherited history',
       statusAction: 'wait and inspect status',
       terminalState: 'terminal mailbox completion or failure update',
       nonterminalState: 'collaboration.wait_agent timeout or silence',

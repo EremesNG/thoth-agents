@@ -44,8 +44,9 @@ operator to install local thoth-mem separately. For OpenCode the CLI also
 synchronizes the five packaged owned skills globally under
 `~/.config/opencode/skills/`. Only a consistent thoth-mem `complete` result
 completes a published installation; printed manual actions and receipts remain
-provider-owned. Codex also needs the CLI because its plugin cannot install
-custom agents or write `~/.codex/AGENTS.md`. Work execution never calls either CLI.
+provider-owned. Codex also needs the CLI for thin global role TOMLs and config;
+trusted plugin hooks deliver root/role prompts instead of a global `AGENTS.md`
+block. Work execution never calls either CLI.
 
 ## Roles
 
@@ -119,8 +120,10 @@ invalidate package state, or install the newer release.
 - Every `thoth-init` surface only initializes or synchronizes minimum `.thoth/`
   governance; installation owns skills, agents, plugins, harness configuration,
   and dependencies.
-- Codex requires the CLI for global agents, `~/.codex/AGENTS.md`, and managed
-  config; `$thoth-init` creates project work governance only.
+- Codex requires the CLI for thin global role TOMLs and managed config, not root
+  instructions in `~/.codex/AGENTS.md`. Root/role hooks require Node on PATH and
+  explicit trust; see [Codex installation](codex-install.md). `$thoth-init`
+  creates project work governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
 - Codex and Claude native managers own plugin versions and normal cache

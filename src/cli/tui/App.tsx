@@ -34,6 +34,7 @@ type View =
   | 'action'
   | 'status'
   | 'preview'
+  | 'hookTrust'
   | 'modelRoles'
   | 'modelChoice'
   | 'effortChoice'
@@ -286,6 +287,10 @@ export function App({
   const [previewAction, setPreviewAction] = useState<'apply' | 'cancel'>(
     'cancel',
   );
+  const [hookTrustSelected, setHookTrustSelected] = useState(0);
+  const [pendingHookAction, setPendingHookAction] = useState<
+    'install' | 'update'
+  >('install');
   const [previewBackView, setPreviewBackView] =
     useState<PreviewBackView>('harness');
   const [modelHarness, setModelHarness] = useState<HarnessId>('codex');
@@ -415,7 +420,7 @@ export function App({
       setView('harness');
     } else if (view === 'action') {
       setView('root');
-    } else if (view === 'preview') {
+    } else if (view === 'preview' || view === 'hookTrust') {
       setView(previewBackView);
     } else if (view === 'modelRoles') {
       setView('manageHarness');
@@ -441,10 +446,16 @@ export function App({
   ): void {
     setActiveHarness(harness);
     setRestoringDefaults(false);
-    setPlan(operations.plan(harness, action));
     setResult(undefined);
     setPreviewAction('cancel');
     setPreviewBackView(backView);
+    if (harness === 'codex' && (action === 'install' || action === 'update')) {
+      setPendingHookAction(action);
+      setHookTrustSelected(0);
+      setView('hookTrust');
+      return;
+    }
+    setPlan(operations.plan(harness, action));
     setView('preview');
   }
 
@@ -663,6 +674,20 @@ export function App({
     if (input === 'q' || key.escape) {
       if (view === 'root' && exitOnQuit) exit();
       if (view !== 'root') goBack();
+      return;
+    }
+
+    if (view === 'hookTrust') {
+      if (key.upArrow || key.downArrow || input === 'j' || input === 'k')
+        setHookTrustSelected((current) => (current === 0 ? 1 : 0));
+      if (key.return) {
+        setPlan(
+          operations.plan('codex', pendingHookAction, {
+            trustHooks: hookTrustSelected === 1,
+          }),
+        );
+        setView('preview');
+      }
       return;
     }
 
@@ -975,6 +1000,34 @@ export function App({
           draftEffort={effort.kind === 'effort' ? effort.value : 'inherit'}
           choices={effortChoicesForModel(draftModelOption)}
           selected={effortSelected}
+        />
+      </Box>
+    );
+  }
+
+  if (view === 'hookTrust') {
+    return (
+      <Box flexDirection="column">
+        <Header
+          title="Trust Codex hooks?"
+          subtitle="Trusted hooks can run outside the sandbox."
+        />
+        <Text>Trust thoth-agents SessionStart and SubagentStart hooks?</Text>
+        <Menu
+          items={[
+            {
+              id: 'no',
+              label: 'No — review in Codex',
+              detail:
+                'Use /hooks or the startup Trust all and continue prompt.',
+            },
+            {
+              id: 'yes',
+              label: 'Yes — trust plugin hooks',
+              detail: 'Consent to running outside the sandbox.',
+            },
+          ]}
+          selected={hookTrustSelected}
         />
       </Box>
     );

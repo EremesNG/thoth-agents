@@ -8,6 +8,16 @@ import {
 } from './codex-surfaces';
 
 describe('Codex surface validation', () => {
+  test('accepts SubagentStart developer context output', () => {
+    expect(
+      validateCodexHookSurface({
+        event: 'SubagentStart',
+        handler: { type: 'command', command: 'node context.cjs' },
+        outputFields: ['additionalContext'],
+      }),
+    ).toEqual({ ok: true, event: 'SubagentStart', handlerType: 'command' });
+  });
+
   test('records validated, unsupported, and unknown surfaces', () => {
     expect(CODEX_SURFACES.map((surface) => surface.status)).toEqual(
       expect.arrayContaining(['validated', 'unsupported', 'unknown']),

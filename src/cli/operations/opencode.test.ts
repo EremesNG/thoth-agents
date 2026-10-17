@@ -701,6 +701,37 @@ describe('OpenCode operations adapter v0.3', () => {
     });
   });
 
+  test('clears the final managed effort without losing unrelated state', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const statePath = join(configRoot, '.thoth-agents-managed-models.json');
+    writeJson(statePath, {
+      version: 1,
+      models: {},
+      configuredEfforts: { worker: 'high' },
+      futureField: { keep: true },
+    });
+    const config = validLiteConfig();
+    writeJson(liteConfigPath(), {
+      ...config,
+      agents: { worker: { model: 'openai/gpt-5', variant: 'high' } },
+    });
+    const plan = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [{ role: 'worker', provider: 'openai', model: 'gpt-5.6-terra' }],
+      },
+      context(),
+    );
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    expect(state).not.toHaveProperty('configuredEfforts');
+    expect(state.futureField).toEqual({ keep: true });
+    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    expect(written.agents.worker).not.toHaveProperty('variant');
+  });
+
   test('activates all unchanged displayed roles as the agents preset', () => {
     writeManagedConfig();
     writeAllRequiredSkills();

@@ -16,6 +16,8 @@ export type ManagedState =
   | 'unknown';
 
 export type OperationActionKind =
+  | 'doctor'
+  | 'uninstall'
   | 'status'
   | 'list'
   | 'install'

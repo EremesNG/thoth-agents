@@ -1,0 +1,38 @@
+# Sanitized structural fixture. No values copied from the real Codex home.
+model = "placeholder"
+options = { label = "placeholder#[]", enabled = true }
+notes = """
+[agents]
+max_concurrent_threads_per_session = 99
+"""
+literal_notes = '''
+[features]
+default_mode_request_user_input = false
+'''
+items = [
+  "placeholder", # continuation
+  "another",
+]
+
+[features] # retained
+other = true
+
+[agents] # managed setting
+max_concurrent_threads_per_session = 6 # retained
+
+[hooks.state."computer-use@openai-bundled:plugin.json#hooks[0]:stop:0:0"]
+trusted_hash = "placeholder#hash"
+[hooks . state . 'C:\Users\Placeholder\.codex\hooks.json:stop:0:0'] # literal dotted key
+trusted_hash = 'placeholder'
+[hooks.state."escaped\"quote.[]#@:=key"] # closing brackets in key
+trusted_hash = "placeholder"
+
+[[plugins . 'array.[]#key']] # array of tables
+name = "placeholder"
+[[plugins . 'array.[]#key']]
+name = 'placeholder'
+
+[profiles . "quoted.profile"] # whitespace around dots
+command = 'C:\placeholder\tool.exe'
+[profiles."quoted.profile".env]
+PLACEHOLDER = "placeholder"

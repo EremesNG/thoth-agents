@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -8,8 +9,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { basename, dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { renderLegacyCodexAgentArtifacts } from '../harness/adapters/codex';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -19,6 +21,8 @@ import {
   parseRoleTomlEffort,
   replaceRoleTomlEffort,
 } from './codex-install';
+import { uninstallCodex } from './codex-lifecycle';
+import * as pluginInstall from './codex-plugin-install';
 import * as managedStateIo from './managed-state-io';
 
 const FORBIDDEN_CODEX_ADAPTATION_MARKERS = [
@@ -48,6 +52,14 @@ function expectNoLeakedCodexAdaptationMarkers(content: string): void {
 
 function rolePath(home: string, role: string): string {
   return join(home, '.codex', 'agents', `thoth-agents-${role}.toml`);
+}
+
+function legacyRoleContent(role: string): string {
+  const artifact = renderLegacyCodexAgentArtifacts().find((a) =>
+    a.path.endsWith(`thoth-agents-${role}.toml`),
+  );
+  if (!artifact?.content) throw new Error(`Missing legacy role ${role}`);
+  return String(artifact.content);
 }
 
 function managedModelsPath(home: string): string {
@@ -89,6 +101,396 @@ function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
 }
 
 describe('Codex install setup plan', () => {
+  test('explicit legacy recovery backs up intermediate prompts, preserving them by default and refusing non-thoth content', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-legacy-opt-in-'));
+    const home = join(dir, 'home');
+    const path = rolePath(home, 'worker');
+    mkdirSync(dirname(path), { recursive: true });
+    const original = legacyRoleContent('worker').replace(
+      'Be concise.',
+      'Historical build. Be concise.',
+    );
+    writeFileSync(path, original);
+    const config = {
+      reset: false,
+      scope: 'user' as const,
+      projectRoot: dir,
+      homeDir: home,
+      packageRoot: PACKAGE_ROOT,
+    };
+    try {
+      expect(
+        buildCodexSetupPlan(config).items.find((i) => i.targetPath === path)
+          ?.action,
+      ).toBe('preserve-role-toml');
+      const plan = buildCodexSetupPlan({
+        ...config,
+        replaceLegacyAgents: true,
+      });
+      expect(plan.items.find((i) => i.targetPath === path)?.action).toBe(
+        'write-role-toml',
+      );
+      expect(applyCodexSetup(plan).success).toBe(true);
+      expect(readFileSync(`${path}.bak`, 'utf8')).toBe(original);
+      expect(readFileSync(path, 'utf8')).not.toContain('Historical build.');
+      writeFileSync(
+        path,
+        original.replace('You are worker.', 'Operator instructions.'),
+      );
+      expect(
+        buildCodexSetupPlan({
+          ...config,
+          replaceLegacyAgents: true,
+        }).items.find((i) => i.targetPath === path)?.action,
+      ).toBe('preserve-role-toml');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'AGENTS.md',
+    'config.toml',
+    'agents/thoth-agents-worker.toml',
+    'agents/.thoth-agents-managed-models.json',
+    'agents/.thoth-agents-install-recovery.json',
+  ])('fails closed before migration for an unsafe %s backup', (relative) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-unsafe-backup-'));
+    const home = join(dir, 'home');
+    try {
+      applyFreshCodexSetup(dir, home);
+      const root = join(home, '.codex/AGENTS.md');
+      const original =
+        '<!-- thoth-agents:codex-root:start -->legacy<!-- thoth-agents:codex-root:end -->';
+      writeFileSync(root, original);
+      const target = join(home, '.codex', relative);
+      if (relative.endsWith('recovery.json'))
+        writeFileSync(target, JSON.stringify({ version: 1, roles: {} }));
+      const unrelated = join(dir, 'operator.txt');
+      writeFileSync(unrelated, 'untouched');
+      rmSync(`${target}.bak`, { force: true });
+      symlinkSync(unrelated, `${target}.bak`);
+      const before = readFileSync(target, 'utf8');
+      const result = applyCodexSetup(
+        buildCodexSetupPlan({
+          reset: true,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+          replaceLegacyAgents: true,
+        }),
+      );
+      expect(result.success).toBe(false);
+      expect(readFileSync(unrelated, 'utf8')).toBe('untouched');
+      expect(readFileSync(root, 'utf8')).toBe(original);
+      expect(readFileSync(target, 'utf8')).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  beforeEach(() => {
+    vi.spyOn(pluginInstall, 'checkCodexHookCapability').mockReturnValue({
+      success: true,
+      diagnostics: [],
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  test.each([
+    'thoth-agents@thoth-plugins',
+    'thoth-agents@personal',
+  ])('records capacity and consented trust for %s while preserving operator changes', (pluginId) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-consent-'));
+    const home = join(dir, 'home');
+    const bundlePath = join(dir, 'installed');
+    mkdirSync(join(home, '.codex'), { recursive: true });
+    mkdirSync(join(bundlePath, 'codex-hooks'), { recursive: true });
+    const declarations = readFileSync(
+      join(PACKAGE_ROOT, 'plugin/codex-hooks/hooks.json'),
+      'utf8',
+    );
+    writeFileSync(join(bundlePath, 'codex-hooks/hooks.json'), declarations);
+    vi.mocked(pluginInstall.checkCodexHookCapability).mockReturnValue({
+      success: true,
+      diagnostics: [],
+      bundlePath,
+    });
+    const configPath = join(home, '.codex/config.toml');
+    writeFileSync(
+      configPath,
+      '[agents]\nmax_concurrent_threads_per_session = 3\n',
+    );
+    try {
+      applyFreshCodexSetup(dir, home);
+      expect(readFileSync(configPath, 'utf8')).not.toContain('[hooks.state.');
+      expect(
+        JSON.parse(readFileSync(managedModelsPath(home), 'utf8'))
+          .priorThreadsValue,
+      ).toBe('3');
+      const config = {
+        reset: false,
+        scope: 'user' as const,
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+        trustHooks: true,
+        pluginId,
+      };
+      const beforeTrust = readFileSync(configPath, 'utf8');
+      const beforeState = readFileSync(managedModelsPath(home), 'utf8');
+      const dryPlan = buildCodexSetupPlan({ ...config, dryRun: true });
+      expect(formatCodexSetupPlan(dryPlan)).toContain(
+        'With consent, trust installed',
+      );
+      expect(formatCodexSetupPlan(dryPlan)).toContain(
+        'max_concurrent_threads_per_session = 6',
+      );
+      expect(applyCodexSetup(dryPlan).changed).toEqual([]);
+      expect(readFileSync(configPath, 'utf8')).toBe(beforeTrust);
+      expect(readFileSync(managedModelsPath(home), 'utf8')).toBe(beforeState);
+      expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      expect(state.priorThreadsValue).toBe('3');
+      expect(state.ownedHookTrustKeys).toHaveLength(2);
+      expect(readFileSync(configPath, 'utf8')).toContain(
+        `[hooks.state."${pluginId}:codex-hooks/hooks.json:session_start:0:0"]`,
+      );
+      expect(pluginInstall.checkCodexHookCapability).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pluginId }),
+      );
+      writeFileSync(
+        configPath,
+        readFileSync(configPath, 'utf8').replace('= 6', '= 9'),
+      );
+      const update = applyCodexSetup(buildCodexSetupPlan(config));
+      expect(update.success).toBe(true);
+      expect(update.diagnostics.join('\n')).toContain(
+        'Preserved operator-modified',
+      );
+      expect(readFileSync(configPath, 'utf8')).toContain('= 9');
+      expect(
+        JSON.parse(readFileSync(managedModelsPath(home), 'utf8'))
+          .priorThreadsValue,
+      ).toBe('3');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('model overrides retain capacity and hook ownership through uninstall', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-model-uninstall-'));
+    const codexHome = join(dir, 'codex-home');
+    const bundlePath = join(PACKAGE_ROOT, 'plugin');
+    mkdirSync(codexHome, { recursive: true });
+    const configPath = join(codexHome, 'config.toml');
+    writeFileSync(
+      configPath,
+      `[agents]
+max_concurrent_threads_per_session = 3
+`,
+    );
+    vi.mocked(pluginInstall.checkCodexHookCapability).mockReturnValue({
+      success: true,
+      diagnostics: [],
+      bundlePath,
+    });
+    const config = {
+      reset: false,
+      scope: 'user' as const,
+      projectRoot: dir,
+      homeDir: dir,
+      codexHome,
+      packageRoot: PACKAGE_ROOT,
+      trustHooks: true,
+    };
+    try {
+      expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
+      const statePath = join(
+        codexHome,
+        'agents/.thoth-agents-managed-models.json',
+      );
+      const installed = JSON.parse(readFileSync(statePath, 'utf8'));
+      expect(installed.priorThreadsValue).toBe('3');
+      expect(installed.ownedHookTrustKeys).toHaveLength(2);
+      expect(
+        applyCodexManagedModelOverrides(config, [
+          { role: 'worker', model: 'gpt-5' },
+        ]).success,
+      ).toBe(true);
+      const result = uninstallCodex(
+        {
+          cwd: dir,
+          homeDir: dir,
+          codexHome,
+          installLedgerOptions: { homeDir: dir, env: {} },
+          codexPluginCommandExecutor: () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: '',
+          }),
+          nodeAvailable: () => true,
+        },
+        false,
+      );
+      expect(result.success).toBe(true);
+      const restored = readFileSync(configPath, 'utf8');
+      expect(restored).toContain('max_concurrent_threads_per_session = 3');
+      for (const key of installed.ownedHookTrustKeys)
+        expect(restored).not.toContain(key);
+      expect(restored).not.toContain('trusted_hash');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps model-only edits managed but preserves description edits without adopting them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-owned-'));
+    const home = join(dir, 'home');
+    try {
+      applyFreshCodexSetup(dir, home);
+      const target = rolePath(home, 'worker');
+      const initialState = JSON.parse(
+        readFileSync(managedModelsPath(home), 'utf8'),
+      );
+      writeFileSync(
+        target,
+        replaceRoleTomlEffort(
+          replaceRoleModel(readFileSync(target, 'utf8'), 'custom-model'),
+          'high',
+        ),
+      );
+      applyFreshCodexSetup(dir, home);
+      const updated = readFileSync(target, 'utf8');
+      expect(roleModel(updated)).toBe('custom-model');
+      expect(parseRoleTomlEffort(updated)).toBe('high');
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      expect(state.roleDigests['thoth-agents-worker.toml']).toBe(
+        createHash('sha256').update(updated).digest('hex'),
+      );
+      expect(state.roleStructureDigests).toEqual(
+        initialState.roleStructureDigests,
+      );
+      const edited = updated.replace(
+        /^description = .*$/m,
+        'description = "operator description"',
+      );
+      writeFileSync(target, edited);
+      const config = {
+        reset: false,
+        scope: 'user' as const,
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      };
+      const result = applyCodexSetup(buildCodexSetupPlan(config));
+      expect(result.success).toBe(true);
+      expect(result.diagnostics.join('\n')).toMatch(/operator-edited/);
+      expect(readFileSync(target, 'utf8')).toBe(edited);
+      expect(
+        applyCodexManagedModelOverrides(config, [
+          { role: 'worker', model: 'explicit-model' },
+        ]).success,
+      ).toBe(true);
+      const after = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      expect(after.roleDigests).toEqual(state.roleDigests);
+      expect(after.roleStructureDigests).toEqual(state.roleStructureDigests);
+      applyFreshCodexSetup(dir, home, true);
+      expect(readFileSync(target, 'utf8')).toContain(
+        'description = "operator description"',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('migrates exact legacy TOMLs, persists digests, preserves edits and handles old journals', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-thin-'));
+    const home = join(dir, 'home');
+    const digest = (text: string) =>
+      createHash('sha256').update(text).digest('hex');
+    try {
+      const legacy = renderLegacyCodexAgentArtifacts();
+      const roles: Record<string, string> = {};
+      for (const artifact of legacy) {
+        const target = join(home, artifact.path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, String(artifact.content));
+        roles[basename(target)] = digest(String(artifact.content));
+      }
+      const journal = join(
+        home,
+        '.codex/agents/.thoth-agents-install-recovery.json',
+      );
+      writeFileSync(journal, JSON.stringify({ version: 1, roles }));
+      const edited = rolePath(home, 'oracle');
+      const operatorText = `${readFileSync(edited, 'utf8')}# operator edit\n`;
+      writeFileSync(edited, operatorText);
+      const config = {
+        scope: 'user' as const,
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      };
+      vi.mocked(pluginInstall.checkCodexHookCapability).mockReturnValueOnce({
+        success: false,
+        diagnostics: [],
+        error: 'Run update to install hook-capable plugin.',
+      });
+      const blocked = applyCodexSetup(buildCodexSetupPlan(config));
+      expect(blocked.success).toBe(false);
+      expect(blocked.changed).toEqual([]);
+      expect(readFileSync(rolePath(home, 'worker'), 'utf8')).toContain(
+        '<role>',
+      );
+      expect(existsSync(managedModelsPath(home))).toBe(false);
+      const dryPlan = buildCodexSetupPlan({ ...config, dryRun: true });
+      expect(applyCodexSetup(dryPlan).success).toBe(true);
+      expect(readFileSync(rolePath(home, 'worker'), 'utf8')).toContain(
+        '<role>',
+      );
+      expect(existsSync(managedModelsPath(home))).toBe(false);
+      for (let i = 0; i < 2; i++) {
+        const result = applyCodexSetup(buildCodexSetupPlan(config));
+        expect(result.success, result.error).toBe(true);
+        expect(result.diagnostics.join('\n')).toMatch(/operator-edited/);
+        expect(readFileSync(edited, 'utf8')).toBe(operatorText);
+        const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+        for (const role of CODEX_ROLE_NAMES.filter((r) => r !== 'oracle')) {
+          const content = readFileSync(rolePath(home, role), 'utf8');
+          expect(content).not.toContain('<role>');
+          expect(state.roleDigests[`thoth-agents-${role}.toml`]).toBe(
+            digest(content),
+          );
+        }
+        expect(state.roleDigests['thoth-agents-oracle.toml']).toBeUndefined();
+        expect(existsSync(journal)).toBe(false);
+      }
+      const worker = rolePath(home, 'worker');
+      const previous = digest(readFileSync(worker, 'utf8'));
+      expect(
+        applyCodexManagedModelOverrides(config, [
+          { role: 'worker', model: 'operator-model', effort: 'high' },
+        ]).success,
+      ).toBe(true);
+      const updated = readFileSync(worker, 'utf8');
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      expect(state.roleDigests['thoth-agents-worker.toml']).toBe(
+        digest(updated),
+      );
+      expect(digest(updated)).not.toBe(previous);
+      applyFreshCodexSetup(dir, home);
+      expect(readFileSync(worker, 'utf8')).toBe(updated);
+      const afterSync = JSON.parse(
+        readFileSync(managedModelsPath(home), 'utf8'),
+      );
+      expect(afterSync.roleDigests).toEqual(state.roleDigests);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test.each([
     ['gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
     ['custom-model', 'medium', 'custom-model', 'medium'],
@@ -101,12 +503,10 @@ describe('Codex install setup plan', () => {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
       const target = rolePath(home, 'oracle');
+      const legacy = legacyRoleContent('oracle');
       writeFileSync(
         target,
-        replaceRoleTomlEffort(
-          replaceRoleModel(readFileSync(target, 'utf8'), model),
-          effort,
-        ),
+        replaceRoleTomlEffort(replaceRoleModel(legacy, model), effort),
       );
       const key = 'thoth-agents-oracle.toml';
       const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
@@ -147,12 +547,10 @@ describe('Codex install setup plan', () => {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
       const target = rolePath(home, role);
+      const legacy = legacyRoleContent(role);
       writeFileSync(
         target,
-        replaceRoleTomlEffort(
-          replaceRoleModel(readFileSync(target, 'utf8'), model),
-          effort,
-        ),
+        replaceRoleTomlEffort(replaceRoleModel(legacy, model), effort),
       );
       const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
       state.models[`thoth-agents-${role}.toml`] = model;
@@ -262,11 +660,7 @@ describe('Codex install setup plan', () => {
       const itemKinds = plan.items.map((item) => item.kind);
 
       expect(itemKinds).toEqual(
-        expect.arrayContaining([
-          'root-instructions',
-          'managed-model-state',
-          'user-config',
-        ]),
+        expect.arrayContaining(['managed-model-state', 'user-config']),
       );
       expect(itemKinds).not.toContain('personal-plugin-source');
       expect(itemKinds).not.toContain('personal-marketplace');
@@ -321,7 +715,7 @@ describe('Codex install setup plan', () => {
       });
 
       const formatted = formatCodexSetupPlan(plan);
-      expect(formatted).toContain('- merge-managed-block:');
+      expect(formatted).not.toContain('AGENTS.md');
       expect(formatted.match(/- write-role-toml:/g)).toHaveLength(5);
       expect(formatted).toContain('- merge-toml:');
       expect(formatted).not.toContain('.codex/plugins');
@@ -355,7 +749,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('apply preserves root instructions and writes six specialists without mutating plugin-manager state', () => {
+  test('apply preserves root instructions and writes five specialists without mutating plugin-manager state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -378,47 +772,16 @@ describe('Codex install setup plan', () => {
 
       expect(result.success).toBe(true);
       const root = readFileSync(agentsFile, 'utf8');
-      expect(root).toContain('User guidance');
-      expect(root).toContain('thoth-agents:codex-root:start');
-      expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
-      expect(root).toContain('root coordinator');
-      expect(root).toContain('<implementation-ownership>');
-      expect(root).toContain('.thoth/changes/<id>/<id>.md');
-      expect(root).toMatch(
-        /unlocated local source\/flow\/responsibility: Explorer before root read\/search\/shell\/git\/CodeGraph/i,
-      );
-      expect(root).toContain('native liveness');
-      expect(root).toContain('maximum delegation depth is 1');
-      expect(root).toContain('bundled `thoth-sdd` skill');
-      expect(root).toMatch(
-        /substantial or materially risky work requires fresh read-only [^\n]*oracle[^\n]* judgment/i,
-      );
-      expect(root).toContain(
-        'Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance.',
-      );
-      expect(root).toMatch(
-        /direct-work exceptions: known low-risk mechanical work \(reviewed commits included\), no rediscovery/i,
-      );
-      expect(root).toMatch(
-        /explicit user direct-work or no-delegation instruction wins/i,
-      );
-      expect(root).not.toMatch(/another search or dependency ends it/i);
-      expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
-      expect(root).toContain('request_user_input');
-      expect(root).toContain('omit `autoResolutionMs` entirely');
-      expect(root).not.toContain('delegate-first');
-      expect(root).not.toContain('executing-plans');
-      expect(root).not.toContain('requirements-interview');
-      expect(root).not.toContain('Use `question` only');
-      expect(root).not.toContain('@designer');
-      expectNoLeakedCodexAdaptationMarkers(root);
-      expect(readFileSync(`${agentsFile}.bak`, 'utf8')).toBe('User guidance\n');
+      expect(root).toBe('User guidance\n');
+      expect(existsSync(`${agentsFile}.bak`)).toBe(false);
       for (const role of CODEX_ROLE_NAMES) {
         const agentPath = rolePath(home, role);
         expect(existsSync(agentPath)).toBe(true);
         const roleToml = readFileSync(agentPath, 'utf8');
         expectNoLeakedCodexAdaptationMarkers(roleToml);
-        expect(roleToml).toContain('developer_instructions = """\n<role>');
+        expect(roleToml).toContain(
+          'developer_instructions = "Role instructions are delivered as developer context',
+        );
         expect(roleToml).not.toContain('mcp_servers');
         expect(roleToml).not.toContain('skills.config');
         expect(roleToml).not.toContain('[skills');
@@ -752,7 +1115,7 @@ describe('Codex install setup plan', () => {
       expect(parseRoleTomlEffort(updated)).toBe('max');
       expect(updated).not.toContain('toggle');
       expect(updated).not.toContain('budget_tokens');
-      expect(updated).toContain('sandbox_mode = "workspace-write"');
+      expect(updated).toContain('sandbox_mode = "read-only"');
       expect(readManagedModels(home)['thoth-agents-worker.toml']).toBe(
         roleModel(installed),
       );
@@ -1010,7 +1373,7 @@ describe('Codex install setup plan', () => {
 
   test('recovers an interrupted first install only from exact role fingerprints', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-recovery-'));
-    const originalWrite = managedStateIo.writeTextWithBackup;
+    const originalWrite = managedStateIo.writeManagedModelState;
     let spy: ReturnType<typeof vi.spyOn> | undefined;
     try {
       const home = join(dir, 'home');
@@ -1023,10 +1386,10 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       spy = vi
-        .spyOn(managedStateIo, 'writeTextWithBackup')
-        .mockImplementation((path, content) => {
+        .spyOn(managedStateIo, 'writeManagedModelState')
+        .mockImplementation((path, version, updates) => {
           if (path === managedModelsPath(home)) throw new Error('interrupted');
-          return originalWrite(path, content);
+          return originalWrite(path, version, updates);
         });
       const interrupted = applyCodexSetup(firstPlan);
       expect(interrupted.success).toBe(false);
@@ -1060,17 +1423,17 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('rejects replacement of an interrupted-install Worker', () => {
+  test('preserves and reports replacement of an interrupted-install Worker', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-recovery-replace-'));
-    const originalWrite = managedStateIo.writeTextWithBackup;
+    const originalWrite = managedStateIo.writeManagedModelState;
     let spy: ReturnType<typeof vi.spyOn> | undefined;
     try {
       const home = join(dir, 'home');
       spy = vi
-        .spyOn(managedStateIo, 'writeTextWithBackup')
-        .mockImplementation((path, content) => {
+        .spyOn(managedStateIo, 'writeManagedModelState')
+        .mockImplementation((path, version, updates) => {
           if (path === managedModelsPath(home)) throw new Error('interrupted');
-          return originalWrite(path, content);
+          return originalWrite(path, version, updates);
         });
       applyCodexSetup(
         buildCodexSetupPlan({
@@ -1089,16 +1452,17 @@ describe('Codex install setup plan', () => {
         'model = "unowned-replacement"\n',
       );
 
-      expect(() =>
+      const retry = applyCodexSetup(
         buildCodexSetupPlan({
-          dryRun: false,
           reset: false,
           scope: 'user',
           projectRoot: dir,
           homeDir: home,
           packageRoot: PACKAGE_ROOT,
         }),
-      ).toThrow(/trustworthy recovery fingerprint/);
+      );
+      expect(retry.success).toBe(true);
+      expect(retry.diagnostics.join('\n')).toMatch(/operator-edited/);
       expect(readFileSync(rolePath(home, 'worker'), 'utf8')).toContain(
         'unowned-replacement',
       );
@@ -1223,9 +1587,7 @@ describe('Codex install setup plan', () => {
       );
       rmSync(managedModelsPath(home), { force: true });
 
-      expect(() => applyFreshCodexSetup(dir, home)).toThrow(
-        /Worker Codex role lacks thoth-agents ownership state/,
-      );
+      applyFreshCodexSetup(dir, home);
 
       expect(roleModel(readFileSync(explorer, 'utf8'))).toBe(explorerDefault);
       expect(roleModel(readFileSync(librarian, 'utf8'))).toBe(
@@ -1236,7 +1598,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('only preserves Codex role model', () => {
+  test('preserves the entire operator-edited Codex role', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -1265,7 +1627,7 @@ describe('Codex install setup plan', () => {
 
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('designer-user-model');
-      expect(updated).toContain('name = "designer"');
+      expect(updated).toContain('name = "renamed"');
       expect(updated).toContain(
         'description = "Own user-facing implementation choices',
       );
@@ -1283,15 +1645,42 @@ describe('Codex install setup plan', () => {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
       const target = rolePath(home, 'oracle');
-      writeFileSync(
-        target,
-        replaceRoleModel(readFileSync(target, 'utf8'), 'reset-user-model'),
-      );
+      expect(
+        applyCodexManagedModelOverrides(
+          {
+            reset: false,
+            scope: 'user',
+            projectRoot: dir,
+            homeDir: home,
+            packageRoot: PACKAGE_ROOT,
+          },
+          [{ role: 'oracle', model: 'reset-user-model', effort: 'low' }],
+        ).success,
+      ).toBe(true);
 
+      const prior = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      prior.extension = { keep: true };
+      prior.ownedHookTrustKeys = ['owned'];
+      writeFileSync(managedModelsPath(home), JSON.stringify(prior));
       applyFreshCodexSetup(dir, home, true);
+      const resetState = JSON.parse(
+        readFileSync(managedModelsPath(home), 'utf8'),
+      );
+      expect(resetState.configuredModels ?? {}).toEqual({});
+      expect(resetState.configuredEfforts ?? {}).toEqual({});
+      expect(resetState.extension).toEqual({ keep: true });
+      expect(resetState.priorThreadsValue).toBe(prior.priorThreadsValue);
+      expect(resetState.ownedHookTrustKeys).toEqual(['owned']);
 
       const resetModel = roleModel(readFileSync(target, 'utf8'));
       expect(resetModel).not.toBe('reset-user-model');
+      const resetEffort = parseRoleTomlEffort(readFileSync(target, 'utf8'));
+      rmSync(target);
+      applyFreshCodexSetup(dir, home);
+      expect(roleModel(readFileSync(target, 'utf8'))).toBe(resetModel);
+      expect(parseRoleTomlEffort(readFileSync(target, 'utf8'))).toBe(
+        resetEffort,
+      );
       expect(readManagedModels(home)['thoth-agents-oracle.toml']).toBe(
         resetModel,
       );
@@ -1299,4 +1688,331 @@ describe('Codex install setup plan', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe('legacy Codex root migration', () => {
+  test('removes only the marked bytes, preserving CRLF, BOM and surrounding whitespace with a backup', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-migration-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex', 'AGENTS.md');
+    const original =
+      '\uFEFFoperator\r\n\r\n<!-- thoth-agents:codex-root:start -->\r\nedited legacy payload\r\n<!-- thoth-agents:codex-root:end -->\r\n\r\ntail  \r\n';
+    try {
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, original);
+      seedHookBundle(home);
+      const plan = buildCodexSetupPlan({
+        scope: 'user',
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        commandExecutor: hookManager,
+      });
+      const result = applyCodexSetup(plan);
+      expect(result.success).toBe(true);
+      expect(readFileSync(target, 'utf8')).toBe(
+        '\uFEFFoperator\r\n\r\n\r\n\r\ntail  \r\n',
+      );
+      expect(readFileSync(`${target}.bak`, 'utf8')).toBe(original);
+      expect(result.diagnostics.join('\n')).toContain(
+        `Removed legacy Codex root block from ${target}; backup: ${target}.bak`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+function seedHookBundle(home: string): void {
+  const root = join(
+    home,
+    '.codex/plugins/cache/thoth-plugins/thoth-agents/1.0.0/codex-hooks',
+  );
+  mkdirSync(join(root, 'payloads'), { recursive: true });
+  for (const file of [
+    'hooks.json',
+    'context.cjs',
+    ...['root', 'designer', 'explorer', 'librarian', 'oracle', 'worker'].map(
+      (role) => `payloads/${role}.md`,
+    ),
+  ])
+    writeFileSync(join(root, file), 'fixture');
+}
+
+const hookManager: pluginInstall.CodexCommandExecutor = (_command, args) => ({
+  exitCode: 0,
+  stderr: '',
+  stdout: JSON.stringify(
+    args.includes('marketplace')
+      ? { marketplaces: [] }
+      : {
+          installed: [
+            {
+              pluginId: 'thoth-agents@thoth-plugins',
+              enabled: true,
+              version: '1.0.0',
+            },
+          ],
+        },
+  ),
+});
+
+describe('Codex root migration prerequisite', () => {
+  test.each([
+    'missing',
+    'disabled',
+    'legacy',
+  ])('%s plugin fails before any legacy surface is changed', (kind) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-gate-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex', 'AGENTS.md');
+    const legacyRole =
+      'model = "legacy-model"\ndeveloper_instructions = "full legacy prompt"\n';
+    const original =
+      '<!-- thoth-agents:codex-root:start -->legacy<!-- thoth-agents:codex-root:end -->';
+    try {
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, original);
+      mkdirSync(dirname(rolePath(home, 'oracle')), { recursive: true });
+      writeFileSync(rolePath(home, 'oracle'), legacyRole);
+      const commandExecutor: pluginInstall.CodexCommandExecutor = (
+        command,
+        args,
+        options,
+      ) =>
+        kind === 'legacy'
+          ? hookManager(command, args, options)
+          : {
+              exitCode: 0,
+              stderr: '',
+              stdout: JSON.stringify(
+                args.includes('marketplace')
+                  ? { marketplaces: [] }
+                  : {
+                      installed:
+                        kind === 'missing'
+                          ? []
+                          : [
+                              {
+                                pluginId: 'thoth-agents@thoth-plugins',
+                                enabled: false,
+                                version: '1.0.0',
+                              },
+                            ],
+                    },
+              ),
+            };
+      const plan = buildCodexSetupPlan({
+        scope: 'user',
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        commandExecutor,
+      });
+      const result = applyCodexSetup(plan);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('thoth-agents update --agent=codex');
+      expect(readFileSync(target, 'utf8')).toBe(original);
+      expect(existsSync(`${target}.bak`)).toBe(false);
+      expect(readFileSync(rolePath(home, 'oracle'), 'utf8')).toBe(legacyRole);
+      expect(existsSync(join(home, '.codex/config.toml'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('legacy root removal edge cases', () => {
+  const start = '<!-- thoth-agents:codex-root:start -->';
+  const end = '<!-- thoth-agents:codex-root:end -->';
+  test.each([
+    '',
+    ' \r\n',
+    'operator\r\n',
+  ])('absent markers preserve the original file exactly (%j)', (original) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-noop-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex/AGENTS.md');
+    try {
+      seedHookBundle(home);
+      writeFileSync(target, original);
+      const result = applyCodexSetup(
+        buildCodexSetupPlan({
+          scope: 'user',
+          reset: false,
+          projectRoot: dir,
+          homeDir: home,
+          commandExecutor: hookManager,
+        }),
+      );
+      expect(result.success).toBe(true);
+      expect(readFileSync(target, 'utf8')).toBe(original);
+      expect(existsSync(`${target}.bak`)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test.each([
+    start,
+    end,
+    end + start,
+    start + start + end,
+    start + end + end,
+    '<!-- thoth-agents:codex-root:start -- >',
+  ])('preserves and reports malformed or ambiguous markers (%j)', (original) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-malformed-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex/AGENTS.md');
+    try {
+      seedHookBundle(home);
+      writeFileSync(target, original);
+      const plan = buildCodexSetupPlan({
+        scope: 'user',
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        commandExecutor: hookManager,
+      });
+      const result = applyCodexSetup(plan);
+      expect(result.success).toBe(true);
+      expect(result.diagnostics.join('\n')).toContain(
+        'Preserved malformed or ambiguous legacy Codex root markers',
+      );
+      expect(readFileSync(target, 'utf8')).toBe(original);
+      expect(existsSync(`${target}.bak`)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('deletes whitespace-only migration results, but never creates a missing root file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-empty-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex/AGENTS.md');
+    const original = ` \r\n${start}legacy${end}\r\n`;
+    try {
+      seedHookBundle(home);
+      writeFileSync(target, original);
+      const config = {
+        scope: 'user' as const,
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        commandExecutor: hookManager,
+      };
+      expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
+      expect(existsSync(target)).toBe(false);
+      expect(readFileSync(`${target}.bak`, 'utf8')).toBe(original);
+      expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('dry-run reports removal and the prerequisite without changing any file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-root-dry-'));
+    const home = join(dir, 'home');
+    const target = join(home, '.codex/AGENTS.md');
+    const original = `${start}legacy${end}`;
+    try {
+      seedHookBundle(home);
+      writeFileSync(target, original);
+      const plan = buildCodexSetupPlan({
+        dryRun: true,
+        scope: 'user',
+        reset: false,
+        projectRoot: dir,
+        homeDir: home,
+        commandExecutor: hookManager,
+      });
+      const result = applyCodexSetup(plan);
+      expect(formatCodexSetupPlan(plan)).toContain('remove-legacy-root-block');
+      expect(result.diagnostics.join('\n')).toContain(
+        'Codex hook prerequisite passed',
+      );
+      expect(result.changed).toEqual([]);
+      expect(readFileSync(target, 'utf8')).toBe(original);
+      expect(existsSync(`${target}.bak`)).toBe(false);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('legacy root migration preserves non-UTF8 bytes and rejects a changed file before mutation', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-root-bytes-'));
+  const home = join(dir, 'home');
+  const target = join(home, '.codex/AGENTS.md');
+  const outside = Buffer.from([0xff, 0x80, 0, 0x41]);
+  const original = Buffer.concat([
+    outside,
+    Buffer.from(
+      '<!-- thoth-agents:codex-root:start -->legacy<!-- thoth-agents:codex-root:end -->',
+    ),
+    outside,
+  ]);
+  try {
+    seedHookBundle(home);
+    writeFileSync(target, original);
+    const config = {
+      scope: 'user' as const,
+      reset: false,
+      projectRoot: dir,
+      homeDir: home,
+      commandExecutor: hookManager,
+    };
+    const plan = buildCodexSetupPlan(config);
+    writeFileSync(target, 'changed by operator');
+    expect(applyCodexSetup(plan)).toMatchObject({
+      success: false,
+      changed: [],
+    });
+    expect(readFileSync(target, 'utf8')).toBe('changed by operator');
+    expect(existsSync(`${target}.bak`)).toBe(false);
+    expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+    writeFileSync(target, original);
+    expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
+    expect(readFileSync(target)).toEqual(Buffer.concat([outside, outside]));
+    expect(readFileSync(`${target}.bak`)).toEqual(original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('dry-run reports a failed prerequisite and planned removal without mutation', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-root-dry-gate-'));
+  const home = join(dir, 'home');
+  const target = join(home, '.codex/AGENTS.md');
+  const original =
+    '<!-- thoth-agents:codex-root:start -->legacy<!-- thoth-agents:codex-root:end -->';
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, original);
+    const plan = buildCodexSetupPlan({
+      dryRun: true,
+      scope: 'user',
+      reset: false,
+      projectRoot: dir,
+      homeDir: home,
+      commandExecutor: hookManager,
+    });
+    const result = applyCodexSetup(plan);
+    expect(formatCodexSetupPlan(plan)).toContain('remove-legacy-root-block');
+    expect(result.diagnostics.join('\n')).toContain(
+      'Planned migration is conditional on the plugin step passing this prerequisite.',
+    );
+    expect(result.changed).toEqual([]);
+    expect(readFileSync(target, 'utf8')).toBe(original);
+    expect(existsSync(`${target}.bak`)).toBe(false);
+    expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('migration documentation describes preservation rather than a Worker collision blocker', () => {
+  const doc = readFileSync(join(PACKAGE_ROOT, 'docs/codex-install.md'), 'utf8');
+  expect(doc).not.toContain(
+    'without thoth-agents model-ownership state blocks setup',
+  );
 });

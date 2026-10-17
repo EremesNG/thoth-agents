@@ -44,7 +44,11 @@ function renderScalar(value: unknown): string {
 }
 
 function renderField(key: string, value: unknown): string[] {
-  if (key === 'developer_instructions' && typeof value === 'string') {
+  if (
+    key === 'developer_instructions' &&
+    typeof value === 'string' &&
+    value.includes('\n')
+  ) {
     return [`${key} = """`, escapeTomlMultilineString(value), '"""', ''];
   }
 

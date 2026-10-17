@@ -28,6 +28,7 @@ export interface CodexSurfaceRecord {
 
 export type CodexHookEvent =
   | 'SessionStart'
+  | 'SubagentStart'
   | 'UserPromptSubmit'
   | 'PreToolUse'
   | 'PermissionRequest'
@@ -59,6 +60,7 @@ export type CodexHookValidationResult =
 
 const CODEX_HOOK_EVENTS = [
   'SessionStart',
+  'SubagentStart',
   'UserPromptSubmit',
   'PreToolUse',
   'PermissionRequest',
@@ -66,7 +68,10 @@ const CODEX_HOOK_EVENTS = [
   'Stop',
 ] as const satisfies readonly CodexHookEvent[];
 
-const SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS = ['message'] as const;
+const SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS: readonly string[] = [
+  'message',
+  'additionalContext',
+];
 
 export const CODEX_PLUGIN_MANIFEST_FIELDS = [
   'name',
@@ -553,7 +558,7 @@ export function validateCodexHookSurface(
   }
 
   const unsupportedOutputField = input.outputFields?.find(
-    (field) => !SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS.includes(field as 'message'),
+    (field) => !SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS.includes(field),
   );
 
   if (unsupportedOutputField) {

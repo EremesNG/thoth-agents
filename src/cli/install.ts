@@ -7,6 +7,7 @@ import {
   buildClaudeCodeSetupPlan,
   formatClaudeCodeSetupPlan,
 } from './claude-code-install';
+import { requestCodexHookConsent } from './codex-hook-consent';
 import {
   applyCodexSetup,
   buildCodexSetupPlan,
@@ -612,7 +613,9 @@ export async function install(
       return 1;
     }
 
+    const trustHooks = await requestCodexHookConsent(args);
     const plan = buildCodexSetupPlan({
+      trustHooks,
       dryRun: config.dryRun,
       reset: config.reset,
       scope: 'user',

@@ -107,6 +107,23 @@ describe('generateIntegrationPackages', () => {
         skills: './skills/',
         mcpServers: './codex.mcp.json',
       });
+      expect(codexManifest.hooks).toBe('./codex-hooks/hooks.json');
+      expect(claudeManifest).not.toHaveProperty('hooks');
+      expect(existsSync(join(pluginRoot, 'hooks'))).toBe(false);
+      expect(existsSync(join(pluginRoot, 'hooks', 'hooks.json'))).toBe(false);
+      expect(existsSync(join(pluginRoot, 'codex-hooks', 'context.cjs'))).toBe(
+        true,
+      );
+      expect(
+        readdirSync(join(pluginRoot, 'codex-hooks', 'payloads')).sort(),
+      ).toEqual([
+        'designer.md',
+        'explorer.md',
+        'librarian.md',
+        'oracle.md',
+        'root.md',
+        'worker.md',
+      ]);
       expect(claudeManifest).toMatchObject({
         name: 'thoth-agents',
         version: packageVersion,

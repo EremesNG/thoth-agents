@@ -18,6 +18,7 @@ import {
   getImplementationOwnershipInstructions,
 } from '../harness/core/agent-pack';
 import type { HarnessAdapter } from '../harness/types';
+import { renderConfiguredRolePrompt } from './configured-role-prompt';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
@@ -84,11 +85,18 @@ const HARNESS_RENDERERS = [
     harness: 'Codex',
     questionTool: 'request_user_input',
     render(role: SpecialistRole, config?: PluginConfig) {
-      return renderAgentArtifact(
-        codexAdapter,
-        `.codex/agents/thoth-agents-${role}.toml`,
-        config,
-      );
+      return [
+        renderAgentArtifact(
+          codexAdapter,
+          `.codex/agents/thoth-agents-${role}.toml`,
+          config,
+        ),
+        renderAgentArtifact(
+          codexAdapter,
+          `.codex-plugin/codex-hooks/payloads/${role}.md`,
+          config,
+        ),
+      ].join('\n');
     },
   },
   {
@@ -512,7 +520,9 @@ describe('AI-first prompt rendering', () => {
       expect(prompt).toContain(field);
     expect(prompt).not.toContain('<phase-dispatch>');
     expect(prompt).toContain(
-      'New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions',
+      dialect.harness === 'codex'
+        ? 'New objectives, SDD phases, mutable surfaces or independent judgments require fresh specialists'
+        : 'New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions',
     );
   });
 
@@ -944,7 +954,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "18ab1118dcb40d7f86124a5cfa6a5e564f20fe236ca1d97eec08f6f8e11a858b",
+          "4fa7502ff4e0d2365f4a257315ffe5cd80dd2c8458b1c059468c0cadb7f15b08",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
@@ -965,4 +975,64 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       ],
     ]
   `);
+});
+
+// Captured before the Codex-only lifecycle change, covering every configured role.
+test.each([
+  [
+    OPENCODE_PROMPT_DIALECT,
+    '10484aa5bffd8a672ccf2e3bbd2268a7469fea4a61ef4d0d16e069f76c51b7c7',
+  ],
+  [
+    CLAUDE_CODE_PROMPT_DIALECT,
+    '4276f19b6d6045c0701c81ee87ed4d0b5a09f7a41cd2a76cb064f81035adfb8a',
+  ],
+  [
+    PI_PROMPT_DIALECT,
+    'b6d958abd38e91aa2b6585f8c99c41c6380290bbfedee41c56e6af9a90a1da90',
+  ],
+] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
+  const prompts = getAgentPackContract().roles.map(({ name }) =>
+    renderConfiguredRolePrompt({ role: name, dialect }),
+  );
+  expect(
+    createHash('sha256').update(JSON.stringify(prompts)).digest('hex'),
+  ).toBe(digest);
+});
+
+test('Codex hook root enforces capacity-aware scoped continuation', () => {
+  const payload = String(
+    codexAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(
+        ({ path }) => path === '.codex-plugin/codex-hooks/payloads/root.md',
+      )?.content,
+  );
+  const shippedPayload = readFileSync(
+    new URL('../../plugin/codex-hooks/payloads/root.md', import.meta.url),
+    'utf8',
+  );
+  expect(shippedPayload).toBe(payload);
+  expect(shippedPayload.length).toBeLessThanOrEqual(13_800);
+  for (const rule of [
+    'fork_turns: "none"',
+    'role instructions from the plugin hook, not inherited history',
+    'never exceed free native capacity',
+    'refill as children complete',
+    'completed child of the same role',
+    'objective and SDD phase are unchanged',
+    'mutable surface is unchanged (or the work is read-only)',
+    'no independent judgment is required',
+    'Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance',
+    '`wait_agent`/`list_agents` collect status, not reuse permission',
+    'Never `send_message` to a completed child',
+    'blocks slot eviction',
+    'On `agent thread limit reached`, inspect `list_agents`',
+    'allowed reuse or wait for a running child',
+    'report the limit truthfully; never execute delegated work inline',
+  ])
+    expect.soft(payload).toContain(rule);
+  expect(payload).not.toContain(
+    'completed agents are not a reusable role pool',
+  );
 });

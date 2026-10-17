@@ -19,6 +19,8 @@ const defaultRuntimeContext: RuntimeContext = {
 };
 
 const operationCommands = new Set<CliOperationCommand>([
+  'uninstall',
+  'doctor',
   'status',
   'list',
   'update',
@@ -126,6 +128,10 @@ export function parseOperationArgs(args: string[]): OperationArgs {
       result.all = true;
     } else if (arg === '--apply') {
       result.apply = true;
+    } else if (arg === '--replace-legacy-agents') {
+      result.replaceLegacyAgents = true;
+    } else if (arg === '--trust-hooks') {
+      result.trustHooks = true;
     } else if (arg === '--dry-run') {
       result.dryRun = true;
     } else if (arg.startsWith('--role=')) {
@@ -177,6 +183,8 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.tui = false;
     } else if (arg.startsWith('--tmux=')) {
       result.tmux = parseBooleanArg('--tmux', arg.split('=')[1] ?? '');
+    } else if (arg === '--trust-hooks') {
+      result.trustHooks = true;
     } else if (arg === '--dry-run') {
       result.dryRun = true;
     } else if (arg === '--reset') {

@@ -13,6 +13,10 @@ plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
 ├── .claude-plugin/
+├── codex-hooks/
+│   ├── hooks.json
+│   ├── context.cjs
+│   └── payloads/
 ├── codex.mcp.json
 ├── .mcp.json
 ├── agents/
@@ -26,19 +30,26 @@ plugin/
 ```
 
 The Codex manifest declares `skills: "./skills/"` and
-`mcpServers: "./codex.mcp.json"`. The sibling Claude assets are inert for Codex.
-The manifest does not declare or hide custom-agent TOMLs: Codex's documented
-plugin structure has no agents component.
+`mcpServers: "./codex.mcp.json"`, and `hooks: "./codex-hooks/hooks.json"`.
+Trusted `SessionStart` and `SubagentStart` hooks load the root and five role
+payloads through Node on PATH. `codex-hooks/` avoids Claude's automatic
+`hooks/hooks.json` discovery; sibling Claude assets are inert for Codex.
+The manifest does not declare custom-agent TOMLs: Codex plugins cannot register
+agent roles (openai/codex #18308/#36855).
 
 ## Required global layer
 
 The thoth-agents CLI first asks Codex's native manager to register
 `https://github.com/EremesNG/thoth-plugins.git` and install
-`thoth-agents@thoth-plugins`. It then writes five standalone custom agents
-under `~/.codex/agents/`, the managed orchestrator block under
-`~/.codex/AGENTS.md`, and managed configuration under `~/.codex/config.toml`.
-It also installs the four external skills from their canonical repositories.
-The plugin package cannot perform those global writes.
+`thoth-agents@thoth-plugins`. It then writes five thin role TOMLs under
+`~/.codex/agents/`, managed ownership/model state, and configuration under
+`~/.codex/config.toml` (request-user-input feature, six-child capacity with prior
+value recorded, and optional consented hook trust). Root instructions come from
+the plugin, not `~/.codex/AGENTS.md`; a valid legacy block is removed with a
+`.bak` only after the enabled installed plugin passes hook-capability checks.
+Sync requires updating an older plugin before migration. It also installs the
+four external skills from their canonical repositories. The plugin package
+cannot perform those global writes. See [trust and consent](codex-install.md#trust-and-precedence).
 
 `$thoth-init` remains a bundled project-governance skill. It preflights and
 initializes only missing `.thoth/` governance, including `.thoth/constitution.md`
@@ -50,7 +61,8 @@ the sibling installed `thoth-sdd` skill.
 ## Generation lifecycle
 
 `pnpm run integration:sync` renders both harness manifests, their MCP surfaces,
-Claude agents/settings, and one copy of the five thoth-owned skills. It does not
+Claude agents/settings, Codex hook declarations/loader/payloads, and one copy
+of the five thoth-owned skills. It does not
 render or package a marketplace catalog. External skills remain CLI-installed from their canonical
 repositories. `pnpm run build` synchronizes before compilation. The npm version
 lifecycle used by `release:patch`, `release:minor`, and `release:major` keeps
@@ -75,9 +87,10 @@ personal marketplace entry for `thoth-agents` whose local source is
 `~/plugins/thoth-agents`, assigning cache-busting local versions only to the
 copied Codex and Claude manifests.
 
-The same command renders the current checkout's root instructions and five Codex
-role TOMLs through the normal Codex setup planner, then applies its managed model
-state and feature configuration. Existing user model and effort choices remain
+The build packages the current checkout's root and role prompts as hook payloads.
+The same command renders five thin Codex role TOMLs through the normal Codex
+setup planner, then applies its managed model state and feature/capacity
+configuration. Existing user model and effort choices remain
 preserved. Local development setup deliberately does not run the central
 marketplace installer, install external skills, or invoke provider-owned
 thoth-mem setup. Codex plugin selection remains manager-owned; simultaneous

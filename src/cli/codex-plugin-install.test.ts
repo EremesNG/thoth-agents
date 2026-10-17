@@ -13,6 +13,7 @@ import type { CodexCommandExecutor } from './codex-plugin-install';
 import {
   applyCodexPluginSetup,
   buildCodexPluginSetupPlan,
+  checkCodexHookCapability,
   formatCodexPluginSetupPlan,
   getCodexCommand,
 } from './codex-plugin-install';
@@ -754,6 +755,128 @@ describe('Codex native plugin installation', () => {
     expect(result.changed).toEqual([]);
     expect(result.error).toContain('Codex exited with code 17: manager failed');
     expect(result.error?.length).toBeLessThan(400);
+    expect(state.mutations).toEqual([]);
+  });
+});
+
+describe('installed Codex hook capability', () => {
+  test('published setup does not accept a personal plugin instead of the public identity', () => {
+    const config = testConfig('personal-not-public');
+    const result = checkCodexHookCapability({
+      ...config,
+      commandExecutor: (_command, args) => ({
+        exitCode: 0,
+        stderr: '',
+        stdout: JSON.stringify(
+          args.includes('marketplace')
+            ? { marketplaces: [] }
+            : {
+                installed: [
+                  {
+                    pluginId: 'thoth-agents@personal',
+                    enabled: true,
+                    version: VERSION,
+                  },
+                ],
+              },
+        ),
+      }),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(
+      'thoth-agents@thoth-plugins must be installed and enabled',
+    );
+  });
+
+  test('uses the selected plugin identity for manager inspection and cache lookup', () => {
+    const config = testConfig('personal-hooks');
+    const state: ManagerState = {
+      marketplace: true,
+      plugin: true,
+      enabled: true,
+      mutations: [],
+    };
+    const publicExecutor = executor(state);
+    const commandExecutor: CodexCommandExecutor = (command, args, options) => {
+      const result = publicExecutor(command, args, options);
+      return {
+        ...result,
+        stdout: result.stdout.replaceAll(
+          'thoth-agents@thoth-plugins',
+          'thoth-agents@personal',
+        ),
+      };
+    };
+    const root = join(
+      config.codexHome,
+      'plugins/cache/personal/thoth-agents',
+      VERSION,
+      'codex-hooks',
+    );
+    mkdirSync(join(root, 'payloads'), { recursive: true });
+    for (const file of [
+      'hooks.json',
+      'context.cjs',
+      ...['root', 'designer', 'explorer', 'librarian', 'oracle', 'worker'].map(
+        (role) => `payloads/${role}.md`,
+      ),
+    ])
+      writeFileSync(join(root, file), 'fixture');
+    const result = checkCodexHookCapability({
+      ...config,
+      pluginId: 'thoth-agents@personal',
+      commandExecutor,
+    });
+    expect(result.success).toBe(true);
+    expect(result.bundlePath).toBe(join(root, '..'));
+    expect(
+      checkCodexHookCapability({ ...config, commandExecutor }).success,
+    ).toBe(false);
+  });
+
+  test('requires an enabled plugin and all eight hook files in its reported version cache', () => {
+    const config = testConfig('hook-capability');
+    const state: ManagerState = {
+      marketplace: true,
+      plugin: true,
+      enabled: true,
+      mutations: [],
+    };
+    const check = () =>
+      checkCodexHookCapability({ ...config, commandExecutor: executor(state) });
+    expect(check().success).toBe(false);
+    const root = join(
+      config.codexHome,
+      'plugins/cache/thoth-plugins/thoth-agents',
+      VERSION,
+      'codex-hooks',
+    );
+    mkdirSync(join(root, 'payloads'), { recursive: true });
+    for (const path of [
+      'hooks.json',
+      'context.cjs',
+      ...['root', 'designer', 'explorer', 'librarian', 'oracle', 'worker'].map(
+        (role) => `payloads/${role}.md`,
+      ),
+    ]) {
+      writeFileSync(join(root, path), 'fixture');
+    }
+    expect(check().success).toBe(true);
+    for (const file of [
+      'hooks.json',
+      'context.cjs',
+      ...['root', 'designer', 'explorer', 'librarian', 'oracle', 'worker'].map(
+        (role) => `payloads/${role}.md`,
+      ),
+    ]) {
+      rmSync(join(root, file));
+      expect(check().success, `missing ${file}`).toBe(false);
+      writeFileSync(join(root, file), 'fixture');
+    }
+    state.enabled = false;
+    expect(check().error).toContain('thoth-agents update --agent=codex');
+    state.plugin = false;
+    expect(check().success).toBe(false);
     expect(state.mutations).toEqual([]);
   });
 });

@@ -11,6 +11,20 @@ function codexFixture(name: string): string {
 }
 
 describe('Codex TOML writer', () => {
+  test('renders a one-line developer instruction as a scalar', () => {
+    expect(
+      renderCodexToml({
+        surfaceId: 'project-agent-toml',
+        values: {
+          name: 'worker',
+          developer_instructions:
+            'Role instructions arrive as developer context.',
+        },
+      }).content,
+    ).toBe(
+      'name = "worker"\ndeveloper_instructions = "Role instructions arrive as developer context."\n',
+    );
+  });
   test('renders canonical agent TOML with multiline instructions and skips runtime-only fields', () => {
     const result = renderCodexToml({
       surfaceId: 'project-agent-toml',

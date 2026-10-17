@@ -20,12 +20,18 @@ export interface CodexPluginPackageAsset {
 
 export interface CodexPluginHookDefinition extends CodexHookValidationInput {
   matcher?: string;
-  handler: CodexHookValidationInput['handler'] & { command?: unknown };
+  handler: CodexHookValidationInput['handler'] & {
+    command?: unknown;
+    commandWindows?: unknown;
+    timeout?: unknown;
+    additionalContextLimit?: unknown;
+  };
 }
 
 export interface CodexPluginPackageInput {
   manifest: Record<string, unknown>;
   assets?: CodexPluginPackageAsset[];
+  hookFiles?: { path: string; content: string }[];
 }
 
 export interface CodexPluginPackageResult {
@@ -138,6 +144,15 @@ function normalizeHookDefinition(
 ): Record<string, unknown> {
   return {
     command: hook.handler.command,
+    ...(hook.handler.commandWindows !== undefined
+      ? { commandWindows: hook.handler.commandWindows }
+      : {}),
+    ...(hook.handler.timeout !== undefined
+      ? { timeout: hook.handler.timeout }
+      : {}),
+    ...(hook.handler.additionalContextLimit !== undefined
+      ? { additionalContextLimit: hook.handler.additionalContextLimit }
+      : {}),
     type: 'command',
   };
 }
@@ -283,6 +298,9 @@ function parseRawHookContent(content: string): {
             type:
               typeof definition.type === 'string' ? definition.type : 'command',
             command: definition.command,
+            commandWindows: definition.commandWindows,
+            timeout: definition.timeout,
+            additionalContextLimit: definition.additionalContextLimit,
             async: definition.async,
           },
         });
@@ -398,6 +416,43 @@ export function renderCodexPluginPackage(
         ? { sourcePath: normalizePath(asset.sourcePath) }
         : {}),
       ...(assetContent !== undefined ? { sha256: sha256(assetContent) } : {}),
+    });
+  }
+
+  for (const file of [...(input.hookFiles ?? [])].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  )) {
+    const path = normalizePath(file.path);
+    const validation = validateCodexPluginPackageSurface({
+      surfaceId: 'plugin-hooks-json',
+      path,
+      fields: ['hooks'],
+    });
+    if (!validation.ok) {
+      diagnostics.push(...validation.diagnostics);
+      continue;
+    }
+    if (!path.startsWith('.codex-plugin/codex-hooks/') || path.endsWith('/')) {
+      diagnostics.push(
+        codexHookPackageDiagnostic(
+          'codex.plugin.path.unvalidated',
+          `Hook asset "${path}" must be a file under codex-hooks/.`,
+        ),
+      );
+      continue;
+    }
+    artifacts.push({
+      harness: 'codex',
+      kind: 'hook-config',
+      path,
+      content: file.content,
+      description: 'Codex-only hook runtime asset.',
+    });
+    provenance.push({
+      field: 'hooks',
+      path,
+      reference: pluginRootReference(path),
+      sha256: sha256(file.content),
     });
   }
 

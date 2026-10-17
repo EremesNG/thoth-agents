@@ -4,7 +4,9 @@ import {
   getDefaultOpenCodeVariant,
 } from '../config';
 import { getHarnessAdapter } from '../harness/registry';
+import { requestCodexHookConsent } from './codex-hook-consent';
 import { CODEX_ROLE_NAMES } from './codex-install';
+import { doctorCodex, uninstallCodex } from './codex-lifecycle';
 import { install } from './install';
 import {
   getOperationHarness,
@@ -290,6 +292,8 @@ Commands:
   (no command)          Open the interactive TUI in a TTY; fall back to OpenCode install in CI/non-TTY
   install               Install OpenCode, Codex, Claude Code, or Pi agent assets
   generate              Generate harness-specific artifacts
+  uninstall             Remove attributable Codex surfaces (--agent=codex; --dry-run previews)
+  doctor                Diagnose Codex installation, read-only (--agent=codex)
   status                Show official CLI-managed versions and managed install status
   list                  List managed surfaces and actions
   update                Preview a complete selected-harness CLI refresh
@@ -301,6 +305,7 @@ Options:
   --no-tui               Non-interactive mode
   --dry-run              Simulate install without writing files
   --apply                Apply a reviewed update, sync, or model plan
+  --trust-hooks          Consent to Codex plugin hooks running outside the sandbox (install/update)
   --reset                Repair managed installer-owned targets
   --agent=opencode|codex|claude|pi
                          Select OpenCode plugin install (default), Codex/Claude setup, or complete Pi-native setup
@@ -386,7 +391,10 @@ function statusReports(
 function buildOperationPlan(
   command: Extract<CliOperationCommand, 'update' | 'sync'>,
   args: OperationArgs,
-  context: OperationContext = operationContext(),
+  context: OperationContext & {
+    trustHooks?: boolean;
+    replaceLegacyAgents?: boolean;
+  } = operationContext(),
 ): OperationPlan {
   const harness = selectedHarness(args);
   if (harness === 'opencode') {
@@ -558,6 +566,36 @@ async function runOperationCommand(
   args: OperationArgs,
   services: CliModelCommandServices,
 ): Promise<number> {
+  if (command === 'doctor' || command === 'uninstall') {
+    if (
+      args.harness !== 'codex' ||
+      args.all ||
+      args.roles.length ||
+      args.trustHooks ||
+      args.replaceLegacyAgents ||
+      (command === 'doctor' && args.apply)
+    ) {
+      console.error(
+        `${command} supports only --agent=codex with no model/trust options.`,
+      );
+      return 1;
+    }
+    if (args.apply && args.dryRun) {
+      console.error('--apply cannot be combined with --dry-run.');
+      return 1;
+    }
+    const result =
+      command === 'doctor'
+        ? doctorCodex(services.operationContext())
+        : uninstallCodex(services.operationContext(), args.dryRun ?? false);
+    console.log(
+      [
+        `Codex ${command}${args.dryRun ? ' (dry-run)' : ''}`,
+        ...result.messages,
+      ].join('\n'),
+    );
+    return result.success ? 0 : 1;
+  }
   if (command === 'status') {
     console.log(
       formatHarnessStatusReport(
@@ -572,9 +610,29 @@ async function runOperationCommand(
     return 0;
   }
 
+  if (
+    args.replaceLegacyAgents &&
+    (command !== 'update' || selectedHarness(args) !== 'codex')
+  ) {
+    console.error(
+      '--replace-legacy-agents supports only update --agent=codex.',
+    );
+    return 1;
+  }
   if (command === 'update' || command === 'sync') {
+    const trustHooks =
+      selectedHarness(args) === 'codex' && command === 'update'
+        ? await requestCodexHookConsent({
+            trustHooks: args.trustHooks,
+            dryRun: !args.apply || args.dryRun,
+          })
+        : false;
     return printPlanOrApply(
-      buildOperationPlan(command, args, services.operationContext()),
+      buildOperationPlan(command, args, {
+        ...services.operationContext(),
+        trustHooks,
+        replaceLegacyAgents: args.replaceLegacyAgents,
+      }),
       args,
       services.applyOperationPlan ?? applyOperationPlan,
     );

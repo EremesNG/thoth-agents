@@ -20,8 +20,7 @@ import {
 } from '../install-ledger';
 import {
   readManagedModelState,
-  stableJson,
-  writeTextWithBackup,
+  writeManagedModelState,
 } from '../managed-state-io';
 import { resolveOpenCodeEffort } from '../opencode-effort';
 import {
@@ -1817,16 +1816,11 @@ function applyModelPlan(
   };
   base.preset = APPLIED_MODELS_PRESET;
   writeConfig(targetPath, base);
-  writeTextWithBackup(
-    statePath,
-    stableJson({
-      version: 1,
-      models: state.models,
-      ...(Object.keys(configuredEfforts).length > 0
-        ? { configuredEfforts }
-        : {}),
-    }),
-  );
+  writeManagedModelState(statePath, 1, {
+    models: state.models,
+    configuredEfforts:
+      Object.keys(configuredEfforts).length > 0 ? configuredEfforts : undefined,
+  });
 
   return {
     harness: 'opencode',

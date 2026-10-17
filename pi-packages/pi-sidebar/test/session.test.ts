@@ -212,19 +212,19 @@ it('declares only displayed source panels, releases on hide/narrow/dispose, pers
   );
   command('on');
   expect(getUIPreferences().absorbedWorkPanelSources).toContain('test-source');
-  app.terminal.columns = 123;
+  app.terminal.columns = 129;
   app.terminal.resize();
   app.tui.renderNow(true);
   expect(getUIPreferences().absorbedWorkPanelSources).not.toContain(
     'test-source',
   );
-  app.terminal.columns = 131;
+  app.terminal.columns = 137;
   app.terminal.resize();
   app.tui.renderNow(true);
   expect(getUIPreferences().absorbedWorkPanelSources).not.toContain(
     'test-source',
   );
-  app.terminal.columns = 132;
+  app.terminal.columns = 138;
   app.terminal.resize();
   app.tui.renderNow(true);
   expect(getUIPreferences().absorbedWorkPanelSources).toContain('test-source');
@@ -404,11 +404,11 @@ it('combines latest cumulative subagent usage without accumulating, guards forei
   app.commands.get('sidebar').handler('resize', app.ctx);
   expect(app.input('\x1b[C')).toEqual({ consume: true });
   app.tui.renderNow(true);
-  expect(app.widths.at(-1)).toBe(117);
+  expect(app.widths.at(-1)).toBe(111);
   app.input('\x1b');
   app.tui.renderNow(true);
-  expect(app.widths.at(-1)).toBe(116);
-  app.terminal.input('\x1b[<0;116;2M');
+  expect(app.widths.at(-1)).toBe(110);
+  app.terminal.input('\x1b[<0;110;2M');
   app.terminal.input('\x1b[<32;110;2M');
   app.tui.renderNow(true);
   expect(app.widths.at(-1)).toBe(109);
@@ -443,8 +443,11 @@ it('mounts a decorative regular sidebar and never declares absorption after a fa
   expect(app.ui.notify).toHaveBeenCalledTimes(1);
 });
 
-it('shrinks manual presentation to 28 at 92 columns, restores preferred width, and persists startup without persisting session controls', () => {
-  const app = setup();
+it.each([
+  false,
+  true,
+])('shrinks manual presentation to 28 at 92 columns, restores preferred width, and persists startup without persisting session controls (regular %s)', (regular) => {
+  const app = setup(regular);
   source({ on() {} });
   app.handlers.get('session_start')?.({}, app.ctx);
   app.tui.start();
@@ -467,7 +470,7 @@ it('shrinks manual presentation to 28 at 92 columns, restores preferred width, a
   app.terminal.resize();
   app.tui.renderNow(true);
   app.tui.renderNow(true);
-  expect(app.widths.at(-1)).toBe(116);
+  expect(app.widths.at(-1)).toBe(110);
   command('startup off');
   const config = JSON.parse(
     readFileSync(join(app.dir, 'thoth-sidebar.json'), 'utf8'),
@@ -480,8 +483,30 @@ it('shrinks manual presentation to 28 at 92 columns, restores preferred width, a
   );
   command('on');
   app.tui.renderNow(true);
-  expect(app.widths.at(-1)).toBe(116);
+  expect(app.widths.at(-1)).toBe(110);
   expect(app.requests).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  false,
+  true,
+])('preserves 64 main columns when starting manual mode at 92 columns (regular %s)', (regular) => {
+  const app = setup(regular);
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({ startup: 'manual', width: 28 }),
+  );
+  app.terminal.columns = 92;
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  app.tui.renderNow(true);
+  expect(app.widths.at(-1)).toBe(64);
+  app.terminal.columns = 160;
+  app.terminal.resize();
+  app.tui.renderNow(true);
+  app.tui.renderNow(true);
+  expect(app.widths.at(-1)).toBe(124);
 });
 
 it('shows provider limits from the registry at start and on report, and clears them when allowed', () => {
@@ -605,14 +630,14 @@ it.each([
   const status = (width: number) =>
     expect(app.ui.setStatus).toHaveBeenLastCalledWith(
       'thoth-sidebar-resize',
-      `Sidebar width ${width} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
+      `Sidebar width ${width} (36–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
     );
   await command('resize');
-  status(44);
+  status(50);
   expect(app.input('\x1b[D')).toEqual({ consume: true });
-  status(45);
+  status(51);
   expect(app.input('\x1b[1;2C')).toEqual({ consume: true });
-  status(41);
+  status(47);
   expect(app.input('\r')).toEqual({ consume: true });
   expect(app.ui.setStatus).toHaveBeenLastCalledWith(
     'thoth-sidebar-resize',
@@ -621,11 +646,11 @@ it.each([
   await command('off');
   await command('on');
   await command('resize');
-  status(41);
+  status(47);
   app.input('\x1b[C');
   app.input('\x1b');
   await command('resize');
-  status(41);
+  status(47);
 });
 
 it.each([
@@ -654,16 +679,16 @@ it.each([
   const status = (width: number) =>
     expect(app.ui.setStatus).toHaveBeenLastCalledWith(
       'thoth-sidebar-resize',
-      `Sidebar width ${width} (28–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
+      `Sidebar width ${width} (36–72) · ←/→ move divider · Shift 4 · Enter confirm · Esc revert`,
     );
   command('resize');
   expect(inputListeners.size).toBe(listenerCount + 1);
   app.terminal.input('\x1b[D');
-  status(45);
+  status(51);
   app.terminal.input('\x1b[1;2D');
-  status(49);
+  status(55);
   app.terminal.input('\x1b[C');
-  status(48);
+  status(54);
   app.terminal.input('\x1b');
   expect(inputListeners.size).toBe(listenerCount);
   expect(app.ui.setStatus).toHaveBeenLastCalledWith(
@@ -671,7 +696,7 @@ it.each([
     undefined,
   );
   command('resize');
-  status(44);
+  status(50);
   app.terminal.input('\r');
   expect(inputListeners.size).toBe(listenerCount);
   // After confirmation, the host receives Left again and focuses its row.
@@ -679,7 +704,7 @@ it.each([
   expect(work.render().join('\n')).toContain('›');
   command('resize');
   app.terminal.input('\x1b[C');
-  status(43);
+  status(49);
   app.shutdown();
   expect(inputListeners.size).toBe(listenerCount - 1);
   app.terminal.input('\x1b[C');
@@ -736,17 +761,17 @@ it('renders resize guidance inside the sidebar and removes it on confirm and rev
   app.commands.get('sidebar').handler('resize', app.ctx);
   app.tui.renderNow(true);
   expect(app.screen()).toContain('RESIZE');
-  expect(app.screen()).toContain('width 44');
+  expect(app.screen()).toContain('width 50 (36–72)');
   app.input('\x1b[D');
   app.tui.renderNow(true);
-  expect(app.screen()).toContain('width 45');
+  expect(app.screen()).toContain('width 51');
   app.input(String.fromCharCode(13));
   app.tui.renderNow(true);
   expect(app.screen()).not.toContain('RESIZE');
   app.commands.get('sidebar').handler('resize', app.ctx);
   app.input('\x1b[D');
   app.tui.renderNow(true);
-  expect(app.screen()).toContain('width 46');
+  expect(app.screen()).toContain('width 52');
   app.input(String.fromCharCode(27));
   app.tui.renderNow(true);
   expect(app.screen()).not.toContain('RESIZE');
@@ -985,7 +1010,7 @@ it('saves settings from the overlay with Enter, preserving unknown keys, and app
   const saved = JSON.parse(readFileSync(path, 'utf8'));
   expect(saved.future).toEqual({ keep: true });
   expect(saved.startup).toBe('manual');
-  expect(saved.width).toBe(48);
+  expect(saved.width).toBe(54);
   expect(saved.panels.find((p: any) => p.id === 'session')).toEqual({
     id: 'session',
     visible: false,
@@ -993,7 +1018,7 @@ it('saves settings from the overlay with Enter, preserving unknown keys, and app
   });
   app.tui.renderNow(true);
   app.tui.renderNow(true);
-  expect(app.widths.at(-1)).toBe(112);
+  expect(app.widths.at(-1)).toBe(106);
 });
 
 it('leaves the config untouched when the settings overlay is cancelled', async () => {

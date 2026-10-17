@@ -325,9 +325,13 @@ function glyphRole(
   status: RenderStatus,
 ): WorkPanelSegmentRole {
   if (row.statusGlyphRole) return row.statusGlyphRole;
+  // The semantic expectedExit role outranks a provider's muted tone.
+  if (status === 'expectedExit') return 'dim';
   if (row.statusTone === 'muted') return 'muted';
   if (status === 'running' || status === 'in_progress') return 'accent';
   if (status === 'failed') return 'error';
+  if (status === 'timedOut') return 'warning';
+  if (status === 'resolved') return 'muted';
   if (status === 'completed') return 'success';
   if (['cancelled', 'interrupted', 'deleted'].includes(status)) return 'muted';
   if (status === 'blocked' || status === 'stopping') return 'warning';
@@ -339,6 +343,9 @@ const nativeGlyphs = {
   in_progress: '◐',
   completed: '✓',
   failed: '✗',
+  timedOut: '◷',
+  resolved: '↻',
+  expectedExit: '✓',
   pending: '○',
   queued: '○',
   stopping: '■',
@@ -386,43 +393,185 @@ function truncateData(
   return prefix + suffix;
 }
 
+const isFlexibleRole = (role: WorkPanelSegmentRole) =>
+  role === 'secondary' || role === 'warning' || role === 'error';
+
+/**
+ * Fitting unit: a text segment plus the meta separator that introduces it. Both keep their own
+ * role; the separator belongs to the unit's budget, so it is dropped or kept with its text.
+ */
+interface IdentityItem {
+  lead?: WorkPanelSegment;
+  body: WorkPanelSegment;
+}
+
+const itemWidth = (item: IdentityItem, measure: Measure) =>
+  measure(item.lead?.text ?? '') + measure(item.body.text);
+
+function identityItems(segments: readonly WorkPanelSegment[]): IdentityItem[] {
+  const separator = ` ${resolveIcon('separator', '·')} `;
+  const items: IdentityItem[] = [];
+  for (let index = 0; index < segments.length; index++) {
+    const part = segments[index];
+    const next = segments[index + 1];
+    if (
+      part.role === 'meta' &&
+      part.text === separator &&
+      next &&
+      isFlexibleRole(next.role)
+    ) {
+      // An empty summary leaves no separator behind.
+      if (next.role === 'secondary' && next.text === '')
+        items.push({ body: { ...next } });
+      else items.push({ lead: { ...part }, body: { ...next } });
+      index++;
+    } else if (
+      isFlexibleRole(part.role) &&
+      part.text.length > separator.length &&
+      part.text.startsWith(separator)
+    ) {
+      items.push({
+        lead: { text: separator, role: 'meta' },
+        body: { ...part, text: part.text.slice(separator.length) },
+      });
+    } else if (part.role === 'secondary' && part.text === separator)
+      items.push({ body: { ...part, text: '' } });
+    else items.push({ body: { ...part } });
+  }
+  return items;
+}
+
+/** Shrink one unit to `target` cells, truncating its text (and, last, its separator). */
+function shrinkItem(item: IdentityItem, target: number, measure: Measure) {
+  const { lead, body } = item;
+  if (!lead) {
+    body.text = truncateData(body.text, target, measure);
+    return;
+  }
+  // Drop the whole summary when only its separator would fit.
+  if (body.role === 'secondary' && target <= measure(lead.text)) {
+    body.text = '';
+    item.lead = undefined;
+    return;
+  }
+  const fitted = truncateData(lead.text + body.text, target, measure);
+  if (fitted.startsWith(lead.text)) body.text = fitted.slice(lead.text.length);
+  else {
+    lead.text = fitted;
+    body.text = '';
+  }
+}
+
+const flattenItems = (items: readonly IdentityItem[]): WorkPanelSegment[] =>
+  items.flatMap(({ lead, body }) => (lead ? [lead, body] : [body]));
+
+/**
+ * Truncate role-tagged segments to `width` cells without merging them: each keeps its own
+ * role, trailing separators are dropped, and `ellipsis` (if any) ends the last kept segment.
+ */
+function truncateSegments(
+  segments: readonly WorkPanelSegment[],
+  width: number,
+  measure: Measure,
+  ellipsis: string,
+): WorkPanelSegment[] {
+  if (width <= 0 || segmentText(segments) === '') return [];
+  if (measure(segmentText(segments)) <= width)
+    return segments.map((segment) => ({ ...segment }));
+  const room = Math.max(0, width - measure(ellipsis));
+  const kept: WorkPanelSegment[] = [];
+  let used = 0;
+  for (const segment of segments) {
+    const left = room - used;
+    if (left <= 0) break;
+    const text = truncateData(segment.text, left, measure, '');
+    kept.push({ ...segment, text });
+    used += measure(text);
+    if (text !== segment.text) break;
+  }
+  while (kept.length > 1 && kept.at(-1)?.role === 'meta') kept.pop();
+  if (ellipsis && measure(ellipsis) <= width) {
+    if (!kept.length) kept.push({ text: '', role: segments[0].role });
+    (kept.at(-1) as WorkPanelSegment).text += ellipsis;
+  }
+  return kept.filter((segment) => segment.text !== '');
+}
+
 function fitIdentity(
   segments: readonly WorkPanelSegment[],
   width: number,
   measure: Measure,
 ): WorkPanelSegment[] {
-  const parts = segments.map((segment) => ({ ...segment }));
-  const attention = parts.filter(
-    ({ role }) => role === 'warning' || role === 'error',
+  const items = identityItems(segments);
+  const attention = items.filter(
+    ({ body }) => body.role === 'warning' || body.role === 'error',
   );
-  if (attention.length && width <= measure(segmentText(attention))) {
-    const text = segmentText(attention);
-    const separator = ` ${resolveIcon('separator', '·')} `;
-    const label = text.startsWith(separator)
-      ? text.slice(separator.length)
-      : text.trimStart();
-    return [
-      {
-        text: truncateData(label, width, measure, ''),
-        role: attention[0].role,
-      },
-    ];
+  if (
+    attention.length &&
+    width <= attention.reduce((sum, item) => sum + itemWidth(item, measure), 0)
+  ) {
+    // Attention outranks everything: only it remains, led by no separator.
+    const sequence = flattenItems(attention);
+    if (sequence[0]?.role === 'meta') sequence.shift();
+    return truncateSegments(sequence, width, measure, '');
   }
-  let excess = measure(segmentText(parts)) - width;
+  const total = items.reduce((sum, item) => sum + itemWidth(item, measure), 0);
+  let excess = total - width;
   for (const role of shrinkOrder) {
-    for (const part of parts) {
+    for (const item of items) {
       if (excess <= 0) break;
-      if (part.role !== role) continue;
-      const before = measure(part.text);
-      part.text = truncateData(
-        part.text,
-        Math.max(0, before - excess),
-        measure,
-      );
-      excess -= before - measure(part.text);
+      if (item.body.role !== role) continue;
+      const before = itemWidth(item, measure);
+      shrinkItem(item, Math.max(0, before - excess), measure);
+      excess -= before - itemWidth(item, measure);
     }
   }
-  return parts;
+  return flattenItems(items);
+}
+
+/**
+ * Columns layout: the name is reserved first. When warning/error text cannot fit beside it,
+ * the summary is already gone and the warnings truncate, role by role, before the name does.
+ */
+function fitIdentityKeepName(
+  segments: readonly WorkPanelSegment[],
+  width: number,
+  measure: Measure,
+): WorkPanelSegment[] {
+  const separator = ` ${resolveIcon('separator', '·')} `;
+  const items = identityItems(segments);
+  const attention = items.filter(
+    ({ body }) => body.role === 'warning' || body.role === 'error',
+  );
+  const names = items.filter(({ body }) => body.role === 'primary');
+  if (!attention.length || !names.length)
+    return fitIdentity(segments, width, measure);
+  const nameText = names.map(({ body }) => body.text).join('');
+  const attentionWidth = attention.reduce(
+    (sum, item) => sum + itemWidth(item, measure),
+    0,
+  );
+  if (measure(nameText) + attentionWidth <= width)
+    return fitIdentity(segments, width, measure);
+  const nameWidth = Math.min(measure(nameText), width);
+  const room = width - nameWidth - measure(separator);
+  const result: WorkPanelSegment[] = [
+    { text: truncateData(nameText, nameWidth, measure), role: 'primary' },
+  ];
+  if (room > 0) {
+    const sequence = flattenItems(attention);
+    if (sequence[0]?.role === 'meta') sequence.shift();
+    result.push(
+      { text: separator, role: 'meta' },
+      ...truncateSegments(
+        sequence,
+        room,
+        measure,
+        resolveIcon('ellipsis', '…'),
+      ),
+    );
+  }
+  return result;
 }
 
 /** Wrap plain semantic segments at whitespace, retaining roles and cell boundaries. */
@@ -506,6 +655,17 @@ function reservedMetricSegments(
         value + reservationCell.repeat(Math.max(0, reserved - value.length)),
     ),
   }));
+}
+
+/**
+ * Columns-layout segments: elapsed is shown as the bare, right-aligned time so the clock
+ * icon stays free for the timed-out status glyph.
+ */
+function columnMetricSegments(group: WorkPanelMetricGroup): WorkPanelSegment[] {
+  const parts = reservedMetricSegments(group);
+  if (group.key !== 'elapsed') return parts;
+  const text = segmentText(parts).replace(/^[^\d?]+/, '');
+  return [{ text, role: parts.at(-1)?.role ?? 'meta' }];
 }
 
 export type WorkPanelMetricGrid = readonly {
@@ -633,6 +793,139 @@ function gridContent(
   };
 }
 
+const contentGutter = () => (getRenderKit() ? 7 : 4);
+const terminalStatuses = new Set<RenderStatus>([
+  'completed',
+  'failed',
+  'timedOut',
+  'cancelled',
+  'interrupted',
+  'deleted',
+  'resolved',
+  'expectedExit',
+]);
+/** Columns shed in this order as the panel narrows; elapsed and the name never drop. */
+const columnDropOrder = [
+  'speed',
+  'context',
+  'tools',
+  'cost',
+  'model',
+  'tokens',
+] as const;
+const MODEL_COLUMN_WIDTH = 10;
+/** Optional columns survive only while every summary keeps this many cells. */
+const MIN_SUMMARY_CELLS = 12;
+
+function minIdentityWidth(
+  identity: readonly WorkPanelSegment[],
+  measure: Measure,
+): number {
+  const items = identityItems(identity);
+  const separator = measure(` ${resolveIcon('separator', '·')} `);
+  const secondary = items
+    .filter(({ body }) => body.role === 'secondary')
+    .reduce((sum, item) => sum + itemWidth(item, measure), 0);
+  return (
+    items
+      .filter(({ body }) => body.role !== 'secondary')
+      .reduce((sum, item) => sum + itemWidth(item, measure), 0) +
+    // Separator plus the summary, or all of a shorter one.
+    Math.min(secondary, separator + MIN_SUMMARY_CELLS)
+  );
+}
+
+/**
+ * Panel-wide single-line column plan: decided from reserved number widths (model fixed at
+ * 10 cells), never live digits, so every row shares the same visible, aligned columns.
+ */
+export function createWorkPanelColumnPlan(
+  rows: readonly WorkPanelRow[],
+  width: number,
+  measure: Measure = defaultMeasure,
+): WorkPanelMetricGrid {
+  const available = Math.max(0, width - contentGutter());
+  const separator = measure(` ${resolveIcon('separator', '·')} `);
+  const widths = new Map<NonNullable<WorkPanelMetricGroup['key']>, number>();
+  let identity = 0;
+  for (const row of rows) {
+    identity = Math.max(
+      identity,
+      minIdentityWidth(
+        row.identity ??
+          row.segments ?? [{ text: row.primary, role: 'primary' }],
+        measure,
+      ),
+    );
+    for (const group of row.metrics ?? []) {
+      if (!group.key) continue;
+      const size =
+        group.key === 'model'
+          ? MODEL_COLUMN_WIDTH
+          : measure(
+              segmentText(columnMetricSegments(group)).replaceAll(
+                reservationCell,
+                ' ',
+              ),
+            );
+      widths.set(group.key, Math.max(widths.get(group.key) ?? 0, size));
+    }
+  }
+  let plan = [...widths].map(([key, size]) => ({ key, width: size }));
+  const total = () =>
+    plan.reduce((sum, column) => sum + column.width, 0) +
+    separator * plan.length;
+  for (const key of columnDropOrder) {
+    if (total() + identity <= available) break;
+    plan = plan.filter((column) => column.key !== key);
+  }
+  return plan;
+}
+
+/** Per-element theme roles for one metric column; values keep their reserved text. */
+function columnSegments(
+  key: NonNullable<WorkPanelMetricGroup['key']>,
+  parts: readonly WorkPanelSegment[],
+  row: WorkPanelRow,
+  status: RenderStatus,
+  width: number,
+  measure: Measure,
+): WorkPanelSegment[] {
+  const text = segmentText(parts);
+  switch (key) {
+    case 'model':
+      return [
+        { text: truncateData(text, width, measure), role: 'muted' as const },
+      ];
+    case 'tokens':
+      // Direction markers colour each segment; an unmarked column reads as one input run.
+      return parts.some(({ direction }) => direction)
+        ? parts.map(({ text: part, direction }) => ({
+            text: part,
+            role:
+              direction === 'in'
+                ? 'accent'
+                : direction === 'out'
+                  ? 'success'
+                  : 'meta',
+          }))
+        : [{ text, role: 'accent' }];
+    case 'cost':
+      return [{ text, role: 'warning' }];
+    case 'elapsed': {
+      const role = glyphRole(row, status);
+      return [
+        {
+          text,
+          role: role === 'success' || role === 'secondary' ? 'dim' : role,
+        },
+      ];
+    }
+    default:
+      return [{ text, role: 'dim' }];
+  }
+}
+
 function responsiveContent(
   row: WorkPanelRow,
   width: number,
@@ -640,8 +933,9 @@ function responsiveContent(
   metricLayout: 'greedy' | 'columns' | 'grid' = 'greedy',
   metricGrid?: WorkPanelMetricGrid,
 ): WorkPanelRowContent {
-  const identity: readonly WorkPanelSegment[] = row.identity ??
+  const identity = row.identity ??
     row.segments ?? [{ text: row.primary, role: 'primary' }];
+  const identityUnits = identityItems(identity);
   if (
     metricLayout === 'grid' &&
     (row.metrics ?? []).every((group) => group.key)
@@ -673,67 +967,54 @@ function responsiveContent(
     planningMeasure(segmentText(metricSegments)) -
     measure(separator.text);
   const minIdentity =
-    identity
-      .filter(({ role }) => role !== 'secondary')
-      .reduce((sum, { text }) => sum + measure(text), 0) +
-    (identity.some(({ role, text }) => role === 'secondary' && text)
+    identityUnits
+      .filter(({ body }) => body.role !== 'secondary')
+      .reduce((sum, item) => sum + itemWidth(item, measure), 0) +
+    (identityUnits.some(
+      ({ lead, body }) => body.role === 'secondary' && (lead || body.text),
+    )
       ? measure(separator.text) + 1
       : 0);
-  if (
-    metricLayout === 'columns' &&
-    groups.length &&
-    groups.every((group) => group.key)
-  ) {
-    let columns = groups.map((group, index) => ({
-      group,
-      parts: metrics[index],
-    }));
-    const columnsWidth = () =>
-      planningMeasure(
-        segmentText(joinGroups(columns.map(({ parts }) => parts))),
-      );
-    for (const key of [
-      'tokens',
-      'cost',
-      'model',
-      'tools',
-      'context',
-      'speed',
-    ]) {
-      if (columnsWidth() + measure(separator.text) + minIdentity <= width)
-        break;
-      columns = columns.filter(({ group }) => group.key !== key);
-    }
-    const columnWidth = columnsWidth();
+  if (metricLayout === 'columns' && groups.every((group) => group.key)) {
+    const status = workPanelRenderStatus(row);
+    const plan =
+      metricGrid ??
+      createWorkPanelColumnPlan([row], width + contentGutter(), measure);
+    const columns = plan.map((column) => {
+      const group = groups.find(({ key }) => key === column.key);
+      const parts = group
+        ? columnSegments(
+            column.key,
+            visibleSegments(columnMetricSegments(group)),
+            row,
+            status,
+            column.width,
+            measure,
+          )
+        : [];
+      const padding = Math.max(0, column.width - measure(segmentText(parts)));
+      return [{ text: ' '.repeat(padding), role: 'meta' as const }, ...parts];
+    });
+    const columnWidth = columns.length
+      ? plan.reduce((sum, { width: w }) => sum + w, 0) +
+        measure(separator.text) * (columns.length - 1)
+      : 0;
     const identityWidth = Math.max(
       0,
-      width - columnWidth - measure(separator.text),
+      width - columnWidth - (columns.length ? measure(separator.text) : 0),
     );
-    const segments = fitIdentity(identity, identityWidth, measure);
-    const gap = Math.max(
-      0,
-      width -
-        columnWidth -
-        measure(segmentText(segments)) -
-        measure(separator.text),
+    const terminal = terminalStatuses.has(status);
+    // Recolor after fitting: shrink priority follows the original roles, so the
+    // summary still truncates before the name when it turns muted.
+    const segments = fitIdentityKeepName(identity, identityWidth, measure).map(
+      (part) =>
+        terminal && part.role === 'secondary'
+          ? { ...part, role: 'muted' as const }
+          : part,
     );
+    const gap = Math.max(0, identityWidth - measure(segmentText(segments)));
     if (gap) segments.push({ text: ' '.repeat(gap), role: 'meta' });
-    if (columns.length)
-      segments.push(
-        separator,
-        ...joinGroups(
-          columns.map(({ parts }) => {
-            const visible = visibleSegments(parts);
-            const padding =
-              planningMeasure(segmentText(parts)) -
-              measure(segmentText(visible));
-            return [
-              { text: ' '.repeat(Math.max(0, padding)), role: 'meta' as const },
-              ...visible,
-            ];
-          }),
-        ),
-      );
+    if (columns.length) segments.push(separator, ...joinGroups(columns));
     return { text: segmentText(segments), segments };
   }
   const inline = metrics.length > 0 && inlineWidth >= minIdentity;
@@ -780,7 +1061,9 @@ function panelContentReader(
     let content = contents.get(entry);
     if (!content) {
       content =
-        entry.row.identity || entry.row.metrics
+        (entry.row.identity || entry.row.metrics) &&
+        // Flat `segments` rows keep their legacy host presentation outside the columns layout.
+        !(metricLayout !== 'columns' && entry.row.segments)
           ? responsiveContent(
               entry.row,
               Math.max(0, width - (kit ? 7 : 4)),
@@ -1283,6 +1566,9 @@ const renderStatuses: readonly string[] = [
   'running',
   'completed',
   'failed',
+  'timedOut',
+  'resolved',
+  'expectedExit',
   'cancelled',
   'interrupted',
   'stopping',

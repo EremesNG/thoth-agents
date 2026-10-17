@@ -6,6 +6,7 @@ import {
   type ViewportTUI,
 } from '@earendil-works/pi-tui';
 import {
+  DEFAULT_SIDEBAR_WIDTH,
   diagnosticOnce,
   type LayoutAdapter,
   type LayoutDiagnostic,
@@ -48,7 +49,7 @@ export function createFullscreenAdapter(
   let original: Component | undefined;
   let split: (HStack & { ownerToken?: symbol }) | undefined;
   let sidebar: Component | undefined;
-  let width = 44;
+  let width = DEFAULT_SIDEBAR_WIDTH;
   let visible = true;
   let disposed = false;
   const ownsRoot = () => {
@@ -113,9 +114,9 @@ export function createFullscreenAdapter(
         return false;
       }
     },
-    setWidth(requestedWidth) {
+    setWidth(requestedWidth, effectiveWidth) {
       if (disposed) return;
-      width = sidebarWidth(requestedWidth);
+      width = sidebarWidth(requestedWidth, effectiveWidth);
       updateEntries();
       isDisplayed();
       if (ownsRoot()) owner?.requestRender();

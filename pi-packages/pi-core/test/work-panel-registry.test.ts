@@ -428,6 +428,8 @@ it('discovers isolated data-only provider summaries without changing revisions',
   const { ctx } = uiSession();
   const summary = {
     running: 2,
+    queued: 4,
+    cancelled: 5,
     completed: 3,
     failed: 1,
     total: 6,
@@ -452,6 +454,8 @@ it('discovers isolated data-only provider summaries without changing revisions',
   const sources = listWorkPanelSources();
   expect(sources.find(({ id }) => id === 'summary')?.summary).toEqual({
     running: 2,
+    queued: 4,
+    cancelled: 5,
     completed: 3,
     failed: 1,
     total: 6,

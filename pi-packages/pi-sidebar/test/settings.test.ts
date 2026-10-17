@@ -55,6 +55,15 @@ it('lists panels with checkboxes, then the startup and width rows', () => {
   expect(text()).toContain('Space toggle');
 });
 
+it.each([
+  [28, 36],
+  [Number.NaN, 50],
+])('normalizes initial width %s to %s when saving settings', (width, expected) => {
+  const { press, save } = open({ width });
+  press(ENTER);
+  expect(save.mock.calls[0]?.[0].width).toBe(expected);
+});
+
 it('toggles the selected panel with Space', () => {
   const { text, press } = open();
   press(DOWN, ' ');
@@ -84,7 +93,7 @@ it('keeps Shift+Down inside the panel rows', () => {
   expect(text()).toContain('Startup');
 });
 
-it('cycles startup with the arrow keys and clamps width within 28..72', () => {
+it('cycles startup with the arrow keys and clamps width within 36..72', () => {
   const { text, press } = open();
   press(DOWN, DOWN, DOWN, DOWN, RIGHT);
   expect(text()).toContain('Startup  ‹ manual ›');
@@ -99,7 +108,7 @@ it('cycles startup with the arrow keys and clamps width within 28..72', () => {
   for (let i = 0; i < 40; i++) press(RIGHT);
   expect(text()).toContain('Width    ‹ 72 ›');
   for (let i = 0; i < 60; i++) press(LEFT);
-  expect(text()).toContain('Width    ‹ 28 ›');
+  expect(text()).toContain('Width    ‹ 36 ›');
 });
 
 it('ignores arrows and Space on rows where they do not apply', () => {

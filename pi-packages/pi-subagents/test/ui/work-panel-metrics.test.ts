@@ -151,7 +151,7 @@ it('keeps only available history metrics and omits the missing token half and se
   ]);
 });
 
-it('renders actual model and effort in sidebar columns at 44, dropping them before elapsed at 36/30 without changing host rows', async () => {
+it('renders actual model and effort in roomy sidebar columns, dropping them before elapsed at narrow widths without changing host rows', async () => {
   const { renderWorkPanelRow, truncatePanelText } = await import(
     '@thoth-agents/pi-core/panel'
   );
@@ -172,10 +172,12 @@ it('renders actual model and effort in sidebar columns at 44, dropping them befo
       clip: truncatePanelText,
       metricLayout,
     }).join('\n');
-  expect(render(44, 'columns')).toContain('sonnet·hi');
-  for (const width of [36, 30]) {
+  expect(render(64, 'columns')).toContain('sonnet·hi');
+  for (const width of [44, 36, 30]) {
     expect(render(width, 'columns')).not.toContain('sonnet');
-    expect(render(width, 'columns')).toContain('elapsed 9s');
+    // Columns layout shows elapsed as a bare time so ◷ stays the timed-out status glyph.
+    expect(render(width, 'columns')).toMatch(/ 9s$/);
+    expect(render(width, 'columns')).not.toContain('elapsed');
   }
   for (const width of [100, 44, 30]) {
     expect(render(width, 'greedy')).not.toContain('sonnet');
@@ -193,4 +195,65 @@ it.each([
   );
   expect(group?.segments.map(({ text }) => text).join('')).toBe(expected);
   if (group) expect(group.columnsOnly).toBe(true);
+});
+
+it('keeps original launch keys when older running tasks report new activity or restart', () => {
+  const older = { ...task, id: 'older' };
+  const newer = { ...task, id: 'newer', created_at: '2026-01-01T00:00:05Z' };
+  const provider = createSubagentsWorkPanelProvider({
+    listTasks: () => [older, newer],
+    onTaskUpdate: () => () => {},
+    cancel: () => {},
+    open: () => {},
+  });
+  const keys = () =>
+    Object.fromEntries(
+      provider.listRows(0).map((row) => [row.id, row.sortStartedAt]),
+    );
+  expect(keys()).toEqual({ older: 1767225600000, newer: 1767225605000 });
+  older.last_activity_at = '2026-01-02T00:00:00Z';
+  older.started_at = '2026-01-02T00:00:00Z';
+  expect(keys()).toEqual({ older: 1767225600000, newer: 1767225605000 });
+});
+
+it('maps timeout, cancelled and interrupted to their glyphs without label prefixes', () => {
+  const timedOut = row({
+    ...task,
+    status: 'failed',
+    error_metadata: {
+      version: 1,
+      category: 'total_timeout',
+      message: 'deadline reached',
+      retryable: true,
+      partial_result_available: false,
+    },
+  });
+  expect(timedOut).toMatchObject({
+    statusGlyph: 'timedOut',
+    state: 'failed',
+    primary: 'inspect',
+  });
+  for (const status of ['cancelled', 'interrupted'] as const)
+    expect(row({ ...task, status })).toMatchObject({
+      statusGlyph: 'cancelled',
+      primary: 'inspect',
+    });
+});
+
+it('keeps the identity separator in its own meta segment', () => {
+  expect(row().identity).toEqual([
+    { text: 'worker', role: 'primary' },
+    { text: ' · ', role: 'meta' },
+    { text: 'inspect', role: 'secondary' },
+  ]);
+});
+
+it('emits the separator before a dropped-tools warning as its own meta segment', () => {
+  expect(row({ ...task, dropped_tools: ['missing'] }).identity).toEqual([
+    { text: 'worker', role: 'primary' },
+    { text: ' · ', role: 'meta' },
+    { text: 'inspect', role: 'secondary' },
+    { text: ' · ', role: 'meta' },
+    { text: '⚠ 1 dropped', role: 'warning' },
+  ]);
 });

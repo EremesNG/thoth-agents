@@ -35,6 +35,9 @@ const STATUS_ROLE = {
   running: 'accent',
   completed: 'success',
   failed: 'error',
+  timedOut: 'warning',
+  resolved: 'muted',
+  expectedExit: 'dim',
   cancelled: 'muted',
   interrupted: 'warning',
   stopping: 'warning',
@@ -43,13 +46,14 @@ const STATUS_ROLE = {
   unknown: 'dim',
 } as const satisfies Record<RenderStatus, string>;
 
-/** Terminal statuses whose footer shows the completed or failed icon. */
-const TOOL_FOOTER_STATUS: Partial<
-  Record<RenderStatus, 'completed' | 'failed'>
-> = {
+/** Terminal statuses whose footer shows an icon and summary. */
+const TOOL_FOOTER_STATUS: Partial<Record<RenderStatus, RenderStatus>> = {
   completed: 'completed',
   deleted: 'completed',
   failed: 'failed',
+  timedOut: 'timedOut',
+  resolved: 'resolved',
+  expectedExit: 'expectedExit',
   cancelled: 'failed',
   interrupted: 'failed',
   blocked: 'failed',
@@ -57,7 +61,9 @@ const TOOL_FOOTER_STATUS: Partial<
 
 function startsWithFooterGlyph(footer: string, mode: IconMode): boolean {
   const plain = stripTerminalSequences(footer);
-  return (['completed', 'failed'] as const).some((status) => {
+  return (
+    ['completed', 'failed', 'timedOut', 'resolved', 'expectedExit'] as const
+  ).some((status) => {
     const glyph = statusIcon(status, mode);
     return (
       plain.startsWith(glyph) &&

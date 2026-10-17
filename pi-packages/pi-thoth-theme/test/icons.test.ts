@@ -1,3 +1,4 @@
+import { visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, it } from 'vitest';
 import { frames, icon, statusIcon } from '../src/shared/icons.ts';
 
@@ -114,7 +115,7 @@ describe('icon table', () => {
     ['running', '25d0', '*'],
     ['completed', 'f00c', '+'],
     ['failed', 'f00d', 'x'],
-    ['cancelled', 'f05e', '/'],
+    ['cancelled', 'f05e', '#'],
     ['interrupted', 'f05e', '/'],
     ['stopping', 'f05e', '/'],
     ['deleted', 'f05e', '/'],
@@ -125,4 +126,17 @@ describe('icon table', () => {
     expect(cp(statusIcon(status, 'nerd'))).toBe(nerd);
     expect(statusIcon(status, 'ascii')).toBe(ascii);
   });
+});
+
+it.each([
+  ['timedOut', '◷', '', 'T'],
+  ['resolved', '↻', '', '~'],
+  ['expectedExit', '✓', '', '+'],
+] as const)('%s has single-cell Unicode, Nerd and ASCII variants', (status, unicode, nerd, ascii) => {
+  expect(statusIcon(status, 'unicode')).toBe(unicode);
+  expect(statusIcon(status, 'nerd')).toBe(nerd);
+  expect(statusIcon(status, 'ascii')).toBe(ascii);
+  for (const mode of ['unicode', 'nerd', 'ascii'] as const) {
+    expect(visibleWidth(statusIcon(status, mode))).toBe(1);
+  }
 });

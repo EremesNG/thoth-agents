@@ -1,11 +1,11 @@
 import { matchesKey } from '@earendil-works/pi-tui';
-import { sidebarWidth } from './layout/adapter.js';
+import { DEFAULT_SIDEBAR_WIDTH, sidebarWidth } from './layout/adapter.js';
 
 export type Startup = 'auto' | 'manual' | 'off';
 
 /** Session-only controls. Persistence is deliberately owned by the command layer. */
 export class SidebarControls {
-  width = 44;
+  width = DEFAULT_SIDEBAR_WIDTH;
   mode: 'auto' | 'manual';
   enabled: boolean;
   visible = false;
@@ -66,7 +66,7 @@ export class SidebarControls {
     return this.visible;
   }
   effectiveWidth(columns: number): number {
-    return Math.min(this.width, Math.max(28, columns - 64));
+    return Math.min(this.width, Math.max(0, columns - 64));
   }
   setWidth(width: number): void {
     this.width = sidebarWidth(width);

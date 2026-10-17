@@ -8,6 +8,7 @@ import {
 } from '@earendil-works/pi-tui';
 import { registerDecorativeOverlay } from '@thoth-agents/pi-core';
 import {
+  DEFAULT_SIDEBAR_WIDTH,
   diagnosticOnce,
   type LayoutAdapter,
   type LayoutDiagnostic,
@@ -29,7 +30,7 @@ export function createInlineAdapter(
   let overlay: OverlayHandle | undefined;
   let sidebar: Component | undefined;
   const registrations: Array<() => void> = [];
-  let width = 44;
+  let width = DEFAULT_SIDEBAR_WIDTH;
   let visible = true;
   let disposed = false;
   const options: OverlayOptions = {
@@ -135,9 +136,9 @@ export function createInlineAdapter(
         return false;
       }
     },
-    setWidth(requestedWidth) {
+    setWidth(requestedWidth, effectiveWidth) {
       if (disposed) return;
-      width = sidebarWidth(requestedWidth);
+      width = sidebarWidth(requestedWidth, effectiveWidth);
       options.width = width;
       isDisplayed();
       if (overlay) renderer?.requestRender();

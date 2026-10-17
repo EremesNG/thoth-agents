@@ -97,9 +97,10 @@ describe('subagent rate-limit warnings', () => {
     report('rejected');
     const affected = provider.listRows(now).find((row) => row.id === 'task-a');
     expect(affected?.identity).toContainEqual({
-      text: ' · claude-bridge/5h: rate limited · reset 12:01',
+      text: 'claude-bridge/5h: rate limited · reset 12:01',
       role: 'warning',
     });
+    expect(affected?.identity?.at(-2)).toEqual({ text: ' · ', role: 'meta' });
     expect(affected?.status).toBe(status);
     expect(tasks[0].status).toBe(status);
     expect(

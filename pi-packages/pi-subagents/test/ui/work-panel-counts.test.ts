@@ -41,18 +41,25 @@ function waitForTerminalTask(
 
 describe('Agents persisted session totals', () => {
   it('merges cached history with live tasks without duplicates, caps outcomes and refreshes on completion only', () => {
-    let live = [persistedTask({ id: 'live', status: 'running' })];
+    let live = [
+      persistedTask({
+        id: 'live',
+        status: 'running',
+        created_at: new Date(2000).toISOString(),
+      }),
+    ];
     let updates = () => {};
     let reads = 0;
     const history = Array.from({ length: 8 }, (_, i) =>
       persistedTask({
         id: `old-${i}`,
-        ended_at: new Date(1000 + i).toISOString(),
+        created_at: new Date(1000 + i).toISOString(),
+        ended_at: new Date(1000 - i).toISOString(),
       }),
     );
     const agents = createSubagentsWorkPanelProvider({
       listTasks: () => live,
-      listSessionTasks: () => {
+      listLaunchRankedSessionTasks: () => {
         reads++;
         return [...live, ...history];
       },
@@ -71,7 +78,11 @@ describe('Agents persisted session totals', () => {
     updates();
     expect(reads).toBe(1);
     live = [
-      persistedTask({ id: 'live', ended_at: new Date(2000).toISOString() }),
+      persistedTask({
+        id: 'live',
+        created_at: new Date(2000).toISOString(),
+        ended_at: new Date(2000).toISOString(),
+      }),
     ];
     updates();
     expect(reads).toBe(2);
@@ -120,7 +131,9 @@ describe('Agents persisted session totals', () => {
     for (let frame = 0; frame < 3; frame++) {
       expect(agents.summary?.()).toMatchObject({
         completed: 3,
-        failed: 3,
+        failed: 1,
+        cancelled: 2,
+        queued: 0,
         running: 0,
         total: 6,
       });
@@ -256,5 +269,59 @@ describe('Agents persisted session totals', () => {
     } finally {
       finish();
     }
+  });
+});
+
+it('separates queued and cancelled totals and distinguishes timeouts from ordinary failures', () => {
+  const tasks = [
+    persistedTask({ id: 'running', status: 'running' }),
+    persistedTask({ id: 'stopping', status: 'stopping' }),
+    persistedTask({ id: 'queued', status: 'queued' }),
+    persistedTask({ id: 'done' }),
+    persistedTask({ id: 'cancelled', status: 'cancelled' }),
+    persistedTask({ id: 'interrupted', status: 'interrupted' }),
+    persistedTask({ id: 'failed', status: 'failed' }),
+    persistedTask({
+      id: 'timeout',
+      status: 'failed',
+      error_metadata: {
+        version: 1,
+        category: 'total_timeout',
+        message: 'timed out',
+        retryable: true,
+        partial_result_available: false,
+      },
+    }),
+  ];
+  const provider = createSubagentsWorkPanelProvider({
+    listTasks: () => tasks,
+    onTaskUpdate: () => () => {},
+    cancel: () => {},
+    open: () => {},
+  });
+  expect(provider.summary?.()).toMatchObject({
+    running: 2,
+    queued: 1,
+    completed: 1,
+    failed: 2,
+    cancelled: 2,
+    total: 8,
+  });
+  const rows = new Map(provider.listRows(0).map((row) => [row.id, row]));
+  for (const id of ['cancelled', 'interrupted'])
+    expect(rows.get(id)).toMatchObject({
+      status: 'cancelled',
+      statusGlyph: 'cancelled',
+      state: 'failed',
+    });
+  expect(rows.get('timeout')).toMatchObject({
+    status: 'timedOut',
+    statusGlyph: 'timedOut',
+    state: 'failed',
+  });
+  expect(rows.get('failed')).toMatchObject({
+    status: 'failed',
+    statusGlyph: 'failed',
+    state: 'failed',
   });
 });

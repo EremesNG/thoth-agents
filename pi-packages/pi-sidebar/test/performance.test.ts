@@ -74,7 +74,7 @@ it('shares one bounded plan per frame and never scans session entries on render'
   const first = panel.render(44);
   expect(
     vi.mocked(renderWorkPanelRow).mock.calls.map(([row]) => row.id),
-  ).toEqual(['0', '2', '3']);
+  ).toEqual(['997', '998', '999']);
   const renderCount = vi.mocked(renderWorkPanelRow).mock.calls.length;
   const baseline = entries.mock.calls.length;
   for (let i = 0; i < 20; i++) {
@@ -91,14 +91,8 @@ it('shares one bounded plan per frame and never scans session entries on render'
   const second = panel.render(44);
   expect(rows).toHaveBeenCalledTimes(2);
   expect(entries).toHaveBeenCalledTimes(baseline);
-  expect(
-    second.filter(
-      (line) => !line.includes('task 0') && !line.includes('task 2'),
-    ),
-  ).toEqual(
-    first.filter(
-      (line) => !line.includes('task 0') && !line.includes('task 2'),
-    ),
+  expect(second.filter((line) => !/task 99[789]/.test(line))).toEqual(
+    first.filter((line) => !/task 99[789]/.test(line)),
   );
 });
 
@@ -106,9 +100,14 @@ it('keeps static output cached across frames, and invalidates on kit replacement
   vi.useFakeTimers();
   vi.setSystemTime(1000);
   const rows = vi.fn(() => [
-    { id: 'static', primary: 'stable', status: 'pending' },
-    { id: 'hidden', primary: 'offscreen', status: 'running' },
-    { id: 'hidden-too', primary: 'offscreen too', status: 'running' },
+    { id: 'static', primary: 'stable', status: 'pending', sortStartedAt: 3 },
+    { id: 'hidden', primary: 'offscreen', status: 'running', sortStartedAt: 1 },
+    {
+      id: 'hidden-too',
+      primary: 'offscreen too',
+      status: 'running',
+      sortStartedAt: 2,
+    },
   ]);
   releases.push(
     registerWorkPanelProvider(

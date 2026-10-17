@@ -9,6 +9,8 @@ import {
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { logPathFor, readMeta, taskDir, writeMeta } from "./registry.js";
+import { recordFailure, recoverFailure, failurePath } from "./failures.js";
+import { observeFailures, failureIdentity } from "./shared-failure-observations.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
 import type { BackgroundTaskMeta } from "./types.js";
@@ -27,10 +29,93 @@ function task(host: ReturnType<typeof lifecycleHost>, id: string, status: Backgr
 }
 
 describe("Background Work panel provider", () => {
+  it('keeps an unresolved failure_when incident actionable despite a declared expected exit', async () => {
+    const host = lifecycleHost('panel-expected-unresolved', true);
+    const meta = task(host, 'bg_expected_unresolved', 'failed');
+    try {
+      writeMeta({ ...meta, expectedExitCodes: [1], lastExitCode: 1 });
+      recordFailure(meta, 'failure_when', 'failure condition matched', 'matched', { category: 'watch' });
+      await host.emit('session_start');
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      expect(provider.summary?.()).toMatchObject({ completed: 0, failed: 1 });
+      expect(provider.listRows(Date.now())[0]).toMatchObject({
+        statusGlyph: 'failed',
+        statusTone: 'failed',
+        primary: expect.stringContaining('failure condition matched'),
+      });
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
+  it('classifies terminal outcomes and counts only actionable failures', async () => {
+    const host = lifecycleHost('panel-taxonomy', true);
+    const metas: BackgroundTaskMeta[] = [];
+    const add = (id: string, status: BackgroundTaskMeta['status']) => {
+      const meta = task(host, `bg_taxonomy_${id}`, status);
+      metas.push(meta);
+      return meta;
+    };
+    try {
+      const timeout = add('timeout', 'timed_out');
+      const cancelled = add('cancelled', 'cancelled');
+      const expected = add('expected', 'failed');
+      writeMeta({ ...expected, expectedExitCodes: [1], lastExitCode: 1 });
+      const journalExpected = add('journal_expected', 'failed');
+      writeMeta({ ...journalExpected, lastExitCode: 2 });
+      recordFailure(journalExpected, 'probe', 'intentional', 'one', { expected: true });
+      const resolved = add('resolved', 'failed');
+      recordFailure(resolved, 'build', 'broken', 'one');
+      recoverFailure(resolved, 'build', 'two');
+      const superseded = add('superseded', 'failed');
+      recordFailure(superseded, 'build', 'old', 'one');
+      observeFailures(failurePath(superseded.id), [{ id: 'supersede', operation: 'build', kind: 'disposition', disposition: 'superseded', reason: 'replaced', evidence: 'replacement passed', incidents: [failureIdentity(superseded.id, 'build', 'one')] }]);
+      const mixed = add('mixed', 'failed');
+      recordFailure(mixed, 'first', 'recovered', 'one');
+      recoverFailure(mixed, 'first', 'two');
+      recordFailure(mixed, 'second', 'still broken', 'three');
+      const empty = add('empty', 'failed');
+      add('done', 'succeeded');
+      add('running', 'running');
+      await host.emit('session_start');
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      expect(provider.summary?.()).toMatchObject({ running: 1, completed: 3, failed: 3, cancelled: 1 });
+      const rows = provider.listRows(Date.now());
+      for (const [meta, glyph, label] of [
+        [timeout, 'timedOut', 'timed out'], [cancelled, 'cancelled', 'cancelled'],
+        [expected, 'expectedExit', 'exit 1 expected'], [journalExpected, 'expectedExit', 'exit 2 expected'],
+        [resolved, 'resolved', 'failed, resolved'], [superseded, 'resolved', 'failed, resolved'],
+        [mixed, 'failed', 'still broken'], [empty, 'failed', 'failed, inspect log'],
+      ] as const) {
+        expect(rows.find(row => row.id === meta.id)).toMatchObject({ statusGlyph: glyph, primary: expect.stringContaining(label), sortStartedAt: meta.startedAt });
+      }
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
+  it('orders equal launch times by id without changing history ordering', async () => {
+    const host = lifecycleHost('panel-launch-ties', true);
+    const metas = ['z', 'a', 'm'].map(id => task(host, `bg_launch_${id}`, 'running'));
+    try {
+      for (const meta of metas) writeMeta({ ...meta, startedAt: 1234 });
+      await host.emit('session_start');
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      expect(provider.listRows(Date.now()).map(row => row.id)).toEqual(['bg_launch_a', 'bg_launch_m', 'bg_launch_z']);
+      writeMeta({ ...metas[0], startedAt: 1234, status: 'failed', endedAt: Date.now() });
+      expect(provider.listRows(Date.now()).map(row => row.id)).toEqual(['bg_launch_a', 'bg_launch_m', 'bg_launch_z']);
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
   it.each([
     false,
     true,
-  ])('registers v2 plain-data rows and matches the v1 native/themed status golden (render kit: %s)', async (themed) => {
+  ])('registers v2 plain-data rows and matches the native/themed status golden (render kit: %s)', async (themed) => {
     const host = lifecycleHost('panel-v2-golden', true);
     const now = 1_000_000;
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -57,24 +142,24 @@ describe("Background Work panel provider", () => {
         rows.slice(0, 3),
       );
 
-      // Captured through the HEAD v1 renderer before migration, covering every runtime status.
+      // Native and themed taxonomy, covering every runtime status.
       expect(host.panel.render(100)).toEqual(
         themed
         ? [
-            'Background · 1 running · 3 failed',
+            'Background · 1 running · 2 failed',
             '  ├─ ⠋ running · process running · 1s',
             '  ├─ ✓ succeeded · completed · 2s',
             '  ├─ ✗ failed · failed, inspect log · 3s',
-            '  ├─ ✗ timed_out · failed, inspect log · 4s',
+            '  ├─ ◷ timed_out · timed out · 4s',
             '  └─ ■ cancelled · cancelled · 5s',
             '← interact',
           ]
         : [
-            '◆ Background · 1 running · 3 failed',
-            '  ◐ running · process running · 1s',
+            '◆ Background · 1 running · 2 failed',
+            '  ⠋ running · process running · 1s',
             '  ✓ succeeded · completed · 2s',
             '  ✗ failed · failed, inspect log · 3s',
-            '  ✗ timed_out · failed, inspect log · 4s',
+            '  ◷ timed_out · timed out · 4s',
             '  ■ cancelled · cancelled · 5s',
             '← interact',
           ],
@@ -221,7 +306,7 @@ describe("Background Work panel provider", () => {
       ]));
       expect(rows.some(row => row.id === dismissed.id)).toBe(false);
       expect(rows.every(row => row.expiresAt === undefined)).toBe(true);
-      expect(provider.summary?.()).toMatchObject({ running: 1, failed: 4, completed: 1 });
+      expect(provider.summary?.()).toMatchObject({ running: 1, failed: 2, completed: 1, cancelled: 2 });
     } finally {
       await host.emit("session_shutdown", "reload");
       for (const meta of [failed, timedOut, done, cancelled, dismissed, running]) rmSync(taskDir(meta.id), { recursive: true, force: true });
@@ -325,6 +410,26 @@ it('background navigator segments resolve the registered UI separator', async ()
     expect(provider.listRows(Date.now())[0].segments?.[1].text).toMatch(/^ · /);
   } finally {
     if (token) withdrawRenderKit(token);
+    await host.emit('session_shutdown', 'reload');
+    rmSync(taskDir(meta.id), { recursive: true, force: true });
+  }
+});
+
+it('background rows expose a keyed elapsed column and name/status identity for the columns layout', async () => {
+  const host = lifecycleHost('panel-columns-shape', true);
+  const meta = task(host, 'bg_panel_columns_shape', 'running');
+  try {
+    await host.emit('session_start');
+    const row = getBackgroundTasksNavigator(host.pi).provider.listRows(Date.now())[0];
+    expect(row.identity).toEqual([
+      { text: meta.name, role: 'primary' },
+      { text: ' · ', role: 'meta' },
+      { text: row.primary, role: 'secondary' },
+    ]);
+    expect(row.metrics).toHaveLength(1);
+    expect(row.metrics?.[0].key).toBe('elapsed');
+    expect(row.metrics?.[0].segments.map(({ text }) => text).join('')).toBe(row.elapsed);
+  } finally {
     await host.emit('session_shutdown', 'reload');
     rmSync(taskDir(meta.id), { recursive: true, force: true });
   }

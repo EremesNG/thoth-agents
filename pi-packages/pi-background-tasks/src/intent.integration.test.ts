@@ -7,10 +7,13 @@
 import { rmSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { validateToolArguments } from "@earendil-works/pi-ai";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { failurePath, terminalFailureAttention } from "./failures.js";
 import { activeFailures, failureCounts, readFailureState } from "./shared-failure-observations.js";
 import { listMetasForOrigin, readMeta, taskDir, writeMeta } from "./registry.js";
+import * as failureJournal from "./shared-failure-observations.js";
+import { getBackgroundTasksNavigator } from "./navigator-provider.js";
+import { lifecycleHost } from "./test-support/lifecycle-harness.js";
 import { spawnTask, startWatchTask } from "./runtime.js";
 import { registerTools } from "./tools.js";
 
@@ -35,6 +38,51 @@ function spawn(command: string, intent: { operation_id?: string; expected_exit_c
 const state = (id: string) => readFailureState(failurePath(id));
 
 describe("#325 background task structured intent", () => {
+  it('refreshes summary-first provider classifications after a real retry without per-frame journal reads', async () => {
+    const host = lifecycleHost('intent-provider-recovery', true);
+    const owner = { cwd: host.ctx.cwd, sessionId: host.ctx.sessionManager.getSessionId() };
+    const reads = vi.spyOn(failureJournal, 'readFailureState');
+    try {
+      await host.emit('session_start');
+      const provider = getBackgroundTasksNavigator(host.pi).provider;
+      // Observe notifications without eagerly rendering: summary must initialize the generation.
+      provider.onVisibleChanged?.(() => undefined);
+      const failed = spawnTask(host.pi, { command: 'exit 3', callback: false, operation_id: 'provider-retry' }, owner.cwd, owner, () => owner);
+      ids.push(failed.id);
+      const original = structuredClone(await terminal(failed.id));
+      // Summary is deliberately the first snapshot consumer, both before and after recovery.
+      expect(provider.summary?.()).toMatchObject({ failed: 1, completed: 0 });
+      expect(provider.listRows(Date.now()).find(row => row.id === failed.id)).toMatchObject({ statusGlyph: 'failed' });
+      const retry = spawnTask(host.pi, { command: 'echo recovered', callback: false, operation_id: 'provider-retry' }, owner.cwd, owner, () => owner);
+      ids.push(retry.id);
+      await terminal(retry.id);
+      expect(readMeta(failed.id)).toEqual(original);
+      const beforeSummary = reads.mock.calls.length;
+      expect(provider.summary?.()).toMatchObject({ failed: 0, completed: 1 });
+      expect(reads.mock.calls.length - beforeSummary).toBe(2);
+      expect(provider.listRows(Date.now()).find(row => row.id === failed.id)).toMatchObject({ statusGlyph: 'resolved', primary: expect.stringContaining('failed, resolved') });
+      const afterSnapshot = reads.mock.calls.length;
+      expect(afterSnapshot).toBeGreaterThan(0);
+      for (let frame = 0; frame < 5; frame++) {
+        provider.summary?.();
+        provider.listRows(Date.now() + frame * 1000);
+        host.panel.render();
+      }
+      expect(reads).toHaveBeenCalledTimes(afterSnapshot);
+      // Any registry notification invalidates every classification, even unrelated metadata.
+      const beforeRebuild = reads.mock.calls.length;
+      writeMeta({ ...readMeta(retry.id)!, dismissedAt: Date.now() });
+      provider.listRows(Date.now());
+      expect(reads.mock.calls.length - beforeRebuild).toBe(2);
+      provider.summary?.();
+      provider.listRows(Date.now() + 1000);
+      expect(reads.mock.calls.length - beforeRebuild).toBe(2);
+    } finally {
+      reads.mockRestore();
+      await host.emit('session_shutdown', 'reload');
+    }
+  });
+
   it("a declared exit code is an expected failure, not an incident needing action; an undeclared one stays actionable", async () => {
     const probe = spawn("exit 1", { expected_exit_codes: [1] });
     expect(readMeta(probe.id)).toMatchObject({ expectedExitCodes: [1] });

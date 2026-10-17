@@ -72,15 +72,34 @@ describe('Agents work-panel session lifecycle', () => {
         agent: 'worker',
         mode: 'task',
         task: `resumed task ${index}`,
-        created_at: new Date(now - 1000).toISOString(),
+        created_at: new Date(now - 1000 - index).toISOString(),
         ended_at: new Date(now - index).toISOString(),
       });
+    // Older launches continued recently dominate activity-ranked history (>100).
+    for (let index = 0; index < 110; index++)
+      history.upsertTask(env.tmp, {
+        id: `continued-${index}`,
+        session_id: 'parent-a',
+        status: 'completed',
+        agent: 'worker',
+        mode: 'task',
+        task: 'older launch continued recently',
+        created_at: new Date(now - 100000 - index).toISOString(),
+        started_at: new Date(now + index).toISOString(),
+        last_activity_at: new Date(now + index).toISOString(),
+        ended_at: new Date(now + index).toISOString(),
+      });
+    expect(
+      history
+        .listSessionTaskMetadata(env.tmp, 'parent-a')
+        .every((task) => task.id.startsWith('continued-')),
+    ).toBe(true);
     await history.close();
     const host = extensionHost();
     const session = workPanelSession(env.tmp, 'parent-a');
     try {
       await host.emit('session_start', session, { reason: 'resume' });
-      expect(session.render().join('\n')).toContain('4 done · 4 failed');
+      expect(session.render().join('\n')).toContain('114 done · 4 failed');
       expect(session.render().join('\n')).not.toContain('resumed task');
       expect(getWorkPanelSourceRows('subagents', { maxRows: 100 })).toEqual([]);
       const rows = getWorkPanelSourceRows('subagents', {

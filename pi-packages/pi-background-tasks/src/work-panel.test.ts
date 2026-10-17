@@ -47,7 +47,7 @@ describe("Background interaction through the pi-core host", () => {
       host.ctx.sessionManager.getSessionId = () => sessionId;
       await host.emit("session_start");
       if (!dismissed) {
-        expect(host.panel.render()[0]).toContain('Background · 0 running · 3 failed');
+        expect(host.panel.render()[0]).toContain('Background · 0 running · 2 failed');
         expect(host.panel.render()).toHaveLength(6);
         expect(host.panel.render().join('\n')).toContain('retained succeeded');
         expect(host.panel.render().join('\n')).toContain('retained cancelled');
@@ -58,13 +58,13 @@ describe("Background interaction through the pi-core host", () => {
         clock.mockReturnValue(now + 25_000);
       }
       expect(host.panel.render()).toEqual([
-        "◆ Background · 1 done · 3 failed",
+        "◆ Background · 1 done · 2 failed",
         "← interact",
       ]);
       expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
       expect(host.panel.key(LEFT)).toEqual({ consume: true });
       expect(host.panel.render()).toEqual([
-        "› ◆ Background · 1 done · 3 failed",
+        "› ◆ Background · 1 done · 2 failed",
         "Enter history · Esc back",
       ]);
     } finally {
@@ -149,7 +149,8 @@ describe("Background interaction through the pi-core host", () => {
       expect(host.statuses.get("thoth-work-panel-close")).toBe("Press x again to stop panel sleeper");
       expect(host.panel.key("x")).toEqual({ consume: true });
       await expect.poll(() => readMeta(id)?.status, { timeout: 10000 }).toBe("cancelled");
-      expect(host.panel.render()[0]).toContain('Background · 0 running · 1 failed');
+      expect(host.panel.render()[0]).toContain('Background · 0 running');
+      expect(host.panel.render()[0]).not.toContain('failed');
       expect(host.panel.render().join('\n')).toContain('panel sleeper');
       expect(host.panel.render().at(-1)).toContain('x dismiss');
       expect(host.panel.key("\x1b")).toEqual({ consume: true });

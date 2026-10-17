@@ -356,12 +356,17 @@ responsive `identity` and `metrics`/`continuation` groups, and optional
 not a function or literal glyph; the host owns animation and glyph resolution.
 The `completed` role gives task-list rows dim/strikethrough styling in the host.
 Keyed metrics reserve number-format widths to stabilize row height across
-digit-width changes. The host keeps greedy packing; the sidebar uses
-`metricLayout: 'grid'` with a shared column schema, wrapping all metrics without
-dropping them and aligning missing fields as empty cells. Model·effort reserves
-16 cells with ellipsis; out-of-range numbers widen their shared column without
-truncation. The optional degrading `metricLayout: 'columns'` remains available.
-Semantic metric
+digit-width changes. The host keeps greedy packing; `metricLayout: 'grid'` wraps
+all metrics in a shared column schema. The sidebar uses single-line
+`metricLayout: 'columns'` with one panel-wide `createWorkPanelColumnPlan`
+decided from reserved widths: it drops speed → context → tools → cost → model
+(10 cells) → tokens while any row's summary would get fewer than 12 cells, then
+truncates the summary; elapsed shows without its icon. Columns rows need keyed
+metrics and an identity of name/separator/summary, colored per element (status
+glyph and elapsed by state, tokens in/out from each segment's `direction`, cost
+and model in distinct roles, dim separators); identity fitting keeps each
+segment's role and the columns layout never drops the name. Render statuses include `timedOut` (◷/`T`), `resolved` (↻/`~`)
+and `expectedExit`; summaries carry optional `queued` and `cancelled`. Semantic metric
 icons include `elapsed`; ASCII retains labels. Selection, focus and keys are unchanged.
 
 The v2 upgrade procedure pairs pi-subagents, pi-background-tasks and pi-todo
@@ -383,7 +388,8 @@ the mount with one diagnostic. Pi 1.0.2 is tested; regular mode covers the live
 viewport, not historical terminal scrollback.
 
 `/sidebar` toggles; `auto|manual|on|off` controls session policy/enabled state.
-Width defaults to 44 (28–72), leaving at least 64 columns for the main pane.
+Width defaults to 50 (36–72), leaving at least 64 columns for the main pane;
+narrow terminals may shrink the effective width below 36.
 Manual hides below 92; auto collapses below `80 + preferred width` and reopens
 8 columns later. `/sidebar resize` enters resize (← grows, → shrinks by 1, Shift 4, Enter confirm,
 Esc revert), with a live hint inside the sidebar; fullscreen also supports divider drag. `/sidebar panels` lists ids;
@@ -406,9 +412,14 @@ chrome uses per-panel theme roles and SGR-dim borders. Session adds a context
 meter and warning/rejected Limit row. Workspace shares pi-core's root
 `formatCwd`, showing Clean/Modified/Conflicts and `Changed N files +A −D` from
 porcelain v2 and numstat against HEAD (empty tree when unborn). Work panels
-show static running/done/failed status-icon counts with zero counts omitted
-(Todos keeps completed/total), all metrics with icons in aligned columns that
-wrap onto stable continuation lines (ASCII labels), and `/subagents`, `/todos`, `/bg` footers; empty panels keep
+list rows in launch order (oldest first, `sortStartedAt` then id) and keep every
+active row plus the three most recently launched finished rows for every
+terminal status, without expiry; height pressure hides oldest finished, then
+oldest active rows behind `+N more`. Headers show running ◐, queued ○ (≥36
+columns), done ✓, actionable failed ✗ (incl. timed out) and muted cancelled ■,
+zero counts omitted (Todos keeps completed/total). Cancelled/interrupted never
+count as failed; background expected exits and journal-resolved failures do not
+either. Rows are single-line columns, with `/subagents`, `/todos`, `/bg` footers; empty panels keep
 a title-plus-command line. Cost shows the top ten live/persisted session task
 costs as bars, using display names or short task-summary names. Curves plot
 elapsed time per task from zero to the longest task duration. Under pressure footers drop before

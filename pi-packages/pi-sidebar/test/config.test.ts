@@ -111,14 +111,17 @@ it('slots newly discovered panels before Cost without rearranging a saved order'
   ]);
 });
 
-it('keeps a valid default width, clamped to 28..72, and ignores anything else', () => {
+it('keeps a valid default width, clamped to 36..72, and ignores anything else', () => {
   const path = fixture();
   const load = (width: unknown) => {
     writeFileSync(path, JSON.stringify({ width }));
     return loadConfig(path);
   };
   expect(load(60).width).toBe(60);
-  expect(load(10).width).toBe(28);
+  expect(load(10).width).toBe(36);
+  expect(load(28).width).toBe(36);
+  expect(load(35).width).toBe(36);
+  expect(load(36).width).toBe(36);
   expect(load(500).width).toBe(72);
   expect('width' in load('wide')).toBe(false);
   expect('width' in load(null)).toBe(false);

@@ -268,23 +268,23 @@ the Antigravity bridge MUST report API-equivalent message cost through an explic
 
 ### Requirement: Thoth Pi sidebar
 
-`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace, work-panel source and Cost panels that can be shown, hidden and reordered with persisted order and visibility, including through a `/sidebar settings` overlay, MUST follow the pi-atelier width and auto-hide rules, offer resizing through `/sidebar resize` and fullscreen divider drag without a keyboard shortcut, MUST render atelier-style themed panel chrome with per-panel icons and colors, work-panel header summaries and detail-command footers, a Workspace path abbreviated like the editor border with changed-file and line counts versus HEAD, and a subagent cost bar panel with a `/sidebar cost` curves view, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
+`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace, work-panel source and Cost panels that can be shown, hidden and reordered with persisted order and visibility, including through a `/sidebar settings` overlay, MUST default to a 50-column width that the user can resize through `/sidebar resize`, settings and fullscreen divider drag without a keyboard shortcut down to a 36-column minimum, following the pi-atelier auto-hide rules, MUST render atelier-style themed panel chrome with per-panel icons and colors and per-element row colors drawn from the active theme roles, work-panel header summaries and detail-command footers, a Workspace path abbreviated like the editor border with changed-file and line counts versus HEAD, and a subagent cost bar panel with a `/sidebar cost` curves view, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
 
 #### Scenario: Thoth Pi sidebar
 
-- **GIVEN** a 160-column fullscreen session with a running subagent, two todos and modified files
+- **GIVEN** a 160-column fullscreen session with a running subagent, two todos and modified files and no saved width
 - **WHEN** the sidebar is visible with Agents, Todos, Workspace and Cost panels
-- **THEN** the transcript wraps at the remaining width, each panel shows its themed title with a summary, Agents and Todos show their detail commands, Workspace shows `~`-abbreviated path and `Changed N files +A −D`, Cost shows bars by task display name, the work panel no longer shows the absorbed sections or accepts ← focus for them, and hiding the sidebar restores them
+- **THEN** the sidebar is 50 columns wide, `/sidebar resize` cannot shrink it below 36, each panel shows its themed title with a summary, Agents and Todos show their detail commands, Workspace shows `~`-abbreviated path and `Changed N files +A −D`, Cost shows bars by task display name, and the work panel no longer shows the absorbed sections or accepts ← focus for them
 
 ### Requirement: Stable work-panel row height
 
-the shared work-panel renderer MUST decide multi-line metric wrapping from reserved widths of each metric's number format so a row's line count does not change when only the digit width of its metric values changes within each format's reserved range; values beyond a reserved range MAY only increase a row's line count, never toggle it back and forth.
+the shared work-panel renderer MUST decide multi-line metric wrapping and, for the sidebar's single-line column layout, which metric columns to drop from reserved widths of each metric's number format, so a row's line count and visible columns do not change when only the digit width of its metric values changes within each format's reserved range; sidebar Agents rows MUST stay on one line at every supported width, dropping columns panel-wide in the order speed, context, tools, cost, model, tokens before truncating the summary; values beyond a reserved range MAY only increase a row's line count or drop columns, never toggle back and forth.
 
 #### Scenario: Stable work-panel row height
 
 - **GIVEN** a running subagent row whose tokens, context percent, speed and elapsed values cross format boundaries such as 99→100 tok/s and 9s→10s
-- **WHEN** the work panel and the sidebar render it at any width
-- **THEN** while every value stays within its reserved range the row keeps the same number of lines and rows below it do not move
+- **WHEN** the work panel and the 36- and 50-column sidebar render it
+- **THEN** while every value stays within its reserved range the row keeps the same number of lines and visible columns, the sidebar row stays on one line, and rows below it do not move
 
 ### Requirement: Codemode compact rendering
 
@@ -365,3 +365,23 @@ For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_
 - **GIVEN** a Pi UI session with pi-questions-user and pi-askcodex loaded
 - **WHEN** Codex requests approval for a command outside the sandbox
 - **THEN** the question UI shows the command and working directory in its preview with `Allow once` and `Decline`, no option is marked recommended, free text is not offered, and choosing `Decline` declines the request
+
+### Requirement: Sidebar work-panel launch order and retention
+
+The pi-sidebar Agents and Background panels MUST list rows in launch order with the oldest at the top (subagent original creation time, background start time with task id as tie-breaker) and MUST NOT reorder rows because of activity, completion or failure; they MUST show every active row plus the three most recently launched finished rows under one rule for every terminal status without time-based expiry, and when height is insufficient MUST hide the oldest finished rows first, then the oldest active rows, reporting hidden rows with a `+N more` line.
+
+#### Scenario: Sidebar work-panel launch order and retention
+
+- **GIVEN** two running subagents launched in order A then B and four finished background tasks of which the oldest failed
+- **WHEN** B reports activity after A and the sidebar renders
+- **THEN** A stays above B, and the Background panel shows its three most recently launched finished tasks in launch order without the older failure
+
+### Requirement: Work-panel terminal status taxonomy
+
+First-party work-panel providers MUST render cancelled and interrupted work as a muted cancelled status that is not counted as a failure, MUST render timed-out work with a distinct timed-out status glyph counted as a failure, MUST render a background task whose non-zero exit code was declared expected as a non-error expected-exit status counted as done, and MUST render a failed background task whose failure incidents are all recovered or superseded as a muted resolved status not counted as a failure; header summaries MUST count only actionable failures as failed and MUST report queued and cancelled counts separately, and the new statuses MUST resolve through the render kit with Unicode, Nerd and ASCII glyphs.
+
+#### Scenario: Work-panel terminal status taxonomy
+
+- **GIVEN** a cancelled subagent, a subagent that hit its total timeout, a background task exiting 1 with `expected_exit_codes: [1]` and a failed background task later recovered by a same-operation success
+- **WHEN** the sidebar renders their panels
+- **THEN** they show the ■ cancelled, ◷ timed-out, expected-exit and ↻ resolved glyphs respectively, the subagent rows show no status label, and the failed counters count only the timeout

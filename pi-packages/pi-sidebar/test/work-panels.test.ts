@@ -6,7 +6,7 @@ import {
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import {
-  createWorkPanelMetricGrid,
+  createWorkPanelColumnPlan,
   panelVisibleWidth,
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
@@ -95,44 +95,52 @@ it('puts the workspace state word in its header', () => {
 it.each([
   'nerd',
   'ascii',
-] as const)('keeps every metric on stable continuation lines in %s mode at 30/44 cells', (mode) => {
+] as const)('renders every Agents row on one line in %s mode at 36/50 cells, dropping columns panel-wide', (mode) => {
   releases.push(useMode(mode));
-  const values =
-    mode === 'ascii'
-      ? {
-          tools: 'tools 99',
-          tokens: 'in 9.9k out 99',
-          context: 'ctx 9.9%',
-          speed: 'tok/s 99',
-          cost: '$0.99',
-          elapsed: 'elapsed 9s',
-          model: 'gpt-5·high',
-        }
-      : {
-          tools: '⚒ 99',
-          tokens: '↑9.9k ↓99',
-          context: '◔ 9.9%',
-          speed: '↯ 99',
-          cost: '$0.99',
-          elapsed: '◷ 9s',
-          model: 'gpt-5·high',
-        };
-  const row = agentRow('a', 'explorer', 'running', values);
-  row.metrics = row.metrics?.map((group) =>
-    group.key === 'model' ? { ...group, columnsOnly: true } : group,
-  );
-  releases.push(source('subagents', 'Agents', [row]));
+  const ascii = mode === 'ascii';
+  const values = {
+    tools: ascii ? 'tools 99' : '⚒ 99',
+    tokens: ascii ? 'in 9.9k out 99' : '↑9.9k ↓99',
+    context: ascii ? 'ctx 9.9%' : '◔ 9.9%',
+    speed: ascii ? 'tok/s 99' : '↯ 99',
+    cost: '$0.99',
+    elapsed: ascii ? 'elapsed 9s' : '◷ 9s',
+    model: 'gpt-5·high',
+  };
+  const rows = [
+    agentRow('a', 'explorer', 'running', values),
+    agentRow('b', 'reviewer', 'completed', values),
+  ];
+  releases.push(source('subagents', 'Agents', rows));
   const panel = sidebar([{ id: 'subagents', visible: true }]);
-  for (const width of [30, 44]) {
+  const shown: string[][] = [];
+  for (const width of [36, 50]) {
     const rendered = lines(panel.renderAt(width, 40));
-    const continuation = rendered.slice(2, -2).join('\n').replace(/\s+/g, ' ');
-    for (const value of Object.values(values))
-      expect(continuation).toContain(value);
+    // top + one line per row + footer + bottom
+    expect(rendered).toHaveLength(rows.length + 3);
     for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
+    const body = rendered.slice(1, 1 + rows.length);
+    shown.push(
+      Object.values(values).filter(
+        (v) => v !== values.elapsed && body[0].includes(v),
+      ),
+    );
+    // Panel-wide: both rows keep the same visible columns.
     expect(
-      row.metrics?.find((group) => group.key === 'model')?.columnsOnly,
-    ).toBe(true);
+      Object.values(values).filter(
+        (v) => v !== values.elapsed && body[1].includes(v),
+      ),
+    ).toEqual(shown.at(-1));
+    expect(body[0]).toMatch(/expl/);
+    // Columns render elapsed as the bare time, leaving ◷ to the timed-out status.
+    expect(body[0]).toMatch(/ 9s \|?$|9s │$/);
+    expect(body[0]).not.toContain(values.elapsed);
   }
+  // Wider panels never show fewer columns than narrower ones.
+  expect(shown[1].length).toBeGreaterThanOrEqual(shown[0].length);
+  expect(shown[0]).not.toContain(values.speed);
+  // The summary keeps its budget: optional columns drop before it truncates.
+  expect(shown[0]).toEqual([]);
 });
 
 it.each([
@@ -149,11 +157,16 @@ it.each([
     (sum, row) =>
       sum +
       workPanelRowLineCount(row, width - 4, panelVisibleWidth, {
-        metricLayout: 'grid',
-        metricGrid: createWorkPanelMetricGrid(rows, panelVisibleWidth),
+        metricLayout: 'columns',
+        metricGrid: createWorkPanelColumnPlan(
+          rows,
+          width - 4,
+          panelVisibleWidth,
+        ),
       }),
     0,
   );
+  expect(expected).toBe(rows.length);
   // top + rows + footer + bottom
   expect(rendered).toHaveLength(expected + 3);
   for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
@@ -191,9 +204,10 @@ it('recomputes metric widths when an animated row is re-exposed', () => {
   );
   expect(exposed).toEqual(fresh);
   const measured = workPanelRowLineCount(rows[0], 65, panelVisibleWidth, {
-    metricLayout: 'grid',
-    metricGrid: createWorkPanelMetricGrid(rows, panelVisibleWidth),
+    metricLayout: 'columns',
+    metricGrid: createWorkPanelColumnPlan(rows, 65, panelVisibleWidth),
   });
+  expect(measured).toBe(1);
   expect(exposed).toHaveLength(measured + 3);
   for (const line of exposed) expect(panelVisibleWidth(line)).toBe(69);
 });
@@ -300,7 +314,7 @@ it('refreshes finished provider metrics on late kit registration, icon changes a
       visibleCount: () => 1,
       listRows: () => [
         agentRow('finished', 'worker', 'completed', {
-          elapsed: `${resolveIcon('elapsed', 'elapsed')} 9s`,
+          tools: `${resolveIcon('elapsed', 'elapsed')} 9`,
         }),
       ],
       detail: () => null,
@@ -309,8 +323,8 @@ it('refreshes finished provider metrics on late kit registration, icon changes a
     }),
   );
   const panel = sidebar([{ id: 'subagents', visible: true }]);
-  const text = () => lines(panel.renderAt(44, 40)).join('\n');
-  expect(text()).toContain('elapsed 9s');
+  const text = () => lines(panel.renderAt(100, 40)).join('\n');
+  expect(text()).toContain('elapsed 9');
   let clock = '◷';
   const token = registerRenderKit(
     createTestRenderKit({
@@ -319,13 +333,13 @@ it('refreshes finished provider metrics on late kit registration, icon changes a
     {},
   );
   releases.push(() => withdrawRenderKit(token));
-  expect(text()).toContain('◷ 9s');
-  expect(text()).not.toContain('elapsed 9s');
+  expect(text()).toContain('◷ 9');
+  expect(text()).not.toContain('elapsed 9');
   clock = 'CLOCK';
-  expect(text()).toContain('CLOCK 9s');
+  expect(text()).toContain('CLOCK 9');
   withdrawRenderKit(token);
-  expect(text()).toContain('elapsed 9s');
-  expect(text()).not.toContain('CLOCK 9s');
+  expect(text()).toContain('elapsed 9');
+  expect(text()).not.toContain('CLOCK 9');
 });
 
 it.each([
@@ -409,7 +423,7 @@ it('omits zero status counts, including an all-zero header summary', () => {
 it.each([
   'nerd',
   'ascii',
-] as const)('keeps grid sidebar row heights stable across digit boundaries in %s mode', (mode) => {
+] as const)('keeps one-line sidebar row heights stable across digit boundaries in %s mode', (mode) => {
   releases.push(useMode(mode));
   for (const width of [30, 44]) {
     const heights: number[] = [];
@@ -457,10 +471,15 @@ it.each([
         );
         expect(rendered.length).toBe(
           workPanelRowLineCount(row, width - 4, panelVisibleWidth, {
-            metricLayout: 'grid',
-            metricGrid: createWorkPanelMetricGrid([row], panelVisibleWidth),
+            metricLayout: 'columns',
+            metricGrid: createWorkPanelColumnPlan(
+              [row],
+              width - 4,
+              panelVisibleWidth,
+            ),
           }) + 3,
         );
+        expect(rendered.length).toBe(4);
         heights.push(rendered.length);
       } finally {
         off();
@@ -470,13 +489,14 @@ it.each([
   }
 });
 
-it('retains active plus three finished rows indefinitely, failed-first, without changing totals', () => {
+it('retains active plus the three latest launches indefinitely and uniformly without changing totals', () => {
   vi.useFakeTimers();
   vi.setSystemTime(100_000);
   const finished = (id: string, endedAt: number, failed = false) => ({
     ...agentRow(id, id, failed ? 'failed' : 'completed'),
     state: failed ? ('failed' as const) : ('done' as const),
-    endedAt,
+    sortStartedAt: endedAt,
+    endedAt: 100_000 - endedAt,
   });
   releases.push(
     source(
@@ -496,17 +516,19 @@ it('retains active plus three finished rows indefinitely, failed-first, without 
   const panel = sidebar([{ id: 'subagents', visible: true }]);
   const text = () => lines(panel.renderAt(44, 40)).join('\n');
   expect(text()).toContain('live');
-  expect(text()).toContain('failure');
+  expect(text()).not.toContain('failure');
   expect(text()).toContain('newest');
   expect(text()).toContain('middle');
-  expect(text()).not.toContain('older');
+  expect(text()).toContain('older');
   expect(text()).not.toContain('expired');
   expect(text()).toContain('◐1 ✓4 ✗1');
-  expect(text().indexOf('failure')).toBeLessThan(text().indexOf('newest'));
+  expect(text().indexOf('older')).toBeLessThan(text().indexOf('middle'));
+  expect(text().indexOf('middle')).toBeLessThan(text().indexOf('newest'));
   expect(panel.hasAnimation()).toBe(true);
   vi.setSystemTime(111_000);
   const retained = text();
-  expect(retained).toContain('failure');
+  expect(retained).not.toContain('failure');
+  expect(retained).toContain('older');
   expect(retained).toContain('newest');
   expect(retained).toContain('middle');
   expect(retained).not.toContain('+');
@@ -523,12 +545,25 @@ it.each([
   vi.useFakeTimers();
   vi.setSystemTime(now);
   const listRows = vi.fn(() => [
-    { ...agentRow('older', 'older item', 'completed'), endedAt: 1000 },
-    { ...agentRow('newest', 'newest item', 'completed'), endedAt: 3000 },
-    { ...agentRow('middle', 'middle item', 'completed'), endedAt: 2000 },
+    {
+      ...agentRow('older', 'older item', 'completed'),
+      sortStartedAt: 1000,
+      endedAt: 1000,
+    },
+    {
+      ...agentRow('newest', 'newest item', 'completed'),
+      sortStartedAt: 3000,
+      endedAt: 3000,
+    },
+    {
+      ...agentRow('middle', 'middle item', 'completed'),
+      sortStartedAt: 2000,
+      endedAt: 2000,
+    },
     {
       ...agentRow('failed', 'failure item', 'failed'),
       state: 'failed' as const,
+      sortStartedAt: 0,
       endedAt: 0,
       expiresAt: 100,
     },
@@ -550,18 +585,78 @@ it.each([
   const panel = sidebar([{ id, visible: true }]);
   const first = panel.renderAt(44, 40);
   const text = lines(first).join(String.fromCharCode(10));
-  expect(text).toContain('failure item');
+  expect(text).not.toContain('failure item');
   expect(text).toContain('newest item');
   expect(text).toContain('middle item');
-  expect(text).not.toContain('older item');
+  expect(text).toContain('older item');
   expect(text).not.toContain('more');
-  expect(text.indexOf('failure item')).toBeLessThan(
-    text.indexOf('newest item'),
-  );
-  expect(text.indexOf('newest item')).toBeLessThan(text.indexOf('middle item'));
+  expect(text.indexOf('older item')).toBeLessThan(text.indexOf('middle item'));
+  expect(text.indexOf('middle item')).toBeLessThan(text.indexOf('newest item'));
   expect(lines(first)[0]).toContain(id === 'todos' ? '3/4' : '✓3 ✗1');
-  expect(panel.hasAnimation()).toBe(false);
+  expect(panel.hasAnimation(44)).toBe(false);
   vi.setSystemTime(200_000);
   expect(panel.renderAt(44, 40)).toBe(first);
   expect(listRows).toHaveBeenCalledTimes(1);
+});
+
+const MIXED = { running: 1, queued: 2, completed: 3, failed: 1, cancelled: 4 };
+
+it('shows queued and cancelled counts in the header, queued only from 36 cells', () => {
+  releases.push(source('subagents', 'Agents', [agentRow('a', 'one')], MIXED));
+  const panel = sidebar([{ id: 'subagents', visible: true }]);
+  const wide = lines(panel.renderAt(40, 40))[0];
+  expect(wide).toContain('◐1 ○2 ✓3 ✗1 ■4');
+  expect(panelVisibleWidth(wide)).toBe(40);
+  const narrow = lines(panel.renderAt(30, 40))[0];
+  expect(narrow).not.toContain('○');
+  expect(narrow).toContain('◐1 ✓3 ✗1');
+  expect(panelVisibleWidth(narrow)).toBe(30);
+});
+
+it('drops ■ before other counts when the header is tight and omits zero queued/cancelled', () => {
+  releases.push(
+    source('background-tasks', 'Background', [agentRow('b', 'x')], {
+      running: 1,
+      queued: 2,
+      completed: 12,
+      failed: 1,
+      cancelled: 140,
+    }),
+  );
+  const tight = lines(
+    sidebar([{ id: 'background-tasks', visible: true }]).renderAt(36, 40),
+  )[0];
+  expect(tight).toContain('◐1 ○2 ✓12 ✗1');
+  expect(tight).not.toContain('■');
+  releases.pop()?.();
+  releases.push(
+    source('background-tasks', 'Background', [agentRow('b', 'x')], {
+      running: 1,
+      completed: 0,
+      failed: 0,
+      queued: 0,
+      cancelled: 0,
+    }),
+  );
+  const zero = lines(
+    sidebar([{ id: 'background-tasks', visible: true }]).renderAt(40, 40),
+  )[0];
+  expect(zero).toContain('◐1');
+  expect(zero).not.toMatch(/[○■✓✗]/);
+});
+
+it('styles the cancelled count muted', () => {
+  releases.push(source('subagents', 'Agents', [agentRow('a', 'one')], MIXED));
+  const styled: Array<[string, string]> = [];
+  const panel = sidebar([{ id: 'subagents', visible: true }], {
+    theme: {
+      fg: (role, text) => {
+        styled.push([role, text]);
+        return text;
+      },
+    },
+  });
+  panel.renderAt(50, 40);
+  expect(styled).toContainEqual(['muted', '■4']);
+  expect(styled).toContainEqual(['dim', '○2']);
 });

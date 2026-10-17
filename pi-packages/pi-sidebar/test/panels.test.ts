@@ -141,7 +141,7 @@ function sourcePanel(
   });
 }
 
-it('keeps live rows and only three recent terminal items, failed-first, independently of provider caps', () => {
+it('keeps live rows and the three most recently launched finished items uniformly, independently of provider caps', () => {
   const panel = sourcePanel([
     { id: 'live', primary: 'live item', state: 'running', status: 'running' },
     ...Array.from({ length: 8 }, (_, i) => ({
@@ -149,7 +149,8 @@ it('keeps live rows and only three recent terminal items, failed-first, independ
       primary: `finished ${i}`,
       state: (i % 2 ? 'failed' : 'done') as 'failed' | 'done',
       status: i % 2 ? 'failed' : 'completed',
-      endedAt: Date.now() - (7 - i) * 1000,
+      sortStartedAt: i,
+      endedAt: Date.now() - i * 1000,
     })),
     { id: 'pending', primary: 'pending item', status: 'pending' },
     { id: 'summary', primary: '+99 stale summary', summary: true },
@@ -158,19 +159,19 @@ it('keeps live rows and only three recent terminal items, failed-first, independ
   expect(text).toContain('live item');
   expect(text).toContain('pending item');
   expect(text.indexOf('live item')).toBeLessThan(text.indexOf('pending item'));
-  expect(text.indexOf('pending item')).toBeLessThan(text.indexOf('finished 7'));
+  expect(text.indexOf('finished 7')).toBeLessThan(text.indexOf('live item'));
   expect(text).not.toContain('finished 2');
   expect(text).not.toContain('stale summary');
-  expect(text.indexOf('finished 7')).toBeLessThan(text.indexOf('finished 5'));
-  expect(text.indexOf('finished 5')).toBeLessThan(text.indexOf('finished 3'));
-  for (const i of [0, 1, 2, 4, 6]) expect(text).not.toContain(`finished ${i}`);
+  expect(text.indexOf('finished 5')).toBeLessThan(text.indexOf('finished 6'));
+  expect(text.indexOf('finished 6')).toBeLessThan(text.indexOf('finished 7'));
+  for (const i of [0, 1, 2, 3, 4]) expect(text).not.toContain(`finished ${i}`);
   expect(text).not.toContain('+3 more'); // discarded history is not height overflow
 });
 
 it.each([
   {
     sequence: ['finished-A', 'pending-B', 'finished-C', 'running-D'],
-    retained: ['pending-B', 'running-D', 'finished-A', 'finished-C'],
+    retained: ['finished-A', 'pending-B', 'finished-C', 'running-D'],
   },
   {
     sequence: [
@@ -187,9 +188,9 @@ it.each([
     retained: [
       'pending-B',
       'running-D',
-      'finished-A',
-      'finished-C',
-      'finished-E',
+      'finished-G',
+      'finished-H',
+      'finished-I',
     ],
   },
 ])('keeps active rows plus up to three stable finished rows when timestamps are unavailable: $sequence', ({
@@ -212,6 +213,116 @@ it.each([
     .sort((a, b) => text.indexOf(a) - text.indexOf(b));
   expect(renderedOrder).toEqual(retained);
   expect(rows.map((row) => row.primary)).toEqual(sequence);
+});
+
+it('keeps launch order across activity updates, equal timestamps and missing timestamps without mutating provider order', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  const rows = [
+    { id: 'missing-z', primary: 'missing-z', status: 'running' },
+    { id: 'second', primary: 'second', status: 'running', sortStartedAt: 20 },
+    { id: 'first-b', primary: 'first-b', status: 'running', sortStartedAt: 10 },
+    { id: 'first-a', primary: 'first-a', status: 'running', sortStartedAt: 10 },
+    {
+      id: 'missing-a',
+      primary: 'missing-a',
+      status: 'running',
+      sortStartedAt: Number.NaN,
+    },
+  ];
+  const panel = sourcePanel(rows);
+  const order = () =>
+    panel
+      .render(60)
+      .join('\n')
+      .match(/first-a|first-b|second|missing-z|missing-a/g);
+  expect(order()).toEqual([
+    'first-a',
+    'first-b',
+    'second',
+    'missing-z',
+    'missing-a',
+  ]);
+  expect(rows.map((row) => row.id)).toEqual([
+    'missing-z',
+    'second',
+    'first-b',
+    'first-a',
+    'missing-a',
+  ]);
+  // Provider activity changes its input ranking, but not launch timestamps.
+  rows.splice(1, 3, rows[3], rows[2], rows[1]);
+  vi.setSystemTime(2000);
+  expect(order()).toEqual([
+    'first-a',
+    'first-b',
+    'second',
+    'missing-z',
+    'missing-a',
+  ]);
+});
+
+it.each([
+  'completed',
+  'failed',
+  'timedOut',
+  'timed_out',
+  'cancelled',
+  'interrupted',
+  'deleted',
+  'resolved',
+  'expectedExit',
+])('does not reserve a history slot for an older %s row', (status) => {
+  const panel = sourcePanel([
+    { id: 'old', primary: 'old-outcome', status, sortStartedAt: 1 },
+    ...[2, 3, 4].map((sortStartedAt) => ({
+      id: String(sortStartedAt),
+      primary: `recent-${sortStartedAt}`,
+      status: 'completed',
+      sortStartedAt,
+    })),
+  ]);
+  const text = panel.render(60).join('\n');
+  expect(text).not.toContain('old-outcome');
+  for (const id of [2, 3, 4]) expect(text).toContain(`recent-${id}`);
+});
+
+it.each([
+  { status: 'queued', state: 'failed' as const },
+  { status: 'stopping', state: 'done' as const },
+  { status: 'pending', state: 'done' as const },
+  { status: 'resolved', state: 'running' as const },
+])('keeps active retention state independently of terminal presentation: %j', (status) => {
+  const panel = sourcePanel([
+    { id: 'live', primary: 'live-outcome', sortStartedAt: 1, ...status },
+    ...[2, 3, 4].map((sortStartedAt) => ({
+      id: String(sortStartedAt),
+      primary: `recent-${sortStartedAt}`,
+      status: 'completed',
+      sortStartedAt,
+    })),
+  ]);
+  expect(panel.render(60).join('\n')).toContain('live-outcome');
+});
+
+it.each([
+  [7, ['live-A', 'live-C', 'live-E', 'done-F'], 2],
+  [6, ['live-A', 'live-C', 'live-E'], 3],
+  [5, ['live-C', 'live-E'], 4],
+  [4, ['live-E'], 5],
+] as const)('hides oldest finished rows before oldest active rows at height %i', (height, visible, hidden) => {
+  const names = ['live-A', 'done-B', 'live-C', 'done-D', 'live-E', 'done-F'];
+  const panel = sourcePanel(
+    names.map((primary, sortStartedAt) => ({
+      id: primary,
+      primary,
+      sortStartedAt,
+      status: primary.startsWith('done') ? 'completed' : 'running',
+    })),
+  );
+  const text = panel.renderAt(60, height).join('\n');
+  expect(text.match(/live-[ACE]|done-[BDF]/g)).toEqual(visible);
+  expect(text).toContain(`+${hidden} more`);
 });
 
 it.each([

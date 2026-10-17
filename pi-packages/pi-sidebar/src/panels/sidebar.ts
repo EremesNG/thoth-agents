@@ -14,17 +14,21 @@ import {
   type WorkPanelSource,
 } from '@thoth-agents/pi-core';
 import {
-  createWorkPanelMetricGrid,
+  createWorkPanelColumnPlan,
   panelFg,
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
   WORK_PANEL_ANIMATION_INTERVAL_MS,
-  type WorkPanelMetricGrid,
   workPanelRenderStatus,
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
 import type { SidebarConfig } from '../config.js';
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+} from '../layout/adapter.js';
 import {
   iconSignature,
   isAsciiMode,
@@ -41,41 +45,47 @@ import {
 } from './rows.js';
 import type { WorkspaceSnapshot } from './workspace.js';
 
-/** All active rows plus the three newest finished rows, failures first. */
+/** Retention state wins over presentation; queued, stopping and pending stay live. */
+function isFinished(row: WorkPanelRow): boolean {
+  if (['queued', 'stopping', 'pending'].includes(row.status ?? ''))
+    return false;
+  if (row.state) return row.state === 'done' || row.state === 'failed';
+  return (
+    row.status === 'timed_out' ||
+    [
+      'completed',
+      'failed',
+      'timedOut',
+      'cancelled',
+      'interrupted',
+      'deleted',
+      'resolved',
+      'expectedExit',
+    ].includes(workPanelRenderStatus(row))
+  );
+}
+
+/**
+ * Launch order, oldest first. Missing/non-finite timestamps follow timestamped
+ * rows in stable input order and count as later launches for the last-three cap.
+ */
 function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
-  const active: WorkPanelRow[] = [];
-  const finished: WorkPanelRow[] = [];
-  for (const row of rows) {
-    if (row.summary) continue;
-    const status = workPanelRenderStatus(row);
-    const terminal =
-      !['queued', 'stopping', 'pending'].includes(row.status ?? '') &&
-      (row.state === 'done' ||
-        row.state === 'failed' ||
-        ['completed', 'failed', 'cancelled', 'interrupted', 'deleted'].includes(
-          status,
-        ));
-    if (!terminal) active.push(row);
-    else finished.push(row);
-  }
-  return [
-    ...active,
-    ...finished
-      .sort(
-        (a, b) =>
-          Number(
-            b.state === 'failed' ||
-              workPanelRenderStatus(b) === 'failed' ||
-              b.status === 'timed_out',
-          ) -
-            Number(
-              a.state === 'failed' ||
-                workPanelRenderStatus(a) === 'failed' ||
-                a.status === 'timed_out',
-            ) || (b.endedAt ?? 0) - (a.endedAt ?? 0),
-      )
-      .slice(0, 3),
-  ];
+  const ordered = rows
+    .filter((row) => !row.summary)
+    .sort((a, b) => {
+      const aTime = Number.isFinite(a.sortStartedAt)
+        ? a.sortStartedAt
+        : undefined;
+      const bTime = Number.isFinite(b.sortStartedAt)
+        ? b.sortStartedAt
+        : undefined;
+      if (aTime === undefined) return bTime === undefined ? 0 : 1;
+      if (bTime === undefined) return -1;
+      return aTime - bTime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
+  const finished = ordered.filter(isFinished);
+  const retained = new Set(finished.slice(-3));
+  return ordered.filter((row) => !isFinished(row) || retained.has(row));
 }
 
 /** Detail command shown in each work panel footer and in the empty title line. */
@@ -89,14 +99,20 @@ const COST_COMMAND = '/sidebar cost';
 const MIN_PANEL_WIDTH = 24;
 export const WIDEN_HINT = 'widen: /sidebar resize';
 
+/** Narrowest panel that still shows the queued count. */
+const QUEUED_MIN_WIDTH = 36;
+/** Cells the header needs besides the summary: borders, icon and spacing. */
+const HEADER_CHROME = 10;
+
 /** Static status counts for agents/background tasks, `done/total` for todos. */
 function sourceSummary(
   source: WorkPanelSource,
   theme: RenderKitTheme,
+  width: number,
 ): string | undefined {
   const summary = source.summary;
   if (!summary) return undefined;
-  const { running, completed, failed, total } = summary;
+  const { running, queued, cancelled, completed, failed, total } = summary;
   if (source.id === 'todos') {
     return completed !== undefined && total !== undefined
       ? `${completed}/${total}`
@@ -107,24 +123,34 @@ function sourceSummary(
     running !== undefined &&
     completed !== undefined &&
     failed !== undefined
-  )
-    return [
-      running > 0
-        ? panelFg(theme, 'accent', `${resolveStatusGlyph('running')}${running}`)
-        : '',
-      completed > 0
-        ? panelFg(
-            theme,
-            'success',
-            `${resolveStatusGlyph('completed')}${completed}`,
-          )
-        : '',
-      failed > 0
-        ? panelFg(theme, 'error', `${resolveStatusGlyph('failed')}${failed}`)
-        : '',
-    ]
-      .filter(Boolean)
+  ) {
+    const parts = [
+      { status: 'running', role: 'accent', count: running },
+      {
+        status: 'queued',
+        role: 'dim',
+        count: width >= QUEUED_MIN_WIDTH ? (queued ?? 0) : 0,
+      },
+      { status: 'completed', role: 'success', count: completed },
+      { status: 'failed', role: 'error', count: failed },
+      { status: 'cancelled', role: 'muted', count: cancelled ?? 0 },
+    ] as const;
+    const shown = parts.filter((part) => part.count > 0);
+    const text = (items: typeof shown) =>
+      items.map((part) => `${resolveStatusGlyph(part.status)}${part.count}`);
+    const room = width - HEADER_CHROME - panelVisibleWidth(clean(source.label));
+    // Drop ■ then ○ before the header summary would vanish entirely.
+    const kept = [...shown];
+    for (const status of ['cancelled', 'queued'])
+      if (panelVisibleWidth(text(kept).join(' ')) > room)
+        kept.splice(
+          kept.findIndex((part) => part.status === status),
+          kept.some((part) => part.status === status) ? 1 : 0,
+        );
+    return kept
+      .map((part, index) => panelFg(theme, part.role, text(kept)[index]))
       .join(' ');
+  }
   return summary.text ? clean(summary.text) : undefined;
 }
 
@@ -138,6 +164,8 @@ interface PanelData {
   block(index: number): string[];
   /** Show `+N more` when blocks are cut by height. */
   more: boolean;
+  /** Block indices to hide first; absent means keep the fitting prefix. */
+  dropOrder?: number[];
   footer?: string;
   bareFooter?: string;
   /** Title-only line regardless of height. */
@@ -204,24 +232,37 @@ function fitBlocks(
   costs: readonly number[],
   budget: number,
   more: boolean,
-): { count: number; overflow: boolean } {
+  dropOrder?: readonly number[],
+): { indices: number[]; overflow: boolean } {
+  const indices = costs.map((_, index) => index);
+  const total = costs.reduce((sum, cost) => sum + cost, 0);
   const within = (lines: number) => {
-    let used = 0;
-    let count = 0;
-    for (const cost of costs) {
-      if (used + cost > lines) break;
-      used += cost;
-      count++;
+    if (dropOrder) {
+      let used = total;
+      const hidden = new Set<number>();
+      for (const index of dropOrder) {
+        if (used <= lines) break;
+        used -= costs[index];
+        hidden.add(index);
+      }
+      return indices.filter((index) => !hidden.has(index));
     }
-    return count;
+    let used = 0;
+    const fitting: number[] = [];
+    for (const index of indices) {
+      if (used + costs[index] > lines) break;
+      used += costs[index];
+      fitting.push(index);
+    }
+    return fitting;
   };
-  if (costs.reduce((sum, cost) => sum + cost, 0) <= budget)
-    return { count: costs.length, overflow: false };
-  if (!more) return { count: within(budget), overflow: false };
-  const count = within(budget - 1);
-  if (count > 0 || within(budget) === 0) return { count, overflow: true };
+  if (total <= budget) return { indices, overflow: false };
+  if (!more) return { indices: within(budget), overflow: false };
+  const fitting = within(budget - 1);
+  if (fitting.length > 0 || within(budget).length === 0)
+    return { indices: fitting, overflow: true };
   // A lone row beats a bare count.
-  return { count: within(budget), overflow: false };
+  return { indices: within(budget), overflow: false };
 }
 
 export interface SidebarPanelsOptions {
@@ -261,7 +302,6 @@ export class SidebarPanels implements Component {
       revision: number;
       frame: number;
       items: WorkPanelRow[];
-      grid: WorkPanelMetricGrid;
       animated: boolean;
     }
   >();
@@ -316,7 +356,7 @@ export class SidebarPanels implements Component {
           'resize',
           'Resize',
           [
-            `width ${resizeWidth} (28–72)`,
+            `width ${resizeWidth} (${MIN_SIDEBAR_WIDTH}–${MAX_SIDEBAR_WIDTH})`,
             '←/→ move divider · Shift 4',
             'Enter confirm · Esc revert',
           ],
@@ -399,19 +439,15 @@ export class SidebarPanels implements Component {
         revision: source.revision,
         frame,
         items,
-        grid: [],
         animated: false,
       };
-      snapshot.grid = createWorkPanelMetricGrid(
-        snapshot.items,
-        panelVisibleWidth,
-      );
       this.snapshots.set(source.id, snapshot);
     }
     const items = snapshot.items;
+    // One panel-wide plan per render: every row shares the same visible columns.
     const metricOptions = {
-      metricLayout: 'grid' as const,
-      metricGrid: snapshot.grid,
+      metricLayout: 'columns' as const,
+      metricGrid: createWorkPanelColumnPlan(items, inner, panelVisibleWidth),
     };
     const command = DETAIL_COMMANDS[source.id];
     return {
@@ -420,10 +456,10 @@ export class SidebarPanels implements Component {
       // An empty panel is one title line that carries the command.
       summary:
         items.length === 0 && command
-          ? [sourceSummary(source, options.theme), command]
+          ? [sourceSummary(source, options.theme, inner + 4), command]
               .filter(Boolean)
               .join(' ')
-          : sourceSummary(source, options.theme),
+          : sourceSummary(source, options.theme, inner + 4),
       costs: items.map((row) =>
         workPanelRowLineCount(row, inner, panelVisibleWidth, metricOptions),
       ),
@@ -438,6 +474,10 @@ export class SidebarPanels implements Component {
           ...metricOptions,
         }),
       more: true,
+      dropOrder: [
+        ...items.flatMap((row, index) => (isFinished(row) ? [index] : [])),
+        ...items.flatMap((row, index) => (!isFinished(row) ? [index] : [])),
+      ],
       footer: command
         ? footerRow(command, 'detail', inner + 4, options.theme)
         : undefined,
@@ -455,7 +495,7 @@ export class SidebarPanels implements Component {
       rows: [],
     };
   }
-  private plan(height: number, width = 44): PanelData[] {
+  private plan(height: number, width = DEFAULT_SIDEBAR_WIDTH): PanelData[] {
     if (width < MIN_PANEL_WIDTH) {
       this.animated = false;
       return [];
@@ -488,11 +528,7 @@ export class SidebarPanels implements Component {
         options.resizeWidth?.(),
         this.sessionView(),
         icons,
-        [...this.snapshots].map(([id, snapshot]) => [
-          id,
-          snapshot.items,
-          snapshot.grid,
-        ]),
+        [...this.snapshots].map(([id, snapshot]) => [id, snapshot.items]),
         options.home,
       ]);
     if (makeKey() === this.cachedKey) return this.cachedPlan;
@@ -519,9 +555,10 @@ export class SidebarPanels implements Component {
           panel.costs,
           size - 2 - Number(footer),
           panel.more,
+          panel.dropOrder,
         );
         const used =
-          panel.costs.slice(0, fit.count).reduce((sum, cost) => sum + cost, 0) +
+          fit.indices.reduce((sum, index) => sum + panel.costs[index], 0) +
           Number(fit.overflow) +
           Number(footer) +
           2;
@@ -550,10 +587,11 @@ export class SidebarPanels implements Component {
       const total = panel.costs.reduce((sum, cost) => sum + cost, 0);
       // Footers go before rows.
       const footer = panel.footer && panel.height >= total + 3;
-      const { count, overflow } = fitBlocks(
+      const { indices, overflow } = fitBlocks(
         panel.costs,
         panel.height - 2 - (footer ? 1 : 0),
         panel.more,
+        panel.dropOrder,
       );
       const snapshot = this.snapshots.get(panel.id);
       // Refresh newly exposed animation before rendering. Replan because fresh
@@ -561,25 +599,19 @@ export class SidebarPanels implements Component {
       if (
         snapshot &&
         snapshot.frame !== frame &&
-        panel.animated?.slice(0, count).some(Boolean)
+        indices.some((index) => panel.animated?.[index])
       ) {
         const raw = getWorkPanelSourceRows(panel.id, {
           maxRows: Number.MAX_SAFE_INTEGER,
           respectRowCap: false,
         });
         snapshot.items = retainedRows(raw);
-        snapshot.grid = createWorkPanelMetricGrid(
-          snapshot.items,
-          panelVisibleWidth,
-        );
         snapshot.frame = frame;
         return this.plan(height, width);
       }
-      panel.rows = Array.from({ length: count }, (_, index) =>
-        panel.block(index),
-      ).flat();
+      panel.rows = indices.flatMap((index) => panel.block(index));
       if (overflow) {
-        const more = `+${panel.costs.length - count} more`;
+        const more = `+${panel.costs.length - indices.length} more`;
         const available = width - 4 - panelVisibleWidth(more) - 1;
         const command = [panel.footer, panel.bareFooter]
           .map((text) => text?.trimStart())
@@ -594,7 +626,7 @@ export class SidebarPanels implements Component {
         );
       }
       if (footer && panel.footer) panel.rows.push(panel.footer);
-      const active = panel.animated?.slice(0, count).some(Boolean) ?? false;
+      const active = indices.some((index) => panel.animated?.[index]);
       if (snapshot) snapshot.animated = active;
       this.animated ||= active;
     }
@@ -607,13 +639,13 @@ export class SidebarPanels implements Component {
     this.cachedLines = undefined;
     return visible;
   }
-  sourceIds(width = 44): string[] {
+  sourceIds(width = DEFAULT_SIDEBAR_WIDTH): string[] {
     // A title-only panel still displays its source, even without live rows.
     return this.plan(this.options.height(), width)
       .filter((panel) => panel.source && panel.height >= 1)
       .map((panel) => panel.id);
   }
-  hasAnimation(width = 44): boolean {
+  hasAnimation(width = DEFAULT_SIDEBAR_WIDTH): boolean {
     this.plan(this.options.height(), width);
     return this.animated;
   }

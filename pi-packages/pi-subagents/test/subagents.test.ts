@@ -42,6 +42,7 @@ function createExtensionManagerFake() {
       statusesById: new Map(),
     })),
     listSessionTasks: vi.fn(() => [] as SubagentTask[]),
+    listWorkPanelSessionTasks: vi.fn(() => [] as SubagentTask[]),
     getTask: vi.fn((_id: string) => undefined as SubagentTask | undefined),
     cancel: vi.fn(),
   };
@@ -250,7 +251,7 @@ describe('subagents smoke', () => {
       );
       expect(fixture.render()).toHaveLength(2);
       expect(fixture.render().join(' ')).toContain(
-        'Agents · 8 done · 2 failed',
+        'Agents · 8 done · 1 failed',
       );
       expect(fixture.render().join(' ')).not.toContain('current-failed');
     } finally {

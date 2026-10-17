@@ -43,6 +43,11 @@ export type WorkPanelSegmentRole =
 export interface WorkPanelSegment {
   text: string;
   role: WorkPanelSegmentRole;
+  /**
+   * Token direction of a `tokens` metric segment. The sidebar colours `in` accent and `out`
+   * success from this marker alone; unmarked segments (e.g. the gap) stay neutral.
+   */
+  direction?: 'in' | 'out';
 }
 
 /** Data-only rendered body and continuations, excluding selection/tree/status gutters. */
@@ -80,6 +85,10 @@ export type WorkPanelStatusGlyph = RenderStatus | 'taskInProgress';
 export interface WorkPanelRow {
   id: string;
   primary: string;
+  /**
+   * Flat legacy presentation. When a row also has `identity`/`metrics`, those are used only by
+   * the sidebar's columns layout; the greedy and grid hosts render `segments` unchanged.
+   */
   segments?: readonly WorkPanelSegment[];
   /** Responsive identity: labels shrink before names; warning/error attention is protected. */
   identity?: readonly WorkPanelSegment[];
@@ -121,6 +130,8 @@ export interface WorkPanelSummary {
   text?: string;
   segments?: readonly WorkPanelSegment[];
   running?: number;
+  queued?: number;
+  cancelled?: number;
   failed?: number;
   completed?: number;
   total?: number;
@@ -239,7 +250,13 @@ export interface WorkPanelSource {
   /** Data-only provider counters; a failed summary read leaves this absent. */
   summary?: Pick<
     WorkPanelSummary,
-    'running' | 'completed' | 'failed' | 'total' | 'text'
+    | 'running'
+    | 'queued'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'total'
+    | 'text'
   >;
 }
 
@@ -260,7 +277,15 @@ export function listWorkPanelSources(): WorkPanelSource[] {
         if (typeof summary === 'string') return { text: summary };
         if (!summary) return undefined;
         return Object.fromEntries(
-          ['running', 'completed', 'failed', 'total', 'text'].flatMap((key) => {
+          [
+            'running',
+            'queued',
+            'completed',
+            'failed',
+            'cancelled',
+            'total',
+            'text',
+          ].flatMap((key) => {
             const value = summary[key as keyof WorkPanelSummary];
             return (
               key === 'text'

@@ -705,6 +705,12 @@ export class SubagentManager {
       : { counts: {}, statusesById: new Map() };
   }
 
+  /** Separate bounded launch-ranked input; overlays keep activity ranking. */
+  listWorkPanelSessionTasks(cwd?: string, sessionId?: string) {
+    if (!cwd || !sessionId) return [];
+    return this.cachedPersistedSessionTasks(cwd, sessionId, true);
+  }
+
   listSessionTasks(cwd?: string, sessionId?: string) {
     const active = this.listActiveSessionTasks(cwd, sessionId);
     if (!cwd || !sessionId) return active;
@@ -2432,16 +2438,18 @@ export class SubagentManager {
   private cachedPersistedSessionTasks(
     cwd: string,
     sessionId: string,
+    byLaunch = false,
   ): SubagentTask[] {
-    const key = `${cwd}\0${sessionId}`;
+    const key = `${cwd}\0${sessionId}${byLaunch ? '\0launch' : ''}`;
     const cached = this.sessionTaskCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.tasks;
     try {
       const listMetadata = (this.history as any).listSessionTaskMetadata as
         | ((cwd: string, sessionId: string, limit?: number) => SubagentTask[])
         | undefined;
-      const tasks =
-        typeof listMetadata === 'function'
+      const tasks = byLaunch
+        ? this.history.listSessionTaskMetadataByLaunch(cwd, sessionId, 100)
+        : typeof listMetadata === 'function'
           ? listMetadata.call(this.history, cwd, sessionId, 100)
           : this.history.listSessionTasks(cwd, sessionId, 100, {
               includeSnapshots: false,
@@ -2458,8 +2466,10 @@ export class SubagentManager {
   }
 
   private invalidateSessionTaskCache(cwd: string, task: SubagentTask): void {
-    if (task.session_id)
+    if (task.session_id) {
       this.sessionTaskCache.delete(`${cwd}\0${task.session_id}`);
+      this.sessionTaskCache.delete(`${cwd}\0${task.session_id}\0launch`);
+    }
   }
 
   private record(

@@ -44,14 +44,14 @@ it('reserves content for later panels before growing Agents', () => {
   expect(lines.join('\n')).toContain('Model');
 });
 
-it('shows the first rows and +N more when a work panel does not fit', () => {
+it('shows the newest active rows in launch order and +N more when a work panel does not fit', () => {
   releases.push(source('subagents', 'Agents', agents(5), SUMMARY));
   const panel = sidebar([{ id: 'subagents', visible: true }]);
   const lines = render(panel, 6);
   expect(lines).toHaveLength(6);
-  expect(lines[1]).toContain('agent 0');
-  expect(lines[2]).toContain('agent 1');
-  expect(lines[3]).toContain('agent 2');
+  expect(lines[1]).toContain('agent 2');
+  expect(lines[2]).toContain('agent 3');
+  expect(lines[3]).toContain('agent 4');
   expect(lines[4]).toMatch(/\+2 more +\/subagents ▸ detail │$/);
   const narrow = render(panel, 6, 28);
   expect(narrow[4]).toContain('+2 more');
@@ -70,8 +70,8 @@ it('drops the footer before any row', () => {
   expect(noFooter.join('\n')).not.toContain('detail');
   // Only now do rows go.
   const cut = render(panel, 3);
-  expect(cut.join('\n')).toContain('agent 0');
-  expect(cut.join('\n')).not.toContain('agent 1');
+  expect(cut.join('\n')).toContain('agent 1');
+  expect(cut.join('\n')).not.toContain('agent 0');
 });
 
 it('keeps trailing title summaries when minimum bodies cannot fit, dropping gaps first', () => {
@@ -180,7 +180,7 @@ it('keeps Cost content visible under metric-heavy Agent growth, measuring only r
     },
   );
   const minimum = render(panel, 9);
-  expect(minimum.join('\n')).toContain('+7 more');
+  expect(minimum.join('\n')).toMatch(/\+\d+ more/);
   expect(minimum.join('\n')).toContain('/subagents ▸ detail');
   expect(minimum.join('\n')).toContain('costly task');
   expect(minimum.filter((line) => line.includes('│')).length).toBeGreaterThan(

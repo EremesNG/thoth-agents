@@ -69,6 +69,33 @@ from the bus.
 only for their session, and queue requests until state is ready when needed;
 these lifecycle concerns stay outside the library.
 
+## Shared question service v1
+
+Package authors can use `registerQuestionService(provider)` and
+`getQuestionService()` to share a question UI across separately bundled pi-core
+copies without importing another extension. The process-wide registry uses
+`Symbol.for('thoth-agents.pi-core.question-service.v1')`; lookup returns the most
+recent live compatible provider, or `undefined` when absent or incompatible.
+The returned handle's idempotent `withdraw()` removes only its own registration.
+
+A `QuestionServiceProvider` implements `ask(ctx, request, { signal })`, returning a
+`Promise<QuestionServiceResult>`. Pass the caller's Pi UI context; the contract
+itself has no SDK runtime dependency. `QuestionServiceRequest` contains optional
+`title` and a `questions` array: each question has `id`, `header`, `prompt`, an
+explicit `type` (`single`, `multi`, `text`, `confirm`), and optional `context`,
+`required`, and options with `value`, `label`, `description`, `preview`, and
+`recommended`. Per-question `allowCustom` defaults to `true`; set it to `false`
+to disable free-text answers.
+
+Results have `status: 'answered' | 'cancelled' | 'unavailable'` and `answers`
+keyed by question ID. Each answer has `status: 'answered' | 'skipped' |
+'unanswered'`, `values`, and optional `labels`, `customText`, and `note`.
+Cancellation includes abort, after UI disposal; `unavailable` means the provider
+cannot present UI and lets the consumer choose a fallback. Providers return
+structured results for expected cases; consumers should still guard against
+unexpected failures and validate answers before acting. pi-core supplies no UI;
+`@thoth-agents/pi-questions-user` registers a provider in UI sessions.
+
 ## Task-list contract
 
 - `TODO_STATE_CHANNEL`: `thoth:todo:state`, version 1, validated `TodoSnapshot`.

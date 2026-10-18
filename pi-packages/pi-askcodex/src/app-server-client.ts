@@ -1,5 +1,10 @@
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
+import {
+  JobLauncherUnavailable,
+  launchInJob,
+} from '@thoth-agents/pi-core/windows-job';
 import { terminateProcessTree } from './process-termination.js';
 import type {
   InitializeParams,
@@ -22,6 +27,9 @@ import type {
 
 export interface AppServerClientOptions {
   binaryPath: string;
+  /** Injectable launcher for availability testing; only used on Windows. */
+  launchInJob?: typeof launchInJob;
+  log?: (message: string, data?: unknown) => void;
   /** Arguments before app-server (e.g. a Node fixture script). */
   commandPrefixArgs?: string[];
   extraArgs?: string[];
@@ -53,8 +61,18 @@ const requestMethods = new Set([
   'item/permissions/requestApproval',
 ]);
 
+interface ServerProcess {
+  pid: number | undefined;
+  stdin: Writable;
+  stdout: Readable;
+  stderr: Readable;
+  exited: Promise<{ code: number | null; signal?: NodeJS.Signals | null }>;
+  terminate(timeoutMs: number): Promise<void>;
+}
+
 export class AppServerClient {
-  private readonly child: ChildProcessWithoutNullStreams;
+  private child!: ServerProcess;
+  private readonly ready: Promise<void>;
   private readonly pending = new Map<RequestId, Pending>();
   private readonly listeners = new Map<string, Set<(params: never) => void>>();
   private readonly completed = new Map<string, TurnCompletedNotification>();
@@ -65,45 +83,66 @@ export class AppServerClient {
   private closing = false;
   private closePromise?: Promise<void>;
   private stderr = Buffer.alloc(0);
-  private readonly exited: Promise<void>;
+  private exited: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: AppServerClientOptions) {
-    this.child = spawn(
-      options.binaryPath,
-      [
-        ...(options.commandPrefixArgs ?? []),
-        'app-server',
-        '--stdio',
-        ...(options.extraArgs ?? []),
-      ],
-      {
-        shell: false,
-        windowsHide: true,
-        detached: process.platform !== 'win32',
-        cwd: options.cwd,
-        env: options.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    );
-    this.exited = new Promise((resolve) => {
-      const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-        this.fail(
-          new Error(
-            `Codex app-server ${options.binaryPath} exited (code ${code}, signal ${signal}). Stderr: ${this.stderrTail || '(empty)'}`,
-          ),
-        );
-        resolve();
-      };
-      // `close` can lag indefinitely when a descendant inherits the pipes.
-      this.child.once('exit', onExit);
-      this.child.once('close', onExit);
-    });
-    this.child.once('error', (error) =>
+    this.ready = this.start().catch((error) => {
       this.fail(
         new Error(
           `Cannot start Codex app-server ${options.binaryPath}: ${error.message}`,
         ),
-      ),
+      );
+    });
+  }
+  private async start(): Promise<void> {
+    const options = this.options;
+    const args = [
+      ...(options.commandPrefixArgs ?? []),
+      'app-server',
+      '--stdio',
+      ...(options.extraArgs ?? []),
+    ];
+    if (process.platform === 'win32') {
+      try {
+        const job = await (options.launchInJob ?? launchInJob)({
+          file: options.binaryPath,
+          args,
+          cwd: options.cwd ?? process.cwd(),
+          env: options.env ?? process.env,
+        });
+        this.child = {
+          ...job,
+          terminate: async (timeoutMs) => {
+            try {
+              await job.terminate(timeoutMs);
+            } finally {
+              await job.release();
+            }
+          },
+        };
+      } catch (error) {
+        if (!(error instanceof JobLauncherUnavailable)) throw error;
+        try {
+          options.log?.('termination-warning', {
+            reason: `Windows job launcher unavailable: ${error.message}; only the app-server leader will be terminated, descendants may survive`,
+          });
+        } catch {
+          /* diagnostics cannot break startup */
+        }
+        this.child = this.spawn(args);
+      }
+    } else this.child = this.spawn(args);
+    this.exited = this.child.exited.then(
+      ({ code, signal }) => {
+        this.fail(
+          new Error(
+            `Codex app-server ${options.binaryPath} exited (code ${code}, signal ${signal ?? null}). Stderr: ${this.stderrTail || '(empty)'}`,
+          ),
+        );
+      },
+      (error) => {
+        this.fail(new Error(`Codex app-server exit failed: ${String(error)}`));
+      },
     );
     this.child.stdin.on('error', (error) =>
       this.fail(
@@ -140,6 +179,65 @@ export class AppServerClient {
         }
       }
     });
+  }
+  private spawn(args: string[]): ServerProcess {
+    const child = spawn(this.options.binaryPath, args, {
+      shell: false,
+      windowsHide: true,
+      detached: process.platform !== 'win32',
+      cwd: this.options.cwd,
+      env: this.options.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const exited = new Promise<{
+      code: number | null;
+      signal?: NodeJS.Signals | null;
+    }>((resolve) => {
+      const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+        resolve({ code, signal });
+      // A descendant can keep inherited pipes open after leader exit.
+      child.once('exit', onExit);
+      child.once('close', onExit);
+      child.once('error', (error) => {
+        this.fail(
+          new Error(
+            `Cannot start Codex app-server ${this.options.binaryPath}: ${error.message}`,
+          ),
+        );
+        resolve({ code: null });
+      });
+    });
+    return {
+      pid: child.pid,
+      stdin: child.stdin,
+      stdout: child.stdout,
+      stderr: child.stderr,
+      exited,
+      terminate: async (timeoutMs) => {
+        if (process.platform !== 'win32') {
+          await terminateProcessTree(child, {
+            timeoutMs,
+            log: this.options.log,
+          });
+          return;
+        }
+        if (!child.pid || child.exitCode !== null || child.signalCode !== null)
+          return;
+        // Own ChildProcess handle only: never enumerate or select descendants by PID.
+        child.kill();
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          await Promise.race([
+            exited,
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, timeoutMs);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+    };
   }
   get stderrTail(): string {
     return this.stderr.toString('utf8');
@@ -248,8 +346,8 @@ export class AppServerClient {
         `Codex app-server ${this.options.binaryPath} closed; stderr: ${this.stderrTail}`,
       ),
     );
-    // Windows tree ownership depends on the live leader: EOF can make it exit
-    // before taskkill /T enumerates descendants. POSIX retains its process group.
+    await this.ready;
+    if (!this.child) return;
     if (process.platform !== 'win32') {
       this.child.stdin.end();
       let timer: NodeJS.Timeout | undefined;
@@ -261,14 +359,28 @@ export class AppServerClient {
       ]);
       clearTimeout(timer);
     }
-    await terminateProcessTree(this.child, {
-      timeoutMs: this.options.terminationTimeoutMs,
-    });
-    this.child.stdout.destroy();
-    this.child.stderr.destroy();
-    this.child.stdin.destroy();
+    try {
+      await this.child.terminate(
+        Math.max(1, this.options.terminationTimeoutMs ?? 3000),
+      );
+    } catch (error) {
+      // Helper death already closes its kill-on-close jobs. Never retry by PID;
+      // other termination failures are also diagnostic, not transport exceptions.
+      try {
+        this.options.log?.('termination-warning', {
+          reason: `App-server termination cleanup failed: ${String(error)}`,
+        });
+      } catch {
+        /* diagnostics cannot break cleanup */
+      }
+    } finally {
+      this.child.stdout.destroy();
+      this.child.stderr.destroy();
+      this.child.stdin.destroy();
+    }
   }
-  private request<T>(method: string, params: unknown): Promise<T> {
+  private async request<T>(method: string, params: unknown): Promise<T> {
+    await this.ready;
     if (this.terminalError || this.closing)
       return Promise.reject(this.terminalError ?? new Error('Client closed'));
     return new Promise<T>((resolve, reject) => {

@@ -27,7 +27,10 @@ const packages = {
     assets: ['dist/windows-job-helper.ps1', 'dist/windows-job-helper.cs'],
   },
   'pi-antigravity-bridge': { tool: 'antigravity', command: 'agy' },
-  'pi-askcodex': { tool: 'AskCodex' },
+  'pi-askcodex': {
+    tool: 'AskCodex',
+    assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
+  },
   'pi-claude-bridge': { provider: 'claude-bridge' },
   'pi-openai-fast': { event: 'before_provider_request' },
   'pi-thoth-theme': { event: 'session_start' },

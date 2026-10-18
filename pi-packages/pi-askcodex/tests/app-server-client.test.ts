@@ -1,4 +1,10 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
+import {
+  JobLauncherUnavailable,
+  launchInJob,
+} from '@thoth-agents/pi-core/windows-job';
 import { afterEach, expect, it } from 'vitest';
 import { AppServerClient } from '../src/app-server-client.js';
 
@@ -14,7 +20,7 @@ function client(
     binaryPath: process.execPath,
     commandPrefixArgs: [fixture],
     env: { ...process.env, FAKE_SCENARIO: scenario },
-    requestTimeoutMs: 1500,
+    requestTimeoutMs: 5000,
     ...extra,
   });
   clients.push(c);
@@ -187,13 +193,14 @@ it('rejects requests immediately when the leader exits even if inherited stdout 
   await expect(
     c.waitForTurnCompleted(turn.id, { timeoutMs: 10000 }),
   ).rejects.toThrow(/exited/);
-}, 15000);
+}, 30000);
 it.each([
   'persistent-descendant',
   'persistent-descendant-exit',
 ])('close kills a persistent descendant across leader exit (%s)', async (scenario) => {
   const c = client(scenario);
   let pid = 0;
+  let confirmedGone = false;
   c.onNotification('item/agentMessage/delta', ({ delta }) => {
     pid = Number(delta);
   });
@@ -212,7 +219,9 @@ it.each([
             process.kill(pid, 0);
             return 'alive';
           } catch (error) {
-            return (error as NodeJS.ErrnoException).code;
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code === 'ESRCH') confirmedGone = true;
+            return code;
           }
         },
         { timeout: 10000 },
@@ -220,7 +229,7 @@ it.each([
       .toBe('ESRCH');
   } finally {
     try {
-      process.kill(pid, 'SIGKILL');
+      if (pid > 0 && !confirmedGone) process.kill(pid, 'SIGKILL');
     } catch {
       /* already gone */
     }
@@ -250,3 +259,152 @@ it('forwards cwd, env and literal config arguments without shell interpretation'
     'key="literal & value"',
   ]);
 });
+
+it.skipIf(process.platform !== 'win32')(
+  'unavailable launcher warns and kills only the leader, leaving descendants alive',
+  async () => {
+    const warnings: Array<{ message: string; data: unknown }> = [];
+    const c = client('persistent-descendant', {
+      launchInJob: async () => {
+        throw new JobLauncherUnavailable('compilation blocked');
+      },
+      log: (message, data) => warnings.push({ message, data }),
+    });
+    let pid = 0;
+    let confirmedGone = false;
+    c.onNotification('item/agentMessage/delta', ({ delta }) => {
+      pid = Number(delta);
+    });
+    try {
+      await c.initialize();
+      await expect.poll(() => pid, { timeout: 10000 }).toBeGreaterThan(0);
+      const { thread } = await c.threadStart({});
+      const leader = Number(thread.pid);
+      expect(leader).toBeGreaterThan(0);
+      await c.close();
+      await expect
+        .poll(
+          () => {
+            try {
+              process.kill(leader, 0);
+              return 'alive';
+            } catch (error) {
+              return (error as NodeJS.ErrnoException).code;
+            }
+          },
+          { timeout: 3000 },
+        )
+        .toBe('ESRCH');
+      expect(() => {
+        try {
+          process.kill(pid, 0);
+        } catch (error) {
+          confirmedGone = (error as NodeJS.ErrnoException).code === 'ESRCH';
+          throw error;
+        }
+      }).not.toThrow();
+      expect(warnings).toEqual([
+        {
+          message: 'termination-warning',
+          data: {
+            reason: expect.stringMatching(
+              /launcher unavailable.*compilation blocked.*only.*leader/,
+            ),
+          },
+        },
+      ]);
+      await expect(c.threadStart({})).rejects.toThrow(/closed/);
+    } finally {
+      if (pid > 0 && !confirmedGone) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {}
+      }
+    }
+  },
+  20000,
+);
+it.skipIf(process.platform !== 'win32')(
+  'does not fall back on unclassified launch errors',
+  async () => {
+    const c = client('normal', {
+      launchInJob: async () => {
+        throw new Error('ambiguous start');
+      },
+    });
+    await expect(c.initialize()).rejects.toThrow(
+      /Cannot start.*ambiguous start/,
+    );
+  },
+);
+it.skipIf(process.platform !== 'win32')(
+  'job close leaves an independently spawned out-of-job process alive',
+  async () => {
+    // A stale equal parent PID needs OS PID reuse or a privileged parent-attribute
+    // launcher. Do not fake ancestry: real disjoint job membership is the invariant.
+    const foreign = spawn(
+      process.execPath,
+      ['-e', "console.log('ready');setInterval(()=>{},1000)"],
+      {
+        detached: true,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    );
+    try {
+      await once(foreign.stdout, 'data', {
+        signal: AbortSignal.timeout(10000),
+      });
+      const c = client();
+      await c.initialize();
+      await c.close();
+      expect(foreign.exitCode).toBeNull();
+      expect(foreign.signalCode).toBeNull();
+      const foreignPid = foreign.pid;
+      if (!foreignPid || foreignPid <= 0)
+        throw new Error('Missing foreign PID');
+      expect(() => process.kill(foreignPid, 0)).not.toThrow();
+    } finally {
+      if (foreign.exitCode === null && foreign.signalCode === null)
+        foreign.kill();
+    }
+  },
+  30000,
+);
+
+it.skipIf(process.platform !== 'win32').each(['terminate', 'release', 'both'])(
+  'close warns instead of rejecting when job %s fails',
+  async (failure) => {
+    const warnings: unknown[] = [];
+    let released = false;
+    const c = client('normal', {
+      log: (_message, data) => warnings.push(data),
+      launchInJob: async (options) => {
+        const job = await launchInJob(options);
+        return {
+          ...job,
+          terminate: async (timeoutMs) => {
+            await job.terminate(timeoutMs);
+            if (failure !== 'release')
+              throw new Error('injected terminate failure');
+          },
+          release: async () => {
+            released = true;
+            await job.release();
+            if (failure !== 'terminate')
+              throw new Error('injected release failure');
+          },
+        };
+      },
+    });
+    await c.initialize();
+    await expect(c.close()).resolves.toBeUndefined();
+    expect(released).toBe(true);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        reason: expect.stringMatching(/injected.*failure/),
+      }),
+    ]);
+  },
+  30000,
+);

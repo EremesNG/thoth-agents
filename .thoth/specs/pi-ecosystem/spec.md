@@ -348,7 +348,7 @@ For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_
 
 ### Requirement: AskCodex app-server delegation
 
-`@thoth-agents/pi-askcodex` MUST register an `AskCodex` tool, unless disabled by configuration, that delegates a task to the local Codex harness through `codex app-server` over stdio, resolving the binary from explicit configuration, then the Codex Desktop-bundled executable, then PATH with a warning; it MUST map `plan` to a read-only sandbox and `accept-edits` to workspace-write, return the final agent message, a continuation id that resumes the same Codex thread, token usage and every approval decision; it MUST answer Computer Use app elicitations by accepting allowlisted apps with session scope only, asking the user through Pi UI for other approvals when UI is available and declining them otherwise, never granting persistent approval; and it MUST interrupt the turn and terminate its own process tree on abort or timeout.
+`@thoth-agents/pi-askcodex` MUST register an `AskCodex` tool, unless disabled by configuration, that delegates a task to the local Codex harness through `codex app-server` over stdio, resolving the binary from explicit configuration, then the Codex Desktop-bundled executable, then PATH with a warning; it MUST map `plan` to a read-only sandbox and `accept-edits` to workspace-write, return the final agent message, a continuation id that resumes the same Codex thread, token usage and every approval decision; it MUST answer Computer Use app elicitations by accepting allowlisted apps with session scope only, asking the user through Pi UI for other approvals when UI is available and declining them otherwise, never granting persistent approval; and it MUST interrupt the turn and terminate its own process tree on abort or timeout, except that on Windows without an available job launcher it terminates only the app-server leader as defined by AskCodex Windows job containment.
 
 #### Scenario: AskCodex app-server delegation
 
@@ -385,3 +385,13 @@ First-party work-panel providers MUST render cancelled and interrupted work as a
 - **GIVEN** a cancelled subagent, a subagent that hit its total timeout, a background task exiting 1 with `expected_exit_codes: [1]` and a failed background task later recovered by a same-operation success
 - **WHEN** the sidebar renders their panels
 - **THEN** they show the ■ cancelled, ◷ timed-out, expected-exit and ↻ resolved glyphs respectively, the subagent rows show no status label, and the failed counters count only the timeout
+
+### Requirement: AskCodex Windows job containment
+
+On Windows `@thoth-agents/pi-askcodex` MUST launch the Codex app-server inside its own kill-on-close Job Object, assigned before the app-server's first thread runs, with its stdio connected directly to Pi, and MUST terminate the app-server and its descendants only through that job; when the job launcher is unavailable it MUST terminate only the leader through its own process handle and warn, and it MUST never terminate a process selected by PID, parent PID or creation time.
+
+#### Scenario: AskCodex Windows job containment
+
+- **GIVEN** a Windows Pi session where AskCodex runs an app-server that spawned a persistent descendant and an unrelated process exists whose stale parent PID equals the app-server PID
+- **WHEN** the AskCodex call times out
+- **THEN** the app-server and its descendant are terminated through the job and the unrelated process keeps running

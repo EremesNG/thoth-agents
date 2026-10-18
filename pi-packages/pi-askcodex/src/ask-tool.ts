@@ -297,6 +297,12 @@ export function registerAskCodexTool(
         details.warnings.push(...binary.warnings);
         client = deps.createClient({
           binaryPath: binary.path,
+          log: (message, data) => {
+            if (message === 'termination-warning')
+              details.warnings.push(
+                `${message}: ${(data as { reason: string }).reason}`,
+              );
+          },
           cwd,
           extraArgs: config.extraArgs,
           serverRequestHandler: createApprovalHandler({
@@ -444,13 +450,22 @@ export function registerAskCodexTool(
         clearTimeout(interruptDeadline);
         clearInterval(tick);
         signal?.removeEventListener('abort', abort);
-        if (client) {
-          if (details.status !== 'completed')
-            details.stderrTail = client.stderrTail;
-          await client.close();
+        try {
+          if (client) {
+            if (details.status !== 'completed')
+              details.stderrTail = client.stderrTail;
+            await client.close();
+          }
+        } catch (error) {
+          details.warnings.push(`App-server cleanup failed: ${String(error)}`);
+        } finally {
+          try {
+            if (scratch) fs.rmSync(scratch, { force: true });
+          } catch (error) {
+            details.warnings.push(`Context cleanup failed: ${String(error)}`);
+          }
+          details.elapsedMs = Date.now() - started;
         }
-        if (scratch) fs.rmSync(scratch, { force: true });
-        details.elapsedMs = Date.now() - started;
       }
       const failure =
         details.status === 'interrupted'

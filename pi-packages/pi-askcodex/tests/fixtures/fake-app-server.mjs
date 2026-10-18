@@ -37,7 +37,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         process.execPath,
         ['-e', 'setInterval(() => {}, 1000)'],
         {
-          // POSIX stays in the owned server group; Windows exercises taskkill /T.
+          // POSIX stays in the owned server group; Windows stays in the inherited Job Object.
           detached: process.platform === 'win32',
           windowsHide: true,
           stdio: 'ignore',
@@ -84,6 +84,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         thread: {
           id: m.params.threadId ?? 'thread-1',
           cwd: process.cwd(),
+          pid: process.pid,
           marker: process.env.FAKE_MARKER,
           argv: process.argv.slice(2),
         },

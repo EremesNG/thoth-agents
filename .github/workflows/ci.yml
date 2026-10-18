@@ -134,6 +134,8 @@ jobs:
   # Windows qualification for the vendored Pi packages only; the root suite stays on Ubuntu.
   pi-packages-windows:
     runs-on: windows-latest
+    # A healthy run takes ~20 minutes; fail a hung step instead of holding the runner for 6 hours.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code

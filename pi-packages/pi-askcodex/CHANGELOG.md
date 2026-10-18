@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Contain Windows app-server processes and descendants in a Job Object, avoiding unrelated processes regardless of PID reuse or stale parent links. If the job launcher is unavailable, warn and terminate only the app-server leader through its own process handle.
+
 ## [1.0.0] - 2026-10-18
 
 First published release.

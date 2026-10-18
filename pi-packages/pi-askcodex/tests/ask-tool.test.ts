@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +15,11 @@ import {
   registerQuestionService,
 } from '@thoth-agents/pi-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AppServerClient } from '../src/app-server-client.js';
+import { WindowsJobClient } from '../../pi-core/src/windows-job/client.js';
+import {
+  AppServerClient,
+  type AppServerClientOptions,
+} from '../src/app-server-client.js';
 import { registerAskCodexTool } from '../src/ask-tool.js';
 import type { DesktopStatus } from '../src/binary.js';
 import { loadConfig } from '../src/config.js';
@@ -30,6 +36,9 @@ function setup(
   trace?: string,
   desktopStatus: DesktopStatus = false,
   approvalRequest?: ServerRequest,
+  clientOptions: Partial<AppServerClientOptions> = {},
+  createClient = (options: AppServerClientOptions) =>
+    new AppServerClient(options),
 ) {
   let tool!: ToolDefinition;
   const config = {
@@ -51,7 +60,7 @@ function setup(
       }),
       desktopRunning: async () => desktopStatus,
       createClient: (options) =>
-        new AppServerClient({
+        createClient({
           ...options,
           serverRequestHandler: approvalRequest
             ? (_request, context) => {
@@ -60,6 +69,7 @@ function setup(
                 return options.serverRequestHandler(approvalRequest, context);
               }
             : options.serverRequestHandler,
+          ...clientOptions,
           commandPrefixArgs: [fixture],
           env: {
             ...process.env,
@@ -570,15 +580,23 @@ describe('AskCodex', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askcodex-test-'));
     const trace = path.join(dir, 'trace');
     const controller = new AbortController();
-    const timer =
-      reason === 'abort'
-        ? setTimeout(() => controller.abort(), 250)
-        : undefined;
     try {
-      const result = await setup('interrupt', {}, trace).run(
-        { prompt: 'wait', timeoutMinutes: reason === 'timeout' ? 0.005 : 1 },
+      const pending = setup('interrupt', {}, trace).run(
+        { prompt: 'wait', timeoutMinutes: reason === 'timeout' ? 0.2 : 1 },
         controller.signal,
       );
+      if (reason === 'abort') {
+        await expect
+          .poll(
+            () =>
+              fs.existsSync(trace) &&
+              fs.readFileSync(trace, 'utf8').includes('turn/start'),
+            { timeout: 20000 },
+          )
+          .toBe(true);
+        controller.abort();
+      }
+      const result = await pending;
       expect(result.details).toMatchObject({
         status: 'interrupted',
         timedOut: reason === 'timeout',
@@ -586,7 +604,7 @@ describe('AskCodex', () => {
       });
       expect(fs.readFileSync(trace, 'utf8')).toContain('turn/interrupt');
     } finally {
-      clearTimeout(timer);
+      controller.abort();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -598,13 +616,27 @@ describe('AskCodex', () => {
     const trace = path.join(dir, 'trace');
     const controller = new AbortController();
     let pid = 0;
+    let confirmedGone = false;
+    // Spawned by the test, not the app-server: no membership in its job/group.
+    const foreign = spawn(
+      process.execPath,
+      ['-e', "console.log('ready');setInterval(()=>{},1000)"],
+      {
+        detached: true,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    );
     try {
+      await once(foreign.stdout, 'data', {
+        signal: AbortSignal.timeout(10000),
+      });
       const result = setup('persistent-descendant', {}, trace).run(
-        { prompt: 'wait', timeoutMinutes: reason === 'timeout' ? 0.02 : 1 },
+        { prompt: 'wait', timeoutMinutes: reason === 'timeout' ? 0.2 : 1 },
         controller.signal,
       );
       await expect
-        .poll(() => fs.existsSync(`${trace}.pid`), { timeout: 10000 })
+        .poll(() => fs.existsSync(`${trace}.pid`), { timeout: 20000 })
         .toBe(true);
       pid = Number(fs.readFileSync(`${trace}.pid`, 'utf8'));
       if (reason === 'abort') controller.abort();
@@ -620,15 +652,25 @@ describe('AskCodex', () => {
               process.kill(pid, 0);
               return 'alive';
             } catch (error) {
-              return (error as NodeJS.ErrnoException).code;
+              const code = (error as NodeJS.ErrnoException).code;
+              if (code === 'ESRCH') confirmedGone = true;
+              return code;
             }
           },
-          { timeout: 10000 },
+          { timeout: 20000 },
         )
         .toBe('ESRCH');
+      expect(foreign.exitCode).toBeNull();
+      expect(foreign.signalCode).toBeNull();
+      const foreignPid = foreign.pid;
+      if (!foreignPid || foreignPid <= 0)
+        throw new Error('Missing foreign PID');
+      expect(() => process.kill(foreignPid, 0)).not.toThrow();
     } finally {
+      if (foreign.exitCode === null && foreign.signalCode === null)
+        foreign.kill();
       controller.abort();
-      if (pid) {
+      if (pid > 0 && !confirmedGone) {
         try {
           process.kill(pid, 'SIGKILL');
         } catch {
@@ -637,7 +679,7 @@ describe('AskCodex', () => {
       }
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  }, 25000);
+  }, 30000);
   it('declines no-UI elicitation and records the decision', async () => {
     const result = await setup('elicitation').run({ prompt: 'task' });
     expect(result.details).toMatchObject({
@@ -675,7 +717,7 @@ describe('AskCodex', () => {
   it('streams elapsed progress and terminates even if interrupt is ignored', async () => {
     const update = vi.fn();
     const result = await setup('ignore-interrupt').run(
-      { prompt: 'wait', timeoutMinutes: 0.02 },
+      { prompt: 'wait', timeoutMinutes: 0.2 },
       undefined,
       update,
     );
@@ -740,4 +782,127 @@ describe('AskCodex', () => {
     if (process.platform !== 'win32') expect(data.context.mode).toBe(0o600);
     expect(fs.existsSync(data.context.path)).toBe(false);
   });
+});
+
+it.skipIf(process.platform !== 'win32')(
+  'helper death returns structured failure, warns, kills descendants and removes context',
+  async () => {
+    const helper = new WindowsJobClient();
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'askcodex-helper-death-'),
+    );
+    const trace = path.join(dir, 'trace');
+    let leader = 0;
+    let descendant = 0;
+    let scratch = '';
+    try {
+      const { run } = setup(
+        'persistent-descendant',
+        {},
+        trace,
+        false,
+        undefined,
+        {
+          launchInJob: async (options) => {
+            const job = await helper.launch(options);
+            leader = job.pid;
+            return job;
+          },
+        },
+      );
+      const result = run({
+        prompt: 'wait',
+        includeContext: true,
+        timeoutMinutes: 0.4,
+      });
+      // Attach immediately: a cleanup rejection must be an assertion failure, not unhandled.
+      const structured = expect(result).resolves.toMatchObject({
+        details: {
+          status: 'failed',
+          warnings: expect.arrayContaining([
+            expect.stringMatching(/termination-warning.*helper exited/),
+          ]),
+        },
+      });
+      await expect
+        .poll(
+          () => {
+            if (!fs.existsSync(trace)) return false;
+            const turn = fs
+              .readFileSync(trace, 'utf8')
+              .trim()
+              .split('\n')
+              .map((line) => JSON.parse(line))
+              .find((m) => m.method === 'turn/start');
+            scratch =
+              turn?.params.input[0].text.match(/Pi context file: (.+)/)?.[1] ??
+              '';
+            return !!scratch;
+          },
+          { timeout: 20000 },
+        )
+        .toBe(true);
+      descendant = Number(fs.readFileSync(`${trace}.pid`, 'utf8'));
+      expect(fs.existsSync(scratch)).toBe(true);
+      const helperPid = helper.helperPid;
+      if (!helperPid || helperPid <= 0) throw new Error('Missing helper PID');
+      process.kill(helperPid);
+      await structured;
+      expect(fs.existsSync(scratch)).toBe(false);
+      for (const pid of [leader, descendant]) {
+        expect(pid).toBeGreaterThan(0);
+        await expect
+          .poll(
+            () => {
+              try {
+                process.kill(pid, 0);
+                return 'alive';
+              } catch (error) {
+                return (error as NodeJS.ErrnoException).code;
+              }
+            },
+            { timeout: 5000 },
+          )
+          .toBe('ESRCH');
+      }
+    } finally {
+      await helper.close();
+      if (scratch) fs.rmSync(scratch, { force: true });
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  30000,
+);
+
+it('close rejection is a warning and cannot skip structured output or context deletion', async () => {
+  const { run } = setup(
+    'inspect',
+    {},
+    undefined,
+    false,
+    undefined,
+    {},
+    (options) => {
+      const client = new AppServerClient(options);
+      const close = client.close.bind(client);
+      client.close = async () => {
+        await close();
+        throw new Error('injected close failure');
+      };
+      return client;
+    },
+  );
+  const result = await run({ prompt: 'task', includeContext: true });
+  expect(result.details).toMatchObject({
+    status: 'completed',
+    warnings: expect.arrayContaining([
+      expect.stringMatching(/cleanup.*injected close failure/),
+    ]),
+  });
+  const data = JSON.parse(
+    (result.content[0] as { text: string }).text.split(
+      '\n\nconversationId:',
+    )[0],
+  );
+  expect(fs.existsSync(data.context.path)).toBe(false);
 });

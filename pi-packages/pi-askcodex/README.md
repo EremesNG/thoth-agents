@@ -140,7 +140,7 @@ Continue the same Codex thread with a self-contained follow-up:
 
 Threads are **non-ephemeral**, stored by Codex under `~/.codex/sessions`, and may appear in Codex Desktop history. Continuation survives the app-server process ending; it is not an isolated or disposable conversation. `includeContext` is opt-in because exporting Pi history shares it with Codex; deleting the temporary file does not remove text already read into the Codex thread.
 
-Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known, waits briefly (up to 1.5 seconds), then closes the client and terminates its owned process tree. The result reports interruption and whether it timed out or was aborted. Cancellation does not roll back completed file edits or GUI actions.
+Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known, waits briefly (up to 1.5 seconds), then closes the client and terminates its owned process tree (on Windows, only the leader if the Job Object launcher is unavailable). The result reports interruption and whether it timed out or was aborted. Cancellation does not roll back completed file edits or GUI actions.
 
 ## Compatibility and risks
 
@@ -161,6 +161,7 @@ Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known
 | App access denied | Inspect `details.approvals` for the exact app identifier, including Notepad's packaged-app id. Use interactive Pi approval or deliberately add that identifier to `allowedApps`. Headless calls decline non-allowlisted requests. |
 | Browser tools unavailable | Check the Codex browser extension connection and follow Codex's bundled `computer-use` skill. Desktop need not be running for browser Computer Use. |
 | Handshake/protocol failure after an update | Inspect returned errors and `stderrTail` when present; check the selected binary/version. Use a compatible Desktop bundle or update AskCodex; do not bypass approval handling. |
+| Windows `termination-warning`: job launcher unavailable | Windows containment requires Windows PowerShell and permission to compile the bundled helper with `Add-Type` and assign a Job Object. Check policy/AV restrictions and packaged `launcher.ps1` / `launcher.cs` assets. Fallback terminates only the app-server leader; descendants may survive. |
 | Call times out while awaiting approval | Answer in Pi UI, use a narrow app allowlist for unattended Computer Use, or increase `timeoutMinutes`. Other approvals still decline without UI. |
 | No final answer or process exited mid-turn | Treat the returned failure as failure, not success; inspect errors and stderr. Resume only with a returned `conversationId` and verify any partial effects. |
 

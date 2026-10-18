@@ -100,7 +100,7 @@ Each case uses a temporary fixture/git workspace and agent directory, in-memory
 settings/session, the auth copy, skill assets, and explicitly loaded root and real
 subagent extensions. Parent skill discovery uses exactly the root package manifest's
 `pi.skills` paths (currently five package skills). External required skills (`tdd`,
-`simplify`, `progressive-context-router`, `architectural-grilling`) are copied with
+`simplify`, `progressive-context-router`, `grill-me`) are copied with
 supporting assets from `THOTH_EVAL_SKILLS_DIR` into the temporary agent directory.
 Missing required skills produce named setup warnings; they are never installed
 or silently substituted. The source directory is read-only to the harness.

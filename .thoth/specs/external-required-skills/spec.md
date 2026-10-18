@@ -4,7 +4,7 @@
 
 ### Requirement: Require the same four execution skills everywhere
 
-Pi installations MUST provide `simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling` from the same canonical repositories required by OpenCode, Codex, and Claude.
+Pi installations MUST provide `simplify`, `tdd`, `progressive-context-router`, and `grill-me` from the same canonical repositories required by OpenCode, Codex, and Claude.
 
 #### Scenario: US1 - Install the complete Pi agent pack 1
 

@@ -84,7 +84,7 @@ Material choices require human authority. See [SDD](sdd-pipeline.md).
 `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and
 `plan-reviewer` ship in
 every harness bundle. The installer obtains `simplify`, `tdd`,
-`progressive-context-router`, and `architectural-grilling` from their canonical
+`progressive-context-router`, and `grill-me` from their canonical
 repositories.
 
 ## Operations

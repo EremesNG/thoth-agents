@@ -68,7 +68,7 @@
     },
     {
       "id": "cross-cutting-sdd-required-skill",
-      "task": "Change the architectural-grilling activation gate and its required-skill health rule.",
+      "task": "Change the grill-me activation gate and its required-skill health rule.",
       "expected_primary": "sdd-and-skills",
       "expected_first_read": "docs/agent/sdd-and-skills.md",
       "expected_overlays": ["cli-installation"],

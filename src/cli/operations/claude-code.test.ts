@@ -227,12 +227,9 @@ describe('claudeCodeOperationAdapter', () => {
     expect(effects).toEqual([
       'native:plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
       'native:plugin install thoth-agents@thoth-plugins --scope user',
-      ...[
-        'simplify',
-        'tdd',
-        'progressive-context-router',
-        'architectural-grilling',
-      ].map((name) => `external:${name}`),
+      ...['simplify', 'tdd', 'progressive-context-router', 'grill-me'].map(
+        (name) => `external:${name}`,
+      ),
       'provider-ledger',
     ]);
     expect(readInstallLedger({ homeDir: home, env: {} })).toMatchObject({

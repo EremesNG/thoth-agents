@@ -232,7 +232,7 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 - Behavior changes need installed \`tdd\`; after implementation: behavior-preserving \`simplify\`.
 - SDD execution: never use the thoth-agents CLI, \`npx skills add\` or network for missing contracts; report installation drift.
 - Use progressive-context-router only for repository instruction or context-router work.
-- Use architectural-grilling only on explicit request or unresolved material human decisions; ask one question at a time.
+- Use grill-me when material human-owned decisions remain unresolved.
 </external-skills>
 
 <memory>

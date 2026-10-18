@@ -51,7 +51,7 @@ function writeRequiredSkills(home: string): void {
     'simplify',
     'tdd',
     'progressive-context-router',
-    'architectural-grilling',
+    'grill-me',
   ]) {
     const path = requiredSkillPath(home, name);
     mkdirSync(join(path, '..'), { recursive: true });
@@ -279,12 +279,9 @@ describe('Codex operations adapter', () => {
         'native-marketplace',
         'native-plugin',
         'agent-pack',
-        ...[
-          'simplify',
-          'tdd',
-          'progressive-context-router',
-          'architectural-grilling',
-        ].map((name) => `external:${name}`),
+        ...['simplify', 'tdd', 'progressive-context-router', 'grill-me'].map(
+          (name) => `external:${name}`,
+        ),
         'provider-ledger',
       ]);
       expect(readInstallLedger({ homeDir: home, env: {} })).toMatchObject({

@@ -339,7 +339,7 @@ OpenCode install configures the adaptive six-role roster and native task delegat
 Provider capability is external and reported only from caller-supplied evidence.
 
 External required skills are installed for every harness:
-  simplify, tdd, progressive-context-router, and architectural-grilling.
+  simplify, tdd, progressive-context-router, and grill-me.
 Their installation is mandatory and cannot be skipped.
 
 The generated OpenCode config supports the built-in OpenAI preset only.

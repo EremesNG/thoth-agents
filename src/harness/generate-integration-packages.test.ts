@@ -166,7 +166,7 @@ describe('generateIntegrationPackages', () => {
         'simplify',
         'tdd',
         'progressive-context-router',
-        'architectural-grilling',
+        'grill-me',
       ]) {
         expect(
           existsSync(join(pluginRoot, 'skills', skill, 'SKILL.md')),

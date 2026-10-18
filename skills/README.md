@@ -10,6 +10,6 @@ maintained validation. The optional plan reviewer is read-only; archive applies
 declared `.thoth/specs/` deltas transactionally.
 
 External skills (`simplify`, `tdd`, `progressive-context-router`, and
-`architectural-grilling`) are not copied here. Installation handles them; never
+`grill-me`) are not copied here. Installation handles them; never
 fetch or install dependencies during an active SDD phase. `thoth-init` only
 initializes canonical `.thoth/` governance and preserves existing records.

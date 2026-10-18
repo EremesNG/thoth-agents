@@ -17,12 +17,7 @@ function sourceSnapshot(source: string) {
 
 it('discovers manifest and required skills in the parent and lets real lean children read catalog paths without changing the source', async () => {
   const source = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-skills-'));
-  const names = [
-    'tdd',
-    'simplify',
-    'progressive-context-router',
-    'architectural-grilling',
-  ];
+  const names = ['tdd', 'simplify', 'progressive-context-router', 'grill-me'];
   for (const name of names) {
     fs.mkdirSync(path.join(source, name));
     fs.writeFileSync(
@@ -121,7 +116,7 @@ it('warns by name for every missing external required skill', async () => {
       'tdd',
       'simplify',
       'progressive-context-router',
-      'architectural-grilling',
+      'grill-me',
     ])
       expect(result.warnings).toContain(
         `Missing external required skill: ${name} (${path.join(source, name, 'SKILL.md')})`,

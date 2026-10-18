@@ -80,8 +80,8 @@ function opencodeStatusWithSkills(): HarnessStatusReport {
       },
       {
         kind: 'skill',
-        label: 'Architectural-Grilling',
-        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
+        label: 'Grill-Me',
+        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\grill-me\\SKILL.md',
         state: 'missing',
         observed: 'required global skill missing',
       },
@@ -502,10 +502,10 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('OpenCode Status');
     expect(lastFrame()).toContain('Skills');
     expect(lastFrame()).toContain('Simplify: [installed]');
-    expect(lastFrame()).toContain('Architectural-Grilling: [missing]');
+    expect(lastFrame()).toContain('Grill-Me: [missing]');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
     expect(lastFrame()).not.toContain(
-      '.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
+      '.config\\opencode\\skills\\grill-me\\SKILL.md',
     );
   });
 

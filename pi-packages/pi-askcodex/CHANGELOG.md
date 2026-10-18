@@ -4,16 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+## [1.0.0] - 2026-10-18
 
-- Whole-identifier, case-insensitive `*` and `?` wildcard patterns in `allowedApps` for session-only Computer Use app-access approvals, including packaged-app ids. `*` allows any app even without UI; other approval policies are unchanged.
-
-### Changed
-
-- Render approval prompts through the Thoth question UI when pi-questions-user provides the shared service, with command/cwd/reason or app-name/identifier previews, no recommended option, and no free-text answer. Fall back to native select when no compatible provider or dock is available; approval policy, cancellation/abort decline, and no-UI behavior are unchanged.
-- Defer Computer Use methods to Codex's own bundled `computer-use` skill; AskCodex developer instructions retain only delegation and approval notes instead of prescribing routing or APIs.
-
-## [0.1.0] - 2026-10-16
+First published release.
 
 ### Added
 
@@ -21,4 +14,6 @@ All notable changes to this project will be documented in this file.
 - Desktop-bundled binary discovery, explicit config/environment overrides, and PATH fallback warnings.
 - Read-only and workspace-write sandbox modes, thread continuation, optional web search and Pi context export, live progress, token usage, cancellation, and timeouts.
 - Exact app-identifier allowlisting with session-scoped approval, Pi UI prompts for other approvals, and decline without UI; no persistent approvals.
-- Delegation and Computer Use routing instructions, offline fake-server tests, and configuration, safety, and troubleshooting documentation.
+- Whole-identifier, case-insensitive `*` and `?` wildcard patterns in `allowedApps` for session-only Computer Use app-access approvals, including packaged-app ids. `*` allows any app even without UI; other approval policies are unchanged.
+- Approval prompts rendered through the Thoth question UI when pi-questions-user provides the shared service, with command/cwd/reason or app-name/identifier previews, no recommended option, and no free-text answer; native select fallback when no compatible provider or dock is available.
+- Delegation and approval developer instructions that defer Computer Use methods to Codex's own bundled `computer-use` skill, offline fake-server tests, and configuration, safety, and troubleshooting documentation.

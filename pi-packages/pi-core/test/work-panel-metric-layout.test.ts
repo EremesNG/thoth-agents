@@ -132,7 +132,7 @@ it('grows monotonically beyond the reserved ranges', () => {
   }
 });
 
-it('right-aligns stable sidebar columns, model at 10 cells, and drops cost, model, tokens before elapsed', () => {
+it('right-aligns stable sidebar columns, model at 10 cells, and drops model, tokens, cost in priority order before elapsed', () => {
   const row: WorkPanelRow = {
     id: 'columns',
     primary: 'worker',
@@ -147,9 +147,11 @@ it('right-aligns stable sidebar columns, model at 10 cells, and drops cost, mode
   expect(wide).toHaveLength(1);
   expect(wide[0]).toContain('sonnet hi…');
   expect(panelVisibleWidth(wide[0])).toBe(70);
+  // Cost outranks tokens and model, so it survives after both are gone.
   const narrower = render(row, 30, 'columns').join('\n');
   expect(narrower).not.toContain('↑9');
-  expect(narrower).not.toContain('$0.001');
+  expect(narrower).not.toContain('sonnet');
+  expect(narrower).toContain('$0.001');
   const narrow = render(row, 24, 'columns').join('\n');
   expect(narrow).not.toContain('$0.001');
   expect(narrow).not.toContain('sonnet');
@@ -305,7 +307,7 @@ it('shows T for the timed-out status when the kit resolves ASCII glyphs', () => 
   }
 });
 
-it('drops optional columns before the summary falls under 12 cells, from reserved widths only', () => {
+it('keeps a lower-priority column only while the summary holds 12 cells, from reserved widths only', () => {
   const summary = 'mapping the repository';
   for (let width = 20; width <= 140; width++) {
     const kept = (live: string) => {
@@ -317,10 +319,12 @@ it('drops optional columns before the summary falls under 12 cells, from reserve
     const a = kept('↑9 ↓9');
     const b = kept('↑99k ↓100');
     expect(a.plan).toEqual(b.plan);
-    const optional = a.plan.some(({ key }) => key !== 'elapsed');
+    // Only context and cost outrank the summary; anything below them needs 12 summary cells.
+    const lower = a.plan.some(
+      ({ key }) => !['elapsed', 'context', 'cost'].includes(key),
+    );
     const visible = /mapping[^·]*/.exec(a.line)?.[0].trimEnd() ?? '';
-    // With any optional column kept, the summary shows >= 12 cells.
-    if (optional) expect(panelVisibleWidth(visible)).toBeGreaterThanOrEqual(12);
+    if (lower) expect(panelVisibleWidth(visible)).toBeGreaterThanOrEqual(12);
     expect(panelVisibleWidth(a.line)).toBeLessThanOrEqual(width);
   }
   // A shorter summary is only ever shown in full.

@@ -146,6 +146,8 @@ function taskRow(
       formatDuration(Math.floor(Math.max(0, end - started) / 1000) * 1000),
     );
   else if (live) add('elapsed', `${label('elapsed', 'elapsed')} `, '?');
+  const agentName = task.agent.replace(/\s+/g, ' ').trim();
+  const compactName = agentName.replace(/^thoth-(?=.)/, '');
   const warning =
     (task.status === 'running' || task.status === 'queued') &&
     task.dropped_tools?.length
@@ -161,7 +163,14 @@ function taskRow(
     sortStartedAt: Date.parse(task.created_at),
     statusGlyph: status,
     identity: [
-      { text: task.agent.replace(/\s+/g, ' ').trim(), role: 'primary' },
+      {
+        text: agentName,
+        // The sidebar drops the redundant bundled-specialist prefix; the host keeps `text`.
+        ...(compactName && compactName !== agentName
+          ? { compact: compactName }
+          : {}),
+        role: 'primary',
+      },
       ...(summary
         ? [
             { text: separator, role: 'meta' as const },

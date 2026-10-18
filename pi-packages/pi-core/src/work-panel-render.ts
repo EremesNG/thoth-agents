@@ -408,6 +408,22 @@ interface IdentityItem {
 const itemWidth = (item: IdentityItem, measure: Measure) =>
   measure(item.lead?.text ?? '') + measure(item.body.text);
 
+/** Copy a segment for fitting; `compact` only ever applies through `columnsIdentity`. */
+function plainSegment(
+  { compact: _compact, ...segment }: WorkPanelSegment,
+  text = segment.text,
+): WorkPanelSegment {
+  return { ...segment, text };
+}
+
+/** Columns layout swaps a segment's text for its provider-supplied compact counterpart. */
+const columnsIdentity = (
+  identity: readonly WorkPanelSegment[],
+): WorkPanelSegment[] =>
+  identity.map((part) =>
+    part.compact === undefined ? part : { ...part, text: part.compact },
+  );
+
 function identityItems(segments: readonly WorkPanelSegment[]): IdentityItem[] {
   const separator = ` ${resolveIcon('separator', '·')} `;
   const items: IdentityItem[] = [];
@@ -422,8 +438,8 @@ function identityItems(segments: readonly WorkPanelSegment[]): IdentityItem[] {
     ) {
       // An empty summary leaves no separator behind.
       if (next.role === 'secondary' && next.text === '')
-        items.push({ body: { ...next } });
-      else items.push({ lead: { ...part }, body: { ...next } });
+        items.push({ body: plainSegment(next) });
+      else items.push({ lead: plainSegment(part), body: plainSegment(next) });
       index++;
     } else if (
       isFlexibleRole(part.role) &&
@@ -432,11 +448,11 @@ function identityItems(segments: readonly WorkPanelSegment[]): IdentityItem[] {
     ) {
       items.push({
         lead: { text: separator, role: 'meta' },
-        body: { ...part, text: part.text.slice(separator.length) },
+        body: plainSegment(part, part.text.slice(separator.length)),
       });
     } else if (part.role === 'secondary' && part.text === separator)
-      items.push({ body: { ...part, text: '' } });
-    else items.push({ body: { ...part } });
+      items.push({ body: plainSegment(part, '') });
+    else items.push({ body: plainSegment(part) });
   }
   return items;
 }
@@ -671,7 +687,10 @@ function columnMetricSegments(group: WorkPanelMetricGroup): WorkPanelSegment[] {
 export type WorkPanelMetricGrid = readonly {
   key: NonNullable<WorkPanelMetricGroup['key']>;
   width: number;
-}[];
+}[] & {
+  /** Column plans only: false when identity warnings are not admitted panel-wide. */
+  readonly warnings?: boolean;
+};
 
 const gridOrder = [
   'tools',
@@ -804,35 +823,50 @@ const terminalStatuses = new Set<RenderStatus>([
   'resolved',
   'expectedExit',
 ]);
-/** Columns shed in this order as the panel narrows; elapsed and the name never drop. */
-const columnDropOrder = [
-  'speed',
-  'context',
-  'tools',
-  'cost',
-  'model',
-  'tokens',
-] as const;
 const MODEL_COLUMN_WIDTH = 10;
-/** Optional columns survive only while every summary keeps this many cells. */
+/** The summary keeps this many cells (or all of a shorter one) before lower priorities show. */
 const MIN_SUMMARY_CELLS = 12;
+/**
+ * Columns-layout priority after the always-visible glyph and name: an element shows only
+ * while every higher one keeps its space. Elapsed never drops.
+ */
+const columnPriority = [
+  'elapsed',
+  'context',
+  'cost',
+  'summary',
+  'speed',
+  'tokens',
+  'tools',
+  'warnings',
+  'model',
+] as const;
 
-function minIdentityWidth(
+interface IdentityDemand {
+  /** Glyph-adjacent name text and any other always-shown identity. */
+  base: number;
+  /** Separator plus the reserved summary cells, or all of a shorter summary. */
+  summary: number;
+  /** Full warning/error text with its separators. */
+  warnings: number;
+}
+
+function identityDemand(
   identity: readonly WorkPanelSegment[],
   measure: Measure,
-): number {
+): IdentityDemand {
   const items = identityItems(identity);
   const separator = measure(` ${resolveIcon('separator', '·')} `);
-  const secondary = items
-    .filter(({ body }) => body.role === 'secondary')
-    .reduce((sum, item) => sum + itemWidth(item, measure), 0);
-  return (
+  const widthOf = (role: (r: WorkPanelSegmentRole) => boolean) =>
     items
-      .filter(({ body }) => body.role !== 'secondary')
-      .reduce((sum, item) => sum + itemWidth(item, measure), 0) +
-    // Separator plus the summary, or all of a shorter one.
-    Math.min(secondary, separator + MIN_SUMMARY_CELLS)
-  );
+      .filter(({ body }) => role(body.role))
+      .reduce((sum, item) => sum + itemWidth(item, measure), 0);
+  const summary = widthOf((role) => role === 'secondary');
+  return {
+    base: widthOf((role) => role !== 'secondary' && !isFlexibleRole(role)),
+    summary: summary ? Math.min(summary, separator + MIN_SUMMARY_CELLS) : 0,
+    warnings: widthOf((role) => role === 'warning' || role === 'error'),
+  };
 }
 
 /**
@@ -847,13 +881,14 @@ export function createWorkPanelColumnPlan(
   const available = Math.max(0, width - contentGutter());
   const separator = measure(` ${resolveIcon('separator', '·')} `);
   const widths = new Map<NonNullable<WorkPanelMetricGroup['key']>, number>();
-  let identity = 0;
+  const demands: IdentityDemand[] = [];
   for (const row of rows) {
-    identity = Math.max(
-      identity,
-      minIdentityWidth(
-        row.identity ??
-          row.segments ?? [{ text: row.primary, role: 'primary' }],
+    demands.push(
+      identityDemand(
+        columnsIdentity(
+          row.identity ??
+            row.segments ?? [{ text: row.primary, role: 'primary' }],
+        ),
         measure,
       ),
     );
@@ -871,15 +906,74 @@ export function createWorkPanelColumnPlan(
       widths.set(group.key, Math.max(widths.get(group.key) ?? 0, size));
     }
   }
-  let plan = [...widths].map(([key, size]) => ({ key, width: size }));
-  const total = () =>
-    plan.reduce((sum, column) => sum + column.width, 0) +
-    separator * plan.length;
-  for (const key of columnDropOrder) {
-    if (total() + identity <= available) break;
-    plan = plan.filter((column) => column.key !== key);
+  const kept = new Set<(typeof columnPriority)[number]>();
+  const fits = () => {
+    const columns = [...widths]
+      .filter(([key]) => kept.has(key))
+      .reduce((sum, [, size]) => sum + size + separator, 0);
+    return demands.every(
+      (demand) =>
+        demand.base +
+          (kept.has('summary') ? demand.summary : 0) +
+          (kept.has('warnings') ? demand.warnings : 0) +
+          columns <=
+        available,
+    );
+  };
+  for (const element of columnPriority) {
+    const present =
+      element === 'summary' || element === 'warnings' || widths.has(element);
+    if (!present) continue;
+    kept.add(element);
+    // Elapsed never drops; every other element needs all higher ones plus its own space.
+    if (element !== 'elapsed' && !fits()) {
+      kept.delete(element);
+      break;
+    }
   }
-  return plan;
+  return Object.assign(
+    [...widths]
+      .filter(([key]) => kept.has(key))
+      .map(([key, size]) => ({ key, width: size })),
+    { warnings: kept.has('warnings') },
+  );
+}
+
+/** Columns layout: non-admitted warning/error units leave with their separators. */
+function withoutAttention(
+  identity: readonly WorkPanelSegment[],
+): WorkPanelSegment[] {
+  return flattenItems(
+    identityItems(identity).filter(
+      ({ body }) => body.role !== 'warning' && body.role !== 'error',
+    ),
+  );
+}
+
+/** A truncated summary under this many cells is hidden with its separator. */
+const MIN_VISIBLE_SUMMARY_CELLS = 4;
+
+function dropTinySummary(
+  fitted: readonly WorkPanelSegment[],
+  identity: readonly WorkPanelSegment[],
+  measure: Measure,
+): WorkPanelSegment[] {
+  // Units normalise the separator, so one combined segment and a split pair compare equal.
+  const summaryOf = (items: readonly IdentityItem[]) =>
+    items.findIndex(({ body }) => body.role === 'secondary');
+  const original = identityItems(identity);
+  const originalSummary = original[summaryOf(original)]?.body.text;
+  const items = identityItems(fitted);
+  const index = summaryOf(items);
+  const body = items[index]?.body;
+  if (
+    !body ||
+    body.text === '' ||
+    body.text === originalSummary ||
+    measure(body.text) >= MIN_VISIBLE_SUMMARY_CELLS
+  )
+    return [...fitted];
+  return flattenItems(items.filter((_, position) => position !== index));
 }
 
 /** Per-element theme roles for one metric column; values keep their reserved text. */
@@ -936,6 +1030,7 @@ function responsiveContent(
   const identity = row.identity ??
     row.segments ?? [{ text: row.primary, role: 'primary' }];
   const identityUnits = identityItems(identity);
+  const columnsIdentityText = columnsIdentity(identity);
   if (
     metricLayout === 'grid' &&
     (row.metrics ?? []).every((group) => group.key)
@@ -1006,11 +1101,16 @@ function responsiveContent(
     const terminal = terminalStatuses.has(status);
     // Recolor after fitting: shrink priority follows the original roles, so the
     // summary still truncates before the name when it turns muted.
-    const segments = fitIdentityKeepName(identity, identityWidth, measure).map(
-      (part) =>
-        terminal && part.role === 'secondary'
-          ? { ...part, role: 'muted' as const }
-          : part,
+    const admitted = withoutAttention(columnsIdentityText);
+    const columnsFit = plan.warnings === false ? admitted : columnsIdentityText;
+    const segments = dropTinySummary(
+      fitIdentityKeepName(columnsFit, identityWidth, measure),
+      columnsFit,
+      measure,
+    ).map((part) =>
+      terminal && part.role === 'secondary'
+        ? { ...part, role: 'muted' as const }
+        : part,
     );
     const gap = Math.max(0, identityWidth - measure(segmentText(segments)));
     if (gap) segments.push({ text: ' '.repeat(gap), role: 'meta' });

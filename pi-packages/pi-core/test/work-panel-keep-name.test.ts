@@ -30,16 +30,18 @@ const render = (width: number) =>
     metricLayout: 'columns',
   });
 
-it('columns layout keeps name and elapsed; summary drops, then warning truncates', () => {
+it('columns layout keeps name and elapsed and drops warnings that are not admitted', () => {
   for (const width of [30, 36, 50, 60]) {
     const lines = render(width);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('thoth-worker');
     expect(lines[0]).toContain('1m 00s');
-    expect(lines[0]).not.toContain('inspect');
+    expect(lines[0]).not.toContain('⚠');
+    expect(lines[0]).not.toContain('rate limited');
     expect(panelVisibleWidth(lines[0])).toBeLessThanOrEqual(width);
   }
-  expect(render(36)[0]).toMatch(/thoth-worker · .*…/);
+  // Wide enough for summary and warning in full: both show.
+  expect(render(120)[0]).toContain('⚠ anthropic');
 });
 
 it('truncates the name only when it alone exceeds the identity budget', () => {

@@ -217,6 +217,7 @@ it('loads the extension without accessing Pi settings', () => {
   });
   const pi = {
     on,
+    registerMarkdownTransformer: vi.fn(),
     get getSettings() {
       return settingsAccess();
     },

@@ -8,12 +8,12 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import thothTheme from './index.ts';
+import type { ThemeConfig } from './shared/config.ts';
 
 type LifecycleHandler = (
   event: SessionStartEvent,
   ctx: ExtensionContext,
 ) => void | Promise<void>;
-type ModuleName = 'statusLine' | 'inputBox' | 'tools' | 'welcome';
 
 let agentDir: string;
 
@@ -27,9 +27,7 @@ afterEach(() => {
   rmSync(agentDir, { recursive: true, force: true });
 });
 
-function loadTheme(
-  config: Partial<Record<ModuleName, { enabled: boolean }>> = {},
-) {
+function loadTheme(config: Partial<ThemeConfig> = {}) {
   writeFileSync(join(agentDir, 'pi-thoth-theme.json'), JSON.stringify(config));
   const subscriptions: Array<{
     event: string;
@@ -37,7 +35,8 @@ function loadTheme(
   }> = [];
   const registerTool = vi.fn();
   const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
-  const registerMarkdownTransformer = vi.fn();
+  const registerMarkdownTransformer =
+    vi.fn<ExtensionAPI['registerMarkdownTransformer']>();
   const on = vi.fn((event: string, handler: LifecycleHandler) => {
     subscriptions.push({ event, handler });
     return () => {};
@@ -92,6 +91,73 @@ function loadTheme(
 }
 
 describe('Thoth extension composition', () => {
+  it('labels user markdown above the original content using the configured icon', () => {
+    const session = loadTheme({ icons: 'unicode' });
+    expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(1);
+    const transform = session.registerMarkdownTransformer.mock.calls[0][0];
+    const markdown = 'Keep **this** markdown.\n\nAnd this paragraph.';
+    expect(
+      transform(markdown, {
+        messageType: 'user',
+        isStreaming: false,
+        availableWidth: 80,
+      }),
+    ).toBe(`**● user**\n\n${markdown}`);
+  });
+  it.each([
+    'assistant',
+    'assistant-thinking',
+  ] as const)('leaves %s markdown untouched', (messageType) => {
+    const session = loadTheme();
+    const transform = session.registerMarkdownTransformer.mock.calls[0][0];
+    const markdown = '**Answer**\n\nThinking or response.';
+    for (const isStreaming of [false, true]) {
+      expect(
+        transform(markdown, { messageType, isStreaming, availableWidth: 20 }),
+      ).toBe(markdown);
+    }
+  });
+
+  it.each([
+    '',
+    ' ',
+    '\n\t  ',
+  ])('leaves blank content %j untouched', (markdown) => {
+    const session = loadTheme();
+    const transform = session.registerMarkdownTransformer.mock.calls[0][0];
+    expect(
+      transform(markdown, {
+        messageType: 'user',
+        isStreaming: false,
+        availableWidth: 80,
+      }),
+    ).toBe(markdown);
+  });
+
+  it.each([
+    ['nerd', '\uF007'],
+    ['unicode', '●'],
+    ['ascii', '@'],
+  ] as const)('uses %s user icons without double-prefixing', (icons, glyph) => {
+    const session = loadTheme({ icons });
+    const transform = session.registerMarkdownTransformer.mock.calls[0][0];
+    const context = {
+      messageType: 'user',
+      isStreaming: false,
+      availableWidth: 80,
+    } as const;
+    const labeled = `**${glyph} user**\n\nHello`;
+    expect(transform('Hello', context)).toBe(labeled);
+    expect(transform(transform('Hello', context), context)).toBe(labeled);
+    for (const previousGlyph of ['\uF007', '●', '@']) {
+      const previous = `**${previousGlyph} user**\n\nHello`;
+      expect(transform(previous, context)).toBe(previous);
+    }
+    expect(transform('**● user** is content, not a label', context)).toBe(
+      `**${glyph} user**\n\n**● user** is content, not a label`,
+    );
+  });
+
   it('configures the native working animation and message only after UI session startup', async () => {
     const session = loadTheme();
     expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
@@ -115,7 +181,9 @@ describe('Thoth extension composition', () => {
     expect(session.registerToolRenderer).toHaveBeenCalledExactlyOnceWith(
       expect.any(Function),
     );
-    expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
+    expect(session.registerMarkdownTransformer).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Function),
+    );
     expect(session.on).toHaveBeenCalledWith(
       'session_start',
       expect.any(Function),
@@ -156,28 +224,24 @@ describe('Thoth extension composition', () => {
       resolverCount: 1,
       footerCount: 0,
       headerCount: 1,
-      transformerCount: 0,
     },
     {
       disabled: 'tools',
       resolverCount: 0,
       footerCount: 1,
       headerCount: 1,
-      transformerCount: 0,
     },
     {
       disabled: 'welcome',
       resolverCount: 1,
       footerCount: 1,
       headerCount: 0,
-      transformerCount: 0,
     },
   ] as const)('leaves native $disabled behavior while retaining other defaults', async ({
     disabled,
     resolverCount,
     footerCount,
     headerCount,
-    transformerCount,
   }) => {
     const session = loadTheme({ [disabled]: { enabled: false } });
 
@@ -185,15 +249,13 @@ describe('Thoth extension composition', () => {
 
     expect(session.registerTool).not.toHaveBeenCalled();
     expect(session.registerToolRenderer).toHaveBeenCalledTimes(resolverCount);
-    expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(
-      transformerCount,
-    );
+    expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(1);
     expect(session.ui.setFooter).toHaveBeenCalledTimes(footerCount);
     expect(session.ui.setHeader).toHaveBeenCalledTimes(headerCount);
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });
 
-  it('leaves every native surface untouched when all modules are disabled', async () => {
+  it('leaves optional native surfaces untouched when all modules are disabled', async () => {
     const session = loadTheme({
       statusLine: { enabled: false },
       inputBox: { enabled: false },
@@ -205,7 +267,9 @@ describe('Thoth extension composition', () => {
 
     expect(session.registerTool).not.toHaveBeenCalled();
     expect(session.registerToolRenderer).not.toHaveBeenCalled();
-    expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
+    expect(session.registerMarkdownTransformer).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Function),
+    );
     expect(session.ui.setFooter).not.toHaveBeenCalled();
     expect(session.ui.setHeader).not.toHaveBeenCalled();
     expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();

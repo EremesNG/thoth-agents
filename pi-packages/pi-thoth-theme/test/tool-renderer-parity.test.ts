@@ -72,6 +72,7 @@ async function loadTheme(tools: ToolInfo[] = [], respectPackages?: string[]) {
   const getAllTools = vi.fn(() => tools);
   thothTheme({
     registerToolRenderer,
+    registerMarkdownTransformer() {},
     getAllTools,
     on(event: string, handler: Handler) {
       const listeners = handlers.get(event) ?? new Set();

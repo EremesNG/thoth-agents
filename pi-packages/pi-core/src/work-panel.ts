@@ -64,6 +64,8 @@ export interface WorkPanelRowContent {
   extraSegments?: readonly (readonly WorkPanelSegment[])[];
   /** Narrow-width metrics or other continuations; never independently selectable. */
   extraRows?: readonly string[];
+  /** Two-line columns only: draw blank extra rows (all-pending metrics) to keep height. */
+  keepBlankRows?: boolean;
 }
 
 export type WorkPanelMetricKey =
@@ -81,6 +83,12 @@ export interface WorkPanelMetricGroup {
   segments: readonly WorkPanelSegment[];
   /** Sidebar column metadata excluded from the host's greedy metric layout. */
   columnsOnly?: boolean;
+  /**
+   * No real data yet (e.g. a just-launched task). Only the sidebar's two-line columns layout
+   * reads it: the slot renders blank at its reserved width, so alignment holds when data
+   * arrives. `segments` still define the reservation; greedy and grid render them unchanged.
+   */
+  pending?: boolean;
   /** Optional compact counterpart when metrics move below the identity line. */
   continuation?: readonly WorkPanelSegment[];
 }

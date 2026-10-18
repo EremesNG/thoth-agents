@@ -370,7 +370,10 @@ with elapsed rightmost, so a metric present only on some rows stays aligned.
 The Agents panel opts into `{ lines: 2 }`: line 1 holds glyph, name, the
 summary in all remaining width and elapsed; line 2, under the name, holds
 context, cost, speed, tokens, tools, warnings and model as the highest-priority
-prefix that fits (rows with only elapsed stay one line). A segment's optional `compact` text replaces it
+prefix that fits (rows with only elapsed stay one line). Line-2 groups marked
+`pending` (running metrics without data yet) render blank with their separator
+at reserved width; context turns warning at 70% and error at 90%; finished rows
+render line 2 dim. A segment's optional `compact` text replaces it
 only in columns (pi-subagents uses it to drop the `thoth-` name prefix). Columns rows need keyed
 metrics and an identity of name/separator/summary, colored per element (status
 glyph and elapsed by state, tokens in/out from each segment's `direction`, cost

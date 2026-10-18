@@ -91,9 +91,16 @@ function taskRow(
       segments: [{ text: effort ? `${model}·${effort}` : model, role: 'meta' }],
     });
   }
-  const add = (key: WorkPanelMetricKey, prefix: string, value: string) => {
+  // `pending` marks a live metric with no real data yet; the sidebar blanks it at width.
+  const add = (
+    key: WorkPanelMetricKey,
+    prefix: string,
+    value: string,
+    pending = false,
+  ) => {
     parts.push({
       key,
+      ...(pending ? { pending } : {}),
       segments: [
         { text: prefix, role: 'meta' },
         { text: value, role: 'meta' },
@@ -102,7 +109,7 @@ function taskRow(
   };
   if (finiteNonnegative(metrics?.toolUses))
     add('tools', `${label('tool', 'tools')} `, String(metrics.toolUses));
-  else if (live) add('tools', `${label('tool', 'tools')} `, '?');
+  else if (live) add('tools', `${label('tool', 'tools')} `, '?', true);
   const tokens: WorkPanelSegment[] = [];
   for (const [value, icon, text, direction] of [
     [task.usage?.input, 'tokensIn', 'in ', 'in'],
@@ -120,25 +127,44 @@ function taskRow(
       },
     );
   }
-  if (tokens.length) parts.push({ key: 'tokens', segments: tokens });
+  if (tokens.length)
+    parts.push({
+      key: 'tokens',
+      ...(live && !task.usage?.input && !task.usage?.output
+        ? { pending: true }
+        : {}),
+      segments: tokens,
+    });
   if (finiteNonnegative(metrics?.contextPercent))
     add(
       'context',
       `${label('context', 'ctx')} `,
       `${metrics.contextPercent.toFixed(1)}%`,
     );
-  else if (live) add('context', `${label('context', 'ctx')} `, '?');
+  else if (live) add('context', `${label('context', 'ctx')} `, '?', true);
   if (speed !== undefined || live) {
     const value = speed === undefined ? '?' : String(Math.round(speed));
     if (!kit)
       parts.push({
         key: 'speed',
+        ...(speed === undefined ? { pending: true } : {}),
         segments: [{ text: `${value} tok/s`, role: 'meta' }],
       });
-    else add('speed', `${label('throughput', 'tok/s')} `, value);
+    else
+      add(
+        'speed',
+        `${label('throughput', 'tok/s')} `,
+        value,
+        speed === undefined,
+      );
   }
   if (finiteNonnegative(task.usage?.cost))
-    add('cost', label('cost', '$'), task.usage.cost.toFixed(2));
+    add(
+      'cost',
+      label('cost', '$'),
+      task.usage.cost.toFixed(2),
+      live && task.usage.cost === 0,
+    );
   if (Number.isFinite(started) && Number.isFinite(end))
     add(
       'elapsed',

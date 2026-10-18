@@ -4,6 +4,7 @@
   "appearance": "dark",
   "vars": {
     "black": "#000000",
+    "white": "#FFFFFF",
     "obsidian": "#0D0B08",
     "gold": "#D4AF37",
     "brightGold": "#F2C94C",
@@ -56,7 +57,7 @@
     "searchMatchBg": "lapis",
     "searchMatchText": "papyrus",
     "userMessageBg": "nileGreen",
-    "userMessageText": "gold",
+    "userMessageText": "white",
     "customMessageBg": "customMsgBg",
     "customMessageText": "sand",
     "customMessageLabel": "brightGold",

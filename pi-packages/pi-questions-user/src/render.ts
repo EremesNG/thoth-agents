@@ -163,8 +163,19 @@ export function summarizeResult(
   text: string,
   options: SummaryOptions = {},
 ): Summary {
-  if (!details) return { status: 'failed', rows: text ? [text] : [] };
   const { paint = plain, width = Number.POSITIVE_INFINITY } = options;
+  // Plain failures (e.g. SDK argument validation) are multi-line: one row per line.
+  if (!details) {
+    const lines = text ? text.split(/\r?\n/) : [];
+    return {
+      status: 'failed',
+      rows: lines.flatMap((line) =>
+        Number.isFinite(width)
+          ? wrapTextWithAnsi(paint('error', line), Math.max(1, width))
+          : [paint('error', line)],
+      ),
+    };
+  }
   const expanded = options.expanded === true;
   const g = glyphs();
   const labels = resolveLabels(details.labels);

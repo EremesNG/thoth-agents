@@ -129,6 +129,60 @@ describe('question renderers', () => {
     });
   });
 
+  it('splits and wraps plain multi-line text without details to the width', () => {
+    const text =
+      'Validation failed for tool "ask_user_question":\n  - labels: must be object\n\nReceived arguments:\n{ "questions": [ { "id": "preview_final", "header": "Vista previa" } ] }';
+    const { rows } = summarizeResult(undefined, text, { width: 30 });
+    expect(rows.length).toBeGreaterThan(5);
+    for (const row of rows) {
+      expect(row).not.toContain('\n');
+      expect(visibleWidth(row)).toBeLessThanOrEqual(30);
+    }
+    expect(rows.slice(0, 2)).toEqual([
+      'Validation failed for tool',
+      '"ask_user_question":',
+    ]);
+  });
+
+  it('renders a validation failure inside the kit card, one line per row', () => {
+    const seen: string[][] = [];
+    const base = createTestRenderKit();
+    token = registerRenderKit(
+      {
+        ...base,
+        card(theme, options: RenderCardOptions, width) {
+          const body = options.body;
+          seen.push([
+            ...(typeof body === 'function' ? body(width) : (body ?? [])),
+          ]);
+          return base.card(theme, options, width);
+        },
+      },
+      {},
+    );
+    const renderers = createQuestionRenderers();
+    renderers
+      .renderResult?.(
+        {
+          content: [
+            {
+              type: 'text',
+              text: 'Validation failed:\n  - labels: must be object',
+            },
+          ],
+          details: undefined,
+        },
+        { expanded: true, isPartial: false },
+        theme,
+        context({ isError: true }),
+      )
+      ?.render(40);
+    expect(seen.at(-1)).toEqual([
+      'Validation failed:',
+      '  - labels: must be object',
+    ]);
+  });
+
   it('truncates a long note when collapsed and wraps it with prompts when expanded', () => {
     const state = setQuestionNote(
       selectOption(

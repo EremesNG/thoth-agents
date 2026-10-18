@@ -48,6 +48,11 @@ export interface WorkPanelSegment {
    * success from this marker alone; unmarked segments (e.g. the gap) stay neutral.
    */
   direction?: 'in' | 'out';
+  /**
+   * Shorter text for the sidebar's single-line columns layout only (e.g. an agent name without
+   * its redundant `thoth-` prefix). The greedy and grid hosts always render `text`.
+   */
+  compact?: string;
 }
 
 /** Data-only rendered body and continuations, excluding selection/tree/status gutters. */

@@ -61,15 +61,21 @@ it('keeps every role when everything fits', () => {
     if (text === ' · ') expect(role).toBe('dim');
 });
 
-it.each([
-  'greedy',
-  'columns',
-] as const)('combined attention segments stay separate and truncate inside the later one (%s)', (layout) => {
+it('columns layout drops warnings its panel does not admit, with their separators', () => {
+  const { calls, line } = render(46, 'columns');
+  expect(panelVisibleWidth(line)).toBeLessThanOrEqual(46);
+  expect(calls.filter(([r]) => r === 'warning')).toHaveLength(0);
+  expect(line).not.toContain('⚠');
+  expect(line.trimEnd().endsWith('·')).toBe(false);
+});
+
+it('greedy attention segments stay separate and truncate inside the later one', () => {
+  const layout = 'greedy';
   const { calls, line } = render(46, layout);
   expect(panelVisibleWidth(line)).toBeLessThanOrEqual(46);
   const warnings = calls.filter(([r]) => r === 'warning');
   expect(warnings[0][1]).toBe('⚠ 2 dropped');
-  expect(warnings[1][1].endsWith(layout === 'columns' ? '…' : '')).toBe(true);
+  expect(warnings[1][1].endsWith('')).toBe(true);
   expect(warnings[1][1]).not.toContain('⚠');
   // The separator between the warnings is its own dim run, never part of a warning.
   for (const [role, text] of calls) {

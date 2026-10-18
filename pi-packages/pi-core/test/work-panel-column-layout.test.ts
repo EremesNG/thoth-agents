@@ -87,38 +87,44 @@ const keys = (r: WorkPanelRow, width: number) =>
     ({ key }) => key,
   );
 
-it('drops speed, context, tools, cost, model, tokens in order and stays on one line', () => {
+it('keeps columns in the priority prefix order and stays on one line', () => {
   const seen = new Map<number, string[]>();
   for (const width of [36, 50, 64, 72]) seen.set(width, keys(row(), width));
-  // Progressively narrower plans only ever remove columns in the contract order.
+  // Metric priority after glyph and name (the summary gates the lower ones): elapsed,
+  // context, cost, [summary], speed, tokens, tools, model.
   const order = [
-    'speed',
+    'elapsed',
     'context',
-    'tools',
     'cost',
-    'model',
+    'speed',
     'tokens',
+    'tools',
+    'model',
   ] as const;
   let previous = new Set(keys(row(), 140));
   expect(previous.size).toBe(7);
   for (let width = 140; width >= 20; width--) {
     const current = new Set(keys(row(), width));
     expect(current.has('elapsed')).toBe(true);
-    const dropped = [...previous].filter((key) => !current.has(key));
-    for (const key of dropped)
-      for (const earlier of order.slice(
-        0,
-        order.indexOf(key as (typeof order)[number]),
-      ))
-        expect(current.has(earlier), `${width}: ${key} before ${earlier}`).toBe(
-          false,
-        );
+    // Whatever is kept is exactly the highest-priority prefix, never a gap.
+    expect(order.filter((key) => current.has(key))).toEqual(
+      order.slice(0, current.size),
+    );
+    // Narrowing only ever removes the lowest-priority column still shown.
+    for (const key of previous)
+      if (!current.has(key))
+        for (const higher of order.slice(order.indexOf(key) + 1))
+          expect(current.has(higher), `${width}: ${key} before ${higher}`).toBe(
+            false,
+          );
     previous = current;
   }
-  expect(seen.get(36)).not.toContain('speed');
-  expect(seen.get(36)).not.toContain('context');
-  expect(seen.get(36)).not.toContain('tools');
-  expect(seen.get(72)?.length).toBeGreaterThan(seen.get(50)?.length ?? 0);
+  const byPriority = (width: number) =>
+    order.filter((key) => seen.get(width)?.includes(key));
+  expect(byPriority(36)).toEqual(['elapsed', 'context']);
+  expect(byPriority(50)).toEqual(['elapsed', 'context', 'cost']);
+  expect(byPriority(64)).toEqual(['elapsed', 'context', 'cost']);
+  expect(byPriority(72)).toEqual(['elapsed', 'context', 'cost', 'speed']);
   for (const withKit of [false, true]) {
     const token = withKit
       ? registerRenderKit(createTestRenderKit(), {})
@@ -209,4 +215,74 @@ it('colors each element by state with existing theme roles', () => {
       if (token) withdrawRenderKit(token);
     }
   }
+});
+
+it('lets context and cost outrank the summary reservation, which gates the rest', () => {
+  const plan = (r: WorkPanelRow, width: number) => keys(r, width).sort().join();
+  // Narrow: only elapsed, context and cost keep their space; the summary takes leftovers.
+  expect(plan(row(), 50)).toBe('context,cost,elapsed');
+  // A short summary needs less than 12 cells, so lower priorities appear sooner.
+  const brief = row({
+    identity: [
+      { text: 'scout', role: 'primary' },
+      { text: ' · ', role: 'meta' },
+      { text: 'ok', role: 'secondary' },
+    ],
+  });
+  // No summary text at all: nothing is reserved.
+  const bare = row({ identity: [{ text: 'scout', role: 'primary' }] });
+  let earlier = false;
+  for (let width = 30; width <= 140; width++) {
+    const [long, short, none] = [row(), brief, bare].map(
+      (r) => keys(r, width).length,
+    );
+    expect(short).toBeGreaterThanOrEqual(long);
+    expect(none).toBeGreaterThanOrEqual(short);
+    if (short > long) earlier = true;
+  }
+  expect(earlier).toBe(true);
+});
+
+it('ranks warnings after tools and before model', () => {
+  const warned = row({
+    identity: [
+      { text: 'scout', role: 'primary' },
+      { text: ' · ', role: 'meta' },
+      { text: 'mapping the renderer pipeline', role: 'secondary' },
+      { text: ' · ', role: 'meta' },
+      { text: '⚠ 2 dropped', role: 'warning' },
+    ],
+  });
+  let sawToolsWithoutModel = false;
+  for (let width = 60; width <= 160; width++) {
+    const kept = keys(warned, width);
+    if (kept.includes('model')) expect(kept).toContain('tools');
+    if (kept.includes('tools') && !kept.includes('model'))
+      sawToolsWithoutModel = true;
+    // Warnings never keep a column the unwarned row would have dropped.
+    for (const key of kept) expect(keys(row(), width)).toContain(key);
+  }
+  expect(sawToolsWithoutModel).toBe(true);
+});
+
+it('renders the compact segment text only in the columns layout', () => {
+  const named = row({
+    identity: [
+      { text: 'thoth-scout', compact: 'scout', role: 'primary' },
+      { text: ' · ', role: 'meta' },
+      { text: 'mapping the renderer pipeline', role: 'secondary' },
+    ],
+  });
+  const host = (metricLayout: 'greedy' | 'grid') =>
+    renderWorkPanelRow(named, {
+      width: 140,
+      now: 0,
+      theme: plain,
+      clip: truncatePanelText,
+      measure: panelVisibleWidth,
+      metricLayout,
+    }).join('\n');
+  expect(render(named, 140).join('')).not.toContain('thoth-');
+  expect(host('greedy')).toContain('thoth-scout');
+  expect(host('grid')).toContain('thoth-scout');
 });

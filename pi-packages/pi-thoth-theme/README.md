@@ -29,8 +29,8 @@ of the module toggles below.
 
 ## User messages
 
-The `thoth` theme renders user messages as dark ink (`#1A140C`) on papyrus
-(`#E8DCB5`). The extension adds a bold `<icon> user` label on its own line,
+The `thoth` theme renders user messages as gold (`#D4AF37`) on Nile green
+(`#1B4643`). The extension adds a bold `<icon> user` label on its own line,
 followed by a blank line and the original Markdown. This is display-only: stored
 messages, assistant replies and thinking are unchanged. Empty messages are not
 labeled, and already-labeled messages are not prefixed again. This label is
@@ -41,9 +41,8 @@ The label reuses `icons`: `"nerd"` (the existing default) selects nf-fa-user
 Set `"icons": "nerd"` in the package configuration and use a Nerd Font in your
 terminal for the Nerd glyph; use `"icons": "unicode"` for its Unicode fallback.
 
-Markdown accents and syntax colors remain shared with assistant messages. Some
-have low contrast on papyrus, notably headings, inline code and unhighlighted
-code blocks; only ordinary user text and the label use dark ink.
+Markdown accents and syntax colors remain shared with assistant messages; only
+ordinary user text and the label use the user-message gold.
 
 ## Modules
 

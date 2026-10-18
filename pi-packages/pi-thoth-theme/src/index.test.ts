@@ -6,6 +6,11 @@ import type {
   ExtensionContext,
   SessionStartEvent,
 } from '@earendil-works/pi-coding-agent';
+import {
+  Markdown,
+  type MarkdownTheme,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import thothTheme from './index.ts';
 import type { ThemeConfig } from './shared/config.ts';
@@ -91,7 +96,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
 }
 
 describe('Thoth extension composition', () => {
-  it('labels user markdown above the original content using the configured icon', () => {
+  it('frames user markdown at the available content width', () => {
     const session = loadTheme({ icons: 'unicode' });
     expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(1);
     const transform = session.registerMarkdownTransformer.mock.calls[0][0];
@@ -102,7 +107,9 @@ describe('Thoth extension composition', () => {
         isStreaming: false,
         availableWidth: 80,
       }),
-    ).toBe(`**● user**\n\n${markdown}`);
+    ).toBe(
+      `╭── ● user ${'─'.repeat(68)}╮\n\n${markdown}\n\n╰${'─'.repeat(78)}╯`,
+    );
   });
   it.each([
     'assistant',
@@ -138,24 +145,99 @@ describe('Thoth extension composition', () => {
     ['nerd', '\uF007'],
     ['unicode', '●'],
     ['ascii', '@'],
-  ] as const)('uses %s user icons without double-prefixing', (icons, glyph) => {
-    const session = loadTheme({ icons });
-    const transform = session.registerMarkdownTransformer.mock.calls[0][0];
+  ] as const)('uses %s icons with equal-width borders and no double frame', (icons, glyph) => {
+    const transform = loadTheme({ icons }).registerMarkdownTransformer.mock
+      .calls[0][0];
     const context = {
       messageType: 'user',
       isStreaming: false,
-      availableWidth: 80,
+      availableWidth: 32,
     } as const;
-    const labeled = `**${glyph} user**\n\nHello`;
-    expect(transform('Hello', context)).toBe(labeled);
-    expect(transform(transform('Hello', context), context)).toBe(labeled);
-    for (const previousGlyph of ['\uF007', '●', '@']) {
-      const previous = `**${previousGlyph} user**\n\nHello`;
+    const framed = transform('Hello', context);
+    const lines = framed.split('\n');
+    expect(lines[0]).toMatch(new RegExp(`^╭── ${glyph} user ─+╮$`));
+    expect(lines.slice(1, 4)).toEqual(['', 'Hello', '']);
+    expect(visibleWidth(lines[0])).toBe(32);
+    expect(visibleWidth(lines[4])).toBe(32);
+    expect(transform(framed, context)).toBe(framed);
+    for (const previousIcons of ['nerd', 'unicode', 'ascii'] as const) {
+      const previousTransform = loadTheme({ icons: previousIcons })
+        .registerMarkdownTransformer.mock.calls[0][0];
+      const previous = previousTransform('Hello', context);
       expect(transform(previous, context)).toBe(previous);
     }
-    expect(transform('**● user** is content, not a label', context)).toBe(
-      `**${glyph} user**\n\n**● user** is content, not a label`,
+  });
+
+  it.each([
+    undefined,
+    0,
+    -1,
+    1,
+    10,
+    11,
+    12,
+    12.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('skips framing when width %s is unavailable or too small', (availableWidth) => {
+    const transform = loadTheme().registerMarkdownTransformer.mock.calls[0][0];
+    expect(
+      transform('Hello', {
+        messageType: 'user',
+        isStreaming: false,
+        availableWidth: availableWidth as number,
+      }),
+    ).toBe('Hello');
+  });
+
+  it.each([
+    'nerd',
+    'unicode',
+    'ascii',
+  ] as const)('renders %s borders without wrapping and recomputes them on resize', (icons) => {
+    const transform = loadTheme({ icons }).registerMarkdownTransformer.mock
+      .calls[0][0];
+    const identity = (text: string) => text;
+    const theme: MarkdownTheme = {
+      heading: identity,
+      link: identity,
+      linkUrl: identity,
+      code: identity,
+      codeBlock: identity,
+      codeBlockBorder: identity,
+      quote: identity,
+      quoteBorder: identity,
+      hr: identity,
+      listBullet: identity,
+      bold: identity,
+      italic: identity,
+      strikethrough: identity,
+      underline: identity,
+    };
+    const renderTransform = vi.fn((markdown: string, availableWidth: number) =>
+      transform(markdown, {
+        messageType: 'user',
+        isStreaming: false,
+        availableWidth,
+      }),
     );
+    const renderer = new Markdown('Hello', 1, 1, theme, undefined, {
+      transform: renderTransform,
+    });
+    for (const width of [34, 52, 15]) {
+      const lines = renderer.render(width).map((line) => line.trim());
+      expect(lines.filter(Boolean)).toHaveLength(3);
+      expect(lines).toContain('Hello');
+      const borders = lines.filter(
+        (line) => line.startsWith('╭') || line.startsWith('╰'),
+      );
+      expect(borders).toHaveLength(2);
+      expect(borders.map(visibleWidth)).toEqual([width - 2, width - 2]);
+      expect(renderTransform).toHaveBeenLastCalledWith('Hello', width - 2);
+    }
+    expect(renderTransform).toHaveBeenCalledTimes(3);
+    renderer.render(15);
+    expect(renderTransform).toHaveBeenCalledTimes(3);
   });
 
   it('configures the native working animation and message only after UI session startup', async () => {

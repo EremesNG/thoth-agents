@@ -13,6 +13,11 @@ import { registerWelcome } from './welcome/index.ts';
 
 export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
+  pi.registerMarkdownTransformer((markdown, context) => {
+    if (context.messageType !== 'user' || !markdown.trim()) return markdown;
+    if (/^\*\*[\uF007●@] user\*\*\r?\n\r?\n/.test(markdown)) return markdown;
+    return `**${icon('user', config.icons)} user**\n\n${markdown}`;
+  });
   const owner = {};
   const cwd = process.cwd();
   const resolveToolRenderers = config.tools.enabled

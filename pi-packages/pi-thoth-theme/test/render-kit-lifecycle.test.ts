@@ -29,6 +29,7 @@ function loadTheme(toolsEnabled = true, hasUI = true): Session {
   const handlers = new Map<string, Set<Handler>>();
   thothTheme({
     registerToolRenderer() {},
+    registerMarkdownTransformer() {},
     on(event: string, handler: Handler) {
       const listeners = handlers.get(event) ?? new Set();
       listeners.add(handler);

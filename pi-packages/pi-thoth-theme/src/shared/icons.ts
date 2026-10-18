@@ -8,11 +8,12 @@ import type { IconMode } from './config.ts';
 type Variants = Record<IconMode, string>;
 
 /** Theme-local tool icon that is not a pi-core semantic name. */
-export type ThemeIconName = SemanticGlyphName | 'powershell';
+export type ThemeIconName = SemanticGlyphName | 'powershell' | 'user';
 export type StatusIconName = RenderStatus | 'warning';
 
 /** The single source of rendered semantic glyphs for the theme. */
 const ICONS: Record<ThemeIconName, Variants> = {
+  user: { nerd: '\uF007', unicode: '●', ascii: '@' },
   branch: { nerd: '\u{e0a0}', unicode: '⑂', ascii: 'git' },
   folder: { nerd: '\u{f07c}', unicode: 'dir', ascii: 'dir' },
   model: { nerd: '\u{f06a9}', unicode: '●', ascii: '*' },

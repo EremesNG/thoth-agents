@@ -146,6 +146,15 @@ describe('Thoth theme JSON', () => {
     expect(theme.appearance).toBe('dark');
   });
 
+  it('renders user messages as dark ink on papyrus', () => {
+    expect(resolveVarRef(theme.colors.userMessageBg, theme.vars)).toBe(
+      '#E8DCB5',
+    );
+    expect(resolveVarRef(theme.colors.userMessageText, theme.vars)).toBe(
+      '#1A140C',
+    );
+  });
+
   it('has a valid $schema reference', () => {
     expect(theme.$schema).toContain('theme-schema.json');
   });

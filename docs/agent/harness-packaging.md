@@ -365,7 +365,12 @@ tools, warnings and model (10 cells), stopping at the first element that does
 not fit; the summary otherwise takes leftover width, and in every sidebar
 columns panel a truncated summary under 4 cells hides with its separator while
 complete short summaries stay;
-elapsed shows without its icon. A segment's optional `compact` text replaces it
+elapsed shows without its icon. Columns are emitted in a fixed display order
+with elapsed rightmost, so a metric present only on some rows stays aligned.
+The Agents panel opts into `{ lines: 2 }`: line 1 holds glyph, name, the
+summary in all remaining width and elapsed; line 2, under the name, holds
+context, cost, speed, tokens, tools, warnings and model as the highest-priority
+prefix that fits (rows with only elapsed stay one line). A segment's optional `compact` text replaces it
 only in columns (pi-subagents uses it to drop the `thoth-` name prefix). Columns rows need keyed
 metrics and an identity of name/separator/summary, colored per element (status
 glyph and elapsed by state, tokens in/out from each segment's `direction`, cost
@@ -416,15 +421,17 @@ data rows and use the current render kit with native fallback. Atelier-style
 chrome uses per-panel theme roles and SGR-dim borders. Session adds a context
 meter and warning/rejected Limit row. Workspace shares pi-core's root
 `formatCwd`, showing Clean/Modified/Conflicts and `Changed N files +A −D` from
-porcelain v2 and numstat against HEAD (empty tree when unborn). Work panels
-list rows in launch order (oldest first, `sortStartedAt` then id) and keep every
-active row plus the three most recently launched finished rows for every
-terminal status, without expiry; height pressure hides oldest finished, then
-oldest active rows behind `+N more`. Headers show running ◐, queued ○ (≥36
+porcelain v2 and numstat against HEAD (empty tree when unborn). Agents and
+Background list active rows first in launch order (`sortStartedAt`, then id),
+then the three most recently finished rows by `endedAt` (newest first, id desc)
+for every terminal status, without expiry; height pressure hides the oldest
+completion first, then the oldest active row, behind `+N more`, never splitting
+a two-line row. pi-subagents discovery ranks terminal candidates by completion
+before truncation. Headers show running ◐, queued ○ (≥36
 columns), done ✓, actionable failed ✗ (incl. timed out) and muted cancelled ■,
 zero counts omitted (Todos keeps completed/total). Cancelled/interrupted never
 count as failed; background expected exits and journal-resolved failures do not
-either. Rows are single-line columns, with `/subagents`, `/todos`, `/bg` footers; empty panels keep
+either. Rows are columns (two lines for Agents), with `/subagents`, `/todos`, `/bg` footers; empty panels keep
 a title-plus-command line. Cost shows the top ten live/persisted session task
 costs as bars, using display names or short task-summary names. Curves plot
 elapsed time per task from zero to the longest task duration. Under pressure footers drop before

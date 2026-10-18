@@ -278,13 +278,13 @@ the Antigravity bridge MUST report API-equivalent message cost through an explic
 
 ### Requirement: Stable work-panel row height
 
-the shared work-panel renderer MUST decide multi-line metric wrapping and, for the sidebar's single-line column layout, which elements to show from reserved widths of each metric's number format, so a row's line count and visible columns do not change when only the digit width of its metric values changes within each format's reserved range; sidebar Agents rows MUST stay on one line at every supported width, always showing the status glyph, a name without a leading `thoth-` prefix and elapsed time, then keeping elements panel-wide in the priority context, cost, task summary (reserving at least twelve cells), speed, tokens, tools, warnings and model/effort, showing a lower-priority element only when every higher-priority one keeps its space; in every sidebar columns-layout panel a truncated summary that would show fewer than four cells MUST be hidden with its separator while a complete short summary stays visible; values beyond a reserved range MAY only increase a row's line count or drop elements, never toggle back and forth.
+the shared work-panel renderer MUST decide multi-line metric wrapping and, for the sidebar's column layout, which elements to show from reserved widths of each metric's number format, so a row's line count and visible columns do not change when only the digit width of its metric values changes within each format's reserved range; sidebar Agents rows MUST render a first line with the status glyph, a name without a leading `thoth-` prefix, the task summary in the remaining width and the elapsed time, and, when at least one of its other metrics is admitted, a second line under the name whose columns are aligned panel-wide and kept in the priority context, cost, speed, tokens, tools, warnings and model/effort, showing a lower-priority element only when every higher-priority one fits; in every sidebar columns-layout panel a truncated summary that would show fewer than four cells MUST be hidden with its separator while a complete short summary stays visible; values beyond a reserved range MAY only increase a row's line count or drop elements, never toggle back and forth.
 
 #### Scenario: Stable work-panel row height
 
-- **GIVEN** a running `thoth-oracle` subagent row with context, cost, summary, speed, tokens, tools and model whose values cross format boundaries such as 99→100 tok/s and 9s→10s
+- **GIVEN** a running `thoth-oracle` subagent row with a long task summary, context, cost, speed, tokens, tools and model whose values cross format boundaries such as 99→100 tok/s and 9s→10s
 - **WHEN** the work panel and the 50- and 72-column sidebar render it
-- **THEN** the sidebar row stays on one line showing `oracle`, elapsed, context and cost at 50 columns and additionally the task summary at 72 columns, never showing speed, tokens, tools or model/effort unless context, cost and a twelve-cell summary keep their space, while every value stays within its reserved range the visible elements do not change, and rows below it do not move
+- **THEN** the sidebar row shows `oracle`, a readable summary and elapsed on its first line, at least context and cost on its second line at 50 columns and at least context, cost and speed at 72 columns, while every value stays within its reserved range the visible columns and the two-line height do not change, and rows below it do not move
 
 ### Requirement: Codemode compact rendering
 
@@ -368,13 +368,13 @@ For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_
 
 ### Requirement: Sidebar work-panel launch order and retention
 
-The pi-sidebar Agents and Background panels MUST list rows in launch order with the oldest at the top (subagent original creation time, background start time with task id as tie-breaker) and MUST NOT reorder rows because of activity, completion or failure; they MUST show every active row plus the three most recently launched finished rows under one rule for every terminal status without time-based expiry, and when height is insufficient MUST hide the oldest finished rows first, then the oldest active rows, reporting hidden rows with a `+N more` line.
+The pi-sidebar Agents and Background panels MUST list active rows first in launch order with the oldest active at the top (subagent original creation time, background start time with task id as tie-breaker) and MUST NOT reorder active rows because of activity, followed by the three most recently finished rows ordered by completion time with the most recent first, under one rule for every terminal status without time-based expiry; when height is insufficient they MUST hide the oldest finished rows first, then the oldest active rows, reporting hidden rows with a `+N more` line.
 
 #### Scenario: Sidebar work-panel launch order and retention
 
-- **GIVEN** two running subagents launched in order A then B and four finished background tasks of which the oldest failed
+- **GIVEN** two running subagents launched in order A then B and four background tasks that finished in order W, X, Y, Z, of which W failed
 - **WHEN** B reports activity after A and the sidebar renders
-- **THEN** A stays above B, and the Background panel shows its three most recently launched finished tasks in launch order without the older failure
+- **THEN** A stays above B above any finished agent, and the Background panel shows Z, Y and X in that order without W
 
 ### Requirement: Work-panel terminal status taxonomy
 

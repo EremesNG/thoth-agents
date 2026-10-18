@@ -147,6 +147,8 @@ export {
   updateUIPreferences,
   withdrawUIPreferences,
 } from './ui-preferences.js';
+export type { JobLaunchOptions, LaunchedJob } from './windows-job/index.js';
+export { JobLauncherUnavailable, launchInJob } from './windows-job/index.js';
 export type {
   WorkPanelAction,
   WorkPanelActionResult,

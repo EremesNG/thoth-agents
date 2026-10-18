@@ -57,9 +57,12 @@ describe('Pi ecosystem package manifests', () => {
       './history-panel': './src/history-panel.ts',
       './panel': './src/panel.ts',
       './testing': './src/testing.ts',
+      './windows-job': './src/windows-job/index.ts',
     });
     expect(core.files).toEqual([
       'src/**/*.ts',
+      'src/windows-job/launcher.cs',
+      'src/windows-job/launcher.ps1',
       '!src/**/*.test.ts',
       'README.md',
       'LICENSE',

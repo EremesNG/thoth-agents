@@ -19,7 +19,8 @@
     ".": "./src/index.ts",
     "./history-panel": "./src/history-panel.ts",
     "./panel": "./src/panel.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./windows-job": "./src/windows-job/index.ts"
   },
   "repository": {
     "type": "git",
@@ -35,6 +36,8 @@
   },
   "files": [
     "src/**/*.ts",
+    "src/windows-job/launcher.cs",
+    "src/windows-job/launcher.ps1",
     "!src/**/*.test.ts",
     "README.md",
     "LICENSE"

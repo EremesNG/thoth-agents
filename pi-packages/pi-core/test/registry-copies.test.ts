@@ -12,7 +12,7 @@ beforeAll(async () => {
   first = await isolatedCore();
   same = await isolatedCore();
   different = await isolatedCore(1, 2);
-});
+}, 30000);
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   for (const version of [1, 2]) {

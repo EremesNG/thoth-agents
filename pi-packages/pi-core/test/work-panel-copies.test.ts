@@ -26,7 +26,7 @@ beforeAll(async () => {
   first = await isolatedCore();
   second = await isolatedCore(1);
   compatible = await isolatedCore();
-});
+}, 30000);
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   delete shared[ownershipKey];

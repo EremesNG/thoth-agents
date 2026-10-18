@@ -1,6 +1,13 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
@@ -9,8 +16,9 @@ export async function isolatedCore(workPanelVersion = 2, registryVersion = 1) {
   const directory = await mkdtemp(join(tmpdir(), 'pi-core-copy-'));
   try {
     const sourceDirectory = new URL('../src/', import.meta.url);
-    for (const name of await readdir(sourceDirectory)) {
-      if (!name.endsWith('.ts')) continue;
+    for (const entry of await readdir(sourceDirectory, { recursive: true })) {
+      const name = entry.replace(/\\/g, '/');
+      if (!name.endsWith('.ts') || name.endsWith('.test.ts')) continue;
       const source = (await readFile(new URL(name, sourceDirectory), 'utf8'))
         .replace(
           /export const WORK_PANEL_VERSION = \d+ as const;/g,
@@ -36,10 +44,9 @@ export async function isolatedCore(workPanelVersion = 2, registryVersion = 1) {
           module: ts.ModuleKind.ESNext,
         },
       });
-      await writeFile(
-        join(directory, name.replace(/\.ts$/, '.mjs')),
-        outputText,
-      );
+      const output = join(directory, name.replace(/\.ts$/, '.mjs'));
+      await mkdir(dirname(output), { recursive: true });
+      await writeFile(output, outputText);
     }
     const core: typeof import('../src/index.js') = await import(
       pathToFileURL(join(directory, 'index.mjs')).href

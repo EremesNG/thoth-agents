@@ -40,7 +40,7 @@ function waitForTerminalTask(
 }
 
 describe('Agents persisted session totals', () => {
-  it('merges cached history with live tasks without duplicates, caps outcomes and refreshes on completion only', () => {
+  it('keeps the latest completions in reverse launch order, merges live tasks once and refreshes on completion only', () => {
     let live = [
       persistedTask({
         id: 'live',
@@ -50,7 +50,7 @@ describe('Agents persisted session totals', () => {
     ];
     let updates = () => {};
     let reads = 0;
-    const history = Array.from({ length: 8 }, (_, i) =>
+    const history = Array.from({ length: 6 }, (_, i) =>
       persistedTask({
         id: `old-${i}`,
         created_at: new Date(1000 + i).toISOString(),
@@ -59,7 +59,7 @@ describe('Agents persisted session totals', () => {
     );
     const agents = createSubagentsWorkPanelProvider({
       listTasks: () => live,
-      listLaunchRankedSessionTasks: () => {
+      listCompletionRankedSessionTasks: () => {
         reads++;
         return [...live, ...history];
       },
@@ -74,7 +74,7 @@ describe('Agents persisted session totals', () => {
     for (let frame = 0; frame < 3; frame++)
       expect(
         agents.listRows(frame, { includeHistory: true }).map((row) => row.id),
-      ).toEqual(['live', 'old-7', 'old-6', 'old-5', 'old-4', 'old-3']);
+      ).toEqual(['live', 'old-0', 'old-1', 'old-2', 'old-3', 'old-4']);
     updates();
     expect(reads).toBe(1);
     live = [
@@ -88,9 +88,78 @@ describe('Agents persisted session totals', () => {
     expect(reads).toBe(2);
     expect(
       agents.listRows(2000, { includeHistory: true }).map((row) => row.id),
-    ).toEqual(['live', 'old-7', 'old-6', 'old-5', 'old-4']);
+    ).toEqual(['live', 'old-0', 'old-1', 'old-2', 'old-3']);
     expect(agents.listRows(2000).map((row) => row.id)).toEqual(['live']);
     unsubscribe?.();
+  });
+
+  it('discovers resumed completions beyond the launch window without changing activity-ranked history', () => {
+    const history = env.createHistoryStore();
+    for (let i = 0; i < 125; i++)
+      history.upsertTask(
+        env.tmp,
+        persistedTask({
+          id: `later-${String(i).padStart(3, '0')}`,
+          created_at: new Date(2000 + i).toISOString(),
+          ended_at: new Date(3000 + i).toISOString(),
+          last_activity_at: new Date(5000 + i).toISOString(),
+        }),
+      );
+    for (const [id, created] of [
+      ['early-Z', 900],
+      ['early-a', 800],
+    ] as const)
+      history.upsertTask(
+        env.tmp,
+        persistedTask({
+          id,
+          created_at: new Date(created).toISOString(),
+          ended_at: new Date(4000).toISOString(),
+        }),
+      );
+    history.upsertTask(
+      env.tmp,
+      persistedTask({
+        id: 'other-session',
+        session_id: 'parent-b',
+        ended_at: new Date(9000).toISOString(),
+      }),
+    );
+    history.upsertTask(
+      env.tmp,
+      persistedTask({
+        id: 'queued',
+        status: 'queued',
+        created_at: new Date(0).toISOString(),
+        ended_at: new Date(9000).toISOString(),
+      }),
+    );
+    const manager = env.createManager(env.mockRunner(), history);
+    const candidates = manager.listWorkPanelSessionTasks(env.tmp, 'parent-a');
+    expect(candidates).toHaveLength(100);
+    expect(candidates.slice(0, 2).map((task) => task.id)).toEqual([
+      'early-a',
+      'early-Z',
+    ]);
+    expect(candidates.some((task) => task.id === 'queued')).toBe(false);
+    const agents = createSubagentsWorkPanelProvider({
+      listTasks: () => manager.listActiveSessionTasks(env.tmp, 'parent-a'),
+      listCompletionRankedSessionTasks: () =>
+        manager.listWorkPanelSessionTasks(env.tmp, 'parent-a'),
+      onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
+      cancel: () => {},
+      open: () => {},
+    });
+    expect(
+      agents.listRows(0, { includeHistory: true }).map((row) => row.id),
+    ).toEqual(['early-a', 'early-Z', 'later-124', 'later-123', 'later-122']);
+    expect(agents.listRows(0, { includeHistory: true })[0]).toMatchObject({
+      sortStartedAt: 800,
+      endedAt: 4000,
+    });
+    expect(manager.listSessionTasks(env.tmp, 'parent-a')[0].id).toBe(
+      'later-124',
+    );
   });
 
   it('adds persisted-only totals without counting live terminal tasks twice or reading history during rendering', async () => {

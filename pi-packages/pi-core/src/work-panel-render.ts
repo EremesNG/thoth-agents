@@ -690,6 +690,17 @@ export type WorkPanelMetricGrid = readonly {
 }[] & {
   /** Column plans only: false when identity warnings are not admitted panel-wide. */
   readonly warnings?: boolean;
+  /**
+   * Column plans only. `2` opts into the two-line form (the sidebar Agents panel): line 1
+   * is glyph, name, summary in the leftover width and the right-aligned elapsed; line 2,
+   * indented under the name, holds the plan's other columns, aligned panel-wide, in the
+   * priority context, cost, speed, tokens, tools, warnings, model (the highest-priority
+   * prefix that fits). Rows with no metric besides elapsed stay one line. Absent or `1`
+   * is the single-line columns layout.
+   */
+  readonly lines?: 1 | 2;
+  /** Two-line plans only: reserved cells of the warnings slot on line 2. */
+  readonly warningWidth?: number;
 };
 
 const gridOrder = [
@@ -869,28 +880,64 @@ function identityDemand(
   };
 }
 
+/** Single-line display order of the admitted columns: the provider's metric order. */
+const columnDisplayOrder = [
+  'model',
+  'tools',
+  'tokens',
+  'context',
+  'speed',
+  'cost',
+  'elapsed',
+] as const;
+/** Two-line form: the line-2 elements in priority order (elapsed lives on line 1). */
+const secondLinePriority = [
+  'context',
+  'cost',
+  'speed',
+  'tokens',
+  'tools',
+  'warnings',
+  'model',
+] as const;
+
+/** Warning/error text of an identity, without its leading separator. */
+function attentionSegments(
+  identity: readonly WorkPanelSegment[],
+): WorkPanelSegment[] {
+  const sequence = flattenItems(
+    identityItems(identity).filter(
+      ({ body }) => body.role === 'warning' || body.role === 'error',
+    ),
+  );
+  if (sequence[0]?.role === 'meta') sequence.shift();
+  return sequence;
+}
+
 /**
- * Panel-wide single-line column plan: decided from reserved number widths (model fixed at
- * 10 cells), never live digits, so every row shares the same visible, aligned columns.
+ * Panel-wide column plan: decided from reserved number widths (model fixed at 10 cells),
+ * never live digits, so every row shares the same visible, aligned columns. `lines: 2`
+ * plans the two-line form (see `WorkPanelMetricGrid.lines`).
  */
 export function createWorkPanelColumnPlan(
   rows: readonly WorkPanelRow[],
   width: number,
   measure: Measure = defaultMeasure,
+  options: { lines?: 1 | 2 } = {},
 ): WorkPanelMetricGrid {
   const available = Math.max(0, width - contentGutter());
   const separator = measure(` ${resolveIcon('separator', '·')} `);
   const widths = new Map<NonNullable<WorkPanelMetricGroup['key']>, number>();
   const demands: IdentityDemand[] = [];
+  let warningWidth = 0;
   for (const row of rows) {
-    demands.push(
-      identityDemand(
-        columnsIdentity(
-          row.identity ??
-            row.segments ?? [{ text: row.primary, role: 'primary' }],
-        ),
-        measure,
-      ),
+    const identity = columnsIdentity(
+      row.identity ?? row.segments ?? [{ text: row.primary, role: 'primary' }],
+    );
+    demands.push(identityDemand(identity, measure));
+    warningWidth = Math.max(
+      warningWidth,
+      measure(segmentText(attentionSegments(identity))),
     );
     for (const group of row.metrics ?? []) {
       if (!group.key) continue;
@@ -905,6 +952,33 @@ export function createWorkPanelColumnPlan(
             );
       widths.set(group.key, Math.max(widths.get(group.key) ?? 0, size));
     }
+  }
+  if (options.lines === 2) {
+    const kept: (typeof secondLinePriority)[number][] = [];
+    let used = 0;
+    for (const element of secondLinePriority) {
+      const size =
+        element === 'warnings' ? warningWidth : (widths.get(element) ?? 0);
+      if (!size) continue;
+      if (used + (kept.length ? separator : 0) + size > available) break;
+      used += (kept.length ? separator : 0) + size;
+      kept.push(element);
+    }
+    const columns = [
+      ...(widths.has('elapsed')
+        ? [{ key: 'elapsed' as const, width: widths.get('elapsed') ?? 0 }]
+        : []),
+      ...kept.flatMap((element) =>
+        element === 'warnings'
+          ? []
+          : [{ key: element, width: widths.get(element) ?? 0 }],
+      ),
+    ];
+    return Object.assign(columns, {
+      warnings: kept.includes('warnings'),
+      lines: 2 as const,
+      warningWidth,
+    });
   }
   const kept = new Set<(typeof columnPriority)[number]>();
   const fits = () => {
@@ -932,9 +1006,9 @@ export function createWorkPanelColumnPlan(
     }
   }
   return Object.assign(
-    [...widths]
-      .filter(([key]) => kept.has(key))
-      .map(([key, size]) => ({ key, width: size })),
+    columnDisplayOrder
+      .filter((key) => kept.has(key) && widths.has(key))
+      .map((key) => ({ key, width: widths.get(key) ?? 0 })),
     { warnings: kept.has('warnings') },
   );
 }
@@ -1075,7 +1149,10 @@ function responsiveContent(
     const plan =
       metricGrid ??
       createWorkPanelColumnPlan([row], width + contentGutter(), measure);
-    const columns = plan.map((column) => {
+    const columnFor = (
+      column: WorkPanelMetricGrid[number],
+      align: 'right' | 'left' = 'right',
+    ) => {
       const group = groups.find(({ key }) => key === column.key);
       const parts = group
         ? columnSegments(
@@ -1088,8 +1165,74 @@ function responsiveContent(
           )
         : [];
       const padding = Math.max(0, column.width - measure(segmentText(parts)));
-      return [{ text: ' '.repeat(padding), role: 'meta' as const }, ...parts];
-    });
+      return {
+        present: Boolean(group),
+        parts:
+          align === 'left'
+            ? [...parts, { text: ' '.repeat(padding), role: 'meta' as const }]
+            : [{ text: ' '.repeat(padding), role: 'meta' as const }, ...parts],
+      };
+    };
+    if (plan.lines === 2) {
+      const terminal = terminalStatuses.has(status);
+      const elapsed = plan.find(({ key }) => key === 'elapsed');
+      const elapsedParts = elapsed ? columnFor(elapsed).parts : [];
+      const identityWidth = Math.max(
+        0,
+        width - (elapsed ? elapsed.width + measure(separator.text) : 0),
+      );
+      const admitted = withoutAttention(columnsIdentityText);
+      const segments = dropTinySummary(
+        fitIdentity(admitted, identityWidth, measure),
+        admitted,
+        measure,
+      ).map((part) =>
+        terminal && part.role === 'secondary'
+          ? { ...part, role: 'muted' as const }
+          : part,
+      );
+      const gap = Math.max(0, identityWidth - measure(segmentText(segments)));
+      if (gap) segments.push({ text: ' '.repeat(gap), role: 'meta' });
+      if (elapsed) segments.push(separator, ...elapsedParts);
+      // Line 2: panel-aligned slots in plan (priority) order, warnings before model.
+      const slots: { present: boolean; parts: WorkPanelSegment[] }[] = [];
+      const warningSlot = () => {
+        const text = attentionSegments(columnsIdentityText);
+        const padding = Math.max(
+          0,
+          (plan.warningWidth ?? 0) - measure(segmentText(text)),
+        );
+        return {
+          present: text.length > 0,
+          parts: [
+            ...text,
+            { text: ' '.repeat(padding), role: 'meta' as const },
+          ],
+        };
+      };
+      let warningsPlaced = plan.warnings !== true;
+      for (const column of plan) {
+        if (column.key === 'elapsed') continue;
+        if (!warningsPlaced && column.key === 'model') {
+          slots.push(warningSlot());
+          warningsPlaced = true;
+        }
+        slots.push(columnFor(column, 'left'));
+      }
+      if (!warningsPlaced) slots.push(warningSlot());
+      if (!slots.some((slot) => slot.present))
+        return { text: segmentText(segments), segments };
+      const second = slots.flatMap((slot, index) =>
+        index ? [separator, ...slot.parts] : [...slot.parts],
+      );
+      return {
+        text: segmentText(segments),
+        segments,
+        extraRows: [segmentText(second)],
+        extraSegments: [second],
+      };
+    }
+    const columns = plan.map((column) => columnFor(column).parts);
     const columnWidth = columns.length
       ? plan.reduce((sum, { width: w }) => sum + w, 0) +
         measure(separator.text) * (columns.length - 1)

@@ -65,26 +65,48 @@ function isFinished(row: WorkPanelRow): boolean {
   );
 }
 
+const finiteTime = (value: number | undefined): number | undefined =>
+  Number.isFinite(value) ? value : undefined;
+const byId = (a: WorkPanelRow, b: WorkPanelRow) =>
+  a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
+/** Launch order, oldest first; missing/non-finite timestamps follow in stable input order. */
+function byLaunch(a: WorkPanelRow, b: WorkPanelRow): number {
+  const aTime = finiteTime(a.sortStartedAt);
+  const bTime = finiteTime(b.sortStartedAt);
+  if (aTime === undefined) return bTime === undefined ? 0 : 1;
+  if (bTime === undefined) return -1;
+  return aTime - bTime || byId(a, b);
+}
+
+/** Completion order, most recent first; id descending on ties; no time counts as oldest. */
+function byCompletion(a: WorkPanelRow, b: WorkPanelRow): number {
+  const aTime = finiteTime(a.endedAt) ?? Number.NEGATIVE_INFINITY;
+  const bTime = finiteTime(b.endedAt) ?? Number.NEGATIVE_INFINITY;
+  if (aTime !== bTime) return aTime < bTime ? 1 : -1;
+  return byId(b, a);
+}
+
+/** Sources whose panels list active work first and finished work by recency. */
+const ACTIVE_FIRST_SOURCES: ReadonlySet<string> = new Set([
+  'subagents',
+  'background-tasks',
+]);
+
 /**
- * Launch order, oldest first. Missing/non-finite timestamps follow timestamped
- * rows in stable input order and count as later launches for the last-three cap.
+ * Agents and Background: active rows in launch order (oldest on top), then the three most
+ * recently finished rows, most recent first. Other sources keep launch order, oldest first,
+ * where missing timestamps count as later launches for the last-three cap.
  */
-function retainedRows(rows: WorkPanelRow[]): WorkPanelRow[] {
-  const ordered = rows
-    .filter((row) => !row.summary)
-    .sort((a, b) => {
-      const aTime = Number.isFinite(a.sortStartedAt)
-        ? a.sortStartedAt
-        : undefined;
-      const bTime = Number.isFinite(b.sortStartedAt)
-        ? b.sortStartedAt
-        : undefined;
-      if (aTime === undefined) return bTime === undefined ? 0 : 1;
-      if (bTime === undefined) return -1;
-      return aTime - bTime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    });
-  const finished = ordered.filter(isFinished);
-  const retained = new Set(finished.slice(-3));
+function retainedRows(rows: WorkPanelRow[], sourceId: string): WorkPanelRow[] {
+  const listed = rows.filter((row) => !row.summary);
+  if (ACTIVE_FIRST_SOURCES.has(sourceId))
+    return [
+      ...listed.filter((row) => !isFinished(row)).sort(byLaunch),
+      ...listed.filter(isFinished).sort(byCompletion).slice(0, 3),
+    ];
+  const ordered = listed.sort(byLaunch);
+  const retained = new Set(ordered.filter(isFinished).slice(-3));
   return ordered.filter((row) => !isFinished(row) || retained.has(row));
 }
 
@@ -172,6 +194,8 @@ interface PanelData {
   empty: boolean;
   animated?: boolean[];
   source: boolean;
+  /** Rows may span two lines (Agents); only these panels get the whole-row minimum. */
+  twoLine?: boolean;
   /** Allocated lines, assigned after budgeting. */
   height: number;
   rows: string[];
@@ -434,7 +458,7 @@ export class SidebarPanels implements Component {
         maxRows: Number.MAX_SAFE_INTEGER,
         respectRowCap: false,
       });
-      const items = retainedRows(raw);
+      const items = retainedRows(raw, source.id);
       snapshot = {
         revision: source.revision,
         frame,
@@ -447,7 +471,13 @@ export class SidebarPanels implements Component {
     // One panel-wide plan per render: every row shares the same visible columns.
     const metricOptions = {
       metricLayout: 'columns' as const,
-      metricGrid: createWorkPanelColumnPlan(items, inner, panelVisibleWidth),
+      metricGrid: createWorkPanelColumnPlan(
+        items,
+        inner,
+        panelVisibleWidth,
+        // Agents rows carry their metrics on a second line under the name.
+        source.id === 'subagents' ? { lines: 2 } : undefined,
+      ),
     };
     const command = DETAIL_COMMANDS[source.id];
     return {
@@ -474,8 +504,13 @@ export class SidebarPanels implements Component {
           ...metricOptions,
         }),
       more: true,
+      // Finished rows hide first (oldest completion last in the list), then oldest active.
       dropOrder: [
-        ...items.flatMap((row, index) => (isFinished(row) ? [index] : [])),
+        ...items
+          .flatMap((row, index) => (isFinished(row) ? [index] : []))
+          .sort((a, b) =>
+            ACTIVE_FIRST_SOURCES.has(source.id) ? b - a : a - b,
+          ),
         ...items.flatMap((row, index) => (!isFinished(row) ? [index] : [])),
       ],
       footer: command
@@ -491,6 +526,7 @@ export class SidebarPanels implements Component {
           ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
       ),
       source: true,
+      twoLine: source.id === 'subagents',
       height: 0,
       rows: [],
     };
@@ -565,7 +601,30 @@ export class SidebarPanels implements Component {
         if (used === size) fitting.push(size);
       }
       sizes.set(panel, fitting);
-      const minimum = fitting.filter((size) => size <= 4).at(-1) ?? 1;
+    }
+    // The previous allocation: a title-only panel until a small block fits.
+    const baseline = (panel: PanelData) =>
+      sizes
+        .get(panel)
+        ?.filter((size) => size <= 4)
+        .at(-1) ?? 1;
+    for (const [index, panel] of visible.entries()) {
+      let minimum = baseline(panel);
+      if (panel.twoLine) {
+        // Two-line rows keep one whole row and its `+N more` line, without starving
+        // the panels below, which still receive their previous minimum.
+        const later = visible
+          .slice(index + 1)
+          .reduce((sum, other) => sum + Math.max(0, baseline(other) - 1), 0);
+        const cap = 3 + (panel.costs[0] ?? 1);
+        minimum = Math.max(
+          minimum,
+          sizes
+            .get(panel)
+            ?.filter((size) => size <= cap && size - 1 <= remaining - later)
+            .at(-1) ?? 1,
+        );
+      }
       if (remaining >= minimum - 1) {
         panel.height = minimum;
         remaining -= minimum - 1;
@@ -605,7 +664,7 @@ export class SidebarPanels implements Component {
           maxRows: Number.MAX_SAFE_INTEGER,
           respectRowCap: false,
         });
-        snapshot.items = retainedRows(raw);
+        snapshot.items = retainedRows(raw, panel.id);
         snapshot.frame = frame;
         return this.plan(height, width);
       }

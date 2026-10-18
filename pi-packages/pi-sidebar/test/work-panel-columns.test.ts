@@ -32,6 +32,7 @@ function agents() {
     ...agentRow(id, name, status, metrics(elapsed)),
     state,
     sortStartedAt: Number(id),
+    ...(state === 'running' ? {} : { endedAt: Number(id) }),
     identity: [
       { text: name, role: 'primary' as const },
       { text: ` · ${summary}`, role: 'secondary' as const },
@@ -64,7 +65,7 @@ function background() {
     status,
     statusGlyph: glyph as never,
     state,
-    ...(state === 'running' ? {} : { endedAt: Date.now() }),
+    ...(state === 'running' ? {} : { endedAt: Number(id) }),
     sortStartedAt: Number(id),
     identity: [
       { text: name, role: 'primary' as const },
@@ -142,17 +143,17 @@ function render(id: 'subagents' | 'background-tasks', width: number) {
 }
 
 it.each([
-  ['subagents', 'Agents', agents],
-  ['background-tasks', 'Background', background],
-] as const)('%s panel keeps every mixed-state row on one line at 36 and 50 cells', (id, label, rows) => {
+  ['subagents', 'Agents', agents, 2],
+  ['background-tasks', 'Background', background, 1],
+] as const)('%s panel renders %i line(s) per mixed-state row at 36 and 50 cells', (id, label, rows, perRow) => {
   const data = rows();
-  // Every active row plus the three most recently launched finished rows.
+  // Every active row plus the three most recently finished rows.
   const retained = data.filter((row) => row.state === 'running').length + 3;
   releases.push(source(id, label, data as never, SUMMARY));
   for (const width of [36, 50]) {
     const text = render(id, width).lines.map(strip);
-    // top + rows + footer + bottom; the three oldest finished rows are retained.
-    expect(text).toHaveLength(retained + 3);
+    // top + rows (Agents: identity and metric lines) + footer + bottom.
+    expect(text).toHaveLength(retained * perRow + 3);
     for (const line of text) expect(panelVisibleWidth(line)).toBe(width);
   }
 });
@@ -229,18 +230,18 @@ it('applies status-driven roles to Background rows', () => {
   expect(cancelled('muted', '8s')).toBe(true);
 });
 
-it('keeps one line in ascii and unicode kit modes', () => {
+it('keeps two Agents lines per row in ascii and unicode kit modes', () => {
   releases.push(useMode('ascii'));
   releases.push(source('subagents', 'Agents', agents() as never, SUMMARY));
   const text = sidebar([{ id: 'subagents', visible: true }]).renderAt(36, 40);
-  expect(text).toHaveLength(5 + 3);
+  expect(text).toHaveLength(5 * 2 + 3);
   const kit = registerRenderKit(createTestRenderKit(), {});
   releases.push(() => withdrawRenderKit(kit));
   const unicode = sidebar([{ id: 'subagents', visible: true }]).renderAt(
     36,
     40,
   );
-  expect(unicode).toHaveLength(5 + 3);
+  expect(unicode).toHaveLength(5 * 2 + 3);
 });
 
 it('shows a timed-out row with exactly one clock glyph (the status), no elapsed icon', () => {

@@ -663,8 +663,8 @@ export class SubagentHistoryStore {
       .map((row) => rowToTask(row, { includeSnapshots: false }));
   }
 
-  /** Launch ranking for work-panel discovery, independent of continued activity. */
-  listSessionTaskMetadataByLaunch(
+  /** Bounded terminal candidates for discovery, independent of launch/activity. */
+  listSessionTaskMetadataByCompletion(
     cwd: string,
     sessionId: string,
     limit = 100,
@@ -673,7 +673,8 @@ export class SubagentHistoryStore {
       .prepare(`
       SELECT ${SESSION_TASK_METADATA_COLUMNS}
       FROM subagent_tasks WHERE cwd = ? AND session_id = ?
-      ORDER BY created_at DESC, id DESC
+        AND status IN ('completed', 'failed', 'cancelled', 'interrupted')
+      ORDER BY ended_at DESC, id DESC
       LIMIT ?
     `)
       .all(cwd, sessionId, limit)

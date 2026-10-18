@@ -359,9 +359,14 @@ Keyed metrics reserve number-format widths to stabilize row height across
 digit-width changes. The host keeps greedy packing; `metricLayout: 'grid'` wraps
 all metrics in a shared column schema. The sidebar uses single-line
 `metricLayout: 'columns'` with one panel-wide `createWorkPanelColumnPlan`
-decided from reserved widths: it drops speed → context → tools → cost → model
-(10 cells) → tokens while any row's summary would get fewer than 12 cells, then
-truncates the summary; elapsed shows without its icon. Columns rows need keyed
+decided from reserved widths: after glyph and name it keeps elapsed (never
+dropped), then context, cost, summary (reserving 12 cells), speed, tokens,
+tools, warnings and model (10 cells), stopping at the first element that does
+not fit; the summary otherwise takes leftover width, and in every sidebar
+columns panel a truncated summary under 4 cells hides with its separator while
+complete short summaries stay;
+elapsed shows without its icon. A segment's optional `compact` text replaces it
+only in columns (pi-subagents uses it to drop the `thoth-` name prefix). Columns rows need keyed
 metrics and an identity of name/separator/summary, colored per element (status
 glyph and elapsed by state, tokens in/out from each segment's `direction`, cost
 and model in distinct roles, dim separators); identity fitting keeps each

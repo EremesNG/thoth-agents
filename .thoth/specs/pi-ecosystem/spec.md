@@ -278,13 +278,13 @@ the Antigravity bridge MUST report API-equivalent message cost through an explic
 
 ### Requirement: Stable work-panel row height
 
-the shared work-panel renderer MUST decide multi-line metric wrapping and, for the sidebar's single-line column layout, which metric columns to drop from reserved widths of each metric's number format, so a row's line count and visible columns do not change when only the digit width of its metric values changes within each format's reserved range; sidebar Agents rows MUST stay on one line at every supported width, dropping columns panel-wide in the order speed, context, tools, cost, model, tokens before truncating the summary; values beyond a reserved range MAY only increase a row's line count or drop columns, never toggle back and forth.
+the shared work-panel renderer MUST decide multi-line metric wrapping and, for the sidebar's single-line column layout, which elements to show from reserved widths of each metric's number format, so a row's line count and visible columns do not change when only the digit width of its metric values changes within each format's reserved range; sidebar Agents rows MUST stay on one line at every supported width, always showing the status glyph, a name without a leading `thoth-` prefix and elapsed time, then keeping elements panel-wide in the priority context, cost, task summary (reserving at least twelve cells), speed, tokens, tools, warnings and model/effort, showing a lower-priority element only when every higher-priority one keeps its space; in every sidebar columns-layout panel a truncated summary that would show fewer than four cells MUST be hidden with its separator while a complete short summary stays visible; values beyond a reserved range MAY only increase a row's line count or drop elements, never toggle back and forth.
 
 #### Scenario: Stable work-panel row height
 
-- **GIVEN** a running subagent row whose tokens, context percent, speed and elapsed values cross format boundaries such as 99→100 tok/s and 9s→10s
-- **WHEN** the work panel and the 36- and 50-column sidebar render it
-- **THEN** while every value stays within its reserved range the row keeps the same number of lines and visible columns, the sidebar row stays on one line, and rows below it do not move
+- **GIVEN** a running `thoth-oracle` subagent row with context, cost, summary, speed, tokens, tools and model whose values cross format boundaries such as 99→100 tok/s and 9s→10s
+- **WHEN** the work panel and the 50- and 72-column sidebar render it
+- **THEN** the sidebar row stays on one line showing `oracle`, elapsed, context and cost at 50 columns and additionally the task summary at 72 columns, never showing speed, tokens, tools or model/effort unless context, cost and a twelve-cell summary keep their space, while every value stays within its reserved range the visible elements do not change, and rows below it do not move
 
 ### Requirement: Codemode compact rendering
 

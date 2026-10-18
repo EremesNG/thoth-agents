@@ -1050,6 +1050,13 @@ function dropTinySummary(
   return flattenItems(items.filter((_, position) => position !== index));
 }
 
+/** Context pressure by the displayed percentage: >= 70 warning, >= 90 error. */
+function contextRole(text: string): WorkPanelSegmentRole {
+  const percent = Number(text.match(/(\d+(?:\.\d+)?)%/)?.[1]);
+  if (percent >= 90) return 'error';
+  return percent >= 70 ? 'warning' : 'dim';
+}
+
 /** Per-element theme roles for one metric column; values keep their reserved text. */
 function columnSegments(
   key: NonNullable<WorkPanelMetricGroup['key']>,
@@ -1058,8 +1065,18 @@ function columnSegments(
   status: RenderStatus,
   width: number,
   measure: Measure,
+  /** Two-line layout line 2 only; `finished` rows render every metric dim. */
+  lineTwo?: { finished: boolean },
 ): WorkPanelSegment[] {
   const text = segmentText(parts);
+  // Finished rows go quiet: every line-2 metric reads as dim, whatever its running color.
+  if (lineTwo?.finished)
+    return [
+      {
+        text: key === 'model' ? truncateData(text, width, measure) : text,
+        role: 'dim',
+      },
+    ];
   switch (key) {
     case 'model':
       return [
@@ -1080,6 +1097,8 @@ function columnSegments(
         : [{ text, role: 'accent' }];
     case 'cost':
       return [{ text, role: 'warning' }];
+    case 'context':
+      return [{ text, role: lineTwo ? contextRole(text) : 'dim' }];
     case 'elapsed': {
       const role = glyphRole(row, status);
       return [
@@ -1152,21 +1171,26 @@ function responsiveContent(
     const columnFor = (
       column: WorkPanelMetricGrid[number],
       align: 'right' | 'left' = 'right',
+      lineTwo = false,
     ) => {
       const group = groups.find(({ key }) => key === column.key);
-      const parts = group
-        ? columnSegments(
-            column.key,
-            visibleSegments(columnMetricSegments(group)),
-            row,
-            status,
-            column.width,
-            measure,
-          )
-        : [];
+      // Line 2 only: pending data stays blank; padding keeps the reserved width.
+      const parts =
+        group && !(lineTwo && group.pending)
+          ? columnSegments(
+              column.key,
+              visibleSegments(columnMetricSegments(group)),
+              row,
+              status,
+              column.width,
+              measure,
+              lineTwo ? { finished: terminalStatuses.has(status) } : undefined,
+            )
+          : [];
       const padding = Math.max(0, column.width - measure(segmentText(parts)));
       return {
         present: Boolean(group),
+        blank: Boolean(lineTwo && group?.pending),
         parts:
           align === 'left'
             ? [...parts, { text: ' '.repeat(padding), role: 'meta' as const }]
@@ -1195,7 +1219,11 @@ function responsiveContent(
       if (gap) segments.push({ text: ' '.repeat(gap), role: 'meta' });
       if (elapsed) segments.push(separator, ...elapsedParts);
       // Line 2: panel-aligned slots in plan (priority) order, warnings before model.
-      const slots: { present: boolean; parts: WorkPanelSegment[] }[] = [];
+      const slots: {
+        present: boolean;
+        blank?: boolean;
+        parts: WorkPanelSegment[];
+      }[] = [];
       const warningSlot = () => {
         const text = attentionSegments(columnsIdentityText);
         const padding = Math.max(
@@ -1217,19 +1245,33 @@ function responsiveContent(
           slots.push(warningSlot());
           warningsPlaced = true;
         }
-        slots.push(columnFor(column, 'left'));
+        slots.push(columnFor(column, 'left', true));
       }
       if (!warningsPlaced) slots.push(warningSlot());
       if (!slots.some((slot) => slot.present))
         return { text: segmentText(segments), segments };
+      // A pending slot blanks with its separator; a separator needs a visible value on
+      // both sides, so one before the first visible value is blank too.
+      const blankSeparator: WorkPanelSegment = {
+        text: ' '.repeat(measure(separator.text)),
+        role: 'meta',
+      };
       const second = slots.flatMap((slot, index) =>
-        index ? [separator, ...slot.parts] : [...slot.parts],
+        index
+          ? [
+              slot.blank || slots.slice(0, index).every(({ blank }) => blank)
+                ? blankSeparator
+                : separator,
+              ...slot.parts,
+            ]
+          : [...slot.parts],
       );
       return {
         text: segmentText(segments),
         segments,
         extraRows: [segmentText(second)],
         extraSegments: [second],
+        keepBlankRows: true,
       };
     }
     const columns = plan.map((column) => columnFor(column).parts);
@@ -1512,8 +1554,7 @@ export function panelOverflowEntries(
 ): Map<string, PanelRow[]> {
   const contentFor = panelContentReader(width, measure);
   const blockCost = (entry: PanelRow) =>
-    1 +
-    (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
+    1 + (keptExtraRows(contentFor(entry)).length ?? 0);
   const hasHint = sections.some((section) =>
     section.rows.some(isSelectablePanelRow),
   );
@@ -1593,11 +1634,13 @@ export function workPanelRowLineCount(
     options.metricLayout,
     options.metricGrid,
   )({ row });
-  return (
-    1 +
-    (content.extraRows?.filter(
-      (line) => options.metricLayout === 'grid' || line.trim(),
-    ).length ?? 0)
+  return 1 + keptExtraRows(content, options.metricLayout === 'grid').length;
+}
+
+/** Extra rows that take height: blank ones only in grid or all-pending two-line rows. */
+function keptExtraRows(content: WorkPanelRowContent, grid = false) {
+  return (content.extraRows ?? []).filter(
+    (extra) => grid || content.keepBlankRows || extra.trim(),
   );
 }
 
@@ -1661,13 +1704,12 @@ export function renderWorkPanelRow(
           width,
         )
       : `${options.selected === true ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
-    ...(content.extraRows ?? [])
-      .filter((extra) => options.metricLayout === 'grid' || extra.trim())
-      .map((extra, index) =>
+    ...keptExtraRows(content, options.metricLayout === 'grid').map(
+      (extra, index) =>
         content.extraSegments?.[index]
           ? `${kit ? '       ' : '    '}${styleSegments(content.extraSegments[index])}`
           : fg('dim', `${kit ? '       ' : '    '}${singleLine(extra)}`),
-      ),
+    ),
   ].map((line) => clip(line, width));
 }
 
@@ -1700,8 +1742,7 @@ export function renderPanel(
   const remaining = Math.max(0, budget - (hint ? 1 : 0));
   const contentFor = panelContentReader(width, measure);
   const blockCost = (entry: PanelRow) =>
-    1 +
-    (contentFor(entry).extraRows?.filter((extra) => extra.trim()).length ?? 0);
+    1 + (keptExtraRows(contentFor(entry)).length ?? 0);
   const plans = planPanelSections(
     sections,
     remaining,

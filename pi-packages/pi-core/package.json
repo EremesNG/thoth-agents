@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": false,
   "description": "Typed, versioned event contracts for the Thoth Pi ecosystem.",
   "license": "MIT",

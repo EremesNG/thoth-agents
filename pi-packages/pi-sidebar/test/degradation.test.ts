@@ -180,8 +180,11 @@ it('keeps Cost content visible under metric-heavy Agent growth, measuring only r
     },
   );
   const minimum = render(panel, 9);
-  expect(minimum.join('\n')).toMatch(/\+\d+ more/);
-  expect(minimum.join('\n')).toContain('/subagents ▸ detail');
+  // Two-line rows: the smallest budget keeps one whole row and Cost's content.
+  expect(minimum.join('\n')).toContain('ctx 10.0%');
+  const roomy = render(panel, 12).join('\n');
+  expect(roomy).toMatch(/\+\d+ more/);
+  expect(roomy).toContain('/subagents ▸ detail');
   expect(minimum.join('\n')).toContain('costly task');
   expect(minimum.filter((line) => line.includes('│')).length).toBeGreaterThan(
     0,

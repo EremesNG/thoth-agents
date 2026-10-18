@@ -95,7 +95,7 @@ it('puts the workspace state word in its header', () => {
 it.each([
   'nerd',
   'ascii',
-] as const)('renders every Agents row on one line in %s mode at 36/50 cells, dropping columns panel-wide', (mode) => {
+] as const)('renders every Agents row on two lines in %s mode at 36/50 cells, dropping line-2 columns panel-wide', (mode) => {
   releases.push(useMode(mode));
   const ascii = mode === 'ascii';
   const values = {
@@ -113,34 +113,36 @@ it.each([
   ];
   releases.push(source('subagents', 'Agents', rows));
   const panel = sidebar([{ id: 'subagents', visible: true }]);
-  const shown: string[][] = [];
-  for (const width of [36, 50]) {
+  const second = (width: number) => {
     const rendered = lines(panel.renderAt(width, 40));
-    // top + one line per row + footer + bottom
-    expect(rendered).toHaveLength(rows.length + 3);
+    // top + two lines per row + footer + bottom
+    expect(rendered).toHaveLength(rows.length * 2 + 3);
     for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
-    const body = rendered.slice(1, 1 + rows.length);
-    shown.push(
-      Object.values(values).filter(
-        (v) => v !== values.elapsed && body[0].includes(v),
-      ),
-    );
-    // Panel-wide: both rows keep the same visible columns.
-    expect(
-      Object.values(values).filter(
-        (v) => v !== values.elapsed && body[1].includes(v),
-      ),
-    ).toEqual(shown.at(-1));
+    const body = rendered.slice(1, 1 + rows.length * 2);
+    // Line 1: name and the bare elapsed time (the clock icon stays free for timed out).
     expect(body[0]).toMatch(/expl/);
-    // Columns render elapsed as the bare time, leaving ◷ to the timed-out status.
     expect(body[0]).toMatch(/ 9s \|?$|9s │$/);
     expect(body[0]).not.toContain(values.elapsed);
-  }
-  // Wider panels never show fewer columns than narrower ones.
-  expect(shown[1].length).toBeGreaterThanOrEqual(shown[0].length);
-  expect(shown[0]).not.toContain(values.speed);
-  // The summary keeps its budget: optional columns drop before it truncates.
-  expect(shown[0]).toEqual([]);
+    expect(body[2]).toMatch(/revi/);
+    // Reserved digit cells pad inside a value, so detect each column by its marker.
+    const markers: Record<string, string> = {
+      context: ascii ? 'ctx' : '◔',
+      cost: '$',
+      speed: ascii ? 'tok/s' : '↯',
+      tokens: ascii ? 'in ' : '↑',
+      tools: ascii ? 'tools' : '⚒',
+      model: 'gpt-5',
+    };
+    const shown = (line: string) =>
+      Object.keys(markers).filter((key) => line.includes(markers[key]));
+    // Panel-wide: both rows keep the same line-2 columns; line 1 has none.
+    expect(shown(body[1])).toEqual(shown(body[3]));
+    expect(shown(body[0])).toEqual([]);
+    return shown(body[1]);
+  };
+  // Measured: the priority prefix that fits the reserved widths at each panel width.
+  expect(second(36)).toEqual(['context', 'cost']);
+  expect(second(50)).toEqual(['context', 'cost', 'speed']);
 });
 
 it.each([
@@ -162,11 +164,13 @@ it.each([
           rows,
           width - 4,
           panelVisibleWidth,
+          { lines: 2 },
         ),
       }),
     0,
   );
-  expect(expected).toBe(rows.length);
+  // Both rows carry metrics besides elapsed: identity line plus metric line.
+  expect(expected).toBe(rows.length * 2);
   // top + rows + footer + bottom
   expect(rendered).toHaveLength(expected + 3);
   for (const line of rendered) expect(panelVisibleWidth(line)).toBe(width);
@@ -205,9 +209,11 @@ it('recomputes metric widths when an animated row is re-exposed', () => {
   expect(exposed).toEqual(fresh);
   const measured = workPanelRowLineCount(rows[0], 65, panelVisibleWidth, {
     metricLayout: 'columns',
-    metricGrid: createWorkPanelColumnPlan(rows, 65, panelVisibleWidth),
+    metricGrid: createWorkPanelColumnPlan(rows, 65, panelVisibleWidth, {
+      lines: 2,
+    }),
   });
-  expect(measured).toBe(1);
+  expect(measured).toBe(2);
   expect(exposed).toHaveLength(measured + 3);
   for (const line of exposed) expect(panelVisibleWidth(line)).toBe(69);
 });
@@ -423,10 +429,11 @@ it('omits zero status counts, including an all-zero header summary', () => {
 it.each([
   'nerd',
   'ascii',
-] as const)('keeps one-line sidebar row heights stable across digit boundaries in %s mode', (mode) => {
+] as const)('keeps two-line sidebar row heights and line-2 columns stable across digit boundaries in %s mode', (mode) => {
   releases.push(useMode(mode));
   for (const width of [30, 44]) {
     const heights: number[] = [];
+    const columns: boolean[][] = [];
     for (const metricValues of [
       {
         tools: '99',
@@ -476,45 +483,64 @@ it.each([
               [row],
               width - 4,
               panelVisibleWidth,
+              { lines: 2 },
             ),
           }) + 3,
         );
-        expect(rendered.length).toBe(4);
+        // top + identity line + metric line + footer + bottom
+        expect(rendered.length).toBe(5);
         heights.push(rendered.length);
+        const metricLine = strip(rendered[2]);
+        columns.push(
+          ['%', '$', '↯|tok/s', '↑|in '].map((pattern) =>
+            new RegExp(pattern).test(metricLine),
+          ),
+        );
       } finally {
         off();
       }
     }
     expect(new Set(heights).size).toBe(1);
+    expect(
+      columns.every((visible) => visible.join() === columns[0].join()),
+    ).toBe(true);
+    expect(columns[0].slice(0, 2)).toEqual([true, true]);
   }
 });
 
-it('retains active plus the three latest launches indefinitely and uniformly without changing totals', () => {
+it('lists active rows first, then the three most recently finished, uniformly without changing totals', () => {
   vi.useFakeTimers();
   vi.setSystemTime(100_000);
-  const finished = (id: string, endedAt: number, failed = false) => ({
+  // Launch order is the reverse of completion order to prove completion ranks the finished.
+  const finished = (
+    id: string,
+    launched: number,
+    endedAt: number,
+    failed = false,
+  ) => ({
     ...agentRow(id, id, failed ? 'failed' : 'completed'),
     state: failed ? ('failed' as const) : ('done' as const),
-    sortStartedAt: endedAt,
-    endedAt: 100_000 - endedAt,
+    sortStartedAt: launched,
+    endedAt,
   });
   releases.push(
     source(
       'subagents',
       'Agents',
       [
-        agentRow('live', 'live'),
-        finished('expired', 50_000),
-        finished('older', 95_000),
-        finished('newest', 99_000),
-        finished('middle', 98_000),
-        finished('failure', 80_000, true),
+        finished('expired', 6, 40_000),
+        finished('older', 5, 90_000),
+        finished('newest', 1, 99_000),
+        finished('middle', 4, 95_000),
+        finished('failure', 3, 80_000, true),
+        { ...agentRow('live', 'live'), sortStartedAt: 9 },
       ],
       { running: 1, completed: 4, failed: 1, total: 6 },
     ),
   );
   const panel = sidebar([{ id: 'subagents', visible: true }]);
-  const text = () => lines(panel.renderAt(44, 40)).join('\n');
+  const text = () =>
+    lines(panel.renderAt(44, 40)).join(String.fromCharCode(10));
   expect(text()).toContain('live');
   expect(text()).not.toContain('failure');
   expect(text()).toContain('newest');
@@ -522,8 +548,10 @@ it('retains active plus the three latest launches indefinitely and uniformly wit
   expect(text()).toContain('older');
   expect(text()).not.toContain('expired');
   expect(text()).toContain('◐1 ✓4 ✗1');
-  expect(text().indexOf('older')).toBeLessThan(text().indexOf('middle'));
-  expect(text().indexOf('middle')).toBeLessThan(text().indexOf('newest'));
+  // Active first even though it launched last, then finished by completion, newest first.
+  expect(text().indexOf('live')).toBeLessThan(text().indexOf('newest'));
+  expect(text().indexOf('newest')).toBeLessThan(text().indexOf('middle'));
+  expect(text().indexOf('middle')).toBeLessThan(text().indexOf('older'));
   expect(panel.hasAnimation()).toBe(true);
   vi.setSystemTime(111_000);
   const retained = text();
@@ -590,8 +618,11 @@ it.each([
   expect(text).toContain('middle item');
   expect(text).toContain('older item');
   expect(text).not.toContain('more');
-  expect(text.indexOf('older item')).toBeLessThan(text.indexOf('middle item'));
-  expect(text.indexOf('middle item')).toBeLessThan(text.indexOf('newest item'));
+  const order = ['older item', 'middle item', 'newest item'];
+  // Todos keep launch order (oldest first); Agents and Background list recent completions first.
+  if (id !== 'todos') order.reverse();
+  expect(text.indexOf(order[0])).toBeLessThan(text.indexOf(order[1]));
+  expect(text.indexOf(order[1])).toBeLessThan(text.indexOf(order[2]));
   expect(lines(first)[0]).toContain(id === 'todos' ? '3/4' : '✓3 ✗1');
   expect(panel.hasAnimation(44)).toBe(false);
   vi.setSystemTime(200_000);

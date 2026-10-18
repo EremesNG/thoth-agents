@@ -24,6 +24,7 @@ function rows(name: string, summaries: Record<Glyph, string>) {
     statusGlyph: glyph as never,
     state: glyph === 'completed' ? ('done' as const) : ('failed' as const),
     sortStartedAt: index,
+    endedAt: index,
     identity: [
       { text: name, role: 'primary' as const },
       { text: ' · ', role: 'meta' as const },
@@ -75,8 +76,11 @@ it.each([
         .map(strip);
       const lines = text.filter((line) => line.includes(name.slice(0, 2)));
       expect(lines, `${id}/${width}`).toHaveLength(data.length);
+      // Elapsed is the only metric: one line each, most recently finished first.
       for (const [index, line] of lines.entries()) {
-        expect(line).toContain(GLYPHS[data[index].status as Glyph]);
+        expect(line).toContain(
+          GLYPHS[[...data].reverse()[index].status as Glyph],
+        );
         expect(line).toContain('1m 00s');
       }
     }

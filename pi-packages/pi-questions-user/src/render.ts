@@ -164,8 +164,9 @@ export function summarizeResult(
   options: SummaryOptions = {},
 ): Summary {
   const { paint = plain, width = Number.POSITIVE_INFINITY } = options;
-  // Plain failures (e.g. SDK argument validation) are multi-line: one row per line.
-  if (!details) {
+  // SDK failures (e.g. argument validation) carry empty details and multi-line
+  // text: one row per line.
+  if (!Array.isArray(details?.questions)) {
     const lines = text ? text.split(/\r?\n/) : [];
     return {
       status: 'failed',

@@ -170,7 +170,8 @@ describe('question renderers', () => {
               text: 'Validation failed:\n  - labels: must be object',
             },
           ],
-          details: undefined,
+          // pi-agent-core createErrorToolResult: SDK failures carry empty details.
+          details: {} as never,
         },
         { expanded: true, isPartial: false },
         theme,

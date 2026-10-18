@@ -118,7 +118,7 @@ function pipe(name: string): Promise<Socket> {
 export class WindowsJobClient {
   private child?: ChildProcessWithoutNullStreams;
   private ready?: Promise<void>;
-  private failure?: Error;
+  private generation: { failure?: Error } = {};
   private sequence = 0;
   private pending = new Map<
     number,
@@ -136,8 +136,10 @@ export class WindowsJobClient {
     return this.child?.pid;
   }
   private start(): Promise<void> {
-    if (this.ready) return this.ready;
-    this.ready = new Promise((resolve, reject) => {
+    if (this.ready && !this.generation.failure) return this.ready;
+    this.generation = { failure: undefined };
+    const generation = this.generation;
+    this.ready = new Promise<void>((resolve, reject) => {
       const child = spawn(
         powershell(),
         [
@@ -162,8 +164,9 @@ export class WindowsJobClient {
         30000,
       );
       const failed = (error: Error) => {
+        if (generation.failure) return;
         clearTimeout(timer);
-        this.fail(error);
+        this.fail(error, generation);
         reject(error);
         child.kill();
       };
@@ -175,6 +178,7 @@ export class WindowsJobClient {
       );
       const lines = createInterface({ input: child.stdout });
       lines.on('line', (line) => {
+        if (generation.failure) return;
         try {
           const value = parseMessage(line);
           if (value.event === 'ready') {
@@ -212,11 +216,15 @@ export class WindowsJobClient {
       child.unref();
       for (const stream of [child.stdin, child.stdout, child.stderr])
         (stream as unknown as { unref?(): void }).unref?.();
+    }).catch((error) => {
+      this.fail(error, generation);
+      throw error;
     });
     return this.ready;
   }
-  private fail(error: Error): void {
-    this.failure ??= error;
+  private fail(error: Error, generation: { failure?: Error }): void {
+    generation.failure ??= error;
+    if (generation !== this.generation) return;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -226,12 +234,14 @@ export class WindowsJobClient {
     this.exits.clear();
   }
   private async request(
+    startup: Promise<void>,
+    generation: { failure?: Error },
     op: string,
     extra: Record<string, unknown>,
     timeoutMs = 20000,
   ): Promise<Message> {
-    await this.start();
-    if (this.failure) throw this.failure;
+    await startup;
+    if (generation.failure) throw generation.failure;
     return new Promise((resolve, reject) => {
       const id = ++this.sequence;
       const timer = setTimeout(() => {
@@ -260,6 +270,15 @@ export class WindowsJobClient {
   async launch(options: JobLaunchOptions): Promise<LaunchedJob> {
     if (process.platform !== 'win32')
       throw new JobLauncherUnavailable('Windows jobs require Windows');
+    const startup = this.start(),
+      generation = this.generation,
+      child = this.child;
+    // Reconciliation and returned jobs must stay bound to their original helper.
+    const request = (
+      op: string,
+      extra: Record<string, unknown>,
+      timeoutMs?: number,
+    ) => this.request(startup, generation, op, extra, timeoutMs);
     const key = randomBytes(16).toString('hex');
     const sockets: Socket[] = [];
     const exited = new Promise<{ code: number }>((resolve, reject) => {
@@ -268,12 +287,12 @@ export class WindowsJobClient {
     // Launch can fail before the caller receives the exit promise.
     void exited.catch(() => {});
     try {
-      const prepared = await this.request('launch', { key });
+      const prepared = await request('launch', { key });
       // Connect sequentially in the server's stdin/stdout/stderr order. No target exists yet.
       if (!prepared.pipes)
         throw new JobLauncherUnavailable('Missing pipe names');
       for (const name of prepared.pipes) sockets.push(await pipe(name));
-      const result = await this.request('start', {
+      const result = await request('start', {
         key,
         ...options,
         command: [options.file, ...options.args].map(quoteWindowsArg).join(' '),
@@ -286,24 +305,24 @@ export class WindowsJobClient {
         stderr: sockets[2],
         exited,
         terminate: async (timeoutMs) => {
-          await this.request(
+          await request(
             'terminate',
             { key, timeoutMs },
             Math.max(1000, timeoutMs + 5000),
           );
         },
         release: async () => {
-          await this.request('release', { key });
+          await request('release', { key });
         },
       };
     } catch (error) {
       // Reconcile even a lost start acknowledgement. If control is lost, helper death
       // closes all jobs, and we await that death before exposing the failure.
       try {
-        await this.request('terminate', { key, timeoutMs: 5000 });
-        await this.request('release', { key });
+        await request('terminate', { key, timeoutMs: 5000 });
+        await request('release', { key });
       } catch {
-        await this.close();
+        await this.closeHelper(child);
       }
       for (const socket of sockets) socket.destroy();
       this.exits.delete(key);
@@ -311,7 +330,11 @@ export class WindowsJobClient {
     }
   }
   async close(): Promise<void> {
-    const child = this.child;
+    await this.closeHelper(this.child);
+  }
+  private async closeHelper(
+    child?: ChildProcessWithoutNullStreams,
+  ): Promise<void> {
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(

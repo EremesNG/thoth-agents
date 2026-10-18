@@ -21,6 +21,7 @@ function published(file: string): boolean {
 export async function waitForFixtureJobs(
   files: string[],
   signal?: AbortSignal,
+  diagnostics?: () => string,
 ): Promise<void> {
   const deadline = Date.now() + FIXTURE_JOB_STARTUP_TIMEOUT_MS;
   for (;;) {
@@ -28,7 +29,9 @@ export async function waitForFixtureJobs(
     const missing = files.filter((file) => !published(file));
     if (missing.length === 0) return;
     if (Date.now() >= deadline)
-      throw new Error(`Fixture jobs did not start: ${missing.join(', ')}`);
+      throw new Error(
+        `Fixture jobs did not start: ${missing.join(', ')}${diagnostics ? `\n${diagnostics()}` : ''}`,
+      );
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }

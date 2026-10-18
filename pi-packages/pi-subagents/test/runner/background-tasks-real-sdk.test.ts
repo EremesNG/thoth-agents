@@ -17,6 +17,8 @@ import {
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
+import { readLog } from '../../../pi-background-tasks/src/logs.js';
+import { listTaskRecords } from '../../../pi-background-tasks/src/registry.js';
 import { SubagentManager } from '../../src/manager.js';
 import { sdkSubagentRunner } from '../../src/runner/sdk-runner.js';
 import type { SubagentsConfig } from '../../src/types.js';
@@ -94,7 +96,7 @@ function emergencyCleanup(root: string, files: string[]): void {
       if (!alive(pid)) continue;
       try {
         if (process.platform === 'win32')
-          execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+          execFileSync('taskkill', ['/PID', String(pid), '/F'], {
             windowsHide: true,
             stdio: 'ignore',
           });
@@ -105,6 +107,40 @@ function emergencyCleanup(root: string, files: string[]): void {
     }
   }
   fs.rmSync(root, { recursive: true, force: true });
+}
+
+function checkSpawnResults(results: { isError?: boolean }[]): void {
+  for (const result of results) {
+    if (result.isError)
+      throw new Error(
+        `bg_task_spawn failed: ${JSON.stringify(result).slice(0, 4096)}`,
+      );
+  }
+}
+
+function fixtureJobDiagnostics(files: string[]): string {
+  const { records, indexError } = listTaskRecords();
+  const tasks = records.flatMap(({ meta }) => {
+    if (!meta?.argv?.some((arg) => files.includes(arg))) return [];
+    const log = readLog(meta.logPath, 20);
+    return [
+      {
+        id: meta.id,
+        status: meta.status,
+        exitCode: meta.lastExitCode ?? null,
+        signal: meta.lastSignal ?? null,
+        error: meta.error,
+        stopError: meta.stopError,
+        logTail: log.text.slice(-4096),
+        logError: log.error,
+      },
+    ];
+  });
+  return JSON.stringify({
+    tasks,
+    indexError,
+    ...(!tasks.length ? { gap: 'No matching background task metadata' } : {}),
+  });
 }
 
 function backgroundProvider(
@@ -157,7 +193,16 @@ function backgroundProvider(
         stream.end(message);
       } else {
         void (async () => {
-          await waitForFixtureJobs(files, options?.signal);
+          const results = context.messages
+            .filter((entry) => entry.role === 'toolResult')
+            .filter((entry) => entry.toolName === 'bg_task_spawn');
+          checkSpawnResults(results);
+          await waitForFixtureJobs(
+            files,
+            options?.signal,
+            () =>
+              `${fixtureJobDiagnostics(files)} Spawn results: ${JSON.stringify(results).slice(0, 4096)}`,
+          );
           if (!pids(files).every(alive))
             throw new Error('Fixture process tree is not alive');
           ready();
@@ -408,6 +453,31 @@ async function fixture(hanging = false) {
     },
   };
 }
+
+it('fails immediately with a rejected spawn tool result', () => {
+  expect(() => checkSpawnResults([{ isError: true }])).toThrow(
+    'bg_task_spawn failed: {"isError":true}',
+  );
+});
+
+it('captures task diagnostics before a missing-marker deadline rejects', async () => {
+  vi.useFakeTimers();
+  const diagnostics = vi.fn(
+    () => 'task fixture-id status=failed exit=1 log tail: launch failed',
+  );
+  try {
+    const failure = expect(
+      waitForFixtureJobs(['missing-fixture.json'], undefined, diagnostics),
+    ).rejects.toThrow(
+      /fixture-id status=failed exit=1 log tail: launch failed/,
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    await failure;
+    expect(diagnostics).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 // Include resource loading, bounded job startup, and the 5s hanging shutdown.
 it('stops multiple child job trees before disposal despite a preceding hanging passthrough shutdown', async () => {

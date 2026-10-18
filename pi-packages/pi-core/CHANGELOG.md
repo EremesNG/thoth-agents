@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Recover Windows job launcher startup failures and helper death on the next launch without migrating existing jobs or retrying ambiguous launches.
+
 ### Added
 
 - Windows Job Object launcher with pre-execution containment, direct stdio streams, unsigned exit codes, and job-only tree termination; unavailable containment is reported separately from target spawn errors.

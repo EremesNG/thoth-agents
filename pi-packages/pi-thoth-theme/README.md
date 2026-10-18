@@ -29,20 +29,23 @@ of the module toggles below.
 
 ## User messages
 
-The `thoth` theme renders user messages as white (`#FFFFFF`) on Nile green
-(`#1B4643`). The extension adds a bold `<icon> user` label on its own line,
-followed by a blank line and the original Markdown. This is display-only: stored
-messages, assistant replies and thinking are unchanged. Empty messages are not
-labeled, and already-labeled messages are not prefixed again. This label is
-independent of the optional modules below.
+The `thoth` theme renders user messages in `#E8DCB5` on `#120E0A`.
+The extension surrounds the original Markdown with a top `╭── <icon> user ─…╮`
+and bottom `╰─…╯` frame, separated from the content by blank lines. Both borders
+fill the content width after Pi's horizontal padding and adapt on terminal resize.
+Framing is skipped when the width is missing, invalid, or too narrow to fit the
+title, one fill cell and the closing corner (13 columns with the current icons).
+This is display-only: stored messages, assistant replies and thinking are unchanged.
+Blank content and already-framed messages are left alone. The frame is independent
+of the optional modules below.
 
-The label reuses `icons`: `"nerd"` (the existing default) selects nf-fa-user
+The frame reuses `icons`: `"nerd"` (the existing default) selects nf-fa-user
 (U+F007), `"unicode"` selects `●` (U+25CF), and `"ascii"` selects `@`.
 Set `"icons": "nerd"` in the package configuration and use a Nerd Font in your
 terminal for the Nerd glyph; use `"icons": "unicode"` for its Unicode fallback.
 
 Markdown accents and syntax colors remain shared with assistant messages; only
-ordinary user text and the label use the user-message white.
+ordinary user text and the frame use `userMessageText` (`#E8DCB5`).
 
 ## Modules
 

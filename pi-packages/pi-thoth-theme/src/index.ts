@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { visibleWidth } from '@earendil-works/pi-tui';
 import {
   type RenderKitToken,
   registerRenderKit,
@@ -15,8 +16,20 @@ export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
   pi.registerMarkdownTransformer((markdown, context) => {
     if (context.messageType !== 'user' || !markdown.trim()) return markdown;
-    if (/^\*\*[\uF007●@] user\*\*\r?\n\r?\n/.test(markdown)) return markdown;
-    return `**${icon('user', config.icons)} user**\n\n${markdown}`;
+    if (
+      /^╭── [\uF007●@] user ─+╮\r?\n\r?\n[\s\S]*\r?\n\r?\n╰─+╯$/.test(markdown)
+    )
+      return markdown;
+    const width = context.availableWidth;
+    const title = `╭── ${icon('user', config.icons)} user `;
+    const titleWidth = visibleWidth(title);
+    // Pi supplies content width after horizontal padding. Skip unknown/narrow
+    // widths rather than wrapping the title; require one fill cell and a corner.
+    if (!Number.isInteger(width) || width < titleWidth + 2) return markdown;
+    // Box-drawing characters are plain Markdown text, not rules or list markers.
+    const top = `${title}${'─'.repeat(width - titleWidth - 1)}╮`;
+    const bottom = `╰${'─'.repeat(width - 2)}╯`;
+    return `${top}\n\n${markdown}\n\n${bottom}`;
   });
   const owner = {};
   const cwd = process.cwd();

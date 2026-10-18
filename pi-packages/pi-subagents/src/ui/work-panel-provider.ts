@@ -192,8 +192,8 @@ function taskRow(
 
 export function createSubagentsWorkPanelProvider(source: {
   listTasks(): SubagentTask[];
-  /** Bounded launch-ranked metadata read, cached outside the render path. */
-  listLaunchRankedSessionTasks?(): SubagentTask[];
+  /** Bounded completion-ranked terminal metadata read, cached outside the render path. */
+  listCompletionRankedSessionTasks?(): SubagentTask[];
   persistedCounts?: SubagentSessionTaskCounts;
   providerLimits?: Pick<SubagentProviderLimitCache, 'warningText' | 'onChange'>;
   onTaskUpdate(notify: () => void): () => void;
@@ -202,7 +202,7 @@ export function createSubagentsWorkPanelProvider(source: {
   openHistory?: WorkPanelProvider['openHistory'];
   theme?: () => RenderKitTheme;
 }): WorkPanelProvider {
-  let historyTasks = source.listLaunchRankedSessionTasks?.() ?? [];
+  let historyTasks = source.listCompletionRankedSessionTasks?.() ?? [];
   const terminalSignature = () =>
     JSON.stringify(
       source
@@ -215,7 +215,7 @@ export function createSubagentsWorkPanelProvider(source: {
     const signature = terminalSignature();
     if (signature === lastTerminalSignature) return;
     lastTerminalSignature = signature;
-    historyTasks = source.listLaunchRankedSessionTasks?.() ?? [];
+    historyTasks = source.listCompletionRankedSessionTasks?.() ?? [];
   };
   const dismissed = new Set<string>();
   const listeners = new Set<() => void>();
@@ -245,8 +245,11 @@ export function createSubagentsWorkPanelProvider(source: {
         .filter((task) => taskState(task) !== 'running')
         .sort(
           (a, b) =>
-            Date.parse(b.created_at) - Date.parse(a.created_at) ||
-            b.id.localeCompare(a.id),
+            (completionTime(b) ?? 0) - (completionTime(a) ?? 0) ||
+            Buffer.compare(
+              Buffer.from(b.id, 'utf8'),
+              Buffer.from(a.id, 'utf8'),
+            ),
         )
         .slice(0, 5),
     ];

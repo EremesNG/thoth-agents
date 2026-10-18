@@ -61,7 +61,7 @@ describe('Agents work-panel session lifecycle', () => {
     }
   });
 
-  it('discovers the five newest resumed outcomes while even recent history stays collapsed in the host', async () => {
+  it('discovers the five most recently completed resumed outcomes while history stays collapsed in the host', async () => {
     const history = env.createHistoryStore();
     const now = Date.now();
     for (let index = 0; index < 8; index++)
@@ -75,7 +75,7 @@ describe('Agents work-panel session lifecycle', () => {
         created_at: new Date(now - 1000 - index).toISOString(),
         ended_at: new Date(now - index).toISOString(),
       });
-    // Older launches continued recently dominate activity-ranked history (>100).
+    // Older launches finished most recently, outside the launch-ranked window (>100).
     for (let index = 0; index < 110; index++)
       history.upsertTask(env.tmp, {
         id: `continued-${index}`,
@@ -107,15 +107,15 @@ describe('Agents work-panel session lifecycle', () => {
         respectRowCap: false,
       });
       expect(rows.map((row) => row.id)).toEqual([
-        'recent-0',
-        'recent-1',
-        'recent-2',
-        'recent-3',
-        'recent-4',
+        'continued-109',
+        'continued-108',
+        'continued-107',
+        'continued-106',
+        'continued-105',
       ]);
       expect(rows[0]).toMatchObject({
         state: 'done',
-        endedAt: now,
+        endedAt: now + 109,
         name: 'worker',
       });
     } finally {

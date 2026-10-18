@@ -146,12 +146,12 @@ describe('Thoth theme JSON', () => {
     expect(theme.appearance).toBe('dark');
   });
 
-  it('renders user messages as gold on Nile green', () => {
+  it('renders user messages as white on Nile green', () => {
     expect(resolveVarRef(theme.colors.userMessageBg, theme.vars)).toBe(
       '#1B4643',
     );
     expect(resolveVarRef(theme.colors.userMessageText, theme.vars)).toBe(
-      '#D4AF37',
+      '#FFFFFF',
     );
   });
 

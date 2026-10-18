@@ -29,7 +29,7 @@ of the module toggles below.
 
 ## User messages
 
-The `thoth` theme renders user messages as gold (`#D4AF37`) on Nile green
+The `thoth` theme renders user messages as white (`#FFFFFF`) on Nile green
 (`#1B4643`). The extension adds a bold `<icon> user` label on its own line,
 followed by a blank line and the original Markdown. This is display-only: stored
 messages, assistant replies and thinking are unchanged. Empty messages are not
@@ -42,7 +42,7 @@ Set `"icons": "nerd"` in the package configuration and use a Nerd Font in your
 terminal for the Nerd glyph; use `"icons": "unicode"` for its Unicode fallback.
 
 Markdown accents and syntax colors remain shared with assistant messages; only
-ordinary user text and the label use the user-message gold.
+ordinary user text and the label use the user-message white.
 
 ## Modules
 

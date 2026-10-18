@@ -53,9 +53,9 @@ vi.mock('../skills', async (importOriginal) => {
         description: 'test skill',
       },
       {
-        name: 'architectural-grilling',
-        repo: 'https://example.test/architectural-grilling',
-        skillName: 'architectural-grilling',
+        name: 'grill-me',
+        repo: 'https://github.com/EremesNG/skills',
+        skillName: 'grill-me',
         description: 'test skill',
       },
     ],
@@ -159,7 +159,7 @@ describe('OpenCode operations adapter v0.3', () => {
     writeRequiredSkill('simplify');
     writeRequiredSkill('tdd');
     writeRequiredSkill('progressive-context-router');
-    writeRequiredSkill('architectural-grilling');
+    writeRequiredSkill('grill-me');
     for (const skillName of THOTH_OWNED_SKILL_NAMES) {
       writeRequiredSkill(skillName);
     }
@@ -320,12 +320,9 @@ describe('OpenCode operations adapter v0.3', () => {
       'config',
       'lite-config',
       'owned-skills',
-      ...[
-        'simplify',
-        'tdd',
-        'progressive-context-router',
-        'architectural-grilling',
-      ].map((name) => `external:${name}`),
+      ...['simplify', 'tdd', 'progressive-context-router', 'grill-me'].map(
+        (name) => `external:${name}`,
+      ),
       'provider-ledger',
     ]);
     expect(readInstallLedger({ configRoot: tempRoot })).toMatchObject({
@@ -504,7 +501,7 @@ describe('OpenCode operations adapter v0.3', () => {
       writeRequiredSkill('simplify'),
       writeRequiredSkill('tdd', 'agents'),
       writeRequiredSkill('progressive-context-router'),
-      writeRequiredSkill('architectural-grilling', 'agents'),
+      writeRequiredSkill('grill-me', 'agents'),
       ...THOTH_OWNED_SKILL_NAMES.map((name) => writeRequiredSkill(name)),
     ];
 
@@ -541,7 +538,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(previews).toContain('simplify');
     expect(previews).toContain('tdd');
     expect(previews).toContain('progressive-context-router');
-    expect(previews).toContain('architectural-grilling');
+    expect(previews).toContain('grill-me');
     for (const skillName of THOTH_OWNED_SKILL_NAMES) {
       expect(previews).toContain(skillName);
     }
@@ -589,7 +586,7 @@ describe('OpenCode operations adapter v0.3', () => {
       ).toBe(true);
     }
     expect(installRequiredSkillMock).toHaveBeenCalledWith(
-      expect.objectContaining({ skillName: 'architectural-grilling' }),
+      expect.objectContaining({ skillName: 'grill-me' }),
       'opencode',
       expect.any(Object),
     );

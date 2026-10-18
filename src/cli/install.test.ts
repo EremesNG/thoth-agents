@@ -221,7 +221,7 @@ describe('install', () => {
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',
-      'external:architectural-grilling',
+      'external:grill-me',
       'provider',
     ]);
     expect(
@@ -665,7 +665,7 @@ describe('install', () => {
       expect(output).toContain('simplify');
       expect(output).toContain('tdd');
       expect(output).toContain('progressive-context-router');
-      expect(output).toContain('architectural-grilling');
+      expect(output).toContain('grill-me');
       expect(output).toContain('thoth-init');
       expect(output).toContain('thoth-sdd');
       expect(output).toContain('thoth-constitution');

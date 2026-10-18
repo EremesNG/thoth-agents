@@ -51,7 +51,7 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 The installer invokes `npx skills add` for `simplify`, `tdd`,
-`progressive-context-router`, and `architectural-grilling`, targeting the global
+`progressive-context-router`, and `grill-me`, targeting the global
 Claude skill root. It then invokes
 `npx -y thoth-mem@latest setup claude --json`; dry-run adds provider `--plan`.
 A missing skill or any thoth-mem

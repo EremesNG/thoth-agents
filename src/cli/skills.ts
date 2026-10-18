@@ -75,10 +75,10 @@ export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
     description: 'Repository instruction and on-demand context routing',
   },
   {
-    name: 'architectural-grilling',
+    name: 'grill-me',
     repo: 'https://github.com/EremesNG/skills',
-    skillName: 'architectural-grilling',
-    description: 'Conditional product and architecture decision interview',
+    skillName: 'grill-me',
+    description: 'Relentless interview/grilling of plans and decisions',
   },
 ];
 

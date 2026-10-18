@@ -312,7 +312,9 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/bounded technical unknowns.*resolution strategy/i);
     expect(prompt).toMatch(/thoth-sdd.*current phase.*change\.md/i);
     expect(prompt).not.toMatch(/bundled `thoth-work` skill|work\.yaml/);
-    expect(prompt).toMatch(/architectural-grilling.*only.*explicit.*material/i);
+    expect(prompt).toContain(
+      '- Use grill-me when material human-owned decisions remain unresolved.',
+    );
     expect(prompt).toMatch(/no separate.*discovery.*specification.*documents/i);
   });
 
@@ -943,7 +945,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "736bdaba23a892f2690bed1dfdbf10bf3673d19cad43ee0d08b507670f2b5c29",
+          "2010c2de0601e7d9096491a52b83052988a9955bb5727210fa0f7d6686841ec3",
           "a10821acadc00a4da671aafd6b437fa9b6932d5e3e9a8e0bd1dfb610b42a52e4",
           "634bafad130132eeb0b0a6ba1f3688922ea18439201b9adbd365fcb4685d2383",
           "5a7e7a2d890e939bb5aa8ef1b2a5dd04c708894a15ca0d0b0beb81be6f8246ad",
@@ -954,7 +956,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "4fa7502ff4e0d2365f4a257315ffe5cd80dd2c8458b1c059468c0cadb7f15b08",
+          "5a33aa17514abf89926e6839ddc4f5fc45a5cea9d1d7d23a3a3fb7d229a9d294",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
@@ -965,7 +967,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "7b290f045f5cb723e30f5e58842b6effd92838f720206ab0fba44c386815b2ac",
+          "af8a8399787cba28b8e279c52b154f0d6224881e812c38cf80211b3dc78bf663",
           "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
           "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
           "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
@@ -977,19 +979,19 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
   `);
 });
 
-// Captured before the Codex-only lifecycle change, covering every configured role.
+// Baseline refreshed for the grill-me rename, covering every configured role.
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '10484aa5bffd8a672ccf2e3bbd2268a7469fea4a61ef4d0d16e069f76c51b7c7',
+    'cc5f7c38f1d33de60d6123e9366f6102d39bfff3b8be350ef21487187b4a3383',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '4276f19b6d6045c0701c81ee87ed4d0b5a09f7a41cd2a76cb064f81035adfb8a',
+    '1dd10b380770b1a16f220866ebda705361e49bde53c520254a46a293cea56adb',
   ],
   [
     PI_PROMPT_DIALECT,
-    'b6d958abd38e91aa2b6585f8c99c41c6380290bbfedee41c56e6af9a90a1da90',
+    'd29969d6396d526c1d17c17adee33fdd4ea4fb9e6267773f4460e59eeaed1253',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>

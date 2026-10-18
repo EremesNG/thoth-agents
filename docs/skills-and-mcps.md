@@ -26,7 +26,7 @@ SDD guide](sdd-pipeline.md).
 | `simplify` | `EremesNG/skills` | Review the implementation diff without changing behavior. |
 | `tdd` | `mattpocock/skills` | Test-first behavior changes. |
 | `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work. |
-| `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision. |
+| `grill-me` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision. |
 
 Build copies the five owned skills to shared `plugin/skills` for Codex and
 Claude. OpenCode synchronizes them into its global discovery root. Pi discovers

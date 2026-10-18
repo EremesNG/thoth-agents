@@ -711,7 +711,7 @@ OpenCode installation materializes these five under its global user skill root;
 project.
 
 The CLI installs `simplify`, `tdd`, `progressive-context-router`, and
-`architectural-grilling` from their canonical GitHub repositories using the
+`grill-me` from their canonical GitHub repositories using the
 skills CLI. This deliberately avoids vendored copies and makes those
 repositories the single source of truth. Browser, visual, integration, and
 end-to-end QA executables remain project-owned.

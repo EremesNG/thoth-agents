@@ -115,7 +115,7 @@ describe('commands plain operation formatters', () => {
     );
     expect(output).toContain('six-role roster');
     expect(output).toContain(
-      'simplify, tdd, progressive-context-router, and architectural-grilling',
+      'simplify, tdd, progressive-context-router, and grill-me',
     );
     expect(output).not.toContain('playwright-cli');
     expect(output).toContain(

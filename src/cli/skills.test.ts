@@ -59,9 +59,9 @@ describe('required skill install helper', () => {
         skillName: 'progressive-context-router',
       },
       {
-        name: 'architectural-grilling',
+        name: 'grill-me',
         repo: 'https://github.com/EremesNG/skills',
-        skillName: 'architectural-grilling',
+        skillName: 'grill-me',
       },
     ]);
     expect(REQUIRED_SKILLS.map(({ name }) => name)).not.toContain(

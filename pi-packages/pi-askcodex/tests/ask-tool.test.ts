@@ -431,6 +431,72 @@ describe('AskCodex', () => {
       exposure: 'model-only',
     });
   });
+  it('exposes thinking with supported values and no effort alias', () => {
+    const { parameters } = setup().tool;
+    expect(parameters).not.toHaveProperty('properties.effort');
+    expect(parameters).toMatchObject({
+      properties: {
+        thinking: {
+          anyOf: [
+            { const: 'minimal' },
+            { const: 'low' },
+            { const: 'medium' },
+            { const: 'high' },
+            { const: 'xhigh' },
+          ],
+        },
+      },
+    });
+  });
+  it('keeps task, continuation and context guidance in the parameter docs', () => {
+    const { description, parameters, promptGuidelines } = setup().tool;
+    expect(parameters).toMatchObject({
+      properties: {
+        prompt: {
+          description: expect.stringMatching(/Self-contained.*context/),
+        },
+        conversationId: {
+          description: expect.stringContaining('continuation'),
+        },
+        includeContext: {
+          description: expect.stringContaining('explicitly requested'),
+        },
+        digest: {
+          description: expect.stringContaining('default true in plan mode'),
+        },
+      },
+    });
+    expect(`${description} ${promptGuidelines?.join(' ')}`).not.toMatch(
+      /self-contained|conversationId|digest|Pi context/i,
+    );
+    expect(promptGuidelines?.join(' ')).toContain(
+      'Plan uses a read-only shell sandbox; MCP and Computer Use actions are not made read-only.',
+    );
+  });
+  it('exposes only explicit web search modes', () => {
+    expect(setup().tool.parameters).toHaveProperty(
+      'properties.webSearch.anyOf',
+      [
+        { type: 'string', const: 'live' },
+        { type: 'string', const: 'cached' },
+        { type: 'string', const: 'disabled' },
+      ],
+    );
+  });
+  it.each([
+    true,
+    false,
+    'automatic',
+  ])('rejects unsupported webSearch %j without spawning', async (webSearch) => {
+    const result = await setup().run({ prompt: 'task', webSearch });
+    expect(result.details).toMatchObject({ status: 'failed' });
+    expect(result.details).not.toHaveProperty('binary');
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining(
+        'webSearch must be live, cached or disabled',
+      ),
+    });
+  });
   it('publishes definitions only in UI sessions and withdraws on shutdown', async () => {
     const handlers = new Map<string, (...args: any[]) => unknown>();
     askCodex({
@@ -477,7 +543,7 @@ describe('AskCodex', () => {
       conversationId: 'thread-1',
       mode: 'plan',
       thinking: 'xhigh',
-      webSearch: true,
+      webSearch: 'live',
     });
     const data = JSON.parse(
       (result.content[0] as { text: string }).text.split(
@@ -522,13 +588,16 @@ describe('AskCodex', () => {
       input: [{ text: 'review' }],
     });
   });
-  it('accepts equal thinking/effort synonyms and disables boolean web search', async () => {
-    const result = await setup('inspect', { webSearch: 'live' }).run({
+  it('overrides configured model and thinking and disables web search', async () => {
+    const result = await setup('inspect', {
+      defaultModel: 'gpt-default',
+      defaultEffort: 'high',
+      webSearch: 'live',
+    }).run({
       prompt: 'task',
       model: 'gpt-override',
       thinking: 'low',
-      effort: 'low',
-      webSearch: false,
+      webSearch: 'disabled',
     });
     const data = JSON.parse(
       (result.content[0] as { text: string }).text.split(
@@ -560,8 +629,7 @@ describe('AskCodex', () => {
     expect(data.turnRequest.params.input[0].text).toBe('edit');
   });
   it.each([
-    { thinking: 'high', effort: 'low' },
-    { effort: 'max' },
+    { thinking: 'max' },
     { prompt: '' },
     { timeoutMinutes: 0 },
     { timeoutMinutes: Infinity },

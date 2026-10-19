@@ -766,6 +766,84 @@ describe('config and workflow loading', () => {
     });
   });
 
+  it('defaults to the native Pi tools and minimal memory-read tools', () => {
+    expect(readSubagentsConfig(tmp).default_tools).toEqual([
+      'read',
+      'bash',
+      'edit',
+      'write',
+      'grep',
+      'find',
+      'ls',
+      'mem_recall',
+      'mem_get',
+    ]);
+  });
+
+  it.each([
+    ['omitted', ''],
+    ['empty', 'tools: []\n'],
+  ])('resolves %s definition tools through the default_tools cascade', (_label, tools) => {
+    const globalDir = process.env.PI_CODING_AGENT_DIR!;
+    fs.mkdirSync(path.join(globalDir, 'agents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(globalDir, 'agents', 'global.md'),
+      `---\nname: global\n${tools}---\nGlobal agent`,
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'local.md'),
+      `---\nname: local\n${tools}---\nLocal agent`,
+    );
+    expect(loadSubagents(tmp).map((agent) => agent.tools)).toEqual([
+      [
+        'read',
+        'bash',
+        'edit',
+        'write',
+        'grep',
+        'find',
+        'ls',
+        'mem_recall',
+        'mem_get',
+      ],
+      [
+        'read',
+        'bash',
+        'edit',
+        'write',
+        'grep',
+        'find',
+        'ls',
+        'mem_recall',
+        'mem_get',
+      ],
+    ]);
+
+    fs.writeFileSync(
+      path.join(globalDir, 'subagents.json'),
+      JSON.stringify({ default_tools: ['read', 'grep', 'subagent_run'] }),
+    );
+    expect(loadSubagents(tmp).map((agent) => agent.tools)).toEqual([
+      ['read', 'grep'],
+      ['read', 'grep'],
+    ]);
+
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ default_tools: ['bash', 'mem_get'] }),
+    );
+    expect(loadSubagents(tmp).map((agent) => agent.tools)).toEqual([
+      ['bash', 'mem_get'],
+      ['bash', 'mem_get'],
+    ]);
+
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ default_tools: [] }),
+    );
+    expect(loadSubagents(tmp).map((agent) => agent.tools)).toEqual([[], []]);
+  });
+
   it('falls back for invalid numeric config values', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),

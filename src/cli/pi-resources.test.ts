@@ -173,7 +173,7 @@ Old body.
     expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
     expect(readFileSync(worker, 'utf8')).toContain('effort: max');
     expect(readFileSync(explorer, 'utf8')).toContain(
-      'tools: "read, bash, grep, find, ls, codemode"',
+      'tools: "read, bash, grep, find, ls, mem_recall, mem_get, codemode"',
     );
     expect(readFileSync(explorer, 'utf8')).toContain(
       'subagent_mode: "background"',

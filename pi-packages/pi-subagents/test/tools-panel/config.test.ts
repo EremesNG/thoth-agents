@@ -6,11 +6,13 @@ import {
   readToolsConfig,
   saveToolsConfig,
 } from '../../src/tools-panel/config.js';
+import { toolsPanelRegistryKey } from '../../src/tools-panel/registry.js';
 
 const roots: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  delete (globalThis as any)[toolsPanelRegistryKey];
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
 });
@@ -42,8 +44,35 @@ test('generic save edits only tools and preserves manual globs, unknown names, C
   );
 });
 
-test('empty definition selections use configured defaults without materializing them on clean save', () => {
-  const original = '---\nname: worker\ntools: []\n---\nBody.\n';
+test('preserves explicit delegation globs through an unrelated checkbox edit', () => {
+  const original = '---\nname: worker\ntools: "read, subagent_*"\n---\nBody.\n';
+  const { root, target } = fixture(original);
+  const snapshot = readToolsConfig(root);
+  expect(snapshot.roles[0]?.tools).toEqual(['read', 'subagent_*']);
+
+  const result = saveToolsConfig(
+    snapshot,
+    snapshot.roles.map(({ role, tools }) => ({
+      role,
+      tools: [...tools, 'bash'],
+    })),
+  );
+  expect(result).toMatchObject({ success: true, changedRoles: ['worker'] });
+  expect(fs.readFileSync(target, 'utf8')).toBe(
+    original.replace('read, subagent_*', 'read, subagent_*, bash'),
+  );
+  expect(readToolsConfig(root).roles[0]?.tools).toEqual([
+    'read',
+    'subagent_*',
+    'bash',
+  ]);
+});
+
+test.each([
+  ['omitted', '---\nname: worker\n---\nBody.\n'],
+  ['empty', '---\nname: worker\ntools: []\n---\nBody.\n'],
+  ['no frontmatter', 'Body.\n'],
+])('%s definition selections use configured defaults without materializing them on clean save', (_label, original) => {
   const { root, target } = fixture(original);
   fs.writeFileSync(
     path.join(root, '.pi', 'subagents.json'),
@@ -51,6 +80,31 @@ test('empty definition selections use configured defaults without materializing 
   );
   const snapshot = readToolsConfig(root);
   expect(snapshot.roles[0]?.tools).toEqual(['read', 'bash']);
+  expect(saveToolsConfig(snapshot, snapshot.roles).success).toBe(true);
+  expect(fs.readFileSync(target, 'utf8')).toBe(original);
+});
+
+test('managed omitted tools show configured defaults while keeping adapter defaults for reset', () => {
+  const original = '---\nname: worker\n---\nBody.\n';
+  const { root, target } = fixture(original);
+  fs.writeFileSync(
+    path.join(root, '.pi', 'subagents.json'),
+    JSON.stringify({ default_tools: ['read', 'bash'] }),
+  );
+  (globalThis as any)[toolsPanelRegistryKey] = {
+    version: 1,
+    adapter: {
+      version: 1,
+      appliesTo: () => true,
+      validate: () => {},
+      defaultTools: () => ['read', 'write'],
+    },
+  };
+  const snapshot = readToolsConfig(root);
+  expect(snapshot.roles[0]).toMatchObject({
+    tools: ['read', 'bash'],
+    defaultTools: ['read', 'write'],
+  });
   expect(saveToolsConfig(snapshot, snapshot.roles).success).toBe(true);
   expect(fs.readFileSync(target, 'utf8')).toBe(original);
 });

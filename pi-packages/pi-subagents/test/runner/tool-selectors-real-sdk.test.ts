@@ -9,7 +9,7 @@ import { expandToolPatterns } from '../../src/tool-patterns.js';
 
 interface PermittedChildRegistryCase {
   selection: string;
-  tools: string[];
+  tools?: string[];
   expected: string[];
   enabled?: boolean;
   notifyEnabled?: boolean;
@@ -100,6 +100,11 @@ it.each<PermittedChildRegistryCase>([
     selection: 'mixed explicit',
     tools: ['*', 'ask_orchestrator'],
     expected: ['read', 'bash', 'ask_orchestrator'],
+  },
+  {
+    selection: 'omitted tools with configured defaults',
+    defaultTools: ['read'],
+    expected: ['read', 'ask_orchestrator'],
   },
   {
     selection: 'defaults',
@@ -321,11 +326,17 @@ it.each<PermittedChildRegistryCase>([
   fs.mkdirSync(path.join(cwd, '.pi', 'subagents'), { recursive: true });
   fs.mkdirSync(agentDir, { recursive: true });
   fs.writeFileSync(
+    path.join(cwd, '.pi', 'subagents.json'),
+    JSON.stringify({ default_tools: defaultTools }),
+  );
+  fs.writeFileSync(
     path.join(cwd, '.pi', 'subagents', 'analyst.md'),
     [
       opening,
       'name: analyst',
-      `tools: ${JSON.stringify(tools.join(', '))}`,
+      ...(tools === undefined
+        ? []
+        : [`tools: ${JSON.stringify(tools.join(', '))}`]),
       denials,
       closing,
       'bounded analysis',

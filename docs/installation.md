@@ -624,10 +624,12 @@ and MCP integrations; Thoth does not maintain a fixed catalog of those tools.
   selection with exactly the role's packaged defaults; no `*` hotkey or dynamic
   mode is offered.
 - For Thoth-managed global specialists, press `r` to restore that role's
-  packaged explicit defaults: `read, bash, grep, find, ls` for Explorer and
-  Oracle; `read, bash, edit, write, grep, find, ls` for Designer and Worker; the
-  read-only list plus research tools for Librarian. Unregistered defaults are
-  shown read-only. Reset is unavailable when no adapter supplies defaults.
+  packaged explicit defaults: `read, bash, grep, find, ls, mem_recall, mem_get`
+  for Oracle; that list plus `codemode` for Explorer;
+  `read, bash, edit, write, grep, find, ls, mem_recall, mem_get` for Designer and
+  Worker; the read-only list plus `codemode` and research tools for Librarian. The only default memory tools
+  are `mem_recall` and `mem_get`. Unregistered defaults are shown read-only.
+  Reset is unavailable when no adapter supplies defaults.
 - Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
   before discarding a dirty draft. Draft edits do not write files.
 - Selections must contain at least one tool name or retained glob. `@active`

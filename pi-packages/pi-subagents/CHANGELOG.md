@@ -3,9 +3,11 @@
 ## Unreleased
 
 ### Changed
+- Replaced the built-in tool allowlist with native Pi `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` and thoth-mem `mem_recall`, `mem_get`.
 - Shortened `subagent_*` tool descriptions and snippets so each guidance point is stated once; tool names and parameters are unchanged.
 
 ### Fixed
+- Made omitted definition `tools` inherit cascaded `default_tools`, just like `tools: []`, resolving at definition load so runtime, listings, thread views and the tools panel agree. Managed panel defaults remain available for explicit reset.
 - Hold question and background completion notifications during active parent agent runs until `agent_settled`, dropping answered questions and terminal results already read through `subagent_result` before they can trigger redundant orchestrator turns. Use the live run signal to cover preceding awaited lifecycle handlers, preserve immediate delivery during compaction/tree-only busy state, and continue flushing after individual delivery failures. Confirm result consumption only from finalized, successful tool messages after interception.
 
 ## 1.5.1

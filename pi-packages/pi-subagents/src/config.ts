@@ -18,10 +18,14 @@ import type {
 
 const DEFAULT_TOOLS = [
   'read',
-  'memory_context',
-  'memory_search',
-  'memory_recall',
-  'memory_get',
+  'bash',
+  'edit',
+  'write',
+  'grep',
+  'find',
+  'ls',
+  'mem_recall',
+  'mem_get',
 ];
 export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
   '@thoth-agents/pi-claude-bridge',
@@ -628,7 +632,7 @@ function loadSubagentsFromDir(
         return [];
       }
       const tools = sanitizeTools(
-        Array.isArray(data.tools) ? data.tools.map(String) : DEFAULT_TOOLS,
+        Array.isArray(data.tools) ? data.tools.map(String) : [],
       );
       return [
         {
@@ -719,6 +723,7 @@ export function subagentSourceWarnings(cwd: string): string[] {
 }
 
 export function loadSubagents(cwd: string): SubagentDefinition[] {
+  const { default_tools: defaultTools } = readSubagentsConfig(cwd);
   const byName = new Map<string, SubagentDefinition>();
   for (const source of agentsDirSources(cwd)) {
     const blockedNames = new Set<string>();
@@ -728,6 +733,7 @@ export function loadSubagents(cwd: string): SubagentDefinition[] {
       (blocked) => blockedNames.add(blocked.name),
     );
     for (const agent of definitions) {
+      if (!agent.tools.length) agent.tools = [...defaultTools];
       if (!blockedNames.has(agent.name)) byName.set(agent.name, agent);
     }
     for (const name of blockedNames) byName.delete(name);

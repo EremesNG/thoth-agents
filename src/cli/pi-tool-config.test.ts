@@ -10,7 +10,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { PI_SPECIALIST_ROLES } from '../harness/pi-specialists';
-import { getPiSpecialistDefaultTools } from '../harness/writers/pi-agent';
 import * as managedWrite from './pi-managed-write';
 import {
   createPiToolsPanelAdapter,
@@ -70,7 +69,19 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(
     snapshot.roles.map(({ role, defaultTools }) => [role, defaultTools]),
   ).toEqual([
-    ['explorer', ['read', 'bash', 'grep', 'find', 'ls', 'codemode']],
+    [
+      'explorer',
+      [
+        'read',
+        'bash',
+        'grep',
+        'find',
+        'ls',
+        'mem_recall',
+        'mem_get',
+        'codemode',
+      ],
+    ],
     [
       'librarian',
       [
@@ -79,6 +90,8 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'grep',
         'find',
         'ls',
+        'mem_recall',
+        'mem_get',
         'codemode',
         'resolve-library-id',
         'query-docs',
@@ -89,9 +102,35 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'source_check',
       ],
     ],
-    ['oracle', ['read', 'bash', 'grep', 'find', 'ls']],
-    ['designer', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
-    ['worker', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+    ['oracle', ['read', 'bash', 'grep', 'find', 'ls', 'mem_recall', 'mem_get']],
+    [
+      'designer',
+      [
+        'read',
+        'bash',
+        'edit',
+        'write',
+        'grep',
+        'find',
+        'ls',
+        'mem_recall',
+        'mem_get',
+      ],
+    ],
+    [
+      'worker',
+      [
+        'read',
+        'bash',
+        'edit',
+        'write',
+        'grep',
+        'find',
+        'ls',
+        'mem_recall',
+        'mem_get',
+      ],
+    ],
   ]);
   expect(snapshot.roles.find(({ role }) => role === 'explorer')).toMatchObject({
     tools: ['read', 'bash'],
@@ -700,9 +739,17 @@ test('Thoth tools adapter scopes defaults and validation to owned global canonic
   };
   const content = readFileSync(target.filePath, 'utf8');
   expect(adapter.appliesTo(target, content)).toBe(true);
-  expect(adapter.defaultTools(target, content)).toEqual(
-    getPiSpecialistDefaultTools('worker'),
-  );
+  expect(adapter.defaultTools(target, content)).toEqual([
+    'read',
+    'bash',
+    'edit',
+    'write',
+    'grep',
+    'find',
+    'ls',
+    'mem_recall',
+    'mem_get',
+  ]);
   expect(() => adapter.validate(target, content)).not.toThrow();
   expect(adapter.appliesTo({ ...target, scope: 'project' }, content)).toBe(
     false,

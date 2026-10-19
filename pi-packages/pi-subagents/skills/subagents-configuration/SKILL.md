@@ -114,6 +114,7 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - Do not edit both global and project config unless the user explicitly asks for both. Do not copy inherited global values into project config unless the user wants to pin a local override.
 - For answer-only configuration questions, explain the choices and recommended path without editing; asking how configuration works is not authorization to change files.
 - Subagents config resolves as a cascade: project `.pi/subagents.json` overrides global `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`; missing project fields fall back to global config; fields missing from both fall back to built-in defaults. Communicate this precedence to users when explaining config behavior.
+- Tool precedence is a non-empty definition `tools` list, then project `default_tools`, then global `default_tools`, then built-in `["read", "bash", "edit", "write", "grep", "find", "ls", "mem_recall", "mem_get"]`. Omitted `tools` and `tools: []` both inherit the configured defaults when definitions load, so runtime, listings, thread views and `/subagents-tools` agree. The built-in list includes native shell/write tools and only minimal thoth-mem reads; use narrower explicit lists for read-only specialists. Panel adapter defaults remain available for an explicit reset, not as an alternative inheritance source.
 - `enable_continue` is built-in default `false` and follows that same cascade. Project `enable_continue` overrides global only when present; omitting it locally inherits the global value. Continuation guidance and new continuation execution are available only when the effective value is `true`.
 - When effective `enable_continue` is `false`, `subagent_continue` is not registered, direct or stale continuation attempts must be described as generic unavailable behavior, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications must not recommend continuation. Total-timeout partial context still reports `subagent_continue: disabled`; other terminal output must not mention the tool.
 - `enable_ask_orchestrator` defaults to `true` and follows the same global/project cascade. It gates child-provided `ask_orchestrator` and parent `subagent_reply`; changing parent tool exposure requires `/reload` or restart. Every enabled child receives the tool unless its definition denies it, including globs (such as `*`), explicit lists omitting it and empty/default selections. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations.
@@ -183,10 +184,14 @@ Recommended `subagents.json` starter:
   "ask_timeout_ms": 600000,
   "default_tools": [
     "read",
-    "memory_context",
-    "memory_search",
-    "memory_recall",
-    "memory_get"
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls",
+    "mem_recall",
+    "mem_get"
   ]
 }
 ```
@@ -199,7 +204,8 @@ name: discovery
 description: investigates isolated ideas, code, documentation, and context7 before deciding next workflow
 tools:
   - read
-  - memory_search
+  - mem_recall
+  - mem_get
 ---
 
 # Discovery Subagent
@@ -223,11 +229,11 @@ disallowed_tools:
 
 These exclusions are not a sandbox: shell and MCP tools can still launch agents indirectly.
 
-Every selection form—explicit lists and globs (including `*`), alone or mixed—drops tools with missing child implementations after session creation and runs with the available subset. Dropped names persist in the `dropped_tools` task and attempt history field and appear as a compact warning on running/queued widget cards and as warnings in status, result, and completion messages, never as tool names in the child prompt. Terminal tasks leave the widget; their warnings remain on the other surfaces. If every selected tool is missing, launch fails with the missing-implementation diagnostic. Unexpected extra child tools and unrelated startup failures still fail. These rules also apply to configured `default_tools` when the definition's tool list is empty.
+Every selection form—explicit lists and globs (including `*`), alone or mixed—drops tools with missing child implementations after session creation and runs with the available subset. Dropped names persist in the `dropped_tools` task and attempt history field and appear as a compact warning on running/queued widget cards and as warnings in status, result, and completion messages, never as tool names in the child prompt. Terminal tasks leave the widget; their warnings remain on the other surfaces. If every selected tool is missing, launch fails with the missing-implementation diagnostic. Unexpected extra child tools and unrelated startup failures still fail. These rules also apply to configured `default_tools` when the definition's tool list is omitted or empty.
 
 Exact names and tools matched by globs reach the child even when inactive in the root. For example, `agent_browser_*` includes root-inactive registered browser capabilities that the child may activate. Selected `deferred` and `codemode` tools stay callable through Pi's native nested-tool interface; child verification checks registered implementations, not only the active model tool list.
 
-If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; there is no fallback to active tools. Exact names and enabled `ask_orchestrator` and `notify_orchestrator` still apply, with the same missing-implementation reporting and launch failure only when nothing remains. Native `subagent_*` controls remain excluded, and definition `disallowed_tools` applies to every selection form. An omitted `tools` field uses the runtime built-in list; an empty list uses `default_tools` in `subagents.json` through the same resolver, supporting exact names and globs.
+If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; there is no fallback to active tools. Exact names and enabled `ask_orchestrator` and `notify_orchestrator` still apply, with the same missing-implementation reporting and launch failure only when nothing remains. Native `subagent_*` controls remain excluded, and definition `disallowed_tools` applies to every selection form. An omitted `tools` field and an empty list both use the cascaded `default_tools` in `subagents.json`, supporting exact names and globs; only when neither config scope sets `default_tools` does the built-in list apply.
 
 Configure model/effort routing in the user-approved global or project `thoth/profiles.json`. Both use this schema; `orchestrator` is optional beside `agents`, and `model` and `effort` are optional in both orchestrator and agent entries:
 

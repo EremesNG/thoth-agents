@@ -34,6 +34,8 @@ export function getPiSpecialistDefaultTools(role: PiSpecialistRole): string[] {
     'grep',
     'find',
     'ls',
+    'mem_recall',
+    'mem_get',
     ...(role === 'explorer' || role === 'librarian' ? ['codemode'] : []),
     ...(role === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
   ];

@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Isolate Windows job helpers by bundled launcher asset location so one consumer's helper failure or recovery cannot affect another's jobs.
 - Recover Windows job launcher startup failures and helper death on the next launch without migrating existing jobs or retrying ambiguous launches.
 
 ### Added

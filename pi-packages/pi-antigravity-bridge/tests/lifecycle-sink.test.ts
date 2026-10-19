@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import * as childProcess from "node:child_process";
+import * as ownedProcess from "../src/owned-process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -184,10 +184,10 @@ for (const engine of ["acp", "stream-json"] as const) {
 	});
 	const missing = path.join(f.dir, "nonexistent-executable");
 	vi.stubEnv("AGY_ACP_BIN", engine === "acp" ? missing : "");
-	const realSpawn = childProcess.spawn;
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const realSpawn = ownedProcess.spawnOwnedProcess;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
-	spawn.mockImplementation((...args) => engine === "stream-json" && fail && args[0] === "agy" ? realSpawn(missing) : realSpawn(...args));
+	spawn.mockImplementation((...args) => engine === "stream-json" && fail && args[0] === "agy" ? realSpawn(missing, []) : realSpawn(...args));
 	try {
 		assertSingleError(await collect(f.simple(model, user)));
 		assert.equal(sawSpawnError, true);
@@ -223,12 +223,12 @@ for (const engine of ["acp", "stream-json"] as const) {
 		}
 	});
 	f.extraEnv.ACP_FAKE_SCENARIO = "slow";
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	const healthy = normalizeContext({ messages: [{ role: "user", content: "healthy", timestamp: 0 }] });
 	try {
 		const first = collect(f.simple(model, healthy));
 		await bounded(started);
-		const child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === (engine === "acp" ? process.execPath : "agy"))].value as childProcess.ChildProcess;
+		const child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === (engine === "acp" ? process.execPath : "agy"))].value as ownedProcess.OwnedProcess;
 		const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
 		child.kill();
 		assertSingleError(await first);

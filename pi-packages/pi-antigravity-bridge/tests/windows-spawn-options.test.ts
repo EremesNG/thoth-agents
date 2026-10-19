@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import * as childProcess from "node:child_process";
+import * as ownedProcess from "../src/owned-process.js";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -32,11 +33,11 @@ afterEach(() => {
 	resetAgyVersionCache();
 });
 
-test.each(["win32", "linux", "darwin"])("AskAntigravity uses a hidden direct spawn with platform-specific detachment on %s", async (platform) => {
+test.each(["win32", "linux", "darwin"])("AskAntigravity uses the hidden owned launch with platform-specific detachment on %s", async (platform) => {
 	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
 	Object.defineProperty(process, "platform", { value: platform });
 	try {
-		const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => fakeChild("offline answer"));
+		const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => fakeChild("offline answer") as unknown as ownedProcess.OwnedProcess);
 		vi.stubEnv("AGY_BIN", "offline-agy");
 		let tool: any;
 		await registerAskAntigravityTool({ registerTool: (value: unknown) => { tool = value; } } as unknown as ExtensionAPI, [], undefined, "private");

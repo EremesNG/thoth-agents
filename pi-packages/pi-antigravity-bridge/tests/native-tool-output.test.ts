@@ -18,8 +18,18 @@ const fakeChild = vi.hoisted(() => {
 			return this;
 		}
 
+		once(event: string, listener: Listener): this {
+			const once = (...args: any[]) => { this.removeListener(event, once); listener(...args); };
+			return this.on(event, once);
+		}
+
+		removeListener(event: string, listener: Listener): this {
+			this.#listeners.set(event, (this.#listeners.get(event) ?? []).filter((item) => item !== listener));
+			return this;
+		}
+
 		emit(event: string, ...args: any[]): boolean {
-			for (const listener of this.#listeners.get(event) ?? []) listener(...args);
+			for (const listener of [...(this.#listeners.get(event) ?? [])]) listener(...args);
 			return true;
 		}
 
@@ -69,9 +79,9 @@ const fakeChild = vi.hoisted(() => {
 	return state;
 });
 
-vi.mock("node:child_process", async () => ({
-	...(await vi.importActual<typeof import("node:child_process")>("node:child_process")),
-	spawn: fakeChild.spawn,
+vi.mock("../src/owned-process.js", async () => ({
+	...(await vi.importActual<typeof import("../src/owned-process.js")>("../src/owned-process.js")),
+	spawnOwnedProcess: fakeChild.spawn,
 }));
 
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import * as childProcess from "node:child_process";
+import * as ownedProcess from "../src/owned-process.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, test, vi } from "vitest";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
@@ -25,6 +26,7 @@ vi.mock("node:crypto", async (original) => {
 const sessions: Array<{ emit: (name: string, event?: any) => Promise<void> }> = [];
 const dirs: string[] = [];
 const spawnProcess = childProcess.spawn;
+const spawnOwned = ownedProcess.spawnOwnedProcess;
 afterEach(async () => {
 	for (const s of sessions.splice(0)) await s.emit("session_shutdown");
 	vi.restoreAllMocks();
@@ -85,7 +87,8 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "private");
 	vi.stubEnv("AGY_ASK_TOOL", "0");
 	saveConfig({ askTool: false, webTools: false, bridgeTools: "all", approvals: { gateMode: "off", mode: "deny" } });
-	return vi.spyOn(childProcess, "spawn");
+	vi.spyOn(ownedProcess, "spawnOwnedProcess");
+ return vi.spyOn(childProcess, "spawn");
 }
 
 function privateConfigs(): Array<{ dir: string; servers: Record<string, any> }> {
@@ -352,7 +355,7 @@ test("non-antigravity sessions do no bridge work; model_select starts once with 
 	await Promise.all([s.emit("model_select", { model: { provider: "antigravity" } }), s.turn()]);
 	assert.equal(privateConfigs().length, 1);
 	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
-	const streamLaunch = spawn.mock.calls.find(([, args]) => args?.includes("--input-format"));
+	const streamLaunch = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.find(([, args]) => args?.includes("--input-format"));
 	assert.ok(streamLaunch, "provider fallback must launch the stream engine");
 	const args = streamLaunch[1]!;
 	const ownDir = args[args.lastIndexOf("--add-dir") + 1];
@@ -376,13 +379,13 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	// Observe the external process boundary: the private endpoint must already
 	// be staged before ACP itself can be launched.
 	const observed: Array<{ dir: string; servers: Record<string, any> }> = [];
-	spawn.mockImplementation(((command: string, args: string[], options: any) => {
+	vi.mocked(ownedProcess.spawnOwnedProcess).mockImplementation((command, args, options) => {
 		if (command === bin) {
 			assert.equal(privateConfigs().length, 1);
 			observed.push(privateConfigs()[0]);
 		}
-		return spawnProcess(command, args, options);
-	}) as typeof childProcess.spawn);
+		return spawnOwned(command, args, options);
+	});
 	assert.deepEqual(await s.turn("acp-lazy-owned"), []);
 	await s.emit("session_shutdown");
 	assert.equal(fs.existsSync(observed[0].dir), false);
@@ -506,9 +509,10 @@ test("owned shutdown removes only its descriptor cache after termination, preser
 	}
 	assert.deepEqual(await a.turn("cache-owner"), []);
 	assert.deepEqual(await b.turn("cache-sibling"), []);
-	const launches = spawn.mock.calls.flatMap(([, args], index) => args?.includes("--input-format") ? [index] : []);
+	const owned = vi.mocked(ownedProcess.spawnOwnedProcess);
+ const launches = owned.mock.calls.flatMap(([, args], index) => args?.includes("--input-format") ? [index] : []);
 	assert.equal(launches.length, 2);
-	const children = launches.map((index) => spawn.mock.results[index].value as childProcess.ChildProcess);
+	const children = launches.map((index) => owned.mock.results[index].value as ownedProcess.OwnedProcess);
 	const rmSync = fs.rmSync;
 	let terminatedAtCacheRemoval = false;
 	vi.spyOn(fs, "rmSync").mockImplementation((file, options) => {
@@ -654,7 +658,7 @@ test("root /new and resume recycle drivers and restage the same owned bridge wit
 	await Promise.all([shutdown, resume]);
 	assert.deepEqual(await s.turn("root-original"), []);
 	assert.deepEqual(privateConfigs().flatMap((config) => Object.keys(config.servers)), [name]);
-	const launches = spawn.mock.calls.filter(([, args]) => args?.includes("--input-format"));
+	const launches = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.filter(([, args]) => args?.includes("--input-format"));
 	assert.equal(launches.length, 3);
 	assert.equal(launches[1][1]!.includes("--conversation"), false, "/new uses a fresh Pi session binding");
 	const resumeArgs = launches[2][1]!;

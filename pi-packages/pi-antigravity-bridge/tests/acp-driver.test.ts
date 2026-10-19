@@ -2,7 +2,7 @@
 // (tests/helpers/fake-acp-server.mjs, spawned over stdio). No quota, no
 // network: the fake speaks the exact wire shape captured in probe-logs/.
 
-import { afterAll, describe, test } from "vitest";
+import { afterAll, describe, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -44,7 +44,7 @@ async function runDriver(
 		onHandle?: (
 			handle: Awaited<ReturnType<AcpDriver["run"]>>,
 			driver: AcpDriver,
-		) => void;
+		) => void | Promise<void>;
 	} = {},
 ): Promise<DriverRun> {
 	const dir = tmpDir();
@@ -81,7 +81,7 @@ async function runDriver(
 			opts.onActivity?.(activity);
 		}
 	})();
-	opts.onHandle?.(handle, driver);
+	await opts.onHandle?.(handle, driver);
 	const outcome = await handle.outcome;
 	await collecting;
 	return {
@@ -459,7 +459,8 @@ describe("acp/driver transport failures", () => {
 				skipPermissions: true,
 				prompt: "flood stdout",
 			});
-			pid = driver.snapshot().pid;
+			await vi.waitFor(() => assert.ok(driver.snapshot().pid));
+   pid = driver.snapshot().pid;
 			assert.ok(pid, "save the child PID before the connection is cleared");
 			assert.doesNotThrow(() => process.kill(pid!, 0), "fixture starts alive");
 			const outcome = await handle.outcome;
@@ -721,11 +722,12 @@ describe("acp/driver shutdown latch", () => {
 		const run = await tracked("slow", {
 			prompt: "hang",
 			timeoutMin: 10,
-			onHandle: (_handle, driver) => {
+			onHandle: async (_handle, driver) => {
 				// Mid-turn (silent server, turn running): recycle exactly once.
 				if (!recycled) {
 					recycled = true;
-					pid = driver.snapshot().pid;
+					await vi.waitFor(() => assert.ok(driver.snapshot().pid));
+   pid = driver.snapshot().pid;
 					void driver.close("recycle", "session switch");
 				}
 			},
@@ -795,7 +797,7 @@ describe("acp/driver usage synthesis (Gate B stopgap)", () => {
 		let driverRef: AcpDriver | undefined;
 		const first = await tracked("usage-frame", {
 			prompt: "hi",
-			onHandle: (_handle, driver) => {
+			onHandle: async (_handle, driver) => {
 				driverRef = driver;
 			},
 		});

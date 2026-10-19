@@ -16,7 +16,7 @@
 
 import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
 import { TurnQueue } from "./turn-queue.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import { onOwnedProcessSettled, spawnOwnedProcess, type OwnedProcess } from "./owned-process.js";
 import { randomUUID } from "node:crypto";
 import { parseAgyLine } from "./stream-events.js";
 import { isKnownNoiseLine, MAX_FRAME_BYTES, stripGluedNoise } from "./frame-guard.js";
@@ -162,7 +162,8 @@ export function shouldFlipToCumulative(accumulated: string, next: string): boole
 
 export class StreamDriver implements TurnDriver {
 	#state: DriverState = "idle";
-	#child: ChildProcess | undefined;
+	#child: OwnedProcess | undefined;
+	#launchTimer: NodeJS.Timeout | undefined;
 	#termination: Promise<void> = Promise.resolve();
 	#generation = 0;
 	#profile: DriverProfile | undefined;
@@ -408,13 +409,27 @@ export class StreamDriver implements TurnDriver {
 			"--disable-slash-commands",
 		);
 
-		const child = spawn("agy", args, {
+		const child = spawnOwnedProcess("agy", args, {
 			cwd: request.cwd,
 			stdio: ["pipe", "pipe", "pipe"],
+			log: (message, data) => { this.#log(message, data); },
 			detached: process.platform !== "win32",
 			windowsHide: true,
 		});
 		this.#child = child;
+		// The facade returns before the asynchronous Windows launch completes.
+		const startupMs = request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
+		const launchTimer = !child.pid && startupMs > 0 ? setTimeout(() => {
+			if (generation !== this.#generation || this.#child !== child) return;
+			const turn = this.#active;
+			void this.#killChild();
+			if (turn && !turn.closed) this.#failTurn(turn, `agy launch wait exceeded ${startupMs}ms deadline`);
+		}, startupMs) : undefined;
+		this.#launchTimer = launchTimer;
+		const launched = () => { if (launchTimer) clearTimeout(launchTimer); };
+		child.once("spawn", launched);
+		child.once("error", launched);
+		child.once("close", launched);
 		this.#stdoutBuf = "";
 		this.#stats.spawns += 1;
 		// Guard process errors before any fallible pipe wiring or lifecycle sink.
@@ -447,7 +462,7 @@ export class StreamDriver implements TurnDriver {
 		child.stderr!.on("data", (chunk: string) => {
 			this.#stderrTail = (this.#stderrTail + chunk).slice(-8192);
 		});
-		child.on("exit", (code) => {
+		onOwnedProcessSettled(child, (code) => {
 			if (generation !== this.#generation) return;
 			const turn = this.#active;
 			this.#child = undefined;
@@ -773,14 +788,16 @@ export class StreamDriver implements TurnDriver {
 	}
 
 	#killChild(): Promise<void> {
+		if (this.#launchTimer) clearTimeout(this.#launchTimer);
+		this.#launchTimer = undefined;
 		const child = this.#child;
 		if (!child) return this.#termination;
 		this.#child = undefined;
 		this.#generation += 1;
 		this.#stdoutBuf = "";
 		try {
-			child.stdout?.removeAllListeners();
-			child.stderr?.removeAllListeners();
+			child.stdout?.removeAllListeners("data");
+			child.stderr?.removeAllListeners("data");
 		} catch {
 			/* already gone */
 		}

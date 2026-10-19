@@ -13,7 +13,13 @@ const packages = {
     entry: 'src/index.ts',
     assets: ['src/windows-job-helper.ps1', 'src/windows-job-helper.cs'],
   },
-  'pi-antigravity-bridge': { entry: 'extensions/index.ts' },
+  'pi-antigravity-bridge': {
+    entry: 'extensions/index.ts',
+    assets: [
+      '../pi-core/src/windows-job/launcher.cs',
+      '../pi-core/src/windows-job/launcher.ps1',
+    ],
+  },
   'pi-askcodex': {
     entry: 'src/index.ts',
     assets: [

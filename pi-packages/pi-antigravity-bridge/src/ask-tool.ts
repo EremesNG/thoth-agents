@@ -11,7 +11,7 @@
 // bridge wins: pi-ask-antigravity detects the bridge package and registers
 // nothing (see its defer guard). This module is the single source of truth.
 
-import { spawn } from "node:child_process";
+import { onOwnedProcessSettled, spawnOwnedProcess } from "./owned-process.js";
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -801,8 +801,9 @@ export async function registerAskAntigravityTool(
 					aborted: boolean;
 					timedOut: boolean;
 				}>((resolveP, rejectP) => {
-					const proc = spawn(binary, args, {
+					const proc = spawnOwnedProcess(binary, args, {
 						cwd,
+						log: log ? (message, data) => emitLog(message, data, "warn") : undefined,
 						stdio: ["ignore", "pipe", "pipe"],
 						shell: false,
 						detached: process.platform !== "win32",
@@ -816,7 +817,8 @@ export async function registerAskAntigravityTool(
 					// Concurrent bind: poll for the new id while agy is alive. The FD
 					// resolver needs a live process tree, so this stops (and the post-
 					// exit fallback below takes over) once agy has exited.
-					if (!isContinuation && snapshot && proc.pid) {
+					const bindConversation = () => {
+						if (isContinuation || !snapshot || !proc.pid) return;
 						bindDuringRun = (async () => {
 							for (let attempt = 0; attempt < DISCOVERY_POLL_ATTEMPTS; attempt++) {
 								if (details.conversationId) return;
@@ -833,7 +835,10 @@ export async function registerAskAntigravityTool(
 						})().catch(() => {
 							/* best-effort: a bind error must never fail an otherwise-OK turn */
 						});
-					}
+					};
+
+					if (proc.pid) bindConversation();
+					else proc.once("spawn", bindConversation);
 
 					let termination: Promise<void> | undefined;
 					let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -842,6 +847,8 @@ export async function registerAskAntigravityTool(
 
 					const killTree = () => {
 						termination ??= terminateProcessTree(proc);
+						// A pending launch can be fenced without any late close event.
+						void termination.then(() => finish(proc.exitCode));
 					};
 
 					const cleanup = () => {
@@ -869,7 +876,7 @@ export async function registerAskAntigravityTool(
 							aborted: !!signal?.aborted,
 							timedOut,
 						};
-						// Parent exit can precede descendant escalation/taskkill completion.
+						// Pipe close can precede completion of an explicit termination request.
 						void Promise.resolve(termination).then(() => {
 							restoreBridge();
 							resolveP(outcome);
@@ -885,8 +892,7 @@ export async function registerAskAntigravityTool(
 							rejectP(err);
 						});
 					});
-					proc.on("close", finish);
-					proc.on("exit", finish);
+					onOwnedProcessSettled(proc, finish);
 				});
 
 				if (statusInterval) clearInterval(statusInterval);

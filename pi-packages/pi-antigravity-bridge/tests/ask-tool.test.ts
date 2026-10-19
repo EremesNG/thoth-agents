@@ -291,9 +291,16 @@ test("execute: rejecting periodic and final update sinks do not escape or fail d
 	// The child completes only after the periodic update reaches the sink.
 	const binary = makeNodeFixture(`import fs from 'node:fs';
 const deadline = setTimeout(() => process.exit(2), 4000);
-const watcher = fs.watch(${JSON.stringify(dir)}, () => {
- if (fs.existsSync(${JSON.stringify(release)})) { watcher.close(); clearTimeout(deadline); console.log('answer'); }
-});`);
+let finished = false;
+function released() {
+ if (!finished && fs.existsSync(${JSON.stringify(release)})) {
+  finished = true; watcher.close(); clearTimeout(deadline); console.log('answer');
+ }
+}
+const watcher = fs.watch(${JSON.stringify(dir)}, released);
+// A native job cold start may finish after the first status update already
+// wrote the release file. Check existing state as well as future events.
+released();`);
 	let updates = 0;
 	try {
 		await withEnvs({ AGY_BIN: binary }, async () => {

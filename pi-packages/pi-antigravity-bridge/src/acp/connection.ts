@@ -20,7 +20,7 @@
 //   - mcpServers entries: {name, type:"http", url, headers:[]} — headers is a
 //     LIST; a dead URL is accepted at session time (lazy connect)
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { onOwnedProcessSettled, spawnOwnedProcess, type OwnedProcess } from "../owned-process.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -115,7 +115,7 @@ export type AcpPermissionHandler = (req: AcpPermissionRequest) => Promise<string
 
 export class AcpConnection {
 	#opts: AcpConnectionOptions;
-	#child: ChildProcess | undefined;
+	#child: OwnedProcess | undefined;
 	#rpc: JsonRpcSession | undefined;
 	#stderrTail = "";
 	#usageSeen = false;
@@ -183,9 +183,10 @@ export class AcpConnection {
 	async start(): Promise<void> {
 		if (this.#child) return;
 		const args = [...(this.#opts.binArgs ?? [])];
-		const child = spawn(this.#opts.bin, args, {
+		const child = spawnOwnedProcess(this.#opts.bin, args, {
 			cwd: this.#opts.cwd,
 			stdio: ["pipe", "pipe", "pipe"],
+			log: (message, data) => { this.#log(message, data); },
 			detached: process.platform !== "win32",
 			windowsHide: true,
 			...(this.#opts.extraEnv ? { env: { ...process.env, ...this.#opts.extraEnv } } : {}),
@@ -226,7 +227,7 @@ export class AcpConnection {
 		child.stderr?.on("data", (chunk: string) => {
 			this.#stderrTail = (this.#stderrTail + chunk).slice(-8192);
 		});
-		child.on("exit", (code, signal) => {
+		onOwnedProcessSettled(child, (code, signal) => {
 			this.#log("exit", { code: code ?? signal ?? "?" });
 			// The reason rides into pending-request rejections, so it must be
 			// redacted here (server stderr can carry auth material).
@@ -240,7 +241,11 @@ export class AcpConnection {
 				clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
 			},
 			INIT_TIMEOUT_MS,
-		)) as Record<string, unknown> | undefined;
+		).catch(async (error: unknown) => {
+			// A timed-out initialize may still own an unresolved job launch.
+			await this.kill();
+			throw error;
+		})) as Record<string, unknown> | undefined;
 		const info = result?.agentInfo;
 		if (typeof info === "object" && info !== null) this.agentInfo = info as Record<string, unknown>;
 		this.#log("initialized", { version: this.serverVersion() });

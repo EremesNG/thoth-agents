@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows agent runs now use hidden kill-on-close Job Objects, ending descendants even when agy exits normally. Final output drains before caller settlement. Metadata probes and the warned launcher-unavailable fallback end only their leader; broker-created processes can escape containment.
+
 ### Removed
 
 - Removed the unused legacy Pi dist restoration command, startup notice, and notice flag. Normal bridge startup and runtime commands are unchanged.

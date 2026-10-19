@@ -15,6 +15,12 @@ type AskTool = {
 	}>;
 };
 
+async function assertProbeStopped(pids: number[]): Promise<void> {
+ if (process.platform !== "win32") return assertTreeExited(pids);
+ assert.equal(pidAlive(pids[0]), false, "probe leader ended");
+ assert.equal(pidAlive(pids[1]), true, "plain probe must not select descendants");
+}
+
 // Approved seams: the registered delegation tool and public listing probe.
 // Real subprocesses and survivor checks, with no shell or provider/network.
 test("AskAntigravity abort awaits parent and grandchild exit and preserves the abort outcome", async () => {
@@ -69,7 +75,7 @@ test("AskAntigravity timeout awaits parent and grandchild exit and preserves the
 	}
 }, 20_000);
 
-test("listing probe timeout awaits parent and grandchild exit and returns the empty fallback", async () => {
+test("listing probe timeout awaits owned termination and returns the empty fallback", async () => {
 	const fixture = makeProcessTreeFixture("partial model listing");
 	let run: Promise<string> | undefined;
 	try {
@@ -77,21 +83,21 @@ test("listing probe timeout awaits parent and grandchild exit and returns the em
 		const pids = await fixture.ready();
 		assert.equal(await within(run), "");
 		assert.equal(pidAlive(pids[0]), false, "probe result must await parent exit");
-		await assertTreeExited(pids);
+		await assertProbeStopped(pids);
 	} finally {
 		fixture.cleanup();
 		if (run) await within(run);
 	}
 }, 20_000);
 
-test("listing probe output cap awaits the tree exit and cannot return a partial catalog", async () => {
+test("listing probe output cap awaits owned termination and cannot return a partial catalog", async () => {
 	const fixture = makeProcessTreeFixture("runaway model listing");
 	let run: Promise<string> | undefined;
 	try {
 		run = spawnAgyRaw(fixture.bin, ["models"], 5_000, 4);
 		const pids = await fixture.ready(false);
 		assert.equal(await within(run), "");
-		await assertTreeExited(pids);
+		await assertProbeStopped(pids);
 	} finally {
 		fixture.cleanup();
 		if (run) await within(run);
@@ -106,7 +112,7 @@ test("version probe timeout remains unavailable even when its output is a valid 
 		const pids = await fixture.ready();
 		const result = await run;
 		assert.deepEqual(result, { status: "unavailable", raw: "1.2.10" });
-		await assertTreeExited(pids);
+		await assertProbeStopped(pids);
 	} finally {
 		fixture.cleanup();
 		if (run) await within(run);

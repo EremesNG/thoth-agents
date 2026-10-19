@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as childProcess from "node:child_process";
+import * as ownedProcess from "../src/owned-process.js";
+import * as termination from "../src/process-termination.js";
 import { test, vi } from "vitest";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
@@ -19,7 +20,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 }
 `);
 		vi.stubEnv("PATH", `${dir}${path.delimiter}${process.env.PATH}`);
-		const spawn = vi.spyOn(childProcess, "spawn");
+		const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 		const driver = engine === "stream-json" ? new StreamDriver(path.join(dir, "private")) : new AcpDriver({
 			bin: process.execPath,
 			binArgs: [path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs")],
@@ -42,7 +43,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 			assert.equal((await active.outcome).status, "ERROR");
 			const launches = spawn.mock.calls.flatMap(([command], index) => command === (engine === "stream-json" ? "agy" : process.execPath) ? [index] : []);
 			assert.equal(launches.length, 1, "queued turn must not launch a replacement process");
-			const child = spawn.mock.results[launches[0]].value as childProcess.ChildProcess;
+			const child = spawn.mock.results[launches[0]].value as ownedProcess.OwnedProcess;
 			assert.ok(child.exitCode !== null || child.signalCode !== null, "the original child was terminated");
 		} finally {
 			await driver.close("shutdown");
@@ -96,12 +97,12 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 test("stream-json: exclusive termination wait expires and cannot launch later", async () => {
 	const dir = path.join(import.meta.dirname, "helpers", "fake-agy-bin");
 	vi.stubEnv("PATH", `${dir}${path.delimiter}${process.env.PATH}`);
-	const actualSpawn = childProcess.spawn;
-	const { EventEmitter } = await import("node:events");
-	vi.spyOn(childProcess, "spawn").mockImplementation((...args: any[]) => {
-		if (args[0] === "taskkill") return Object.assign(new EventEmitter(), { kill: () => true }) as any;
-		return (actualSpawn as any)(...args);
-	});
+	// Inject cleanup latency without replacing the real job/leader teardown.
+ const terminate = termination.terminateProcessTree;
+ vi.spyOn(termination, "terminateProcessTree").mockImplementation(async (...args) => {
+  await terminate(...args);
+  await new Promise(resolve => setTimeout(resolve, 75));
+ });
 	const driver = new StreamDriver();
 	const request: DriverTurnRequest = { cwd: process.cwd(), model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true, prompt: "KEEP-ALIVE", timeoutMin: 0, inactivityMin: 0 };
 	let closing: Promise<void> | undefined;

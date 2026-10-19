@@ -194,9 +194,15 @@ Plan mode never receives the flag: the flag auto-approves every permission reque
 
 For per-action review of agy's mutating native tools (`run_command`, `create_file`, `edit_file`, ...), see the [Approval gate](docs/APPROVAL-GATE.md): with it on, the call must pass a pi-side approval (your permission extension, or the built-in ask/allow/deny fallback) before agy executes it.
 
+### Windows process containment
+
+The stream-json driver, AskAntigravity, web delegates and ACP server each run inside a kill-on-close Windows Job Object. On any end, including agy exiting on its own, the job ends all descendants too. Anything agy starts that should outlive it (for example a cold browser) may therefore end with it. Processes created through brokers, COM or WMI can escape the job.
+
+Short `--version` and `models` probes use plain spawn and end only their own leader. If the job launcher is unavailable, agent launches fall back to plain spawn with a warning and leader-only termination; there is no PID-tree fallback. Console windows stay hidden through `CREATE_NO_WINDOW`, the same mechanism as before. POSIX launches retain process-group termination.
+
 ### Windows quota console diagnosis
 
-`AskAntigravity` also uses `shell: false` and `windowsHide: true`. Windows launches are not detached, so agy's MCP descendants inherit the hidden console rather than allocating new visible consoles. POSIX launches remain detached for process-group termination; Windows termination uses `taskkill /PID <pid> /T /F`.
+`AskAntigravity` also uses `shell: false` and `windowsHide: true`. Windows launches are not detached, so agy's MCP descendants inherit the hidden console rather than allocating new visible consoles. POSIX launches remain detached for process-group termination; Windows agent termination uses the owned job described above.
 
 `/agy quota` calls the CLI directly with `--print /usage --output-format json --print-timeout 30s`, piped output, `shell: false`, `windowsHide: true`, and `detached: false` on Windows. It does not run the configured ACP server. Prefer a real `agy.exe` in `AGY_BIN`: `.cmd`/`.bat` shims need a shell on Windows and are not supported by this direct-spawn path.
 

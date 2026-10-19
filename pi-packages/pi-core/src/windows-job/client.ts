@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { connect, type Socket } from 'node:net';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +132,7 @@ export class WindowsJobClient {
     string,
     { resolve(v: { code: number }): void; reject(e: Error): void }
   >();
+  constructor(private readonly launcherAsset?: string) {}
   get helperPid(): number | undefined {
     return this.child?.pid;
   }
@@ -148,7 +149,7 @@ export class WindowsJobClient {
           '-ExecutionPolicy',
           'Bypass',
           '-File',
-          asset(),
+          this.launcherAsset ?? asset(),
           '-ParentPid',
           String(process.pid),
         ],
@@ -349,9 +350,24 @@ export class WindowsJobClient {
     });
   }
 }
-const KEY = Symbol.for('thoth-agents.pi-core.windows-job.v1');
-const registry = globalThis as typeof globalThis & { [KEY]?: WindowsJobClient };
-export function launchInJob(options: JobLaunchOptions): Promise<LaunchedJob> {
-  registry[KEY] ??= new WindowsJobClient();
-  return registry[KEY].launch(options);
+const KEY = Symbol.for('thoth-agents.pi-core.windows-job.registry.v1');
+const registry = globalThis as typeof globalThis & {
+  [KEY]?: Map<string, WindowsJobClient>;
+};
+/** Internal asset-location seam; intentionally not exported from the package. */
+export function getWindowsJobClient(launcherAsset = asset()): WindowsJobClient {
+  const location = resolve(launcherAsset);
+  registry[KEY] ??= new Map<string, WindowsJobClient>();
+  const clients = registry[KEY];
+  let client = clients.get(location);
+  if (!client) {
+    client = new WindowsJobClient(location);
+    clients.set(location, client);
+  }
+  return client;
+}
+export async function launchInJob(
+  options: JobLaunchOptions,
+): Promise<LaunchedJob> {
+  return getWindowsJobClient().launch(options);
 }

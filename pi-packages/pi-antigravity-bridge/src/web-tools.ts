@@ -15,7 +15,7 @@
 // the `finally`; SIGKILL can orphan, so sweepStaleWebAgents() removes leftovers
 // at registration - same hygiene doctrine as mcp-registration's pid sweep.
 
-import { spawn } from "node:child_process";
+import { spawnOwnedProcess } from "./owned-process.js";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -147,15 +147,20 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 	];
 	emitLifecycle(() => opts.log?.("web-run-start", { agent: agentName, gatedTool: opts.gatedTool }));
 
-	const child = spawn(bin, args, {
+	const child = spawnOwnedProcess(bin, args, {
+		log: opts.log ? (message, data) => opts.log!(message, data, "warn") : undefined,
 		cwd: opts.cwd ?? process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
 		detached: process.platform !== "win32",
 	});
 	let termination: Promise<void> | undefined;
-	const stop = () => termination ??= terminateProcessTree(child);
+	let finishTermination: (() => void) | undefined;
+	const stop = () => termination ??= terminateProcessTree(child).then(() => { finishTermination?.(); });
 	const onAbort = () => stop();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
-	const timer = setTimeout(stop, opts.timeoutMs ?? DEADLINE_MS);
+	const timer = setTimeout(() => {
+		failed ||= "Antigravity web run timed out";
+		void stop();
+	}, opts.timeoutMs ?? DEADLINE_MS);
 
 	let buffer = "";
 	let bytes = 0;
@@ -186,6 +191,8 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 		const code = await new Promise<number | null>((resolve, reject) => {
 			child.once("error", reject);
 			child.once("close", resolve);
+			// Explicit termination may fence a pending launch before close exists.
+			finishTermination = () => resolve(child.exitCode);
 		});
 		if (!failed && opts.signal?.aborted) failed = "web run aborted";
 		if (!failed && code !== 0) failed = `agy exited with code ${code}${stderrTail ? `: ${redactText(stderrTail.trim()).slice(-300)}` : ""}`;

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -21,7 +20,7 @@ export function makeProcessTreeFixture(output = ""): {
 	fs.writeFileSync(bin, `// pi-test-node-fixture
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-const child = spawn(process.execPath, ['-e', ${JSON.stringify("process.on('SIGTERM', () => {}); process.send('ready'); setInterval(() => {}, 1000);")}], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true });
+const child = spawn(process.execPath, ['-e', ${JSON.stringify("process.on('SIGTERM', () => {}); process.send('ready'); setInterval(() => {}, 1000);")}], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true, detached: process.platform === 'win32' });
 child.once('message', () => {
   writeFileSync(${JSON.stringify(record)}, JSON.stringify([process.pid, child.pid]));
   process.stdout.write(${JSON.stringify(output)});
@@ -43,9 +42,6 @@ setInterval(() => {}, 1000);
 		cleanup() {
 			if (fs.existsSync(record)) {
 				const pids = JSON.parse(fs.readFileSync(record, "utf8")) as number[];
-				if (process.platform === "win32" && pidAlive(pids[0])) {
-					spawnSync("taskkill", ["/PID", String(pids[0]), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 5_000 });
-				}
 				for (const pid of pids) {
 					try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
 				}

@@ -395,3 +395,23 @@ On Windows `@thoth-agents/pi-askcodex` MUST launch the Codex app-server inside i
 - **GIVEN** a Windows Pi session where AskCodex runs an app-server that spawned a persistent descendant and an unrelated process exists whose stale parent PID equals the app-server PID
 - **WHEN** the AskCodex call times out
 - **THEN** the app-server and its descendant are terminated through the job and the unrelated process keeps running
+
+### Requirement: Antigravity bridge Windows job containment
+
+On Windows `@thoth-agents/pi-antigravity-bridge` MUST launch every agy process that executes agents (stream-json driver, AskAntigravity delegations, web-tool delegates and the ACP connection) inside its own kill-on-close Job Object and MUST end it and its descendants only through that job, both when the bridge stops it and when its leader exits on its own; short metadata probes and the launcher-unavailable fallback MUST end only their own leader through its process handle (the fallback also warns), and the bridge MUST never terminate a process selected by PID tree, parent PID or creation time.
+
+#### Scenario: Antigravity bridge Windows job containment
+
+- **GIVEN** a Windows Pi session where an AskAntigravity delegation runs agy that started a persistent descendant, and an unrelated process exists whose stale parent PID equals the agy PID
+- **WHEN** the delegation times out or agy exits on its own
+- **THEN** agy and its descendant end through the job and the unrelated process keeps running
+
+### Requirement: Windows job launcher consumer isolation
+
+`@thoth-agents/pi-core`'s Windows job launcher MUST give each separately bundled consumer its own helper, so a helper failure, recovery or ambiguous-launch reconciliation in one consumer never terminates or serves another consumer's jobs.
+
+#### Scenario: Windows job launcher consumer isolation
+
+- **GIVEN** AskCodex and the Antigravity bridge each running a job in the same Pi process
+- **WHEN** one consumer's helper dies or reconciles an ambiguous launch
+- **THEN** only that consumer's jobs are affected and the other consumer's job keeps running

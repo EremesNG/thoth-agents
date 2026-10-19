@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import { emitLifecycle } from "./lifecycle.js";
+import { ownedProcessControl, type OwnedProcess } from "./owned-process.js";
 
 export interface TerminationOptions {
 	timeoutMs?: number;
@@ -8,8 +9,9 @@ export interface TerminationOptions {
 
 /** Kill an owned process tree and await exit, never indefinitely. POSIX
  * callers spawn detached children so negative PIDs address the process group. */
-export function terminateProcessTree(child: ChildProcess, opts: TerminationOptions = {}): Promise<void> {
-	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+export function terminateProcessTree(child: ChildProcess | OwnedProcess, opts: TerminationOptions = {}): Promise<void> {
+	const owned = ownedProcessControl(child);
+	if (!owned && (child.exitCode !== null || child.signalCode !== null)) return Promise.resolve();
 	const timeoutMs = Math.max(1, opts.timeoutMs ?? 3_000);
 	const warn = (reason: string) => {
 		const data = { pid: child.pid, reason, timeoutMs };
@@ -18,12 +20,27 @@ export function terminateProcessTree(child: ChildProcess, opts: TerminationOptio
 			console.warn("[antigravity-bridge] termination-warning", data);
 		});
 	};
+	if (owned) {
+		return new Promise<void>((resolve) => {
+			let done = false;
+			const finish = () => { done = true; clearTimeout(deadline); resolve(); };
+			const deadline = setTimeout(() => {
+				owned.fence();
+				warn("gave up waiting for process-tree termination");
+				finish();
+			}, timeoutMs);
+			void owned.terminate(timeoutMs).then(finish, (error: unknown) => {
+				if (done) return;
+				warn(`job termination failed: ${String(error)}`);
+				owned.fence(); finish();
+			});
+		});
+	}
 	return new Promise<void>((resolve) => {
 		let exited = false;
 		let signalled = false;
 		let done = false;
 		let escalation: NodeJS.Timeout | undefined;
-		let taskkill: ChildProcess | undefined;
 		const finish = () => {
 			if (done) return;
 			done = true;
@@ -36,24 +53,14 @@ export function terminateProcessTree(child: ChildProcess, opts: TerminationOptio
 		const onExit = () => { exited = true; check(); };
 		const deadline = setTimeout(() => {
 			warn("gave up waiting for process-tree termination");
-			try { taskkill?.kill(); } catch { /* best effort */ }
 			finish();
 		}, timeoutMs);
 		child.once("exit", onExit);
-		if (process.platform === "win32" && child.pid) {
-			// No shell: argv is passed directly, including paths with spaces.
-			taskkill = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, shell: false, stdio: "ignore" });
-			taskkill.once("error", (error) => {
-				warn(`taskkill failed: ${error.message}`);
-				try { child.kill("SIGTERM"); } catch { /* already gone */ }
-				signalled = true;
-				check();
-			});
-			taskkill.once("close", (code) => {
-				if (code !== 0 && !exited && !done) warn(`taskkill exited with status ${code}`);
-				signalled = true;
-				check();
-			});
+		if (process.platform === "win32") {
+			// Only the owned process handle: never discover descendants by PID.
+			try { child.kill("SIGTERM"); } catch { /* already gone */ }
+			signalled = true;
+			check();
 		} else if (child.pid) {
 			try { process.kill(-child.pid, "SIGTERM"); } catch { /* already gone */ }
 			// Keep the group escalation even if the leader exits first: a

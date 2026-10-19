@@ -1,20 +1,21 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { test } from "vitest";
 import { terminateProcessTree } from "../src/process-termination.js";
+import { spawnOwnedProcess } from "../src/owned-process.js";
 
 function alive(pid: number): boolean {
 	try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-test.skipIf(process.platform !== "win32")("Windows termination awaits the parent and grandchild exiting", async () => {
-	const child = spawn(process.execPath, ["-e", `
+test.skipIf(process.platform !== "win32")("Windows job termination awaits the parent and grandchild exiting", async () => {
+	const child = spawnOwnedProcess(process.execPath, ["-e", `
 const {spawn} = require('node:child_process');
 const grandchild = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {stdio:'ignore',windowsHide:true});
 console.log(grandchild.pid);
 setInterval(()=>{},1000);
-`], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+`], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 	let grandchildPid: number | undefined;
 	try {
 		grandchildPid = await new Promise<number>((resolve, reject) => {

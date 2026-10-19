@@ -26,7 +26,11 @@ const packages = {
     command: 'bg',
     assets: ['dist/windows-job-helper.ps1', 'dist/windows-job-helper.cs'],
   },
-  'pi-antigravity-bridge': { tool: 'antigravity', command: 'agy' },
+  'pi-antigravity-bridge': {
+    tool: 'antigravity',
+    command: 'agy',
+    assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
+  },
   'pi-askcodex': {
     tool: 'AskCodex',
     assets: ['dist/launcher.cs', 'dist/launcher.ps1'],

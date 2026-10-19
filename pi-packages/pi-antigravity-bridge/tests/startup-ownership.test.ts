@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import * as childProcess from "node:child_process";
+import * as ownedProcess from "../src/owned-process.js";
+import { spawn as plainSpawn } from "node:child_process";
 import fs from "node:fs";
 import { getEventListeners } from "node:events";
 import os from "node:os";
@@ -80,7 +81,7 @@ for (const engine of ["stream-json", "acp"] as const) {
 	test(`${engine}: throwing turn-start rolls back ownership, ends once, and allows the next call`, async () => {
 		let failed: TurnHandle | null = null;
 		let fail = true;
-		const spawn = vi.spyOn(childProcess, "spawn");
+		const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 		const f = fixture(engine, message => {
 			if (message === "turn-start" && fail) {
 				failed = f.driver.activeHandle;
@@ -96,10 +97,10 @@ for (const engine of ["stream-json", "acp"] as const) {
 			assert.equal(outcome.status, "ERROR");
 			assert.match(outcome.error ?? "", /turn-start sink failed/);
 			assert.equal(await bounded((failed as TurnHandle).next()), null, "failed handle must be closed");
-			const children = spawn.mock.calls.flatMap(([command], index) => command === (engine === "stream-json" ? "agy" : process.execPath) ? [spawn.mock.results[index].value as childProcess.ChildProcess] : []);
+			const children = spawn.mock.calls.flatMap(([command], index) => command === (engine === "stream-json" ? "agy" : process.execPath) ? [spawn.mock.results[index].value as ownedProcess.OwnedProcess] : []);
 			if (engine === "stream-json") assert.equal(children.length, 1);
 			else assert.equal(children.length, 0, "ACP must not spawn after its startup was rejected");
-			assert.ok(children.every(child => child.exitCode !== null || child.signalCode !== null), "failed startup must not leave an owned child alive");
+			assert.ok(children.every(child => !child.pid || child.exitCode !== null || child.signalCode !== null), "failed startup must not leave an owned child alive");
 			assert.notEqual(f.driver.state, "running");
 			fail = false;
 			const second = await collect(f.simple(model, user));
@@ -134,7 +135,8 @@ for (const engine of ["stream-json", "acp"] as const) {
 				if (parked) predecessor.pushExternal({ type: "bridge_call", callId: "park", name: "read", args: {} });
 				let settled = false;
 				void predecessor.outcome.then(() => { settled = true; });
-				const pid = f.driver.snapshot().pid;
+				await vi.waitFor(() => assert.ok(f.driver.snapshot().pid));
+    const pid = f.driver.snapshot().pid;
 				assert.ok(pid);
 				fail = true;
 				const result = await collect(f.simple(model, user));
@@ -173,7 +175,8 @@ test("acp: rejected startup preserves the settled predecessor's reusable connect
 	});
 	try {
 		assert.equal((await collect(f.simple(model, user))).events.at(-1)?.type, "done");
-		const pid = f.driver.snapshot().pid;
+		await vi.waitFor(() => assert.ok(f.driver.snapshot().pid));
+    const pid = f.driver.snapshot().pid;
 		assert.ok(pid);
 		fail = true;
 		const result = await collect(f.simple(model, user));
@@ -222,9 +225,9 @@ test("acp: an abort-listener setup throw rolls back the turn and unregisters its
 
 for (const engine of ["stream-json", "acp"] as const) {
 	test(`${engine}: partial stdout listener wiring failure releases its process and listeners`, async () => {
-		const realSpawn = childProcess.spawn;
-		const spawn = vi.spyOn(childProcess, "spawn");
-		let child: childProcess.ChildProcess | undefined;
+		const realSpawn = ownedProcess.spawnOwnedProcess;
+		const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
+		let child: ownedProcess.OwnedProcess | undefined;
 		let fail = true;
 		spawn.mockImplementation((...args) => {
 			const spawned = realSpawn(...args);
@@ -242,7 +245,7 @@ for (const engine of ["stream-json", "acp"] as const) {
 		const f = fixture(engine, () => {});
 		try {
 			assert.match(assertSingleError(await collect(f.simple(model, user))), /stdout listener wiring failed/);
-			assert.ok(child && (child.exitCode !== null || child.signalCode !== null));
+			assert.ok(child && (!child.pid || child.exitCode !== null || child.signalCode !== null));
 			assert.equal(child.stdout?.listenerCount("data"), 0, "failed startup must remove partially installed stdout listeners");
 			assert.equal(child.stderr?.listenerCount("data"), 0);
 			assert.equal(f.driver.activeHandle, null);
@@ -283,11 +286,11 @@ for (const engine of ["stream-json", "acp"] as const) {
 }
 
 test("acp: a cleanup sink throw cannot leak the process from a rejected startup", async () => {
-	const realSpawn = childProcess.spawn;
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const realSpawn = ownedProcess.spawnOwnedProcess;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
 	let sawKill = false;
-	let child: childProcess.ChildProcess | undefined;
+	let child: ownedProcess.OwnedProcess | undefined;
 	spawn.mockImplementation((...args) => {
 		const spawned = realSpawn(...args);
 		if (fail && args[0] === process.execPath) {
@@ -303,8 +306,8 @@ test("acp: a cleanup sink throw cannot leak the process from a rejected startup"
 	});
 	try {
 		const result = await collect(f.simple(model, user));
-		child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === process.execPath)].value as childProcess.ChildProcess;
-		assert.ok(child.exitCode !== null || child.signalCode !== null, "rollback must terminate the child even when its cleanup log throws");
+		child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === process.execPath)].value as ownedProcess.OwnedProcess;
+		assert.ok(!child.pid || child.exitCode !== null || child.signalCode !== null, "rollback must terminate the child even when its cleanup log throws");
 		assertSingleError(result);
 		assert.equal(sawKill, true);
 		assert.equal(f.driver.activeHandle, null);
@@ -313,7 +316,7 @@ test("acp: a cleanup sink throw cannot leak the process from a rejected startup"
 	} finally {
 		fail = false;
 		// The red implementation can mark a child killed without signalling it.
-		if (child && child.exitCode === null && child.signalCode === null) {
+		if (child?.pid && child.exitCode === null && child.signalCode === null) {
 			await bounded(new Promise<void>(resolve => { child!.once("exit", () => resolve()); child!.kill(); }));
 		}
 		await f.cleanup();
@@ -322,7 +325,7 @@ test("acp: a cleanup sink throw cannot leak the process from a rejected startup"
 
 for (const sink of ["spawn", "initialized"] as const) {
 	test(`acp: a throwing ${sink} sink ${sink === "spawn" ? "rolls back synchronous startup" : "is ignored after the handshake"} and allows the next call`, async () => {
-		const spawn = vi.spyOn(childProcess, "spawn");
+		const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 		let fail = true;
 		let failed: TurnHandle | null = null;
 		const f = fixture("acp", message => {
@@ -338,7 +341,7 @@ for (const sink of ["spawn", "initialized"] as const) {
 				assert.equal(first.ends, 1);
 				assert.equal(first.events.at(-1)?.type, "done", "an async diagnostic failure must not interrupt the turn");
 			}
-			const children = spawn.mock.calls.flatMap(([command], index) => command === process.execPath ? [spawn.mock.results[index].value as childProcess.ChildProcess] : []);
+			const children = spawn.mock.calls.flatMap(([command], index) => command === process.execPath ? [spawn.mock.results[index].value as ownedProcess.OwnedProcess] : []);
 			assert.equal(children.length, sink === "spawn" ? 0 : 1);
 			if (sink === "initialized") assert.doesNotThrow(() => process.kill(children[0].pid!, 0), "the healthy connection stays reusable");
 			assert.equal(f.driver.activeHandle, null);
@@ -356,7 +359,7 @@ for (const sink of ["spawn", "initialized"] as const) {
 }
 
 test("stream-json: a throwing spawn sink cleans up startup and the next call completes", async () => {
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
 	let failed: TurnHandle | null = null;
 	const f = fixture("stream-json", message => {
@@ -367,8 +370,8 @@ test("stream-json: a throwing spawn sink cleans up startup and the next call com
 	});
 	try {
 		assert.match(assertSingleError(await collect(f.simple(model, user))), /spawn sink failed/);
-		const child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === "agy")].value as childProcess.ChildProcess;
-		assert.ok(child.exitCode !== null || child.signalCode !== null, "a throwing spawn sink must not leave its child alive");
+		const child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === "agy")].value as ownedProcess.OwnedProcess;
+		assert.ok(!child.pid || child.exitCode !== null || child.signalCode !== null, "a throwing spawn sink must not leave its child alive");
 		assert.equal(child.stdout?.listenerCount("data"), 0);
 		assert.equal(child.stderr?.listenerCount("data"), 0);
 		assert.equal(f.driver.activeHandle, null);
@@ -390,10 +393,10 @@ test("stream-json: a throwing spawn sink cleans up startup and the next call com
 const spawnFailureRaceTimeoutMs = 15_000;
 
 test("stream-json: spawn failure racing a throwing spawn sink remains contained", async () => {
-	const realSpawn = childProcess.spawn;
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const realSpawn = ownedProcess.spawnOwnedProcess;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
-	spawn.mockImplementation((...args) => fail && args[0] === "agy" ? realSpawn("missing-startup-ownership-executable") : realSpawn(...args));
+	spawn.mockImplementation((...args) => fail && args[0] === "agy" ? realSpawn("missing-startup-ownership-executable", []) : realSpawn(...args));
 	const f = fixture("stream-json", message => {
 		if (message.startsWith("spawn:") && fail) throw new Error("spawn sink failed");
 	});
@@ -409,12 +412,14 @@ test("stream-json: spawn failure racing a throwing spawn sink remains contained"
 }, spawnFailureRaceTimeoutMs);
 
 test("acp: spawn failure racing partial listener wiring remains contained", async () => {
-	const realSpawn = childProcess.spawn;
-	const spawn = vi.spyOn(childProcess, "spawn");
+	const realSpawn = ownedProcess.spawnOwnedProcess;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
 	spawn.mockImplementation((...args) => {
 		if (!fail || args[0] !== process.execPath) return realSpawn(...args);
-		const child = realSpawn("missing-startup-ownership-executable");
+		// Fault injection retains Node next-tick spawn-error ordering so this
+  // test isolates partial listener wiring, not native-launch scheduling.
+  const child = plainSpawn("missing-startup-ownership-executable", []) as unknown as ownedProcess.OwnedProcess;
 		const on = child.stdout!.on.bind(child.stdout!);
 		vi.spyOn(child.stdout!, "on").mockImplementation((event, listener) => {
 			const result = on(event, listener);
@@ -436,14 +441,14 @@ test("acp: spawn failure racing partial listener wiring remains contained", asyn
 }, spawnFailureRaceTimeoutMs);
 
 test("stream-json: a synchronous prompt-write throw terminates only the failed turn's child", async () => {
-	const spawn = vi.spyOn(childProcess, "spawn");
-	let child: childProcess.ChildProcess | undefined;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
+	let child: ownedProcess.OwnedProcess | undefined;
 	let failed: TurnHandle | null = null;
 	let fail = true;
 	const f = fixture("stream-json", message => {
 		if (message === "turn-start" && fail) {
 			failed = f.driver.activeHandle;
-			child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === "agy")].value as childProcess.ChildProcess;
+			child = spawn.mock.results[spawn.mock.calls.findIndex(([command]) => command === "agy")].value as ownedProcess.OwnedProcess;
 			vi.spyOn(child.stdin!, "write").mockImplementationOnce(() => { throw new Error("prompt write failed"); });
 		}
 	});
@@ -456,7 +461,7 @@ test("stream-json: a synchronous prompt-write throw terminates only the failed t
 		assert.equal(outcome.status, "ERROR");
 		assert.match(outcome.error ?? "", /failed to write to agy driver.*prompt write failed/);
 		assert.equal(await bounded((failed as TurnHandle).next()), null);
-		assert.ok(child && (child.exitCode !== null || child.signalCode !== null), "prompt-write failure must terminate its owned child");
+		assert.ok(child && (!child.pid || child.exitCode !== null || child.signalCode !== null), "prompt-write failure must terminate its owned child");
 		fail = false;
 		assert.equal((await collect(f.simple(model, user))).events.at(-1)?.type, "done");
 	} finally {

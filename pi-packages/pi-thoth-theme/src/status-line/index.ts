@@ -20,6 +20,7 @@ import {
 import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { type ActiveThemeLike, formatCwd, renderStatusLine } from './layout.ts';
+import { createOrcaChildHold } from './orca-child-hold.ts';
 import type { StatusSnapshot, StatusSnapshotProvider } from './snapshot.ts';
 import { createThroughputTracker } from './throughput.ts';
 import { calculateSessionTokens } from './tokens.ts';
@@ -118,6 +119,7 @@ export function registerStatusLine(
       requestRender();
     };
     const working = createWorkingState(invalidateRender);
+    const orcaChildHold = createOrcaChildHold(pi.events);
     const editorDecorations = new Set<EditorDecoration>();
     const refreshSession = () => {
       if (disposed) return;
@@ -160,17 +162,18 @@ export function registerStatusLine(
     };
 
     const subscribeAndRequestBackgroundWork = () => {
-      if (!inputBoxEnabled) return;
       const sessionId = ctx.sessionManager.getSessionId();
       for (const off of offBackgroundWork) off();
+      orcaChildHold.startSession(sessionId);
       let subagentPending = 0;
       let backgroundPending = 0;
-      working.setPendingBackground(0);
+      if (inputBoxEnabled) working.setPendingBackground(0);
       offBackgroundWork = [
         subscribe(pi.events, SUBAGENTS_STATE_CHANNEL, {
           sessionId,
           onSnapshot: ({ data }) => {
             if (disposed) return;
+            orcaChildHold.updateSubagents(data);
             subagentPending = data.tasks.filter(
               (task) =>
                 task.mode === 'background' &&
@@ -178,15 +181,18 @@ export function registerStatusLine(
                   task.status === 'running' ||
                   task.status === 'stopping'),
             ).length;
-            working.setPendingBackground(subagentPending + backgroundPending);
+            if (inputBoxEnabled)
+              working.setPendingBackground(subagentPending + backgroundPending);
           },
         }),
         subscribe(pi.events, BACKGROUND_STATE_CHANNEL, {
           sessionId,
           onSnapshot: ({ data }) => {
             if (disposed) return;
+            orcaChildHold.updateBackground(data);
             backgroundPending = data.counts.running;
-            working.setPendingBackground(subagentPending + backgroundPending);
+            if (inputBoxEnabled)
+              working.setPendingBackground(subagentPending + backgroundPending);
           },
         }),
       ];
@@ -246,6 +252,7 @@ export function registerStatusLine(
       // Pi may have snapshotted lifecycle handlers before replacing the footer.
       disposed = true;
       working.dispose();
+      orcaChildHold.dispose();
       for (const decoration of editorDecorations) decoration.dispose();
       editorDecorations.clear();
       for (const unsub of unsubs) {

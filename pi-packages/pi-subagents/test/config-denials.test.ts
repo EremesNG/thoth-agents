@@ -632,7 +632,17 @@ describe('runtime strict YAML frontmatter validation', () => {
       'normalized model and effort values',
       '"tools": []\nmodel: { provider: " openai ", id: " fixture/path " }\neffort: " MAX "\nsubagent_mode: task',
       {
-        tools: [],
+        tools: [
+          'read',
+          'bash',
+          'edit',
+          'write',
+          'grep',
+          'find',
+          'ls',
+          'mem_recall',
+          'mem_get',
+        ],
         model: { provider: 'openai', id: 'fixture/path' },
         effort: 'max',
         subagent_mode: 'task',

@@ -389,10 +389,14 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "background_handoff_shortcut": "ctrl+h",
   "default_tools": [
     "read",
-    "memory_context",
-    "memory_search",
-    "memory_recall",
-    "memory_get"
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls",
+    "mem_recall",
+    "mem_get"
   ]
 }
 ```
@@ -423,7 +427,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
-| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Explicit exact-name lists are recommended; supports the same manual globs (including ordinary `*`) over all registered root tools as frontmatter `tools`; all forms drop missing child implementations with a durable warning, failing only if every selected tool is missing. Omitted frontmatter `tools` uses the built-in default list. |
+| `default_tools` | see below | Fallback tool allowlist when a definition omits `tools` or sets `tools: []`. Resolved when definitions load: project config overrides global config, then built-in defaults; a non-empty definition list takes precedence. The runner, agent listings, thread views, and tools panel share this selection. Explicit exact-name lists are recommended; supports the same manual globs (including ordinary `*`) over all registered root tools as frontmatter `tools`; all forms drop missing child implementations with a durable warning, failing only if every selected tool is missing. |
 
 While tools are active, ordinary inactivity is checked against each tool's own budget, not the session budget. At tool start, finite positive numeric `timeout` seconds on `bash`/`powershell`, or `timeout_seconds` on any tool, extend the budget to the larger of `tool_stall_timeout_ms` and the declared timeout plus 30000 ms grace, capped at normalized `max_total_timeout_ms`. If both declarations are valid, the larger applies. Invalid, zero, negative, non-numeric, or absent declarations leave the tool budget unchanged; generic `timeout` on other tools is ignored. For example, `bash` with `timeout: 1000` gets 1030000 ms by default. Stall errors identify the applied session/tool budget in milliseconds.
 
@@ -432,8 +436,10 @@ Pending questions, compaction, and auto-retry backoff suspend ordinary inactivit
 Default tools:
 
 ```json
-["read", "memory_context", "memory_search", "memory_recall", "memory_get"]
+["read", "bash", "edit", "write", "grep", "find", "ls", "mem_recall", "mem_get"]
 ```
+
+These are the seven native Pi tools plus thoth-mem's minimal memory-read tools. Use a narrower explicit definition list for read-only specialists. Missing memory-tool implementations follow the same dropped-tool warning behavior as other tools.
 
 The former UI selector `mode: "opencode" | "claude"` is no longer a supported config field. Do not add it. History/background visibility and task-to-background handoff are available together and are configured independently through their shortcut fields.
 

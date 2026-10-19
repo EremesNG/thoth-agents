@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { loadSubagents, readSubagentsConfig } from '../config.js';
+import { loadSubagents } from '../config.js';
 import {
   readToolsFields,
   replaceToolsField,
@@ -50,7 +50,6 @@ export function readToolsConfig(cwd: string): ToolsConfigSnapshot {
     adapters,
   };
   const adapter = getToolsPanelAdapter();
-  const config = readSubagentsConfig(cwd);
   for (const definition of loadSubagents(cwd)) {
     const target: ToolsDefinitionTarget = {
       role: definition.name,
@@ -68,11 +67,8 @@ export function readToolsConfig(cwd: string): ToolsConfigSnapshot {
     if (managed) adapters[target.role] = managed;
     snapshot.roles.push({
       ...target,
-      tools:
-        fields.tools?.length === 0
-          ? [...config.default_tools]
-          : (fields.tools ??
-            (defaults ? [...defaults] : [...definition.tools])),
+      // Preserve explicit entries even when runtime filtering excludes them.
+      tools: [...(fields.tools?.length ? fields.tools : definition.tools)],
       ...(defaults ? { defaultTools: [...defaults] } : {}),
       disallowedTools: fields.disallowedTools ?? [],
     });

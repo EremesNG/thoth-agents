@@ -107,6 +107,14 @@
   reinstalling; older copies remain untouched and block completion with manual
   upgrade guidance, and ambiguous identity fails closed. Jobs survive `/reload`
   of their session and stop on any other shutdown, including subagent teardown.
+  It registers only the standalone tools `bg_task_spawn`, `bg_task_watch`,
+  `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop` and
+  `bg_task_clear`; there are no action wrappers and no `maxBytes`/`tail_lines`
+  aliases. Model-facing tool definitions of pi-background-tasks,
+  pi-questions-user, pi-todo, pi-antigravity-bridge, pi-askcodex and pi-subagents
+  are size-budgeted by each package's `tool-budget.test.ts`, which serializes
+  name, description, parameters, snippet and guidelines; raise a budget only with
+  a deliberate definition change and state shared guidance once per tool.
   The workspace `@thoth-agents/pi-openai-fast` (`pi-packages/pi-openai-fast`,
   operator-installed, not in `PI_PACKAGE_SPECS`) adds `<id>-fast` virtual models
   under every provider with `openai-responses`/`openai-codex-responses` models

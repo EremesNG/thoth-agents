@@ -91,7 +91,20 @@ describe('named model profile panel', () => {
       expect(sidebar).toMatch(/ P\s+shared \(local\)/);
       expect(sidebar).toMatch(/G\s+shared \(global\)~/);
       expect(sidebar).toMatch(/● S\s+solo \(global\)/);
-      expect(plain).toContain('● effective');
+      for (const width of [90, 110]) {
+        const legend = text(width)
+          .split('\n')
+          .map((line) => line.slice(0, Math.floor(width * 0.25)))
+          .join('\n');
+        for (const marker of [
+          'markers (not keys)',
+          '● effective',
+          'S session',
+          'P pin  G global',
+          '~ shadowed',
+        ])
+          expect(legend).toContain(marker);
+      }
       // agent detail shows effective model/effort of the selected profile
       expect(plain).toMatch(/analyst\s+openai\/gpt-5\.5\s+low/);
       expect(plain).toMatch(/reviewer\s+anthropic\/claude-x\s+high/);
@@ -233,13 +246,23 @@ describe('named model profile panel', () => {
       expect(env().store.read('project').active).toBe('shared');
     });
 
-    it('intercepts g before the shell treats it as Home', () => {
+    it.each([
+      'g',
+      'G',
+    ])('routes %s to global activation without replacing Home/End navigation', (key) => {
       seed();
       const { press, text } = open(env());
-      press(KEYS.down, KEYS.down); // agent cursor on reviewer
-      press('g');
+      press(KEYS.right, KEYS.right, KEYS.right, KEYS.down); // solo, analyst
+      press(key);
+      expect(env().store.read('global').active).toBe('solo');
+      expect(text()).toMatch(/›\s+analyst/);
+      press(key);
+      expect(env().store.read('global').active).toBeUndefined();
+      expect(text()).toMatch(/›\s+analyst/);
+      press('\u001b[H');
+      expect(text()).toMatch(/›\s+orchestrator/);
+      press('\u001b[F');
       expect(text()).toMatch(/›\s+reviewer/);
-      expect(text()).toContain('Global active profile is default');
     });
 
     it('toggling the session selection clears it', () => {
@@ -254,24 +277,65 @@ describe('named model profile panel', () => {
   });
 
   describe('lifecycle', () => {
-    it('creates a draft from default and an unedited save stores a full copy', () => {
-      const { press, text, typeName, workspace } = open(env());
+    it.each([
+      's',
+      'S',
+    ])('saves the selected draft with %s and remains responsive until close', (key) => {
+      const { press, text, typeName, workspace, done } = open(env());
       press('n');
       expect(text()).toContain('New profile from default');
       typeName('fresh');
       expect(text()).toContain('Scope for fresh');
-      press(KEYS.enter); // project (first)
+      press(KEYS.enter);
       expect(text()).toContain('fresh (local) · draft: unsaved');
       expect(text()).toContain('pending: 1 change');
       expect(fs.existsSync(env().store.paths.project)).toBe(false);
-      press('s');
-      expect(text()).toContain('Saved fresh (local)');
+      press(key);
       expect(workspace.pendingCount()).toBe(0);
       expect(env().readFile('project').profiles.fresh.agents).toEqual({
         analyst: { model: 'openai/gpt-5.5', effort: 'low' },
         reviewer: { model: 'anthropic/claude-x', effort: 'high' },
       });
+      expect(text()).toContain('Saved fresh (local)');
       expect(text()).not.toContain('draft');
+      expect(done).not.toHaveBeenCalled();
+      press(KEYS.down);
+      expect(text()).toMatch(/›\s+analyst/);
+      press(KEYS.esc, 'q');
+      expect(done).toHaveBeenCalledExactlyOnceWith({
+        action: 'close',
+        discarded: 0,
+      });
+    });
+
+    it.each([
+      ['M', 'Choose model provider'],
+      ['E', 'Choose effort'],
+      ['O', 'Orchestrator of solo set to openai/gpt-5.5 low'],
+      ['N', 'New profile from default'],
+      ['C', 'Clone profile from solo'],
+      ['R', 'Rename solo'],
+      ['D', 'Delete solo?'],
+    ])('accepts uppercase %s as an overview command', (key, expected) => {
+      seed();
+      const { press, text } = open(env(), 40, {
+        model: () => ({ provider: 'openai', id: 'gpt-5.5' }),
+        effort: () => 'low',
+      });
+      press(KEYS.right, KEYS.right, KEYS.right, key);
+      expect(text()).toContain(expected);
+    });
+
+    it('accepts uppercase U and P for session selection and project pin', () => {
+      seed();
+      const { press } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right, 'U');
+      expect(env().session.value).toBe('solo');
+      press('P');
+      expect(env().store.read('project').active).toBe('solo');
+      press('U', 'P');
+      expect(env().session.value).toBeUndefined();
+      expect(env().store.read('project').active).toBeUndefined();
     });
 
     it('clones the selected profile into a draft in the chosen scope', () => {
@@ -308,7 +372,10 @@ describe('named model profile panel', () => {
       ]);
     });
 
-    it('edits agent model and effort through the pickers and saves them', () => {
+    it.each([
+      's',
+      'S',
+    ])('edits agent model and effort through the pickers and saves them with %s', (key) => {
       seed();
       const { press, text, workspace } = open(env());
       press(KEYS.right, KEYS.right, KEYS.right); // solo (global)
@@ -325,7 +392,7 @@ describe('named model profile panel', () => {
       expect(workspace.pendingCount()).toBe(1);
       expect(text()).toContain('pending: 1 change');
       expect(text()).toContain('solo* (global)');
-      press('s');
+      press(key);
       expect(workspace.pendingCount()).toBe(0);
       const saved = env().readFile('global').profiles.solo.agents;
       expect(saved.analyst.model).toBe('openai/gpt-5.5');
@@ -432,6 +499,34 @@ describe('named model profile panel', () => {
       expect(workspace.entries().some((entry) => entry.name === 'Abde')).toBe(
         true,
       );
+    });
+
+    it.each([
+      'n',
+      'r',
+    ])('advertises Ctrl-U clearing in the %s name prompt', (key) => {
+      seed();
+      const { press, text } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right, key);
+      expect(text()).toContain('ctrl+u clear');
+      press('name', '\u0015', KEYS.enter);
+      expect(text()).toContain('Profile name must be non-empty');
+    });
+
+    it('describes Backspace deletion and Ctrl-U clearing in the model picker', () => {
+      seed();
+      const { press, text } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right, 'm');
+      press(KEYS.down, KEYS.down, KEYS.enter); // openai models
+      expect(text()).toContain('backspace delete');
+      expect(text()).toContain('ctrl+u clear');
+      expect(text()).not.toContain('backspace clear');
+      press('pt');
+      expect(text()).toContain('search: pt');
+      press(BACKSPACE);
+      expect(text()).toContain('search: p');
+      press('\u0015');
+      expect(text()).toContain('search: (type to filter)');
     });
 
     it('keeps clear, validation and cancel behavior while editing a rename', () => {
@@ -669,6 +764,36 @@ describe('named model profile panel', () => {
       expect(env().readFile('project').profiles.tmp).toBeUndefined();
     });
 
+    it.each([
+      'g',
+      'G',
+    ])('ignores %s during discard confirmation and preserves resume/discard controls', (key) => {
+      seed();
+      const { press, text, workspace, done } = open(env());
+      press(KEYS.right, KEYS.right, KEYS.right);
+      press('e', KEYS.down, KEYS.enter, KEYS.esc); // unsaved orchestrator effort
+      expect(text()).toContain('Discard unsaved draft?');
+      press(key);
+      expect(env().store.read('global').active).toBe('shared');
+      expect(text()).toContain('Discard unsaved draft?');
+      expect(done).not.toHaveBeenCalled();
+      press('k');
+      expect(text()).toContain('Subagent model profiles');
+      expect(workspace.pendingCount()).toBe(1);
+      press('q', key, KEYS.esc);
+      expect(text()).toContain('Subagent model profiles');
+      expect(env().store.read('global').active).toBe('shared');
+      press('q', key, 'd');
+      expect(done).toHaveBeenCalledExactlyOnceWith({
+        action: 'close',
+        discarded: 1,
+      });
+      expect(
+        env().readFile('global').profiles.solo.orchestrator,
+      ).toBeUndefined();
+      expect(env().store.read('global').active).toBe('shared');
+    });
+
     it('saving clears the pending state so closing no longer asks', () => {
       const { press, typeName, done } = open(env());
       press('n');
@@ -679,16 +804,25 @@ describe('named model profile panel', () => {
   });
 
   describe('store errors', () => {
-    it('shows a save failure instead of swallowing it', () => {
-      const { press, text, typeName } = open(env());
+    it.each([
+      's',
+      'S',
+    ])('shows a save failure with %s and remains responsive', (key) => {
+      const { press, text, typeName, done } = open(env());
       press('n');
       typeName('tmp');
       press(KEYS.enter);
       // A directory in place of the file makes the store read fail.
       fs.mkdirSync(env().store.paths.project, { recursive: true });
-      press('s');
+      press(key);
       expect(text()).toContain('Cannot read model profiles');
       expect(text()).toContain('draft: unsaved');
+      expect(done).not.toHaveBeenCalled();
+      press(KEYS.esc, 'd');
+      expect(done).toHaveBeenCalledExactlyOnceWith({
+        action: 'close',
+        discarded: 1,
+      });
     });
 
     it('reports a malformed profiles file when opening the command', async () => {

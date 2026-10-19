@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-18
+
+### Fixed
+
+- Recover the bundled Windows job launcher on the next AskCodex call after a slow or failed helper start or helper death, instead of staying unavailable for the rest of the session.
+- Run AskCodex's Windows job launcher helper separately from other Thoth extensions, so another extension's helper failure or recovery never affects AskCodex app-server processes.
+
 ## [1.0.1] - 2026-10-18
 
 ### Fixed

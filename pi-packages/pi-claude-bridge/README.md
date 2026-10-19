@@ -151,7 +151,21 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 
 **Startup notice:** the first session lists `provider.plan` and `askClaude.enabled` if unset, then records `startupNoticeShown` in the global config so it doesn't nag again.
 
-**Extension providers and models.json:** pi's `modelOverrides` in `~/.pi/agent/models.json` do not currently apply to extension-registered providers (like claude-bridge). Overriding `contextWindow` or other fields requires editing `src/models.ts` directly — to pin a model to 200K, use `provider.forceTwoHundredK` instead.
+**Extension providers and models.json:** pi's `modelOverrides` in `~/.pi/agent/models.json` apply to extension-registered providers like claude-bridge, keyed by the model id shown in `/model` (opening `/model` reloads the file). For example, to give Pi a 400K window for a bridge model:
+
+```json
+{
+  "providers": {
+    "claude-bridge": {
+      "modelOverrides": {
+        "claude-opus-5-5": { "contextWindow": 400000 }
+      }
+    }
+  }
+}
+```
+
+This only changes Pi's context meter and auto-compaction threshold (`contextWindow - reserveTokens`); the Claude model actually served (200K or `[1m]`) still follows `provider.plan`, `provider.longContextExtraUsage`, and `provider.forceTwoHundredK`. Do not set a window larger than the served model's real capacity.
 
 ## Tests
 

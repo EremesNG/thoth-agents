@@ -17,6 +17,7 @@ import {
   BACKGROUND_STATE_REQUEST,
   type BackgroundTaskKind,
   type BackgroundTaskStatus,
+  type BackgroundTaskSummary,
   onRequest,
   publish,
   SUBAGENTS_STATE_CHANNEL,
@@ -183,6 +184,8 @@ describe('registerStatusLine', () => {
     events: ReturnType<typeof createEventBus>,
     sessionId: string,
     statuses: SubagentStatus[],
+    details: Array<Partial<SubagentTaskSummary>> = [],
+    history: SubagentTaskSummary[] = [],
   ) {
     const counts: SubagentsCounts = {
       queued: 0,
@@ -199,6 +202,7 @@ describe('registerStatusLine', () => {
       mode: 'background',
       status,
       createdAt: 0,
+      ...details[index],
     }));
     tasks.push({
       id: 'foreground',
@@ -213,7 +217,7 @@ describe('registerStatusLine', () => {
       sessionId,
       data: {
         tasks,
-        history: [],
+        history,
         counts,
         totals: { ...counts, total: tasks.length },
       },
@@ -224,6 +228,7 @@ describe('registerStatusLine', () => {
     events: ReturnType<typeof createEventBus>,
     sessionId: string,
     items: Array<[BackgroundTaskKind, BackgroundTaskStatus]>,
+    details: Array<Partial<BackgroundTaskSummary>> = [],
   ) {
     const counts = {
       running: 0,
@@ -234,7 +239,14 @@ describe('registerStatusLine', () => {
     };
     const tasks = items.map(([kind, status], index) => {
       counts[status]++;
-      return { id: `bg-${index}`, kind, status, createdAt: 0, startedAt: 0 };
+      return {
+        id: `bg-${index}`,
+        kind,
+        status,
+        createdAt: 0,
+        startedAt: 0,
+        ...details[index],
+      };
     });
     publish(events, BACKGROUND_STATE_CHANNEL, {
       source: '@thoth-agents/pi-background-tasks',
@@ -242,6 +254,438 @@ describe('registerStatusLine', () => {
       data: { tasks, counts },
     });
   }
+
+  function childEvents(mocks: ReturnType<typeof createMocks>) {
+    return mocks.emit.mock.calls
+      .filter(([channel]) => channel === 'task:subagent:lifecycle')
+      .map(([, event]) => event);
+  }
+
+  it('bridges pending work from both sources into namespaced Orca child transitions', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-transitions';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks);
+    try {
+      vi.advanceTimersByTime(0);
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        ['queued', 'running', 'stopping', 'completed'],
+        [{ agent: 'explorer', displayName: 'Inspect state' }],
+      );
+      publishBackgroundState(
+        mocks.events,
+        sessionId,
+        [
+          ['process', 'running'],
+          ['command_watch', 'running'],
+          ['process', 'succeeded'],
+        ],
+        [{ name: 'Build project' }, { name: 'Wait for checks' }],
+      );
+      expect(childEvents(mocks)).toEqual([
+        {
+          id: 'thoth:subagent:bg-0',
+          status: 'started',
+          agent: 'explorer',
+          description: 'Inspect state',
+        },
+        { id: 'thoth:subagent:bg-1', status: 'started', agent: 'worker' },
+        { id: 'thoth:subagent:bg-2', status: 'started', agent: 'worker' },
+        {
+          id: 'thoth:bg:bg-0',
+          status: 'started',
+          agent: 'process',
+          description: 'Build project',
+        },
+        {
+          id: 'thoth:bg:bg-1',
+          status: 'started',
+          agent: 'watch',
+          description: 'Wait for checks',
+        },
+      ]);
+      mocks.emit.mockClear();
+      publishSubagentState(mocks.events, sessionId, [
+        'running',
+        'stopping',
+        'queued',
+      ]);
+      publishBackgroundState(mocks.events, sessionId, [
+        ['process', 'running'],
+        ['command_watch', 'running'],
+      ]);
+      publishSubagentState(mocks.events, 'other-session', []);
+      publishBackgroundState(mocks.events, 'other-session', []);
+      expect(childEvents(mocks)).toEqual([]);
+      publishSubagentState(mocks.events, sessionId, []);
+      publishBackgroundState(mocks.events, sessionId, []);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'completed' },
+        { id: 'thoth:subagent:bg-1', status: 'completed' },
+        { id: 'thoth:subagent:bg-2', status: 'completed' },
+        { id: 'thoth:bg:bg-0', status: 'completed' },
+        { id: 'thoth:bg:bg-1', status: 'completed' },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each<[SubagentStatus, string]>([
+    ['completed', 'completed'],
+    ['failed', 'failed'],
+    ['cancelled', 'aborted'],
+    ['interrupted', 'aborted'],
+  ])('maps subagent terminal status %s to Orca %s', (status, expected) => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = `orca-subagent-${status}`;
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      mocks.emit.mockClear();
+      publishSubagentState(mocks.events, sessionId, [status]);
+      publishSubagentState(mocks.events, sessionId, [status]);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: expected },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each<[BackgroundTaskStatus, string]>([
+    ['succeeded', 'completed'],
+    ['failed', 'failed'],
+    ['cancelled', 'aborted'],
+    ['timed_out', 'failed'],
+  ])('maps background terminal status %s to Orca %s', (status, expected) => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = `orca-background-${status}`;
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      mocks.emit.mockClear();
+      publishBackgroundState(mocks.events, sessionId, [['process', status]]);
+      publishBackgroundState(mocks.events, sessionId, [['process', status]]);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:bg-0', status: expected },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('emits one start per live item with the input box disabled, without decorating or animating', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-disabled-input';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const editor = createEditor(mocks);
+    const nativeRender = editor.render;
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      for (let i = 0; i < 2; i++) {
+        publishSubagentState(mocks.events, sessionId, ['running']);
+        publishBackgroundState(mocks.events, sessionId, [
+          ['process', 'running'],
+        ]);
+      }
+      vi.advanceTimersByTime(0);
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      component.render(100);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'started', agent: 'worker' },
+        { id: 'thoth:bg:bg-0', status: 'started', agent: 'process' },
+      ]);
+      expect(editor.render).toBe(nativeRender);
+      expect(mocks.tui.getFocusedComponent).not.toHaveBeenCalled();
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('retains announced ids across module reload and reconciles items that ended meanwhile', async () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-reload';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const offSubagents = onRequest(mocks.events, SUBAGENTS_STATE_REQUEST, {
+      onRequest: () =>
+        publishSubagentState(mocks.events, sessionId, ['running']),
+    });
+    let backgroundRunning = true;
+    const offBackground = onRequest(mocks.events, BACKGROUND_STATE_REQUEST, {
+      onRequest: () =>
+        publishBackgroundState(
+          mocks.events,
+          sessionId,
+          backgroundRunning ? [['process', 'running']] : [],
+        ),
+    });
+    const first = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    let reloaded: ReturnType<typeof createFooter> | undefined;
+    try {
+      expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toHaveLength(2);
+      first.dispose();
+      backgroundRunning = false;
+      mocks.emit.mockClear();
+      vi.resetModules();
+      const { registerStatusLine: registerReloaded } = await import(
+        './index.ts'
+      );
+      registerReloaded(mocks.pi, mocks.ctx, {
+        ...defaultConfig,
+        inputBox: { enabled: false },
+      });
+      const factory = mocks.getFooterFactory();
+      if (!factory) throw new Error('Footer factory was not registered');
+      reloaded = factory(mocks.tui, mocks.theme, mocks.footerData);
+      expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:bg-0', status: 'completed' },
+      ]);
+      publishSubagentState(mocks.events, sessionId, ['interrupted']);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:bg-0', status: 'completed' },
+        { id: 'thoth:subagent:bg-0', status: 'aborted' },
+      ]);
+    } finally {
+      first.dispose();
+      reloaded?.dispose();
+      offSubagents();
+      offBackground();
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles remembered children only after Orca restores a returning session', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const firstSession = 'orca-switch-first';
+    const nextSession = 'orca-switch-next';
+    mocks.sessionManager.getSessionId.mockReturnValue(firstSession);
+    let firstRunning = true;
+    const offSubagents = onRequest(mocks.events, SUBAGENTS_STATE_REQUEST, {
+      onRequest: ({ sessionId }) =>
+        publishSubagentState(
+          mocks.events,
+          sessionId,
+          sessionId === firstSession && firstRunning ? ['running'] : [],
+        ),
+    });
+    const offBackground = onRequest(mocks.events, BACKGROUND_STATE_REQUEST, {
+      onRequest: ({ sessionId }) =>
+        publishBackgroundState(
+          mocks.events,
+          sessionId,
+          sessionId === firstSession
+            ? firstRunning
+              ? [['process', 'running']]
+              : []
+            : [['command_watch', 'running']],
+          [{ id: sessionId === firstSession ? 'bg-0' : 'other-bg' }],
+        ),
+    });
+    const active = new Set<string>();
+    const parked = new Map<string, Set<string>>();
+    let previousSession = firstSession;
+    const offLifecycle = mocks.events.on('task:subagent:lifecycle', (data) => {
+      const event = data as { id: string; status: string };
+      if (event.status === 'started') active.add(event.id);
+      else active.delete(event.id);
+    });
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    const offOrca = mocks.pi.on('session_start', () => {
+      parked.set(previousSession, new Set(active));
+      active.clear();
+      const current = mocks.sessionManager.getSessionId();
+      for (const id of parked.get(current) ?? []) active.add(id);
+      previousSession = current;
+    });
+    const switchTo = (sessionId: string) => {
+      mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+      for (const handler of [
+        ...(mocks.eventHandlers.get('session_start') ?? []),
+      ])
+        handler();
+    };
+    try {
+      vi.advanceTimersByTime(0);
+      expect([...active]).toEqual(['thoth:subagent:bg-0', 'thoth:bg:bg-0']);
+      mocks.emit.mockClear();
+      switchTo(nextSession);
+      expect(childEvents(mocks)).toEqual([]);
+      expect([...active]).toEqual([]);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:other-bg', status: 'started', agent: 'watch' },
+      ]);
+      firstRunning = false;
+      mocks.emit.mockClear();
+      publishSubagentState(mocks.events, firstSession, []);
+      publishBackgroundState(mocks.events, firstSession, []);
+      expect(childEvents(mocks)).toEqual([]);
+      switchTo(firstSession);
+      expect(childEvents(mocks)).toEqual([]);
+      expect([...active]).toEqual(['thoth:subagent:bg-0', 'thoth:bg:bg-0']);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'completed' },
+        { id: 'thoth:bg:bg-0', status: 'completed' },
+      ]);
+      expect([...active]).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      component.dispose();
+      offSubagents();
+      offBackground();
+      offLifecycle();
+      offOrca();
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses retained subagent history for terminal outcomes without treating history as live', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-history';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      mocks.emit.mockClear();
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        [],
+        [],
+        [
+          {
+            id: 'bg-0',
+            agent: 'worker',
+            mode: 'background',
+            status: 'failed',
+            createdAt: 0,
+          },
+          {
+            id: 'history-only',
+            agent: 'worker',
+            mode: 'background',
+            status: 'running',
+            createdAt: 0,
+          },
+        ],
+      );
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'failed' },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    'dispose',
+    'dispose-active',
+    'session_shutdown',
+  ])('cancels child reconciliation and ignores snapshots after %s', (event) => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = `orca-disposed-${event}`;
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    const queued = [...(mocks.eventHandlers.get('session_start') ?? [])];
+    try {
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      expect(vi.getTimerCount()).toBe(1);
+      if (event === 'dispose-active') vi.advanceTimersByTime(0);
+      if (event !== 'session_shutdown') component.dispose();
+      else
+        for (const handler of [...(mocks.eventHandlers.get(event) ?? [])])
+          handler();
+      mocks.emit.mockClear();
+      for (const handler of queued) handler();
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops emitting if a child lifecycle listener disposes the footer during reconciliation', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-disposed-during-emit';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    const offLifecycle = mocks.events.on('task:subagent:lifecycle', () =>
+      component.dispose(),
+    );
+    try {
+      publishSubagentState(mocks.events, sessionId, ['running', 'running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'started', agent: 'worker' },
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      component.dispose();
+      offLifecycle();
+      vi.useRealTimers();
+    }
+  });
 
   /** Plain top/bottom borders of a decorated editor at `width`. */
   function borders(editor: { render(width: number): string[] }, width: number) {
@@ -519,6 +963,7 @@ describe('registerStatusLine', () => {
       editor.setWorkingStatusIndicator(undefined);
       for (const handler of mocks.eventHandlers.get('agent_end') ?? [])
         handler();
+      vi.advanceTimersByTime(0);
       const first = editor.render(100)[0];
       expect(stripTerminalSequences(first)).toContain('working… · 5 bg');
       expect(vi.getTimerCount()).toBe(1);
@@ -596,6 +1041,7 @@ describe('registerStatusLine', () => {
       for (const handler of mocks.eventHandlers.get('session_start') ?? [])
         handler();
       expect(borders(editor, 100).top).toContain('▲ ready');
+      vi.advanceTimersByTime(0);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       component.dispose();
@@ -610,6 +1056,7 @@ describe('registerStatusLine', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
     try {
+      vi.advanceTimersByTime(0);
       publishBackgroundState(mocks.events, 'parent-session', [
         ['process', 'running'],
       ]);

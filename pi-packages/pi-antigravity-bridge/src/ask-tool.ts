@@ -75,22 +75,8 @@ const STATIC_SHORT_ALIAS: ReadonlyMap<string, string> = new Map([
 // body (real UUIDs contain them).
 const CONV_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
 
-const AGY_DESCRIPTION = `Delegate a self-contained sub-task to Google Antigravity. agy is the CLI for Gemini, so this tool is reached under three equivalent names the user may use interchangeably: **gemini**, **antigravity**, and **agy**. When the user says "ask gemini", "ask antigravity", "ask agy", or otherwise refers to any of these, call THIS tool. agy runs its OWN tool loop: it can read, write, edit, and execute inside the workspace, then returns its final answer. Use for a second opinion from a different model family, Gemini-specific reasoning, or isolated sub-tasks you do not need to drive step-by-step. Provide a complete, self-contained task description; agy will not see this conversation.
-
-TWO MODES (you choose):
-- **One-shot (isolated)**: omit conversationId. agy starts fresh with no memory of prior calls. Use for independent questions.
-- **Continued conversation**: pass the conversationId returned in the PREVIOUS call's details (details.conversationId). agy resumes that conversation with full context intact.
-
-EXECUTION MODES (param: mode):
-- **plan**: agy reviews and plans without writing. Use for cross-review and read-only tasks. Enforced: plan runs execute in a temporary restricted agent whose toolset has NO file-editing tools (hard block); the reviewer may still execute arbitrary shell commands, kept read-only by the prompt guard alone. Inline the material to review - a plan run cannot fetch it.
-- **accept-edits** (default): agy applies edits directly inside the workspace.
-
-COMPACT OUTPUT (param: digest): when true, the prompt is prefixed to request compact digests instead of full file contents. Defaults on for plan, off for accept-edits.
-
-THINKING LEVEL (params: thinking, effort - SYNONYMS for one knob):
-- pi calls it thinking, agy calls it effort. Same thing. Pass ONE of the two.
-- Values (pi vocabulary): minimal|low|medium|high|xhigh|max. Clamped to agy's low|medium|high; unknown values fall back to low. "peer review on high thinking" -> thinking: "high".
-- An explicit level beats a tier embedded in model ("flash high") and the configured default. Omit both for the configured default.`;
+const AGY_DESCRIPTION = `Delegate to Google Antigravity: gemini, antigravity and agy are equivalent names that route here. agy runs its own workspace tool loop and returns a final answer. Provide a self-contained prompt; it does not see this conversation. Omit conversationId for a one-shot or pass the previous details.conversationId to continue.
+Modes: plan for review; accept-edits (default) for workspace edits.`;
 
 // --- Types -----------------------------------------------------------------
 
@@ -184,7 +170,7 @@ export function resolveModel(
 	input: string,
 	entries: ModelEntry[],
 	defaultThinking: ThinkingTier,
-	/** Explicit thinking param (thinking/effort). Beats a tier embedded in
+	/** Explicit thinking param. Beats a tier embedded in
 	 *  the alias ("flash high") and the configured default; clamped to the
 	 *  family's real tiers, ignored for fixed-thinking families. */
 	preferredTier?: ThinkingTier,
@@ -409,7 +395,7 @@ export async function registerAskAntigravityTool(
 		parameters: Type.Object({
 			prompt: Type.String({
 				description:
-					"Self-contained task for agy. Include all context agy needs; it cannot see this conversation.",
+					"Task and all required context.",
 			}),
 			cwd: Type.Optional(
 				Type.String({
@@ -419,47 +405,41 @@ export async function registerAskAntigravityTool(
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model alias or exact id. Friendly: 'flash', 'pro', 'argon', 'gemini', or another catalogued Gemini family. Add a tier: 'flash high'. Pin a version: '3.5 flash'. Exact: 'gemini-3.6-flash-medium'. Omit for the configured default.",
+						"Model alias (flash/pro/argon/gemini or catalogued family) or exact id. Supports tiers ('flash high') and versions ('3.5 flash'); omit for configured default.",
 				}),
 			),
 			thinking: Type.Optional(
 				Type.String({
 					description:
-						"Thinking level (= agy effort tier). pi vocabulary: minimal|low|medium|high|xhigh|max, clamped to agy's low|medium|high (unknown values fall back to low). Overrides a tier embedded in `model`. Omit for the configured default.",
-				}),
-			),
-			effort: Type.Optional(
-				Type.String({
-					description:
-						"Alias for `thinking` (agy's own name for the same knob). Pass ONE of the two; different values on both is an error.",
+						"Thinking level (agy calls it effort): minimal|low|medium|high|xhigh|max, clamped to low|medium|high; unknown becomes low. Overrides model's tier; omit for configured default.",
 				}),
 			),
 			mode: Type.Optional(
 				Type.Union([Type.Literal("plan"), Type.Literal("accept-edits")], {
 					description:
-						"agy execution mode. 'plan' = review-only. 'accept-edits' = agy applies edits (default).",
+						"Plan removes file-editing tools; shell commands are read-only by prompt guard, not hard-blocked. Inline review material.",
 					default: "accept-edits",
 				}),
 			),
 			digest: Type.Optional(
 				Type.Boolean({
 					description:
-						"Request compact digests instead of full file contents. Defaults on for plan, off for accept-edits.",
+						"Compact digests instead of full files. Default: on for plan, off for accept-edits.",
 				}),
 			),
 			conversationId: Type.Optional(
 				Type.String({
 					description:
-						"Omit for a one-shot. To CONTINUE a previous agy conversation, pass the conversationId returned in that call's details.",
+						"Previous call's details.conversationId.",
 				}),
 			),
 			timeoutMinutes: Type.Optional(
-				Type.Number({ description: `Hard cap on the agy run in minutes. Default ${DEFAULT_TIMEOUT_MIN}.` }),
+				Type.Number({ description: `Hard deadline in minutes. Default ${DEFAULT_TIMEOUT_MIN}.` }),
 			),
 			includeContext: Type.Optional(
 				Type.Boolean({
 					description:
-						"When true, export the current pi conversation (resolved, as markdown) to a temp file inside the workspace and tell agy to read it first. Default false (isolated one-shot). Opt in only when the user explicitly wants agy to see the full conversation; it costs agy tokens to read.",
+						"Export the full Pi conversation as temporary markdown for agy to read. Default false; enable only on explicit user request (costs extra tokens).",
 				}),
 			),
 		}),
@@ -468,7 +448,7 @@ export async function registerAskAntigravityTool(
 			// row identifies what will actually run, not just explicit args.
 			const cfg = loadConfig();
 			const requestedModel = (args.model as string | undefined)?.trim() || cfg.defaultModel;
-			const thinkingArg = (args.thinking as string | undefined) ?? (args.effort as string | undefined);
+			const thinkingArg = args.thinking as string | undefined;
 			const resolved =
 				resolveModel(
 					requestedModel,
@@ -612,22 +592,7 @@ export async function registerAskAntigravityTool(
 					details: emptyDetails(requestedModel),
 				};
 			}
-			if (
-				typeof params.thinking === "string" &&
-				typeof params.effort === "string" &&
-				params.thinking !== params.effort
-			) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "thinking and effort are synonyms for the same knob - pass one, not both with different values.",
-						},
-					],
-					details: emptyDetails(requestedModel),
-				};
-			}
-			const thinkingArg = (params.thinking as string | undefined) ?? (params.effort as string | undefined);
+			const thinkingArg = params.thinking as string | undefined;
 			const preferredTier = thinkingArg
 				? toAgyEffort(thinkingArg as ThinkingLevel, AGY_EFFORT_ORDER)
 				: undefined;

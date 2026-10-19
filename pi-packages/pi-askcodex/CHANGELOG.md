@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- `AskCodex` no longer accepts the `effort` alias (use `thinking`) or boolean `webSearch` values (use `live`, `cached` or `disabled`); its description and guidelines no longer repeat parameter documentation.
+
 ## [1.0.2] - 2026-10-18
 
 ### Fixed

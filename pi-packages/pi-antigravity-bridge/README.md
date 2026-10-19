@@ -5,6 +5,8 @@ A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](ht
 
 If you also have [`@estebanforge/pi-ask-antigravity`](https://github.com/EstebanForge/pi-extensions/tree/main/packages/pi-ask-antigravity) installed, this bridge takes over: pi-ask-antigravity detects the bridge and registers nothing, so the `AskAntigravity` tool is never duplicated.
 
+For per-call reasoning, set `thinking` (`minimal|low|medium|high|xhigh|max`), clamped to agy's `low|medium|high` tiers. It overrides a tier in `model` and the configured default. `effort` is agy's CLI term, not a tool parameter.
+
 ## What it does
 
 You pick a Gemini model in pi's `/model` picker. pi routes each turn through this provider. A single persistent `agy` process runs in your workspace; pi feeds it each turn, parses its stream-json events, and streams the agent text back into pi token by token. Token usage is live.

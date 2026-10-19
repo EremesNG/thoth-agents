@@ -48,7 +48,7 @@ describe("golden path: background process journey", () => {
       expect(finalStatus).toMatchObject({ id, kind: "process", status: "succeeded", lastExitCode: 0 });
       expect(finalStatus.result).toMatchObject({ exitCode: 0, signal: null });
 
-      const logText = await harness.execute("bg_task_log", { id, tail_lines: 40 });
+      const logText = await harness.execute("bg_task_log", { id, lines: 40 });
       expect(logText).toContain("golden:start");
       expect(logText).toContain("golden:done");
 

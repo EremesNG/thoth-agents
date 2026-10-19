@@ -79,10 +79,14 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
   return {
     name: 'subagent_run',
     label: 'Subagent Run',
-    description:
-      'Delegate a task to exactly one markdown-defined subagent. Omit mode to use the selected agent and configuration; background is the default when neither sets a mode. Use mode=task only when the user explicitly asks you to wait for completion, or mode=background to override a task-mode agent/configuration. After background launch, respond to the user and wait for the automatic completion notification instead of sleeping, polling status, or fetching results just to wait.',
+    description: 'Delegate a task to exactly one markdown-defined subagent.',
     promptSnippet:
-      'Delegate analysis/review/test/design tasks to one subagent. Omit mode to use the selected agent/configuration, with background as the default. Use mode=task only when the user explicitly asks you to wait for completion. After background launch, respond immediately and wait for the automatic completion notification; do not sleep or poll status just to wait.',
+      'Omit mode to use the selected agent/configuration; background is the default if neither sets a mode. Use mode=background to override task mode.',
+    promptGuidelines: [
+      'Use mode=task only when the user explicitly asks you to wait for completion.',
+      'After background launch or continuation, respond immediately and wait for the automatic completion notification instead of sleeping, polling status, or fetching results just to wait.',
+      'Replies, steering, and extensions require task ownership by the current Pi session.',
+    ],
     parameters: Type.Object({
       agent: Type.String(),
       task: Type.String(),

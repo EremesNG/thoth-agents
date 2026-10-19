@@ -65,7 +65,7 @@ export interface AskCodexDetails {
   errors: string[];
 }
 const DESCRIPTION =
-  "Delegate a self-contained task to the local OpenAI Codex harness: a code agent with sandbox, web search, the user's Codex MCP/skills/plugins, and Computer Use over the user's real browser and native Windows apps when Codex Desktop is running. Codex runs its own tool loop. Continue with conversationId. The prompt must be self-contained.";
+  "Delegate to the local OpenAI Codex harness with sandbox, web search, the user's Codex MCP/skills/plugins, and Computer Use over the user's real browser and native Windows apps when Codex Desktop is running. Codex runs its own tool loop.";
 const preview = (text: string) =>
   text.slice(0, 1000).split('\n').slice(0, 6).join('\n');
 
@@ -86,10 +86,12 @@ export function registerAskCodexTool(
     renderShell: 'self',
     description: DESCRIPTION,
     promptGuidelines: [
-      'Supply a self-contained task and all necessary context. Use conversationId to continue a prior delegation. Plan uses a read-only shell sandbox; MCP and Computer Use actions are not made read-only. Include full Pi context only when explicitly requested.',
+      'Plan uses a read-only shell sandbox; MCP and Computer Use actions are not made read-only.',
     ],
     parameters: Type.Object({
-      prompt: Type.String({ description: 'Self-contained task for Codex.' }),
+      prompt: Type.String({
+        description: 'Self-contained task and all necessary context for Codex.',
+      }),
       mode: Type.Optional(
         Type.Union([Type.Literal('plan'), Type.Literal('accept-edits')], {
           default: config.defaultMode,
@@ -100,7 +102,6 @@ export function registerAskCodexTool(
       ),
       model: Type.Optional(Type.String()),
       thinking: Type.Optional(effortSchema()),
-      effort: Type.Optional(effortSchema()),
       cwd: Type.Optional(
         Type.String({
           description: 'Workspace directory; defaults to the current Pi cwd.',
@@ -116,19 +117,15 @@ export function registerAskCodexTool(
         Type.Boolean({
           default: false,
           description:
-            'Export the resolved Pi conversation to a private temporary file. Explicit opt-in only.',
+            'Export the resolved Pi conversation to a private temporary file only when explicitly requested.',
         }),
       ),
       webSearch: Type.Optional(
-        Type.Union(
-          [
-            Type.Literal('live'),
-            Type.Literal('cached'),
-            Type.Literal('disabled'),
-            Type.Boolean(),
-          ],
-          { description: 'true maps to live; false maps to disabled.' },
-        ),
+        Type.Union([
+          Type.Literal('live'),
+          Type.Literal('cached'),
+          Type.Literal('disabled'),
+        ]),
       ),
       timeoutMinutes: Type.Optional(
         Type.Number({
@@ -202,7 +199,7 @@ export function registerAskCodexTool(
     async execute(_id, params, signal, onUpdate, ctx) {
       const started = Date.now();
       const mode = params.mode ?? config.defaultMode;
-      const effort = params.thinking ?? params.effort ?? config.defaultEffort;
+      const effort = params.thinking ?? config.defaultEffort;
       const model = params.model?.trim() || config.defaultModel;
       const details: AskCodexDetails = {
         status: 'failed',
@@ -242,14 +239,6 @@ export function registerAskCodexTool(
       try {
         if (!params.prompt.trim()) throw new Error('prompt must not be empty');
         if (
-          params.thinking !== undefined &&
-          params.effort !== undefined &&
-          params.thinking !== params.effort
-        )
-          throw new Error(
-            'thinking and effort are synonyms; pass one, not conflicting values',
-          );
-        if (
           effort !== undefined &&
           !EFFORTS.includes(effort as (typeof EFFORTS)[number])
         )
@@ -275,16 +264,9 @@ export function registerAskCodexTool(
           !params.conversationId.trim()
         )
           throw new Error('conversationId must not be empty');
-        const webSearch =
-          typeof params.webSearch === 'boolean'
-            ? params.webSearch
-              ? 'live'
-              : 'disabled'
-            : (params.webSearch ?? config.webSearch);
+        const webSearch = params.webSearch ?? config.webSearch;
         if (!['live', 'cached', 'disabled'].includes(webSearch))
-          throw new Error(
-            'webSearch must be live, cached, disabled or boolean',
-          );
+          throw new Error('webSearch must be live, cached or disabled');
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) abort();
         checkpoint();

@@ -26,12 +26,12 @@ import {
 } from './tools.js';
 
 it('mounted background summaries resolve UI punctuation while the shared formatter stays payload-invariant', () => {
-  const args = { action: 'run', command: 'c'.repeat(61) };
+  const args = { name: 'run', command: 'c'.repeat(61) };
   const native = summarizeArgs(args);
   expect(native).toBe(`run · ${'c'.repeat(60)}…`);
   const wideArgs = { command: '界'.repeat(61) };
   expect(summarizeArgs(wideArgs, { ui: true })).toBe(summarizeArgs(wideArgs));
-  const call = backgroundToolRenderers('bg_task').renderCall(args, {});
+  const call = backgroundToolRenderers('bg_task_spawn').renderCall(args, {});
   expect(strip(call.render(100))).toContain('run ·');
   token = registerRenderKit(
     createTestRenderKit({
@@ -55,8 +55,7 @@ const TOOL_NAMES = [
   'bg_task_status',
   'bg_task_log',
   'bg_task_stop',
-  'bg_task',
-  'bg_status',
+  'bg_task_clear',
 ];
 const ARGS: Record<string, Record<string, unknown>> = {
   bg_task_spawn: { name: 'build', command: 'pnpm build' },
@@ -65,8 +64,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   bg_task_status: { id: 'bg_abc' },
   bg_task_log: { id: 'bg_abc' },
   bg_task_stop: { id: 'bg_abc' },
-  bg_task: { action: 'clear', id: 'bg_abc' },
-  bg_status: { action: 'status', id: 'bg_abc' },
+  bg_task_clear: { id: 'bg_abc' },
 };
 
 const tools: Record<string, any> = {};
@@ -467,8 +465,8 @@ describe('KIT tool renderers', () => {
   }
 
   it('summarizes call arguments on one line', () => {
-    const text = strip(compose('bg_task', 'ok').render(80));
-    expect(text).toMatch(/bg_task.*clear.*bg_abc/);
+    const text = strip(compose('bg_task_clear', 'ok').render(80));
+    expect(text).toMatch(/bg_task_clear.*bg_abc/);
     expect(strip(compose('bg_task_spawn', 'ok').render(80))).toMatch(
       /bg_task_spawn.*build.*pnpm build/,
     );

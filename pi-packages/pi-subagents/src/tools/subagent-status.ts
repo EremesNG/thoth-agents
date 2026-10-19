@@ -13,7 +13,7 @@ export function createSubagentStatusTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_status',
     label: 'Subagent Status',
-    description: 'Get status for a delegated subagent task.',
+    description: 'Get task status.',
     parameters: Type.Object({ task_id: Type.String() }),
     renderShell: 'self',
     async execute(

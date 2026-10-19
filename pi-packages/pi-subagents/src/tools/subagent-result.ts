@@ -15,7 +15,7 @@ export function createSubagentResultTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_result',
     label: 'Subagent Result',
-    description: 'Read result for a delegated subagent task.',
+    description: 'Read a task result.',
     parameters: Type.Object({ task_id: Type.String() }),
     renderShell: 'self',
     async execute(

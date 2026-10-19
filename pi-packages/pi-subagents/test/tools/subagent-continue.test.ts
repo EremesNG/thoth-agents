@@ -80,10 +80,12 @@ describe('subagent_continue tool', () => {
       },
     );
     let continueTool: any;
+    let runTool: any;
     registerSubagentTools(
       {
         registerTool: (tool: any) => {
           if (tool.name === 'subagent_continue') continueTool = tool;
+          if (tool.name === 'subagent_run') runTool = tool;
         },
       },
       manager,
@@ -113,14 +115,25 @@ describe('subagent_continue tool', () => {
       { cwd: env.tmp },
     );
 
-    expect(continueTool.description).toContain('explicit user decision');
-    expect(continueTool.description).toContain(
-      "preserve the task's prior effective mode",
+    const guidance = [
+      continueTool.description,
+      continueTool.promptSnippet,
+      ...runTool.promptGuidelines,
+    ].join('\n');
+    expect(guidance).toContain('completed, failed, or cancelled');
+    expect(guidance).toContain('exact persisted nested Pi session');
+    expect(guidance).toContain('keeping task_id');
+    expect(guidance).toContain(
+      'explicit user decision before you supply model or effort',
     );
-    expect(continueTool.description).toContain(
+    expect(guidance).toContain("preserve the task's prior effective mode");
+    expect(guidance).toContain('background is the default if none exists');
+    expect(guidance).toContain(
       'mode=task only when the user explicitly asks you to wait',
     );
-    expect(continueTool.description).toContain('Never auto-switch models');
+    expect(guidance).toContain('Never auto-switch models');
+    expect(guidance.match(/prior effective mode/g)).toHaveLength(1);
+    expect(guidance.match(/explicit user decision/g)).toHaveLength(1);
     expect(continueTool.renderShell).toBe('self');
     expect(
       continueTool.parameters.properties.mode.anyOf.map(

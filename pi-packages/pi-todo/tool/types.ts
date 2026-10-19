@@ -1,5 +1,5 @@
 import { StringEnum } from '@earendil-works/pi-ai';
-import { type Static, Type } from 'typebox';
+import { type Static, type TSchema, Type } from 'typebox';
 
 // ---------------------------------------------------------------------------
 // Tool / command identity — verbatim string boundaries.
@@ -174,15 +174,23 @@ const batchId = Type.Union([Type.Number(), Type.String()], {
   description:
     'Task id or ref from an earlier create in this batch (strings are always refs)',
 });
+function withoutDescription<T extends TSchema>(schema: T): T {
+  // TypeBox's kind/optional markers are non-enumerable; spreading loses them.
+  const copy = Object.defineProperties(
+    { ...schema },
+    Object.getOwnPropertyDescriptors(schema),
+  );
+  Reflect.deleteProperty(copy, 'description');
+  return copy;
+}
+
 const BatchOpSchema = Type.Object({
-  ...Type.Omit(SingleParamsSchema, [
-    'action',
-    'includeDeleted',
-    'id',
-    'blockedBy',
-    'addBlockedBy',
-    'removeBlockedBy',
-  ]).properties,
+  subject: withoutDescription(SingleParamsSchema.properties.subject),
+  description: withoutDescription(SingleParamsSchema.properties.description),
+  activeForm: withoutDescription(SingleParamsSchema.properties.activeForm),
+  status: withoutDescription(SingleParamsSchema.properties.status),
+  owner: withoutDescription(SingleParamsSchema.properties.owner),
+  metadata: withoutDescription(SingleParamsSchema.properties.metadata),
   action: StringEnum(['create', 'update', 'delete'] as const),
   ref: Type.Optional(
     Type.String({
@@ -222,7 +230,7 @@ export const TodoParamsSchema = Type.Object({
   ops: Type.Optional(
     Type.Array(BatchOpSchema, {
       description:
-        'Batch only: 1–50 ordered create/update/delete ops; all succeed or none apply',
+        'Batch: 1–50 ordered create/update/delete ops; all succeed or none apply. Op fields match top-level fields, with ids or refs for dependencies.',
       minItems: 1,
       maxItems: 50,
     }),

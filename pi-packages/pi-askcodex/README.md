@@ -84,11 +84,10 @@ Give Codex a self-contained task, including relevant paths and constraints. For 
 | `conversationId` | Unset (new thread) | Returned Codex thread id to resume; must not be empty. |
 | `model` | Config `defaultModel`, otherwise Codex default | Codex model id. |
 | `thinking` | Config `defaultEffort`, otherwise Codex default | `minimal`, `low`, `medium`, `high`, or `xhigh`. |
-| `effort` | Same as `thinking` | Synonym; conflicting `thinking`/`effort` values are rejected. |
 | `cwd` | Current Pi working directory | Existing workspace directory. |
 | `digest` | `true` in plan mode, otherwise `false` | Ask for a compact digest of findings, decisions, changed paths, and verification. |
 | `includeContext` | `false` | Explicitly export the resolved Pi conversation branch to a private `.askcodex-context-<id>.md` file in `cwd` for Codex to read. Omits non-text media, bounds tool payloads, and removes the file during cleanup. |
-| `webSearch` | Config `webSearch` (`"disabled"`) | `"live"`, `"cached"`, `"disabled"`, or boolean (`true` → live, `false` → disabled). |
+| `webSearch` | Config `webSearch` (`"disabled"`) | `"live"`, `"cached"`, or `"disabled"`. |
 | `timeoutMinutes` | Config `defaultTimeoutMinutes` (`15`) | Positive finite minutes, within the supported timer range (at most 2,147,483,647 ms). Includes startup and approval waiting. |
 
 ### Modes and sandbox limits

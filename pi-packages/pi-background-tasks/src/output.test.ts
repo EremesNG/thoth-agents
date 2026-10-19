@@ -370,7 +370,7 @@ describe("session scope", () => {
   });
 });
 
-describe("failure-only revisions and wrapper identity", () => {
+describe("failure-only revisions and tool output assembly", () => {
   it("returns failure-only updates when log bytes are unchanged", () => {
     const meta = fixture({ logLines: ["same"] });
     const first = formatStatus(inspectMeta(meta.id), { origin });
@@ -384,22 +384,20 @@ describe("failure-only revisions and wrapper identity", () => {
     expect(second).not.toContain("No new evidence since cursor");
   });
 
-  it("uses the same assembler for standalone tools and action wrappers", async () => {
+  it("uses the shared assembler for registered status and log tools", async () => {
     const meta = fixture({
       result: {
         matchedCondition: { type: "exit_code", equals: 0 },
         matchedValue: 0,
       },
       lastExitCode: 0,
-      logLines: ["wrapper-same"],
+      logLines: ["assembler-same"],
     });
     const tools = register();
     const status = textOf(await tools.bg_task_status.execute("tc", { id: meta.id }, undefined, undefined, ctx));
-    const wrapped = textOf(await tools.bg_status.execute("tc", { action: "status", id: meta.id }, undefined, undefined, ctx));
-    expect(wrapped).toBe(status);
+    expect(status).toBe(formatStatus(inspectMeta(meta.id), { origin }));
     const log = textOf(await tools.bg_task_log.execute("tc", { id: meta.id }, undefined, undefined, ctx));
-    const wrappedLog = textOf(await tools.bg_task.execute("tc", { action: "log", id: meta.id }, undefined, undefined, ctx));
-    expect(wrappedLog).toBe(log);
+    expect(log).toBe(formatLog(meta.id, { origin }));
   });
 
   it("keeps launch failures ahead of the started line", () => {
@@ -448,7 +446,7 @@ describe("retained log paging and capture/retention disclosure", () => {
     expect(formatted).not.toMatch(/full history recovered/i);
   });
 
-  it("defaults log tails to 10 display rows and pages raw bytes at tail_lines 0", () => {
+  it("defaults log tails to 10 display rows and pages raw bytes at lines 0", () => {
     const lines = Array.from({ length: 25 }, (_, index) => `tail-line-${String(index + 1).padStart(2, "0")}`);
     const meta = fixture({ logLines: lines });
     const compact = formatLog(meta.id, { origin });
@@ -639,15 +637,15 @@ describe("review regressions (#312)", () => {
     expect(second).toContain("poll failed again");
   });
 
-  it("pages lists past 100 tasks and across the standalone tool and the action wrapper", async () => {
+  it("pages lists past 100 tasks through bg_task_list", async () => {
     const base = Date.now() + 1_000_000;
     const ids = Array.from({ length: 105 }, (_, index) => fixture({ id: `bg_page_${String(index).padStart(3, "0")}_${base}`, startedAt: base + index }).id);
     const tools = register();
     const seen: string[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < 30; page += 1) {
-      const tool = page % 2 === 0 ? tools.bg_task_list : tools.bg_status;
-      const params = page % 2 === 0 ? { cursor, limit: 25, max_bytes: 4096 } : { action: "list", cursor, limit: 25, max_bytes: 4096 };
+      const tool = tools.bg_task_list;
+      const params = { cursor, limit: 25, max_bytes: 4096 };
       const text = textOf(await tool.execute("tc", params, undefined, undefined, ctx));
       expect(utf8ByteLength(text)).toBeLessThanOrEqual(4096);
       for (const match of text.matchAll(/^(bg_page_\d+_\d+) /gm)) {
@@ -708,20 +706,19 @@ describe("review regressions (#312)", () => {
   it("bounds verbose metadata to the requested page and pages the rest", async () => {
     const meta = fixture({ command: `echo ${"c".repeat(100_000)}`, env: { SECRET: "hidden" } });
     const tools = register();
-    for (const [tool, extra] of [[tools.bg_task_status, {}], [tools.bg_status, { action: "status" }]] as const) {
-      const pages: string[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < 200; page += 1) {
-        const text = textOf(await tool.execute("tc", { ...extra, id: meta.id, verbose: true, max_bytes: 2048, cursor }, undefined, undefined, ctx));
-        expect(utf8ByteLength(text)).toBeLessThanOrEqual(2048);
-        pages.push(text.split("\n---\n")[0]!.split("\n").slice(1).join("\n"));
-        if (!text.includes("hasMore=true")) break;
-        cursor = text.match(/nextCursor=(\S+)/)?.[1];
-      }
-      const json = JSON.parse(pages.join("")) as { command: string; env: unknown };
-      expect(json.command.length).toBe(100_005);
-      expect(JSON.stringify(json.env)).not.toContain("hidden");
+    const tool = tools.bg_task_status;
+    const pages: string[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 200; page += 1) {
+      const text = textOf(await tool.execute("tc", { id: meta.id, verbose: true, max_bytes: 2048, cursor }, undefined, undefined, ctx));
+      expect(utf8ByteLength(text)).toBeLessThanOrEqual(2048);
+      pages.push(text.split("\n---\n")[0]!.split("\n").slice(1).join("\n"));
+      if (!text.includes("hasMore=true")) break;
+      cursor = text.match(/nextCursor=(\S+)/)?.[1];
     }
+    const json = JSON.parse(pages.join("")) as { command: string; env: unknown };
+    expect(json.command.length).toBe(100_005);
+    expect(JSON.stringify(json.env)).not.toContain("hidden");
   });
 
   it("shows a recorded runtime error (timeout stop EPERM) in the compact status", () => {
@@ -839,47 +836,43 @@ describe("review regressions (#312)", () => {
   });
 });
 
-describe("output-control aliases (#321)", () => {
-  it("accepts lines/tail_lines and max_bytes/maxBytes on every log surface; the canonical name wins", async () => {
+describe("canonical output controls", () => {
+  it("accepts lines and max_bytes but ignores removed aliases", async () => {
     const lines = Array.from({ length: 30 }, (_, index) => `alias-line-${String(index + 1).padStart(2, "0")} ${"x".repeat(40)}`);
     const meta = fixture({ logLines: lines });
     const tools = register();
-    const surfaces = [[tools.bg_task_log, {}], [tools.bg_task, { action: "log" }], [tools.bg_status, { action: "log" }]] as const;
-    for (const [tool, extra] of surfaces) {
-      const run = async (params: Record<string, unknown>) => textOf(await tool.execute("tc", { ...extra, id: meta.id, ...params }, undefined, undefined, ctx));
-      const canonical = await run({ lines: 3 });
-      expect(canonical).toContain("newest 3 display rows");
-      expect(canonical).toContain("alias-line-30");
-      expect(canonical).not.toContain("alias-line-27");
-      expect(await run({ tail_lines: 3 })).toBe(canonical);
-      expect(await run({ lines: 2, tail_lines: 5 })).toContain("newest 2 display rows");
-      const rawCanonical = await run({ lines: 0 });
-      expect(rawCanonical).toContain("raw log");
-      expect(await run({ tail_lines: 0 })).toBe(rawCanonical);
+    const tool = tools.bg_task_log;
+    const run = async (params: Record<string, unknown>) => textOf(await tool.execute("tc", { id: meta.id, ...params }, undefined, undefined, ctx));
+    const canonical = await run({ lines: 3 });
+    expect(canonical).toContain("newest 3 display rows");
+    expect(canonical).toContain("alias-line-30");
+    expect(canonical).not.toContain("alias-line-27");
+    expect(await run({ tail_lines: 3 })).toBe(await run({}));
+    expect(await run({ lines: 2, tail_lines: 5 })).toContain("newest 2 display rows");
+    const raw = await run({ lines: 0 });
+    expect(raw).toContain("raw log");
+    expect(await run({ tail_lines: 0 })).toBe(await run({}));
 
-      const small = await run({ max_bytes: 300 });
-      expect(utf8ByteLength(small)).toBeLessThanOrEqual(300);
-      expect(await run({ maxBytes: 300 })).toBe(small);
-      const bothBytes = await run({ max_bytes: 300, maxBytes: 4096 });
-      expect(bothBytes).toBe(small);
-    }
-    const list = textOf(await tools.bg_task_list.execute("tc", { maxBytes: 200 }, undefined, undefined, ctx));
+    const small = await run({ max_bytes: 300 });
+    expect(utf8ByteLength(small)).toBeLessThanOrEqual(300);
+    expect(await run({ maxBytes: 300 })).toBe(await run({}));
+    const bothBytes = await run({ max_bytes: 300, maxBytes: 4096 });
+    expect(bothBytes).toBe(small);
+    const list = textOf(await tools.bg_task_list.execute("tc", { max_bytes: 200 }, undefined, undefined, ctx));
     expect(utf8ByteLength(list)).toBeLessThanOrEqual(200);
-    const status = textOf(await tools.bg_task_status.execute("tc", { id: meta.id, maxBytes: 400 }, undefined, undefined, ctx));
+    const status = textOf(await tools.bg_task_status.execute("tc", { id: meta.id, max_bytes: 400 }, undefined, undefined, ctx));
     expect(utf8ByteLength(status)).toBeLessThanOrEqual(400);
   });
 
-  it("declares canonical and deprecated names in every read schema", () => {
+  it("declares only canonical names in every read schema", () => {
     const tools = register();
-    for (const name of ["bg_task_list", "bg_task_status", "bg_task_log", "bg_task_stop", "bg_task", "bg_status"]) {
-      const properties = tools[name].parameters.properties as Record<string, { description?: string }>;
-      expect(properties.max_bytes, name).toBeTruthy();
-      expect(properties.maxBytes?.description, name).toContain("Deprecated alias for max_bytes");
+    for (const name of ["bg_task_list", "bg_task_status", "bg_task_log", "bg_task_stop"]) {
+      expect(tools[name].parameters.properties.max_bytes, name).toBeTruthy();
     }
-    for (const name of ["bg_task_log", "bg_task", "bg_status"]) {
-      const properties = tools[name].parameters.properties as Record<string, { description?: string }>;
-      expect(properties.lines, name).toBeTruthy();
-      expect(properties.tail_lines?.description, name).toContain("Deprecated alias for lines");
+    expect(tools.bg_task_log.parameters.properties.lines).toBeTruthy();
+    for (const tool of Object.values(tools) as any[]) {
+      expect(tool.parameters.properties.maxBytes, tool.name).toBeUndefined();
+      expect(tool.parameters.properties.tail_lines, tool.name).toBeUndefined();
     }
   });
 });
@@ -889,44 +882,89 @@ describe("mutation ownership matches reads (#322)", () => {
   const foreignCtx = { cwd: origin.cwd, sessionManager: { getSessionId: () => otherOrigin.sessionId } };
   const unavailableCtx = { cwd: origin.cwd, sessionManager: { getSessionId: () => { throw new Error("session store offline"); } } };
 
-  it("refuses to stop a foreign-session or unverifiable task on every stop surface", async () => {
+  it("refuses to stop a foreign-session or unverifiable task through bg_task_stop", async () => {
     const foreign = fixture({ status: "running", endedAt: undefined, callbackOrigin: otherOrigin });
     const legacy = fixture({ status: "running", endedAt: undefined, callbackOrigin: undefined });
     const tools = register();
-    for (const [tool, extra] of [[tools.bg_task_stop, {}], [tools.bg_task, { action: "stop" }], [tools.bg_status, { action: "stop" }]] as const) {
-      const refused = textOf(await tool.execute("tc", { ...extra, id: foreign.id }, undefined, undefined, ctx));
-      expect(refused).toContain("outside the current session scope; not stopped");
-      expect(refused).toContain("belongs to another session");
-      const gap = textOf(await tool.execute("tc", { ...extra, id: legacy.id }, undefined, undefined, sessionless));
-      expect(gap).toContain("not stopped");
-      expect(gap).toContain("ownership is unavailable");
-      const unavailable = textOf(await tool.execute("tc", { ...extra, id: foreign.id }, undefined, undefined, unavailableCtx));
-      expect(unavailable).toContain("current session identity is unavailable");
-    }
+    const tool = tools.bg_task_stop;
+    const refused = textOf(await tool.execute("tc", { id: foreign.id }, undefined, undefined, ctx));
+    expect(refused).toContain("outside the current session scope; not stopped");
+    expect(refused).toContain("belongs to another session");
+    const gap = textOf(await tool.execute("tc", { id: legacy.id }, undefined, undefined, sessionless));
+    expect(gap).toContain("not stopped");
+    expect(gap).toContain("ownership is unavailable");
+    const unavailable = textOf(await tool.execute("tc", { id: foreign.id }, undefined, undefined, unavailableCtx));
+    expect(unavailable).toContain("current session identity is unavailable");
     expect(inspectMeta(foreign.id).meta?.stopRequestedAt).toBeUndefined();
     expect(inspectMeta(foreign.id).meta?.status).toBe("running");
     expect(inspectMeta(legacy.id).meta?.stopRequestedAt).toBeUndefined();
   });
 
-  it("clears one task by id only when owned, or with all:true like a read by id", async () => {
-    const own = fixture({ status: "failed" });
+  it.each([{}, { status: [] }])("clears only matching terminal statuses, or all owned terminal tasks without a filter (%j)", async (unfilteredParams) => {
+    // Bulk mutations need their own origin: earlier fixtures can remain in the registry's in-memory index.
+    const scopedOrigin = { ...origin, sessionId: `clear-status-${Date.now()}-${Math.random()}` };
+    const scopedCtx = { cwd: scopedOrigin.cwd, sessionManager: { getSessionId: () => scopedOrigin.sessionId } };
+    const failed = fixture({ status: "failed", callbackOrigin: scopedOrigin });
+    const succeeded = fixture({ status: "succeeded", callbackOrigin: scopedOrigin });
+    const running = fixture({ status: "running", endedAt: undefined, callbackOrigin: scopedOrigin });
+    const tools = register();
+
+    const filtered = textOf(await tools.bg_task_clear.execute("tc", { status: ["failed"] }, undefined, undefined, scopedCtx));
+    expect(inspectMeta(failed.id).meta?.dismissedAt).toBeTypeOf("number");
+    expect(inspectMeta(succeeded.id).meta?.dismissedAt).toBeUndefined();
+    expect(inspectMeta(running.id).meta?.dismissedAt).toBeUndefined();
+    expect(filtered).toBe("Dismissed 1 terminal background task matching failed.");
+    expect(tools.bg_task_clear.parameters.properties.status).toMatchObject({ type: "array", items: { type: "string" } });
+    expect(tools.bg_task_clear.parameters.required ?? []).not.toContain("status");
+
+    const unfiltered = textOf(await tools.bg_task_clear.execute("tc", unfilteredParams, undefined, undefined, scopedCtx));
+    expect(unfiltered).toBe("Dismissed 1 terminal background task.");
+    expect(inspectMeta(succeeded.id).meta?.dismissedAt).toBeTypeOf("number");
+    expect(inspectMeta(running.id).meta?.dismissedAt).toBeUndefined();
+  });
+
+  it("publishes history inspection for stop results", async () => {
+    const meta = fixture({ status: "failed", lastExitCode: 1 });
+    recordFailure(meta, "exit", "declared expected exit for stop history", "exit", { category: "exit", expected: true });
+    const tool = register().bg_task_stop;
+    expect(tool.parameters.properties.history).toMatchObject({ type: "boolean" });
+    expect(tool.parameters.required ?? []).not.toContain("history");
+    const result = textOf(await tool.execute("tc", { id: meta.id, history: true }, undefined, undefined, ctx));
+    expect(result).toContain("History page of 1 failure observation");
+    expect(result).toMatch(/^Expected failure · .*declared expected exit for stop history/m);
+  });
+
+  it("publishes max_bytes for clear missing-task and ownership diagnostics", async () => {
+    const foreign = fixture({ status: "failed", callbackOrigin: otherOrigin });
+    const tool = register().bg_task_clear;
+    expect(tool.parameters.properties.max_bytes).toMatchObject({ type: "number" });
+    expect(tool.parameters.required ?? []).not.toContain("max_bytes");
+    for (const id of [foreign.id, "bg_missing_clear_budget"]) {
+      const result = textOf(await tool.execute("tc", { id, max_bytes: 80 }, undefined, undefined, ctx));
+      expect(utf8ByteLength(result)).toBeLessThanOrEqual(80);
+    }
+    expect(inspectMeta(foreign.id).meta?.dismissedAt).toBeUndefined();
+  });
+
+  it("clears one task by id only when owned, or with all:true like a read by id; id overrides status", async () => {
+    const own = fixture({ status: "succeeded" });
     const foreign = fixture({ status: "failed", callbackOrigin: otherOrigin });
     const running = fixture({ status: "running", endedAt: undefined });
     const tools = register();
-    const refused = textOf(await tools.bg_task.execute("tc", { action: "clear", id: foreign.id }, undefined, undefined, ctx));
+    const refused = textOf(await tools.bg_task_clear.execute("tc", { id: foreign.id }, undefined, undefined, ctx));
     expect(refused).toContain("not dismissed");
     expect(inspectMeta(foreign.id).meta?.dismissedAt).toBeUndefined();
-    const explicit = textOf(await tools.bg_status.execute("tc", { action: "clear", id: foreign.id, all: true }, undefined, undefined, ctx));
+    const explicit = textOf(await tools.bg_task_clear.execute("tc", { id: foreign.id, all: true }, undefined, undefined, ctx));
     expect(explicit).toContain(`Dismissed terminal background task ${foreign.id}`);
     expect(inspectMeta(foreign.id).meta?.dismissedAt).toBeTypeOf("number");
-    const mine = textOf(await tools.bg_task.execute("tc", { action: "clear", id: own.id }, undefined, undefined, ctx));
+    const mine = textOf(await tools.bg_task_clear.execute("tc", { id: own.id, status: ["failed"] }, undefined, undefined, ctx));
     expect(mine).toContain(`Dismissed terminal background task ${own.id}`);
-    const live = textOf(await tools.bg_task.execute("tc", { action: "clear", id: running.id }, undefined, undefined, ctx));
+    const live = textOf(await tools.bg_task_clear.execute("tc", { id: running.id }, undefined, undefined, ctx));
     expect(live).toContain("only terminal tasks can be dismissed");
     expect(inspectMeta(running.id).meta?.dismissedAt).toBeUndefined();
     // The owner's view: another session's task is still refused from that session too.
     const other = fixture({ status: "failed" });
-    const fromOther = textOf(await tools.bg_task.execute("tc", { action: "clear", id: other.id }, undefined, undefined, foreignCtx));
+    const fromOther = textOf(await tools.bg_task_clear.execute("tc", { id: other.id }, undefined, undefined, foreignCtx));
     expect(fromOther).toContain("belongs to another session");
     expect(inspectMeta(other.id).meta?.dismissedAt).toBeUndefined();
   });
@@ -938,17 +976,17 @@ describe("mutation ownership matches reads (#322)", () => {
     const otherProcess = fixture({ status: "failed", cwd, callbackOrigin: { cwd }, spawnPid: process.pid + 100_000 });
     const tools = register();
     const caller = { cwd, sessionManager: { getSessionId: () => undefined } };
-    const cleared = textOf(await tools.bg_status.execute("tc", { action: "clear" }, undefined, undefined, caller));
+    const cleared = textOf(await tools.bg_task_clear.execute("tc", {}, undefined, undefined, caller));
     expect(cleared).toContain("Dismissed 1 terminal background task.");
     expect(cleared).toContain("2 terminal tasks with unverifiable ownership were not dismissed");
     expect(inspectMeta(own.id).meta?.dismissedAt).toBeTypeOf("number");
     expect(inspectMeta(legacy.id).meta?.dismissedAt).toBeUndefined();
     expect(inspectMeta(otherProcess.id).meta?.dismissedAt).toBeUndefined();
     // Bulk clear never crosses scopes, even with all:true (stricter than reads).
-    const all = textOf(await tools.bg_status.execute("tc", { action: "clear", all: true }, undefined, undefined, caller));
+    const all = textOf(await tools.bg_task_clear.execute("tc", { all: true }, undefined, undefined, caller));
     expect(all).toContain("Dismissed 0 terminal background tasks.");
     expect(inspectMeta(legacy.id).meta?.dismissedAt).toBeUndefined();
-    const unavailable = textOf(await tools.bg_status.execute("tc", { action: "clear" }, undefined, undefined, unavailableCtx));
+    const unavailable = textOf(await tools.bg_task_clear.execute("tc", {}, undefined, undefined, unavailableCtx));
     expect(unavailable).toContain("Dismissed 0 terminal background tasks: the current session identity is unavailable");
   });
 });
@@ -962,11 +1000,10 @@ describe("status cursor delegation (#323)", () => {
     const cursor = first.match(/nextCursor=(p1\.\S+)/)?.[1];
     expect(cursor).toBeTruthy();
     const viaLog = textOf(await tools.bg_task_log.execute("tc", { id: meta.id, cursor, max_bytes: 1024 }, undefined, undefined, ctx));
-    for (const [tool, extra] of [[tools.bg_task_status, {}], [tools.bg_status, { action: "status" }]] as const) {
-      const viaStatus = textOf(await tool.execute("tc", { ...extra, id: meta.id, cursor, max_bytes: 1024 }, undefined, undefined, ctx));
-      expect(viaStatus).not.toContain("reset=");
-      expect(viaStatus).toBe(viaLog);
-    }
+    const tool = tools.bg_task_status;
+    const viaStatus = textOf(await tool.execute("tc", { id: meta.id, cursor, max_bytes: 1024 }, undefined, undefined, ctx));
+    expect(viaStatus).not.toContain("reset=");
+    expect(viaStatus).toBe(viaLog);
     const shownFirst = [...first.matchAll(/raw-line-(\d{3})/g)].map((match) => Number(match[1]));
     const shownNext = [...viaLog.matchAll(/raw-line-(\d{3})/g)].map((match) => Number(match[1]));
     expect(shownNext[0]).toBe(Math.max(...shownFirst) + 1);

@@ -12,7 +12,7 @@ export function createSubagentExtendTool(manager: SubagentManager) {
     name: 'subagent_extend',
     label: 'Subagent Extend',
     description:
-      'Grant more time to an owned running subagent within its total ceiling and extension count. Extend only on evidence of useful progress.',
+      'Extend a running task within its total time ceiling and extension count; require evidence of useful progress.',
     parameters: Type.Object({
       task_id: Type.String(),
       extra_ms: Type.Optional(Type.Integer({ minimum: 1 })),

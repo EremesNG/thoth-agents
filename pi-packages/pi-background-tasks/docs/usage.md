@@ -12,7 +12,7 @@ The launch result includes the task ID, log path, and actual shell label. `detai
 
 ### Resolution and unavailable shells
 
-Tool descriptions and command/shell parameter docs list detected shells at registration; launch revalidates them. Bash uses Pi's `shellPath` setting and public resolver: Windows setting → Program Files Git Bash → PATH bash; POSIX setting → `PI_BETTER_BACKGROUND_TASKS_SHELL` override → `/bin/bash` → PATH bash. Pi's `sh` fallback and WSL System32/Sysnative bash are unavailable, not substitutes. Bash uses Pi's `-c` arguments and MSYS conversion behavior; use `none` to avoid native argv rewriting. Git Bash stdout/stderr are captured in the job logs.
+Each command tool description lists detected shells once at registration; launch revalidates them. Bash uses Pi's `shellPath` setting and public resolver: Windows setting → Program Files Git Bash → PATH bash; POSIX setting → `PI_BETTER_BACKGROUND_TASKS_SHELL` override → `/bin/bash` → PATH bash. Pi's `sh` fallback and WSL System32/Sysnative bash are unavailable, not substitutes. Bash uses Pi's `-c` arguments and MSYS conversion behavior; use `none` to avoid native argv rewriting. Git Bash stdout/stderr are captured in the job logs.
 
 PowerShell prefers pwsh 7+, then built-in Windows PowerShell 5.1 on Windows (POSIX: pwsh only). `PI_BACKGROUND_TASKS_PWSH` replaces pwsh discovery and accepts either supported edition; Windows 5.1 remains the final candidate if the override is unusable. The Windows containment helper also accepts 5.1, so hosts without pwsh can run bash, PowerShell and argv jobs. PowerShell output and parse errors are UTF-8; progress is suppressed. Explicit and native exit codes propagate. **PowerShell 5.1 lacks `&&`/`||`**; use compatible syntax.
 
@@ -33,16 +33,17 @@ Use `bg_task_watch` for repeated checks. Supply a command plus `success_when`, a
 {"shell":"none","argv":["node","health-check.mjs"],"interval_seconds":5,"success_when":{"type":"exit_code","equals":0}}
 ```
 
-Watch and `bg_task` spawn/watch actions use the same shell contract and report the shell used. The first check is reported after at most 15 seconds. Cancelling that tool call stops waiting, not the watch; use `bg_task_stop` to cancel the job. Watch timeout defaults to 900 seconds; zero disables it. A broken check should exit nonzero rather than swallowing errors with `exit 0`. Repeated exit-zero checks with stderr and no matching condition are flagged as possibly blind; intentional stderr can be redirected or `blind_checks:0` used deliberately.
+Spawn and watch use the same shell contract and report the shell used. The first check is reported after at most 15 seconds. Cancelling that tool call stops waiting, not the watch; use `bg_task_stop` to cancel the job. Watch timeout defaults to 900 seconds; zero disables it. A broken check should exit nonzero rather than swallowing errors with `exit 0`. Repeated exit-zero checks with stderr and no matching condition are flagged as possibly blind; intentional stderr can be redirected or `blind_checks:0` used deliberately.
 
 ## Inspect and stop
 
 - `bg_task_list`: compact task rows, status filtering, caller-owned cursors.
 - `bg_task_status`: status, failures, decision, and progress; `verbose:true` returns bounded metadata with environment values omitted.
 - `bg_task_log`: compact trailing evidence; `raw:true` or `lines:0` pages retained log bytes.
-- `bg_task_stop`: cancel an owned task.
-- `bg_task`: action wrapper for spawn/watch/list/status/log/stop/clear.
-- `bg_status`: action wrapper for list/status/log/stop/clear.
+- `bg_task_stop`: cancel an owned task; `history:true` includes failure history in the result.
+- `bg_task_clear`: dismiss owned terminal tasks, optionally filtered by `status`, or one terminal task by `id` (ignoring `status`), without deleting history. Omitted or empty `status` means all terminal statuses; running tasks are never dismissed. `max_bytes` bounds missing-task and ownership diagnostics.
+
+Use `max_bytes` for a UTF-8 output budget and `lines` for log tail rows; the old aliases `maxBytes`/`tail_lines` are not supported.
 
 Default scope is the current session. `all:true` explicitly allows inspection or by-ID mutation of another session's task. Bulk clear dismisses owned terminal tasks only. Completion callbacks are follow-ups tied to the task's originating session; cancellation is quiet.
 

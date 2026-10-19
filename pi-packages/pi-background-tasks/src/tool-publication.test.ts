@@ -8,11 +8,11 @@ import { lifecycleHost } from './test-support/lifecycle-harness.js';
 describe('background tool definition publication', () => {
   it('publishes enum-only shell schemas with bash default and rejects boolean calls', async () => {
     const host = lifecycleHost('shell-enum');
-    for (const name of ['bg_task_spawn', 'bg_task_watch', 'bg_task']) {
+    for (const name of ['bg_task_spawn', 'bg_task_watch']) {
       const shell = host.tools.get(name).parameters.properties.shell;
       expect(shell).toMatchObject({ default: 'bash' });
       expect(shell.anyOf.map((value: { const: string }) => value.const)).toEqual(['bash', 'powershell', 'none']);
-      await expect(host.execute(name, { action: name === 'bg_task' ? 'spawn' : undefined, shell: false, argv: ['node'], success_when: { type: 'exit_code', equals: 0 } })).rejects.toThrow(/shell must be.*bash.*powershell.*none/);
+      await expect(host.execute(name, { shell: false, argv: ['node'], success_when: { type: 'exit_code', equals: 0 } })).rejects.toThrow(/shell must be.*bash.*powershell.*none/);
     }
   });
   it('publishes the full host definitions only on a UI session start', async () => {
@@ -22,7 +22,7 @@ describe('background tool definition publication', () => {
 
     try {
       await host.emit('session_start');
-      expect(host.tools.size).toBe(8);
+      expect(host.tools.size).toBe(7);
       for (const [name, definition] of host.tools)
         expect(getPublishedToolDefinition(name)).toBe(definition);
     } finally {

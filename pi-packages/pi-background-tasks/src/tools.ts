@@ -14,7 +14,6 @@ import {
   type OutputOptions,
 } from "./output.js";
 import { backgroundToolRenderers } from "./render/tools.js";
-import { readOutputControls } from "./shared-log-utils.js";
 import { cancelCallbackBatch } from "./shared-callback-batcher.js";
 import { inspectMeta, listMetasForOrigin, readMeta, writeMeta } from "./registry.js";
 import { awaitFirstWatchCheck, FIRST_WATCH_CHECK_WAIT_MS, resumeRunningTask, spawnTask, startWatchTask, stopTask, type WatchTaskParams } from "./runtime.js";
@@ -27,7 +26,7 @@ export { formatLaunch } from "./output.js";
 
 const JsonPathSchema = Type.String({
   pattern: "^\\$",
-  description: "Root-prefixed JSON path, e.g. $.status, $.terminalFailure, or $.steps[0].status. Bare keys and wildcards are unsupported.",
+  description: "Root-prefixed JSON path, e.g. $.status or $.steps[0].status; no bare keys or wildcards.",
 });
 
 const ConditionSchema = Type.Union([
@@ -70,45 +69,27 @@ const CommandFields = {
   ...IntentFields,
 };
 
-const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Flag the watch as possibly blind after this many checks in a row exit 0, write stderr, and match neither success_when nor failure_when: one incident that needs action, with the latest stderr line. The watch keeps running; a check with no stderr or a matched condition recovers it. Default 3; 0 turns it off." }));
+const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Consecutive exit-zero checks with stderr and no matched condition before flagging an actionable possibly-blind incident with the latest stderr line. Watch continues; no stderr or a matched condition recovers it. Default 3; 0 turns it off. Redirect expected stderr instead if appropriate." }));
 
-/**
- * How to write a watch check (#359): a check that swallows its own errors reports "pending"
- * forever. Shared by bg_task_watch and the bg_task wrapper.
- */
+// A check that swallows its own errors can report pending forever.
 const WATCH_CHECK_GUIDANCE = "Waits up to 15s for the first check and returns its exit code with stdout and stderr tails; if it is still running, says so. "
   + "Write the check so a broken check is visible: do not end it with `exit 0` or `|| true`, because a check that exits non-zero is recorded and escalates. "
-  + "Map an unknown or unparseable state to failure (exit non-zero), not to pending. Prefer structured output, e.g. `--format=json | jq -er '.status'`, over fragile format strings. "
-  + "A check that exits 0 but writes stderr without matching a condition for blind_checks (default 3) checks in a row is flagged as needing action; if that stderr is expected, redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0.";
-
-const WatchSchema = Type.Object({
-  ...CommandFields,
-  interval_seconds: Type.Optional(Type.Number({ description: "Polling interval in seconds. Default 30." })),
-  success_when: ConditionSchema,
-  failure_when: Type.Optional(ConditionSchema),
-  blind_checks: BlindChecksField,
-});
+  + "Map an unknown or unparseable state to failure (exit non-zero), not to pending. Prefer structured output, e.g. `--format=json | jq -er '.status'`, over fragile format strings.";
 
 const CursorFields = {
-  cursor: Type.Optional(Type.String({ description: "Caller-owned continuation cursor from a previous page. Replay returns the same page or a no-change/failure-only notice; nextCursor continues. Independent callers do not consume each other. Cursors are bound to the selected session scope." })),
-  max_bytes: Type.Optional(Type.Number({ description: "Optional UTF-8 byte budget. Defaults: status/log/list 1 KiB, raw evidence 16 KiB. Larger explicit pages are allowed up to the shared hard cap (status 2 KiB, log/list 4 KiB, raw 64 KiB). Hard caps are OUTPUT_BUDGET_MAX_BYTES." })),
-  maxBytes: Type.Optional(Type.Number({ description: "Deprecated alias for max_bytes. max_bytes wins when both are given." })),
-  all: Type.Optional(Type.Boolean({ description: "Inspect, list, stop, or clear-by-id tasks across every session. Default false is current-session only. Unknown ownership is reported as a gap, never as missing or healthy; stop and clear refuse tasks outside the current session." })),
+  cursor: Type.Optional(Type.String({ description: "Caller-owned, session-scoped cursor: replay the same page or change notice; nextCursor continues. Callers are independent." })),
+  max_bytes: Type.Optional(Type.Number({ description: "UTF-8 page budget: default 1 KiB (raw 16 KiB); capped at status 2 KiB, log/list 4 KiB, raw 64 KiB." })),
+  all: Type.Optional(Type.Boolean({ description: "Include other sessions. Default false; unverifiable ownership is reported as a gap." })),
 };
-
+const VerboseField = Type.Optional(Type.Boolean({ description: "Debug raw metadata, environment values omitted; paged with cursor (16 KiB default, 64 KiB cap). Default false." }));
 const IdParams = Type.Object({
   id: Type.String({ description: "Background task id." }),
-  verbose: Type.Optional(Type.Boolean({ description: "Return raw metadata JSON with environment values omitted, bounded like raw evidence (16 KiB default, max_bytes up to 64 KiB, paged with cursor when larger). Default false returns the compact model-facing summary. Use true only for debugging or explicit recovery." })),
+  verbose: VerboseField,
   ...CursorFields,
 });
-const HistoryField = {
-  history: Type.Optional(Type.Boolean({ description: "If true, return an incident page that also lists failure history: expected failures and recovered or superseded incidents. Default output lists only failures that need action and counts the rest." })),
-};
 const StatusParams = Type.Object({
-  id: Type.String({ description: "Background task id." }),
-  verbose: Type.Optional(Type.Boolean({ description: "Return raw metadata JSON with environment values omitted, bounded like raw evidence (16 KiB default, max_bytes up to 64 KiB, paged with cursor when larger). Default false returns the compact model-facing summary. Use true only for debugging or explicit recovery." })),
-  ...HistoryField,
-  ...CursorFields,
+  ...IdParams.properties,
+  history: Type.Optional(Type.Boolean({ description: "Include expected, recovered and superseded failure history; default shows only actionable incidents and counts the rest." })),
 });
 const ListParams = Type.Object({
   status: Type.Optional(Type.Array(Type.String({ description: "Statuses to include." }))),
@@ -117,49 +98,15 @@ const ListParams = Type.Object({
 });
 const LogParams = Type.Object({
   id: Type.String({ description: "Background task id." }),
-  lines: Type.Optional(Type.Number({ description: "Number of trailing display rows. Default 10 for compact model ingestion. Set 0 to page retained raw bytes from the oldest retained offset." })),
-  tail_lines: Type.Optional(Type.Number({ description: "Deprecated alias for lines. lines wins when both are given." })),
-  raw: Type.Optional(Type.Boolean({ description: "Page retained raw log bytes (16 KiB default, 64 KiB hard cap) instead of the compact excerpt. Capture and retention loss are disclosed; this is not a full-history archive." })),
+  lines: Type.Optional(Type.Number({ description: "Trailing display rows; default 10. Set 0 to page raw bytes from the oldest retained offset." })),
+  raw: Type.Optional(Type.Boolean({ description: "Page retained raw bytes instead of a compact tail." })),
   ...CursorFields,
 });
-
-const ActionSchema = Type.Object({
-  action: Type.Union([
-    Type.Literal("spawn"),
-    Type.Literal("watch"),
-    Type.Literal("list"),
-    Type.Literal("status"),
-    Type.Literal("log"),
-    Type.Literal("stop"),
-    Type.Literal("clear"),
-  ]),
-  id: Type.Optional(Type.String()),
-  status: Type.Optional(Type.Array(Type.String())),
-  limit: Type.Optional(Type.Number()),
-  lines: Type.Optional(Type.Number({ description: "action:log trailing display rows (default 10; 0 pages raw bytes)." })),
-  tail_lines: Type.Optional(Type.Number({ description: "Deprecated alias for lines." })),
-  verbose: Type.Optional(Type.Boolean()),
-  ...CommandFields,
-  interval_seconds: Type.Optional(Type.Number()),
-  success_when: Type.Optional(ConditionSchema),
-  failure_when: Type.Optional(ConditionSchema),
-  blind_checks: BlindChecksField,
-  raw: Type.Optional(Type.Boolean()),
-  ...HistoryField,
-  ...CursorFields,
-});
-
-const StatusActionParams = Type.Object({
-  action: Type.Union([Type.Literal("list"), Type.Literal("status"), Type.Literal("log"), Type.Literal("stop"), Type.Literal("clear")]),
-  id: Type.Optional(Type.String()),
-  status: Type.Optional(Type.Array(Type.String())),
-  limit: Type.Optional(Type.Number()),
-  lines: Type.Optional(Type.Number({ description: "action:log trailing display rows (default 10; 0 pages raw bytes)." })),
-  tail_lines: Type.Optional(Type.Number({ description: "Deprecated alias for lines." })),
-  verbose: Type.Optional(Type.Boolean()),
-  raw: Type.Optional(Type.Boolean()),
-  ...HistoryField,
-  ...CursorFields,
+const ClearParams = Type.Object({
+  id: Type.Optional(Type.String({ description: "Terminal task to dismiss; omit to dismiss all owned terminal tasks." })),
+  status: Type.Optional(Type.Array(Type.String(), { description: "Filter bulk clear by status; omitted or empty means all terminal statuses. Ignored with id." })),
+  max_bytes: Type.Optional(Type.Number({ description: "UTF-8 budget for missing-task or ownership diagnostics; default 1 KiB, cap 2 KiB." })),
+  all: Type.Optional(Type.Boolean({ description: "Allow another session's task by id. Bulk clear stays current-session only." })),
 });
 
 const BACKGROUND_ORCHESTRATION_GUIDELINES = [
@@ -174,12 +121,17 @@ export function registerTools(pi: ExtensionAPI): void {
   const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Windows PowerShell 5.1 lacks &&/||; use PowerShell 5.1-compatible syntax.' : ''} Availability is revalidated at launch.`;
   const fields = {
     ...CommandFields,
-    command: Type.Optional(Type.String({ description: `Shell command to run. ${shellGuidance} Required unless shell:"none" with argv is used.` })),
-    shell: Type.Optional(Type.Union([Type.Literal('bash'), Type.Literal('powershell'), Type.Literal('none')], { default: 'bash', description: shellGuidance })),
+    command: Type.Optional(Type.String({ description: 'Command in the declared shell syntax; required unless shell:"none" with argv.' })),
+    shell: Type.Optional(Type.Union([Type.Literal('bash'), Type.Literal('powershell'), Type.Literal('none')], { default: 'bash', description: 'Command shell; use none for direct argv execution.' })),
   };
   const SpawnParams = Type.Object(fields);
-  const WatchParams = Type.Object({ ...WatchSchema.properties, ...fields });
-  const ActionParams = Type.Object({ ...ActionSchema.properties, ...fields });
+  const WatchParams = Type.Object({
+    ...fields,
+    interval_seconds: Type.Optional(Type.Number({ description: "Polling interval in seconds. Default 30." })),
+    success_when: ConditionSchema,
+    failure_when: Type.Optional(ConditionSchema),
+    blind_checks: BlindChecksField,
+  });
   let activeSession: BackgroundTaskCallbackOrigin | undefined;
   const getActiveSession = () => activeSession;
 
@@ -205,7 +157,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_spawn",
     ...backgroundToolRenderers("bg_task_spawn"),
     label: "BG Spawn",
-    description: `Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground. ${shellGuidance}`,
+    description: `Start a long-running background process and return immediately with its task id. ${shellGuidance}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: SpawnParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -220,8 +172,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_watch",
     ...backgroundToolRenderers("bg_task_watch"),
     label: "BG Watch",
-    description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} ${shellGuidance} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
-    promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
+    description: `Poll a command in the background until success_when, failure_when, or timeout matches. ${WATCH_CHECK_GUIDANCE} ${shellGuidance}`,
     parameters: WatchParams,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -235,7 +186,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_list",
     ...backgroundToolRenderers("bg_task_list"),
     label: "BG List",
-    description: "List durable background tasks as compact rows under a 1 KiB UTF-8 budget (10 entries default), newest first. Current-session only unless all:true. Nonblocking. Pass the returned nextCursor as cursor to page further (every task is reachable), or statusCursor to get a small no-change response or failure-only updates; a higher limit/max_bytes gives a larger explicit page.",
+    description: "List durable tasks newest first as compact rows. Nonblocking. Use nextCursor to reach every task, or statusCursor for no-change/failure-only updates; limit/max_bytes requests a larger page.",
     parameters: ListParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -247,7 +198,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_status",
     ...backgroundToolRenderers("bg_task_status"),
     label: "BG Status",
-    description: "Inspect one background task. Default output is a compact model-facing summary (1 KiB UTF-8) with matched condition, exit/signal, stop error, and failure counts before progress. Current-session only unless all:true; unknown ownership is a gap, not missing or healthy. Pass verbose:true only when full raw metadata is explicitly needed. Environment values are omitted. A raw log nextCursor passed as cursor continues the raw log page; an incidentCursor pages incidents that need action; history:true lists failure history too. After a terminal callback, call this first and call bg_task_log only if the summary is insufficient.",
+    description: "Inspect a task: compact model-facing summary with matched condition, exit/signal, stop error and failure counts before progress. Use verbose:true only for explicit metadata recovery. Accepts raw log nextCursor or incidentCursor as cursor. After a terminal callback, call this first; use bg_task_log only if insufficient.",
     parameters: StatusParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -259,7 +210,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_log",
     ...backgroundToolRenderers("bg_task_log"),
     label: "BG Log",
-    description: "Read a background task log. Default output is a compact 10-line terminal-aware tail for model ingestion (1 KiB UTF-8). Current-session only unless all:true. Pass lines for a bounded tail (tail_lines is a deprecated alias); lines:0 pages the retained raw log from the oldest retained offset (16 KiB pages, 64 KiB hard cap) with a caller-owned cursor. Capture and retention loss are disclosed; this is not a full-history archive. Nonblocking.",
+    description: "Read a compact 10-line terminal-aware tail. Nonblocking; lines:0 pages the retained raw log. Capture and retention loss are disclosed, never recovered as full history.",
     parameters: LogParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = ctx ? getCallbackOrigin(ctx) : activeSession;
@@ -272,7 +223,7 @@ export function registerTools(pi: ExtensionAPI): void {
     ...backgroundToolRenderers("bg_task_stop"),
     label: "BG Stop",
     description: "Cancel a watcher or terminate a background task. Only a task owned by the current session stops; a foreign-session or unverifiable task is refused unless all:true.",
-    parameters: IdParams,
+    parameters: StatusParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       const result = await formatStop(pi, params.id, ctx, getActiveSession, statusOptions(params, activeSession));
@@ -282,27 +233,16 @@ export function registerTools(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
-    name: "bg_task",
-    ...backgroundToolRenderers("bg_task"),
-    label: "BG Task",
-    description: shellGuidance + " Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
-    promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
-    parameters: ActionParams,
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      activeSession = getCallbackOrigin(ctx);
-      return actionText(pi, params, ctx, activeSession, getActiveSession, signal);
-    },
-  });
-
-  pi.registerTool({
-    name: "bg_status",
-    ...backgroundToolRenderers("bg_status"),
-    label: "BG Status",
-    description: "Action wrapper for inspecting background tasks: list, status, log, stop, or clear. Nonblocking. Status is compact by default; log returns a compact tail by default. Use verbose:true or lines:0 only for explicit full-data recovery. Shares the same output assembler as the standalone tools. Current-session default; pass all:true to override. Stop and clear change only current-session tasks (clear with id and all:true for another session's task).",
-    parameters: StatusActionParams,
+    name: "bg_task_clear",
+    ...backgroundToolRenderers("bg_task_clear"),
+    label: "BG Clear",
+    description: "Dismiss terminal tasks without deleting their history. Running tasks must be stopped first.",
+    parameters: ClearParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
-      return actionText(pi, params, ctx, activeSession, getActiveSession);
+      const result = formatClear(params, statusOptions(params, activeSession));
+      getBackgroundTasksNavigator(pi).refresh(ctx);
+      return text(result);
     },
   });
 }
@@ -311,9 +251,9 @@ export function text(textValue: string, details?: unknown) {
   return { content: [{ type: "text" as const, text: textValue }], details };
 }
 
-/** Requested byte budget: canonical `max_bytes`, else the deprecated `maxBytes` alias (#321). */
+/** Requested canonical UTF-8 byte budget. */
 function requestedMaxBytes(params: Record<string, unknown>): number | undefined {
-  const value = readOutputControls(params).maxBytes;
+  const value = params.max_bytes;
   return typeof value === "number" ? value : undefined;
 }
 
@@ -329,8 +269,7 @@ function statusOptions(params: Record<string, unknown>, origin?: BackgroundTaskC
 }
 
 function logOptions(params: Record<string, unknown>, origin?: BackgroundTaskCallbackOrigin): OutputOptions {
-  // Canonical `lines`, else the deprecated `tail_lines` alias (#321).
-  const lines = readOutputControls(params).lines;
+  const lines = params.lines;
   return {
     tailLines: typeof lines === "number" ? lines : undefined,
     raw: params.raw === true,
@@ -350,57 +289,6 @@ function listOptions(params: Record<string, unknown>, origin?: BackgroundTaskCal
     all: params.all === true,
     ...scopeOptions(origin),
   };
-}
-
-async function actionText(
-  pi: ExtensionAPI,
-  params: Record<string, unknown>,
-  ctx: ExtensionContext,
-  callbackOrigin: BackgroundTaskCallbackOrigin,
-  getActiveSession: () => BackgroundTaskCallbackOrigin | undefined,
-  signal?: AbortSignal,
-) {
-  if (params.action === 'spawn') {
-    const launched = launchResult(spawnTask(pi, params, ctx.cwd, callbackOrigin, getActiveSession));
-    getBackgroundTasksNavigator(pi).refresh(ctx);
-    return launched;
-  }
-  if (params.action === 'watch') {
-    if (!params.success_when) return text('Invalid parameters: watch requires success_when.');
-    const launched = await launchWatchResult(pi, params as unknown as WatchTaskParams, ctx.cwd, callbackOrigin, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal);
-    getBackgroundTasksNavigator(pi).refresh(ctx);
-    return launched;
-  }
-  if (params.action === "log" && params.id) {
-    return logText(String(params.id), logOptions(params, callbackOrigin));
-  }
-  return text(await runAction(pi, params, ctx, callbackOrigin, getActiveSession));
-}
-
-async function runAction(
-  pi: ExtensionAPI,
-  params: Record<string, unknown>,
-  ctx: ExtensionContext,
-  callbackOrigin: BackgroundTaskCallbackOrigin,
-  getActiveSession: () => BackgroundTaskCallbackOrigin | undefined,
-): Promise<string> {
-  switch (params.action) {
-    case "list":
-      return formatList(listOptions(params, callbackOrigin));
-    case "status":
-      if (!params.id) return "Invalid parameters: status requires id.";
-      return formatStatus(inspectMeta(String(params.id)), statusOptions(params, callbackOrigin));
-    case "log":
-      if (!params.id) return "Invalid parameters: log requires id.";
-      return formatLog(String(params.id), logOptions(params, callbackOrigin));
-    case "stop":
-      if (!params.id) return "Invalid parameters: stop requires id.";
-      return withNavigatorRefresh(pi, ctx, await formatStop(pi, String(params.id), ctx, getActiveSession, statusOptions(params, callbackOrigin)));
-    case "clear":
-      return withNavigatorRefresh(pi, ctx, formatClear(params, statusOptions(params, callbackOrigin)));
-    default:
-      return `Unknown action: ${String(params.action)}`;
-  }
 }
 
 function launchResult(meta: BackgroundTaskMeta, firstCheck?: Parameters<typeof formatLaunch>[1]) {
@@ -430,11 +318,6 @@ async function launchWatchResult(
   const latest = readMeta(meta.id) ?? meta;
   if (outcome && !("pending" in outcome && isTerminalStatus(latest.status))) return launchResult(latest, outcome);
   return launchResult(latest);
-}
-
-function withNavigatorRefresh(pi: ExtensionAPI, ctx: ExtensionContext, result: string): string {
-  getBackgroundTasksNavigator(pi).refresh(ctx);
-  return result;
 }
 
 /** Origins whose session identity could not be read (the host threw). */

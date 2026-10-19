@@ -11,26 +11,28 @@ function register() {
   return tools;
 }
 describe.each(['win32', 'linux'] as const)('registration-time shell disclosure on %s', platform => {
-  it.each(['Core', 'Desktop', 'missing'] as const)('discloses bash path and %s PowerShell in all command tools and parameter docs', edition => {
+  it.each(['Core', 'Desktop', 'missing'] as const)('discloses bash path and %s PowerShell once in each command tool description', edition => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
     vi.mocked(SettingsManager.create).mockReturnValue({ getShellPath: () => undefined } as SettingsManager);
     vi.mocked(getShellConfig).mockReturnValue({ shell: 'D:/Git/bin/bash.exe', args: ['-c'] });
     vi.stubEnv('PI_BACKGROUND_TASKS_PWSH', 'test-powershell.exe');
     vi.mocked(spawnSync).mockReturnValue({ status: edition === 'missing' ? 1 : 0, stdout: JSON.stringify({ edition, major: edition === 'Core' ? 7 : 5, minor: 1, version: edition === 'Core' ? '7.5.2' : '5.1.19041' }) } as ReturnType<typeof spawnSync>);
     const tools = register();
-    for (const name of ['bg_task_spawn', 'bg_task_watch', 'bg_task']) {
+    for (const name of ['bg_task_spawn', 'bg_task_watch']) {
       const tool = tools.get(name);
-      for (const text of [tool.description, tool.parameters.properties.command.description, tool.parameters.properties.shell.description]) {
-        expect(text).toContain('D:/Git/bin/bash.exe');
-        // Desktop 5.1 is Windows-only; a successful probe must not advertise it on POSIX.
-        if (edition === 'missing' || (edition === 'Desktop' && platform === 'linux')) {
-          expect(text).toContain('powershell unavailable');
-          expect(text).not.toContain('PowerShell Desktop 5.1.19041');
-          expect(text).not.toContain('5.1 lacks &&/||');
-        } else {
-          expect(text).toContain(edition === 'Core' ? 'PowerShell Core 7.5.2' : 'PowerShell Desktop 5.1.19041');
-          if (edition === 'Desktop') expect(text).toContain('5.1 lacks &&/||');
-        }
+      expect(JSON.stringify(tool).match(/Detected shells at registration:/g)).toHaveLength(1);
+      expect(tool.parameters.properties.command.description).not.toContain('D:/Git/bin/bash.exe');
+      expect(tool.parameters.properties.shell.description).not.toContain('Detected shells');
+      const text = tool.description;
+      expect(text).toContain('D:/Git/bin/bash.exe');
+      // Desktop 5.1 is Windows-only; a successful probe must not advertise it on POSIX.
+      if (edition === 'missing' || (edition === 'Desktop' && platform === 'linux')) {
+        expect(text).toContain('powershell unavailable');
+        expect(text).not.toContain('PowerShell Desktop 5.1.19041');
+        expect(text).not.toContain('5.1 lacks &&/||');
+      } else {
+        expect(text).toContain(edition === 'Core' ? 'PowerShell Core 7.5.2' : 'PowerShell Desktop 5.1.19041');
+        if (edition === 'Desktop') expect(text).toContain('5.1 lacks &&/||');
       }
     }
   });

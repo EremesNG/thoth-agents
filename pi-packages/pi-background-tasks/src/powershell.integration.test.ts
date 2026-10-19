@@ -5,15 +5,15 @@ const hosts:ReturnType<typeof lifecycleHost>[]=[];
 afterEach(async()=>{vi.unstubAllEnvs();for(const host of hosts.splice(0))await host.emit('session_shutdown','quit');});
 const psQuote=(value:string)=>`'${value.replaceAll("'","''")}'`;
 describe.skipIf(process.platform!=='win32')('PowerShell command jobs and watches',()=>{
-  it('spawn/watch/action results report the actual launch shell, including changed 5.1 detection and argv executable', async () => {
+  it('spawn/watch results report the actual launch shell, including changed 5.1 detection and argv executable', async () => {
     const host = lifecycleHost('shell-results'); hosts.push(host);
     await host.emit('session_start');
     // Registration saw normal pwsh; force the actual launch to Windows PowerShell.
     vi.stubEnv('PI_BACKGROUND_TASKS_PWSH', 'Z:/missing/pwsh.exe');
     for (const shell of ['bash', 'powershell', 'none'] as const) {
-      for (const [name, action] of [['bg_task_spawn', undefined], ['bg_task_watch', undefined], ['bg_task', 'spawn'], ['bg_task', 'watch']] as const) {
+      for (const name of ['bg_task_spawn', 'bg_task_watch'] as const) {
         const result = await host.tools.get(name).execute('shell-result', {
-          action, shell, callback: false,
+          shell, callback: false,
           ...(shell === 'none' ? { argv: [process.execPath, '-e', "console.log('ready')"] } : { command: shell === 'bash' ? "printf 'ready\\n'" : "[Console]::WriteLine('ready')" }),
           success_when: { type: 'stdout_contains', value: 'ready' },
         }, new AbortController().signal, undefined, host.ctx);

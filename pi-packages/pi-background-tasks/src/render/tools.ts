@@ -103,7 +103,7 @@ export function backgroundToolRenderers(toolName: string) {
   };
 }
 
-/** Call summary: action, id, name or command on one line. */
+/** Call summary: id, name or command on one line. */
 export function summarizeArgs(
   args: unknown,
   options: { ui?: boolean } = {},
@@ -113,7 +113,6 @@ export function summarizeArgs(
     typeof a.command === 'string' ? a.command.replace(/\s+/g, ' ').trim() : '';
   const ellipsis = options.ui ? resolveIcon('ellipsis', '…') : '…';
   const parts = [
-    a.action,
     a.id,
     a.name,
     command.length > SUMMARY_COMMAND_CELLS

@@ -191,10 +191,10 @@ describe("#325 background task structured intent", () => {
     expect(activeFailures(state(mine.id))).toHaveLength(0);
   });
 
-  it("bg_task_spawn, bg_task_watch, and the bg_task wrapper expose the intent fields with provider-safe schemas", () => {
+  it("bg_task_spawn and bg_task_watch expose the intent fields with provider-safe schemas", () => {
     const tools: Record<string, any> = {};
     registerTools({ on() {}, registerTool(tool: any) { tools[tool.name] = tool; } } as any);
-    for (const name of ["bg_task_spawn", "bg_task_watch", "bg_task"]) {
+    for (const name of ["bg_task_spawn", "bg_task_watch"]) {
       const properties = tools[name].parameters.properties;
       // Each field admits an explicit null ("not declared"), which models routinely send.
       expect(properties.operation_id.anyOf).toEqual([{ type: "null" }, { type: "string" }]);

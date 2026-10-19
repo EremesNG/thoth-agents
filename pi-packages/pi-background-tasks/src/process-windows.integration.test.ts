@@ -35,8 +35,8 @@ describe.skipIf(process.platform !== 'win32')('Windows declared shell integratio
     host.ctx.cwd = dir;
     const launched = vi.mocked(spawn);
     try {
-      for (const name of ['bg_task_spawn', 'bg_task_watch', 'bg_task']) {
-        await expect(host.execute(name, { action: 'spawn', command: 'echo unreachable', success_when: { type: 'exit_code', equals: 0 } })).rejects.toThrow(/Requested shell "bash".*Available shells: PowerShell Desktop 5.1.*shell:"powershell"/);
+      for (const name of ['bg_task_spawn', 'bg_task_watch']) {
+        await expect(host.execute(name, { command: 'echo unreachable', success_when: { type: 'exit_code', equals: 0 } })).rejects.toThrow(/Requested shell "bash".*Available shells: PowerShell Desktop 5.1.*shell:"powershell"/);
       }
       expect(launched).not.toHaveBeenCalled();
     } finally { await host.emit('session_shutdown', 'quit'); rmSync(dir, { recursive: true, force: true }); }

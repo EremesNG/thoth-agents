@@ -88,7 +88,7 @@ describe("background task log folded display", () => {
     } as any);
 
     const ctx = { cwd: "/tmp", sessionManager: { getSessionId: () => "s" } };
-    const result = await tools.bg_task_log.execute("tc", { id, tail_lines: 18 }, undefined, undefined, ctx);
+    const result = await tools.bg_task_log.execute("tc", { id, lines: 18 }, undefined, undefined, ctx);
     const full = textOf(result);
     expect(full).toContain("log-line-18");
     expect(result.details?.kind).toBe("background-task-log-display");
@@ -101,23 +101,6 @@ describe("background task log folded display", () => {
 
     const expanded = plain(tools.bg_task_log.renderResult(result, { expanded: true }, theme).render(80));
     expect(expanded).toContain("log-line-18");
-  });
-
-  it("folds wrapper action log results when the requested tail exceeds the compact preview", async () => {
-    const id = `bg_log_wrapper_${Date.now()}`;
-    makeCompletedTask(id, Array.from({ length: 12 }, (_, index) => `wrapper-line-${index + 1}`));
-    const tools: Record<string, any> = {};
-    registerTools({
-      on() {},
-      registerTool(tool: any) { tools[tool.name] = tool; },
-    } as any);
-    const ctx = { cwd: "/tmp", sessionManager: { getSessionId: () => "s" } };
-
-    const result = await tools.bg_task.execute("tc", { action: "log", id, tail_lines: 12 }, undefined, undefined, ctx);
-    expect(textOf(result)).toContain("wrapper-line-12");
-    expect(result.details?.kind).toBe("background-task-log-display");
-    const compact = plain(tools.bg_task.renderResult(result, { expanded: false }, theme).render(80));
-    expect(compact).not.toContain("wrapper-line-12");
   });
 
   it("defaults model-facing log reads to a 10-line tail", async () => {
@@ -154,7 +137,7 @@ describe("background task log folded display", () => {
     expect(defaultText).toContain("tail-line-16");
     expect(defaultText).toContain("tail-line-25");
 
-    const fullText = textOf(await tools.bg_task_log.execute("tc", { id, tail_lines: 0 }, undefined, undefined, ctx));
+    const fullText = textOf(await tools.bg_task_log.execute("tc", { id, lines: 0 }, undefined, undefined, ctx));
     expect(fullText).toContain("tail-line-01");
     expect(fullText).toContain("tail-line-25");
   });

@@ -35,8 +35,7 @@ describe("extension e2e", () => {
     const harness = createHarness();
 
     expect(Array.from(harness.tools.keys()).sort()).toEqual([
-      "bg_status",
-      "bg_task",
+      "bg_task_clear",
       "bg_task_list",
       "bg_task_log",
       "bg_task_spawn",
@@ -53,34 +52,31 @@ describe("extension e2e", () => {
     expect(harness.tools.get("bg_task_status")?.description).toContain("verbose:true only");
     expect(harness.tools.get("bg_task_log")?.description).toContain("compact 10-line terminal-aware tail");
     expect(harness.tools.get("bg_task_log")?.description).toContain("lines:0 pages the retained raw log");
-    expect(harness.tools.get("bg_task")?.description).toContain("action:status");
-    expect(harness.tools.get("bg_status")?.description).toContain("explicit full-data recovery");
+    expect(harness.tools.get("bg_task_clear")?.description).toContain("without deleting their history");
   });
 
   it("coordinates long-running work with the parent plan", () => {
     const harness = createHarness();
 
-    for (const name of ["bg_task_spawn", "bg_task_watch", "bg_task"]) {
-      const guidelines = harness.tools.get(name)?.promptGuidelines ?? [];
-      expect(guidelines.some((line) => line.includes("genuinely long-running"))).toBe(true);
-      expect(guidelines.some((line) => line.includes("coordinator ledger"))).toBe(true);
-      expect(guidelines.some((line) => line.includes("continue unblocked foreground work without polling"))).toBe(true);
-      expect(guidelines.some((line) => line.includes("terminal, inspected, and integrated"))).toBe(true);
-    }
+    const guidelines = harness.tools.get("bg_task_spawn")?.promptGuidelines ?? [];
+    expect(guidelines.some((line) => line.includes("genuinely long-running"))).toBe(true);
+    expect(guidelines.some((line) => line.includes("coordinator ledger"))).toBe(true);
+    expect(guidelines.some((line) => line.includes("continue unblocked foreground work without polling"))).toBe(true);
+    expect(guidelines.some((line) => line.includes("terminal, inspected, and integrated"))).toBe(true);
   });
 
-  it("#359 tells the model how to write a watch check and exposes blind_checks on both watch entry points", async () => {
+  it("#359 documents watch checks and blind detection only on bg_task_watch", async () => {
     const harness = createHarness();
-    for (const name of ["bg_task_watch", "bg_task"]) {
-      const tool = harness.tools.get(name);
-      expect(tool?.description).toContain("do not end it with `exit 0` or `|| true`");
-      expect(tool?.description).toContain("Map an unknown or unparseable state to failure");
-      expect(tool?.description).toContain("jq -er");
-      expect(tool?.parameters?.properties?.blind_checks?.description).toContain("0 turns it off");
-    }
-    // The wrapper's watch action goes through the same first-check wait as bg_task_watch.
-    const launch = await harness.execute("bg_task", {
-      action: "watch",
+    const tool = harness.tools.get("bg_task_watch");
+    expect(tool?.description).toContain("do not end it with `exit 0` or `|| true`");
+    expect(tool?.description).toContain("Map an unknown or unparseable state to failure");
+    expect(tool?.description).toContain("jq -er");
+    expect(tool?.parameters?.properties?.blind_checks?.description).toContain("0 turns it off");
+    const definitions = JSON.stringify([...harness.tools.values()]);
+    expect(definitions.match(/do not end it with/g)).toHaveLength(1);
+    expect(definitions.match(/possibly-blind incident/g)).toHaveLength(1);
+    expect([...harness.tools.values()].filter(tool => tool.promptGuidelines?.length).map(tool => tool.name)).toEqual(["bg_task_spawn"]);
+    const launch = await harness.execute("bg_task_watch", {
       command: "echo STILL_UNKNOWN; echo 'ERROR: broken format' >&2; exit 0",
       interval_seconds: 60,
       timeout_seconds: 5,
@@ -89,7 +85,7 @@ describe("extension e2e", () => {
     });
     expect(launch).toContain("First check: exit 0");
     expect(launch).toContain("ERROR: broken format");
-    await harness.execute("bg_task", { action: "stop", id: extractTaskId(launch) });
+    await harness.execute("bg_task_stop", { id: extractTaskId(launch) });
   });
 
   it("starts a watcher through bg_task_watch and inspects it through status/log tools", async () => {
@@ -117,7 +113,7 @@ describe("extension e2e", () => {
     const verboseStatusText = await harness.execute("bg_task_status", { id, verbose: true });
     expect(JSON.parse(verboseStatusText)).toMatchObject({ id, kind: "command_watch", status: "succeeded" });
 
-    const logText = await harness.execute("bg_task_log", { id, tail_lines: 20 });
+    const logText = await harness.execute("bg_task_log", { id, lines: 20 });
     expect(logText).toContain('"source":"e2e"');
   });
 
@@ -189,34 +185,20 @@ describe("extension e2e", () => {
     }
   });
 
-  it("supports the action-wrapper tools for watch, log, and stop", async () => {
+  it("stops a spawned process and dismisses it through bg_task_clear", async () => {
     const harness = createHarness();
-
-    const launch = await harness.execute("bg_task", {
-      action: "watch",
-      name: "e2e wrapper watch",
-      command: "node -e 'console.log(\"ready from wrapper\")'",
-      interval_seconds: 1,
-      timeout_seconds: 5,
-      callback: false,
-      success_when: { type: "stdout_contains", value: "ready from wrapper" },
-    });
-    const watchId = extractTaskId(launch);
-    await waitForMeta(watchId, (meta) => meta?.status === "succeeded");
-
-    const logText = await harness.execute("bg_status", { action: "log", id: watchId, tail_lines: 20 });
-    expect(logText).toContain("ready from wrapper");
-
-    const spawn = await harness.execute("bg_task", {
-      action: "spawn",
-      name: "e2e wrapper process",
+    const spawn = await harness.execute("bg_task_spawn", {
+      name: "e2e stoppable process",
       command: "node -e 'setTimeout(() => {}, 10000)'",
       callback: false,
     });
-    const processId = extractTaskId(spawn);
-
-    const stopped = await harness.execute("bg_status", { action: "stop", id: processId });
-    expect(stopped).toContain(`Background task ${processId} is cancelled.`);
+    const id = extractTaskId(spawn);
+    const stopped = await harness.execute("bg_task_stop", { id });
+    expect(stopped).toContain(`Background task ${id} is cancelled.`);
+    const cleared = await harness.execute("bg_task_clear", { id });
+    expect(cleared).toContain(`Dismissed terminal background task ${id}`);
+    expect(readMeta(id)?.dismissedAt).toBeTypeOf("number");
+    expect(await harness.execute("bg_task_clear", { id })).toContain("was already dismissed");
   });
 
   it("queues exactly one terminal callback for callback-enabled tasks", async () => {
@@ -363,7 +345,7 @@ describe("extension e2e", () => {
       await waitForMeta(failedId, (meta) => meta?.status === "failed");
       await waitForMeta(otherSessionId, (meta) => meta?.status === "failed");
 
-      const cleared = await harness.execute("bg_status", { action: "clear" });
+      const cleared = await harness.execute("bg_task_clear", {});
 
       expect(cleared).toContain("Dismissed 1 terminal background task");
       expect(readMeta(failedId)?.dismissedAt).toBeTypeOf("number");

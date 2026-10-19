@@ -170,9 +170,11 @@
   subject to their respective `enable_ask_orchestrator` and
   `enable_notify_orchestrator` flags and `disallowed_tools`; they are not checkboxes. The panel does not read runtime
   configuration or edit denials.
-  Generated defaults are explicit: `read, bash, grep, find, ls` for Oracle;
-  Explorer adds `codemode`; Designer and Worker add `edit, write` before the
-  search tools; Librarian adds its research tools and `codemode`. All omit `ask_user_question`, `todo` and
+  Generated defaults are explicit:
+  `read, bash, grep, find, ls, mem_recall, mem_get` for Oracle; Explorer adds
+  `codemode`; Designer and Worker add `edit, write` before the search tools;
+  Librarian adds its research tools and `codemode`. The only default memory
+  tools are `mem_recall` and `mem_get`. All omit `ask_user_question`, `todo` and
   third-party delegation tools. Every enabled child receives `ask_orchestrator`
   regardless of selection form unless denied. Only Oracle's generated definition
   declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment

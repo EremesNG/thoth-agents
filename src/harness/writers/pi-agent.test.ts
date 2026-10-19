@@ -7,7 +7,7 @@ import {
 } from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('adds codemode only to research specialists and keeps ask_orchestrator injected', () => {
+  test('includes minimal memory reads for all specialists and codemode only for research', () => {
     const roles = [
       'explorer',
       'librarian',
@@ -18,7 +18,19 @@ describe('Pi agent writer', () => {
     expect(
       roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
     ).toEqual([
-      ['explorer', ['read', 'bash', 'grep', 'find', 'ls', 'codemode']],
+      [
+        'explorer',
+        [
+          'read',
+          'bash',
+          'grep',
+          'find',
+          'ls',
+          'mem_recall',
+          'mem_get',
+          'codemode',
+        ],
+      ],
       [
         'librarian',
         [
@@ -27,6 +39,8 @@ describe('Pi agent writer', () => {
           'grep',
           'find',
           'ls',
+          'mem_recall',
+          'mem_get',
           'codemode',
           'resolve-library-id',
           'query-docs',
@@ -37,9 +51,38 @@ describe('Pi agent writer', () => {
           'source_check',
         ],
       ],
-      ['oracle', ['read', 'bash', 'grep', 'find', 'ls']],
-      ['designer', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
-      ['worker', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+      [
+        'oracle',
+        ['read', 'bash', 'grep', 'find', 'ls', 'mem_recall', 'mem_get'],
+      ],
+      [
+        'designer',
+        [
+          'read',
+          'bash',
+          'edit',
+          'write',
+          'grep',
+          'find',
+          'ls',
+          'mem_recall',
+          'mem_get',
+        ],
+      ],
+      [
+        'worker',
+        [
+          'read',
+          'bash',
+          'edit',
+          'write',
+          'grep',
+          'find',
+          'ls',
+          'mem_recall',
+          'mem_get',
+        ],
+      ],
     ]);
   });
 
@@ -64,12 +107,16 @@ describe('Pi agent writer', () => {
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
     const expectedTools: Record<string, string> = {
-      'agents/thoth-explorer.md': 'read, bash, grep, find, ls, codemode',
+      'agents/thoth-explorer.md':
+        'read, bash, grep, find, ls, mem_recall, mem_get, codemode',
       'agents/thoth-librarian.md':
-        'read, bash, grep, find, ls, codemode, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
-      'agents/thoth-oracle.md': 'read, bash, grep, find, ls',
-      'agents/thoth-designer.md': 'read, bash, edit, write, grep, find, ls',
-      'agents/thoth-worker.md': 'read, bash, edit, write, grep, find, ls',
+        'read, bash, grep, find, ls, mem_recall, mem_get, codemode, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+      'agents/thoth-oracle.md':
+        'read, bash, grep, find, ls, mem_recall, mem_get',
+      'agents/thoth-designer.md':
+        'read, bash, edit, write, grep, find, ls, mem_recall, mem_get',
+      'agents/thoth-worker.md':
+        'read, bash, edit, write, grep, find, ls, mem_recall, mem_get',
     };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');

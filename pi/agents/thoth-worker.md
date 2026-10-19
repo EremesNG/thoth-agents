@@ -1,7 +1,7 @@
 ---
 name: thoth-worker
 description: "Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded nonvisual implementation is ready, regardless of complexity; root direct work is limited to the bounded implementation-ownership exceptions. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded nonvisual implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles."
-tools: "read, bash, edit, write, grep, find, ls"
+tools: "read, bash, edit, write, grep, find, ls, mem_recall, mem_get"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
 subagent_mode: "background"

@@ -112,7 +112,7 @@ test("resolveModel: an exact tiered slug splits to base + effort (not passed who
 });
 
 test("resolveModel: explicit preferred tier beats alias tier, default, and clamps to the family", () => {
-	// thinking/effort param wins over the alias's own tier and the default.
+	// The thinking param wins over the alias's own tier and the default.
 	assert.deepEqual(resolveModel("flash high", entries, DEFAULT_THINKING, "low"), {
 		model: "gemini-3.6-flash",
 		effort: "low",
@@ -252,13 +252,13 @@ type RegisteredTool = {
 // The binary resolves at SPAWN time, so AGY_BIN must stay pointed at the
 // fake through execute - registration does not spawn (the repo hit this
 // exact bug before; see the ask-tool-empty-output header note).
-async function registerTool(): Promise<RegisteredTool> {
+async function registerTool(modelEntries: typeof entries = []): Promise<RegisteredTool> {
 	const tools: RegisteredTool[] = [];
 	const fakePi = {
 		registerTool: (tool: RegisteredTool) => tools.push(tool),
 	} as unknown as ExtensionAPI;
 	const { registerAskAntigravityTool } = await import("../src/ask-tool.js");
-	await registerAskAntigravityTool(fakePi, []);
+	await registerAskAntigravityTool(fakePi, modelEntries);
 	assert.equal(tools.length, 1);
 	return tools[0];
 }
@@ -288,6 +288,28 @@ function withEnvs(
 		}
 	})();
 }
+
+test("execute: thinking clamps to agy effort and overrides the model tier and configured default", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ask-thinking-"));
+	const argvFile = path.join(dir, "argv.txt");
+	const binary = makeArgvCapturingAgyBin(argvFile);
+	try {
+		await withEnvs({ AGY_BIN: binary, AGY_DEFAULT_THINKING: "high" }, async () => {
+			const tool = await registerTool(entries);
+			const result = await tool.execute("thinking", {
+				prompt: "hello", model: "flash high", thinking: "minimal",
+				mode: "accept-edits", conversationId: "thinking-override", cwd: dir,
+			}, undefined, undefined, { cwd: dir });
+			assert.match(result.content[0].text, /^ok\b/);
+			const argv = fs.readFileSync(argvFile, "utf8").split("\0");
+			assert.equal(argv[argv.indexOf("--model") + 1], "gemini-3.6-flash");
+			assert.equal(argv[argv.indexOf("--effort") + 1], "low");
+		});
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+		fs.rmSync(path.dirname(binary), { recursive: true, force: true });
+	}
+});
 
 test("execute: rejecting periodic and final update sinks do not escape or fail delegation", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ask-update-sink-"));

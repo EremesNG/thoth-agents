@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- Removed the `AskAntigravity` `effort` alias; use `thinking`. The tool description is shorter and no longer repeats parameter documentation.
 - Removed the unused legacy Pi dist restoration command, startup notice, and notice flag. Normal bridge startup and runtime commands are unchanged.
 
 ## [1.7.8] - 2026-09-30

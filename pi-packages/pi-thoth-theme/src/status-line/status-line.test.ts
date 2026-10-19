@@ -13,10 +13,19 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import {
+  BACKGROUND_STATE_CHANNEL,
+  BACKGROUND_STATE_REQUEST,
+  type BackgroundTaskKind,
+  type BackgroundTaskStatus,
   onRequest,
   publish,
+  SUBAGENTS_STATE_CHANNEL,
+  SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
+  type SubagentStatus,
+  type SubagentsCounts,
+  type SubagentTaskSummary,
 } from '@thoth-agents/pi-core';
 import { describe, expect, it, vi } from 'vitest';
 import { decorateEditor } from '../input-box/decorate.ts';
@@ -167,6 +176,70 @@ describe('registerStatusLine', () => {
       source: '@thoth-agents/pi-subagents',
       sessionId,
       data: { totalCost, runCount },
+    });
+  }
+
+  function publishSubagentState(
+    events: ReturnType<typeof createEventBus>,
+    sessionId: string,
+    statuses: SubagentStatus[],
+  ) {
+    const counts: SubagentsCounts = {
+      queued: 0,
+      running: 0,
+      stopping: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      interrupted: 0,
+    };
+    const tasks: SubagentTaskSummary[] = statuses.map((status, index) => ({
+      id: `bg-${index}`,
+      agent: 'worker',
+      mode: 'background',
+      status,
+      createdAt: 0,
+    }));
+    tasks.push({
+      id: 'foreground',
+      agent: 'worker',
+      mode: 'task',
+      status: 'running',
+      createdAt: 0,
+    });
+    for (const task of tasks) counts[task.status]++;
+    publish(events, SUBAGENTS_STATE_CHANNEL, {
+      source: '@thoth-agents/pi-subagents',
+      sessionId,
+      data: {
+        tasks,
+        history: [],
+        counts,
+        totals: { ...counts, total: tasks.length },
+      },
+    });
+  }
+
+  function publishBackgroundState(
+    events: ReturnType<typeof createEventBus>,
+    sessionId: string,
+    items: Array<[BackgroundTaskKind, BackgroundTaskStatus]>,
+  ) {
+    const counts = {
+      running: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+      timed_out: 0,
+    };
+    const tasks = items.map(([kind, status], index) => {
+      counts[status]++;
+      return { id: `bg-${index}`, kind, status, createdAt: 0, startedAt: 0 };
+    });
+    publish(events, BACKGROUND_STATE_CHANNEL, {
+      source: '@thoth-agents/pi-background-tasks',
+      sessionId,
+      data: { tasks, counts },
     });
   }
 
@@ -409,6 +482,157 @@ describe('registerStatusLine', () => {
     }
   });
 
+  it('keeps animating pending subagents, processes and watches after agent_end until both sources settle', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks);
+    try {
+      component.render(100);
+      for (const handler of mocks.eventHandlers.get('agent_start') ?? [])
+        handler();
+      editor.setWorkingStatusIndicator({
+        kind: 'working',
+        renderInBorder: () => '△ working…',
+      } as unknown as Parameters<CustomEditor['setWorkingStatusIndicator']>[0]);
+      const native = editor.render(100)[0];
+      publishSubagentState(mocks.events, 'parent-session', [
+        'queued',
+        'running',
+        'stopping',
+        'completed',
+        'failed',
+        'cancelled',
+        'interrupted',
+      ]);
+      publishBackgroundState(mocks.events, 'parent-session', [
+        ['process', 'running'],
+        ['command_watch', 'running'],
+        ['process', 'succeeded'],
+        ['process', 'failed'],
+        ['process', 'cancelled'],
+        ['command_watch', 'timed_out'],
+      ]);
+      expect(editor.render(100)[0]).toBe(native);
+      editor.setWorkingStatusIndicator(undefined);
+      for (const handler of mocks.eventHandlers.get('agent_end') ?? [])
+        handler();
+      const first = editor.render(100)[0];
+      expect(stripTerminalSequences(first)).toContain('working… · 5 bg');
+      expect(vi.getTimerCount()).toBe(1);
+      mocks.tui.requestRender.mockClear();
+      vi.advanceTimersByTime(250);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(5);
+      expect(editor.render(100)[0]).not.toBe(first);
+      expect(borders(editor, 100).top).toContain('working… · 5 bg');
+      publishSubagentState(mocks.events, 'parent-session', ['completed']);
+      expect(borders(editor, 100).top).toContain('working… · 2 bg');
+      publishBackgroundState(mocks.events, 'parent-session', [
+        ['command_watch', 'succeeded'],
+      ]);
+      expect(borders(editor, 100).top).toContain('▲ ready');
+      expect(vi.getTimerCount()).toBe(0);
+      mocks.tui.requestRender.mockClear();
+      vi.advanceTimersByTime(500);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('requests both initial snapshots after subscribing and rebinds pending work to the current session', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const offSubagents = onRequest(mocks.events, SUBAGENTS_STATE_REQUEST, {
+      onRequest: ({ sessionId }) =>
+        publishSubagentState(mocks.events, sessionId, ['running']),
+    });
+    const offBackground = onRequest(mocks.events, BACKGROUND_STATE_REQUEST, {
+      onRequest: ({ sessionId }) =>
+        publishBackgroundState(mocks.events, sessionId, [
+          ['command_watch', 'running'],
+        ]),
+    });
+    const component = createFooter(mocks);
+    try {
+      component.render(100);
+      expect(borders(editor, 100).top).toContain('working… · 2 bg');
+      for (const sessionId of ['parent-session', 'next-session']) {
+        if (sessionId === 'next-session') {
+          mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+          for (const handler of mocks.eventHandlers.get('session_start') ?? [])
+            handler();
+        }
+        for (const channel of [
+          SUBAGENTS_STATE_REQUEST,
+          BACKGROUND_STATE_REQUEST,
+        ]) {
+          expect(mocks.emit).toHaveBeenCalledWith(channel.name, {
+            v: channel.version,
+            source: '@thoth-agents/pi-thoth-theme',
+            sessionId,
+            at: expect.any(Number),
+            data: {},
+          });
+        }
+        expect(borders(editor, 100).top).toContain('working… · 2 bg');
+        mocks.tui.requestRender.mockClear();
+        publishSubagentState(mocks.events, 'other-session', []);
+        publishBackgroundState(mocks.events, 'other-session', []);
+        expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+        expect(borders(editor, 100).top).toContain('working… · 2 bg');
+      }
+      publishSubagentState(mocks.events, 'parent-session', []);
+      publishBackgroundState(mocks.events, 'parent-session', []);
+      expect(borders(editor, 100).top).toContain('working… · 2 bg');
+      mocks.sessionManager.getSessionId.mockReturnValue('empty-session');
+      offSubagents();
+      offBackground();
+      for (const handler of mocks.eventHandlers.get('session_start') ?? [])
+        handler();
+      expect(borders(editor, 100).top).toContain('▲ ready');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      component.dispose();
+      offSubagents();
+      offBackground();
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases pending-work subscriptions and animation on session shutdown', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    try {
+      publishBackgroundState(mocks.events, 'parent-session', [
+        ['process', 'running'],
+      ]);
+      expect(vi.getTimerCount()).toBe(1);
+      for (const handler of [
+        ...(mocks.eventHandlers.get('session_shutdown') ?? []),
+      ])
+        handler();
+      mocks.tui.requestRender.mockClear();
+      publishSubagentState(mocks.events, 'parent-session', ['running']);
+      publishBackgroundState(mocks.events, 'parent-session', [
+        ['process', 'running'],
+      ]);
+      vi.advanceTimersByTime(500);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      for (const unsub of mocks.unsubs) expect(unsub).toHaveBeenCalledTimes(1);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it('discovers focus before cache hits and decorates each replacement once while preserving the footer', () => {
     const mocks = createMocks();
     const overlay = { render: () => ['other focus'], invalidate() {} };
@@ -495,6 +719,10 @@ describe('registerStatusLine', () => {
     });
     try {
       const footer = component.render(120);
+      publishSubagentState(mocks.events, 'parent-session', ['running']);
+      publishBackgroundState(mocks.events, 'parent-session', [
+        ['process', 'running'],
+      ]);
       for (const handler of mocks.eventHandlers.get('agent_start') ?? [])
         handler();
       expect(editor.render).toBe(originalRender);
@@ -1254,7 +1482,7 @@ describe('registerStatusLine', () => {
     for (const unsub of mocks.unsubs.values()) {
       expect(unsub).toHaveBeenCalledTimes(1);
     }
-    expect(busUnsubs).toHaveLength(1);
-    expect(busUnsubs[0]).toHaveBeenCalledTimes(1);
+    expect(busUnsubs).toHaveLength(3);
+    for (const unsub of busUnsubs) expect(unsub).toHaveBeenCalledTimes(1);
   });
 });

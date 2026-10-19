@@ -10,31 +10,43 @@ import {
 
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
+  let pendingBackground = 0;
   let ticker: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
 
   function stop() {
     if (ticker !== undefined) clearInterval(ticker);
     ticker = undefined;
-    startedAt = undefined;
+  }
+
+  function syncTicker() {
+    if (startedAt === undefined && pendingBackground === 0) {
+      stop();
+    } else if (ticker === undefined) {
+      ticker = setInterval(requestRender, 50);
+      ticker.unref?.();
+    }
+    requestRender();
   }
 
   return {
     get isWorking() {
-      return startedAt !== undefined;
+      return startedAt !== undefined || pendingBackground > 0;
     },
     start() {
       if (disposed) return;
-      stop();
       startedAt = Date.now();
-      ticker = setInterval(requestRender, 50);
-      ticker.unref?.();
-      requestRender();
+      syncTicker();
     },
     end() {
       if (disposed) return;
-      stop();
-      requestRender();
+      startedAt = undefined;
+      syncTicker();
+    },
+    setPendingBackground(count: number) {
+      if (disposed || pendingBackground === count) return;
+      pendingBackground = count;
+      syncTicker();
     },
     status(
       indicator: unknown,
@@ -45,16 +57,33 @@ export function createWorkingState(requestRender: () => void) {
     ): string {
       const ready = `${icon('ready', mode)} ready`;
       const separator = icon('separator', mode);
+      const now = frame?.now ?? Date.now();
+      const fallback = () => {
+        if (pendingBackground === 0)
+          return styleMuted(truncateToWidth(ready, width, ''));
+        const glyphs = frames('workingFrames', mode);
+        const glyph = glyphs[Math.floor(now / 200) % glyphs.length];
+        const label = renderWorkingIndicator(
+          `${glyph} working${icon('ellipsis', mode)}`,
+          frame ?? createBreathingFrame(now),
+          styleMuted,
+          glyphs,
+        );
+        return truncateToWidth(
+          `${label}${styleMuted(` ${separator} ${pendingBackground} bg`)}`,
+          width,
+          '',
+        );
+      };
       if (
         !indicator ||
         typeof indicator !== 'object' ||
         !('renderInBorder' in indicator) ||
         typeof indicator.renderInBorder !== 'function'
       ) {
-        return styleMuted(truncateToWidth(ready, width, ''));
+        return fallback();
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
-      const now = frame?.now ?? Date.now();
       const elapsed =
         working && startedAt !== undefined
           ? ` ${separator} ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`
@@ -62,7 +91,7 @@ export function createWorkingState(requestRender: () => void) {
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);
       if (typeof native !== 'string' || visibleWidth(native) === 0) {
-        return styleMuted(truncateToWidth(ready, width, ''));
+        return fallback();
       }
       const fitted = truncateToWidth(native, nativeWidth, '');
       const label =
@@ -82,6 +111,8 @@ export function createWorkingState(requestRender: () => void) {
     },
     dispose() {
       disposed = true;
+      startedAt = undefined;
+      pendingBackground = 0;
       stop();
     },
   };

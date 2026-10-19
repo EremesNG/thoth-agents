@@ -11,8 +11,7 @@ export function createSubagentSendMessageTool(manager: SubagentManager) {
   return {
     name: 'subagent_send_message',
     label: 'Subagent Send Message',
-    description:
-      'Queue a live steering message for a running background subagent owned by the current Pi session.',
+    description: 'Queue live steering for a running background task.',
     parameters: Type.Object({
       task_id: Type.String(),
       message: Type.String(),

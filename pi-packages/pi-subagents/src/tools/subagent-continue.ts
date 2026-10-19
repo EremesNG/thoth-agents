@@ -31,9 +31,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
     name: 'subagent_continue',
     label: 'Subagent Continue',
     description:
-      "Continue a completed, failed, or cancelled subagent task in its exact persisted nested Pi session. Omit mode to preserve the task's prior effective mode; when no prior mode exists, background is the default. Use mode=task only when the user explicitly asks you to wait for completion. Overrides require an explicit user decision before you supply model or effort. Never auto-switch models.",
+      'Continue a completed, failed, or cancelled task in its exact persisted nested Pi session, keeping task_id.',
     promptSnippet:
-      'Continue an existing terminal subagent task under the same task_id. Omit mode to preserve its prior effective mode; use mode=task only when the user explicitly asks you to wait. Use model/effort overrides only after the user explicitly chooses them.',
+      "Omit mode to preserve the task's prior effective mode; background is the default if none exists. Overrides require an explicit user decision before you supply model or effort. Never auto-switch models.",
     parameters: Type.Object({
       task_id: Type.String(),
       prompt: Type.String(),

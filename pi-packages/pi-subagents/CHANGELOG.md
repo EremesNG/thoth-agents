@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Shortened `subagent_*` tool descriptions and snippets so each guidance point is stated once; tool names and parameters are unchanged.
+
 ### Fixed
 - Hold question and background completion notifications during active parent agent runs until `agent_settled`, dropping answered questions and terminal results already read through `subagent_result` before they can trigger redundant orchestrator turns. Use the live run signal to cover preceding awaited lifecycle handlers, preserve immediate delivery during compaction/tree-only busy state, and continue flushing after individual delivery failures. Confirm result consumption only from finalized, successful tool messages after interception.
 

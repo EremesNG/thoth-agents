@@ -16,7 +16,7 @@ export function createSubagentCancelTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_cancel',
     label: 'Subagent Cancel',
-    description: 'Cancel a running delegated subagent task.',
+    description: 'Cancel a running task.',
     parameters: Type.Object({ task_id: Type.String() }),
     renderShell: 'self',
     async execute(

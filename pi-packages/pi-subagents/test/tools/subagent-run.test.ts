@@ -38,22 +38,35 @@ describe('subagent_run tool', () => {
       manager,
     );
 
-    expect(runTool.description).toContain('Omit mode');
-    expect(runTool.description).toContain('task');
-    expect(runTool.description).toContain('background');
-    expect(runTool.description).toContain('background is the default');
+    const guidance = [
+      runTool.description,
+      runTool.promptSnippet,
+      ...runTool.promptGuidelines,
+    ].join('\n');
     expect(runTool.description).toContain(
+      'exactly one markdown-defined subagent',
+    );
+    expect(guidance).toContain('Omit mode');
+    expect(guidance).toContain('selected agent/configuration');
+    expect(guidance).toContain('background is the default');
+    expect(guidance).toContain('mode=background to override task mode');
+    expect(guidance).toContain(
       'mode=task only when the user explicitly asks you to wait',
     );
-    expect(runTool.description).toContain(
+    expect(guidance).toContain('respond immediately');
+    expect(guidance).toContain('automatic completion notification');
+    expect(guidance).toContain(
       'instead of sleeping, polling status, or fetching results just to wait',
     );
-    expect(runTool.renderShell).toBe('self');
-    expect(runTool.promptSnippet).toContain('Omit mode');
-    expect(runTool.promptSnippet).toContain('respond immediately');
-    expect(runTool.promptSnippet).toContain(
-      'do not sleep or poll status just to wait',
+    expect(guidance.match(/mode=task only when/g)).toHaveLength(1);
+    expect(guidance.match(/Omit mode/g)).toHaveLength(1);
+    expect(guidance.match(/automatic completion notification/g)).toHaveLength(
+      1,
     );
+    expect(runTool.promptGuidelines).toContain(
+      'Replies, steering, and extensions require task ownership by the current Pi session.',
+    );
+    expect(runTool.renderShell).toBe('self');
     expect(runTool.parameters.properties.mode).toBeDefined();
     expect(runTool.parameters.properties.agent).toBeDefined();
     expect(runTool.parameters.properties.name).toBeDefined();

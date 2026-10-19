@@ -12,7 +12,7 @@ export function createSubagentReplyTool(manager: SubagentManager) {
     name: 'subagent_reply',
     label: 'Subagent Reply',
     description:
-      'Answer an outstanding ask_orchestrator question owned by the current Pi session. request_id may be omitted only when the task has exactly one pending question.',
+      'Answer a pending ask_orchestrator question. Omit request_id only if the task has exactly one pending question.',
     parameters: Type.Object({
       task_id: Type.String(),
       request_id: Type.Optional(Type.String()),

@@ -112,12 +112,7 @@ export const questionSchema = Type.Object({
 
 export const labelsSchema = Type.Object(
   Object.fromEntries(
-    LABEL_KEYS.map((key) => [
-      key,
-      Type.Optional(
-        Type.String({ description: `Default: "${DEFAULT_LABELS[key]}"` }),
-      ),
-    ]),
+    LABEL_KEYS.map((key) => [key, Type.Optional(Type.String())]),
   ) as Record<LabelKey, ReturnType<typeof Type.Optional<TString>>>,
   {
     description:

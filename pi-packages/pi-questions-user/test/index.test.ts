@@ -532,13 +532,75 @@ it('applies labels in the sequential fallback', async () => {
   });
 });
 
-it('the tool schema declares labels so hosts do not drop them', () => {
-  const schema = createQuestionTool().parameters as unknown as {
-    properties: Record<string, { properties?: Record<string, unknown> }>;
-  };
-  expect(Object.keys(schema.properties)).toContain('labels');
-  expect(Object.keys(schema.properties.labels.properties ?? {})).toEqual(
-    expect.arrayContaining(['yes', 'no', 'typeSomething', 'submit']),
+it('the tool schema keeps all 46 label overrides as plain optional strings', () => {
+  const schema = createQuestionTool().parameters;
+  const labels = schema.properties.labels;
+  expect(schema.required).toEqual(['questions']);
+  expect(labels).not.toHaveProperty('required');
+  expect(Object.keys(labels.properties).sort()).toEqual(
+    [
+      'askUser',
+      'yes',
+      'no',
+      'typeSomething',
+      'yourAnswer',
+      'submit',
+      'backToEdit',
+      'cancel',
+      'review',
+      'reviewHeading',
+      'required',
+      'unanswered',
+      'requiredPending',
+      'skipped',
+      'skip',
+      'done',
+      'recommended',
+      'preview',
+      'noDescription',
+      'typeOwn',
+      'noTextYet',
+      'note',
+      'noteForQuestion',
+      'noteFor',
+      'cancelled',
+      'cancelledKept',
+      'error',
+      'answered',
+      'move',
+      'pick',
+      'select',
+      'toggle',
+      'next',
+      'optionNote',
+      'questionNote',
+      'clear',
+      'scrollPreview',
+      'scrollPrompt',
+      'scrollContext',
+      'more',
+      'switchTab',
+      'save',
+      'newline',
+      'keepDraft',
+      'collapse',
+      'expand',
+    ].sort(),
+  );
+  for (const property of Object.values(labels.properties)) {
+    expect(property).toEqual({ type: 'string' });
+  }
+  expect(labels).toHaveProperty(
+    'description',
+    expect.stringContaining('language of the conversation'),
+  );
+  expect(labels).toHaveProperty(
+    'description',
+    expect.stringContaining('Omitted keys stay English'),
+  );
+  expect(labels).toHaveProperty(
+    'description',
+    expect.stringContaining('Option values and ids are never localized'),
   );
 });
 

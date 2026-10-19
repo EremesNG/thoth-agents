@@ -16,7 +16,8 @@ import { makeNodeFixture } from "./helpers/node-fixture.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { expect, test, vi } from "vitest";
+import { beforeAll, expect, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
@@ -25,6 +26,9 @@ vi.mock("../src/mcp-registration.js", () => ({
 }));
 
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 type ToolResult = { content: Array<{ type: string; text: string }> };
 

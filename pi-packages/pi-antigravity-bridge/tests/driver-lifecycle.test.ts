@@ -4,10 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import * as ownedProcess from "../src/owned-process.js";
 import * as termination from "../src/process-termination.js";
-import { test, vi } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import type { DriverTurnRequest } from "../src/driver-types.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 for (const engine of ["stream-json", "acp"] as const) {
 	test(`${engine}: an invalidated queued launch cannot respawn after owned shutdown`, async () => {

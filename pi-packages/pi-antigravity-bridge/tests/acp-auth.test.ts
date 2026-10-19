@@ -7,8 +7,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, test } from "vitest";
+import { beforeAll, describe, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { runAcpAuth } from "../src/acp/auth.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 const FAKE_SERVER = fileURLToPath(new URL("./helpers/fake-acp-server.mjs", import.meta.url));
 

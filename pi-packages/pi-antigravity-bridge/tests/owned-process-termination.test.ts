@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { test } from "vitest";
+import { beforeAll, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { spawnAgyRaw } from "../src/models.js";
 import { checkAgyCliVersion } from "../src/agy-version.js";
 import { runWebAgent } from "../src/web-tools.js";
 import path from "node:path";
 import { assertTreeExited, makeProcessTreeFixture, pidAlive, within } from "./helpers/process-tree.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 type AskTool = {
 	execute: (id: string, params: Record<string, unknown>, signal: AbortSignal | undefined, update: undefined, ctx: Record<string, unknown>) => Promise<{

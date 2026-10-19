@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { test } from "vitest";
+import { beforeAll, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { terminateProcessTree } from "../src/process-termination.js";
 import { spawnOwnedProcess } from "../src/owned-process.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 function alive(pid: number): boolean {
 	try { process.kill(pid, 0); return true; } catch { return false; }

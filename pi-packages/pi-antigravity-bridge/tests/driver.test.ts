@@ -5,9 +5,13 @@
 
 import assert from "node:assert/strict";
 import path from "node:path";
-import { describe, test } from "vitest";
+import { beforeAll, describe, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { StreamDriver } from "../src/driver.js";
 import type { DriverActivity } from "../src/driver-types.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 const FAKE_BIN_DIR = path.join(import.meta.dirname, "helpers", "fake-agy-bin");
 

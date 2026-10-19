@@ -16,7 +16,8 @@ import { makeNodeFixture } from "./helpers/node-fixture.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { expect, test, vi } from "vitest";
+import { beforeAll, expect, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const suppressionEvents: Array<{ event: "acquire" | "release"; t: number }> = [];
@@ -34,6 +35,9 @@ vi.mock("../src/mcp-registration.js", () => ({
 }));
 
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 // The fake agy must outlive the OLD 5s grace so an early timer release is
 // observable as a release timestamp ~1s before process close.

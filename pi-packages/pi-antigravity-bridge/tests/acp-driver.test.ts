@@ -2,7 +2,8 @@
 // (tests/helpers/fake-acp-server.mjs, spawned over stdio). No quota, no
 // network: the fake speaks the exact wire shape captured in probe-logs/.
 
-import { afterAll, describe, test, vi } from "vitest";
+import { beforeAll, afterAll, describe, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +12,9 @@ import { fileURLToPath } from "node:url";
 import { AcpDriver } from "../src/acp/driver.js";
 import type { AcpPermissionHandler } from "../src/acp/connection.js";
 import type { DriverActivity } from "../src/driver-types.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 const FAKE_SERVER = fileURLToPath(new URL("./helpers/fake-acp-server.mjs", import.meta.url));
 const SESSION_ID = "fake-session-0001";

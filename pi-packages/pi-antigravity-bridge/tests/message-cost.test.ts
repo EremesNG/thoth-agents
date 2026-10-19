@@ -3,13 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeContext, type Usage } from "@earendil-works/pi-ai";
-import { expect, test } from "vitest";
+import { beforeAll, expect, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import type { DriverActivity, TurnDriver } from "../src/driver-types.js";
 import { type AgyModelEntry, toPiModel } from "../src/models.js";
 import { createStreamSimple, ToolRoundTrips } from "../src/provider.js";
 import { SessionStore } from "../src/sessions.js";
 import { toPiUsage } from "../src/stream-events.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 function emptyUsage(): Usage {
 	return {

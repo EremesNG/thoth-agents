@@ -17,10 +17,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../src/config.js";
 import { registerWebTools, runWebAgent, sweepStaleWebAgents, WEB_AGENT_PREFIX } from "../src/web-tools.js";
 import type { WebRunOptions, WebRunResult } from "../src/web-tools.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 const FIXTURE = fileURLToPath(new URL("./helpers/fake-agy-web.mjs", import.meta.url));
 

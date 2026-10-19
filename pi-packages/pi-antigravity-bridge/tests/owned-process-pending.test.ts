@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { PassThrough } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, test, vi, type Mock } from "vitest";
+import { beforeAll, afterEach, test, vi, type Mock } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { launchInJob, JobLauncherUnavailable, type LaunchedJob } from "@thoth-agents/pi-core/windows-job";
 import { spawnOwnedProcess } from "../src/owned-process.js";
 import { terminateProcessTree } from "../src/process-termination.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
+
 vi.mock("@thoth-agents/pi-core/windows-job", async (original) => {
 	const actual = await original<typeof import("@thoth-agents/pi-core/windows-job")>();
 	return { ...actual, launchInJob: vi.fn(actual.launchInJob) };

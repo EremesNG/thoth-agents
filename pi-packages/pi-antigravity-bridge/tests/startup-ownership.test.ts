@@ -5,13 +5,17 @@ import fs from "node:fs";
 import { getEventListeners } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { test, vi } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { normalizeContext, type Api, type AssistantMessageEvent, type Model } from "@earendil-works/pi-ai";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import type { TurnHandle } from "../src/driver-types.js";
 import { createStreamSimple, ToolRoundTrips } from "../src/provider.js";
 import { SessionStore } from "../src/sessions.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 const model: Model<Api> = {
 	id: "gemini-flash", name: "Flash", api: "agy-bridge" as Api, provider: "antigravity",

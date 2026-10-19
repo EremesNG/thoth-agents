@@ -6,9 +6,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "vitest";
+import { beforeAll, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { AcpConnection } from "../src/acp/connection.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 test("acp connection: rejecting update and exit sinks cannot escape the stdout reader", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-acp-sink-"));

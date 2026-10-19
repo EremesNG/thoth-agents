@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { test } from "vitest";
+import { beforeAll, test } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { spawnOwnedProcess } from "../src/owned-process.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 test.skipIf(process.platform !== "win32")("job facade delivers final UTF-8 and Buffer output before close", async () => {
 	const child = spawnOwnedProcess(process.execPath, ["-e", "process.stdout.write('final λ');process.stderr.write('last');"], { stdio: ["ignore", "pipe", "pipe"] });

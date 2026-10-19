@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test, vi } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import extension from "../extensions/index.js";
 import { saveConfig, logsDir } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 vi.mock("../src/models.js", async (original) => ({
 	...await original<typeof import("../src/models.js")>(),

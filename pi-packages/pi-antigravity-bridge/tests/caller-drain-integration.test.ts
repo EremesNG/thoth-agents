@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, test, vi } from "vitest";
+import { beforeAll, afterEach, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpConnection } from "../src/acp/connection.js";
 import { makeNodeFixture } from "./helpers/node-fixture.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 // Real facade launches: native jobs on Windows, plain detached spawn on POSIX.
 // Synchronous writes fill multiple pipe chunks immediately before leader exit.

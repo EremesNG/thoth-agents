@@ -6,7 +6,8 @@ import http from "node:http";
 import * as childProcess from "node:child_process";
 import * as ownedProcess from "../src/owned-process.js";
 import { randomUUID } from "node:crypto";
-import { afterEach, test, vi } from "vitest";
+import { beforeAll, afterEach, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
@@ -17,6 +18,9 @@ import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 vi.mock("node:crypto", async (original) => {
 	const actual = await original<typeof import("node:crypto")>();

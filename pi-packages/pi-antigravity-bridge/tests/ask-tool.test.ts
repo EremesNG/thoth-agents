@@ -11,11 +11,15 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { test, vi } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildFinalPrompt, resolveModel, reviewerAgentMd, stageReviewerAgent, toolModelsFromRaw } from "../src/ask-tool.js";
 import { toAgyEffort } from "../src/models.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
 
 vi.mock("../src/mcp-registration.js", () => ({
 	acquireBridgeSuppression: () => () => {},

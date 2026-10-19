@@ -4,9 +4,14 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { test, vi } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { spawnOwnedProcess } from "../src/owned-process.js";
 import { terminateProcessTree } from "../src/process-termination.js";
+
+// Each isolated file owns a fresh Windows job helper.
+beforeAll(warmJobLauncher, 60_000);
+
 const windows = test.skipIf(process.platform !== "win32");
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 

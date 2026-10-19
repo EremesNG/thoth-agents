@@ -37,6 +37,8 @@ export interface ListEditorView {
   footer?(context: ListEditorContext): readonly PanelRowInput[];
   maxVisibleRows?: number;
   navigation?: 'clamp' | 'wrap';
+  /** Use g/G as Home/End aliases (default true); Home/End always navigate. */
+  homeEndAliases?: boolean;
   filter?: {
     text?(row: ListEditorRow): string;
     matches?(row: ListEditorRow, query: string): boolean;
@@ -231,8 +233,15 @@ export class ListEditor {
     else if (view.filter && key === 'backspace')
       this.updateFilter([...this.filter].slice(0, -1).join(''));
     else if (view.filter && key === 'ctrl+u') this.updateFilter('');
-    else if (key === 'home' || (key === 'g' && !this.filter)) this.selected = 0;
-    else if (key === 'end' || (key === 'G' && !this.filter))
+    else if (
+      key === 'home' ||
+      (view.homeEndAliases !== false && key === 'g' && !this.filter)
+    )
+      this.selected = 0;
+    else if (
+      key === 'end' ||
+      (view.homeEndAliases !== false && key === 'G' && !this.filter)
+    )
       this.selected = Math.max(0, this.rows().length - 1);
     else if (view.filter && printable) this.updateFilter(this.filter + data);
     else if (view.onAction?.(key, this.rows()[this.selected], this) !== true) {

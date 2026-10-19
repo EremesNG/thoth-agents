@@ -412,7 +412,8 @@ export function createSubagentModelProfilesModal(
         [
           moveHint(),
           'type search',
-          'backspace clear',
+          'backspace delete',
+          'ctrl+u clear',
           'enter select',
           'esc back',
         ].join(separator()),
@@ -712,6 +713,7 @@ export function createSubagentModelProfilesModal(
     overview: {
       title: 'Subagent model profiles',
       maxVisibleRows: 12,
+      homeEndAliases: false,
       hints: () =>
         [
           `${resolveIcon('arrowLeft', '←')}/${resolveIcon('arrowRight', '→')} profile`,
@@ -774,6 +776,7 @@ export function createSubagentModelProfilesModal(
         ];
       },
       onAction: (key, choice) => {
+        key = key.toLowerCase();
         if (key === 'left') profileIndex = Math.max(0, profileIndex - 1);
         else if (key === 'right')
           profileIndex = Math.min(entries().length - 1, profileIndex + 1);
@@ -787,19 +790,24 @@ export function createSubagentModelProfilesModal(
         else if (key === 'r') attempt(rename);
         else if (key === 'd') attempt(remove);
         else if (key === 'u') attempt(() => use('session'));
+        else if (key === 'g') attempt(() => use('global'));
         else if (key === 'p') attempt(() => use('project'));
         else return false;
         return true;
       },
     },
-    onSave: () => ({ success: true }),
+    // Profile saves belong to onAction; the shell must never complete on save.
+    onSave: () => ({
+      success: false,
+      error: 'Use s to save the selected profile without closing.',
+    }),
     onCancel: () =>
       input.done({ action: 'close', discarded: workspace.pendingCount() }),
   });
 
   const renderPrompt = (active: Prompt, width: number): string[] => {
     const rows: PanelRowInput[] = [
-      panelHintRow('type a name · enter confirm · esc cancel'),
+      panelHintRow('type a name · ctrl+u clear · enter confirm · esc cancel'),
       ...active.input.render(Math.max(0, width - 4)),
       ...(active.error ? [{ text: active.error, tone: 'error' as const }] : []),
     ];
@@ -852,13 +860,6 @@ export function createSubagentModelProfilesModal(
             ? '\u001b'
             : data;
       status = undefined;
-      const state = editor.getState();
-      // The shell reads a bare `g` as Home; the overview owns it for "global".
-      if (state.view === 'overview' && !state.completed && key === 'g') {
-        attempt(() => use('global'));
-        input.tui?.requestRender?.();
-        return;
-      }
       editor.handleInput(key);
     },
     invalidate: () => editor.invalidate(),

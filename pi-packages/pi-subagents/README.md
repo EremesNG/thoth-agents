@@ -732,21 +732,24 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `ctrl+o` | Expand or collapse rendered tool output and subagent responses in the active execution/detail view. |
 | `ctrl+t` | Show or hide assistant thinking blocks in the open subagent execution panel, using Pi's `app.thinking.toggle` keybinding. |
 
-`/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. Legend: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile. The orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort.
+`/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. The sidebar's “markers (not keys)” legend describes state: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile. The orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort.
 
 | Key | Action |
 |---|---|
 | ←/→ | Browse profiles. |
 | ↑/↓ | Select the orchestrator or an agent. |
+| Home / End | Select the first / last detail row. |
 | Enter | Edit the selected row's model/effort. |
 | `m` / `e` | Edit model only / effort only. |
 | `o` | Copy the current session model/effort into the selected profile's orchestrator as an unsaved draft; save with `s`. |
 | `n` / `c` | New from default / clone selected profile; choose global or project scope. |
-| `s` | Save the draft or edits. |
+| `s` | Save the selected profile's draft or edits without closing. |
 | `r` / `d` | Rename / delete a profile. |
 | `u` | Toggle this Pi session's selection. |
 | `g` | Toggle global active. |
 | `p` | Toggle this project's pin. |
+
+Overview letter commands in the table are case-insensitive: `S` saves, `G` toggles global active (not last-row navigation), and so on. In the model picker, Backspace deletes one search character and Ctrl+U clears the search. Ctrl+U also clears new/rename name prompts.
 
 Pressing `u`, `g`, or `p` on that pointer's current selection clears it and applies the resulting effective profile's orchestrator, if set. Picker “reset” restores default's effective model or effort for that agent. On `default`, `o` offers creating a new profile.
 

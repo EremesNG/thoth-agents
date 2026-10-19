@@ -314,6 +314,43 @@ describe('list editor completion', () => {
 });
 
 describe('list editor overview', () => {
+  it.each([
+    undefined,
+    true,
+    false,
+  ])('preserves Home/End and makes g/G aliases view-configurable (%s)', (homeEndAliases) => {
+    const onAction = vi.fn((key: string) => key === 'g' || key === 'G');
+    const panel = editor({
+      overview: {
+        title: 'Editor',
+        rows: () => overviewRows(3),
+        homeEndAliases,
+        onAction,
+      },
+    });
+    panel.handleInput('j');
+    panel.handleInput('g');
+    expect(panel.getState().selectedIndex).toBe(
+      homeEndAliases === false ? 1 : 0,
+    );
+    panel.handleInput('G');
+    expect(panel.getState().selectedIndex).toBe(
+      homeEndAliases === false ? 1 : 2,
+    );
+    expect(onAction.mock.calls.map(([key]) => key)).toEqual(
+      homeEndAliases === false ? ['g', 'G'] : [],
+    );
+    panel.handleInput('\u001b[H');
+    expect(panel.getState().selectedIndex).toBe(0);
+    panel.handleInput('\u001b[F');
+    expect(panel.getState().selectedIndex).toBe(2);
+    panel.openPicker({ title: 'Picker', rows: () => overviewRows(3) });
+    panel.handleInput('G');
+    expect(panel.getState().selectedIndex).toBe(2);
+    panel.handleInput('g');
+    expect(panel.getState().selectedIndex).toBe(0);
+  });
+
   it('keeps the centered selection, pending count and hints visible on resize', () => {
     let height = 10;
     const filled: string[] = [];

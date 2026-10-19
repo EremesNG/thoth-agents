@@ -473,9 +473,11 @@ the adapter. `onAction(key, row, editor)` returns true to consume custom actions
 (e.g. opening another picker, toggling tools or resetting a profile).
 
 Navigation and typed filters precede custom actions. Arrows/j/k move; home/end
-and g/G jump (g/G become text once a filter is nonempty). Filter views consume
-other printable text, including q/s; backspace removes one code point and Ctrl-U
-clears. Filters can supply `text(row)` or `matches(row, lowercaseQuery)`.
+and g/G jump (g/G become text once a filter is nonempty). A view can set
+`homeEndAliases: false` to release g/G for custom actions or typed filters;
+home/end still jump, and other views retain the aliases by default. Filter views
+consume other printable text, including q/s; backspace removes one code point and
+Ctrl-U clears. Filters can supply `text(row)` or `matches(row, lowercaseQuery)`.
 Opening/replacing a picker resets its filter/cursor; returning to overview restores
 its cursor. Wheel input moves selection without wrapping. An unhandled picker
 enter/esc/q returns to overview; an unhandled overview s saves and esc/q cancels.

@@ -3,8 +3,12 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import {
+  BACKGROUND_STATE_CHANNEL,
+  BACKGROUND_STATE_REQUEST,
   computeSessionCost,
   request,
+  SUBAGENTS_STATE_CHANNEL,
+  SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
   subscribe,
@@ -124,7 +128,12 @@ export function registerStatusLine(
     };
 
     let offSubagentUsage: (() => void) | undefined;
+    let offBackgroundWork: Array<() => void> = [];
     unsubs.push(() => offSubagentUsage?.());
+    unsubs.push(() => {
+      for (const off of offBackgroundWork) off();
+      offBackgroundWork = [];
+    });
 
     if (footerData?.onBranchChange) {
       unsubs.push(footerData.onBranchChange(invalidateRender));
@@ -150,7 +159,51 @@ export function registerStatusLine(
       });
     };
 
+    const subscribeAndRequestBackgroundWork = () => {
+      if (!inputBoxEnabled) return;
+      const sessionId = ctx.sessionManager.getSessionId();
+      for (const off of offBackgroundWork) off();
+      let subagentPending = 0;
+      let backgroundPending = 0;
+      working.setPendingBackground(0);
+      offBackgroundWork = [
+        subscribe(pi.events, SUBAGENTS_STATE_CHANNEL, {
+          sessionId,
+          onSnapshot: ({ data }) => {
+            if (disposed) return;
+            subagentPending = data.tasks.filter(
+              (task) =>
+                task.mode === 'background' &&
+                (task.status === 'queued' ||
+                  task.status === 'running' ||
+                  task.status === 'stopping'),
+            ).length;
+            working.setPendingBackground(subagentPending + backgroundPending);
+          },
+        }),
+        subscribe(pi.events, BACKGROUND_STATE_CHANNEL, {
+          sessionId,
+          onSnapshot: ({ data }) => {
+            if (disposed) return;
+            backgroundPending = data.counts.running;
+            working.setPendingBackground(subagentPending + backgroundPending);
+          },
+        }),
+      ];
+      for (const channel of [
+        SUBAGENTS_STATE_REQUEST,
+        BACKGROUND_STATE_REQUEST,
+      ]) {
+        request(pi.events, channel, {
+          source: '@thoth-agents/pi-thoth-theme',
+          sessionId,
+          data: {},
+        });
+      }
+    };
+
     if (pi?.on) {
+      unsubs.push(pi.on('session_shutdown', dispose));
       unsubs.push(
         pi.on('session_start', () => {
           if (disposed) return;
@@ -159,6 +212,7 @@ export function registerStatusLine(
           if (inputBoxEnabled) working.end();
           refreshSession();
           subscribeAndRequestSubagentUsage();
+          subscribeAndRequestBackgroundWork();
         }),
       );
       if (inputBoxEnabled) {
@@ -185,6 +239,24 @@ export function registerStatusLine(
     }
 
     subscribeAndRequestSubagentUsage();
+    subscribeAndRequestBackgroundWork();
+
+    function dispose() {
+      if (disposed) return;
+      // Pi may have snapshotted lifecycle handlers before replacing the footer.
+      disposed = true;
+      working.dispose();
+      for (const decoration of editorDecorations) decoration.dispose();
+      editorDecorations.clear();
+      for (const unsub of unsubs) {
+        try {
+          unsub();
+        } catch {
+          // ignore disposal errors during cleanup
+        }
+      }
+      unsubs.length = 0;
+    }
 
     return {
       getStatusSnapshot,
@@ -225,21 +297,7 @@ export function registerStatusLine(
         return cachedLines;
       },
       invalidate: invalidateRender,
-      dispose() {
-        // Pi may have snapshotted lifecycle handlers before replacing the footer.
-        disposed = true;
-        working.dispose();
-        for (const decoration of editorDecorations) decoration.dispose();
-        editorDecorations.clear();
-        for (const unsub of unsubs) {
-          try {
-            unsub();
-          } catch {
-            // ignore disposal errors during cleanup
-          }
-        }
-        unsubs.length = 0;
-      },
+      dispose,
     };
   });
 }

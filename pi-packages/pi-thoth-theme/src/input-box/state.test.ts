@@ -54,6 +54,83 @@ describe('input-box working status', () => {
     }
   });
 
+  it('animates pending background work without a native indicator and returns to ready when it settles', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const requestRender = vi.fn();
+    const state = createWorkingState(requestRender);
+    try {
+      state.setPendingBackground(3);
+      expect(state.isWorking).toBe(true);
+      const first = state.status(undefined, 40);
+      expect(stripTerminalSequences(first)).toBe('△ working… · 3 bg');
+      requestRender.mockClear();
+      vi.advanceTimersByTime(250);
+      expect(requestRender).toHaveBeenCalledTimes(5);
+      const next = state.status(undefined, 40);
+      expect(next).not.toBe(first);
+      expect(stripTerminalSequences(next)).toContain('working… · 3 bg');
+      for (const indicator of [null, {}, { renderInBorder: () => '' }]) {
+        expect(stripTerminalSequences(state.status(indicator, 40))).toContain(
+          'working… · 3 bg',
+        );
+      }
+      for (const width of [0, 1, 2, 3, 10, 14]) {
+        expect(
+          visibleWidth(state.status(undefined, width)),
+        ).toBeLessThanOrEqual(width);
+      }
+      state.setPendingBackground(0);
+      expect(state.isWorking).toBe(false);
+      expect(state.status(undefined, 40)).toBe('▲ ready');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      state.dispose();
+    }
+  });
+
+  it('preserves native working, retry and compaction rendering regardless of pending background work', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const state = createWorkingState(() => {});
+    try {
+      state.start();
+      vi.advanceTimersByTime(1500);
+      for (const kind of ['working', 'retry', 'compaction', 'extension']) {
+        const indicator = { kind, renderInBorder: () => '△ native message' };
+        const native = state.status(indicator, 40);
+        state.setPendingBackground(2);
+        expect(state.status(indicator, 40)).toBe(native);
+        state.setPendingBackground(0);
+        expect(state.status(indicator, 40)).toBe(native);
+      }
+      state.setPendingBackground(2);
+      state.end();
+      expect(state.isWorking).toBe(true);
+      expect(stripTerminalSequences(state.status(undefined, 40))).toContain(
+        'working… · 2 bg',
+      );
+      expect(
+        state.status({ kind: 'working', renderInBorder: () => 'native' }, 40),
+      ).toBe('native');
+      state.start();
+      state.setPendingBackground(0);
+      expect(vi.getTimerCount()).toBe(1);
+      expect(
+        stripTerminalSequences(
+          state.status(
+            { kind: 'working', renderInBorder: () => '△ working…' },
+            40,
+          ),
+        ),
+      ).toBe('△ working… · 0s');
+      state.end();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      state.dispose();
+    }
+  });
+
   it('renders at twenty fps while active and displays only whole elapsed seconds', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

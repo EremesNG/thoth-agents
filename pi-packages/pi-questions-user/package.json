@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-questions-user",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "description": "Structured interactive user questions for Pi with a sequential RPC fallback.",
   "license": "MIT",

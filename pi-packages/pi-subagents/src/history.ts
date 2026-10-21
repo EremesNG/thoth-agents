@@ -8,6 +8,56 @@ import {
 } from './error-metadata.js';
 import { boundThreadSnapshot } from './thread-view.js';
 import type { SubagentTask, SubagentThreadSnapshot } from './types.js';
+import { TERMINAL_STATUSES } from './types.js';
+
+export type PruneExecutionDetailResult = {
+  tasksCleared: number;
+  attemptsCleared: number;
+  eventsDeleted: number;
+  busy: boolean;
+};
+
+export type CompactHistoryResult = {
+  beforeBytes: number;
+  afterBytes: number;
+  pruned?: PruneExecutionDetailResult;
+};
+
+type PruneOptions = { olderThanMs: number; batchSize?: number };
+type HistoryPathState = {
+  stores: Set<SubagentHistoryStore>;
+  pruning: Set<Promise<PruneExecutionDetailResult>>;
+  compacting: boolean;
+};
+const HISTORY_CONNECTIONS_KEY = Symbol.for(
+  'pi.subagents.historyConnections.v1',
+);
+const shared = globalThis as typeof globalThis & {
+  [HISTORY_CONNECTIONS_KEY]?: Map<string, HistoryPathState>;
+};
+// Child session loaders can evaluate separate copies of this module.
+shared[HISTORY_CONNECTIONS_KEY] ??= new Map();
+const historyPaths = shared[HISTORY_CONNECTIONS_KEY];
+function historyState(file: string): HistoryPathState {
+  const key = process.platform === 'win32' ? file.toLowerCase() : file;
+  let state = historyPaths.get(key);
+  if (!state) {
+    state = { stores: new Set(), pruning: new Set(), compacting: false };
+    historyPaths.set(key, state);
+  }
+  return state;
+}
+
+function historyFileBytes(file: string): number {
+  return [file, `${file}-wal`].reduce((total, name) => {
+    try {
+      return total + fs.statSync(name).size;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return total;
+    }
+  }, 0);
+}
 
 const require = createRequire(import.meta.url);
 
@@ -147,8 +197,28 @@ function ensureColumn(
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-function configureHistoryDb(db: Db): void {
-  db.exec('PRAGMA busy_timeout = 2000');
+const HISTORY_BUSY_TIMEOUT_MS = 2000;
+const PRUNE_BUSY_TIMEOUT_MS = 50;
+
+function isSqliteBusy(error: unknown): boolean {
+  const sqliteError = error as {
+    code?: string;
+    errcode?: number;
+    message?: string;
+  } | null;
+  return Boolean(
+    sqliteError &&
+      (/SQLITE_(BUSY|LOCKED)/.test(sqliteError.code ?? '') ||
+        (typeof sqliteError.errcode === 'number' &&
+          [5, 6].includes(sqliteError.errcode & 255)) ||
+        /database (?:is )?(?:busy|locked)|database table is locked/i.test(
+          sqliteError.message ?? '',
+        )),
+  );
+}
+
+function configureHistoryDb(db: Db, busyTimeoutMs: number): void {
+  db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
   try {
     db.exec('PRAGMA journal_mode = WAL');
   } catch {}
@@ -223,6 +293,7 @@ function upsertTaskRecord(
   cwd: string,
   task: SubagentTask,
 ): void {
+  const includeExecutionDetail = table === 'subagent_tasks';
   let errorMetadataJson: string | null = null;
   let errorCategory: string | null = null;
   if (task.error_metadata !== undefined) {
@@ -345,8 +416,8 @@ function upsertTaskRecord(
     value(task.output_preview),
     value(task.prompt),
     value(task.continuation_prompt),
-    value(task.system_prompt),
-    value(task.transcript),
+    includeExecutionDetail ? value(task.system_prompt) : null,
+    includeExecutionDetail ? value(task.transcript) : null,
     task.usage?.input ?? null,
     task.usage?.output ?? null,
     task.usage?.cacheRead ?? null,
@@ -365,7 +436,7 @@ function upsertTaskRecord(
     errorMetadataJson,
     errorCategory,
     value(task.result),
-    snapshotJson(task.thread_snapshot),
+    includeExecutionDetail ? snapshotJson(task.thread_snapshot) : null,
     task.pi_retry_attempts ?? null,
     task.pending_message_count ?? null,
     task.undelivered_message_count ?? null,
@@ -386,6 +457,132 @@ function upsertTaskRecord(
   );
 }
 
+function initializeHistorySchema(db: Db): void {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS subagent_tasks (
+    id TEXT PRIMARY KEY,
+    display_name TEXT,
+    cwd TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    task TEXT NOT NULL,
+    context TEXT,
+    created_at TEXT NOT NULL,
+    attempt INTEGER,
+    session_id TEXT,
+    nested_session_path TEXT,
+    started_at TEXT,
+    ended_at TEXT,
+    last_activity_at TEXT,
+    last_activity TEXT,
+    output_preview TEXT,
+    prompt TEXT,
+    continuation_prompt TEXT,
+    system_prompt TEXT,
+    transcript TEXT,
+    usage_input INTEGER,
+    usage_output INTEGER,
+    usage_cache_read INTEGER,
+    usage_cache_write INTEGER,
+    usage_cost REAL,
+    usage_context_tokens INTEGER,
+    usage_turns INTEGER,
+    model TEXT,
+    effort TEXT,
+    model_source TEXT,
+    effort_source TEXT,
+    fallback_used INTEGER,
+    error TEXT,
+    error_metadata_json TEXT,
+    error_category TEXT,
+    result TEXT,
+    thread_snapshot_json TEXT,
+    pi_retry_attempts INTEGER,
+    pending_message_count INTEGER,
+    undelivered_message_count INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS subagent_task_attempts (
+    task_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    display_name TEXT,
+    cwd TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    task TEXT NOT NULL,
+    context TEXT,
+    created_at TEXT NOT NULL,
+    session_id TEXT,
+    nested_session_path TEXT,
+    started_at TEXT,
+    ended_at TEXT,
+    last_activity_at TEXT,
+    last_activity TEXT,
+    output_preview TEXT,
+    prompt TEXT,
+    continuation_prompt TEXT,
+    system_prompt TEXT,
+    transcript TEXT,
+    usage_input INTEGER,
+    usage_output INTEGER,
+    usage_cache_read INTEGER,
+    usage_cache_write INTEGER,
+    usage_cost REAL,
+    usage_context_tokens INTEGER,
+    usage_turns INTEGER,
+    model TEXT,
+    effort TEXT,
+    model_source TEXT,
+    effort_source TEXT,
+    fallback_used INTEGER,
+    error TEXT,
+    error_metadata_json TEXT,
+    error_category TEXT,
+    result TEXT,
+    thread_snapshot_json TEXT,
+    pi_retry_attempts INTEGER,
+    pending_message_count INTEGER,
+    undelivered_message_count INTEGER,
+    PRIMARY KEY (task_id, attempt)
+  );
+  CREATE TABLE IF NOT EXISTS subagent_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    attempt INTEGER,
+    cwd TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    activity TEXT NOT NULL,
+    output_preview TEXT,
+    FOREIGN KEY(task_id) REFERENCES subagent_tasks(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_subagent_tasks_created ON subagent_tasks(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_subagent_events_task ON subagent_events(task_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_subagent_attempts_task ON subagent_task_attempts(task_id, attempt);
+`);
+  ensureColumn(db, 'subagent_tasks', 'generation_output_tokens', 'INTEGER');
+  ensureColumn(db, 'subagent_tasks', 'generation_ms', 'REAL');
+  ensureColumn(db, 'subagent_tasks', 'display_name', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'attempt', 'INTEGER');
+  ensureColumn(db, 'subagent_tasks', 'nested_session_path', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'continuation_prompt', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'system_prompt', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'error_metadata_json', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'error_category', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'pi_retry_attempts', 'INTEGER');
+  ensureColumn(db, 'subagent_tasks', 'dropped_tools_json', 'TEXT');
+  ensureColumn(db, 'subagent_tasks', 'pending_message_count', 'INTEGER');
+  ensureColumn(db, 'subagent_tasks', 'undelivered_message_count', 'INTEGER');
+  ensureAttemptColumns(db);
+  for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
+    ensureColumn(db, table, 'progress_updates_json', 'TEXT');
+    for (const column of TIMEOUT_COLUMNS)
+      ensureColumn(db, table, column, 'INTEGER');
+  }
+  ensureColumn(db, 'subagent_events', 'attempt', 'INTEGER');
+}
+
 export class SubagentHistoryStore {
   private dbs = new Map<string, Db>();
   private closed = false;
@@ -396,8 +593,7 @@ export class SubagentHistoryStore {
     const errors: unknown[] = [];
     for (const [file, db] of this.dbs) {
       try {
-        db.close();
-        this.dbs.delete(file);
+        this.closeDb(file, db);
       } catch (error) {
         errors.push(error);
       }
@@ -409,9 +605,13 @@ export class SubagentHistoryStore {
       );
   }
 
-  private db(_cwd: string): Db {
+  private db(_cwd: string, busyTimeoutMs = HISTORY_BUSY_TIMEOUT_MS): Db {
     if (this.closed) throw new Error('Subagent history store is closed.');
     const file = resolveSubagentHistoryDbPath();
+    if (historyState(file).compacting)
+      throw new Error(
+        'Subagent history is busy: explicit compaction is running.',
+      );
     const existing = this.dbs.get(file);
     if (existing) return existing;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -423,158 +623,205 @@ export class SubagentHistoryStore {
     try {
       fs.chmodSync(file, 0o600);
     } catch {}
-    configureHistoryDb(db);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS subagent_tasks (
-        id TEXT PRIMARY KEY,
-        display_name TEXT,
-        cwd TEXT NOT NULL,
-        agent TEXT NOT NULL,
-        mode TEXT NOT NULL,
-        status TEXT NOT NULL,
-        task TEXT NOT NULL,
-        context TEXT,
-        created_at TEXT NOT NULL,
-        attempt INTEGER,
-        session_id TEXT,
-        nested_session_path TEXT,
-        started_at TEXT,
-        ended_at TEXT,
-        last_activity_at TEXT,
-        last_activity TEXT,
-        output_preview TEXT,
-        prompt TEXT,
-        continuation_prompt TEXT,
-        system_prompt TEXT,
-        transcript TEXT,
-        usage_input INTEGER,
-        usage_output INTEGER,
-        usage_cache_read INTEGER,
-        usage_cache_write INTEGER,
-        usage_cost REAL,
-        usage_context_tokens INTEGER,
-        usage_turns INTEGER,
-        model TEXT,
-        effort TEXT,
-        model_source TEXT,
-        effort_source TEXT,
-        fallback_used INTEGER,
-        error TEXT,
-        error_metadata_json TEXT,
-        error_category TEXT,
-        result TEXT,
-        thread_snapshot_json TEXT,
-        pi_retry_attempts INTEGER,
-        pending_message_count INTEGER,
-        undelivered_message_count INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS subagent_task_attempts (
-        task_id TEXT NOT NULL,
-        attempt INTEGER NOT NULL,
-        display_name TEXT,
-        cwd TEXT NOT NULL,
-        agent TEXT NOT NULL,
-        mode TEXT NOT NULL,
-        status TEXT NOT NULL,
-        task TEXT NOT NULL,
-        context TEXT,
-        created_at TEXT NOT NULL,
-        session_id TEXT,
-        nested_session_path TEXT,
-        started_at TEXT,
-        ended_at TEXT,
-        last_activity_at TEXT,
-        last_activity TEXT,
-        output_preview TEXT,
-        prompt TEXT,
-        continuation_prompt TEXT,
-        system_prompt TEXT,
-        transcript TEXT,
-        usage_input INTEGER,
-        usage_output INTEGER,
-        usage_cache_read INTEGER,
-        usage_cache_write INTEGER,
-        usage_cost REAL,
-        usage_context_tokens INTEGER,
-        usage_turns INTEGER,
-        model TEXT,
-        effort TEXT,
-        model_source TEXT,
-        effort_source TEXT,
-        fallback_used INTEGER,
-        error TEXT,
-        error_metadata_json TEXT,
-        error_category TEXT,
-        result TEXT,
-        thread_snapshot_json TEXT,
-        pi_retry_attempts INTEGER,
-        pending_message_count INTEGER,
-        undelivered_message_count INTEGER,
-        PRIMARY KEY (task_id, attempt)
-      );
-      CREATE TABLE IF NOT EXISTS subagent_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_id TEXT NOT NULL,
-        attempt INTEGER,
-        cwd TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        activity TEXT NOT NULL,
-        output_preview TEXT,
-        FOREIGN KEY(task_id) REFERENCES subagent_tasks(id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_subagent_tasks_created ON subagent_tasks(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_subagent_events_task ON subagent_events(task_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_subagent_attempts_task ON subagent_task_attempts(task_id, attempt);
-    `);
-    ensureColumn(db, 'subagent_tasks', 'generation_output_tokens', 'INTEGER');
-    ensureColumn(db, 'subagent_tasks', 'generation_ms', 'REAL');
-    ensureColumn(db, 'subagent_tasks', 'display_name', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'attempt', 'INTEGER');
-    ensureColumn(db, 'subagent_tasks', 'nested_session_path', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'continuation_prompt', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'system_prompt', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'error_metadata_json', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'error_category', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'pi_retry_attempts', 'INTEGER');
-    ensureColumn(db, 'subagent_tasks', 'dropped_tools_json', 'TEXT');
-    ensureColumn(db, 'subagent_tasks', 'pending_message_count', 'INTEGER');
-    ensureColumn(db, 'subagent_tasks', 'undelivered_message_count', 'INTEGER');
-    ensureAttemptColumns(db);
-    for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
-      ensureColumn(db, table, 'progress_updates_json', 'TEXT');
-      for (const column of TIMEOUT_COLUMNS)
-        ensureColumn(db, table, column, 'INTEGER');
+    try {
+      configureHistoryDb(db, busyTimeoutMs);
+      initializeHistorySchema(db);
+      this.dbs.set(file, db);
+      historyState(file).stores.add(this);
+      return db;
+    } catch (error) {
+      db.close();
+      throw error;
     }
-    ensureColumn(db, 'subagent_events', 'attempt', 'INTEGER');
-    this.dbs.set(file, db);
-    return db;
+  }
+
+  private closeDb(file: string, db: Db): void {
+    db.close();
+    this.dbs.delete(file);
+    historyState(file).stores.delete(this);
+  }
+
+  /** Explicit only. Suspend local users, then hold SQLite exclusion until close. */
+  static async compactHistory({
+    olderThanMs,
+  }: {
+    olderThanMs?: number;
+  }): Promise<CompactHistoryResult> {
+    if (olderThanMs !== undefined) new Date(olderThanMs).toISOString();
+    const file = resolveSubagentHistoryDbPath();
+    const state = historyState(file);
+    if (state.compacting)
+      throw new Error(
+        'History compaction refused: compaction is already running.',
+      );
+    state.compacting = true;
+    let db: Db | undefined;
+    let acquired = false;
+    try {
+      // Prevent new maintenance passes, and let every current batch/pass settle.
+      await Promise.allSettled([...state.pruning]);
+      const beforeBytes = historyFileBytes(file);
+      for (const store of [...state.stores]) {
+        for (const [storeFile, connection] of store.dbs)
+          if (historyState(storeFile) === state)
+            store.closeDb(storeFile, connection);
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      const Database = loadDbConstructor();
+      db = new Database(file);
+      // These PRAGMAs do not access database pages. In WAL mode, EXCLUSIVE must
+      // precede the first access, so an established WAL connection blocks BEGIN.
+      db.exec('PRAGMA locking_mode = EXCLUSIVE');
+      db.exec(`PRAGMA busy_timeout = ${PRUNE_BUSY_TIMEOUT_MS}`);
+      db.exec('BEGIN IMMEDIATE');
+      db.exec('COMMIT');
+      acquired = true;
+      initializeHistorySchema(db);
+      const connection = db;
+      const pruned =
+        olderThanMs === undefined
+          ? undefined
+          : await SubagentHistoryStore.pruneOnDb(
+              { olderThanMs },
+              () => connection,
+            );
+      if (pruned?.busy) throw new Error('History pruning could not finish.');
+      // EXCLUSIVE locking_mode retains exclusion across the pruning commits.
+      // VACUUM must run outside a transaction, on this very same connection.
+      db.exec('VACUUM');
+      db.close();
+      db = undefined;
+      return { beforeBytes, afterBytes: historyFileBytes(file), pruned };
+    } catch (error) {
+      if (!acquired && isSqliteBusy(error))
+        throw new Error(
+          'History compaction refused: another process or connection has the database open or locked. Close other Pi sessions and retry. No history data was changed.',
+          { cause: error },
+        );
+      throw new Error(
+        `History compaction failed: ${error instanceof Error ? error.message : String(error)}. VACUUM can need up to twice the database size in free disk space; check free space and filesystem permissions. Pruning may already have completed.`,
+        { cause: error },
+      );
+    } finally {
+      try {
+        db?.close();
+      } finally {
+        state.compacting = false;
+      }
+    }
   }
 
   upsertTask(cwd: string, task: SubagentTask): void {
     const db = this.db(cwd);
     upsertTaskRecord(db, 'subagent_tasks', cwd, task);
-    upsertTaskRecord(db, 'subagent_task_attempts', cwd, {
-      ...task,
-      attempt: task.attempt ?? 1,
-    });
+    upsertTaskRecord(db, 'subagent_task_attempts', cwd, task);
   }
 
-  addEvent(cwd: string, task: SubagentTask, activity: string): void {
-    this.db(cwd)
-      .prepare(`
-      INSERT INTO subagent_events (task_id, attempt, cwd, created_at, status, activity, output_preview)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-      .run(
-        task.id,
-        task.attempt ?? 1,
-        cwd,
-        task.last_activity_at ?? new Date().toISOString(),
-        task.status,
-        activity,
-        value(task.output_preview),
-      );
+  /** Clear heavy columns, never task outcomes. olderThanMs is an epoch-ms cutoff. */
+  async pruneExecutionDetail(
+    options: PruneOptions,
+  ): Promise<PruneExecutionDetailResult> {
+    const state = historyState(resolveSubagentHistoryDbPath());
+    if (state.compacting)
+      return {
+        tasksCleared: 0,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: true,
+      };
+    const pass = SubagentHistoryStore.pruneOnDb(options, () =>
+      this.db('', PRUNE_BUSY_TIMEOUT_MS),
+    );
+    state.pruning.add(pass);
+    try {
+      return await pass;
+    } finally {
+      state.pruning.delete(pass);
+    }
+  }
+
+  private static async pruneOnDb(
+    { olderThanMs, batchSize = 100 }: PruneOptions,
+    openDb: () => Db,
+  ): Promise<PruneExecutionDetailResult> {
+    const cutoff = new Date(olderThanMs).toISOString();
+    if (!Number.isInteger(batchSize) || batchSize < 1)
+      throw new Error('Pruning batchSize must be a positive integer.');
+    const counts: PruneExecutionDetailResult = {
+      tasksCleared: 0,
+      attemptsCleared: 0,
+      eventsDeleted: 0,
+      busy: false,
+    };
+    let db: Db | undefined;
+    try {
+      db = openDb();
+      db.exec(`PRAGMA busy_timeout = ${PRUNE_BUSY_TIMEOUT_MS}`);
+      const batches = [
+        {
+          count: 'tasksCleared' as const,
+          args: [...TERMINAL_STATUSES, cutoff, batchSize],
+          statement: db.prepare(`
+      UPDATE subagent_tasks
+      SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
+      WHERE rowid IN (
+        SELECT rowid FROM subagent_tasks
+        WHERE status IN (${TERMINAL_STATUSES.map(() => '?').join(', ')})
+          AND julianday(COALESCE(last_activity_at, ended_at, started_at, created_at)) < julianday(?)
+          AND (thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL)
+        LIMIT ?
+      )
+    `),
+        },
+        {
+          count: 'attemptsCleared' as const,
+          args: [batchSize],
+          statement: db.prepare(`
+        UPDATE subagent_task_attempts
+        SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
+        WHERE rowid IN (
+          SELECT rowid FROM subagent_task_attempts
+          WHERE thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL
+          LIMIT ?
+        )
+      `),
+        },
+        {
+          count: 'eventsDeleted' as const,
+          args: [batchSize],
+          statement: db.prepare(
+            `DELETE FROM subagent_events WHERE id IN (SELECT id FROM subagent_events LIMIT ?)`,
+          ),
+        },
+      ];
+      const changes = db.prepare('SELECT changes() AS count');
+      for (const batch of batches) {
+        while (true) {
+          let changed: number;
+          // A failed BEGIN is handled by the outer busy catch, with nothing to roll back.
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            batch.statement.run(...batch.args);
+            changed = (changes.all()[0] as { count: number }).count;
+            db.exec('COMMIT');
+            counts[batch.count] += changed;
+          } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+          }
+          // Yield between committed batches so maintenance does not monopolize Pi.
+          if (changed > 0)
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          if (changed < batchSize) break;
+        }
+      }
+    } catch (error) {
+      if (!isSqliteBusy(error)) throw error;
+      counts.busy = true;
+    } finally {
+      db?.exec(`PRAGMA busy_timeout = ${HISTORY_BUSY_TIMEOUT_MS}`);
+    }
+    return counts;
   }
 
   getTask(

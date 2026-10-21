@@ -424,7 +424,7 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 - **GIVEN** a Pi session with these packages loaded
 - **WHEN** their registered tool definitions are serialized
-- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, and the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool 
+- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, and the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool
 
 ### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
 
@@ -434,4 +434,34 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 - **GIVEN** a persisted Pi session whose last turn completed through the bridge and whose Claude Code transcript is unchanged
 - **WHEN** Pi restarts and the session continues with a new prompt
-- **THEN** the bridge resumes the same Claude Code session id with the same recorded system prompt without re-importing history, so the request reuses the cached conversation prefix 
+- **THEN** the bridge resumes the same Claude Code session id with the same recorded system prompt without re-importing history, so the request reuses the cached conversation prefix
+
+### Requirement: Subagent history retention
+
+`@thoth-agents/pi-subagents` MUST keep each persisted task's identity, status, timing, usage/cost, result and session path, MUST store execution detail (thread snapshot, transcript, system prompt) only for the latest attempt of each task and MUST NOT persist per-event rows; it MUST clear that execution detail for terminal tasks whose last activity is older than a configurable retention (default 14 days) without blocking session start, without touching queued or running tasks, and without failing when the database is busy; it MUST reclaim database file space only through an explicit compaction command that holds exclusive access to the database from before its first change until compaction ends, and that refuses without changing data when exclusive access cannot be acquired.
+
+#### Scenario: Subagent history retention
+
+- **GIVEN** a terminal subagent task last active 20 days ago and the default retention
+- **WHEN** the pruning pass runs
+- **THEN** its snapshot, transcript and system prompt are cleared while `subagent_status`, `subagent_result`, the history listings and cost totals still show the task and its result 
+
+### Requirement: Subagent terminal task memory
+
+After a subagent task is terminal, its runner has settled and its terminal record is durably persisted, `@thoth-agents/pi-subagents` MUST keep only a lightweight summary of the task in process memory and load its execution detail from history on demand; when the terminal record could not be persisted it MUST keep the full task in memory, and a continuation that reuses the task id MUST NOT lose its own state.
+
+#### Scenario: Subagent terminal task memory
+
+- **GIVEN** a completed subagent task whose terminal record was persisted
+- **WHEN** later turns call `subagent_status`, `subagent_result` or `subagent_continue` for it
+- **THEN** they behave as before while the manager no longer holds that task's transcript, thread snapshot or system prompt 
+
+### Requirement: Bounded subagent tool result details
+
+Subagent tool results and progress updates MUST build task details through one explicit bounded projection that never includes transcripts, system prompts or thread snapshots, bounds prompt and context text to a fixed preview, and includes the final response only in final results; renderers MUST keep rendering older persisted details that still contain those fields.
+
+#### Scenario: Bounded subagent tool result details
+
+- **GIVEN** a running subagent with a long transcript
+- **WHEN** `subagent_run` emits progress updates and its final result
+- **THEN** no update or result details contain the transcript or system prompt, and both new and previously persisted tool cards render unchanged 

@@ -662,6 +662,39 @@ describe('subagents panel and extension ui', () => {
     ).toContain('legacy error line');
   });
 
+  it.each([
+    'completed',
+    'failed',
+    'cancelled',
+    'interrupted',
+    'queued',
+    'running',
+    'stopping',
+  ] as const)('keeps the final response and marks missing terminal execution detail (%s)', (status) => {
+    const task: SubagentTask = {
+      id: 'expired-detail',
+      agent: 'worker',
+      mode: 'task',
+      status,
+      task: 'work',
+      created_at: '2026-01-01T00:00:00.000Z',
+      result: 'retained final response',
+    };
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => text.slice(0, width),
+    );
+    const rendered = panel.render(160).join('\n');
+    expect(rendered).toContain('retained final response');
+    expect(rendered.includes('execution detail expired')).toBe(
+      !['queued', 'running', 'stopping'].includes(status),
+    );
+  });
+
   it('renders valid thread snapshots before legacy transcript text in the history panel', () => {
     const task: SubagentTask = {
       id: 'subtask_thread_1',

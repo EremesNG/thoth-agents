@@ -21,6 +21,86 @@ function expectNativeShell(lines: string[], width: number) {
 
 describe('tool render helpers', () => {
   it.each([
+    'subagent_run',
+    'subagent_continue',
+    'subagent_status',
+    'subagent_result',
+    'subagent_cancel',
+    'subagent_list_tasks',
+  ])('renders persisted legacy %s details with execution fields unchanged', (name) => {
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const tools: Record<string, any> = {};
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          tools[tool.name] = tool;
+        },
+      },
+      {} as any,
+      env.tmp,
+    );
+    // A JSON roundtrip represents details recovered from a pre-projection session.
+    const legacyTask = JSON.parse(
+      JSON.stringify({
+        id: 'subtask_legacy',
+        agent: 'analyst',
+        task: 'legacy persisted task',
+        mode: 'task',
+        status: 'completed',
+        attempt: 2,
+        model: 'mock/model',
+        effort: 'high',
+        result:
+          name === 'subagent_list_tasks'
+            ? undefined
+            : 'Preserved legacy final response',
+        output_preview: 'legacy output preview',
+        prompt: 'Legacy assembled prompt',
+        context: 'Legacy context',
+        continuation_prompt: 'Legacy continuation prompt',
+        transcript: 'LEGACY_TRANSCRIPT_MUST_NOT_RENDER',
+        system_prompt: 'LEGACY_SYSTEM_PROMPT_MUST_NOT_RENDER',
+        thread_snapshot: env.statusSnapshot('LEGACY_SNAPSHOT_MUST_NOT_RENDER'),
+      }),
+    );
+    const {
+      transcript: _transcript,
+      system_prompt: _systemPrompt,
+      thread_snapshot: _snapshot,
+      ...currentTask
+    } = legacyTask;
+    const result = (task: any) => ({
+      details: { mode: 'task', task, tasks: [task], results: [task] },
+    });
+    const theme = {
+      fg: (_n: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    for (const expanded of [false, true]) {
+      const render = (task: any) =>
+        env.stripAnsi(
+          tools[name]
+            .renderResult(result(task), { expanded, isPartial: false }, theme)
+            .render(160)
+            .join('\n'),
+        );
+      const legacy = render(legacyTask);
+      expect(legacy).toBe(render(currentTask));
+      expect(legacy).toContain('analyst');
+      expect(legacy).not.toContain('MUST_NOT_RENDER');
+      if (
+        expanded &&
+        name !== 'subagent_list_tasks' &&
+        name !== 'subagent_cancel'
+      )
+        expect(legacy).toContain('Preserved legacy final response');
+    }
+  });
+
+  it.each([
     'queued',
     'running',
     'completed',

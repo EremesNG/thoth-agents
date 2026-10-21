@@ -37,6 +37,240 @@ describe('subagent history persistence and display_name compatibility', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it('expires only detail older than the boundary, preserving terminal outcomes and active tasks', async () => {
+    const store = createHistoryStore();
+    const cutoff = Date.parse('2026-10-01T00:00:00.000Z');
+    const task: SubagentTask = {
+      id: 'old-completed',
+      display_name: 'Keep my metadata',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'delegated task',
+      created_at: '2026-09-01T00:00:00.000Z',
+      last_activity_at: '2026-09-30T23:59:59.999Z',
+      session_id: 'parent',
+      nested_session_path: '/nested/session.jsonl',
+      prompt: 'prompt',
+      context: 'context',
+      result: 'final response',
+      system_prompt: 'heavy system prompt',
+      transcript: 'heavy transcript',
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'heavy snapshot' }],
+      },
+      usage: {
+        input: 1,
+        output: 2,
+        cacheRead: 3,
+        cacheWrite: 4,
+        cost: 0.5,
+        contextTokens: 5,
+        turns: 6,
+      },
+      runtime_metrics: { generationOutputTokens: 2, generationMs: 50 },
+    };
+    const cases: SubagentTask[] = [
+      task,
+      ...(
+        [
+          'failed',
+          'cancelled',
+          'interrupted',
+          'queued',
+          'running',
+          'stopping',
+        ] as const
+      ).map((status) => ({ ...task, id: status, status })),
+      { ...task, id: 'boundary', last_activity_at: '2026-10-01T00:00:00.000Z' },
+      { ...task, id: 'newer', last_activity_at: '2026-10-01T00:00:00.001Z' },
+      {
+        ...task,
+        id: 'ended-recently',
+        last_activity_at: undefined,
+        ended_at: '2026-10-02T00:00:00.000Z',
+      },
+      { ...task, id: 'created-only', last_activity_at: undefined },
+    ];
+    for (const row of cases) store.upsertTask(tmp, row);
+    const before = cases.map((row) => store.getTask(tmp, row.id)!);
+
+    expect(
+      await store.pruneExecutionDetail({ olderThanMs: cutoff, batchSize: 2 }),
+    ).toMatchObject({
+      tasksCleared: 5,
+      attemptsCleared: 0,
+      eventsDeleted: 0,
+      busy: false,
+    });
+
+    for (const row of before) {
+      const expired = [
+        'old-completed',
+        'failed',
+        'cancelled',
+        'interrupted',
+        'created-only',
+      ].includes(row.id);
+      expect(store.getTask(tmp, row.id)).toEqual(
+        expired
+          ? {
+              ...row,
+              system_prompt: undefined,
+              transcript: undefined,
+              thread_snapshot: undefined,
+            }
+          : row,
+      );
+    }
+    expect(
+      await store.pruneExecutionDetail({ olderThanMs: cutoff, batchSize: 2 }),
+    ).toMatchObject({
+      tasksCleared: 0,
+      attemptsCleared: 0,
+      eventsDeleted: 0,
+      busy: false,
+    });
+  });
+
+  it('clears legacy attempts and events in batches, yielding after each commit', async () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'legacy',
+      agent: 'worker',
+      mode: 'task',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-10-01T00:00:00.000Z',
+      result: 'keep result',
+      nested_session_path: '/nested/legacy.jsonl',
+    };
+    for (let attempt = 1; attempt <= 5; attempt++)
+      store.upsertTask(tmp, { ...task, attempt });
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    try {
+      db.exec(
+        `UPDATE subagent_task_attempts SET system_prompt = 'old system', transcript = 'old transcript', thread_snapshot_json = '{"version":1,"source":"events","items":[{"type":"status","text":"old snapshot"}]}'`,
+      );
+      for (let index = 0; index < 5; index++)
+        db.prepare(
+          `INSERT INTO subagent_events (task_id, cwd, created_at, status, activity) VALUES (?, ?, ?, ?, ?)`,
+        ).run(task.id, tmp, task.created_at, task.status, 'legacy event');
+      const before = store.listTaskAttempts(tmp, task.id);
+      // This callback can observe an intermediate commit, not one giant transaction.
+      const intermediate = new Promise<number>((resolve) =>
+        setImmediate(() => {
+          resolve(
+            store
+              .listTaskAttempts(tmp, task.id)
+              .filter((row) => !row.transcript).length,
+          );
+        }),
+      );
+      const pruning = store.pruneExecutionDetail({
+        olderThanMs: Date.parse(task.created_at),
+        batchSize: 2,
+      });
+      expect(await intermediate).toBe(2);
+      expect(await pruning).toEqual({
+        tasksCleared: 0,
+        attemptsCleared: 5,
+        eventsDeleted: 5,
+        busy: false,
+      });
+      expect(store.listTaskAttempts(tmp, task.id)).toEqual(
+        before.map((row) => ({
+          ...row,
+          system_prompt: undefined,
+          transcript: undefined,
+          thread_snapshot: undefined,
+        })),
+      );
+      expect(
+        db.prepare('SELECT COUNT(*) AS count FROM subagent_events').get(),
+      ).toEqual({ count: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it.each([
+    'warm',
+    'cold',
+    'between batches',
+  ] as const)('ends pruning safely on a busy database (%s)', async (locking) => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'busy-0',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'work',
+      created_at: '2026-09-01T00:00:00.000Z',
+      result: 'keep result',
+      transcript: 'keep until committed',
+    };
+    for (let index = 0; index < 3; index++)
+      store.upsertTask(tmp, { ...task, id: `busy-${index}` });
+    const pruningStore = locking === 'cold' ? createHistoryStore() : store;
+    const { DatabaseSync } = require('node:sqlite');
+    const writer = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    let acquired = false;
+    const lock = () => {
+      writer.exec('BEGIN IMMEDIATE');
+      acquired = true;
+    };
+    try {
+      if (locking === 'between batches') setImmediate(lock);
+      else lock();
+      const start = performance.now();
+      expect(
+        await pruningStore.pruneExecutionDetail({
+          olderThanMs: Date.parse('2026-10-01'),
+          batchSize: 1,
+        }),
+      ).toEqual({
+        tasksCleared: locking === 'between batches' ? 1 : 0,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: true,
+      });
+      expect(performance.now() - start).toBeLessThan(1000);
+      expect(
+        store
+          .listTasks(tmp)
+          .map((row) => [row.result, row.transcript])
+          .sort(),
+      ).toEqual(
+        (locking === 'between batches'
+          ? [
+              ['keep result', undefined],
+              ['keep result', task.transcript],
+              ['keep result', task.transcript],
+            ]
+          : Array.from({ length: 3 }, () => ['keep result', task.transcript])
+        ).sort(),
+      );
+      writer.exec('ROLLBACK');
+      acquired = false;
+      expect(
+        await pruningStore.pruneExecutionDetail({
+          olderThanMs: Date.parse('2026-10-01'),
+          batchSize: 1,
+        }),
+      ).toMatchObject({
+        tasksCleared: locking === 'between batches' ? 2 : 3,
+        busy: false,
+      });
+    } finally {
+      if (acquired) writer.exec('ROLLBACK');
+      writer.close();
+    }
+  });
+
   it('closes database handles idempotently so its temporary directory can be removed', () => {
     const store = createHistoryStore();
     store.listTasks(tmp);
@@ -140,6 +374,111 @@ describe('subagent history persistence and display_name compatibility', () => {
         generationOutputTokens: 300,
         generationMs: 4000,
       });
+  });
+
+  it('stores execution detail only on the latest task while preserving attempt metadata and results', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'detail-once',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+      session_id: 'detail-session',
+      nested_session_path: '/nested/session.jsonl',
+      prompt: 'delegated prompt',
+      system_prompt: 'first system prompt',
+      transcript: 'first transcript',
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'first snapshot' }],
+      },
+      result: 'first result',
+    };
+    store.upsertTask(tmp, task);
+    store.upsertTask(tmp, { ...task, result: 'updated first result' });
+    const latest: SubagentTask = {
+      ...task,
+      attempt: 2,
+      continuation_prompt: 'continue working',
+      system_prompt: 'latest system prompt',
+      transcript: 'latest transcript',
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'latest snapshot' }],
+      },
+      result: 'latest result',
+    };
+    store.upsertTask(tmp, latest);
+    store.close();
+
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    try {
+      expect(
+        db
+          .prepare(`
+          SELECT attempt, system_prompt, transcript, thread_snapshot_json
+          FROM subagent_task_attempts WHERE task_id = ? ORDER BY attempt
+        `)
+          .all(task.id),
+      ).toEqual([
+        {
+          attempt: 1,
+          system_prompt: null,
+          transcript: null,
+          thread_snapshot_json: null,
+        },
+        {
+          attempt: 2,
+          system_prompt: null,
+          transcript: null,
+          thread_snapshot_json: null,
+        },
+      ]);
+      expect(
+        db
+          .prepare(`
+          SELECT system_prompt, transcript, thread_snapshot_json
+          FROM subagent_tasks WHERE id = ?
+        `)
+          .get(task.id),
+      ).toEqual({
+        system_prompt: 'latest system prompt',
+        transcript: 'latest transcript',
+        thread_snapshot_json: JSON.stringify(latest.thread_snapshot),
+      });
+    } finally {
+      db.close();
+    }
+
+    const reopened = createHistoryStore();
+    expect(reopened.getTask(tmp, task.id)).toMatchObject(latest);
+    expect(reopened.listTaskAttempts(tmp, task.id)).toMatchObject([
+      {
+        attempt: 1,
+        status: 'completed',
+        session_id: 'detail-session',
+        nested_session_path: '/nested/session.jsonl',
+        prompt: 'delegated prompt',
+        result: 'updated first result',
+        system_prompt: undefined,
+        transcript: undefined,
+        thread_snapshot: undefined,
+      },
+      {
+        attempt: 2,
+        status: 'completed',
+        continuation_prompt: 'continue working',
+        result: 'latest result',
+        system_prompt: undefined,
+        transcript: undefined,
+        thread_snapshot: undefined,
+      },
+    ]);
   });
 
   it('round trips timeout progress and deadline fields across reopen and attempts', () => {

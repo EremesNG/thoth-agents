@@ -6,7 +6,10 @@ import { sendSubagentQuestionMessage } from '../../src/render/question-message.j
 import * as rendering from '../../src/thread-view.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
-vi.mock('../../src/manager.js', () => ({ SubagentManager: vi.fn() }));
+vi.mock('../../src/manager.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/manager.js')>()),
+  SubagentManager: vi.fn(),
+}));
 const env = installSubagentTestEnv();
 let deliverQuestion: (task: any, question: any) => void;
 

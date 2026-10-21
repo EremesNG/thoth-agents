@@ -23,7 +23,10 @@ import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 import { workPanelSession } from './helpers/work-panel-fixture.js';
 
 // Reuse the extension module graph with a fresh, complete fake for each test.
-vi.mock('../src/manager.js', () => ({ SubagentManager: vi.fn() }));
+vi.mock('../src/manager.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/manager.js')>()),
+  SubagentManager: vi.fn(),
+}));
 
 function createExtensionManagerFake() {
   return {

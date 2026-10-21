@@ -384,6 +384,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
     "@thoth-agents/pi-background-tasks",
     "@thoth-agents/pi-openai-fast"
   ],
+  "history_detail_retention_days": 14,
   "history_panel_shortcut": "ctrl+,",
   "detail_cancel_shortcut": "x",
   "background_handoff_shortcut": "ctrl+h",
@@ -425,6 +426,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, adds a metadata-only skill catalog, skips prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |
 | `lean_skills` | `true` | Enable the lean child skill catalog. Project boolean overrides global; `false` disables it. |
 | `lifecycle_passthrough` | `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge", "@thoth-agents/pi-background-tasks", "@thoth-agents/pi-openai-fast"]` | Trust list: in lean mode, packages with an exact matching nearest `package.json` name retain their full event lifecycle, including startup, shutdown, and model selection. Prompt-shaping events are observe-only as defense in depth, except that a `before_provider_request` return may replace the provider payload (see isolation below); not a sandbox. Project arrays replace global arrays; `[]` disables passthrough. Non-string entries and the adaptive-root package `thoth-agents` are rejected with a warning. |
+| `history_detail_retention_days` | `14` | Non-negative integer days to retain terminal-task execution detail. `0` disables pruning (including pruning during manual compaction). Project config overrides global config. Metadata, results, usage/cost and session paths are always kept. |
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
@@ -735,6 +737,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | Entry point | Description |
 |---|---|
 | `/subagents` | Open the session-focused TUI subagent history panel. |
+| `/subagents-history-compact` | Explicitly prune expired execution detail and reclaim database disk space with VACUUM; report database + WAL sizes before and after. |
 | `/subagents-model` | Manage named model profiles and select them for the session, project, or globally. |
 | `/subagents-tools` | Edit tools in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
@@ -802,9 +805,45 @@ The history DB stores:
 - model/effort used;
 - usage stats when available;
 - result/error/output preview;
-- delegated user prompt and subagent system prompt separately;
-- compact thread snapshots;
-- task events.
+- delegated user prompt and context;
+- the latest attempt's execution detail: system prompt, transcript and compact thread snapshot.
+
+Attempt rows retain metadata and results, not duplicate execution detail. New
+writes do not append task events. Deferred maintenance after session start clears
+legacy attempt detail and events, and clears execution detail for terminal tasks
+older than `history_detail_retention_days` (default **14**, `0` disables pruning).
+Age uses last activity, then end/start/creation time. Queued, running and stopping
+tasks are never pruned. Task rows, prompts/context, results, errors, timestamps,
+usage/cost and nested session paths are kept. Expired detail is marked in the
+history panel; the final response remains available. Maintenance uses bounded
+batches, skips busy databases, and is throttled to at most one pass per hour per
+process, requested by a later session start; there is no recurring timer.
+
+### `/subagents-history-compact`
+
+Pruning makes space reusable inside SQLite; only this explicit command reclaims
+file space with `VACUUM`. Run it when you need to reclaim disk space from a large
+history database; it never runs automatically. The command uses the current
+project's retention setting for the shared history database, across all projects;
+with retention `0` it only compacts, without pruning.
+
+Close other Pi processes or database viewers using this history database first,
+and preferably let active subagents finish. The command waits for in-flight
+local maintenance, suspends new maintenance/history access, and closes this
+process's history connections. It then acquires SQLite exclusive access **before
+any pruning**, retains it across all pruning commits and `VACUUM`, and releases
+it by closing its dedicated connection. Other established WAL connections or
+write locks cause refusal without data changes; newly arriving connections
+cannot initialize or write until exclusion is released. A writer whose busy
+timeout expires receives a persistence error rather than losing committed rows.
+Normal local history access reopens lazily afterwards, including after failure.
+
+**VACUUM can need up to twice the database size in free disk space.** Reserve that
+space and ensure the database directory is writable. Space/IO failures report
+this warning; pruning may already have completed even if `VACUUM` fails. Success
+reports `History compacted (database + WAL): <before> bytes → <after> bytes.`,
+including the `-wal` file in both measurements. SQLite compaction does not delete
+session JSONL files or subagent artifacts.
 
 When `debug: true` is configured, the extension also may write debug diagnostics to:
 

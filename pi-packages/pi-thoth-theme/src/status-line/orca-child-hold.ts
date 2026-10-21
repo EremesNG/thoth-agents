@@ -14,6 +14,15 @@ type Child = {
   description?: string;
 };
 
+type StartedChild = {
+  id: string;
+  status: 'started';
+  agent: string;
+  description?: string;
+};
+
+// Refresh Orca's 120-second hook lease with room for delivery delays.
+const ORCA_CHILD_HEARTBEAT_MS = 30_000;
 const memoryKey = Symbol.for('@thoth-agents/pi-thoth-theme/orca-child-holds');
 
 export function createOrcaChildHold(events: ExtensionAPI['events']) {
@@ -23,10 +32,17 @@ export function createOrcaChildHold(events: ExtensionAPI['events']) {
   processState[memoryKey] ??= new Map();
   const sessions = processState[memoryKey];
   let announced = new Set<string>();
+  const startedPayloads = new Map<string, StartedChild>();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
   let subagents: Child[] = [];
   let background: Child[] = [];
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+
+  function stopHeartbeat() {
+    if (heartbeat !== undefined) clearInterval(heartbeat);
+    heartbeat = undefined;
+  }
 
   function reconcile(prefix: string, tasks: Child[]) {
     const live = new Set<string>();
@@ -38,19 +54,22 @@ export function createOrcaChildHold(events: ExtensionAPI['events']) {
       if (!byId.has(id)) byId.set(id, task);
       if (!task.live) continue;
       live.add(id);
-      if (announced.has(id)) continue;
-      announced.add(id);
-      events.emit('task:subagent:lifecycle', {
+      const payload: StartedChild = {
         id,
         status: 'started',
         agent: task.agent,
         ...(task.description ? { description: task.description } : {}),
-      });
+      };
+      startedPayloads.set(id, payload);
+      if (announced.has(id)) continue;
+      announced.add(id);
+      events.emit('task:subagent:lifecycle', payload);
     }
     for (const id of announced) {
       if (disposed) return;
       if (!id.startsWith(prefix) || live.has(id)) continue;
       announced.delete(id);
+      startedPayloads.delete(id);
       const status = byId.get(id)?.status;
       events.emit('task:subagent:lifecycle', {
         id,
@@ -62,24 +81,38 @@ export function createOrcaChildHold(events: ExtensionAPI['events']) {
               : 'completed',
       });
     }
+    if (announced.size === 0) {
+      stopHeartbeat();
+    } else if (heartbeat === undefined) {
+      heartbeat = setInterval(() => {
+        for (const id of announced) {
+          if (disposed) return;
+          const payload = startedPayloads.get(id);
+          if (payload) events.emit('task:subagent:lifecycle', payload);
+        }
+      }, ORCA_CHILD_HEARTBEAT_MS);
+      heartbeat.unref?.();
+    }
   }
 
   return {
     startSession(sessionId: string) {
       if (disposed) return;
-      if (timer !== undefined) clearTimeout(timer);
+      if (reconcileTimer !== undefined) clearTimeout(reconcileTimer);
+      stopHeartbeat();
+      startedPayloads.clear();
       announced = sessions.get(sessionId) ?? new Set();
       sessions.set(sessionId, announced);
       subagents = [];
       background = [];
       // Orca restores parked children later in the same session_start dispatch.
-      timer = setTimeout(() => {
-        timer = undefined;
+      reconcileTimer = setTimeout(() => {
+        reconcileTimer = undefined;
         if (disposed) return;
         reconcile('thoth:subagent:', subagents);
         reconcile('thoth:bg:', background);
       }, 0);
-      timer.unref?.();
+      reconcileTimer.unref?.();
     },
     updateSubagents(data: SubagentsSnapshot) {
       if (disposed) return;
@@ -102,7 +135,7 @@ export function createOrcaChildHold(events: ExtensionAPI['events']) {
           agent: task.agent,
         })),
       ];
-      if (timer === undefined) reconcile('thoth:subagent:', subagents);
+      if (reconcileTimer === undefined) reconcile('thoth:subagent:', subagents);
     },
     updateBackground(data: BackgroundSnapshot) {
       if (disposed) return;
@@ -113,12 +146,13 @@ export function createOrcaChildHold(events: ExtensionAPI['events']) {
         agent: task.kind === 'command_watch' ? 'watch' : 'process',
         description: task.name,
       }));
-      if (timer === undefined) reconcile('thoth:bg:', background);
+      if (reconcileTimer === undefined) reconcile('thoth:bg:', background);
     },
     dispose() {
       disposed = true;
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
+      stopHeartbeat();
+      if (reconcileTimer !== undefined) clearTimeout(reconcileTimer);
+      reconcileTimer = undefined;
     },
   };
 }

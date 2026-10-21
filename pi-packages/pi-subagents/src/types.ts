@@ -10,6 +10,17 @@ export type SubagentStatus =
   | 'cancelled'
   | 'interrupted';
 
+export const TERMINAL_STATUSES: readonly SubagentStatus[] = [
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+];
+
+export function isTerminalStatus(status: SubagentStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
 export type ModelRef = { provider: string; id: string };
 export type ThinkingEffort =
   | 'off'
@@ -88,6 +99,9 @@ export type SubagentsConfig = {
   lifecycle_passthrough?: string[];
   background_handoff_shortcut?: string;
   history_panel_shortcut?: string;
+  /** subagents.json: terminal execution detail retention in days (default 14; 0 disables pruning).
+   * Metadata, final results, usage/cost and nested session paths are always kept. */
+  history_detail_retention_days?: number;
   detail_cancel_shortcut?: string;
   enable_continue?: boolean;
   enable_ask_orchestrator?: boolean;

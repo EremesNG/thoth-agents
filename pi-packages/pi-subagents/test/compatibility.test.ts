@@ -145,6 +145,7 @@ describe('compatibility smoke', () => {
       expect(shortcuts).toEqual(expect.arrayContaining(['ctrl+,', 'ctrl+h']));
       expect(commands).toEqual([
         'subagents',
+        'subagents-history-compact',
         'subagents-model',
         'subagents-tools',
       ]);

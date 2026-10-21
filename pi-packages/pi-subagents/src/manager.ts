@@ -62,6 +62,7 @@ import type {
   SubagentsConfig,
   SubagentTask,
 } from './types.js';
+import { isTerminalStatus } from './types.js';
 
 type StopDisposition = {
   status: Extract<
@@ -218,15 +219,6 @@ function enrichTerminalMetadata(
     task_id: task.id,
     parent_session_id: parentSessionId,
   });
-}
-
-function isTerminalStatus(status: SubagentTask['status']): boolean {
-  return (
-    status === 'completed' ||
-    status === 'failed' ||
-    status === 'cancelled' ||
-    status === 'interrupted'
-  );
 }
 
 function stopDispositionFromReason(reason: string): StopDisposition {
@@ -537,6 +529,20 @@ type LaunchAttemptInput = {
   limiter: ReturnType<typeof createLimiter>;
 };
 
+type AttemptRetention = {
+  attempt: number;
+  settled: boolean;
+  durable: boolean;
+  consumers: number;
+  persistenceFailed: boolean;
+};
+
+/** Keep terminal identity and delivery/display data, without execution detail. */
+export function summarizeTask(task: SubagentTask): SubagentTask {
+  const { transcript, thread_snapshot, system_prompt, ...summary } = task;
+  return summary;
+}
+
 export class SubagentManager {
   private deadlines = new Map<
     string,
@@ -551,6 +557,8 @@ export class SubagentManager {
   >();
   private tasks = new Map<string, SubagentTask>();
   private taskCwds = new Map<string, string>();
+  private attemptRetention = new WeakMap<SubagentTask, AttemptRetention>();
+  private releasedTasks = new WeakSet<SubagentTask>();
   private controllers = new Map<string, AbortController>();
   private limiters = new Map<string, ReturnType<typeof createLimiter>>();
   private pendingRecords = new Map<string, PendingRecord>();
@@ -1001,10 +1009,62 @@ export class SubagentManager {
       );
   }
 
-  getTask(id: string, cwd?: string) {
-    return (
-      this.tasks.get(id) ?? (cwd ? this.history.getTask(cwd, id) : undefined)
-    );
+  getTaskCwd(id: string): string | undefined {
+    return this.taskCwds.get(id);
+  }
+
+  getTask(id: string, cwd?: string): SubagentTask | undefined {
+    const task = this.tasks.get(id);
+    if (task && !this.releasedTasks.has(task)) return task;
+    const taskCwd = this.taskCwds.get(id) ?? cwd;
+    if (!taskCwd) return task;
+    try {
+      const hydrated = this.history.getTask(taskCwd, id);
+      if (!task) return hydrated;
+      // A concurrent process may have already persisted a newer attempt.
+      if (!hydrated || (hydrated.attempt ?? 1) !== (task.attempt ?? 1))
+        return task;
+      return {
+        ...task,
+        transcript: hydrated.transcript,
+        thread_snapshot: hydrated.thread_snapshot,
+        system_prompt: hydrated.system_prompt,
+      };
+    } catch {
+      // Compaction suspends reads; a summary still serves status and result.
+      return task;
+    }
+  }
+
+  private retainResults(tasks: SubagentTask[]): () => void {
+    for (const task of tasks) {
+      const retention = this.attemptRetention.get(task);
+      if (retention) retention.consumers += 1;
+    }
+    return () => {
+      for (const task of tasks) {
+        const retention = this.attemptRetention.get(task);
+        if (retention) retention.consumers -= 1;
+        this.releaseTask(task);
+      }
+    };
+  }
+
+  private releaseTask(task: SubagentTask): void {
+    const retention = this.attemptRetention.get(task);
+    if (
+      !retention?.settled ||
+      !retention.durable ||
+      retention.persistenceFailed ||
+      retention.consumers ||
+      !isTerminalStatus(task.status) ||
+      retention.attempt !== (task.attempt ?? 1) ||
+      this.tasks.get(task.id) !== task
+    )
+      return;
+    const summary = summarizeTask(task);
+    this.releasedTasks.add(summary);
+    this.tasks.set(task.id, summary);
   }
 
   reconcileOrphanedTasks(cwd: string): SubagentTask[] {
@@ -1597,43 +1657,48 @@ export class SubagentManager {
     });
     notifyUpdate();
     const launched = ids.map((id) => this.tasks.get(id)!).filter(Boolean);
-    const waitedTaskIds = launched
-      .filter((task) => task.effective_mode === 'task')
-      .map((task) => task.id);
-    const backgroundTaskIds = launched
-      .filter((task) => task.effective_mode === 'background')
-      .map((task) => task.id);
-    const resolvedMode: SubagentRunResult['mode'] =
-      explicitMode ??
-      (waitedTaskIds.length && backgroundTaskIds.length
-        ? 'mixed'
-        : backgroundTaskIds.length
-          ? 'background'
-          : 'task');
-    if (resolvedMode === 'background' && explicitMode === 'background') {
+    const releaseResults = this.retainResults(launched);
+    try {
+      const waitedTaskIds = launched
+        .filter((task) => task.effective_mode === 'task')
+        .map((task) => task.id);
+      const backgroundTaskIds = launched
+        .filter((task) => task.effective_mode === 'background')
+        .map((task) => task.id);
+      const resolvedMode: SubagentRunResult['mode'] =
+        explicitMode ??
+        (waitedTaskIds.length && backgroundTaskIds.length
+          ? 'mixed'
+          : backgroundTaskIds.length
+            ? 'background'
+            : 'task');
+      if (resolvedMode === 'background' && explicitMode === 'background') {
+        return {
+          mode: resolvedMode,
+          task_ids: ids,
+          waited_task_ids: waitedTaskIds,
+          background_task_ids: backgroundTaskIds,
+        };
+      }
+      await Promise.all(waitedTaskIds.map((id) => this.wait(id)));
+      if (parentSignal?.aborted) throw new Error('Subagent run aborted');
+      const results = launched;
       return {
         mode: resolvedMode,
         task_ids: ids,
         waited_task_ids: waitedTaskIds,
         background_task_ids: backgroundTaskIds,
+        members: results.map((task) => ({
+          task_id: task.id,
+          agent: task.agent,
+          effective_mode: task.effective_mode ?? task.mode,
+          state: task.status,
+        })),
+        results,
       };
+    } finally {
+      releaseResults();
     }
-    await Promise.all(waitedTaskIds.map((id) => this.wait(id)));
-    if (parentSignal?.aborted) throw new Error('Subagent run aborted');
-    const results = ids.map((id) => this.tasks.get(id)!).filter(Boolean);
-    return {
-      mode: resolvedMode,
-      task_ids: ids,
-      waited_task_ids: waitedTaskIds,
-      background_task_ids: backgroundTaskIds,
-      members: results.map((task) => ({
-        task_id: task.id,
-        agent: task.agent,
-        effective_mode: task.effective_mode ?? task.mode,
-        state: task.status,
-      })),
-      results,
-    };
   }
 
   async continueTask(
@@ -1753,15 +1818,21 @@ export class SubagentManager {
         onTaskUpdate?.([this.tasks.get(task.id)!].filter(Boolean)),
       limiter: this.limiter(taskCwd, config.max_concurrency),
     });
-    if (effectiveMode === 'background')
-      return { mode: effectiveMode, task_ids: [task.id] };
-    await this.wait(task.id);
-    if (parentSignal?.aborted) throw new Error('Subagent continuation aborted');
-    return {
-      mode: effectiveMode,
-      task_ids: [task.id],
-      results: [this.tasks.get(task.id)!],
-    };
+    const releaseResults = this.retainResults([task]);
+    try {
+      if (effectiveMode === 'background')
+        return { mode: effectiveMode, task_ids: [task.id] };
+      await this.wait(task.id);
+      if (parentSignal?.aborted)
+        throw new Error('Subagent continuation aborted');
+      return {
+        mode: effectiveMode,
+        task_ids: [task.id],
+        results: [task],
+      };
+    } finally {
+      releaseResults();
+    }
   }
 
   cancel(id: string, reason = 'cancelled'): SubagentTask {
@@ -1944,6 +2015,14 @@ export class SubagentManager {
     };
     const controller = new AbortController();
     task.notify_orchestrator_available = undefined;
+    const retention: AttemptRetention = {
+      attempt: task.attempt ?? 1,
+      settled: false,
+      durable: false,
+      consumers: 0,
+      persistenceFailed: false,
+    };
+    this.attemptRetention.set(task, retention);
     this.tasks.set(id, task);
     this.taskCwds.set(id, cwd);
     this.controllers.set(id, controller);
@@ -2424,7 +2503,11 @@ export class SubagentManager {
         this.controllers.delete(id);
       }
     };
-    const settlement = run().finally(() => this.runnerSettlements.delete(id));
+    const settlement = run().finally(() => {
+      this.runnerSettlements.delete(id);
+      retention.settled = true;
+      this.releaseTask(task);
+    });
     this.runnerSettlements.set(id, settlement);
     void settlement;
   }
@@ -2511,13 +2594,28 @@ export class SubagentManager {
     this.recordNow(pending.cwd, pending.task, pending.activity);
   }
 
-  private recordNow(cwd: string, task: SubagentTask, activity: string): void {
+  private recordNow(
+    cwd: string,
+    task: SubagentTask,
+    activity: string,
+  ): boolean {
     try {
       this.invalidateSessionTaskCache(cwd, task);
       this.history.upsertTask(cwd, task);
-      this.history.addEvent(cwd, task, activity);
-    } catch {
-      // History should never break delegation.
+      const retention = this.attemptRetention.get(task);
+      if (retention && isTerminalStatus(task.status)) retention.durable = true;
+      return true;
+    } catch (error) {
+      // A failed terminal write pins this attempt, even if another write succeeds.
+      const retention = this.attemptRetention.get(task);
+      if (isTerminalStatus(task.status) && !retention?.persistenceFailed) {
+        if (retention) retention.persistenceFailed = true;
+        console.error(
+          `[pi-subagents] Failed to persist terminal task ${task.id} (attempt ${task.attempt ?? 1}); keeping execution detail in memory:`,
+          error,
+        );
+      }
+      return false;
     }
   }
 
@@ -2555,11 +2653,14 @@ export class SubagentManager {
   }
 
   private async wait(id: string): Promise<void> {
-    while (true) {
-      const task = this.tasks.get(id);
-      if (!task) throw new Error(`Subagent task not found: ${id}`);
-      if (isTerminalStatus(task.status)) return;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    const task = this.tasks.get(id);
+    if (!task) throw new Error(`Subagent task not found: ${id}`);
+    const releaseResult = this.retainResults([task]);
+    try {
+      while (!isTerminalStatus(task.status))
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally {
+      releaseResult();
     }
   }
 }

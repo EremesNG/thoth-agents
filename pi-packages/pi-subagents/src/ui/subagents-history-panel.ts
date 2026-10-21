@@ -19,6 +19,7 @@ import type {
   SubagentThreadSnapshot,
   UsageStats,
 } from '../types.js';
+import { isTerminalStatus } from '../types.js';
 import type { SubagentProviderLimitCache } from './provider-limit-cache.js';
 import {
   agentIcon,
@@ -831,6 +832,9 @@ export class SubagentsHistoryPanel {
         ? ['', '# execution', this.cleanTranscript(task.transcript)].join('\n')
         : undefined,
       task.error ? ['', '# error', task.error].join('\n') : undefined,
+      isTerminalStatus(task.status) && !task.thread_snapshot && !task.transcript
+        ? 'execution detail expired (final response and task metadata retained)'
+        : undefined,
       hasResp
         ? ['', '# response sent to orchestrator', task.result].join('\n')
         : undefined,

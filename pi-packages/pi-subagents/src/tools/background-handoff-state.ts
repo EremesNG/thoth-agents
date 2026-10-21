@@ -107,7 +107,8 @@ export async function triggerTaskBackgroundHandoff(
 ): Promise<boolean> {
   const question: QuestionHandoff = {
     manager,
-    parentSessionId: manager.getTask(taskId)?.session_id,
+    parentSessionId: manager.getTask(taskId, manager.getTaskCwd(taskId))
+      ?.session_id,
     taskId,
     entries: new Set(),
     backgrounded: false,
@@ -187,7 +188,7 @@ export function installBackgroundHandoffShortcut(
     handoff,
     hasActiveTask: () =>
       getTaskIds().some((id) => {
-        const task = manager.getTask(id);
+        const task = manager.getTask(id, ctx?.cwd ?? process.cwd());
         return Boolean(
           task &&
             task.mode !== 'background' &&

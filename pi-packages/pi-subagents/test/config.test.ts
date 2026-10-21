@@ -163,6 +163,37 @@ function readJsonl(file: string): any[] {
 }
 
 describe('config and workflow loading', () => {
+  it('defaults history detail retention to 14 days and honors global/project non-negative numbers', () => {
+    expect(readSubagentsConfig(tmp).history_detail_retention_days).toBe(14);
+    const agentDir = process.env.PI_CODING_AGENT_DIR!;
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ history_detail_retention_days: 30 }),
+    );
+    expect(readSubagentsConfig(tmp).history_detail_retention_days).toBe(30);
+    for (const [value, expected] of [
+      [0, 0],
+      [0.5, 0.5],
+      [-1, 14],
+      ['7', 14],
+      [null, 14],
+      [true, 14],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ history_detail_retention_days: value }),
+      );
+      expect(readSubagentsConfig(tmp).history_detail_retention_days).toBe(
+        expected,
+      );
+    }
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      '{"history_detail_retention_days":1e309}',
+    );
+    expect(readSubagentsConfig(tmp).history_detail_retention_days).toBe(14);
+  });
   it('parses markdown agents with multiline or comma-separated inline tools', () => {
     const multiline = parseFrontmatter(
       '---\nname: analyst\ntools:\n  - read\n  - write\n---\n# Body',

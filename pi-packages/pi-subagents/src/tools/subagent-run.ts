@@ -190,7 +190,9 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
               ],
               details: {
                 tasks: latestTasks.map((task) =>
-                  compactTaskForToolResult(task, availability()),
+                  compactTaskForToolResult(task, availability(), {
+                    includeResult: false,
+                  }),
                 ),
                 frame: frame++,
                 backgroundable: canBackgroundInTaskMode,
@@ -251,7 +253,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
           const available = availability();
           if (!('results' in result)) {
             const launchedTasks = result.task_ids
-              .map((id) => manager.getTask(id))
+              .map((id) => manager.getTask(id, ctx?.cwd ?? process.cwd()))
               .filter(Boolean) as SubagentTask[];
             const details = compactResultDetails(
               {

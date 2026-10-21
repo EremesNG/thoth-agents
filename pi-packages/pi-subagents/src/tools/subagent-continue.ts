@@ -106,7 +106,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               ],
               details: {
                 tasks: latestTasks.map((task) =>
-                  compactTaskForToolResult(task, availability()),
+                  compactTaskForToolResult(task, availability(), {
+                    includeResult: false,
+                  }),
                 ),
                 frame: frame++,
                 backgroundable: canBackgroundInTaskMode,

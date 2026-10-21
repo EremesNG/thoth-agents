@@ -12,8 +12,13 @@ import {
   type AtelierSessionOwner,
   captureAtelierSessionOwner,
 } from '../atelier-metadata.js';
-import { readSubagentsConfig, subagentSourceWarnings } from '../config.js';
-import { SubagentManager } from '../manager.js';
+import {
+  DEFAULT_HISTORY_DETAIL_RETENTION_DAYS,
+  readSubagentsConfig,
+  subagentSourceWarnings,
+} from '../config.js';
+import { SubagentHistoryStore } from '../history.js';
+import { SubagentManager, summarizeTask } from '../manager.js';
 import { applyProfileOrchestrator } from '../model-profiles/orchestrator.js';
 import { SessionModelProfile } from '../model-profiles/session.js';
 import { ModelProfileStore } from '../model-profiles/store.js';
@@ -48,6 +53,15 @@ import {
 import { SubagentProviderLimitCache } from '../ui/provider-limit-cache.js';
 import { createSubagentsWorkPanelProvider } from '../ui/work-panel-provider.js';
 import { SubagentUsageEvents } from '../usage-events.js';
+
+const HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const HISTORY_PRUNE_KEY = Symbol.for('pi.subagents.historyPruning.v1');
+const shared = globalThis as typeof globalThis & {
+  [HISTORY_PRUNE_KEY]?: { lastRunAt: number; pending: boolean };
+};
+// Child session loaders can evaluate separate copies of this module in one process.
+shared[HISTORY_PRUNE_KEY] ??= { lastRunAt: -Infinity, pending: false };
+const historyPruning = shared[HISTORY_PRUNE_KEY];
 
 function currentSessionId(ctx: any): string | undefined {
   const direct = ctx?.sessionManager?.getSessionId?.() ?? ctx?.sessionId;
@@ -123,11 +137,13 @@ export default function subagentsExtension(pi: any): void {
           ? task.session_id
           : undefined;
       if (taskSessionId && taskSessionId !== activeSessionId) return;
+      // Freeze this attempt's result and acknowledgment identity before continuation.
+      const completion = summarizeTask(task);
       deliverNotification(() => {
         if (taskSessionId && taskSessionId !== activeSessionId) return;
-        if (manager.isResultAcknowledged(task)) return;
+        if (manager.isResultAcknowledged(completion)) return;
         try {
-          sendSubagentCompletionMessage(pi, task, cwd);
+          sendSubagentCompletionMessage(pi, completion, cwd);
         } catch (error) {
           if (!isStaleContextError(error)) throw error;
         }
@@ -147,11 +163,12 @@ export default function subagentsExtension(pi: any): void {
         throw new Error(
           'The originating parent Pi session is no longer active.',
         );
+      const pending = summarizeTask(task);
       deliverNotification(() => {
-        if (task.session_id !== activeSessionId) return;
-        if (!manager.isQuestionPending(task.id, question.request_id)) return;
+        if (pending.session_id !== activeSessionId) return;
+        if (!manager.isQuestionPending(pending.id, question.request_id)) return;
         try {
-          sendSubagentQuestionMessage(pi, task, question);
+          sendSubagentQuestionMessage(pi, pending, question);
         } catch (error) {
           if (isStaleContextError(error))
             throw new Error(
@@ -161,18 +178,20 @@ export default function subagentsExtension(pi: any): void {
         }
       });
     },
-    (task, _cwd, attempt, generation) => {
+    (task, cwd, attempt, generation) => {
       const sessionId = task.session_id;
+      const taskId = task.id;
       if (!sessionId || sessionId !== activeSessionId) return;
       deliverNotification(() => {
         if (
           sessionId !== activeSessionId ||
-          task.session_id !== sessionId ||
-          !manager.isAttentionCurrent(task.id, attempt, generation)
+          !manager.isAttentionCurrent(taskId, attempt, generation)
         )
           return;
+        const current = manager.getTask(taskId, cwd);
+        if (!current || current.session_id !== sessionId) return;
         try {
-          sendSubagentAttentionMessage(pi, task);
+          sendSubagentAttentionMessage(pi, summarizeTask(current));
         } catch (error) {
           if (!isStaleContextError(error)) throw error;
         }
@@ -314,28 +333,62 @@ export default function subagentsExtension(pi: any): void {
     registerSubagentsPanelOpener((taskId?: string) =>
       openPanel(panelCtx ?? ctx, taskId),
     );
-    if (!ctx.hasUI || ctx.mode !== 'tui') return;
-    releaseWorkPanelLifecycle = bindWorkPanelLifecycle(pi, ctx);
-    const generation = workPanelGeneration;
-    unregisterWorkPanel = registerWorkPanelProvider(
-      ctx,
-      createSubagentsWorkPanelProvider({
-        listTasks: () => manager.listActiveSessionTasks(cwd, sessionId),
-        listCompletionRankedSessionTasks: () =>
-          manager.listWorkPanelSessionTasks(cwd, sessionId),
-        persistedCounts: manager.snapshotSessionTaskCounts(cwd, sessionId),
-        providerLimits,
-        onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
-        cancel: (id, reason) => manager.cancel(id, reason),
-        open: (id, liveCtx) => openPanel(liveCtx, id),
-        openHistory: (liveCtx) => openPanel(liveCtx),
-        theme: () => ctx.ui.theme,
-      }),
-    );
-    const release = await ensureWorkPanel(ctx);
-    // A replacement or shutdown may finish while the host loads its optional peers.
-    if (generation !== workPanelGeneration) release();
-    else releaseWorkPanel = release;
+    if (ctx.hasUI && ctx.mode === 'tui') {
+      releaseWorkPanelLifecycle = bindWorkPanelLifecycle(pi, ctx);
+      const generation = workPanelGeneration;
+      unregisterWorkPanel = registerWorkPanelProvider(
+        ctx,
+        createSubagentsWorkPanelProvider({
+          listTasks: () => manager.listActiveSessionTasks(cwd, sessionId),
+          listCompletionRankedSessionTasks: () =>
+            manager.listWorkPanelSessionTasks(cwd, sessionId),
+          persistedCounts: manager.snapshotSessionTaskCounts(cwd, sessionId),
+          providerLimits,
+          onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
+          cancel: (id, reason) => manager.cancel(id, reason),
+          open: (id, liveCtx) => openPanel(liveCtx, id),
+          openHistory: (liveCtx) => openPanel(liveCtx),
+          theme: () => ctx.ui.theme,
+        }),
+      );
+      const release = await ensureWorkPanel(ctx);
+      // A replacement or shutdown may finish while the host loads its optional peers.
+      if (generation !== workPanelGeneration) release();
+      else releaseWorkPanel = release;
+    }
+    if (
+      !historyPruning.pending &&
+      Date.now() - historyPruning.lastRunAt >= HISTORY_PRUNE_INTERVAL_MS
+    ) {
+      historyPruning.pending = true;
+      // No DB work or config reads on the startup path, and no recurring timer.
+      const timer = setTimeout(async () => {
+        try {
+          if (notificationCtx !== ctx) return;
+          const days =
+            readSubagentsConfig(cwd).history_detail_retention_days ??
+            DEFAULT_HISTORY_DETAIL_RETENTION_DAYS;
+          if (days === 0) return;
+          historyPruning.lastRunAt = Date.now();
+          const history = new SubagentHistoryStore();
+          try {
+            await history.pruneExecutionDetail({
+              olderThanMs: Date.now() - days * 86400000,
+            });
+          } finally {
+            history.close();
+          }
+        } catch (error) {
+          console.error(
+            '[pi-subagents] Failed to prune history execution detail:',
+            error,
+          );
+        } finally {
+          historyPruning.pending = false;
+        }
+      }, 1000);
+      timer.unref();
+    }
   });
 
   if (usageEvents && typeof pi.appendEntry === 'function')
@@ -409,6 +462,34 @@ export default function subagentsExtension(pi: any): void {
   pi.registerCommand?.('subagents', {
     description: 'Show subagent history panel',
     handler: (_args: string, ctx: any) => openPanel({ ...ctx, pi }),
+  });
+
+  pi.registerCommand?.('subagents-history-compact', {
+    description: 'Prune expired execution detail and compact subagent history',
+    handler: async (_args: string, ctx: any) => {
+      ctx?.ui?.notify?.(
+        'Compacting subagent history. VACUUM can need up to twice the database size in free disk space.',
+        'warning',
+      );
+      try {
+        const days =
+          readSubagentsConfig(ctx?.cwd ?? process.cwd())
+            .history_detail_retention_days ??
+          DEFAULT_HISTORY_DETAIL_RETENTION_DAYS;
+        const result = await SubagentHistoryStore.compactHistory({
+          olderThanMs: days === 0 ? undefined : Date.now() - days * 86400000,
+        });
+        ctx?.ui?.notify?.(
+          `History compacted (database + WAL): ${result.beforeBytes.toLocaleString('en-US')} bytes → ${result.afterBytes.toLocaleString('en-US')} bytes.`,
+          'info',
+        );
+      } catch (error) {
+        ctx?.ui?.notify?.(
+          error instanceof Error ? error.message : String(error),
+          'error',
+        );
+      }
+    },
   });
 
   pi.registerCommand?.('subagents-model', {

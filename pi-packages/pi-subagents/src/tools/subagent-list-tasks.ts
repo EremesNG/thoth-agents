@@ -36,7 +36,8 @@ export function createSubagentListTasksTool(
         const compactTasks = tasks.map((task) =>
           compactTaskWithoutFinalText(task, available),
         );
-        return ok(formatTaskListSummary(compactTasks as any), {
+        // Model-facing text uses original tasks, not the bounded detail previews.
+        return ok(formatTaskListSummary(tasks), {
           tasks: compactTasks,
         });
       } catch (e) {

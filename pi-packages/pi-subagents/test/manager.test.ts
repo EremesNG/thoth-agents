@@ -250,15 +250,16 @@ function readJsonl(file: string): any[] {
 }
 
 describe('manager and history integration', () => {
-  it('persists startup diagnostics before later activity can coalesce them away', async () => {
+  it('persists startup diagnostics immediately before later activity', async () => {
     writeAgent('analyst');
     const history = createHistoryStore();
-    const addEvent = vi.spyOn(history, 'addEvent');
+    let persistedDiagnostic: string | undefined;
     const manager = createManager(async ({ onActivity }) => {
       onActivity?.({
         message: 'session_start handler error: fixture failure',
         diagnostic: true,
       });
+      persistedDiagnostic = history.listTasks(tmp)[0]?.last_activity;
       onActivity?.({ message: 'nested session ready' });
       return {
         result: 'completed despite startup warning',
@@ -270,7 +271,7 @@ describe('manager and history integration', () => {
       { cwd: tmp },
     );
     expect(result.results?.[0].status).toBe('completed');
-    expect(addEvent.mock.calls.map((call) => call[2])).toContain(
+    expect(persistedDiagnostic).toBe(
       'session_start handler error: fixture failure',
     );
   });
@@ -991,7 +992,6 @@ describe('manager and history integration', () => {
       upsertTask(_cwd: string, task: SubagentTask) {
         persisted.push({ status: task.status, error: task.error });
       },
-      addEvent() {},
       listTasks() {
         return [];
       },
@@ -1761,7 +1761,6 @@ describe('manager and history integration', () => {
           activity: task.last_activity ?? '',
         });
       },
-      addEvent() {},
       listTasks() {
         return [];
       },
@@ -2029,16 +2028,12 @@ describe('manager and history integration', () => {
     vi.useFakeTimers();
     writeAgent('analyst');
     const persisted: Array<{ task: SubagentTask; activity: string }> = [];
-    const events: Array<{ task: SubagentTask; activity: string }> = [];
     const history = {
       upsertTask(_cwd: string, task: SubagentTask) {
         persisted.push({
           task: { ...task },
           activity: task.last_activity ?? '',
         });
-      },
-      addEvent(_cwd: string, task: SubagentTask, activity: string) {
-        events.push({ task: { ...task }, activity });
       },
       listTasks() {
         return [];
@@ -2076,10 +2071,10 @@ describe('manager and history integration', () => {
     vi.useRealTimers();
 
     expect(result.results?.[0].status).toBe('completed');
-    expect(events.map((entry) => entry.activity)).toContain('queued');
-    expect(events.map((entry) => entry.activity)).toContain('started');
-    expect(events.map((entry) => entry.activity)).toContain('completed');
-    expect(events.length).toBeLessThan(10);
+    expect(persisted.map((entry) => entry.activity)).toContain('queued');
+    expect(persisted.map((entry) => entry.activity)).toContain('started');
+    expect(persisted.map((entry) => entry.activity)).toContain('completed');
+    expect(persisted.length).toBeLessThan(10);
     expect(updates.length).toBeLessThan(10);
     expect(persisted.at(-1)?.task).toMatchObject({
       status: 'completed',
@@ -2496,7 +2491,6 @@ describe('manager and history integration', () => {
         return undefined;
       },
       upsertTask() {},
-      addEvent() {},
     };
     const manager = createManager(mockRunner(), history as any);
 
@@ -2531,7 +2525,6 @@ describe('manager and history integration', () => {
         return undefined;
       },
       upsertTask() {},
-      addEvent() {},
     };
     const manager = createManager(mockRunner(), history as any);
     const task = {
@@ -3040,6 +3033,66 @@ describe('manager and history integration', () => {
           generationMs: 4000,
         });
     }
+  });
+
+  it('keeps latest task detail through a run and reloaded continuation without persisting events', async () => {
+    writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const nestedSessionPath = path.join(tmp, 'detail-session.jsonl');
+    fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
+    const runner: SubagentRunner = async ({ continuation, onActivity }) => {
+      const attempt = continuation?.attempt ?? 1;
+      onActivity?.({
+        message: `attempt ${attempt} detail`,
+        system_prompt: `system prompt ${attempt}`,
+        transcript: `transcript ${attempt}`,
+        thread_snapshot: statusSnapshot(`snapshot ${attempt}`),
+        nested_session_path: nestedSessionPath,
+      });
+      return {
+        result: `result ${attempt}`,
+        nested_session_path: nestedSessionPath,
+      };
+    };
+    const manager = createManager(runner);
+    const initial = await manager.run(
+      { agent: 'analyst', task: 'persist latest detail', mode: 'task' },
+      { cwd: tmp },
+    );
+    const taskId = initial.task_ids[0]!;
+    const db = createTestDatabase(resolveSubagentHistoryDbPath());
+    const eventCount = () =>
+      db.prepare('SELECT COUNT(*) AS count FROM subagent_events').get().count;
+    expect(eventCount()).toBe(0);
+    await manager.close();
+
+    const reloaded = createManager(runner);
+    expect(reloaded.getTask(taskId, tmp)).toMatchObject({
+      result: 'result 1',
+      system_prompt: 'system prompt 1',
+      transcript: 'transcript 1\n\n# response sent to orchestrator\n\nresult 1',
+      thread_snapshot: statusSnapshot('snapshot 1'),
+    });
+    const continued = await reloaded.continueTask(
+      { task_id: taskId, prompt: 'continue', mode: 'task' },
+      { cwd: tmp },
+    );
+    expect(continued.results?.[0]).toMatchObject({
+      attempt: 2,
+      result: 'result 2',
+    });
+    await reloaded.close();
+    expect(eventCount()).toBe(0);
+    expect(createHistoryStore().getTask(tmp, taskId)).toMatchObject({
+      attempt: 2,
+      result: 'result 2',
+      system_prompt: 'system prompt 2',
+      transcript: 'transcript 2\n\n# response sent to orchestrator\n\nresult 2',
+      thread_snapshot: statusSnapshot('snapshot 2'),
+    });
   });
 
   it('continues a completed task under the same task id, reuses the nested session, and persists attempts across reloads', async () => {

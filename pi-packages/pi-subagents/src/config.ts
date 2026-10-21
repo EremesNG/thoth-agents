@@ -44,6 +44,7 @@ export const DEFAULT_STALL_SUSPEND_MAX_MS = 15 * 60 * 1000;
 export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_BACKGROUND_HANDOFF_SHORTCUT = 'ctrl+h';
 const DEFAULT_HISTORY_PANEL_SHORTCUT = 'ctrl+,';
+export const DEFAULT_HISTORY_DETAIL_RETENTION_DAYS = 14;
 const DEFAULT_DETAIL_CANCEL_SHORTCUT = 'x';
 const DEFAULT_RENDER_DEBUG_LOG_PATH = path.join(
   os.tmpdir(),
@@ -535,6 +536,12 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     background_handoff_shortcut: parseBackgroundHandoffShortcut(
       raw.background_handoff_shortcut ?? raw.backgroundHandoffShortcut,
     ),
+    history_detail_retention_days:
+      typeof raw.history_detail_retention_days === 'number' &&
+      Number.isFinite(raw.history_detail_retention_days) &&
+      raw.history_detail_retention_days >= 0
+        ? raw.history_detail_retention_days
+        : DEFAULT_HISTORY_DETAIL_RETENTION_DAYS,
     history_panel_shortcut: parseModifiedShortcut(
       raw.history_panel_shortcut ?? raw.historyPanelShortcut,
       DEFAULT_HISTORY_PANEL_SHORTCUT,

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { assertCollected } from '../../../pi-core/test/helpers/render-chain.js';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import type { SubagentManager } from '../../src/manager.js';
 import { triggerClaudeBackgroundHandoff } from '../../src/tools/background-handoff-state.js';
@@ -123,6 +125,86 @@ async function fixture() {
 }
 
 describe('parent notification outbox', () => {
+  it('does not retain execution detail while queued and delivers the captured attempt after same-id continuation', async () => {
+    env.writeAgent('worker');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const nested = path.join(env.tmp, 'resume.jsonl');
+    fs.writeFileSync(nested, '{}');
+    const host = await fixture();
+    const references: WeakRef<object>[] = [];
+    let hadTranscript = false;
+    (host.manager as any).runner = async ({
+      continuation,
+      onActivity,
+    }: any) => {
+      onActivity?.({
+        message: 'working',
+        transcript: 'heavy transcript '.repeat(1000),
+      });
+      return {
+        result: continuation ? 'second result' : 'first result',
+        fallback_used: false,
+        nested_session_path: nested,
+        system_prompt: 'heavy system',
+        thread_snapshot: env.statusSnapshot('heavy snapshot'),
+      };
+    };
+    try {
+      host.busy();
+      const launched = await host.manager.run(
+        { agent: 'worker', task: 'work', mode: 'background' },
+        host.ctx,
+        undefined,
+        (tasks) => {
+          const task = tasks[0];
+          if (task?.status === 'completed') {
+            hadTranscript = Boolean(
+              task.transcript?.includes('heavy transcript'),
+            );
+            references.push(
+              new WeakRef(task),
+              new WeakRef(task.thread_snapshot!),
+            );
+          }
+        },
+      );
+      await setImmediate();
+      expect(host.sendMessage).not.toHaveBeenCalled();
+      expect(hadTranscript).toBe(true);
+      expect(references).toHaveLength(2);
+      await assertCollected(references);
+      expect(host.manager.listActiveSessionTasks()[0]).toMatchObject({
+        status: 'completed',
+        result: 'first result',
+      });
+      await host.manager.continueTask(
+        { task_id: launched.task_ids[0], prompt: 'next', mode: 'background' },
+        host.ctx,
+      );
+      await setImmediate();
+      await host.readResult(launched.task_ids[0]);
+      const acknowledged = vi.spyOn(host.manager, 'isResultAcknowledged');
+      await host.settle();
+      expect(
+        acknowledged.mock.calls.map(([task]) => [task.attempt, task.result]),
+      ).toEqual([
+        [1, 'first result'],
+        [2, 'second result'],
+      ]);
+      expect(host.sendMessage).toHaveBeenCalledOnce();
+      expect(host.sendMessage.mock.calls[0][0].details.task).toMatchObject({
+        result: 'first result',
+      });
+      expect(host.sendMessage.mock.calls[0][0].content).toContain(
+        'first result',
+      );
+    } finally {
+      await host.emit('session_shutdown');
+    }
+  });
   it.each([
     false,
     true,

@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+### Added
+- Added `/subagents-history-compact` to explicitly prune and VACUUM history, reporting database + WAL sizes before and after. It holds exclusive access throughout pruning and compaction, refuses without data changes while other Pi sessions or viewers have the database open, and can need up to twice the database size in free disk space.
+
 ### Changed
+- Store execution detail only for the latest task attempt, retaining attempt metadata and results without duplicate snapshots, transcripts or system prompts, and stop persisting task events.
+- Prune terminal-task execution detail in deferred, bounded batches after 14 days by default, configurable through `history_detail_retention_days` (`0` disables pruning). Keep task metadata, results, usage/cost and session paths.
+- Release terminal-task transcripts, thread snapshots and system prompts from memory after runner settlement, foreground result delivery and durable persistence; load detail from history on demand and keep full tasks in memory if persistence fails.
+- Bound subagent tool details through one allowlist: omit transcripts, system prompts and thread snapshots, limit prompt/context/continuation previews to 2,000 characters, and include results only in final payloads. Older persisted tool cards still render.
 - Replaced the built-in tool allowlist with native Pi `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` and thoth-mem `mem_recall`, `mem_get`.
 - Shortened `subagent_*` tool descriptions and snippets so each guidance point is stated once; tool names and parameters are unchanged.
 

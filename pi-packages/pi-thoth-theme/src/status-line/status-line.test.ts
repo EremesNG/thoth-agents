@@ -423,9 +423,249 @@ describe('registerStatusLine', () => {
       expect(editor.render).toBe(nativeRender);
       expect(mocks.tui.getFocusedComponent).not.toHaveBeenCalled();
       expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('heartbeats each live Orca child with the same started payload every 30 seconds', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-heartbeat';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    const started = [
+      {
+        id: 'thoth:subagent:bg-0',
+        status: 'started',
+        agent: 'explorer',
+        description: 'Inspect state',
+      },
+      {
+        id: 'thoth:bg:bg-0',
+        status: 'started',
+        agent: 'watch',
+        description: 'Wait for checks',
+      },
+    ];
+    try {
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        ['running'],
+        [{ agent: 'explorer', displayName: 'Inspect state' }],
+      );
+      publishBackgroundState(
+        mocks.events,
+        sessionId,
+        [['command_watch', 'running']],
+        [{ name: 'Wait for checks' }],
+      );
+      vi.advanceTimersByTime(0);
+      expect(childEvents(mocks)).toEqual(started);
+      for (let heartbeat = 0; heartbeat < 5; heartbeat++) {
+        mocks.emit.mockClear();
+        vi.advanceTimersByTime(29_999);
+        expect(childEvents(mocks)).toEqual([]);
+        vi.advanceTimersByTime(1);
+        expect(childEvents(mocks)).toEqual(started);
+      }
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('heartbeats the latest details without restarting the live child or cadence', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-heartbeat-details';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        ['queued'],
+        [{ displayName: 'Queued inspection' }],
+      );
+      publishBackgroundState(
+        mocks.events,
+        sessionId,
+        [['process', 'running']],
+        [{ name: 'Starting checks' }],
+      );
+      vi.advanceTimersByTime(15_000);
+      mocks.emit.mockClear();
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        ['running'],
+        [{ agent: 'explorer', displayName: 'Inspecting state' }],
+      );
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(15_000);
+      expect(childEvents(mocks)).toEqual([
+        {
+          id: 'thoth:subagent:bg-0',
+          status: 'started',
+          agent: 'explorer',
+          description: 'Inspecting state',
+        },
+        { id: 'thoth:bg:bg-0', status: 'started', agent: 'process' },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops heartbeats as children finish and restarts only when new work appears', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-heartbeat-terminal';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      expect(vi.getTimerCount()).toBe(0);
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      publishSubagentState(mocks.events, sessionId, ['failed']);
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(30_000);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:bg-0', status: 'started', agent: 'process' },
+      ]);
+      publishBackgroundState(mocks.events, sessionId, [
+        ['process', 'succeeded'],
+      ]);
+      mocks.emit.mockClear();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(90_000);
+      expect(childEvents(mocks)).toEqual([]);
+      publishSubagentState(
+        mocks.events,
+        sessionId,
+        ['queued'],
+        [{ id: 'next' }],
+      );
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:next', status: 'started', agent: 'worker' },
+      ]);
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(30_000);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:next', status: 'started', agent: 'worker' },
+      ]);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('restarts the heartbeat lease when rebinding a session with announced children', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-heartbeat-rebind';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const offSubagents = onRequest(mocks.events, SUBAGENTS_STATE_REQUEST, {
+      onRequest: () =>
+        publishSubagentState(mocks.events, sessionId, ['running']),
+    });
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      vi.advanceTimersByTime(0);
+      vi.advanceTimersByTime(15_000);
+      mocks.emit.mockClear();
+      for (const handler of [
+        ...(mocks.eventHandlers.get('session_start') ?? []),
+      ])
+        handler();
+      expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(29_999);
+      expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'started', agent: 'worker' },
+      ]);
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      component.dispose();
+      offSubagents();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    false,
+    true,
+  ])('emits no Orca child events after disposal (children announced: %s)', (announced) => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = `orca-heartbeat-dispose-${announced}`;
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      publishBackgroundState(mocks.events, sessionId, [['process', 'running']]);
+      if (announced) {
+        vi.advanceTimersByTime(30_000);
+        expect(childEvents(mocks)).toHaveLength(4);
+      }
+      component.dispose();
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(150_000);
+      expect(childEvents(mocks)).toEqual([]);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not leak a heartbeat when a lifecycle consumer disposes the footer', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const sessionId = 'orca-heartbeat-dispose-during-start';
+    mocks.sessionManager.getSessionId.mockReturnValue(sessionId);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    const offLifecycle = mocks.events.on('task:subagent:lifecycle', () =>
+      component.dispose(),
+    );
+    try {
+      vi.advanceTimersByTime(0);
+      publishSubagentState(mocks.events, sessionId, ['running']);
+      expect(childEvents(mocks)).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(90_000);
+      expect(childEvents(mocks)).toEqual([]);
+    } finally {
+      component.dispose();
+      offLifecycle();
       vi.useRealTimers();
     }
   });
@@ -458,6 +698,10 @@ describe('registerStatusLine', () => {
       vi.advanceTimersByTime(0);
       expect(childEvents(mocks)).toHaveLength(2);
       first.dispose();
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(90_000);
+      expect(childEvents(mocks)).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
       backgroundRunning = false;
       mocks.emit.mockClear();
       vi.resetModules();
@@ -476,9 +720,14 @@ describe('registerStatusLine', () => {
       expect(childEvents(mocks)).toEqual([
         { id: 'thoth:bg:bg-0', status: 'completed' },
       ]);
+      mocks.emit.mockClear();
+      vi.advanceTimersByTime(30_000);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:subagent:bg-0', status: 'started', agent: 'worker' },
+      ]);
+      mocks.emit.mockClear();
       publishSubagentState(mocks.events, sessionId, ['interrupted']);
       expect(childEvents(mocks)).toEqual([
-        { id: 'thoth:bg:bg-0', status: 'completed' },
         { id: 'thoth:subagent:bg-0', status: 'aborted' },
       ]);
     } finally {
@@ -547,6 +796,7 @@ describe('registerStatusLine', () => {
     try {
       vi.advanceTimersByTime(0);
       expect([...active]).toEqual(['thoth:subagent:bg-0', 'thoth:bg:bg-0']);
+      vi.advanceTimersByTime(15_000);
       mocks.emit.mockClear();
       switchTo(nextSession);
       expect(childEvents(mocks)).toEqual([]);
@@ -559,7 +809,13 @@ describe('registerStatusLine', () => {
       mocks.emit.mockClear();
       publishSubagentState(mocks.events, firstSession, []);
       publishBackgroundState(mocks.events, firstSession, []);
+      vi.advanceTimersByTime(29_999);
       expect(childEvents(mocks)).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(childEvents(mocks)).toEqual([
+        { id: 'thoth:bg:other-bg', status: 'started', agent: 'watch' },
+      ]);
+      mocks.emit.mockClear();
       switchTo(firstSession);
       expect(childEvents(mocks)).toEqual([]);
       expect([...active]).toEqual(['thoth:subagent:bg-0', 'thoth:bg:bg-0']);
@@ -966,7 +1222,7 @@ describe('registerStatusLine', () => {
       vi.advanceTimersByTime(0);
       const first = editor.render(100)[0];
       expect(stripTerminalSequences(first)).toContain('working… · 5 bg');
-      expect(vi.getTimerCount()).toBe(1);
+      expect(vi.getTimerCount()).toBe(2); // Animation and Orca lease heartbeat.
       mocks.tui.requestRender.mockClear();
       vi.advanceTimersByTime(250);
       expect(mocks.tui.requestRender).toHaveBeenCalledTimes(5);
@@ -1060,7 +1316,7 @@ describe('registerStatusLine', () => {
       publishBackgroundState(mocks.events, 'parent-session', [
         ['process', 'running'],
       ]);
-      expect(vi.getTimerCount()).toBe(1);
+      expect(vi.getTimerCount()).toBe(2); // Animation and Orca lease heartbeat.
       for (const handler of [
         ...(mocks.eventHandlers.get('session_shutdown') ?? []),
       ])
@@ -1180,7 +1436,7 @@ describe('registerStatusLine', () => {
       expect(mocks.tui.requestRender).not.toHaveBeenCalled();
       expect(component.render(120)).toBe(footer);
       expect(mocks.tui.getFocusedComponent).not.toHaveBeenCalled();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.getTimerCount()).toBe(1); // Orca lease only; no elapsed ticker.
       expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
     } finally {
       component.dispose();

@@ -85,6 +85,9 @@ in the envelope, Unix-millisecond `at`, and only cumulative `totalCost` and
 Invalid, unsupported-version and foreign-session envelopes are ignored; no task
 prompts, results, transcripts or logs are consumed.
 
+Live background work refreshes Orca child holds every 30 seconds to renew Orca's
+120-second hook lease.
+
 The raw `thoth:subagent-usage` bus event/request is removed with no fallback or
 dual publication. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together
 and `/reload`; mixed old/new versions lose subagent cost display. The persisted

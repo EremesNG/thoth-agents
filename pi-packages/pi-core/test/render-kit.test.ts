@@ -7,6 +7,7 @@ import { createKitRenderMemo } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
+  detachRenderContext,
   getRenderKit,
   getToolElapsedMs,
   type RenderIndicatorContext,
@@ -34,6 +35,26 @@ const theme = { fg: (_role: string, text: string) => text };
 afterEach(() => {
   delete shared[registryKey];
   vi.useRealTimers();
+});
+
+it('detaches previous components without mutating the host context or cloning shared state', () => {
+  const lastComponent = { invalidate() {} };
+  const state = {};
+  const invalidate = () => {};
+  const context = Object.freeze({
+    lastComponent,
+    state,
+    invalidate,
+    isPartial: true,
+  });
+  const detached = detachRenderContext(context);
+  expect(detached).not.toBe(context);
+  expect(detached.lastComponent).toBeUndefined();
+  expect(detached.state).toBe(state);
+  expect(detached.invalidate).toBe(invalidate);
+  expect(detached.isPartial).toBe(true);
+  expect(context.lastComponent).toBe(lastComponent);
+  expect(detachRenderContext(undefined)).toBeUndefined();
 });
 
 describe('render kit registry', () => {

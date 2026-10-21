@@ -7,6 +7,7 @@ import {
   type ExtensionToolContext,
 } from '@earendil-works/pi-coding-agent';
 import {
+  detachRenderContext,
   formatDuration,
   getQuestionService,
   getRenderKit,
@@ -135,6 +136,7 @@ export function registerAskCodexTool(
       ),
     }),
     renderCall(args, theme, context) {
+      context = detachRenderContext(context);
       const text = () =>
         theme.fg('mdLink', theme.bold('AskCodex ')) +
         theme.fg(
@@ -151,6 +153,7 @@ export function registerAskCodexTool(
       );
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
+      context = detachRenderContext(context);
       const d = result.details as AskCodexDetails | undefined;
       const status = isPartial
         ? 'running'

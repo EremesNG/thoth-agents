@@ -3,6 +3,7 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
+import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
@@ -84,6 +85,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
+      context = detachRenderContext(context);
       syncElapsedTicker(context);
 
       const args = (rawArgs ?? {}) as ShellArgs;
@@ -152,6 +154,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
         context.lastComponent.invalidate();
       }
 
+      context = detachRenderContext(context);
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
       const borderTone = isPartial

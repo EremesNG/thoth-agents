@@ -5,6 +5,10 @@ import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  assertCollected,
+  renderChain,
+} from '../../pi-core/test/helpers/render-chain.js';
+import {
   buildResult,
   createState,
   selectOption,
@@ -68,6 +72,28 @@ let token: symbol | undefined;
 afterEach(() => {
   if (token) withdrawRenderKit(token);
   token = undefined;
+});
+
+it.each([
+  'call',
+  'result',
+])('question %s releases previous components', async (slot) => {
+  const { renderCall, renderResult } = createQuestionRenderers();
+  if (!renderCall || !renderResult) throw new Error('missing renderers');
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) => {
+    const ctx = context({ state, lastComponent });
+    return slot === 'call'
+      ? renderCall(questionnaire, theme, ctx)
+      : renderResult(
+          buildResult(answered()),
+          { expanded: true, isPartial: false },
+          theme,
+          ctx,
+        );
+  });
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
 });
 
 describe('question renderers', () => {

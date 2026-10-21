@@ -4,6 +4,7 @@ import type {
   ToolRenderers,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
+import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { IconMode, ThemeConfig } from '../shared/config.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
@@ -94,6 +95,7 @@ export function createGenericTool(
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GenericContext) {
+      context = detachRenderContext(context);
       syncElapsedTicker(context);
       const borderTone = context?.isPartial
         ? 'accent'
@@ -140,6 +142,7 @@ export function createGenericTool(
       }
       context?.lastComponent?.invalidate?.();
 
+      context = detachRenderContext(context);
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
       const borderTone = isPartial

@@ -5,6 +5,10 @@ import {
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { afterEach, expect, it, vi } from 'vitest';
+import {
+  assertCollected,
+  renderChain,
+} from '../../pi-core/test/helpers/render-chain.js';
 import { renderToolCard } from '../src/render-tool-card.js';
 
 const theme = {
@@ -31,6 +35,19 @@ function installKit(label = 'kit') {
 }
 afterEach(() => {
   for (const token of registrations.splice(0)) withdrawRenderKit(token);
+});
+
+it('card helper releases previous components', async () => {
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) =>
+    renderToolCard(theme, 'ok', () => ({ body: ['ok'] }), 'end', {
+      state,
+      lastComponent,
+      isPartial: false,
+    } as never),
+  );
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
 });
 
 it('reuses completed card lines and builds the body only once at the same width', () => {

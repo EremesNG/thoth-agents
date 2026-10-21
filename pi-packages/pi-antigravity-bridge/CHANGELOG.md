@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Release previous AskAntigravity call/result cards instead of retaining a growing chain through Pi's render context.
 - Windows agent runs now use hidden kill-on-close Job Objects, ending descendants even when agy exits normally. Final output drains before caller settlement. Metadata probes and the warned launcher-unavailable fallback end only their leader; broker-created processes can escape containment.
 
 ### Removed

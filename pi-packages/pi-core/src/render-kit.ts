@@ -524,6 +524,13 @@ export function getRenderKit(): ThothRenderKit | undefined {
   return undefined;
 }
 
+/** Keep shared state/callbacks, but never retain Pi's previous component chain. */
+export function detachRenderContext<T>(context: T): T {
+  return context && typeof context === 'object'
+    ? { ...context, lastComponent: undefined }
+    : context;
+}
+
 /** Memoize input-stable transcript lines; look up the kit even on cache hits. */
 export function createKitRenderMemo() {
   let cached:

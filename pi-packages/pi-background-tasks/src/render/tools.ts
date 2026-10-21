@@ -1,6 +1,7 @@
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   type RenderIndicatorContext,
   renderToolFooter,
   resolveIcon,
@@ -33,6 +34,7 @@ export function backgroundToolRenderers(toolName: string) {
   return {
     renderShell: 'self' as const,
     renderCall(args: unknown, theme: unknown, context?: RenderContext) {
+      context = detachRenderContext(context);
       if (context?.state) context.state[RESULT_PRESENT] = false;
       const memo = createKitRenderMemo();
       return {
@@ -140,6 +142,7 @@ export function renderBackgroundTaskLogDisplay(
   theme: unknown = {},
   context?: RenderContext,
 ) {
+  context = detachRenderContext(context);
   if (context?.state) context.state[RESULT_PRESENT] = true;
   const opts = options as
     | { expanded?: boolean; isPartial?: boolean }

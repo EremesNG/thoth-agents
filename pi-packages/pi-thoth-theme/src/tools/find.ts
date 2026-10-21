@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
+import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
@@ -59,6 +60,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: FindContext) {
+      context = detachRenderContext(context);
       syncElapsedTicker(context);
       const args = (rawArgs ?? {}) as FindArgs;
       const pattern = escapeControlCharacters(String(args.pattern ?? '*'));
@@ -124,6 +126,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
         context.lastComponent.invalidate();
       }
 
+      context = detachRenderContext(context);
       const isErr = Boolean(context?.isError);
       const status = options?.isPartial
         ? 'running'

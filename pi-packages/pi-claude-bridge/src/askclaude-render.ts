@@ -11,6 +11,7 @@ import {
 } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   formatDuration,
   renderToolFooter,
   resolveIcon,
@@ -105,6 +106,7 @@ export function createAskClaudeRenderers(
   return {
     renderShell: 'self',
     renderCall(args, theme, context) {
+      context = detachRenderContext(context);
       const state = renderState(context);
       state.isPartial = context?.isPartial ?? true;
       state.isError = context?.isError ?? false;
@@ -161,6 +163,7 @@ export function createAskClaudeRenderers(
       });
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
+      context = detachRenderContext(context);
       const details = result.details as
         | {
             prompt?: string;

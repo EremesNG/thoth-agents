@@ -389,6 +389,10 @@ formatDuration(ms: number): string;
   gives explicit `elapsedMs` precedence over shared context timing, starts timing
   on executing running renders and freezes it on terminal status; unknown time
   stays `undefined`. Neither helper creates timers.
+- `detachRenderContext(context)` shallow-copies a render context with
+  `lastComponent: undefined`, preserving shared state and callbacks without mutating
+  Pi's context. Use it before creating retained component closures or kit-rebuild
+  inputs; otherwise each progress update can retain every previous result.
 - `createKitRenderMemo()` returns `{ render(width, build), invalidate() }`, caching
   input-stable lines by the last width and kit identity while discovering the kit
   even on cache hits. Invalidate when other inputs change.

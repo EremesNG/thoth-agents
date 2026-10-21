@@ -13,6 +13,7 @@ import {
 } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   type RenderStatus,
   renderToolFooter,
   resolveIcon,
@@ -310,6 +311,7 @@ export function createQuestionRenderers(
   return {
     renderShell: 'self',
     renderCall(args, theme, context) {
+      context = detachRenderContext(context);
       const state = renderState(context);
       bridge.bind(context, state);
       state.isPartial = context?.isPartial ?? true;
@@ -365,6 +367,7 @@ export function createQuestionRenderers(
       );
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
+      context = detachRenderContext(context);
       const state = renderState(context);
       state.hasResult = true;
       state.collapsed = false;

@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Box, type Component, Text } from "@earendil-works/pi-tui";
 import {
+	detachRenderContext,
 	getRenderKit,
 	type RenderCardOptions,
 	type RenderIndicatorContext,
@@ -25,6 +26,7 @@ export function renderToolCard(
 	context?: RenderIndicatorContext,
 	fallback = { isPartial: true, isError: false },
 ): Component {
+	context = detachRenderContext(context);
 	const shell = (context?.state?.antigravityShell as
 		| ShellState
 		| undefined) ?? { hasResult: false, ...fallback };

@@ -2,6 +2,7 @@ import type { Theme } from '@earendil-works/pi-coding-agent';
 import { Box, type Component, Text } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   getRenderKit,
   type RenderCardOptions,
   type RenderIndicatorContext,
@@ -26,6 +27,7 @@ export function renderToolCard(
   context?: RenderIndicatorContext,
   fallback = { isPartial: true, isError: false },
 ): Component {
+  context = detachRenderContext(context);
   const shell = (context?.state?.askCodexShell as ShellState | undefined) ?? {
     hasResult: false,
     ...fallback,

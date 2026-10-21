@@ -12,6 +12,7 @@ import {
 } from "@thoth-agents/pi-core";
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import { afterEach, expect, test, vi } from "vitest";
+import { assertCollected, renderChain } from '../../pi-core/test/helpers/render-chain.js';
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { renderToolCard } from "../src/render-tool-card.js";
 
@@ -78,6 +79,26 @@ async function askTool(): Promise<
 		renderResult: tool.renderResult,
 	};
 }
+
+test.each(['call', 'partial result', 'result'])('AskAntigravity %s releases previous components', async (slot) => {
+  const tool = await askTool();
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) => {
+    const ctx = context({ state, lastComponent });
+    return slot === 'call'
+      ? tool.renderCall({ prompt: 'inspect' }, theme, ctx)
+      : tool.renderResult({ content: [{ type: 'text', text: 'ok' }], details: { exitCode: 0 } }, { expanded: true, isPartial: slot === 'partial result' }, theme, ctx);
+  });
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
+});
+
+test('card helper releases previous components', async () => {
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) => renderToolCard(theme, 'ok', () => ({ body: ['ok'] }), 'end', { state, lastComponent, isPartial: false } as never));
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
+});
 
 function nativeBox(
 	text: string,
@@ -185,7 +206,8 @@ test.each([
 		expect(options.status).toBe(
 			isPartial ? "running" : isError ? "failed" : "completed",
 		);
-		expect(options.context).toBe(shared);
+		expect(options.context).toEqual({ ...shared, lastComponent: undefined });
+		expect(options.context?.state).toBe(shared.state);
 		expect(Boolean(options.isError)).toBe(isError);
 	}
 });

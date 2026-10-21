@@ -415,3 +415,13 @@ On Windows `@thoth-agents/pi-antigravity-bridge` MUST launch every agy process t
 - **GIVEN** AskCodex and the Antigravity bridge each running a job in the same Pi process
 - **WHEN** one consumer's helper dies or reconciles an ambiguous launch
 - **THEN** only that consumer's jobs are affected and the other consumer's job keeps running
+
+### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
+
+`@thoth-agents/pi-claude-bridge` MUST, when a persisted Pi session continues in a new Pi process or after its in-memory bridge state was cleared, resume the Claude Code session of the last cleanly completed bridge turn with that session's recorded system prompt and append epoch instead of rebuilding it, but only when it can prove the same Pi session, the same Pi history prefix and an unchanged Claude Code transcript; otherwise it MUST rebuild as before, and it MUST NOT reuse a checkpoint left by an aborted, failed, compacted, rewritten or in-flight turn.
+
+#### Scenario: Claude bridge resumes Claude Code sessions across Pi processes
+
+- **GIVEN** a persisted Pi session whose last turn completed through the bridge and whose Claude Code transcript is unchanged
+- **WHEN** Pi restarts and the session continues with a new prompt
+- **THEN** the bridge resumes the same Claude Code session id with the same recorded system prompt without re-importing history, so the request reuses the cached conversation prefix 

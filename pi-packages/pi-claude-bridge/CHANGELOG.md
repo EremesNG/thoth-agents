@@ -2,6 +2,8 @@
 
 ## UNRELEASED
 
+- **Fix: preserve Claude conversation cache across Pi restarts** — Persist validated per-session checkpoints after clean subprocess exit and lazily restore the same Claude Code session, recorded system append and append epoch. Bind the complete Pi turn (including its final assistant) and the full Claude transcript with SHA-256; invalidate on unsafe lifecycle events and fall back to the existing rebuild on any mismatch. Skip non-persisted sessions and prune old sidecars.
+
 - **Fix: refresh appended instructions inline on resumed provider queries** — Deliver only changed/added keyed blocks and removed keys through new-turn hook context, with full replacement for ambiguous segmentation or changed order. Split framed values into ≤9,000 string-length units across one-shot callbacks; commit only after all parts return and force full replacement after partial delivery. Preserve the recorded system prompt and prior conversation/cache prefix, epoch resets, retries and child isolation. Add offline request-content, segmentation and multipart regressions plus a large-append opt-in live recording/reuse probe.
 
 - **Rendering: standard tool status footer** — AskClaude kit cards use pi-core's shared status/elapsed footer, preserve action summaries, and retain terminal failure status after call-slot reconstruction.

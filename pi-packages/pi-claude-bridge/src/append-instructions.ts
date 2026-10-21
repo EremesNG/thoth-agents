@@ -17,7 +17,7 @@ function updatePayload(effective: string, append: string, forceReplacement: bool
 	].join("\n");
 }
 
-interface RecordingEpoch {
+export interface RecordingEpoch {
 	recorded: string;
 	effective: string;
 	uncertain: boolean;
@@ -35,6 +35,15 @@ export class AppendInstructions {
 
 	ensure(sessionId: string, append: string): RecordingEpoch {
 		return this.epochs.get(sessionId) ?? this.start(sessionId, append);
+	}
+
+	export(sessionId: string): RecordingEpoch | undefined {
+		const epoch = this.epochs.get(sessionId);
+		return epoch ? { ...epoch } : undefined;
+	}
+
+	import(sessionId: string, epoch: RecordingEpoch): void {
+		this.epochs.set(sessionId, { recorded: epoch.recorded, effective: epoch.effective, uncertain: epoch.uncertain });
 	}
 
 	forget(sessionId: string): void {

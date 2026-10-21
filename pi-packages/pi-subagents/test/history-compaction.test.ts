@@ -154,7 +154,7 @@ describe('explicit history compaction', () => {
       });
     const compacting = SubagentHistoryStore.compactHistory({ olderThanMs });
     try {
-      // The first 100-row pruning commit yields; there is still another batch.
+      // The first one-row pruning commit yields; there is still another batch.
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(beforeVacuum).toBe(false);
       lateWriter(mode);

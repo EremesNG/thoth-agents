@@ -101,6 +101,8 @@ it('captures before tools can launch children and passes retained warnings to de
     await fire('session_shutdown');
     registry.delete('early-child');
     registry.delete('active-child');
+    // Finish background history slices before replacing their fake scheduler.
+    await vi.runAllTimersAsync();
     vi.useRealTimers();
   }
 });

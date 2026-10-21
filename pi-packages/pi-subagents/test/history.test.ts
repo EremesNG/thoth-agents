@@ -160,7 +160,7 @@ describe('subagent history persistence and display_name compatibility', () => {
           `INSERT INTO subagent_events (task_id, cwd, created_at, status, activity) VALUES (?, ?, ?, ?, ?)`,
         ).run(task.id, tmp, task.created_at, task.status, 'legacy event');
       const before = store.listTaskAttempts(tmp, task.id);
-      // This callback can observe an intermediate commit, not one giant transaction.
+      // The empty task-table slice also yields before legacy attempts are cleared.
       const intermediate = new Promise<number>((resolve) =>
         setImmediate(() => {
           resolve(
@@ -174,7 +174,7 @@ describe('subagent history persistence and display_name compatibility', () => {
         olderThanMs: Date.parse(task.created_at),
         batchSize: 2,
       });
-      expect(await intermediate).toBe(2);
+      expect(await intermediate).toBe(0);
       expect(await pruning).toEqual({
         tasksCleared: 0,
         attemptsCleared: 5,

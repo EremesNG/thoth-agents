@@ -426,7 +426,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, adds a metadata-only skill catalog, skips prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |
 | `lean_skills` | `true` | Enable the lean child skill catalog. Project boolean overrides global; `false` disables it. |
 | `lifecycle_passthrough` | `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge", "@thoth-agents/pi-background-tasks", "@thoth-agents/pi-openai-fast"]` | Trust list: in lean mode, packages with an exact matching nearest `package.json` name retain their full event lifecycle, including startup, shutdown, and model selection. Prompt-shaping events are observe-only as defense in depth, except that a `before_provider_request` return may replace the provider payload (see isolation below); not a sandbox. Project arrays replace global arrays; `[]` disables passthrough. Non-string entries and the adaptive-root package `thoth-agents` are rejected with a warning. |
-| `history_detail_retention_days` | `14` | Non-negative integer days to retain terminal-task execution detail. `0` disables pruning (including pruning during manual compaction). Project config overrides global config. Metadata, results, usage/cost and session paths are always kept. |
+| `history_detail_retention_days` | `14` | Any non-negative number of days to retain terminal-task execution detail; fractional values are allowed (for example, `0.5`). `0` disables pruning (including pruning during manual compaction). Project config overrides global config. Metadata, results, usage/cost and session paths are always kept. |
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
@@ -811,12 +811,16 @@ The history DB stores:
 Attempt rows retain metadata and results, not duplicate execution detail. New
 writes do not append task events. Deferred maintenance after session start clears
 legacy attempt detail and events, and clears execution detail for terminal tasks
-older than `history_detail_retention_days` (default **14**, `0` disables pruning).
+older than `history_detail_retention_days` (default **14**; any non-negative number
+of days, including fractional values; `0` disables pruning).
 Age uses last activity, then end/start/creation time. Queued, running and stopping
 tasks are never pruned. Task rows, prompts/context, results, errors, timestamps,
 usage/cost and nested session paths are kept. Expired detail is marked in the
-history panel; the final response remains available. Maintenance uses bounded
-batches, skips busy databases, and is throttled to at most one pass per hour per
+history panel; the final response remains available. Maintenance starts 30 seconds
+after session start and uses small background slices with adaptive batches and
+pauses for terminal input and timers, including the first pass after upgrading a
+large history. Individual synchronous SQLite calls can still exceed the slice
+target. It skips busy databases and is throttled to at most one pass per hour per
 process, requested by a later session start; there is no recurring timer.
 
 ### `/subagents-history-compact`

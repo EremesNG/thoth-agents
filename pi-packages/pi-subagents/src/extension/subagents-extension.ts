@@ -55,6 +55,8 @@ import { createSubagentsWorkPanelProvider } from '../ui/work-panel-provider.js';
 import { SubagentUsageEvents } from '../usage-events.js';
 
 const HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+// Leave startup and the initial interaction clear of legacy-history maintenance.
+const HISTORY_PRUNE_DELAY_MS = 30000;
 const HISTORY_PRUNE_KEY = Symbol.for('pi.subagents.historyPruning.v1');
 const shared = globalThis as typeof globalThis & {
   [HISTORY_PRUNE_KEY]?: { lastRunAt: number; pending: boolean };
@@ -386,7 +388,7 @@ export default function subagentsExtension(pi: any): void {
         } finally {
           historyPruning.pending = false;
         }
-      }, 1000);
+      }, HISTORY_PRUNE_DELAY_MS);
       timer.unref();
     }
   });

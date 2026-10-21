@@ -14,6 +14,7 @@
 - Shortened `subagent_*` tool descriptions and snippets so each guidance point is stated once; tool names and parameters are unchanged.
 
 ### Fixed
+- Reduce terminal lag when pruning large legacy histories: defer startup maintenance for 30 seconds, adapt row batches to a 15 ms slice target, and pause between small background slices. Clarify that `history_detail_retention_days` accepts fractional days and `0` disables pruning.
 - Release previous render components and transcript snapshots during progress updates instead of retaining a growing chain through Pi's render context; mounted cards still rebuild only when the Render KIT changes.
 - Made omitted definition `tools` inherit cascaded `default_tools`, just like `tools: []`, resolving at definition load so runtime, listings, thread views and the tools panel agree. Managed panel defaults remain available for explicit reset.
 - Hold question and background completion notifications during active parent agent runs until `agent_settled`, dropping answered questions and terminal results already read through `subagent_result` before they can trigger redundant orchestrator turns. Use the live run signal to cover preceding awaited lifecycle handlers, preserve immediate delivery during compaction/tree-only busy state, and continue flushing after individual delivery failures. Confirm result consumption only from finalized, successful tool messages after interception.

@@ -44,8 +44,8 @@ function seed(id = 'old') {
 }
 
 async function runDeferred() {
-  await vi.advanceTimersByTimeAsync(1000);
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await vi.advanceTimersByTimeAsync(30000);
+  await vi.runAllTimersAsync();
 }
 
 describe('deferred session-start history maintenance', () => {
@@ -61,9 +61,13 @@ describe('deferred session-start history maintenance', () => {
       );
       const timer =
         timers.mock.results[
-          timers.mock.calls.findIndex((call) => call[1] === 1000)
+          timers.mock.calls.findIndex((call) => call[1] === 30000)
         ]?.value;
       expect(timer?.hasRef()).toBe(false);
+      await vi.advanceTimersByTimeAsync(29999);
+      expect(history.getTask(env.tmp, 'old')?.transcript).toBe(
+        'execution detail',
+      );
       await runDeferred();
       expect(history.getTask(env.tmp, 'old')).toMatchObject({
         result: 'final response',

@@ -23,7 +23,13 @@ export type CompactHistoryResult = {
   pruned?: PruneExecutionDetailResult;
 };
 
-type PruneOptions = { olderThanMs: number; batchSize?: number };
+type PruneOptions = {
+  olderThanMs: number;
+  /** Optional upper bound for every table's adaptive batches. */
+  batchSize?: number;
+  /** Monotonic clock; injectable for deterministic slice scheduling tests. */
+  now?: () => number;
+};
 type HistoryPathState = {
   stores: Set<SubagentHistoryStore>;
   pruning: Set<Promise<PruneExecutionDetailResult>>;
@@ -199,6 +205,9 @@ function ensureColumn(
 
 const HISTORY_BUSY_TIMEOUT_MS = 2000;
 const PRUNE_BUSY_TIMEOUT_MS = 50;
+const PRUNE_BACKGROUND_BUSY_TIMEOUT_MS = 10;
+// About one frame of synchronous work, followed by at least as much rest.
+const PRUNE_SLICE_BUDGET_MS = 15;
 
 function isSqliteBusy(error: unknown): boolean {
   const sqliteError = error as {
@@ -729,8 +738,10 @@ export class SubagentHistoryStore {
         eventsDeleted: 0,
         busy: true,
       };
-    const pass = SubagentHistoryStore.pruneOnDb(options, () =>
-      this.db('', PRUNE_BUSY_TIMEOUT_MS),
+    const pass = SubagentHistoryStore.pruneOnDb(
+      options,
+      () => this.db('', PRUNE_BACKGROUND_BUSY_TIMEOUT_MS),
+      true,
     );
     state.pruning.add(pass);
     try {
@@ -741,11 +752,15 @@ export class SubagentHistoryStore {
   }
 
   private static async pruneOnDb(
-    { olderThanMs, batchSize = 100 }: PruneOptions,
+    { olderThanMs, batchSize, now = () => performance.now() }: PruneOptions,
     openDb: () => Db,
+    background = false,
   ): Promise<PruneExecutionDetailResult> {
     const cutoff = new Date(olderThanMs).toISOString();
-    if (!Number.isInteger(batchSize) || batchSize < 1)
+    if (
+      batchSize !== undefined &&
+      (!Number.isInteger(batchSize) || batchSize < 1)
+    )
       throw new Error('Pruning batchSize must be a positive integer.');
     const counts: PruneExecutionDetailResult = {
       tasksCleared: 0,
@@ -756,11 +771,15 @@ export class SubagentHistoryStore {
     let db: Db | undefined;
     try {
       db = openDb();
-      db.exec(`PRAGMA busy_timeout = ${PRUNE_BUSY_TIMEOUT_MS}`);
+      db.exec(
+        `PRAGMA busy_timeout = ${background ? PRUNE_BACKGROUND_BUSY_TIMEOUT_MS : PRUNE_BUSY_TIMEOUT_MS}`,
+      );
       const batches = [
         {
           count: 'tasksCleared' as const,
-          args: [...TERMINAL_STATUSES, cutoff, batchSize],
+          args: [...TERMINAL_STATUSES, cutoff],
+          initialSize: batchSize ?? 1,
+          maxSize: batchSize ?? 100,
           statement: db.prepare(`
       UPDATE subagent_tasks
       SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
@@ -775,7 +794,9 @@ export class SubagentHistoryStore {
         },
         {
           count: 'attemptsCleared' as const,
-          args: [batchSize],
+          args: [],
+          initialSize: batchSize ?? 1,
+          maxSize: batchSize ?? 100,
           statement: db.prepare(`
         UPDATE subagent_task_attempts
         SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
@@ -788,7 +809,9 @@ export class SubagentHistoryStore {
         },
         {
           count: 'eventsDeleted' as const,
-          args: [batchSize],
+          args: [],
+          initialSize: batchSize ?? 100,
+          maxSize: batchSize ?? 10000,
           statement: db.prepare(
             `DELETE FROM subagent_events WHERE id IN (SELECT id FROM subagent_events LIMIT ?)`,
           ),
@@ -796,12 +819,14 @@ export class SubagentHistoryStore {
       ];
       const changes = db.prepare('SELECT changes() AS count');
       for (const batch of batches) {
+        let size = batch.initialSize;
         while (true) {
+          const startedAt = now();
           let changed: number;
           // A failed BEGIN is handled by the outer busy catch, with nothing to roll back.
           db.exec('BEGIN IMMEDIATE');
           try {
-            batch.statement.run(...batch.args);
+            batch.statement.run(...batch.args, size);
             changed = (changes.all()[0] as { count: number }).count;
             db.exec('COMMIT');
             counts[batch.count] += changed;
@@ -809,10 +834,23 @@ export class SubagentHistoryStore {
             db.exec('ROLLBACK');
             throw error;
           }
-          // Yield between committed batches so maintenance does not monopolize Pi.
-          if (changed > 0)
-            await new Promise<void>((resolve) => setImmediate(resolve));
-          if (changed < batchSize) break;
+          const elapsed = now() - startedAt;
+          // Timers/input get a real rest, not just another immediate callback.
+          // Match overruns too, keeping maintenance's duty cycle at most ~50%.
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(
+              resolve,
+              Math.max(PRUNE_SLICE_BUDGET_MS, elapsed),
+            );
+            if (background) timer.unref();
+          });
+          if (changed < size) break;
+          // SQLite calls cannot be preempted. Shrink after an overrun (even to a
+          // single heavy row); grow cautiously when there is ample headroom.
+          if (elapsed > PRUNE_SLICE_BUDGET_MS)
+            size = Math.max(1, Math.floor(size / 2));
+          else if (elapsed < PRUNE_SLICE_BUDGET_MS / 2)
+            size = Math.min(batch.maxSize, size * 2);
         }
       }
     } catch (error) {

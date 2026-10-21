@@ -62,6 +62,15 @@ function seed() {
   return history;
 }
 
+async function runCommand(
+  command: ReturnType<typeof host>['command'],
+  ctx: ReturnType<typeof host>['ctx'],
+) {
+  const result = command.handler('', ctx);
+  await vi.runAllTimersAsync();
+  await result;
+}
+
 describe('/subagents-history-compact', () => {
   it.each([
     0, 30, 2,
@@ -73,7 +82,7 @@ describe('/subagents-history-compact', () => {
     );
     const { command, ctx, emit } = host();
     try {
-      await command.handler('', ctx);
+      await runCommand(command, ctx);
       expect(history.getTask(env.tmp, 'old')?.transcript === undefined).toBe(
         days === 2,
       );
@@ -122,7 +131,7 @@ describe('/subagents-history-compact', () => {
     });
     const { command, ctx, emit, status } = host();
     try {
-      await command.handler('', ctx);
+      await runCommand(command, ctx);
       expect(ctx.ui.notify).toHaveBeenCalledWith(
         expect.stringMatching(
           /History compaction failed:.*disk is full.*up to twice the database size in free disk space.*Pruning may already have completed/,
@@ -154,7 +163,7 @@ describe('/subagents-history-compact', () => {
     ) {
       if (sql === 'VACUUM') {
         // Fire the existing AC-2 timer before compaction releases its connection.
-        vi.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(30000);
         expect(prune).toHaveBeenCalledOnce();
         checkedDuringCompaction = true;
       }
@@ -162,7 +171,7 @@ describe('/subagents-history-compact', () => {
     });
     try {
       await emit('session_start');
-      await command.handler('', ctx);
+      await runCommand(command, ctx);
       expect(checkedDuringCompaction).toBe(true);
       await expect(prune.mock.results[0]!.value).resolves.toEqual({
         tasksCleared: 0,
@@ -185,13 +194,13 @@ describe('/subagents-history-compact', () => {
       expect(command?.description).toMatch(/prune.*compact/i);
       await emit('session_start');
       expect((await status()).details.task.id).toBe('old');
-      await vi.advanceTimersByTimeAsync(1000);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(30000);
+      await vi.runAllTimersAsync();
       expect(compact).not.toHaveBeenCalled();
       expect(exec.mock.calls.some(([sql]) => /VACUUM/i.test(String(sql)))).toBe(
         false,
       );
-      await command.handler('', ctx);
+      await runCommand(command, ctx);
       expect(compact).toHaveBeenCalledOnce();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
         expect.stringMatching(

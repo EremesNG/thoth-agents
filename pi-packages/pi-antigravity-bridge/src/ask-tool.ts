@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { formatDuration, getRenderKit, renderToolFooter, resolveIcon, resolveStatusGlyph } from "@thoth-agents/pi-core";
+import { detachRenderContext, formatDuration, getRenderKit, renderToolFooter, resolveIcon, resolveStatusGlyph } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
@@ -444,6 +444,7 @@ export async function registerAskAntigravityTool(
 			),
 		}),
 		renderCall(args, theme, context) {
+			context = detachRenderContext(context);
 			// Show RESOLVED model/thinking/mode (config defaults applied) so the
 			// row identifies what will actually run, not just explicit args.
 			const cfg = loadConfig();
@@ -490,6 +491,7 @@ export async function registerAskAntigravityTool(
 			);
 		},
 		renderResult(result, { expanded, isPartial }, theme, context) {
+			context = detachRenderContext(context);
 			const d = result.details as AgyDetails | undefined;
 			if (isPartial) {
 				const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";

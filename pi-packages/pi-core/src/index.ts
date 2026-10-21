@@ -74,6 +74,7 @@ export type {
 } from './render-kit.js';
 export {
   createKitRenderMemo,
+  detachRenderContext,
   getRenderKit,
   getToolElapsedMs,
   registerRenderKit,

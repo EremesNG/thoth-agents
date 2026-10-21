@@ -7,6 +7,7 @@ import {
 } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   type RenderIndicatorContext,
   type RenderStatus,
   renderToolFooter,
@@ -417,6 +418,7 @@ export function renderTodoCall(
   theme: Theme,
   context?: RenderIndicatorContext,
 ): Component {
+  context = detachRenderContext(context);
   const memo = createKitRenderMemo();
   return {
     render(width) {
@@ -471,6 +473,7 @@ export function renderTodoResult(
   options: { isPartial?: boolean; expanded?: boolean } = {},
   context?: RenderIndicatorContext & { expanded?: boolean },
 ): Component {
+  context = detachRenderContext(context);
   const details = result.details as TaskDetails | undefined;
   if (context?.state) {
     context.state[HAS_RESULT] = true;

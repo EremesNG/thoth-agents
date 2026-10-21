@@ -5,6 +5,7 @@ import { initTheme } from '@earendil-works/pi-coding-agent';
 import { Box, Text, visibleWidth } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { assertCollected, renderChain } from '../../pi-core/test/helpers/render-chain.ts';
 import { globalConfigPath } from '../src/config.js';
 import activate from '../src/index.js';
 
@@ -69,6 +70,20 @@ function sdkBox(text, role, width) {
   const box = new Box(1, 1, (line) => theme.bg(role, line));
   box.addChild(new Text(text, 0, 0));
   return box.render(width);
+}
+
+for (const slot of ['call', 'result']) {
+  it(`AskClaude ${slot} releases previous components`, async () => {
+    const state = {};
+    const { latest, previous } = renderChain((lastComponent) => {
+      const ctx = context({ state, lastComponent });
+      return slot === 'call'
+        ? tool.renderCall(args, theme, ctx)
+        : tool.renderResult({ content: [{ type: 'text', text: 'ok' }] }, { expanded: true, isPartial: false }, theme, ctx);
+    });
+    await assertCollected(previous);
+    assert.ok(latest.render(80).length > 0);
+  });
 }
 
 describe('AskClaude rendering', () => {
@@ -159,7 +174,8 @@ describe('AskClaude rendering', () => {
       assert.equal(options[0].footer, undefined);
       assert.equal(options[1].status, scenario.status);
       assert.equal(options[1].footer, scenario.footer);
-      assert.equal(options[1].context, shared);
+      assert.deepEqual(options[1].context, { ...shared, lastComponent: undefined });
+      assert.equal(options[1].context?.state, shared.state);
       for (const option of options) {
         assert.equal(option.isSuccess, scenario.completed ?? false);
         assert.equal(

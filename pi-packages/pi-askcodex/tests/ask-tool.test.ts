@@ -17,6 +17,10 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WindowsJobClient } from '../../pi-core/src/windows-job/client.js';
 import {
+  assertCollected,
+  renderChain,
+} from '../../pi-core/test/helpers/render-chain.js';
+import {
   AppServerClient,
   type AppServerClientOptions,
 } from '../src/app-server-client.js';
@@ -26,6 +30,36 @@ import { loadConfig } from '../src/config.js';
 import askCodex from '../src/index.js';
 import { buildDeveloperInstructions } from '../src/instructions.js';
 import type { ServerRequest } from '../src/protocol.js';
+
+it.each([
+  'call',
+  'result',
+])('AskCodex %s releases previous components', async (slot) => {
+  const { renderCall, renderResult } = setup().tool;
+  if (!renderCall || !renderResult) throw new Error('missing renderers');
+  const state = {};
+  const theme = {
+    fg: (_role: string, text: string) => text,
+    bg: (_role: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  const { latest, previous } = renderChain((lastComponent) => {
+    const context = { state, lastComponent };
+    return slot === 'call'
+      ? renderCall({ prompt: 'inspect' }, theme as never, context as never)
+      : renderResult(
+          {
+            content: [{ type: 'text', text: 'ok' }],
+            details: { status: 'completed' },
+          },
+          { expanded: true, isPartial: false },
+          theme as never,
+          context as never,
+        );
+  });
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
+});
 
 const fixture = fileURLToPath(
   new URL('./fixtures/fake-app-server.mjs', import.meta.url),

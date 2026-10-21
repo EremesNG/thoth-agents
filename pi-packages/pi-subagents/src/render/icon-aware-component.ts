@@ -1,4 +1,4 @@
-import { getRenderKit } from '@thoth-agents/pi-core';
+import { detachRenderContext, getRenderKit } from '@thoth-agents/pi-core';
 
 interface RenderComponent {
   render(width: number): string[];
@@ -11,6 +11,8 @@ export function iconAwareRenderer<Args extends unknown[]>(
   build: (...args: Args) => RenderComponent,
 ) {
   return (...args: Args) => {
+    // Sanitize before the initial build too: builders may retain the context.
+    if (args.length > 3) args[3] = detachRenderContext(args[3]);
     let kit = getRenderKit();
     let component = build(...args);
     const current = () => {

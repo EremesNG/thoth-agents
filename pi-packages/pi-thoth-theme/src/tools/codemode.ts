@@ -4,6 +4,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import {
   createKitRenderMemo,
+  detachRenderContext,
   formatDuration,
   type RenderStatus,
   renderToolFooter,
@@ -92,6 +93,7 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
   return {
     renderShell: 'self',
     renderCall(_args, theme, context) {
+      context = detachRenderContext(context);
       if (context?.state) {
         context.state[RESULT_PRESENT] = false;
         context.state[RESULT_BORDER] = undefined;
@@ -123,6 +125,7 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
       return component;
     },
     renderResult(result, options, theme, context) {
+      context = detachRenderContext(context);
       const status = options.isPartial
         ? 'running'
         : context?.isError

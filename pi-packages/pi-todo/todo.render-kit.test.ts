@@ -2,6 +2,10 @@ import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
+import {
+  assertCollected,
+  renderChain,
+} from '../pi-core/test/helpers/render-chain.js';
 import { createMockCtx, createMockPi, makeTheme } from './test/helpers.js';
 import { registerTodoTool, setActiveRenderSession } from './todo.js';
 
@@ -45,6 +49,27 @@ function context(overrides: Partial<RenderContext> = {}): RenderContext {
     ...overrides,
   };
 }
+
+it.each([
+  'call',
+  'result',
+])('todo %s releases previous components', async (slot) => {
+  const tool = setup();
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) => {
+    const ctx = context({ state, lastComponent });
+    return slot === 'call'
+      ? tool.renderCall(ctx.args, makeTheme(), ctx)
+      : tool.renderResult(
+          { content: [{ type: 'text', text: 'ok' }], details: undefined },
+          { expanded: true, isPartial: false },
+          makeTheme(),
+          ctx,
+        );
+  });
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
+});
 
 it('renders a todo card with action, subject and task status through the registered kit', async () => {
   token = registerRenderKit(createTestRenderKit(), {});
@@ -377,7 +402,8 @@ it.each([
   for (const [, options] of card.mock.calls) {
     expect(options.status).toBe(status);
     expect(options.footer).toBe(footer);
-    expect(options.context).toBe(ctx);
+    expect(options.context).toEqual({ ...ctx, lastComponent: undefined });
+    expect(options.context?.state).toBe(ctx.state);
     expect(options.isSuccess).toBe(completed);
     expect(Boolean(options.isError)).toBe(isError);
   }

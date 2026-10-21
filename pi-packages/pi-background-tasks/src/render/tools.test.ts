@@ -18,6 +18,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { assertCollected, renderChain } from '../../../pi-core/test/helpers/render-chain.js';
 import { registerTools } from '../tools.js';
 import {
   backgroundToolRenderers,
@@ -46,6 +47,19 @@ it('mounted background summaries resolve UI punctuation while the shared formatt
   withdrawRenderKit(token);
   token = undefined;
   expect(strip(call.render(100))).toContain('run ·');
+});
+
+it.each(['call', 'result'])('background %s releases previous components', async (slot) => {
+  const tool = backgroundToolRenderers('bg_task_log');
+  const state = {};
+  const { latest, previous } = renderChain((lastComponent) => {
+    const context = { state, lastComponent, isPartial: false };
+    return slot === 'call'
+      ? tool.renderCall({}, {}, context)
+      : tool.renderResult({ content: [{ type: 'text', text: 'ok' }] }, {}, {}, context);
+  });
+  await assertCollected(previous);
+  expect(latest.render(80).length).toBeGreaterThan(0);
 });
 
 const TOOL_NAMES = [
@@ -333,7 +347,8 @@ it.each([
   expect(card.mock.calls[1][1].status).toBe(status);
   expect(card.mock.calls[1][1].footer).toBe(footer);
   for (const [, options] of card.mock.calls) {
-    expect(options.context).toBe(context);
+    expect(options.context).toEqual({ ...context, lastComponent: undefined });
+    expect(options.context?.state).toBe(context.state);
   }
 });
 

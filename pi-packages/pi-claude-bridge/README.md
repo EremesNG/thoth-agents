@@ -36,7 +36,30 @@ Behind the scenes, pi's tools are bridged to Claude Code but everything works li
 
 Claude Code 2.1.286 persists each hook `additionalContext` value **over 10,000 JavaScript string-length units** to a file and shows only a 2,000-character preview (exactly 10,000 stays inline; there is no limit override). The bridge caps each **framed value at 9,000 `.length` units**, splitting larger updates among several callbacks labeled `Part i/n`. Each callback is one-shot, including during steering. Effective state advances only after **all** parts return context. Skipped/failed delivery retries; partial delivery marks the baseline uncertain, forcing a full current replacement on the next query—even if it equals the old effective append. Only complete delivery clears uncertainty. New CC sessions, transcript rebuilds (even with the same UUID), and compaction start new recording epochs; child and ephemeral sessions remain isolated. If hook registration fails, the query proceeds without refresh. Refresh applies between provider queries, not between tool turns or to AskClaude's separate native-tool prompt.
 
-**Cache preservation:** `systemPrompt` construction is unchanged: it still passes the current append with the `claude_code` preset and does not opt out of recording. SDK 0.3.286 `sdk.d.ts:2356–2382` documents that resumed queries use the recorded prompt verbatim. Installed CLI 2.1.286 embedded-source inspection at offsets **216482599** and **212825463** shows hook context becoming new **trailing meta-user reminders**, not rewritten earlier messages. Thus refresh leaves the recorded tools/system/history prefix byte-identical and adds only new-turn tail context within an active recording epoch. Offline regressions consume SDK user input and snapshot request content under a simulated CC recording boundary; they are not live cache-hit telemetry.
+**Cache preservation:** Within a running process, `systemPrompt` still passes the current append with the `claude_code` preset and does not opt out of recording. A validated restart checkpoint supplies the original recorded append instead. SDK 0.3.286 `sdk.d.ts:2356–2382` documents that resumed queries use the recorded prompt verbatim. Installed CLI 2.1.286 embedded-source inspection at offsets **216482599** and **212825463** shows hook context becoming new **trailing meta-user reminders**, not rewritten earlier messages. Thus refresh leaves the recorded tools/system/history prefix byte-identical and adds only new-turn tail context within an active recording epoch. Offline regressions consume SDK user input and snapshot request content under a simulated CC recording boundary; they are not live cache-hit telemetry.
+
+### Resume across Pi restarts
+
+Persisted Pi sessions can resume the same Claude Code conversation after a restart,
+`/resume`, or `/reload`, preserving its recorded system append and appended-instruction
+epoch instead of importing history again. This preserves the cached prefix when the
+provider cache is still warm; it does not extend the cache TTL.
+
+The bridge stores one atomic JSON sidecar per Pi session under
+`<Pi agent dir>/claude-bridge/session-checkpoints/<SHA-256 of Pi session id>.json`
+(normally `~/.pi/agent`, honoring `PI_CODING_AGENT_DIR`). Sidecars contain session
+identifiers, history/transcript hashes and the recorded/effective appended instructions;
+treat them as private session state. Checkpoints older than seven days are pruned
+opportunistically. `--no-session` sessions do not use checkpoints.
+
+A checkpoint is published only after clean completion and confirmed Claude Code
+subprocess exit. Restore requires the same Pi session, cwd and Claude config directory,
+an exact model-visible Pi history digest including the final assistant, and an unchanged
+Claude Code transcript (full-file SHA-256). Missing, malformed, unknown-version or
+mismatching checkpoints fall back to the existing history rebuild. Starting a query,
+aborts/errors, compaction, tree navigation and rebuild/rotation flags invalidate the
+checkpoint. Debug logging reports restore decisions/reasons without checkpoint content.
+Concurrent use of one Pi session by multiple processes is not supported.
 
 **Tool schemas:** Plain object schemas pass through unchanged. Object-only root `anyOf`/`oneOf` unions (including roots already declaring `type: "object"`, object `allOf` variants and local `$ref` variants) are advertised under a required `input` property, preserving variants and root metadata/definitions. The bridge unwraps that envelope before passing arguments to Pi and re-wraps Pi history for Claude; an ordinary tool's own `input` field is untouched. Other non-object schemas are omitted rather than failing the request, with one warning per tool per session: a UI notification, or stderr in headless children, also recorded in `claude-bridge-diag.log` in pi's agent dir. Pi still validates calls against the original schema.
 

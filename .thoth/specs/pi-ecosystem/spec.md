@@ -425,3 +425,13 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 - **GIVEN** a Pi session with these packages loaded
 - **WHEN** their registered tool definitions are serialized
 - **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, and the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool 
+
+### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
+
+`@thoth-agents/pi-claude-bridge` MUST, when a persisted Pi session continues in a new Pi process or after its in-memory bridge state was cleared, resume the Claude Code session of the last cleanly completed bridge turn with that session's recorded system prompt and append epoch instead of rebuilding it, but only when it can prove the same Pi session, the same Pi history prefix and an unchanged Claude Code transcript; otherwise it MUST rebuild as before, and it MUST NOT reuse a checkpoint left by an aborted, failed, compacted, rewritten or in-flight turn.
+
+#### Scenario: Claude bridge resumes Claude Code sessions across Pi processes
+
+- **GIVEN** a persisted Pi session whose last turn completed through the bridge and whose Claude Code transcript is unchanged
+- **WHEN** Pi restarts and the session continues with a new prompt
+- **THEN** the bridge resumes the same Claude Code session id with the same recorded system prompt without re-importing history, so the request reuses the cached conversation prefix 

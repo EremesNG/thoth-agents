@@ -3,7 +3,8 @@ import { getModels } from "@earendil-works/pi-ai/compat";
 import { buildSessionContext, compact, generateBranchSummary, type BranchSummaryResult, type CompactionEntry, type ExtensionAPI, type ExtensionContext, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { query, type EffortLevel, type SDKMessage, type SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { Base64ImageSource, ContentBlockParam } from "@anthropic-ai/sdk/resources";
-import { createSession, deleteSession, openSession, repairToolPairing } from "cc-session-io";
+import { createSession, deleteSession, getClaudeDir, getSessionPath, openSession, repairToolPairing } from "cc-session-io";
+import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.js";
@@ -32,6 +33,7 @@ import { updateUsage, type SdkUsage } from "./usage.js";
 import { formatDuration } from "@thoth-agents/pi-core";
 import { createAskClaudeRenderers } from "./askclaude-render.js";
 import { AppendInstructions } from "./append-instructions.js";
+import { SessionCheckpoints, piPrefixDigest, transcriptFingerprint, validate, type SessionCheckpoint } from "./session-checkpoint.js";
 import { createPublishedToolRegistrar } from "./tool-publication.js";
 import { reportClaudeProviderLimit } from "./provider-limits.js";
 import { fetchClaudeQuota } from "./quota.js";
@@ -269,6 +271,14 @@ function sessionKey(piSessionId: string | null | undefined): string {
  *  session's reads, writes and teardown marks touch only its own mirror. */
 const sharedSessions = new Map<string, SessionState>();
 const appendInstructions = new AppendInstructions();
+const checkpoints = new SessionCheckpoints();
+// Only lifecycle-attributed, persisted Pi sessions may read or write a sidecar.
+const persistedPiSessions = new Set<string>();
+function invalidateCheckpoint(piSessionId: string | null | undefined): number | undefined {
+	if (!piSessionId) return undefined;
+	try { return checkpoints.invalidate(piSessionId); }
+	catch { debug("checkpoint: invalidation failed"); return undefined; }
+}
 
 /** The mirror for `piSessionId`, or null when this session has none yet. */
 function sessionStateFor(piSessionId: string | null | undefined): SessionState | null {
@@ -277,6 +287,7 @@ function sessionStateFor(piSessionId: string | null | undefined): SessionState |
 
 /** Replace (or plant) the mirror for `piSessionId`. */
 function setSessionStateFor(piSessionId: string | null | undefined, state: SessionState | null): void {
+	if (state?.needsRebuild || state?.forceRotate) invalidateCheckpoint(piSessionId);
 	const previous = sessionStateFor(piSessionId);
 	if (previous && previous.sessionId !== state?.sessionId) appendInstructions.forget(previous.sessionId);
 	if (state === null) sharedSessions.delete(sessionKey(piSessionId));
@@ -317,6 +328,7 @@ const markRebuildHooks: Set<MarkRebuildHook> =
  *  with no session id, so such a rewrite forces the REBUILD side; the discard
  *  set holds real ids only — see the comment on historyRewrittenBySession. */
 function markRebuildForSession(piSession: string | null, event: string): void {
+	invalidateCheckpoint(piSession);
 	// The rewriting session's own mirror: the rewrite changed the history it was
 	// built from, so its next sync must REBUILD rather than REUSE. Every other
 	// session's mirror stays untouched — its conversation was never rewritten.
@@ -700,6 +712,7 @@ function reinjectPriorCompactionFileOps(branchEntries: Array<{ type: string; det
 interface SyncResult {
 	sessionId: string | null;
 	preserveSharedSession?: boolean;
+	restoredAppend?: string;
 }
 
 /**
@@ -793,9 +806,21 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 	// every read and write below addresses sessionStateFor(piSessionId), so a
 	// foreign session's shape-matching context can never REUSE or rebuild another
 	// session's CC file.
-	const sharedSession = sessionStateFor(piSessionId);
+	let sharedSession = sessionStateFor(piSessionId);
 	const history = nonSystemMessages(messages);
 	const priorMessages = history.slice(0, turnStart(history)); // everything before the current user turn
+	let restoredAppend: string | undefined;
+	if (!sharedSession && piSessionId && persistedPiSessions.has(piSessionId) && priorMessages.length > 0) {
+		const result = validate(checkpoints.load(piSessionId), { piSessionId, cwd, claudeConfigDir: getClaudeDir(), priorMessages });
+		debug(`checkpoint: restore ${result.ok === true ? "accepted" : `rejected (${result.reason})`}`);
+		if (result.ok) {
+			const c = result.checkpoint;
+			setSessionStateFor(piSessionId, { sessionId: c.sessionId, cursor: c.cursor, cwd, piSessionId });
+			appendInstructions.import(c.sessionId, c.epoch);
+			sharedSession = sessionStateFor(piSessionId);
+			restoredAppend = c.epoch.recorded;
+		} else invalidateCheckpoint(piSessionId);
+	}
 
 	// REUSE path
 	//
@@ -816,7 +841,7 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 			debug(`Case 3: resuming session ${sharedSession.sessionId.slice(0, 8)}, cursor=${sharedSession.cursor}`);
 		}
 		debug(`syncResult: path=reuse sessionId=${sharedSession.sessionId} cursor=${sharedSession?.cursor}`);
-		return { sessionId: sharedSession.sessionId };
+		return { sessionId: sharedSession.sessionId, ...(restoredAppend !== undefined ? { restoredAppend } : {}) };
 		}
 	}
 	// This is what keeps a caller with a pruned or short context from resuming
@@ -842,6 +867,7 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 	}
 
 	// REBUILD path
+	invalidateCheckpoint(piSessionId);
 	if (priorMessages.length === 0) {
 		debug(`Case 1: clean start, ${history.length} total messages`);
 		debug(`syncResult: path=clean-start`);
@@ -1532,8 +1558,9 @@ async function consumeQuery(
 	queryCtx: QueryContext,
 	recordingAppend?: string,
 	piSessionId = queryCtx.piSessionId,
-): Promise<{ capturedSessionId?: string }> {
+): Promise<{ capturedSessionId?: string; completedCleanly: boolean }> {
 	let capturedSessionId: string | undefined;
+	let completedCleanly = false;
 
 	for await (const message of sdkQuery) {
 		reportClaudeProviderLimit(message, piSessionId);
@@ -1556,6 +1583,7 @@ async function consumeQuery(
 			queryCtx.promptStream?.end();
 			logServedContextWindow("result", message, model);
 			resultError = resultErrorText(message);
+			completedCleanly = message.subtype === "success" && resultError === undefined;
 			if (resultError !== undefined) {
 				// Consume the rejection alongside the failure it caused, so a later
 				// unrelated failure on this query doesn't inherit the label.
@@ -1654,7 +1682,7 @@ async function consumeQuery(
 	// DEBUG: trace when consumeQuery exits
 	debug(`consumeQuery: for-await loop exited, wasAborted=${wasAborted()}, capturedSessionId=${capturedSessionId?.slice(0, 8) ?? "none"}`);
 
-	return { capturedSessionId };
+	return { capturedSessionId, completedCleanly };
 }
 
 /** The trailing user turn as content blocks, or null if there isn't one.
@@ -1878,6 +1906,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		const state = sessionStateFor(resultCtx.piSessionId);
 		if (state) state.cursor = context.messages.length;
 		resultCtx.latestCursor = Math.max(resultCtx.latestCursor, context.messages.length);
+		resultCtx.checkpointMessages = context.messages;
 		return stream;
 	}
 
@@ -1946,6 +1975,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		// its instructions or leak pi's harness text. Report it on the stream, as pi-ai's
 		// provider contract expects, so any caller — not only pi's agent loop, which
 		// catches a throw — sees a failed turn rather than a synchronous exception.
+		invalidateCheckpoint(options?.sessionId);
 		const output = newAssistantOutput(model, "", "error", errorMessage(err));
 		queueMicrotask(() => {
 			stream.push({ type: "error", reason: "error", error: output });
@@ -1973,6 +2003,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	queryCtx.wrappedToolNames = wrappedToolNames;
 	queryCtx.resetTurnState(model);
 	queryCtx.latestCursor = 0;
+	queryCtx.checkpointMessages = context.messages;
 	// The served pi session, for rewrite attribution on delivery (issue #101
 	// follow-up) and on SessionState. A fresh instance of this module inside a
 	// worktree-spawned subagent has its own contexts; each records its own.
@@ -1991,6 +2022,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// rewrites (session_compact / session_tree) and for SessionState above.
 	const piSessionId = options?.sessionId ?? null;
 	const syncResult = syncSharedSession(context.messages, cwd, customToolNameToSdk, cliModel, piSessionId, wrappedToolNames);
+	const checkpointGeneration = invalidateCheckpoint(piSessionId);
 	// This query starts from the history pi has now: consume this session's
 	// armed rewrite — a sibling pi session's stays armed for its own queries.
 	if (piSessionId) historyRewrittenBySession.delete(piSessionId);
@@ -2094,6 +2126,10 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		? appendInstructions.hooks(resumeSessionId, systemPromptAppend ?? "", () => appendRefreshActive)
 		: undefined;
 	debug(`append-refresh: enabled=${appendRefreshEnabled} registered=${Boolean(appendRefreshHooks)} sessionId=${resumeSessionId ?? "none"}`);
+	// Observe the actual process, not result delivery or Query.close() (both may
+	// precede the CLI's final JSONL flush). The SDK forwards its graceful-kill signal.
+	let processExited: Promise<boolean> | undefined;
+	const recordedAppend = syncResult.restoredAppend ?? systemPromptAppend;
 	const queryOptions: NonNullable<Parameters<typeof query>[0]["options"]> = {
 		...childOptions,
 		tools: [],
@@ -2115,7 +2151,16 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		},
 		systemPrompt: {
 			type: "preset", preset: "claude_code",
-			append: systemPromptAppend ? systemPromptAppend : undefined,
+			append: recordedAppend || undefined,
+		},
+		spawnClaudeCodeProcess: ({ command, args, ...spawnOptions }) => {
+			const child = spawn(command, args, { ...spawnOptions, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+			child.stderr.on("data", (chunk) => queryOptions.stderr?.(chunk.toString()));
+			processExited = new Promise((resolve) => {
+				child.once("exit", (code, signal) => resolve(code === 0 && signal === null));
+				child.once("error", () => resolve(false));
+			});
+			return child;
 		},
 		extraArgs,
 		...(effort ? { effort } : {}),
@@ -2160,8 +2205,22 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		void sdkQuery.interrupt().catch(() => {});
 		try { sdkQuery.close(); } catch {}
 	};
+	const finishAbort = () => {
+		const state = sessionStateFor(queryCtx.piSessionId);
+		if (state) setSessionStateFor(queryCtx.piSessionId, { ...state, needsRebuild: true, forceRotate: true });
+		if (queryCtx.turnOutput) {
+			queryCtx.turnOutput.stopReason = "aborted";
+			queryCtx.turnOutput.errorMessage = "Operation aborted";
+		}
+		const stream = queryCtx.currentPiStream;
+		stream?.push({ type: "error", reason: "aborted", error: queryCtx.turnOutput! });
+		markStreamComplete(stream);
+		stream?.end();
+		queryCtx.currentPiStream = null;
+	};
 	const onAbort = () => {
 		wasAborted = true;
+		invalidateCheckpoint(piSessionId);
 		appendRefreshActive = false;
 		drainForAbort(abortCtx, promptStream);
 		requestAbort();
@@ -2194,7 +2253,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 
 	// Background consumer — runs until query ends
 	initializeHooks().then(() => consumeQuery(sdkQuery, customToolNameToPi, model, () => wasAborted, queryCtx, systemPromptAppend ?? "", piSessionId))
-		.then(async ({ capturedSessionId }) => {
+		.then(async ({ capturedSessionId, completedCleanly }) => {
 			debug(`provider: consumeQuery completed, stopReason=${queryCtx.turnOutput?.stopReason}, error=${queryCtx.turnOutput?.errorMessage}, aborted=${wasAborted}`);
 
 			// Discarded out from under: the query continuing the turn owns the context,
@@ -2207,20 +2266,8 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 
 			// --- Abort detection in normal completion path ---
 			if (wasAborted || options?.signal?.aborted) {
-				// The killed subprocess may flush a late record into this session's
-				// JSONL — its own mirror's next sync must rebuild and rotate.
-				const state = sessionStateFor(queryCtx.piSessionId);
-				if (state) setSessionStateFor(queryCtx.piSessionId, { ...state, needsRebuild: true, forceRotate: true });
-				debug(`provider: abort detected, marked sharedSession needsRebuild + forceRotate`);
-				if (queryCtx.turnOutput) {
-					queryCtx.turnOutput.stopReason = "aborted";
-					queryCtx.turnOutput.errorMessage = "Operation aborted";
-				}
-				const stream = queryCtx.currentPiStream;
-				stream?.push({ type: "error", reason: "aborted", error: queryCtx.turnOutput! });
-				markStreamComplete(stream);
-				stream?.end();
-				queryCtx.currentPiStream = null;
+				// The killed CLI may still flush a record: rebuild on a fresh UUID.
+				finishAbort();
 				return;
 			}
 
@@ -2247,6 +2294,42 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 				}
 			}
 
+			const completedState = sessionStateFor(piSessionId);
+			const finalAssistant = queryCtx.turnOutput;
+			const epoch = completedState && appendInstructions.export(completedState.sessionId);
+			let pendingCheckpoint: Omit<SessionCheckpoint, "transcript"> | undefined;
+			if (completedCleanly && piSessionId && persistedPiSessions.has(piSessionId) && checkpointGeneration !== undefined &&
+				!syncResult.preserveSharedSession && completedState && !completedState.needsRebuild && !completedState.forceRotate &&
+				finalAssistant && !["error", "aborted", "toolUse"].includes(finalAssistant.stopReason) && epoch &&
+				completedState.cursor === queryCtx.checkpointMessages.length) {
+				try {
+					const completedHistory = [...queryCtx.checkpointMessages, finalAssistant];
+					pendingCheckpoint = {
+						schemaVersion: 1, status: "clean", piSessionId, cwd, claudeConfigDir: getClaudeDir(),
+						sessionId: completedState.sessionId, cursor: completedState.cursor,
+						proof: { length: completedHistory.length, digest: piPrefixDigest(completedHistory) },
+						epoch, updatedAt: Date.now(),
+					};
+				} catch { debug("checkpoint: publication skipped (unsupported Pi history)"); }
+			}
+			// Closing initiates stdin EOF, not confirmed exit. Bound the wait; timeout
+			// means no checkpoint, never an assumed clean exit.
+			sdkQuery.close();
+			if (pendingCheckpoint && processExited) {
+				const checkpoint = pendingCheckpoint;
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				try {
+					const exited = Promise.race([processExited, new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 5_000); })]);
+					await checkpoints.publish(piSessionId!, checkpointGeneration!, exited, () => ({
+						...checkpoint, transcript: transcriptFingerprint(getSessionPath(checkpoint.sessionId, cwd, checkpoint.claudeConfigDir)),
+					}));
+				} catch { debug("checkpoint: publication skipped (unreadable transcript)"); }
+				finally { clearTimeout(timer); }
+			}
+			if (wasAborted || options?.signal?.aborted) {
+				finishAbort();
+				return;
+			}
 			if (!isReentrant && queryCtx.activeQuery === sdkQuery) {
 				debug("provider: clearing activeQuery before final stream completion");
 				queryCtx.activeQuery = null;
@@ -2259,6 +2342,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 				debug("provider: discarded query ended in error, leaving session and stream to its replacement");
 				return;
 			}
+			invalidateCheckpoint(piSessionId);
 			if ((wasAborted || options?.signal?.aborted)) {
 				const state = sessionStateFor(queryCtx.piSessionId);
 				if (state) setSessionStateFor(queryCtx.piSessionId, { ...state, needsRebuild: true, forceRotate: true });
@@ -2588,6 +2672,11 @@ export default function (pi: ExtensionAPI) {
 		piUI = ctx.ui;
 		piMode = ctx.mode;
 		const sessionId = ctx.sessionManager?.getSessionId() ?? null;
+		if (sessionId) {
+			if (ctx.sessionManager?.getSessionFile?.()) persistedPiSessions.add(sessionId);
+			else persistedPiSessions.delete(sessionId);
+		}
+		checkpoints.prune();
 		if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
 			clearSession(`session_start:${event.reason}`, instanceSessionId);
 			if (sessionId !== instanceSessionId) clearSession(`session_start:${event.reason}`, sessionId);

@@ -66,6 +66,8 @@ Only the four environment overrides listed above are supported. Per-call paramet
 
 ## AskCodex tool
 
+`AskCodex` is registered with `model-only` exposure; UI sessions also publish its tool definition through pi-core.
+
 Give Codex a self-contained task, including relevant paths and constraints. For example:
 
 ```json
@@ -106,6 +108,7 @@ Both modes use Codex's `on-request` approval policy with the user as reviewer. A
 - Matching apps are auto-accepted with **session scope only**, including without Pi UI.
 - Other app requests, MCP elicitations, command/file approvals, and permission requests ask through Pi's UI. Without UI they are declined; cancelled, dismissed, or failed prompts also decline. Unknown server requests are rejected and reported.
 - Computer Use offers session approval; other prompts offer once/session only as supported by the request. **Persistent/"always" approval is never granted.** Every decision is recorded in result `details.approvals`.
+- Approval/server-request handling has its own **30-second deadline**, independent of the overall `timeoutMinutes` cap; increasing that cap does not extend approval waits.
 
 When `@thoth-agents/pi-questions-user` is installed and loaded in a UI session,
 approval prompts use the Thoth question UI through pi-core's shared question
@@ -145,7 +148,7 @@ Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known
 
 - **`codex app-server` is experimental.** The implementation targets the verified Desktop-bundled `0.162.0-alpha.17.2` protocol, not a guarantee of future compatibility.
 - Desktop-bundled binaries are **version-volatile/alpha** and may change with Desktop updates. Automatic discovery follows the newest executable, not a pinned version.
-- Protocol drift fails closed: failed handshakes/protocol errors fail the call, and unknown server requests are rejected rather than auto-approved. There is no CLI/SDK fallback.
+- Failed handshakes, RPC errors, and process failures fail the call. Malformed or oversized output lines are discarded; unknown server requests are rejected rather than auto-approved. There is no CLI/SDK fallback.
 - On Windows, the standalone PATH `codex` has produced **blank native-app screenshots, missing typing, and read-only shell sandbox errors** (`helper_unknown_error: setup refresh had errors`, including ACL errors). Prefer the Desktop bundle; having Desktop running alone does not fix an incompatible CLI binary.
 - Codex loads the user's existing MCP/skills/plugins configuration. Delegated actions can affect real services, browser sessions, and documents; review that configuration and keep app approvals narrow.
 
@@ -161,7 +164,7 @@ Pi cancellation or timeout sends `turn/interrupt` when thread/turn ids are known
 | Browser tools unavailable | Check the Codex browser extension connection and follow Codex's bundled `computer-use` skill. Desktop need not be running for browser Computer Use. |
 | Handshake/protocol failure after an update | Inspect returned errors and `stderrTail` when present; check the selected binary/version. Use a compatible Desktop bundle or update AskCodex; do not bypass approval handling. |
 | Windows `termination-warning`: job launcher unavailable | Windows containment requires Windows PowerShell and permission to compile the bundled helper with `Add-Type` and assign a Job Object. Check policy/AV restrictions and packaged `launcher.ps1` / `launcher.cs` assets. Fallback terminates only the app-server leader; descendants may survive. |
-| Call times out while awaiting approval | Answer in Pi UI, use a narrow app allowlist for unattended Computer Use, or increase `timeoutMinutes`. Other approvals still decline without UI. |
+| Call times out while awaiting approval | Answer in Pi UI within the separate 30-second approval/server-request deadline, or use a narrow app allowlist for unattended Computer Use. Increasing `timeoutMinutes` only extends the overall call cap, not that deadline. Other approvals still decline without UI. |
 | No final answer or process exited mid-turn | Treat the returned failure as failure, not success; inspect errors and stderr. Resume only with a returned `conversationId` and verify any partial effects. |
 
 ## Development

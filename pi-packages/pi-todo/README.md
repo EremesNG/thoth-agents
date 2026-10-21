@@ -4,6 +4,12 @@ Session-owned task lists for Pi. Registers the `todo` tool, `/todos` command,
 and a Todos section in pi-core's shared Work panel. Requires Node >=22.19 and
 Pi >=0.99.0.
 
+## Install
+
+```sh
+pi install npm:@thoth-agents/pi-todo
+```
+
 ## Origin and attribution
 
 This is a first-party MIT fork of **@juicesharp/rpiv-todo 2.12.0**, by juicesharp,
@@ -28,8 +34,9 @@ Open-task reinjection uses the append-only approach demonstrated by
   on overflow with an exact `+N done` line. Enter on any row, the heading or a
   summary line opens the Todos panel (pi-core history panel shell) with the
   current list grouped in progress, not started and completed, plus the selected
-  task's details. `/todos` opens the same panel in the interactive TUI and keeps
-  its text output elsewhere. A fully completed list stays visible until the next
+  task's details. `/todos` opens the same panel in the interactive TUI, uses text
+  output in UI contexts without custom TUI, and reports `/todos requires interactive mode`
+  in headless sessions. A fully completed list stays visible until the next
   recognized prompt, then disappears from the section, panel and `/todos`
   without changing task state. Todos have no close action.
 - The provider reads only the foreground session's local store and notifies the
@@ -80,9 +87,15 @@ task-state channel remains v1.
 Statuses are `pending`, `in_progress`, `completed`, and `deleted` (tombstone).
 Create accepts `pending` (default), `in_progress` or `completed`, not `deleted`.
 Multiple tasks may be `in_progress` for parallel work; complete as soon as done.
-Completed tasks cannot reopen; deleted tasks are terminal. The tool supports
-`description`, `activeForm`, `owner`, `metadata`, `blockedBy`, `addBlockedBy`,
-`removeBlockedBy`, and `includeDeleted`. Dependency cycles are rejected.
+Allowed status changes are `pending → in_progress | completed | deleted`,
+`in_progress → pending | completed | deleted`, and `completed → deleted`;
+same-status updates are allowed. Completed tasks cannot reopen; deleted tasks
+are terminal. The tool supports `description`, `activeForm`, `owner`, and
+`metadata`; updates merge metadata keys, with `null` deleting a key.
+Set `blockedBy` on create only; updates use `addBlockedBy` / `removeBlockedBy`.
+Dependency cycles are rejected. `list` accepts a `status` filter and excludes
+deleted tasks unless `includeDeleted: true`. `clear` resets the entire list,
+including tombstones, and restarts ids at 1.
 Batch applies 1–50 ordered create/update/delete ops atomically; any failure leaves
 state unchanged and reports the failing op index. A create may declare a unique
 call-scoped `ref`. Later `id`, `blockedBy`, `addBlockedBy` and `removeBlockedBy`

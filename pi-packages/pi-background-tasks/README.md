@@ -1,12 +1,12 @@
 # @thoth-agents/pi-background-tasks
 
-Local shell/process jobs for Pi: spawn commands, poll watches, inspect logs and status, stop work, and receive completion callbacks without blocking the foreground turn. The standalone tools are: `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop`, and `bg_task_clear`. The Work panel remains available in interactive sessions.
+Local shell/process jobs for Pi: spawn commands, poll watches, inspect logs and status, stop work, and receive completion callbacks without blocking the foreground turn. The standalone tools are: `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop`, and `bg_task_clear`. The Work panel remains available in interactive sessions. Requires Node `>=22.19.0` and Pi SDK/TUI `>=0.99.0`.
 
 ## Provenance
 
 Copied from https://github.com/1aboveio/pi-better-harness, directory `packages/pi-better-background-tasks`, commit `86876e8369a673892a10c4e8df15460386ad0132` (upstream version 0.6.2). MIT; `Copyright (c) 2026 1aboveio` is retained in LICENSE. Shared libraries are now owned source; no upstream monorepo synchronization scripts are needed.
 
-The manifest follows the existing vendored packages' conventions (scoped name, source-TypeScript extension entry, public publish configuration; not marked private). Installing this workspace does not change the operator's Pi settings.
+The manifest follows the existing vendored packages' conventions (scoped name, compiled `./dist/index.ts` extension entry, public publish configuration; not marked private). Installing this workspace does not change the operator's Pi settings.
 
 ## Use
 
@@ -48,9 +48,46 @@ Spawn and watch accept **`shell: "bash" | "powershell" | "none"`**, default **`"
 
 Each command tool description discloses shells detected once at registration (paths, PowerShell edition/version and 5.1 limitations). Availability is revalidated at launch. Every spawn/watch result includes the actual shell label in text and `details.shell` (`kind`, `executable`, `label`, and PowerShell `edition`/`version`). Legacy records without launch details report those details as unknown. Reload normalizes legacy metadata: `false` → `none`, `true`/absent → `powershell` on Windows or `bash` on POSIX, preserving the shell the old job was written for.
 
-A watch repeatedly executes a command until `success_when`, `failure_when`, or timeout matches. Its first result is returned after at most 15 seconds. Watch timeout defaults to 900 seconds; `timeout_seconds:0` disables it. Spawned processes have no default timeout. Logs retain a bounded tail (4 MiB by default), and terminal artifacts are retained for seven days. List/status/log default to the current session; `all:true` explicitly opts into cross-session inspection.
+A watch repeatedly executes a command until `success_when`, `failure_when`, or timeout matches. `interval_seconds` defaults to 30. Its first result is returned after at most 15 seconds. Watch timeout defaults to 900 seconds; `timeout_seconds:0` disables it. Spawned processes have no default timeout. Logs retain a bounded tail (`max_log_bytes`, default 4194304 / 4 MiB), and terminal artifacts are retained for seven days. List/status/log default to the current session; `all:true` explicitly opts into cross-session inspection.
+
+Watch conditions use these shapes; JSON conditions read stdout:
+
+| Type | Fields |
+| --- | --- |
+| `exit_code` | `equals: number` |
+| `stdout_contains` | `value: string` |
+| `stderr_contains` | `value: string` |
+| `json_path_equals` | `path: string`, `value: any` |
+| `json_path_exists` | `path: string` |
+
+JSON paths must start with `$`, for example `$.status` or `$.steps[0].status`;
+bare keys and wildcards are unsupported. `blind_checks` defaults to 3 consecutive
+exit-zero checks with stderr and no matched condition before flagging an
+actionable possibly-blind incident. The watch continues; no stderr or a matched
+condition recovers it. Set `blind_checks: 0` to disable this rule.
+
+Spawn/watch also accept `operation_id` (up to 64 letters, digits or `. _ : / -`)
+to identify a logical operation across retries: a later success with the same id
+recovers earlier failures of that operation in the same session.
+`expected_exit_codes` declares up to 16 distinct intentional exit codes (0–255;
+0 is already success and ignored). These are recorded as expected failures, not
+actionable incidents; signals and timeouts are never expected. Both fields may
+be omitted or `null`.
 
 `bg_task_clear` dismisses all owned terminal tasks, optionally filtered by `status` (e.g. `["failed"]`), or one task with `id` (which overrides `status`); `all:true` permits another session's task only by ID. Omitted or empty `status` clears every owned terminal status. Running tasks must be stopped first; dismissal preserves history. `max_bytes` bounds missing-task and ownership diagnostics; `bg_task_stop` also accepts `history:true` for failure history in its result. Output controls use `max_bytes` and `lines` (not `maxBytes` or `tail_lines`). The former `bg_task`/`bg_status` action wrappers are no longer registered.
+
+Output is paged with caller-owned, session-scoped `cursor` values: replay the
+same page/change notice or pass `nextCursor` to continue; callers are independent.
+Status `verbose: true` pages raw metadata with environment values omitted
+(default `false`). Logs default to 10 trailing display rows; `raw: true` or
+`lines: 0` pages raw bytes from the oldest retained offset. Lists default to 10
+entries, capped at 100. `max_bytes` budgets the whole UTF-8 output:
+
+| Output | Default | Cap |
+| --- | ---: | ---: |
+| Status | 1 KiB | 2 KiB |
+| Log tail / list | 1 KiB | 4 KiB |
+| Raw log / verbose metadata | 16 KiB | 64 KiB |
 
 Completion callbacks are session-origin scoped and delivered as Pi follow-ups. Cancelled tasks do not wake the agent. Failed checks remain visible in status and can receive failure-attention callbacks. The Work panel's Background section shows local work and its evidence.
 
@@ -113,6 +150,16 @@ full snapshot; this channel does not change work-panel/history providers or
 retention. See [pi-core's exact contract](../pi-core/README.md#task-summary-and-usage-channels).
 
 ## Lifecycle and limits
+
+The registry lives under the OS temporary directory at
+`pi-better-background-tasks/tasks/<id>` (`meta.json` and retained `output.log`).
+Environment overrides (milliseconds):
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `PI_BETTER_STALL_QUIET_MS` | `60000` | Observable-progress age before quiet status. |
+| `PI_BETTER_STALL_MS` | `300000` | Observable-progress age before stalled status; observational, not automatic recovery. |
+| `PI_BETTER_CALLBACK_BATCH_MS` | `100` | Completion callback batching window, clamped to 0–5000 ms. |
 
 A session's `/reload` suspends that instance's scheduling without stopping its jobs. The next instance adopts work of the same origin, including an in-flight watch poll: it does not start an overlapping poll, and completion is delivered once. Runtime timers, the Work panel Background section and failure-attention state belong to each extension instance; loading or ending a headless child does not change root-session work or UI.
 

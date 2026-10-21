@@ -18,8 +18,10 @@ Restart Pi or `/reload` after installing. No theme is required. Only interactive
 TUI sessions mount the sidebar; RPC/headless sessions do not. Fullscreen uses a
 right layout column; regular mode reserves transcript/editor width and draws a
 non-capturing sidebar over the live viewport. Neither mode owns the footer.
-The package declares Pi SDK/TUI peers `>=0.99.0`, but its private layout seams
-are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
+The package declares only `@earendil-works/pi-tui >=0.99.0` as a peer;
+`@earendil-works/pi-coding-agent` is a development dependency pinned to `1.0.2`.
+Its private layout seams are tested on Pi 1.0.2 and feature-detected, not
+guaranteed on every version.
 
 ## Controls
 
@@ -28,8 +30,8 @@ are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
   Auto-hidden sidebars still require enough terminal width to appear.
 - `/sidebar settings` opens an overlay to show/hide and reorder panels
   (**Space** toggles, **Shift+↑/↓** moves), cycle the startup mode and set the
-  default width (**←/→**, **Shift** steps four, 28–72). **Enter** saves to
-  `thoth-sidebar.json`; **Esc** cancels. A saved width applies immediately.
+  default width (**←/→**, **Shift** steps four, 36–72). **Enter** saves to
+  `thoth-sidebar.json`; **Esc** or **q** cancels. A saved width applies immediately.
 - `/sidebar cost` opens an overlay with cumulative subagent cost curves per task
   over time; **q** or **Esc** closes it.
 - `/sidebar panels` lists panel ids in order, including unavailable saved ids.
@@ -43,10 +45,11 @@ are tested on Pi 1.0.2 and feature-detected, not guaranteed on every version.
 - In fullscreen, drag within one column of the divider to resize. Input yields
   to blocking overlays and focused work-panel controls.
 
-Width defaults to 44, bounded to 28–72. Manual mode hides below 92 terminal
-columns; above that it temporarily shrinks to leave the main pane at least 64
-columns, preserving the preferred width. Auto mode collapses below `80 + width`
-and reopens eight columns later. Mode, enabled state and `/sidebar resize`
+Preferred width defaults to 50, bounded to 36–72. Manual mode hides below 92
+terminal columns; above that its effective width may shrink below the preferred
+range to leave the main pane at least 64 columns, preserving the preference.
+Auto mode collapses below `80 + width` and reopens eight columns later.
+Mode, enabled state and `/sidebar resize`
 changes are session-only; the default width and startup (default `auto`) come
 from `/sidebar settings`.
 
@@ -70,23 +73,29 @@ are never rearranged; Cost is appended when missing.
   rows when non-zero. A reader refreshes on session start, turn start, every
   tool result and turn end, coalesced to 250 ms, without polling.
 - **Agents, Todos, Background** (discovered sources): the header shows the
-  provider summary — static running, done and failed status-icon counts for Agents
-  and Background, omitting zero counts (ASCII uses the kit's status glyphs), and
-  `done/total` for Todos. Rows show identity, then all available keyed metrics
-  (tools, tokens, context, speed, cost, elapsed and model·effort) in panel-aligned
-  columns with single-space gutters, semantic icons and text labels in ASCII.
-  Columns wrap together onto aligned continuation lines as width shrinks, never
-  dropping a metric; when all columns plus a 24-cell identity budget fit,
-  the whole panel uses inline right-aligned metrics (identity clips with ellipsis). Missing fields retain empty cells. Numeric format reservations
-  keep heights stable within range; larger values widen the shared column and
-  may add a line without truncating digits. Model·effort reserves 16 cells and
-  truncates with an ellipsis. The footer shows the detail command
+  provider summary — static running, queued, done, failed and cancelled status-icon
+  counts for Agents and Background, omitting zero counts (ASCII uses the kit's
+  status glyphs), and `done/total` for Todos. Queued counts require at least 36
+  columns; crowded headers drop cancelled, then queued counts first.
+  Agents uses a two-line plan: identity, summary and elapsed on line one; a
+  width-dependent priority prefix of metrics (context, cost, speed, tokens, tools,
+  warnings, model·effort) on line two. Lower-priority metrics are dropped as width
+  shrinks; a row stays one line when no second-line metric qualifies. Other
+  sources show identity and admitted keyed metrics on one body line in
+  panel-aligned columns. Lower-priority columns are omitted when they do not fit
+  alongside the identity; elapsed never drops. Numeric format reservations set
+  shared column widths, and missing fields retain empty cells. Model·effort
+  reserves 10 cells and truncates with an ellipsis. The footer shows the detail command
   (`/subagents ▸ detail`, `/todos ▸ detail`, `/bg ▸ detail`, `>` in ASCII). An
   empty panel is a single title line that includes the command. Sources retain
-  all active/pending rows plus at most three finished rows, failures first and
-  newest first within each status, without linger or expiry limits. Finished
-  history remains visible even after resume; unavailable timestamps preserve
-  provider order. Hidden history is not counted in `+N more`; header
+  all active/pending rows plus at most three finished rows, without linger or
+  expiry limits. Agents and Background show
+  active rows oldest launch first, then the three most recently completed rows,
+  newest first regardless of failure. Completion ties use descending ID; missing
+  completion times count as oldest. Other sources keep launch order and their
+  last three finished rows. Missing launch times preserve provider order after
+  timestamped rows. Finished history remains visible even after resume.
+  Hidden history is not counted in `+N more`; header
   counts remain provider totals and full history remains in `/subagents`, `/bg`
   and `/todos`. Only displayed sources are declared absorbed; their work-panel
   sections return when hidden, too small, too narrow or disposed.
@@ -136,7 +145,7 @@ summaries, workspace, cost revision and animation frame.
 ```
 
 `startup` accepts `auto`, `manual` or `off` (default `auto`); it applies to the
-next session, not the current one. `width` (28–72, optional) is the default
+next session, not the current one. `width` (36–72, optional) is the default
 preferred width, applied at start and when saved from `/sidebar settings`. `panels` is an ordered array of non-empty
 string ids and boolean `visible` flags. Built-in ids are `session`, `workspace` and `cost`; work-source ids are
 `subagents`, `todos` and `background-tasks` (use `/sidebar panels` for all

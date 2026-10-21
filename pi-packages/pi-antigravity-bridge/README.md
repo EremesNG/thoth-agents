@@ -5,7 +5,7 @@ A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](ht
 
 If you also have [`@estebanforge/pi-ask-antigravity`](https://github.com/EstebanForge/pi-extensions/tree/main/packages/pi-ask-antigravity) installed, this bridge takes over: pi-ask-antigravity detects the bridge and registers nothing, so the `AskAntigravity` tool is never duplicated.
 
-For per-call reasoning, set `thinking` (`minimal|low|medium|high|xhigh|max`), clamped to agy's `low|medium|high` tiers. It overrides a tier in `model` and the configured default. `effort` is agy's CLI term, not a tool parameter.
+For per-call reasoning, set `thinking` (`minimal|low|medium|high|xhigh|max`), clamped to agy's `low|medium|high` tiers. It overrides tiers in friendly Gemini aliases (such as `flash high`) and the configured default; exact catalog slugs and fixed-thinking families keep their resolved tier. `effort` is agy's CLI term, not a tool parameter.
 
 ## What it does
 
@@ -20,11 +20,13 @@ Turns run through one of two engines behind the same provider surface (`config.e
 - **stream-json** (default): the persistent `agy` CLI process. The tested default; live token usage; conversation resume via `--conversation`.
 - **acp** (beta): Google's official ACP server (`agy_acp_server.par`), JSON-RPC 2.0 over stdio. Beta: parity-verified live against the current build (RC01) - text streaming, multi-turn resume via `session/load`, bridge tools, effort switching, serialization, abort recovery (see `scripts/parity-live.mjs`). Two known RC01 gaps remain: no usage fields (token display runs on live client-side estimates via `acp.usageEstimate`, default `estimate`, streamed per delta and superseded automatically the day the server starts sending real per-turn usage) and no cancel (abort tears the server down and reloads it next turn).
 
+ACP supports Pi image attachments as typed content blocks; stream-json input is text-only. ACP has no plan mode: provider plan turns require stream-json. `AskAntigravity` delegations use the `agy` CLI regardless of the provider engine.
+
 The choice of engine is left to the user, with the trade-offs explained in the tool: a first-run picker modal asks once on a fresh install (stream-json preselected; `esc` defers, and the modal reappears next start), and `/agy engine` with no arguments reopens it anytime. An `acp` pick downloads the ~1.5 GB server binary and starts the Google sign-in immediately; a restart applies the engine. With stream-json active and the `agy` binary missing, pi warns once per extension instance, when that session first uses an Antigravity model (lazy bridge start), until the binary is found.
 
-Full capability comparison, switching, and setup/auth details: [docs/ENGINES.md](docs/ENGINES.md).
+Full capability comparison, switching, and setup/auth details: [docs/ENGINES.md](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/ENGINES.md).
 
-Switch and setup details live in [docs/ENGINES.md](docs/ENGINES.md): switching to `acp` self-installs Google's official server binary from the [antigravity-acp registry entry](https://github.com/agentclientprotocol/registry) and prepares the login (your Antigravity subscription, same account as the `agy` CLI; the extension never sees your credentials). `/agy auth` signs in explicitly, `/agy doctor` diagnoses, and first Antigravity use self-heals silently when everything is ready. Sessions are engine-scoped, so switching engines never crosses conversations.
+Switch and setup details live in [docs/ENGINES.md](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/ENGINES.md): switching to `acp` self-installs Google's official server binary from the [antigravity-acp registry entry](https://github.com/agentclientprotocol/registry) and prepares the login (your Antigravity subscription, same account as the `agy` CLI; the extension never sees your credentials). `/agy auth` signs in explicitly, `/agy doctor` diagnoses, and first Antigravity use self-heals silently when everything is ready. Sessions are engine-scoped, so switching engines never crosses conversations.
 
 ## What it cannot do
 
@@ -33,7 +35,7 @@ agy runs its own closed tool loop (`read_file`, `write_file`, `edit_file`, `run_
 Residual limits (with or without the bridge):
 
 - agy's own edits still land directly on disk; pi's inline diff review does not engage for them.
-- agy commands run without per-action approval by default, same as every other tool in pi. The [Approval gate](docs/APPROVAL-GATE.md) can put pi-side review in front of agy's mutating native tools (off by default; `auto` enables it only when a pi permission extension is installed). See also [Permissions](#permissions) below.
+- agy commands run without per-action approval by default, same as every other tool in pi. The [Approval gate](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/APPROVAL-GATE.md) can put pi-side review in front of agy's mutating native tools (off by default; `auto` enables it only when a pi permission extension is installed). See also [Permissions](#permissions) below.
 - **API-equivalent cost estimate**: messages, session totals, and subagent costs use pi-ai catalog prices, not Antigravity subscription billing. Both engines price input/output/cache-read/cache-write tokens before emitting usage; ACP's client-side token estimates remain estimates and real per-turn usage replaces them with recomputed cost. Unmapped models stay at $0 and log `usage-unpriced` once per model (visible in the debug log with `AGY_DEBUG=1`).
 
 The explicit price mapping uses normalized Pi model ids (not the CLI's dotted model slugs):
@@ -54,9 +56,9 @@ While agy is the active model it normally cannot see pi's universe of extensions
 
 The bridge starts a localhost MCP server inside pi's process. The exposed catalog is computed live from pi's active tools on every `tools/list` and re-checked immediately before every `tools/call`: the `bridgeTools` mode, the session's `/agy tools` hidden set, and the bridge's own internal tools (`AskAntigravity`, the display-only `antigravity` wrapper, `activate_skill`, `bridge_poll_result`, the `agy_web_search`/`agy_read_url` wrappers) are filtered each time, and a call for anything outside the fresh set is rejected - a cached MCP catalog is not authorization. A call that passes routes into pi's own tool loop via the round-trip described below. Discovery is instance-private by default (`bridgeDiscovery: "private"`): each extension factory acquires a short `pi-agy-<8 hex>` server name, collision-checked against live PID-owned private configs and process-wide reservations (including separately loaded package copies), and writes only its own `.agents/mcp_config.json` under `~/.pi/agent/antigravity-bridge/agy-mcp-<pid>-<instance>/`. The stream driver passes this directory through `--add-dir`; ACP supplies the same owned name through its per-session `mcpServers`. Private mode never registers or suppresses global bridge entries. It still removes dead-process `pi-bridge-*` entries while preserving live and foreign servers. A live legacy-global bridge triggers one warning: mixed discovery modes are not supported for isolation.
 
-**Lazy lifecycle and catalog.** Every instance, including root, starts the MCP server/private config/approval hooks only when using an `antigravity` model: at session start, on model selection, or immediately before its first provider stream. Startup is single-flight and awaited before either engine launches; shutdown invalidates pending startup. Sessions using other providers do not start the bridge or spawn agy. Loading reads the model catalog only from `models-cache.json` (even when stale) or the built-in fallback: it never runs `agy models`. First Antigravity use refreshes a missing/stale catalog for the next `/reload`; the current registered model list remains fixed. The stream-json CLI version check is also deferred to first use. Existing root/UI onboarding guards are unchanged.
+**Lazy lifecycle and catalog.** Every instance, including root, starts the MCP server/private config/approval hooks only when using an `antigravity` model: at session start, on model selection, or immediately before its first provider stream. Startup is single-flight and awaited before either engine launches; shutdown invalidates pending startup. Sessions using other providers do not start the bridge or a persistent agy process. Loading uses a fresh `models-cache.json`; a missing/stale catalog triggers bounded `agy models` discovery awaited before registration. Success populates the current session; failure retains the stale cache or uses the built-in fallback. The stream-json CLI version check is also deferred to first use. Existing root/UI onboarding guards are unchanged.
 
-**Owned cleanup.** Session shutdown terminates the drivers, removes the private config and approval hook, and removes only descriptor-cache keys the instance acquired under `~/.gemini/antigravity-cli/mcp/`: its exact acquired private `pi-agy-<8 hex>` name, or the unique `pi-bridge-<pid>-<instance>` key if it successfully registered in legacy-global mode. Shared names (`pi-antigravity-bridge` and ACP's `pi-bridge`), other instances' keys, and old caches are never removed. An instance that never started the bridge removes no descriptor cache. `/new` and resume can start the same extension instance again. See [bridge lifecycle](docs/BRIDGE-LIFECYCLE.md).
+**Owned cleanup.** Session shutdown terminates the drivers, removes the private config and approval hook, and removes only descriptor-cache keys the instance acquired under `~/.gemini/antigravity-cli/mcp/`: its exact acquired private `pi-agy-<8 hex>` name, or the unique `pi-bridge-<pid>-<instance>` key if it successfully registered in legacy-global mode. Shared names (`pi-antigravity-bridge` and ACP's `pi-bridge`), other instances' keys, and old caches are never removed. An instance that never started the bridge removes no descriptor cache. `/new` and resume can start the same extension instance again. See [bridge lifecycle](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/BRIDGE-LIFECYCLE.md).
 
 **Tool schemas.** On both engines and discovery modes, object-root schemas without unions are advertised unchanged. Every present root `anyOf`/`oneOf` must be a non-empty object-only union, even when the root already declares `type: "object"`; eligible roots are advertised with `type: "object"`, preserving variants and root keywords (including `$defs`/`definitions`). Variants can also be `allOf` of objects or local references resolving to objects. Other non-object schemas and roots with any ineligible union (including mixed variants, empty unions and dangling/cyclic references) are omitted with one warning per tool per session (TUI toast, stderr in headless children). Pi still validates arguments against the original schema.
 
@@ -102,7 +104,7 @@ rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
 
 agy runs its own agent loop with native tools (`run_command`, `create_file`, `edit_file`, ...), which pi's permission extensions never saw. The optional approval gate routes those calls through a pi-side approval: a staged PreToolUse hook parks the call, the provider surfaces it as a shadow `bash`/`write`/`edit` toolUse, and your permission extension (or the built-in ask/allow/deny fallback) decides before agy executes it. Off by default (`approvals.gateMode: auto` enables it only when a pi permission extension is detected); denials fail closed; read-only agy tools stay ungated. On ACP turns the server has its own per-tool permission ask: when one fires (`skipPermissions` off), the request parks on a real pi dialog instead of a silent deny, and allow-always choices are remembered per connection.
 
-Full mechanics, configuration, and a sample gate extension: [docs/APPROVAL-GATE.md](docs/APPROVAL-GATE.md).
+Full mechanics, configuration, and a sample gate extension: [docs/APPROVAL-GATE.md](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/APPROVAL-GATE.md).
 
 ## Install
 
@@ -114,7 +116,7 @@ Install manually with pi's package manager; the Thoth installer does not manage 
 pi install npm:@thoth-agents/pi-antigravity-bridge
 ```
 
-Requires the **`agy` CLI** installed and authenticated. If you don't have it, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns once per instance on first Antigravity use (toast in the TUI, stderr headless) pointing at the install guide; sessions that never use Antigravity do not run this check.
+Requires Pi `>=0.99.0` and Node `>=22.19.0`. ACP-only installations are supported; the **`agy` CLI** must be installed and authenticated for stream-json turns, AskAntigravity delegations, web delegates, and `/agy quota`. If you need the CLI, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns once per instance on first Antigravity use (toast in the TUI, stderr headless) pointing at the install guide; sessions that never use Antigravity do not run this check.
 
 ## Usage
 
@@ -138,22 +140,23 @@ If discovery fails and no usable cached catalog exists, the built-in fallback po
 
 ### Bridge surface
 
-`config.json` selects the bridge surface:
+`config.json` selects the bridge surface. Boolean keys use JSON `true`/`false`; the matching slash commands accept `on`/`off`:
 
 | Key | Values | Default |
 | --- | --- | --- |
-| `askTool` | `on` (register the AskAntigravity delegation tool), `off` (no delegation tool; provider and models only) | `off` |
-| `webTools` | `off` (no web tools), `on` (register `agy_web_search` + `agy_read_url` as Pi tools, usable by ANY provider's model). Each call spawns a one-shot search-only `agy` agent (plan mode, bridge MCP inheritance off), gates the answer on an observed native `search_web`/`read_url_content` step, and spends Antigravity quota. Off by default: Antigravity sessions already have native web tools on both engines; these serve other providers | `off` |
+| `askTool` | `true` (register the AskAntigravity delegation tool), `false` (no delegation tool; provider and models only) | `false` |
+| `webTools` | `false` (no web tools), `true` (register `agy_web_search` + `agy_read_url` as Pi tools, usable by ANY provider's model). Each call spawns a one-shot search-only `agy` agent (plan mode, bridge MCP inheritance off), gates the answer on an observed native `search_web`/`read_url_content` step, and spends Antigravity quota. Off by default: Antigravity sessions already have native web tools on both engines; these serve other providers | `false` |
 | `bridgeDiscovery` | `private` (per-instance discovery, no global registration/suppression), `legacy-global` (upstream shared behavior). Env `AGY_BRIDGE_DISCOVERY` overrides the file; restart required | `private` |
 | `bridgeTools` | `none` (bridge off), `all` (every non-builtin tool, incl. other `Ask*` delegations), `mcp` (pi-mcp-adapter tools + skills bridge only) | `all` |
-| `digest` | `off` (stable prompts; agy's prompt cache hits) or `on` (inject a delta of pi-side context - compaction summaries, other-provider turns - into each agy prompt; the delta changes every turn, so agy re-bills the full context). Enable for mixed-provider sessions where agy must see pi-side context | `off` |
-| `systemPrompt` | `on` (send pi's system prompt - operating instructions plus the global agent-dir `AGENTS.md` and ancestor `AGENTS.md`/`CLAUDE.md` - to the first prompt of each new agy conversation, plus a tool-priority note: Pi Bridge tools win over agy's native interactive ones, which never reach the user. Delivery: stream-json stages it as an agy agent file via `--agent`, off the prompt line - the CLI silently drops single prompts past a ~25KB cap and the dropped turn kills the conversation; ACP prepends it to the first prompt) or `off` (agy-native behavior) | `on` |
+| `digest` | `false` (stable prompts; agy's prompt cache hits) or `true` (inject a delta of pi-side context - compaction summaries, other-provider turns - into each agy prompt; the delta changes every turn, so agy re-bills the full context). Enable for mixed-provider sessions where agy must see pi-side context | `false` |
+| `systemPrompt` | `true` (send pi's system prompt - operating instructions plus the global agent-dir `AGENTS.md` and ancestor `AGENTS.md`/`CLAUDE.md` - to the first prompt of each new agy conversation, plus a tool-priority note: Pi Bridge tools win over agy's native interactive ones, which never reach the user. Delivery: stream-json stages it as an agy agent file via `--agent`, off the prompt line - the CLI silently drops single prompts past a ~25KB cap and the dropped turn kills the conversation; ACP prepends it to the first prompt) or `false` (agy-native behavior) | `true` |
+| `agent` | Custom agy agent name (`--agent`); stream-json provider turns only, ignored by ACP. `AGY_AGENT` overrides the file | Unset (agy default) |
 | `turnTimeoutMin` | Overall cap on ONE agy turn, minutes, both engines. When it fires, the bridge kills the agy process mid-task ("ACP turn exceeded the 10m deadline" / "agy exceeded the 10m turn timeout") - it is a bridge cap, not a Google server limit. Default is TTY-aware: `0` (no cap) on an interactive pi - you are the backstop with Esc; `20` headless, where nobody can abort and one runaway turn blocks the serialized turn queue. Opt into a gate with 1-1440 (free type via `config.json` or `/agy timeout <1-1440|off>`, or the `/agy` picker's preset list); `0` disables explicitly; anything else falls back to the TTY-aware default. The default 3m inactivity stall guard still bounds a hung server unless explicitly disabled | `0` TTY / `20` headless |
 | `inactivityTimeoutMin` | Progress-inactivity cap, minutes: no recognized stream-json frame / no ACP session/update for this long fails the activity wait. Checkpoints count as progress; unrecognized stdout does not. `0` disables | `3` (180000 ms) |
 | `startupTimeoutMs` | Absolute deadline per startup-type wait (provider `beforeStart`, shared lazy `startFlight`, exclusive startup/termination/recycling, ACP setup). `0` disables | `120000` |
 | `queueTimeoutMs` | Requester-side serialized run-queue deadline. Expiry fails only that request, never the predecessor or its parks; the expired request cannot launch later. `0` disables | `120000` |
 
-Env overrides: `AGY_BRIDGE_TOOLS`, `AGY_ASK_TOOL`, `AGY_WEB_TOOLS`, `AGY_DIGEST`, `AGY_SYSTEM_PROMPT`, `AGY_TURN_TIMEOUT_MIN`, `AGY_INACTIVITY_TIMEOUT_MIN`, `AGY_STARTUP_TIMEOUT_MS`, `AGY_QUEUE_TIMEOUT_MS`. Env wins over the file, so while `AGY_DIGEST` or `AGY_SYSTEM_PROMPT` is set, the matching `/agy digest` or `/agy system-prompt` toggle persists a value that never takes effect.
+Env overrides: `AGY_AGENT`, `AGY_BRIDGE_TOOLS`, `AGY_ASK_TOOL`, `AGY_WEB_TOOLS`, `AGY_DIGEST`, `AGY_SYSTEM_PROMPT`, `AGY_TURN_TIMEOUT_MIN`, `AGY_INACTIVITY_TIMEOUT_MIN`, `AGY_STARTUP_TIMEOUT_MS`, `AGY_QUEUE_TIMEOUT_MS`. Env wins over the file, so while `AGY_DIGEST` or `AGY_SYSTEM_PROMPT` is set, the matching `/agy digest` or `/agy system-prompt` toggle persists a value that never takes effect.
 
 Wait expiry ends the provider stream with an explicit error naming the wait. Activity waits are inactivity-based, not a new absolute turn deadline: recognized frames (including checkpoint-only progress) refresh them, and parked bridge calls suspend inactivity as before. Existing overall-turn caps and all zero/disabled caps remain unchanged. Configure the parent subagent stall budget **above bridge inactivity** (default bridge 180000 ms < parent 240000 ms); the bridge cannot read the parent's budget. Checkpoints produce no Pi events, so checkpoint-only work can still trigger the parent's separate watchdog.
 
@@ -168,8 +171,12 @@ The `activate_skill` catalog mirrors pi's directory-based skill discovery: the t
 ```
 /agy                      status summary, or open the full settings picker (TUI)
 /agy doctor               single status surface: bridge state, driver counters, versions, acp state, lifecycle, settings, log dir
+/agy tasks                browse background tasks for the bound Antigravity conversation
+/agy artifacts [open <name|index>]   browse conversation artifacts, or open one by name/index
+/agy subagents            show Antigravity subagents tracked this session
+/agy agent [<name>|off]   list/select a custom agy agent, or clear it (stream-json only)
 /agy auth                 run the antigravity-acp sign-in now (engine acp): opens the Google login in your browser, shows the URL when no browser opens
-/agy mode plan            review-only: agy plans but writes nothing
+/agy mode plan            request agy's plan mode (stream-json only; see Permissions)
 /agy mode accept-edits    agy applies edits directly (default)
 /agy permissions on|off   auto-approve / prompt for tool calls (see warning)
 /agy ask on|off           register the AskAntigravity delegation tool (default off: only the provider and models, even with pi-ask-antigravity installed)
@@ -186,15 +193,33 @@ The `activate_skill` catalog mirrors pi's directory-based skill discovery: the t
 /agy clear                drop all session bindings (force fresh conversations)
 ```
 
+### AskAntigravity parameters
+
+Enable `askTool` to delegate a self-contained task:
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `prompt` | Required | Task and all required context. |
+| `cwd` | Current Pi working directory | Workspace directory agy runs in. |
+| `model` | Configured default | Alias (`flash`, `pro`, `argon`, `gemini`, or a catalogued family) or exact id; aliases support tiers (`flash high`) and versions (`3.5 flash`). |
+| `thinking` | Model tier/configured default | Per-call reasoning as described above; exact slugs and fixed-thinking families retain their resolved tier. |
+| `mode` | `accept-edits` | `plan` for restricted review or `accept-edits` for workspace edits; see [Permissions](#permissions). |
+| `digest` | `true` for plan, otherwise `false` | Request compact digests instead of full files. |
+| `conversationId` | Unset (new conversation) | Previous call's `details.conversationId` to continue that conversation. |
+| `timeoutMinutes` | `10` | Hard deadline in minutes. |
+| `includeContext` | `false` | Opt-in export of the Pi conversation as temporary markdown for agy to read; enable only on explicit user request (extra tokens). |
+
 ### Permissions
 
 pi itself has no built-in approval gate. Unlike codex, claude, or agy running interactively, pi does not prompt you to confirm each tool action before it runs. That is the host environment this extension lives in.
 
 Because agy runs non-interactively under this provider (nothing can answer a `y/n` prompt), this extension passes `--dangerously-skip-permissions` by default on `accept-edits` runs. It is technically necessary there: `accept-edits` auto-approves file edits but not shell commands, so a `run_command` would otherwise hang forever waiting for a prompt nothing can answer (upstream [google-antigravity/antigravity-cli#318](https://github.com/google-antigravity/antigravity-cli/issues/318)). The net effect is that agy executes commands the same way pi already executes your other tools: without per-action review.
 
-Plan mode never receives the flag: the flag auto-approves every permission request, including plan mode's own approval gate, which would silently turn review-only into full write access inside the `--add-dir` grant (probed 2026-09-25: with the flag a plan run wrote files; without it, file and command attempts end the run quickly with a "confirm plan" message). So `/agy mode plan` (and `AskAntigravity` with `mode: "plan"`) genuinely executes nothing. Do not combine `--sandbox` with skip-permissions ([#36](https://github.com/google-antigravity/antigravity-cli/issues/36)).
+Stream-json provider plan turns (`/agy mode plan`) never receive the flag: the flag auto-approves every permission request, including plan mode's own approval gate, which would silently turn review-only into full write access inside the `--add-dir` grant (probed 2026-09-25: with the flag a plan run wrote files; without it, file and command attempts end the run quickly with a "confirm plan" message).
 
-For per-action review of agy's mutating native tools (`run_command`, `create_file`, `edit_file`, ...), see the [Approval gate](docs/APPROVAL-GATE.md): with it on, the call must pass a pi-side approval (your permission extension, or the built-in ask/allow/deny fallback) before agy executes it.
+`AskAntigravity` with `mode: "plan"` instead stages a restricted reviewer agent without native file-editing tools and passes skip-permissions when enabled. Analysis shell commands remain available: read-only behavior relies on a prompt guard, not a hard sandbox, so commands can still have side effects. If reviewer-agent staging fails, the delegation falls back to no skip flag and a stricter prompt forbidding commands. Do not combine `--sandbox` with skip-permissions ([#36](https://github.com/google-antigravity/antigravity-cli/issues/36)).
+
+For per-action review of agy's mutating native tools (`run_command`, `create_file`, `edit_file`, ...), see the [Approval gate](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/APPROVAL-GATE.md): with it on, the call must pass a pi-side approval (your permission extension, or the built-in ask/allow/deny fallback) before agy executes it.
 
 ### Windows process containment
 
@@ -227,11 +252,12 @@ For isolation when running any agent that executes commands without a confirmati
 | `AGY_BIN` | Path to the agy binary. Defaults to `agy` on PATH. |
 | `AGY_ENGINE` | Engine: `stream-json` (default) or `acp`. Wins over the config file. |
 | `AGY_ACP_BIN` | Path to the ACP server binary (`agy_acp_server.par`). Defaults to `agy_acp_server.par` on PATH. Wins over `config.acp.bin`. When neither points at a binary, auto-setup installs one. |
-| `AGY_EXTRA_ARGS` | Extra args appended to every invocation. Whitespace-split. |
+| `AGY_EXTRA_ARGS` | Extra args for AskAntigravity CLI delegations only. Whitespace-split; not used by provider turns, web delegates, or quota calls. |
 | `AGY_CONVERSATIONS_DIR` | Override the conversations DB directory. |
-| `AGY_MODE` | Override execution mode: `plan` (review-only) or `accept-edits` (default). Wins over the config file. |
-| `AGY_SKIP_PERMISSIONS` | `1`/`true` (default) to pass `--dangerously-skip-permissions` so commands don't hang on an unanswerable prompt in `-p` mode. `0`/`false` to prompt (hangs any `run_command` non-interactively). Wins over the config file. |
-| `AGY_USAGE_ESTIMATE` | ACP token display: `estimate` (default; live client-side per-delta estimates), `direct` (pass through the server's own per-delta counts when it sends them), `off` (no usage display). Anything else falls back to `estimate`. Wins over the config file. |
+| `AGY_MODE` | Override provider execution mode: `plan` (stream-json only) or `accept-edits` (default). Wins over the config file. |
+| `AGY_SKIP_PERMISSIONS` | `1`/`true` (default) to pass `--dangerously-skip-permissions` so commands don't hang on an unanswerable prompt in `-p` mode. `0`/`false` to prompt (may hang non-interactive commands). See Permissions for plan-mode exceptions. Wins over the config file. |
+| `AGY_USAGE_ESTIMATE` | ACP token display: `estimate` (default; live client-side per-delta text estimates), `direct` (one output token per streamed text/thought delta; input remains regex/text-estimated), `off` (no estimated usage display). Real server usage supersedes estimates. Anything else falls back to `estimate`. Wins over the config file. |
+| `AGY_AGENT` | Custom agy agent name for stream-json provider turns only; overrides config `agent`. ACP ignores it. |
 | `AGY_DEFAULT_MODEL` | Default model alias for the `AskAntigravity` tool (`flash`/`pro`/`argon`/`gemini`, or a tier/version qualifier). Wins over the config file. |
 | `AGY_DEFAULT_THINKING` | Default thinking tier for the `AskAntigravity` tool: `low`/`medium`/`high`. Anything else falls back to `medium`. Wins over the config file. |
 | `AGY_DEBUG` | `1`/`true`/`on` writes the full trail to the daily log (driver lifecycle, raw bridge traffic). Default off: **only `error` records land on disk** - routine disk writes are zero for regular users, and warnings surface as UI toasts instead. |
@@ -259,7 +285,7 @@ When you report an issue, attach the last day or two of files from that director
 
 ## Development
 
-Build, test, and debug instructions live in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). For the internal architecture (engines, bridge round-trips, conversation discovery) see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Build, test, and debug instructions live in [docs/DEVELOPMENT.md](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/DEVELOPMENT.md). For the internal architecture (engines, bridge round-trips, conversation discovery) see [docs/ARCHITECTURE.md](https://github.com/EremesNG/thoth-agents/blob/master/pi-packages/pi-antigravity-bridge/docs/ARCHITECTURE.md).
 
 ## Terms of Service notice
 

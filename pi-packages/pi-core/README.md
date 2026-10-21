@@ -69,6 +69,28 @@ from the bus.
 only for their session, and queue requests until state is ready when needed;
 these lifecycle concerns stay outside the library.
 
+### Tool-definition publication registry
+
+`publishToolDefinitions(definitions: readonly ToolDefinitionLike[])` shares full
+named tool definitions across bundled copies without loading their extensions.
+It returns a `ToolDefinitionHandle` with `publish(more)` to add/replace its tools
+and idempotent `withdraw()` to remove only its publications; publishing after
+withdrawal is ignored. `getPublishedToolDefinition(name)` returns the latest live
+definition, or `undefined`; withdrawing it reveals any earlier live publication.
+`getToolDefinitionRegistryVersion()` returns the change counter, incremented once
+per nonempty publication/withdrawal batch. The process-wide slot is
+`Symbol.for('thoth-agents.pi-core.tool-definitions.v1')`; incompatible state yields
+inert handles, no definition and version `0`.
+
+### Windows jobs
+
+The root and `@thoth-agents/pi-core/windows-job` (`./windows-job`) export
+`launchInJob(options: JobLaunchOptions): Promise<LaunchedJob>` and
+`JobLauncherUnavailable`. Options are `{ file, args, cwd, env }`. The returned
+job exposes `pid`, `stdin`, `stdout`, `stderr`, `exited: Promise<{ code: number }>`,
+`terminate(timeoutMs): Promise<void>` and `release(): Promise<void>`. Launching
+requires Windows; unsupported platforms throw `JobLauncherUnavailable`.
+
 ## Shared question service v1
 
 Package authors can use `registerQuestionService(provider)` and
@@ -293,10 +315,13 @@ its own widget and refresh lifecycle.
 ```ts
 interface ThothRenderKit {
   readonly version: 1;
+  resolveToolRenderers?(toolName: string, next: () => ToolRenderersLike | undefined): ToolRenderersLike | undefined;
   card(theme: RenderKitTheme, options: RenderCardOptions, width: number): string[];
   collapse(theme: RenderKitTheme, rows: readonly string[], options?: RenderCollapseOptions): string[];
   cachedComponent(render: (width: number) => string[]): Component;
   indicator(theme: RenderKitTheme, context?: RenderIndicatorContext, options?: RenderIndicatorOptions): RenderIndicator;
+  toolFooter?(theme: RenderKitTheme, options: RenderToolFooterOptions): string;
+  icon?(name: SemanticIconName): string | readonly string[];
   statusGlyph(theme: RenderKitTheme, status: RenderStatus): string;
   widgetHeading(theme: RenderKitTheme, options: RenderWidgetHeadingOptions, width: number): string;
   treeRow(theme: RenderKitTheme, options: RenderTreeRowOptions, width: number): string;
@@ -312,8 +337,12 @@ formatDuration(ms: number): string;
   `strikethrough`. `Component` and `ThemeColor` are SDK/TUI types, not runtime
   dependencies. All `Render*` option/result types are exported from the root.
 - Cards accept optional `title`, `body`, `sections: { title?, rows }[]`, `footer`,
-  `status`, `isError` and `wrap`. Every section starts with a labeled or unlabeled
-  divider. Status and footer are embedded according to the theme's language.
+  `status`, `context`, `summary`, `isError`, `isSuccess` and `wrap`. Status plus tool
+  `context` requests the standard footer unless `footer` is supplied; `summary`
+  supplies terminal summary text. Only `isSuccess: true` selects a success border;
+  `isError` takes precedence. Status alone does not change the border tone. Pass
+  `isSuccess` consistently across split parts. Every section starts with a labeled
+  or unlabeled divider. Status and footer follow the theme's language.
   Rows are pre-sanitized/pre-styled strings or a `(contentWidth) => rows` callback;
   the kit handles frame width, padding, truncation and optional wrapping. Widths
   are finite viewport cell counts; zero width produces no lines.
@@ -339,7 +368,8 @@ formatDuration(ms: number): string;
   implementer owns state, ticking and cleanup, scoped to its interactive UI
   session; a headless child's lifecycle must not freeze parent indicators.
 - Status names: `pending`, `queued`, `in_progress`, `running`, `completed`,
-  `failed`, `cancelled`, `interrupted`, `stopping`, `deleted`, `blocked`, `unknown`.
+  `failed`, `timedOut`, `resolved`, `expectedExit`, `cancelled`, `interrupted`,
+  `stopping`, `deleted`, `blocked`, `unknown`.
   Producers normalize domain statuses to these names rather than supplying
   hardcoded glyphs or colors.
 - Widget headings take `title`, optional `{ completed, total }` counts, `status`
@@ -350,6 +380,22 @@ formatDuration(ms: number): string;
   `text` and the same row options, then subtract that rail width from the viewport.
   The theme reserves 5 cells at depth zero and 7 at depth one, selected or not
   (an optional status adds its own glyph and space).
+- Optional v1 methods: `resolveToolRenderers(toolName, next)` composes tool
+  renderers; `toolFooter(theme, { status, context?, elapsedMs?, summary? })`
+  supplies the standard footer; `icon(name)` resolves UI-only semantic glyphs or
+  frame arrays. Legacy v1 kits may omit all three.
+- Root helper `renderToolFooter(kit, theme, options)` uses `kit.toolFooter` when
+  available, otherwise a plain whole-second footer. `getToolElapsedMs(options)`
+  gives explicit `elapsedMs` precedence over shared context timing, starts timing
+  on executing running renders and freezes it on terminal status; unknown time
+  stays `undefined`. Neither helper creates timers.
+- `createKitRenderMemo()` returns `{ render(width, build), invalidate() }`, caching
+  input-stable lines by the last width and kit identity while discovering the kit
+  even on cache hits. Invalidate when other inputs change.
+- `resolveIcon(name, fallback?)`, `resolveFrames(name, fallback?)` and
+  `resolveStatusGlyph(status, fallback?)` resolve the current kit on each call,
+  falling back to caller-supplied or native values on missing/invalid/throwing
+  lookups. Frame resolution starts no timer.
 
 The process-wide registry lives at
 `globalThis[Symbol.for('thoth-agents.pi-core.render-kit.v1')]`, including across
@@ -394,12 +440,16 @@ Producers share this helper rather than defining package-local kits.
 
 ### Workspace package release
 
-Consumers depend on pi-core with `workspace:^`. `pnpm pack` and `pnpm publish`
-rewrite it to a semver range (for example `^0.1.0`) in the packed manifest.
-Every `pi-packages/*` package is versioned independently and published to npm
-by the root `v*.*.*` tag release workflow (`.github/workflows/release.yml`)
-through npm trusted publishing, before the root package. Publish pi-core before
-its consumers on first publication; later bumps follow the root release flow.
+The nine workspace extensions that use pi-core declare it in `devDependencies`
+with `workspace:^`; `pi-openai-fast` does not depend on it. The root
+`scripts/build-pi-extensions.mjs` bundles pi-core into each consuming extension's
+`dist/index.ts`, keeping Pi SDK/TUI peers external. Published extensions therefore
+need no separate pi-core runtime dependency; pi-core itself ships source.
+
+Every `pi-packages/*` package is versioned independently. The root `v*.*.*` tag
+release workflow (`.github/workflows/release.yml`) builds the workspace first,
+then publishes Pi packages with recursive `pnpm publish --ignore-scripts` through
+npm trusted publishing, before publishing the root package.
 
 ## Panel primitives and list editor
 

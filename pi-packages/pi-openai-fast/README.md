@@ -18,12 +18,15 @@ Install manually; the Thoth installer does not manage this extension.
 pi install npm:@thoth-agents/pi-openai-fast
 ```
 
+Requires Pi `>=0.99.0` and Node `>=22.19.0`.
+
 ## How it works
 
 - On every `session_start` (startup, reload, new, resume, fork) the extension reads
   the model registry and registers one Pi virtual model per eligible base model.
-  The sync is idempotent and unregisters only variants it registered whose base
-  model has disappeared.
+  The sync is idempotent and unregisters only variants it registered that are no
+  longer eligible: the base model disappeared, moved to an unsupported API, or a
+  physical model now occupies the fast id.
 - A variant mirrors its base model's name (suffixed ` (fast)`), thinking levels,
   context window, max tokens and input types.
 - Pi calls the variant's `route()` for each agent-loop request. It resolves the

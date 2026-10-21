@@ -4,6 +4,8 @@
 
 Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Originally based on [claude-agent-sdk-pi](https://github.com/prateekmedia/claude-agent-sdk-pi) by Prateek Sunal.
 
+This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced to upstream 0.9.1 in commit `9fdcfdb`; the local package version is independent.
+
 1. **Provider** — Use Opus/Sonnet/Haiku as models in pi, with all tool calls flowing through pi's TUI
 2. **AskClaude tool** — Delegate tasks or questions to Claude Code when using another provider
 
@@ -65,7 +67,9 @@ Concurrent use of one Pi session by multiple processes is not supported.
 
 The model list comes from pi-ai's Anthropic catalog automatically — when pi-ai adds a new Claude model, it appears in `/model` after updating the package, no bridge update needed. Dated snapshot ids (e.g. `claude-opus-4-5-20251101`) are not shown.
 
-**1M Context:** Fable 5/5.1, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 get 1M context. Opus 4.6 gets 1M only on a Max plan or with Extra Usage, and Sonnet 4.6 only with Extra Usage — set `provider.plan` and/or `provider.longContextExtraUsage` as described in [Configuration](#configuration).
+**1M Context:** The bridge requests 1M context for Fable 5/5.1, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 on either configured plan. Availability still depends on account entitlement: Fable 5 is unavailable on Pro without Extra Usage (both bare and `[1m]` variants were rejected with "Fable 5 requires usage credits"); Fable 5.1 was not re-probed and its entitlement remains unverified. Opus 4.6 gets 1M only on a Max plan or with Extra Usage, and Sonnet 4.6 only with Extra Usage — set `provider.plan` and/or `provider.longContextExtraUsage` as described in [Configuration](#configuration). Unknown or unmeasured models default to 200K context.
+
+Displayed costs use pi-ai catalog prices as **API-equivalent estimates**, not subscription billing.
 
 ### Rate limits and `/claude quota`
 
@@ -129,7 +133,7 @@ keep native Pi rendering; there is no dependency on `@thoth-agents/pi-thoth-them
 - **`prompt`** — the question or task for Claude Code
 - **`mode`** — `read` (default, read files and search/fetch on web), `none`, or `full` (read+write+bash, disable this mode with `allowFullMode: false` in config)
 - **`model`** — `opus` (default), `sonnet`, `haiku`, or a full model ID
-- **`thinking`** — effort level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`
+- **`thinking`** — effort level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. `minimal` maps to SDK `low`, `xhigh` to `max`; `off` omits effort (Claude Code's default).
 - **`isolated`** — when `true`, Claude gets a clean session with no conversation history (default: `false`)
 
 ## Configuration
@@ -164,8 +168,8 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 - `appendSkills` — forward pi's skills block into the system prompt (default `true`)
 
 `provider`:
-- `plan` (default `"pro"`) — set to `"max"` if you have a Max (or Team Premium/Enterprise) Anthropic plan. This enables Opus with 1M context.
-- `longContextExtraUsage` — set to `true` to enable 1M context models even if they cost money through Extra Usage on your plan. It enables Sonnet 4.6 with 1M on every plan and Opus 4.6 with 1M on Pro. Not needed for Opus 4.7 or 4.8.
+- `plan` (default `"pro"`) — set to `"max"` if you have a Max (or Team Premium/Enterprise) Anthropic plan. This enables Opus 4.6 with 1M context without Extra Usage; measured Opus 4.7/4.8/5/5.5 already get 1M on either configured plan.
+- `longContextExtraUsage` — set to `true` to enable 1M context models even if they cost money through Extra Usage on your plan. It enables Sonnet 4.6 with 1M on every plan and Opus 4.6 with 1M on Pro. Not needed for the measured Opus 4.7/4.8/5/5.5 models.
 - `forceTwoHundredK` — array of model ids to pin to 200K context (bare id, no `[1m]` suffix). Use if pi-ai declares a model at 1M but Claude Code won't serve it on your plan.
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.
 - `autoMemoryEnabled` — enable Claude Code's auto-memory system (default `false`)
@@ -247,7 +251,7 @@ Requires the following in `~/.pi/agent/subagents.json`:
 
 ## Known issues
 
-**A session rebuild re-sends the whole conversation.** The bridge rewrites Claude Code's session from pi's history whenever the two diverge — after an abort, `/compact`, tree navigation, an API error, or on returning to a session — and the next request usually misses the prompt cache for everything past the system prompt. Abort-heavy sessions cost noticeably more.
+**A session rebuild re-sends the whole conversation.** The bridge rewrites Claude Code's session from pi's history whenever the two diverge — after an abort, `/compact`, tree navigation, an API error, or on returning to a session when checkpoint restoration is unavailable or rejected — and the next request usually misses the prompt cache for everything past the system prompt. Valid checkpoints restore without rebuilding. Abort-heavy sessions cost noticeably more.
 
 **Files Claude Code edits are not carried across a rebuild.** The edit itself survives in the history as a tool call and result — what's lost is the post-edit file snapshot. `@file` expansions *are* carried.
 

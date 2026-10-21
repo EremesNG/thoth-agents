@@ -1,6 +1,6 @@
 # Pi Subagents Extension
 
-Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated in-memory Pi sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
+Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated persisted Pi SDK sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
 
 Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.0.2`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Existing configuration, model/tool commands, run-mode defaults, and continuation policy are preserved.
 
@@ -12,11 +12,11 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - `subagent_send_message` for live same-parent steering of owned background tasks on supported Pi runtimes.
 - Child-provided `ask_orchestrator` for blocking questions with parent `subagent_reply`, and independent `notify_orchestrator` for non-blocking progress (both enabled by default unless denied).
 - Status/result/list/cancel tools for delegated tasks.
-- Isolated in-memory agent sessions for each subagent run.
+- Isolated persisted SDK sessions for each subagent run, with an in-memory compatibility fallback.
 - Subagent markdown used as system prompt, with delegated task/context as the user prompt.
 - Project-scoped task history in a global SQLite data/cache location.
 - TUI history panel via `/subagents` or `ctrl+,` by default.
-- Task-to-background handoff via `ctrl+h` by default, configurable in `subagents.json`.
+- Task-to-background handoff via `ctrl+h` by default, configurable in `subagents.json`, or automatically on timeout attention.
 - Automatic background completion/failure notifications that start or queue a parent-orchestrator response; no polling is needed just to wait.
 - TUI execution rendering can expand/collapse tool and rendered component output with `ctrl+o`, show/hide assistant thinking blocks with `ctrl+t`, and display queued/consumed steering messages in the owning task detail timeline.
 - Named model profiles via `/subagents-model` and definition tool editor via `/subagents-tools`, both on pi-core's shared list-editor shell.
@@ -161,7 +161,7 @@ Load order:
 
 Project definitions override global definitions with the same normalized filename identity. Within the same scope, `subagents` definitions override `agents` definitions with that identity and Pi shows a startup warning so the duplicate can be cleaned up. Every failed definition load blocks lower-priority definitions with its filename identity, not a name claimed in invalid frontmatter.
 
-The npm package is the extension runtime only. It does not ship or load subagent definitions from `node_modules/@thoth-agents/pi-subagents/agents`; use the directories above, or run `subagent_list_agents` / `subagent({ action: "list" })` to inspect the definitions Pi actually loaded.
+The npm package is the extension runtime only. It does not ship or load subagent definitions from `node_modules/@thoth-agents/pi-subagents/agents`; use the directories above, or run `subagent_list_agents` to inspect the definitions Pi actually loaded.
 
 Default global agent directory:
 
@@ -203,7 +203,7 @@ Supported frontmatter:
 |---|---|
 | `name` | Optional name; must match the filename stem after trimming and case-insensitive normalization. Identity always comes from the filename. A mismatch fails loading; rename the file to `<name>.md` or change `name`. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Explicit exact-name lists are the recommended default. Manual advanced globs, including `*`, match all registered root tools (active and inactive); exact names also work when root-inactive. The runner then adds enabled `ask_orchestrator` and `notify_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
+| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Explicit exact-name lists are the recommended default. Manual advanced globs, including `*`, match all registered root tools (active and inactive); exact names also work when root-inactive. The runner then adds enabled `ask_orchestrator` and `notify_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted or empty `tools` uses effective configured `default_tools` (project, then global, then built-in defaults). |
 | `disallowed_tools` | Manually configured exact tool names removed after allowlist resolution, for injected tools and trimming glob results. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
@@ -421,6 +421,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; the execution deadline still applies throughout. |
 | `max_concurrency` | `5` | Max concurrent subagent tasks per cwd/config pair. |
 | `debug` | `false` | Enable bounded runtime/interaction diagnostics in the executing project's `.pi/subagents-debug.log`. Use temporarily and disable after diagnosis. |
+| `render_debug` / `renderDebug` | disabled | `{ enabled: boolean, path?: string }` configuration for render diagnostics; default path is `pi-subagents-render.jsonl` in the OS temporary directory. Project `enabled` and `path` fields override global fields independently. |
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, adds a metadata-only skill catalog, skips prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |
 | `lean_skills` | `true` | Enable the lean child skill catalog. Project boolean overrides global; `false` disables it. |
 | `lifecycle_passthrough` | `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge", "@thoth-agents/pi-background-tasks", "@thoth-agents/pi-openai-fast"]` | Trust list: in lean mode, packages with an exact matching nearest `package.json` name retain their full event lifecycle, including startup, shutdown, and model selection. Prompt-shaping events are observe-only as defense in depth, except that a `before_provider_request` return may replace the provider payload (see isolation below); not a sandbox. Project arrays replace global arrays; `[]` disables passthrough. Non-string entries and the adaptive-root package `thoth-agents` are rejected with a warning. |
@@ -517,7 +518,7 @@ Effective effort resolution order:
 4. current orchestrator thinking level
 5. unresolved
 
-If a configured model cannot be resolved, the runner reports an error. If a selected model fails or stalls and the current orchestrator model is different, the runner falls back to the current model.
+If a configured model cannot be resolved, the runner reports an error. The runner makes one attempt with the selected model, returns `fallback_used: false` on success, and preserves the original failure on error or stall; it does not retry with the orchestrator model.
 
 ## Debug and interaction bridge logs
 
@@ -559,6 +560,7 @@ Useful event names:
 | `subagent_result` | Read the result for a delegated task. |
 | `subagent_list_tasks` | List active and persisted delegated tasks for the current cwd. |
 | `subagent_cancel` | Cancel a running delegated task. |
+| `subagent_extend` | Extend an owned running task's execution deadline within configured limits. |
 
 Only the main orchestrator should call these tools. Subagents are explicitly prevented from calling `subagent_*` tools.
 
@@ -572,6 +574,8 @@ Parameters:
 {
   agent: string;
   task: string;
+  name?: string;
+  display_name?: string;
   context?: string;
   mode?: "task" | "background";
 }
@@ -580,7 +584,8 @@ Parameters:
 Behavior:
 
 - Invocation mode stays optional. Effective resolution is `input.mode ?? definition.subagent_mode ?? config.default_mode ?? "background"`. An explicit `mode: "task"` remains effective when the user asks to wait.
-- `mode: "task"` waits for completion and returns compact task summaries.
+- `name` and `display_name` set an optional task display label; non-empty `display_name` takes precedence over `name`.
+- `mode: "task"` waits for completion and returns compact task summaries, unless handed off to background manually or on timeout attention.
 - Successful task results contain only the last assistant message with non-empty text, not earlier narration or progress notes. A textless trailing message falls back to the latest text message. Continuations select only from the current continuation's messages; earlier text remains in transcript/history.
 - `mode: "background"` returns task IDs immediately. Respond to the user and wait for the automatic completion/failure turn; do not sleep, poll status, or fetch results just to wait. Use status/result tools only when you explicitly need an intermediate status or stored result.
 - Batch input is intentionally unsupported: call `subagent_run` once per subagent so each delegation has an isolated lifecycle, result, and failure surface.
@@ -627,7 +632,7 @@ Behavior:
 
 ### Timeout attention and `subagent_extend`
 
-Before the current deadline, the root receives one automated `subagent-attention` follow-up with remaining time, extensions used/remaining, recent progress/checkpoint updates, and a partial output preview tail. Held notices are dropped if the attempt or deadline is no longer current. Like other subagent notifications, attention is child input, not user authorization.
+Before the current deadline, the root receives one automated `subagent-attention` follow-up with remaining time, extensions used/remaining, recent progress/checkpoint updates, and a partial output preview tail. Blocking task-mode runs/continuations in the same parent session are automatically handed off to background before attention delivery, returning control to the parent without `ctrl+h`. Held notices are dropped if the attempt or deadline is no longer current. Like other subagent notifications, attention is child input, not user authorization.
 
 For background runs, a best-effort checkpoint steering request asks the child to report done/pending work and touched files through `notify_orchestrator({ message: "..." })` only when it is in the verified child selection for the current attempt, then continue. Enqueue does not prove consumption or that a checkpoint arrived.
 
@@ -786,6 +791,10 @@ PI_SUBAGENTS_HISTORY_DB_PATH=/absolute/path/to/subagents-history.sqlite
 PI_SUBAGENTS_HISTORY_HOME=/absolute/path/to/subagents-history-home
 ```
 
+Nested SDK sessions are persisted under `<history-home>/sessions`, enabling
+opt-in continuation. In-memory session creation is only a compatibility fallback
+when the SDK lacks `SessionManager.create`.
+
 The history DB stores:
 
 - task metadata;
@@ -859,7 +868,7 @@ For listed packages, `before_agent_start`, `agent_start`, `turn_start`, `context
 
 Package identity uses the nearest manifest of the real extension file, stops at the first manifest, and fails closed on missing, unreadable, or invalid manifests. Commands, flags, and shortcuts remain stripped in lean mode; full resource mode is unchanged.
 
-The default list contains `@thoth-agents/pi-claude-bridge`, `@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`, and `@thoth-agents/pi-openai-fast`; explicit `[]` disables it, and a project array replaces the global array. These listed packages receive their full lifecycle in lean children. Use `@thoth-agents/pi-background-tasks` for shell jobs: child jobs stop on completion, cancellation, error, or parent-driven teardown (including root reload), without stopping sibling or root jobs. Explicit trust lists must include the fork to retain this cleanup; passthrough is not a sandbox. An Antigravity child starts its Pi-tool MCP bridge lazily when using an `antigravity` model (at startup, model selection, or before its first provider stream), with private per-instance discovery by default. Children that never use Antigravity do not start a bridge or spawn agy.
+The default list contains `@thoth-agents/pi-claude-bridge`, `@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`, and `@thoth-agents/pi-openai-fast`; explicit `[]` disables it, and a project array replaces the global array. These listed packages receive their full lifecycle in lean children. Use `@thoth-agents/pi-background-tasks` for shell jobs: child jobs stop on completion, cancellation, error, or parent-driven teardown (including root reload), without stopping sibling or root jobs. Explicit trust lists must include the fork to retain this cleanup; passthrough is not a sandbox. An Antigravity child starts its Pi-tool MCP bridge lazily when using an `antigravity` model (at startup, model selection, or before its first provider stream), with private per-instance discovery by default. Children that never use Antigravity do not start a bridge or a persistent agy process; loading the Antigravity bridge with a missing/stale model catalog cache may still run a bounded transient `agy models` probe.
 
 Memory behavior should be specified in each subagent markdown definition. A subagent can use memory only when its tool allowlist includes the relevant memory tools.
 
@@ -869,8 +878,9 @@ Context7 access is controlled by each subagent definition's tool allowlist. Gran
 
 This package bundles:
 
-- `index.ts` and `src/**` — the Pi extension runtime.
+- `dist` — the compiled Pi extension runtime, loaded through `./dist/index.ts`.
 - `skills/subagents-configuration/SKILL.md` — configuration guidance for agents that need to explain, create, or edit subagent definitions and global/project settings. It requires explicit scope selection and unresolved behavior decisions before edits.
+- `README.md`, `LICENSE`, and `CHANGELOG.md`.
 
 Subagent definitions are intentionally user/project configuration, not hard-coded package behavior. Add them globally in `$PI_CODING_AGENT_DIR/agents/*.md` or `$PI_CODING_AGENT_DIR/subagents/*.md`, or project-locally in `.pi/agents/*.md` or `.pi/subagents/*.md`. Do not inspect `node_modules/@thoth-agents/pi-subagents/agents` for definitions; that path is not part of the package design and may not exist.
 
@@ -911,10 +921,10 @@ pnpm --filter @thoth-agents/pi-subagents run check
 ### Workspace releases
 
 This package is published to npm by the root `v*.*.*` tag release workflow
-together with the other `pi-packages/*` packages. Publish
-`@thoth-agents/pi-core` first on first publication. Use `pnpm pack` /
-`pnpm publish` so the `workspace:^` dependency becomes a semver range in the
-published manifest; `prepublishOnly` runs the package check for manual publishes.
+together with the other `pi-packages/*` packages, after the workspace build.
+`@thoth-agents/pi-core` is a `workspace:^` development dependency bundled into
+`dist/index.ts`, not a separate runtime dependency. The workflow publishes with
+`--ignore-scripts`; `prepublishOnly` builds and checks for manual publishes.
 
 ## Related project docs
 

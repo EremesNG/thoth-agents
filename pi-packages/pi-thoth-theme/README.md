@@ -85,8 +85,9 @@ in the envelope, Unix-millisecond `at`, and only cumulative `totalCost` and
 Invalid, unsupported-version and foreign-session envelopes are ignored; no task
 prompts, results, transcripts or logs are consumed.
 
-Live background work refreshes Orca child holds every 30 seconds to renew Orca's
-120-second hook lease.
+With the status-line module enabled, live background-mode subagents and
+background processes/watches refresh Orca child holds every 30 seconds to renew
+Orca's 120-second hook lease.
 
 The raw `thoth:subagent-usage` bus event/request is removed with no fallback or
 dual publication. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together
@@ -141,14 +142,17 @@ behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
 provider identifier strings (defaults to `["claude-bridge", "antigravity"]`) to mark
 subscription-backed usage with `(sub)` in the status line cost segment.
 Classification uses the current provider for the displayed total, not a
-per-message billing split; explicit user lists are preserved. Antigravity costs
-are API-equivalent catalog estimates, not subscription charges.
+per-message billing split. Arrays keep only nonblank strings; an empty resulting
+array (including an explicit `[]`) disables subscription classification.
+Antigravity costs are API-equivalent catalog estimates, not subscription charges.
 
 `inputBox.enabled` defaults to `true` and requires `statusLine.enabled` to be
 `true`. It frames the native editor in a rounded `muted` (sand) box with side borders,
 a dim `type or / for commands` placeholder, and top-left ready or native working
-status (including elapsed seconds). Git branch and working directory appear on
-the top border, using pi-core's root-exported `formatCwd` for home abbreviation
+status (including elapsed seconds). Without a usable native indicator, the fallback
+can show animated `working… · N bg` while background tasks remain. Git branch and
+working directory appear on the top border, using pi-core's root-exported
+`formatCwd` for home abbreviation
 (shared with the sidebar); model, thinking effort and context usage appear on the bottom.
 Native scroll indicators are preserved. The status line always stays in its
 separate footer row below the box. Narrow widths use the native editor geometry.
@@ -166,8 +170,8 @@ walking upward from the tool's source directory. Built-ins always use the
 themed frames; tools absent from Pi's registry keep their own renderers.
 
 Configuration is read at extension load; use `/reload` after edits. Missing,
-malformed or invalid values use defaults. Pi settings are never read for
-package configuration.
+malformed or invalid values use defaults unless noted above. Pi settings are
+never read for package configuration.
 
 **A Nerd Font is required for the default icons.** Configure your terminal to
 use one, set `"icons": "unicode"` for native glyphs, or use `"icons": "ascii"`

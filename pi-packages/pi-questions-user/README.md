@@ -1,7 +1,13 @@
 # @thoth-agents/pi-questions-user
 
 First-party `ask_user_question` for Pi. MIT; Node >=22.19.0, Pi peers >=0.99.0;
-development SDK/TUI 1.0.2. Install this package as a Pi extension.
+development SDK/TUI 1.0.2. The tool is registered with `exposure: 'model-only'`.
+
+## Install
+
+```sh
+pi install npm:@thoth-agents/pi-questions-user
+```
 
 ## Shared question service
 
@@ -95,8 +101,10 @@ transcript result card all use them. When supplied, `labels` is echoed in
 `details.labels` so the result card renders in the same language; it is absent
 otherwise.
 
+Example `labels` fragment (include it alongside a non-empty `questions` array):
+
 ```json
-{ "labels": { "yes": "Sí", "no": "No", "submit": "Enviar respuestas" }, "questions": [] }
+{ "labels": { "yes": "Sí", "no": "No", "submit": "Enviar respuestas" } }
 ```
 
 `required` is advisory: a user may skip any question. Recommendations are markers,
@@ -108,7 +116,9 @@ shows `Preview · ★ Recommended` (localized), retaining its scroll range.
 Single/multi offer a free-text entry;
 multi combines it with picks. Text is input only. The sequential fallback uses
 numbered options to distinguish duplicate labels and control-like labels, repeated
-multi toggles plus Done, and explicit Skip (blank text also skips).
+multi toggles plus Done, and explicit Skip (blank text also skips). It uses
+select/input dialogs with option descriptions in the choice labels; it does not
+collect question or option notes or render previews.
 
 ## Results
 
@@ -119,8 +129,10 @@ metadata (including synthesized confirm options). Each answer has `status:
 `optionNotes` keyed by option value. Text-only answers have empty values/labels.
 Cancelled requests retain recorded answers; the summary explicitly says unanswered
 questions must not be assumed. Error codes are `invalid_questions`, `no_ui`,
-`aborted`. Invalid input adds `issues: [{path, code, message}]`; no interaction is
-attempted. `invalid_questions` is not user cancellation; `no_ui` and `aborted` are.
+`aborted`. In UI-enabled calls, invalid input returns `invalid_questions` with
+`issues: [{path, code, message}]`; no interaction is attempted. Headless calls
+return `no_ui` even with invalid input. `invalid_questions` is not user
+cancellation; `no_ui` and `aborted` are.
 
 ## Pure state API (`src/answers.ts`)
 

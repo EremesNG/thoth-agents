@@ -5,6 +5,7 @@ import type {
   ResolvedPaths,
   ResolvedResource,
 } from '@earendil-works/pi-coding-agent';
+import { excludeOrcaManagedExtensions } from './orca-managed-extensions.js';
 
 /** Resolve once with a skip handler, then give reload a package-free snapshot. */
 export async function leanResources(
@@ -182,7 +183,10 @@ export async function leanResources(
   return {
     settingsManager,
     loaderSettings,
-    additionalExtensionPaths: enabledPaths(resolved.extensions),
+    additionalExtensionPaths: excludeOrcaManagedExtensions(
+      enabledPaths(resolved.extensions),
+      cwd,
+    ),
     additionalSkillPaths: enabled ? enabledPaths(resolved.skills) : [],
     skillsOverride: (base: LoadSkillsResult) => {
       const visible = enabled

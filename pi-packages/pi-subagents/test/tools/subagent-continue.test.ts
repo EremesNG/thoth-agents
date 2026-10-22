@@ -465,7 +465,9 @@ describe('subagent_continue tool', () => {
       };
     });
     vi.resetModules();
-    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+    vi.doMock('@earendil-works/pi-coding-agent', async () => ({
+      ...(await import('../runner/fixtures/resource-loader-fixture.js'))
+        .emptyFullResourceSdk,
       ModelRuntime: ModelRuntimeFixture,
       SessionManager: {
         create: () => ({ path: nestedSessionPath }),

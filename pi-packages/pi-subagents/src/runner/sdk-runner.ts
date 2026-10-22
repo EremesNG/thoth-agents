@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { ResolvedPaths } from '@earendil-works/pi-coding-agent';
 import { DEFAULT_LIFECYCLE_PASSTHROUGH } from '../config.js';
 import { SubagentStructuredError } from '../error-metadata.js';
 import { resolveSubagentsHistoryHome } from '../history.js';
@@ -21,6 +22,7 @@ import {
 } from './event-processing.js';
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
 import { leanResources } from './lean-resources.js';
+import { excludeOrcaManagedExtensions } from './orca-managed-extensions.js';
 import {
   createAskOrchestratorTool,
   createNotifyOrchestratorTool,
@@ -516,10 +518,10 @@ async function createSession(
   options.modelRuntime = modelRuntime;
   if (ctx?.settingsManager) options.settingsManager = ctx.settingsManager;
   const backgroundShutdown: ChildShutdownHandler[] = [];
+  const DefaultResourceLoader = piSdk.DefaultResourceLoader;
+  const agentDir =
+    typeof piSdk.getAgentDir === 'function' ? piSdk.getAgentDir() : undefined;
   if (config.session_resources === 'lean') {
-    const DefaultResourceLoader = piSdk.DefaultResourceLoader;
-    const agentDir =
-      typeof piSdk.getAgentDir === 'function' ? piSdk.getAgentDir() : undefined;
     if (typeof DefaultResourceLoader !== 'function')
       throw new Error(
         'Subagent lean session resources require DefaultResourceLoader from Pi SDK.',
@@ -568,6 +570,34 @@ async function createSession(
       diagnostic(
         `Skill discovery: ${entry.message}${entry.path ? ` (${entry.path})` : ''}`,
       );
+    options.agentDir = agentDir;
+    options.resourceLoader = resourceLoader;
+  } else {
+    const settingsManager =
+      ctx?.settingsManager ?? piSdk.SettingsManager.create(cwd, agentDir);
+    await settingsManager.reload();
+    const packages = new piSdk.DefaultPackageManager({
+      cwd,
+      agentDir,
+      settingsManager,
+    });
+    const resolved: ResolvedPaths = await packages.resolve();
+    // Pi's noExtensions bypasses auto-discovered factories, but still loads
+    // additionalExtensionPaths. Keep full discovery for all other resources.
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      noExtensions: true,
+      additionalExtensionPaths: excludeOrcaManagedExtensions(
+        resolved.extensions
+          .filter((entry) => entry.enabled)
+          .map((entry) => entry.path),
+        cwd,
+      ),
+    });
+    await resourceLoader.reload();
+    options.settingsManager = settingsManager;
     options.agentDir = agentDir;
     options.resourceLoader = resourceLoader;
   }

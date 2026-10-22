@@ -25,6 +25,8 @@ const sessionManagerSpies = vi.hoisted(() => ({
 }));
 
 vi.mock('@earendil-works/pi-coding-agent', async () => ({
+  ...(await import('./fixtures/resource-loader-fixture.js'))
+    .emptyFullResourceSdk,
   ModelRuntime: (await import('../helpers/model-runtime-fixture.js'))
     .ModelRuntimeFixture,
   SessionManager: {

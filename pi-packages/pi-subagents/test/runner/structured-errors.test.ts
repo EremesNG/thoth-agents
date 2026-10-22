@@ -22,13 +22,19 @@ const sdkMocks = vi.hoisted(() => ({ createAgentSession: vi.fn() }));
 // Load the real SDK's frontmatter parser once during collection for the history
 // integration case. Keep sessions/providers at the SDK boundary double: changing
 // a session does not require invalidating the runner's entire import graph.
-vi.mock('@earendil-works/pi-coding-agent', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  ModelRuntime: (await import('../helpers/model-runtime-fixture.js'))
-    .ModelRuntimeFixture,
-  SessionManager: { inMemory: () => ({}) },
-  createAgentSession: sdkMocks.createAgentSession,
-}));
+vi.mock('@earendil-works/pi-coding-agent', async (importOriginal) => {
+  const sdk = await importOriginal<Record<string, unknown>>();
+  return {
+    ...sdk,
+    ...(await import('./fixtures/resource-loader-fixture.js'))
+      .emptyFullResourceSdk,
+    SettingsManager: sdk.SettingsManager,
+    ModelRuntime: (await import('../helpers/model-runtime-fixture.js'))
+      .ModelRuntimeFixture,
+    SessionManager: { inMemory: () => ({}) },
+    createAgentSession: sdkMocks.createAgentSession,
+  };
+});
 
 beforeEach(() => sdkMocks.createAgentSession.mockReset());
 

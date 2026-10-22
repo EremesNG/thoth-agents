@@ -14,6 +14,7 @@
 - Shortened `subagent_*` tool descriptions and snippets so each guidance point is stated once; tool names and parameters are unchanged.
 
 ### Fixed
+- Skip Orca-managed extension factories in both lean and full in-process children, preventing process-global Orca callbacks from retaining completed child sessions while preserving root status reporting.
 - Reduce terminal lag when pruning large legacy histories: defer startup maintenance for 30 seconds, adapt row batches to a 15 ms slice target, and pause between small background slices. Clarify that `history_detail_retention_days` accepts fractional days and `0` disables pruning.
 - Release previous render components and transcript snapshots during progress updates instead of retaining a growing chain through Pi's render context; mounted cards still rebuild only when the Render KIT changes.
 - Made omitted definition `tools` inherit cascaded `default_tools`, just like `tools: []`, resolving at definition load so runtime, listings, thread views and the tools panel agree. Managed panel defaults remain available for explicit reset.

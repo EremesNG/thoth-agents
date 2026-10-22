@@ -1,7 +1,10 @@
+import { withdrawSubagentExternalToolDefinitionsByIdentity } from '../thread-view.js';
+
 type ChildSession = {
   extensionRunner?: {
     createContext?: () => any;
     hasHandlers?: (event: 'session_shutdown') => boolean;
+    getAllRegisteredTools?: () => { definition: unknown }[];
     emit: (event: {
       type: 'session_shutdown';
       reason: 'quit';
@@ -75,7 +78,15 @@ export function teardownSubagentSession(
     } catch {
       // Preserve the original result even if the runner itself is unavailable.
     } finally {
-      await session.dispose?.();
+      try {
+        // Lean children omit this extension's lifecycle hooks; match SDK-owned objects.
+        const definitions = session.extensionRunner
+          ?.getAllRegisteredTools?.()
+          .map((tool) => tool.definition);
+        withdrawSubagentExternalToolDefinitionsByIdentity(definitions ?? []);
+      } finally {
+        await session.dispose?.();
+      }
     }
   });
   teardowns.set(session, teardown);

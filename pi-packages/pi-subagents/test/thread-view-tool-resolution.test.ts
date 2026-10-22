@@ -337,7 +337,11 @@ describe('viewer tool resolution', () => {
     const overrides: Partial<SubagentThreadRenderContext> = {};
     if (source === 'accessor') overrides.getToolDefinition = () => definition;
     if (source === 'external')
-      registerSubagentExternalToolDefinition(definition.name, definition);
+      registerSubagentExternalToolDefinition(
+        definition.name,
+        definition,
+        Symbol('external'),
+      );
     if (source === 'runtime')
       registerSubagentRuntimeToolDefinition(
         'task-1',

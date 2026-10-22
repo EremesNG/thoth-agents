@@ -136,6 +136,7 @@ async function fixture(
     cwd,
     settingsManager,
     modelRegistry,
+    session: parent.session,
     run,
     trace: () =>
       fs.readFileSync(traceFile, 'utf8').trim().split('\n').filter(Boolean),
@@ -881,6 +882,97 @@ it('shuts down and disposes a child rejected before prompting for unavailable to
     expect(parent.trace()).toEqual(['load-time:session_shutdown']);
     expect(dispose).toHaveBeenCalledTimes(1);
   } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('restores root tool definitions after real child teardown without running unmarked subagent shutdown handlers', async () => {
+  const parent = await fixture([], (root) => {
+    const directory = path.join(root, 'subagents');
+    fs.mkdirSync(directory);
+    fs.writeFileSync(
+      path.join(directory, 'package.json'),
+      '{"name":"@thoth-agents/pi-subagents"}',
+    );
+    const entry = path.join(directory, 'index.ts');
+    const extension = fileURLToPath(
+      new URL('../../src/extension/subagents-extension.ts', import.meta.url),
+    );
+    const threadView = fileURLToPath(
+      new URL('../../src/thread-view.js', import.meta.url),
+    );
+    const sdkRunner = fileURLToPath(
+      new URL('../../src/runner/sdk-runner.js', import.meta.url),
+    );
+    fs.writeFileSync(
+      entry,
+      `import fs from 'node:fs';
+      import subagentsExtension from ${JSON.stringify(extension)};
+      import { resolveSubagentExternalToolDefinitionFromInfo as resolve } from ${JSON.stringify(threadView)};
+      import { sdkSubagentRunner } from ${JSON.stringify(sdkRunner)};
+      export default function (pi) {
+        subagentsExtension(pi);
+        const name = 'subagent_run';
+        const own = resolve(name, { name });
+        if (!own) throw new Error('Missing fixture subagent_run definition');
+        pi.registerTool({
+          ...own,
+          name: 'fixture_child_run',
+          execute: (_id, input, signal, _update, ctx) => sdkSubagentRunner({
+            ...input, cwd: ctx.cwd, ctx, signal,
+          }),
+        });
+        pi.on('session_start', () => {
+          const restored = resolve(name, { name }) === own;
+          fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'root-definition:' + restored + '\\n');
+        });
+        pi.on('session_shutdown', () => {
+          fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'unmarked-shutdown\\n');
+        });
+      }`,
+    );
+    return [entry];
+  });
+  try {
+    // Use the SDK-loaded root's module graph, just as the real delegation tool does.
+    const runner = parent.session.extensionRunner;
+    if (!runner) throw new Error('Missing fixture extension runner');
+    const run = runner.getToolDefinition('fixture_child_run');
+    if (!run) throw new Error('Missing fixture delegation tool');
+    const signal = new AbortController().signal;
+    const ctx = Object.assign(
+      runner.createToolContext('fixture-child', signal),
+      {
+        settingsManager: parent.settingsManager,
+      },
+    );
+    await run.execute(
+      'fixture-child',
+      {
+        definition: {
+          name: 'child',
+          instructions: 'Reply.',
+          tools: [],
+          model: { provider: 'session-start-fixture', id: 'fixture' },
+        },
+        task: 'Reply.',
+        config,
+      },
+      signal,
+      undefined,
+      ctx,
+    );
+    await parent.session.extensionRunner?.emit({
+      type: 'session_start',
+      reason: 'startup',
+    });
+    expect(parent.trace()).toContain('root-definition:true');
+    expect(parent.trace()).not.toContain('unmarked-shutdown');
+  } finally {
+    await parent.session.extensionRunner?.emit({
+      type: 'session_shutdown',
+      reason: 'quit',
+    });
     await parent.close();
   }
 }, 30_000);

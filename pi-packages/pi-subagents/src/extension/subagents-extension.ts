@@ -39,6 +39,7 @@ import { SubagentsStatePublisher } from '../task-state-events.js';
 import {
   preloadPiComponentsForSubagentRendering,
   registerSubagentExternalToolDefinition,
+  withdrawSubagentExternalToolDefinitions,
 } from '../thread-view.js';
 import { triggerTaskBackgroundHandoff } from '../tools/background-handoff-state.js';
 import {
@@ -84,6 +85,7 @@ export default function subagentsExtension(pi: any): void {
   // Capture is extension-owned, never gated by UI readiness or row subscriptions.
   const providerLimits = new SubagentProviderLimitCache();
   const definitions: ToolDefinitionLike[] = [];
+  const toolDefinitionOwner = Symbol('subagentsExtension');
   let publication: ToolDefinitionHandle | undefined;
   const originalRegisterTool =
     typeof pi.registerTool === 'function'
@@ -91,7 +93,11 @@ export default function subagentsExtension(pi: any): void {
       : undefined;
   if (originalRegisterTool) {
     pi.registerTool = (tool: any) => {
-      registerSubagentExternalToolDefinition(tool?.name, tool);
+      registerSubagentExternalToolDefinition(
+        tool?.name,
+        tool,
+        toolDefinitionOwner,
+      );
       const result = originalRegisterTool(tool);
       definitions.push(tool);
       publication?.publish([tool]);
@@ -403,6 +409,8 @@ export default function subagentsExtension(pi: any): void {
     manager.resetResultAcknowledgments();
     publication?.withdraw();
     publication = undefined;
+    withdrawSubagentExternalToolDefinitions(toolDefinitionOwner);
+    definitions.length = 0;
     activeSessionId = undefined;
     activeSessionOwner = undefined;
     registerSubagentsPanelOpener(undefined);

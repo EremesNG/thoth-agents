@@ -368,10 +368,43 @@ export function resetPiComponentCacheForTests(): void {
 export function registerSubagentExternalToolDefinition(
   name: string | undefined,
   definition: unknown,
+  owner: symbol,
 ): void {
   if (!name || !definition) return;
-  externalToolDefinitions.set(name, definition);
+  const registrations =
+    externalToolDefinitions.get(name) ?? new Map<symbol, unknown>();
+  // Re-registration by an existing owner must also become the latest entry.
+  registrations.delete(owner);
+  registrations.set(owner, definition);
+  externalToolDefinitions.set(name, registrations);
   toolComponentCacheByTask.clear();
+}
+
+export function withdrawSubagentExternalToolDefinitions(owner: symbol): void {
+  for (const [name, registrations] of externalToolDefinitions) {
+    registrations.delete(owner);
+    if (registrations.size === 0) externalToolDefinitions.delete(name);
+  }
+  toolComponentCacheByTask.clear();
+}
+
+export function withdrawSubagentExternalToolDefinitionsByIdentity(
+  definitions: Iterable<unknown>,
+): void {
+  const withdrawn = new Set(definitions);
+  if (withdrawn.size === 0) return;
+  for (const [name, registrations] of externalToolDefinitions) {
+    for (const [owner, definition] of registrations) {
+      if (withdrawn.has(definition)) registrations.delete(owner);
+    }
+    if (registrations.size === 0) externalToolDefinitions.delete(name);
+  }
+  toolComponentCacheByTask.clear();
+}
+
+function externalToolDefinition(name: string): unknown {
+  const registrations = externalToolDefinitions.get(name);
+  return registrations ? [...registrations.values()].at(-1) : undefined;
 }
 
 function hasToolRenderer(definition: unknown): boolean {
@@ -482,8 +515,7 @@ export function resolveSubagentExternalToolDefinitionFromInfo(
   if (published) return published;
   if (hasToolRenderer(info)) return info;
   const existing =
-    externalToolDefinitions.get(name) ??
-    externalToolSourceDefinitions.get(name);
+    externalToolDefinition(name) ?? externalToolSourceDefinitions.get(name);
   if (existing) return existing;
   if (kit) return undefined;
   const sourcePath = sourcePathFromToolInfo(info);
@@ -815,8 +847,8 @@ function renderAttemptItem(
 }
 
 const builtInToolDefinitionCache = new Map<string, unknown>();
-// Explicit/captured registrations are source facts, not memoized resolutions.
-const externalToolDefinitions = new Map<string, unknown>();
+// Keep live owners in registration order so withdrawal restores the previous one.
+const externalToolDefinitions = new Map<string, Map<symbol, unknown>>();
 const runtimeToolDefinitionsByTask = new Map<string, Map<string, unknown>>();
 // Source rehydration is memoized only for the current registry/kit environment.
 const externalToolSourceDefinitions = new Map<string, unknown>();
@@ -1047,7 +1079,7 @@ function renderToolItem(
             hasToolRenderer(published)
               ? undefined
               : context.getToolDefinition?.(item.name),
-            externalToolDefinitions.get(item.name),
+            externalToolDefinition(item.name),
             externalToolSourceDefinitions.get(item.name),
             runtimeToolDefinition(context.taskId, item.name),
           ],

@@ -5,13 +5,19 @@ import {
   getToolDefinitionRegistryVersion,
   type ToolDefinitionLike,
 } from '@thoth-agents/pi-core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import type { SubagentManager } from '../../src/manager.js';
+import {
+  resetPiComponentCacheForTests,
+  resolveSubagentExternalToolDefinitionFromInfo,
+} from '../../src/thread-view.js';
 import { registerSubagentTools } from '../../src/tools/registry.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
+beforeEach(resetPiComponentCacheForTests);
+afterEach(resetPiComponentCacheForTests);
 
 function fixture(hasUI = true) {
   const tools = new Map<string, ToolDefinitionLike>();
@@ -41,6 +47,59 @@ function fixture(hasUI = true) {
 }
 
 describe('subagents tool definition publication', () => {
+  it('restores root renderers and releases child-only definitions when a headless child shuts down', async () => {
+    const root = fixture(false);
+    const child = fixture(false);
+    const name = 'subagent_run';
+    const childOnly = { name: 'child_only' };
+    const resolve = (toolName = name) =>
+      resolveSubagentExternalToolDefinitionFromInfo(toolName, {
+        name: toolName,
+      });
+    try {
+      child.pi.registerTool(childOnly);
+      expect(child.tools.get(name)).not.toBe(root.tools.get(name));
+      expect(resolve()).toBe(child.tools.get(name));
+      expect(resolve(childOnly.name)).toBe(childOnly);
+
+      await child.emit('session_shutdown');
+
+      expect(resolve()).toBe(root.tools.get(name));
+      expect(resolve(childOnly.name)).toBeUndefined();
+
+      await root.emit('session_shutdown');
+
+      expect(resolve()).toBeUndefined();
+    } finally {
+      await child.emit('session_shutdown');
+      await root.emit('session_shutdown');
+    }
+  });
+
+  it('keeps the latest live owner after re-registration and parent-first shutdown', async () => {
+    const root = fixture(false);
+    const child = fixture(false);
+    const name = 'subagent_run';
+    const replacement = { ...root.tools.get(name), name };
+    const resolve = () =>
+      resolveSubagentExternalToolDefinitionFromInfo(name, { name });
+    try {
+      root.pi.registerTool(replacement);
+      expect(resolve()).toBe(replacement);
+
+      await root.emit('session_shutdown');
+
+      expect(resolve()).toBe(child.tools.get(name));
+
+      await child.emit('session_shutdown');
+
+      expect(resolve()).toBeUndefined();
+    } finally {
+      await root.emit('session_shutdown');
+      await child.emit('session_shutdown');
+    }
+  });
+
   it('publishes the full host definitions only on a UI session start', async () => {
     const host = fixture();
     expect(host.tools.size).toBeGreaterThan(0);

@@ -160,7 +160,7 @@ describe('query-local attribution', () => {
   });
 });
 
-describe('summary takeovers', () => {
+describe('native summary ownership', () => {
   it('captures the event session for split-turn compact and branch summary queries', async () => {
     const { activateWithMockPi } = await import('./lib/mock-pi.mjs');
     const handlers = activateWithMockPi();
@@ -171,61 +171,29 @@ describe('summary takeovers', () => {
       async *[Symbol.asyncIterator]() {
         sessionId = 'changed-during-query';
         yield event({ status: 'allowed', rateLimitType: 'five_hour' });
-        yield {
-          type: 'result',
-          subtype: 'success',
-          result: 'summary',
-          is_error: false,
-        };
+        yield { type: 'result', subtype: 'success', result: 'summary', is_error: false };
       },
       close() {},
     }));
-    const notices = [];
-    const ctx = {
-      model: { ...model, baseUrl: 'claude-bridge', maxTokens: 4096 },
-      sessionManager: { getSessionId: () => sessionId },
-      ui: { notify: (text) => notices.push(text) },
-    };
-    const message = { role: 'user', content: 'summarize this', timestamp: 0 };
+    const ctx = { sessionManager: { getSessionId: () => sessionId } };
+    const context = { messages: [{ role: 'user', content: 'summarize this', timestamp: 0 }] };
     try {
-      const compact = await handlers.get('session_before_compact')(
-        {
-          reason: 'manual',
-          branchEntries: [],
-          signal: new AbortController().signal,
-          preparation: {
-            firstKeptEntryId: 'kept',
-            messagesToSummarize: [message],
-            turnPrefixMessages: [message],
-            isSplitTurn: true,
-            tokensBefore: 100,
-            fileOps: { read: new Set(), edited: new Set(), written: new Set() },
-            settings: { reserveTokens: 4096 },
-          },
-        },
-        ctx,
-      );
-      assert.ok(compact.compaction, notices.join('\n'));
+      const compactSignal = new AbortController().signal;
+      assert.equal(handlers.get('session_before_compact')({ signal: compactSignal }, ctx), undefined);
+      assert.equal(reports.length, 0, 'the observer must not start a summary');
+      for (const part of ['history', 'turn-prefix']) {
+        await __test.isolatedStreamFn(model, context, {
+          cacheRetention: 'none', signal: compactSignal, sessionId: 'synthetic-' + part,
+        }).result();
+      }
       sessionId = 'branching-child';
-      const branch = await handlers.get('session_before_tree')(
-        {
-          signal: new AbortController().signal,
-          preparation: {
-            targetId: 'target',
-            userWantsSummary: true,
-            entriesToSummarize: [{ type: 'message', id: 'entry', message }],
-          },
-        },
-        ctx,
-      );
-      assert.ok(
-        branch.summary,
-        'the branch takeover actually consumed its query',
-      );
-      assert.deepEqual(
-        reports.map((entry) => entry.sessionId),
-        ['compacting-child', 'compacting-child', 'branching-child'],
-      );
+      const treeSignal = new AbortController().signal;
+      assert.equal(handlers.get('session_before_tree')({ signal: treeSignal }, ctx), undefined);
+      await __test.isolatedStreamFn(model, context, {
+        cacheRetention: 'none', signal: treeSignal, sessionId: 'synthetic-tree',
+      }).result();
+      assert.deepEqual(reports.map((entry) => entry.sessionId),
+        ['compacting-child', 'compacting-child', 'branching-child']);
     } finally {
       unsubscribe();
       __test.setAuxiliaryQuery(null);

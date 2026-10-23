@@ -4,7 +4,7 @@
 
 Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Originally based on [claude-agent-sdk-pi](https://github.com/prateekmedia/claude-agent-sdk-pi) by Prateek Sunal.
 
-This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced to upstream 0.9.1 in commit `9fdcfdb`; the local package version is independent.
+This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced through upstream `df964a9` (0.9.3 plus unreleased fixes), from the previous `9dafd03` base imported in `9fdcfdb`; the local package version is independent.
 
 1. **Provider** — Use Opus/Sonnet/Haiku as models in pi, with all tool calls flowing through pi's TUI
 2. **AskClaude tool** — Delegate tasks or questions to Claude Code when using another provider
@@ -115,6 +115,8 @@ The probe uses real lifecycle captures in a temporary working directory, a stati
 
 ## AskClaude Tool
 
+**Deprecated:** AskClaude is a legacy tool and may be removed in a future release. The Claude Code provider remains supported. Pi subagent extensions can provide similar delegation.
+
 Opt-in: set `askClaude.enabled` to `true` (see [Configuration](#configuration)). Available when using any non-claude-bridge provider. Pi's LLM can delegate tasks to Claude Code and wait for it to answer a question or perform a task. Examples of how to use:
 
 - "Ask Claude to plan a fix"
@@ -158,7 +160,7 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 ```
 
 `askClaude`:
-- `enabled` — register the AskClaude tool (default `false`). If it's unset, the startup notice below points this out once.
+- `enabled` — register the AskClaude tool (default `false`). The first TUI use shows a one-time deprecation warning; execution remains available.
 - `name` — override the tool's pi-side name (default `"AskClaude"`)
 - `label` — override the TUI label (default `"Ask Claude Code"`)
 - `description` — override the tool description. Default when `allowFullMode: true`: *"Delegate to Claude Code for a second opinion or analysis (code review, architecture questions, debugging theories), or to autonomously handle a task. Defaults to read-only mode — use full mode when the user wants to delegate a task that requires changes. Prefer to handle straightforward tasks yourself."*
@@ -176,7 +178,7 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 - `pathToClaudeCodeExecutable` — path to the `claude` binary. Useful if your OS/filesystem has the SDK's bundled musl/glibc binaries in a place where they can't run. For example, with Nix you can set the binary to e.g. `"/home/you/.nix-profile/bin/claude"`.
 
 
-**Startup notice:** the first session lists `provider.plan` and `askClaude.enabled` if unset, then records `startupNoticeShown` in the global config so it doesn't nag again.
+**Notices:** the startup notice points out when `provider.plan` is unset and records `startupNoticeShown` in the global config. There's also a deprecation notice on first use of AskClaude that records its display date as `askClaudeDeprecationShown`.
 
 **Extension providers and models.json:** pi's `modelOverrides` in `~/.pi/agent/models.json` apply to extension-registered providers like claude-bridge, keyed by the model id shown in `/model` (opening `/model` reloads the file). For example, to give Pi a 400K window for a bridge model:
 
@@ -213,7 +215,7 @@ When filing a bug about a session-resume failure (e.g. "No conversation found"),
 
 ### Which injection routes reach Claude Code
 
-The bridge forwards pi's structured parts — project context files, skills, custom prompt, appended instructions, and selected non-hidden tools' `toolGuidelines` — and drops the rest. Tool guidelines are trimmed, deduplicated bullets in a final `<tool_guidelines>` section (omitted when empty). An explicit `sections.rules` override replaces generated tool guidance; a custom `sections.tool_guidelines` override also takes precedence. Pi's default rules/tool sections and `promptGuidelines` are not forwarded; explicit section overrides are preserved. Measured against the request body (`diag/capture-proxy.mjs`):
+The bridge forwards pi's structured parts — project context files, skills, custom prompt, appended instructions, custom prompt sections (`systemPromptOptions.sections`), and selected non-hidden tools' `toolGuidelines` — and drops the rest. Tool guidelines are trimmed, deduplicated bullets in a final `<tool_guidelines>` section (omitted when empty). An explicit `sections.rules` override replaces generated tool guidance; a custom `sections.tool_guidelines` override also takes precedence. Pi's default rules/tool sections and `promptGuidelines` are not forwarded; explicit section overrides are preserved. Measured against the request body (`diag/capture-proxy.mjs`):
 
 | Route | Reaches Claude Code |
 |---|---|
@@ -221,6 +223,7 @@ The bridge forwards pi's structured parts — project context files, skills, cus
 | `context` editing the last user message | Yes, as literal prompt text |
 | `--append-system-prompt` | Yes, with pi's appended instructions |
 | `context_with_system` editing the system message | Yes when it wraps pi's prompt; the turn fails when it replaces one |
+| `before_agent_start` -> `systemPromptOptions.sections` | Yes, one `<name>` block per section |
 | `before_agent_start` -> `systemPrompt` | No, dropped |
 
 Two traps. Returning `systemPrompt` from `before_agent_start` makes pi replace the whole system prompt, discarding any `context_with_system` edit in the same run — only one reaches the request. And system-prompt edits work by *wrapping*: replacing pi's prompt leaves the bridge with nothing to match, so it refuses the turn rather than send Claude Code a request missing your context files, skills and custom instructions. The error names the closest known prompt and where it diverged.
@@ -235,11 +238,19 @@ To add instructions, use `message`, `context`, or a system-message edit that kee
 [ -n "$PI_CODING_AGENT" ] && exit 0
 ```
 
-Hooks do not fire on the compact-summary side query.
+Hooks do not fire on isolated summary queries.
+
+### Compaction and branch summaries
+
+pi runs compaction and branch summaries natively. The bridge routes their `cacheRetention: "none"` calls to isolated Claude Code queries, leaving the live session untouched until pi completes the history rewrite. Other extensions can provide summaries through pi's hooks.
 
 ### System prompt rejections
 
 Other extensions can change the system prompt. When the result still contains pi's built-in system prompt text, or the two documentation paths that Anthropic looks for (`docs/custom-provider.md` in the same prompt with `docs/packages.md`), the bridge stops the turn instead of sending it, since Anthropic may otherwise bill these requests as Extra Usage. Fix the source extension before retrying; `CLAUDE_BRIDGE_DEBUG=1` writes the full prompt to the bridge log when this happens.
+
+### Plan usage for footers and quota extensions
+
+Alongside `/claude quota` and immediate pi-core provider-limit observations, the bridge exposes plan usage to footer/quota extensions. Claude Code sends a `rate_limit_event` when a usage window changes, and the bridge passes it to pi's `after_provider_response` event as `anthropic-ratelimit-unified-*` headers. Events are not tied to one response: one that arrives after a turn has ended on a tool call is reported on the next provider call, and only the latest is kept for this header channel. The pi-core registry still receives every event immediately. The headers use the names that the Anthropic API uses (for example `anthropic-ratelimit-unified-5h-utilization`). The bridge sends only the headers that it can make from the event: the status, the reset time, the representative claim, the overage status and reset, and the utilization and reset of each window. The status code is always 200. An extension that reads these headers for the built-in `anthropic` provider can also accept `claude-bridge` without other changes.
 
 ### Using claude bridge with @gotgenes/pi-subagents
 

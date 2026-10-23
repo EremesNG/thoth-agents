@@ -6,6 +6,9 @@
  * deltas. pi-ai replays that state, but preserves section replay order. Prompt capture
  * keys come from pi's canonical section builder, so a deleted and re-added section must
  * be ranked back into canonical order before the bridge performs its exact-key lookup.
+ * Custom sections — anything an extension set through `systemPromptOptions.sections`, such
+ * as the `mcp_servers` section pi's own MCP extension adds — rank last, where the builder
+ * puts them.
  */
 import {
 	contentText,
@@ -15,28 +18,27 @@ import {
 	type SystemMessage,
 } from "@earendil-works/pi-ai";
 
-/** pi's canonical built-in section order; custom sections follow their replay position.
- *  Known limitation, inherited from the pre-swap replay: if pi reorders existing custom
- *  sections while patching an unrelated one, the replay diverges from getSystemPrompt()
- *  and the exact-key capture lookup throws on that legitimate turn. Untriggered today:
- *  pi builds custom sections in one patch per render. */
+/** pi's canonical built-in section order. A name absent from the table is a custom
+ *  section, which the builder renders after every built-in; see stableRanked.
+ *  Known limitation: customs keep their replayed relative order here, while the builder
+ *  takes theirs from `systemPromptOptions.sections`. The two agree unless a custom moves
+ *  without its content changing — pi's section diff then emits nothing for it, the replay
+ *  keeps the stale position, and the exact-key capture lookup throws on that legitimate
+ *  turn. */
 const SECTION_RANK = new Map<string, number>([
 	["preamble", 0], ["tools", 1], ["rules", 2], ["docs", 3], ["addendum", 4],
 	["project_context", 5], ["skills", 6], ["cwd", 7],
 ]);
 
 /**
- * The map's entries, stably sorted by canonical rank. An unknown name inherits the
- * highest rank seen before it, preserving an already-canonical replay. A newly added
- * addendum can land after cwd; it must not pull custom sections re-added after it ahead
- * of project_context/skills/cwd. Every section value is retained byte-for-byte, and
- * prompt capture still requires an exact match of the complete rendered prompt.
+ * Canonical built-ins first, then custom sections in stable replay order, matching
+ * Pi's builder even when a custom section arrives before a later built-in patch.
+ * Every section value is retained byte-for-byte for exact prompt-capture lookup.
  */
 function stableRanked(sections: Map<string, string>, ranks: Map<string, number>): Map<string, string> {
-	let prefixRank = -1;
+	const customRank = Math.max(...ranks.values()) + 1;
 	const ranked = [...sections].map(([name, value]) => {
-		const rank = ranks.get(name) ?? prefixRank;
-		prefixRank = Math.max(prefixRank, rank);
+		const rank = ranks.get(name) ?? customRank;
 		return { name, value, rank };
 	});
 	ranked.sort((a, b) => a.rank - b.rank);

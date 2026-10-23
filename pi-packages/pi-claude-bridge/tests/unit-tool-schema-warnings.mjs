@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import activate, { __test } from "../src/index.js";
 import { QueryContext } from "../src/query-state.js";
-import { DIAG_LOG_PATH } from "../src/log-paths.js";
+import { diagLogPath } from "../src/log-paths.js";
 
 function startSession(sessionId, mode, notify) {
 	const handlers = new Map(), registered = [];
@@ -48,7 +48,7 @@ it("headless omission warnings are visible once per tool per session, not per qu
 	assert.match(warnings[1], /omitted tool "mixed_union"/);
 	assert.match(warnings[2], /pi-headless-b/);
 	assert.match(warnings[3], /omitted tool "mixed_union"/);
-	const entries = readFileSync(DIAG_LOG_PATH, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+	const entries = readFileSync(diagLogPath(), "utf8").trim().split("\n").map((line) => JSON.parse(line));
 	const omissions = entries.filter((entry) => entry.label === "tool_schema_omitted");
 	assert.deepEqual(omissions.map((entry) => [entry.piSessionId, entry.toolName]), [
 		["pi-headless-a", "incompatible"], ["pi-headless-a", "mixed_union"],

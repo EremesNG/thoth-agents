@@ -2,6 +2,8 @@
 
 ## UNRELEASED
 
+- **Bump: upstream sync through `df964a9`** — Integrate upstream 0.9.2/0.9.3 and unreleased fixes from `9dafd03`: native Pi summaries, session cwd, quota headers, continuation recovery, isolated effort, AskClaude deprecation and lazy diagnostics. Retain local prompt/cache/checkpoint, quota, rendering and schema-wrapping behavior; Pi stays at 1.0.2 and the scoped package version stays 0.2.5. Agent SDK is `^0.3.308`.
+
 - **Fix: release previous AskClaude cards** — Detach Pi's previous-component reference before retaining render context, avoiding a growing chain of call/result cards while preserving shared state and card caching.
 
 - **Fix: preserve Claude conversation cache across Pi restarts** — Persist validated per-session checkpoints after clean subprocess exit and lazily restore the same Claude Code session, recorded system append and append epoch. Bind the complete Pi turn (including its final assistant) and the full Claude transcript with SHA-256; invalidate on unsafe lifecycle events and fall back to the existing rebuild on any mismatch. Skip non-persisted sessions and prune old sidecars.
@@ -12,6 +14,29 @@
 - **Rendering: use the theme Render KIT for AskClaude** — Discover the kit through pi-core at render time, with native Pi fallback and no theme dependency; use pi-core's shared `formatDuration`.
 - **Fix: match resumed structured prompt captures** — Keep re-added custom sections after earlier built-ins when a new addendum lands at the replay tail, retaining every section byte and exact capture lookup. Offline Pi-renderer regressions cover resume, append-once turns and same-length instruction changes.
 - **Fix: tolerate non-object Pi tool schemas** — Wrap object-only root unions for MCP and omit incompatible tools with session-scoped UI/headless warnings, retaining Pi's original argument validation.
+
+- **Bump: Claude Agent SDK 0.3.308 (Claude Code 2.1.308)** — Claude Code's new per-request log in session files is turned off; it made them about a third larger.
+- **Fix: abort ignored after a terminated tool batch (#200, issue #199)** — when a run ended with Claude Code's query parked at a tool call (`terminate: true`), aborting the next run did nothing. Each run that continues the query now binds its own signal. Thanks @orshih6 and @cootue.
+
+## 0.9.3 — 2026-10-13
+
+- **Remove: compaction and branch-summary takeovers (#189)** — pi runs them natively; the bridge routes summary calls to its isolated path. Other compaction extensions should now work. Resolves #115. Thanks @sonSunnoi.
+- **Deprecate: AskClaude tool** — Show a one-time notice on first use; remove the startup reminder to opt in.
+- **Fix: Haiku 5.5 registered at 1M (#190)** — Thanks @Blue-B.
+- **Fix: hang when a stream is cut right after a tool call starts (#146)** — Tool calls now dispatch only once their block closes, so pi no longer gets a `{}`-argument call Claude Code has dropped. Thanks @andreypopp.
+- **Fix: tool result after a restart resumes the turn (#174)** — a result with no parked query ends the turn only when pi delivers it on an aborted request; otherwise (restart, crash, stall, retry) it resumes the Claude Code session. Thanks @jcwasher.
+- **Fix: Claude Code runs in the pi session's cwd (#175)** — hosts serving many sessions from one process (pi-web) spawned it in the host process cwd, so it loaded that directory's AGENTS.md and mirrored the session under the wrong project. Thanks @SoulKyu.
+- **Add: report plan usage through pi's `after_provider_response` (#171)** — Claude Code's usage updates arrive as `anthropic-ratelimit-unified-*` headers, so extensions that read usage from the built-in `anthropic` provider work with the bridge too. Thanks @fj.
+- **Fix: one-off calls honor the caller's reasoning level (#184)** — compaction summaries, `/bug-report` summaries and extension one-shots that pass `reasoning` now send it to Claude Code as `effort` instead of using its default. Thanks @roberthmms.
+- **Fix: exhausted subscription windows go straight to fallback (#183)** — the error now leads with "Claude quota exceeded", which pi does not retry, and still says "rate limit" for fallback chains. Thanks @good-nightmoon.
+
+## 0.9.2 — 2026-10-07
+
+- **Fix: synthetic failure notices no longer stream as assistant output (#162)** — keeps pre-output failover working for consumers like pi-model-fallback-alias; the notice text stays on the failed turn's error event. A notice following a stalled stream also drops the dead stream's abandoned partial blocks.
+- **Fix: system prompt sections survive prompt capture (issue #153)** — pi 0.99.2+ adds an `mcp_servers` section through its MCP extension. The transcript replay now ranks unlisted sections after the built-ins, matching pi's builder, so the capture key matches instead of failing every turn; and recorded sections are projected to Claude Code instead of being silently dropped. The failure message points at a section-order divergence instead of blaming extension load order.
+- **Fix: duplicate AGENTS.md instructions (#151)** — Exclude Claude Code's native copy, matching the existing CLAUDE.md exclusions.
+- **Bump: Agent SDK `^0.3.293`** — bundles Claude Code 2.1.293, includes Haiku 5.5.
+- **Tests: fix test isolation by lazy loading log path (#164)** — log-paths resolves debug/diag paths per call instead of at import time. Fixes issues with config tests overwriting real user settings in some situations.
 
 ## 0.9.1 — 2026-09-30
 

@@ -9,6 +9,8 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { globalConfigPath } from "../src/config.js";
+import { debugLogPath, diagLogPath } from "../src/log-paths.js";
 
 describe("test harness", () => {
 	it("isolates global config before extension activation on every platform", () => {
@@ -33,18 +35,43 @@ describe("test harness", () => {
 			"debug log must not resolve to the developer's real one",
 		);
 	});
+	it("keeps every path-derived location inside the temp root", () => {
+		const root = process.env.HOME;
+		assert.ok(root, "HOME must be set — is tests/lib/setup.mjs still preloaded via --import?");
+		for (const path of [homedir(), getAgentDir(), globalConfigPath(), debugLogPath(), diagLogPath()]) {
+			assert.ok(path.startsWith(root), `${path} must live under ${root}`);
+		}
+	});
+
+	it("resolves lazily from env changes made after import", () => {
+		// Pinning the lazy contract: if log-paths regresses to import-time consts,
+		// this fails because the preloaded values would still be returned.
+		const previous = { agent: process.env.PI_CODING_AGENT_DIR, debug: process.env.CLAUDE_BRIDGE_DEBUG_PATH };
+		try {
+			process.env.PI_CODING_AGENT_DIR = "/tmp/log-paths-lazy-probe";
+			process.env.CLAUDE_BRIDGE_DEBUG_PATH = "/tmp/log-paths-lazy-probe-debug.log";
+			assert.equal(diagLogPath(), join("/tmp/log-paths-lazy-probe", "claude-bridge-diag.log"));
+			assert.equal(debugLogPath(), "/tmp/log-paths-lazy-probe-debug.log");
+		} finally {
+			if (previous.agent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previous.agent;
+			if (previous.debug === undefined) delete process.env.CLAUDE_BRIDGE_DEBUG_PATH;
+			else process.env.CLAUDE_BRIDGE_DEBUG_PATH = previous.debug;
+		}
+	});
 });
 
 describe("log paths", () => {
 	it("follow PI_CODING_AGENT_DIR when no debug path override is set", () => {
-		// log-paths.ts resolves at import time, so read it from a fresh process.
+		// Read from a fresh process: this is the env the preload sets, minus the
+		// debug-path override, resolved against a probe agent dir.
 		const probeDir = "/tmp/pi-agent-dir-probe";
 		const env = { ...process.env, PI_CODING_AGENT_DIR: probeDir };
 		delete env.CLAUDE_BRIDGE_DEBUG_PATH;
 		const src = new URL("../src/log-paths.ts", import.meta.url).href;
 		const out = execFileSync(process.execPath, [
 			"--import", "tsx", "--input-type=module", "-e",
-			`const p = await import(${JSON.stringify(src)}); console.log(JSON.stringify(p));`,
+			`const p = await import(${JSON.stringify(src)}); console.log(JSON.stringify({ DEBUG_LOG_PATH: p.debugLogPath(), DIAG_LOG_PATH: p.diagLogPath() }));`,
 		], { env, encoding: "utf8" });
 		assert.deepEqual(JSON.parse(out), {
 			DEBUG_LOG_PATH: join(probeDir, "claude-bridge.log"),

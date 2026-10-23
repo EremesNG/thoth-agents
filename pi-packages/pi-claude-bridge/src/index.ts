@@ -2709,8 +2709,14 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			const sessionId = ctx.sessionManager.getSessionId();
+			const childOptions = claudeChildOptions(sessionCwdFor(sessionId));
+			const env: NodeJS.ProcessEnv = childOptions.env;
+			// Usage fetches count as non-essential traffic; quota is explicitly
+			// user-triggered and short-lived. SDK env replaces the child environment.
+			delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
 			const output = await fetchClaudeQuota(auxiliaryQueryImpl, {
-				...claudeChildOptions(sessionCwdFor(sessionId)),
+				...childOptions,
+				env,
 				settings: { ...claudeCodeSettings(providerSettings), claudeMdExcludes: CLAUDE_MD_EXCLUDES, includeGitInstructions: false },
 				permissionMode: "bypassPermissions",
 				strictMcpConfig: true,

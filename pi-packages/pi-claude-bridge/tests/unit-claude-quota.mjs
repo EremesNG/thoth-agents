@@ -129,10 +129,27 @@ it('explains unavailable plan limits for API key / Bedrock / Vertex and closes',
     rate_limits_available: false,
   }));
   const output = await fetchClaudeQuota(() => sdk.query, {}, 'quota-session');
-  assert.match(output, /plan limits unavailable/i);
-  assert.match(output, /API key.*Bedrock.*Vertex/);
+  assert.equal(
+    output,
+    'Claude quota: plan limits unavailable for this authentication (API key, Bedrock, Vertex, or missing Claude profile scope).',
+  );
   assert.equal(sdk.closeCount, 1);
 });
+
+for (const [state, response] of [
+  ['null', { rate_limits_available: true, rate_limits: null }],
+  ['missing', { rate_limits_available: true }],
+]) {
+  it(`reports no usage data, not ineligible authentication, when eligible limits are ${state}`, async () => {
+    const sdk = fakeQuery(async () => response);
+    const output = await fetchClaudeQuota(() => sdk.query, {}, 'quota-session');
+    assert.equal(
+      output,
+      'Claude quota: Claude Code returned no usage data (the usage request failed or returned nothing). Try again later.',
+    );
+    assert.equal(sdk.closeCount, 1);
+  });
+}
 
 it('reports request errors and still closes', async () => {
   const sdk = fakeQuery(async () => {
@@ -229,7 +246,7 @@ it('handles stream and spawn errors without leaving a process or input open', as
   assert.deepEqual(await input, { value: undefined, done: true });
 });
 
-it('registers /claude quota in the session cwd, reuses bridge child settings, and does not fetch on startup or invalid arguments', async (t) => {
+it('registers on-demand /claude quota in the session cwd and permits usage traffic only in its child', async (t) => {
   const { globalConfigPath } = await import('../src/config.js');
   const configPath = globalConfigPath();
   const previous = existsSync(configPath)
@@ -259,6 +276,9 @@ it('registers /claude quota in the session cwd, reuses bridge child settings, an
     }),
   );
   let command;
+  let provider;
+  let quotaOptions;
+  let ordinaryOptions;
   let calls = 0;
   const handlers = new Map();
   let initialized = false;
@@ -269,7 +289,9 @@ it('registers /claude quota in the session cwd, reuses bridge child settings, an
       list.push(handler);
       handlers.set(name, list);
     },
-    registerProvider() {},
+    registerProvider: (_name, config) => {
+      provider = config;
+    },
     registerTool() {},
     registerCommand: (name, config) => {
       assert.equal(name, 'claude');
@@ -291,6 +313,8 @@ it('registers /claude quota in the session cwd, reuses bridge child settings, an
   }));
   __test.setAuxiliaryQuery(({ options }) => {
     calls++;
+    quotaOptions = options;
+    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
     assert.equal(
       options.cwd,
       cwd,
@@ -306,6 +330,15 @@ it('registers /claude quota in the session cwd, reuses bridge child settings, an
     assert.deepEqual(options.tools, []);
     return sdk.query;
   });
+  __test.setQuery(({ options }) => {
+    ordinaryOptions = options;
+    const query = (async function* () {
+      yield { type: 'system', subtype: 'init', session_id: 'ordinary-query' };
+      yield { type: 'result', subtype: 'success', is_error: false, result: 'OK' };
+    })();
+    query.close = () => {};
+    return query;
+  });
   try {
     initialized = true;
     for (const handler of handlers.get('session_start')) await handler({}, ctx);
@@ -317,12 +350,27 @@ it('registers /claude quota in the session cwd, reuses bridge child settings, an
     assert.match(notices.at(-1)[0], /Extra usage: disabled/);
     assert.equal(calls, 1);
     assert.equal(sdk.closeCount, 1);
+    const result = await provider.streamSimple(
+      provider.models[0],
+      { messages: [{ role: 'user', content: 'Hello', timestamp: 0 }], tools: [] },
+      { sessionId: 'command-session' },
+    ).result();
+    assert.equal(result.stopReason, 'stop', result.errorMessage);
+    assert.equal(ordinaryOptions.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+    assert.equal(
+      Object.hasOwn(quotaOptions.env, 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'),
+      false,
+      'only the quota child may fetch non-essential usage data',
+    );
     assert.equal(
       notices.filter(([text]) => /command conflict/.test(text)).length,
       0,
     );
   } finally {
+    __test.setQuery(null);
     __test.setAuxiliaryQuery(null);
+    __test.resetSharedSession();
   }
 });
 

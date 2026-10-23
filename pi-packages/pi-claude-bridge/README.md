@@ -82,19 +82,23 @@ milliseconds. Existing warning notifications are unchanged.
 Run `/claude quota` to show current plan usage: 5-hour and weekly windows,
 Opus/Sonnet and model-specific windows when available, plus extra usage.
 Percentages are shown directly from the response's 0–100 scale; reset times are
-shown in your local timezone. The command reuses the bridge's working directory,
-child environment and configured Claude Code executable, sends **no prompt**,
-enables no tools and closes its short-lived CLI query on every exit path. It times
-out after 30 seconds. Nothing is fetched periodically or added to sidebar quota
-state.
+shown in your local timezone. The command reuses the bridge's working directory
+and configured Claude Code executable. Only its child environment omits
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, since Claude Code treats usage fetching
+as non-essential traffic; normal queries keep it disabled. The command sends
+**no prompt**, enables no tools and closes its short-lived CLI query on every exit
+path. It times out after 30 seconds. Nothing is fetched periodically or added to
+sidebar quota state.
 
 **Experimental:** this uses the SDK's
 `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })`
 control request. Its API and response shape may change. If the method is missing,
 update the Claude Agent SDK and Claude Code. Plan data is unavailable for API-key,
 Bedrock and Vertex authentication (or missing Claude profile scope); the command
-explains this instead of showing zero usage. Timeout and request failures are also
-reported explicitly. If another extension registers `/claude`, startup warns once
+explains this instead of showing zero usage. If authentication is eligible but
+Claude Code returns no usage data, the command reports that the usage request
+failed or returned nothing and suggests trying again later. Timeout and request
+failures are also reported explicitly. If another extension registers `/claude`, startup warns once
 with its command/source; resolve the duplicate rather than relying on Pi's
 suffixed or shadowed command names.
 

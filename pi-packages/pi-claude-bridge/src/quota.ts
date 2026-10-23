@@ -23,8 +23,11 @@ function resetTime(value: string | null): string {
 
 function renderQuota(response: SDKControlGetUsageResponse): string {
   const limits = response.rate_limits;
-  if (!limits || response.rate_limits_available === false) {
-    return 'Claude quota: plan limits unavailable (API key, Bedrock, Vertex, or missing Claude profile scope).';
+  if (response.rate_limits_available === false) {
+    return 'Claude quota: plan limits unavailable for this authentication (API key, Bedrock, Vertex, or missing Claude profile scope).';
+  }
+  if (!limits) {
+    return 'Claude quota: Claude Code returned no usage data (the usage request failed or returned nothing). Try again later.';
   }
   const lines = [
     `Claude quota${response.subscription_type ? ` (${response.subscription_type})` : ''}`,

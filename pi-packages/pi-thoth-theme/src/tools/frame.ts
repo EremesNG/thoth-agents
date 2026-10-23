@@ -1,6 +1,7 @@
 import { relative, resolve } from 'node:path';
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { fitExpandHint } from '../shared/expand-hint.ts';
 import type { BorderTone } from './border.ts';
 
 export const FRAME_HORIZONTAL = '─';
@@ -83,17 +84,23 @@ export function renderFrameRow(
   line: string,
   width: number,
   borderColor: BorderTone = 'accent',
+  ellipsis = '…',
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
-    return [truncateToWidth(line, safeWidth)];
+    return [
+      truncateToWidth(fitExpandHint(line, safeWidth, ellipsis), safeWidth),
+    ];
   }
 
   const innerWidth = Math.max(1, safeWidth - 2);
   const contentWidth = Math.max(1, innerWidth - 2);
-  const truncated = truncateToWidth(line, contentWidth);
+  const truncated = truncateToWidth(
+    fitExpandHint(line, contentWidth, ellipsis),
+    contentWidth,
+  );
   const pad = Math.max(0, contentWidth - visibleWidth(truncated));
   const framed = `${theme.fg(borderColor, `${FRAME_VERTICAL} `)}${truncated}${' '.repeat(pad)}${theme.fg(borderColor, ` ${FRAME_VERTICAL}`)}`;
   return [truncateToWidth(framed, safeWidth)];

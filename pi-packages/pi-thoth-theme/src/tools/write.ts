@@ -39,6 +39,7 @@ interface WriteContext extends ElapsedRenderContext {
 }
 
 export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
+  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: WriteContext) {
@@ -120,7 +121,7 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Write failed')}`;
           return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone),
+            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
             ...renderFrameBottom(
               theme,
               toolFooter(theme, footerOptions, config.icons),
@@ -160,6 +161,7 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
               theme.fg('toolOutput', defaultMsg),
               safeWidth,
               borderTone,
+              ellipsis,
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -184,7 +186,7 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone),
+            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];

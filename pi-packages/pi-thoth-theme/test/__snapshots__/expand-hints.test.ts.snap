@@ -1,0 +1,931 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`narrow expansion hints in ascii mode > bash preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 123 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m[33m | [39m[33mExit 0[39m[33m | [39m[33m128 lines[39m[33m | [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | Alt+X to expand[39m                                                                                [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | Alt+X to expand[39m                                                                                [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint open details > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | open details[39m                                                                                   [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint open details > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | open details[39m                                                                                   [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint undefined > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-change wide output with hint undefined > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > codemode preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > codemode-calls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 1                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 2                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 3                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 4                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 5                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 6                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m+[39m line 7                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  └─ [39m[33m+[39m line 8                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m+120 more · ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > edit preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m+ line 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m... 122 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m[33m | [39m[33m[33m+128[39m [33m-0[39m[39m[33m | [39m[33m1 file[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > find preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 1[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 2[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 3[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 4[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 5[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 6[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 7[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 8[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m... 120 more matches | ctrl+o to expand[39m                                                                          [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > find-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33m[file][39m [33mline 1[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 2[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 3[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 4[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 5[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 6[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 7[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 8[39m",
+  "  [33m└─[39m [33m... 120 more matches | ctrl+o to expand[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > generic preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 7[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 8[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m[33m | [39m[33m128 lines[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > grep preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m└─[39m [33m[ts][39m [33mfile.ts[39m [33m(128 matches)[39m                                                                                       [33m │[39m",
+  "[33m│ [39m     [33m   1: [39m[33mline 1[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m   2: [39m[33mline 2[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m... 126 more[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m... 126 more matches across 0 files | ctrl+o to expand[39m                                                           [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > grep-raw preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m... 120 more lines | ctrl+o to expand[39m                                                                             [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > grep-raw-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m... 120 more lines | ctrl+o to expand[39m                                                                             [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > grep-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m└─[39m [33m[ts][39m [33mfile.ts[39m [33m(128 matches)[39m",
+  "       [33m   1: [39m[33mline 1[39m",
+  "       [33m   2: [39m[33mline 2[39m",
+  "       [33m... 126 more[39m",
+  "  [33m└─[39m [33m... 126 more matches across 0 files | ctrl+o to expand[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > ls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 1[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 2[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 3[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 4[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 5[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 6[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 7[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m[file][39m [33mline 8[39m                                                                                                    [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m... 120 more files | ctrl+o to expand[39m                                                                            [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > ls-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33m[file][39m [33mline 1[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 2[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 3[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 4[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 5[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 6[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 7[39m",
+  "  [33m├─[39m [33m[file][39m [33mline 8[39m",
+  "  [33m└─[39m [33m... 120 more files | ctrl+o to expand[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > powershell preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 123 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m[33m | [39m[33mExit 0[39m[33m | [39m[33m128 lines[39m[33m | [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > read preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m128 lines | ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m+[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in ascii mode > write preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m... 122 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m+[39m[33m | [39m[33m[33m+128 lines[39m[39m[33m | [39m[33m1 file[39m [33m───────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > bash preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 123 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m[33m · [39m[33mExit 0[39m[33m · [39m[33m128 lines[39m[33m · [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · Alt+X to expand[39m                                                                                  [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · Alt+X to expand[39m                                                                                  [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint open details > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · open details[39m                                                                                     [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint open details > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · open details[39m                                                                                     [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint undefined > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-change wide output with hint undefined > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > codemode preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > codemode-calls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 1                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 2                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 3                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 4                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 5                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 6                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m[39m line 7                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  └─ [39m[33m[39m line 8                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m+120 more · ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > edit preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m+ line 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m… 122 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m[33m · [39m[33m[33m+128[39m [33m-0[39m[39m[33m · [39m[33m1 file[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > find preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 1[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 2[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 3[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 4[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 5[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 6[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 7[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 8[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 120 more matches · ctrl+o to expand[39m                                                                            [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > find-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33m󰈔[39m [33mline 1[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 2[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 3[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 4[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 5[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 6[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 7[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 8[39m",
+  "  [33m└─[39m [33m… 120 more matches · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > generic preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 7[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 8[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m[33m · [39m[33m128 lines[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > grep preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m└─[39m [33m[39m [33mfile.ts[39m [33m(128 matches)[39m                                                                                          [33m │[39m",
+  "[33m│ [39m     [33m   1: [39m[33mline 1[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m   2: [39m[33mline 2[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m… 126 more[39m                                                                                                     [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 126 more matches across 0 files · ctrl+o to expand[39m                                                             [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > grep-raw preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m… 120 more lines · ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > grep-raw-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m… 120 more lines · ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > grep-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m└─[39m [33m[39m [33mfile.ts[39m [33m(128 matches)[39m",
+  "       [33m   1: [39m[33mline 1[39m",
+  "       [33m   2: [39m[33mline 2[39m",
+  "       [33m… 126 more[39m",
+  "  [33m└─[39m [33m… 126 more matches across 0 files · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > ls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 1[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 2[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 3[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 4[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 5[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 6[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 7[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33m󰈔[39m [33mline 8[39m                                                                                                         [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 120 more files · ctrl+o to expand[39m                                                                              [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > ls-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33m󰈔[39m [33mline 1[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 2[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 3[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 4[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 5[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 6[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 7[39m",
+  "  [33m├─[39m [33m󰈔[39m [33mline 8[39m",
+  "  [33m└─[39m [33m… 120 more files · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > powershell preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 123 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m[33m · [39m[33mExit 0[39m[33m · [39m[33m128 lines[39m[33m · [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > read preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m128 lines · ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in nerd mode > write preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 122 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m[39m[33m · [39m[33m[33m+128 lines[39m[39m[33m · [39m[33m1 file[39m [33m───────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > bash preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 123 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m[33m · [39m[33mExit 0[39m[33m · [39m[33m128 lines[39m[33m · [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · Alt+X to expand[39m                                                                                  [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint Alt+X to expand > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · Alt+X to expand[39m                                                                                  [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint open details > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · open details[39m                                                                                     [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint open details > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · open details[39m                                                                                     [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint undefined > end 1`] = `
+[
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-change wide output with hint undefined > full 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > codemode preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39mline 1                                                                                                              [33m │[39m",
+  "[33m│ [39mline 2                                                                                                              [33m │[39m",
+  "[33m│ [39mline 3                                                                                                              [33m │[39m",
+  "[33m│ [39mline 4                                                                                                              [33m │[39m",
+  "[33m│ [39mline 5                                                                                                              [33m │[39m",
+  "[33m│ [39mline 6                                                                                                              [33m │[39m",
+  "[33m│ [39mline 7                                                                                                              [33m │[39m",
+  "[33m│ [39mline 8                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > codemode-calls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──[39m [33mcodemode[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 1                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 2                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 3                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 4                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 5                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 6                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  ├─ [39m[33m✓[39m line 7                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m  └─ [39m[33m✓[39m line 8                                                                                                       [33m │[39m",
+  "[33m│ [39m[33m+120 more · ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > edit preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m+ line 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m+ line 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m[33m… 122 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m[33m · [39m[33m[33m+128[39m [33m-0[39m[39m[33m · [39m[33m1 file[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > find preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 1[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 2[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 3[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 4[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 5[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 6[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 7[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 8[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 120 more matches · ctrl+o to expand[39m                                                                            [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > find-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33mfile[39m [33mline 1[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 2[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 3[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 4[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 5[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 6[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 7[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 8[39m",
+  "  [33m└─[39m [33m… 120 more matches · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > generic preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 7[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 8[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m[33m · [39m[33m128 lines[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > grep preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m└─[39m [33m[39m [33mfile.ts[39m [33m(128 matches)[39m                                                                                          [33m │[39m",
+  "[33m│ [39m     [33m   1: [39m[33mline 1[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m   2: [39m[33mline 2[39m                                                                                                   [33m │[39m",
+  "[33m│ [39m     [33m… 126 more[39m                                                                                                     [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 126 more matches across 0 files · ctrl+o to expand[39m                                                             [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > grep-raw preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m… 120 more lines · ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > grep-raw-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m",
+  "[33m│ [39m  [33mline 1[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 2[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 3[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 4[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 5[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 6[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 7[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33mline 8[39m                                                                                                            [33m │[39m",
+  "[33m│ [39m  [33m… 120 more lines · ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > grep-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m└─[39m [33m[39m [33mfile.ts[39m [33m(128 matches)[39m",
+  "       [33m   1: [39m[33mline 1[39m",
+  "       [33m   2: [39m[33mline 2[39m",
+  "       [33m… 126 more[39m",
+  "  [33m└─[39m [33m… 126 more matches across 0 files · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > ls preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 1[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 2[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 3[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 4[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 5[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 6[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 7[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m├─[39m [33mfile[39m [33mline 8[39m                                                                                                      [33m │[39m",
+  "[33m│ [39m[33m└─[39m [33m… 120 more files · ctrl+o to expand[39m                                                                              [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > ls-unframed preserves the pre-change wide output byte for byte 1`] = `
+[
+  "  [33m├─[39m [33mfile[39m [33mline 1[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 2[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 3[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 4[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 5[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 6[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 7[39m",
+  "  [33m├─[39m [33mfile[39m [33mline 8[39m",
+  "  [33m└─[39m [33m… 120 more files · ctrl+o to expand[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > powershell preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 123 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m[33m · [39m[33mExit 0[39m[33m · [39m[33m128 lines[39m[33m · [39m[33m~256 words[39m [33m───────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > read preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33m128 lines · ctrl+o to expand[39m                                                                                        [33m │[39m",
+  "[33m╰──[39m [33m✓[39m [33m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;
+
+exports[`narrow expansion hints in unicode mode > write preserves the pre-change wide output byte for byte 1`] = `
+[
+  "[33m│ [39m[33mline 1[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 2[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 3[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 4[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 5[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33mline 6[39m                                                                                                              [33m │[39m",
+  "[33m│ [39m[33m… 122 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m╰──[39m [33m✓[39m[33m · [39m[33m[33m+128 lines[39m[39m[33m · [39m[33m1 file[39m [33m───────────────────────────────────────────────────────────────────────────────────────────╯[39m",
+]
+`;

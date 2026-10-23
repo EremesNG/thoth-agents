@@ -13,6 +13,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { cachedComponent } from '../shared/cache.ts';
+import { fitExpandHint } from '../shared/expand-hint.ts';
 import { type BorderState, getBorderTone } from './border.ts';
 
 export const BOX_HORIZONTAL = '─';
@@ -101,6 +102,7 @@ export function countLines(text: string): number {
 export interface BoxOptions extends BorderState {
   title?: string;
   footer?: string;
+  ellipsis?: string;
 }
 
 // The SDK appends one exact, metadata-backed notice after a blank line.
@@ -185,7 +187,12 @@ export function renderBox(
       (l): l is string => typeof l === 'string' && l.length > 0,
     );
     const lines = raw.length > 0 ? raw : bodyLines;
-    return lines.map((l) => truncateBoxLine(l, safeWidth));
+    return lines.map((line) =>
+      truncateBoxLine(
+        fitExpandHint(line, safeWidth, options.ellipsis),
+        safeWidth,
+      ),
+    );
   }
 
   const result: string[] = [];
@@ -214,7 +221,10 @@ export function renderBox(
   // Body lines
   const contentWidth = Math.max(1, innerWidth - 2);
   for (const line of bodyLines) {
-    const truncated = truncateBoxLine(line, contentWidth);
+    const truncated = truncateBoxLine(
+      fitExpandHint(line, contentWidth, options.ellipsis),
+      contentWidth,
+    );
     const pad = Math.max(0, contentWidth - visibleWidth(truncated));
     const framed = `${theme.fg(borderColor, `${BOX_VERTICAL} `)}${truncated}${' '.repeat(pad)}${theme.fg(borderColor, ` ${BOX_VERTICAL}`)}`;
     result.push(truncateBoxLine(framed, safeWidth));

@@ -11,7 +11,11 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function hasAppendedVerdict(content: unknown, verdict: string): boolean {
+function hasAppendedVerdict(
+  content: unknown,
+  verdict: string,
+  blockSeparator = '',
+): boolean {
   if (typeof content === 'string') return content.endsWith(`\n\n${verdict}`);
   if (!Array.isArray(content)) return false;
   // Delivery adds standalone blocks at the tail, never lines inside child text.
@@ -20,11 +24,11 @@ function hasAppendedVerdict(content: unknown, verdict: string): boolean {
     if (
       block?.type !== 'text' ||
       typeof block.text !== 'string' ||
-      !block.text.startsWith(VERDICT_PREFIX) ||
-      block.text.includes('\n')
+      !block.text.startsWith(`${blockSeparator}${VERDICT_PREFIX}`) ||
+      block.text.slice(blockSeparator.length).includes('\n')
     )
       break;
-    if (block.text === verdict) return true;
+    if (block.text === `${blockSeparator}${verdict}`) return true;
   }
   return false;
 }
@@ -110,9 +114,10 @@ export function withPiToolGateVerdicts(
   const blocks = verdicts
     .filter(
       (verdict): verdict is string =>
-        verdict !== undefined && !hasAppendedVerdict(event.content, verdict),
+        verdict !== undefined &&
+        !hasAppendedVerdict(event.content, verdict, '\n\n'),
     )
-    .map((text) => ({ type: 'text', text }));
+    .map((verdict) => ({ type: 'text', text: `\n\n${verdict}` }));
   if (blocks.length === 0) return undefined;
   return {
     content: [...event.content, ...blocks],

@@ -214,7 +214,7 @@ describe('Pi Oracle gate delivery verdicts', () => {
         issues: [{ code: 'ENVELOPE_FORMAT', path: '' }],
       }),
     ]);
-    expect(result.content.at(-1).text).toMatch(/^thoth-gate-verdict /);
+    expect(result.content.at(-1).text).toMatch(/^\n\nthoth-gate-verdict /);
     expect(result.details).toBe(event.details);
     expect(result.structuredContent).toBe(event.structuredContent);
     expect(await handler({ ...event, ...result })).toBeUndefined();
@@ -445,7 +445,7 @@ describe('Pi Oracle gate delivery verdicts', () => {
       ...event.content,
       {
         type: 'text',
-        text: `thoth-gate-verdict ${JSON.stringify({
+        text: `\n\nthoth-gate-verdict ${JSON.stringify({
           valid: true,
           role: 'oracle',
           kind: 'final-verification',
@@ -572,6 +572,40 @@ describe('Pi Oracle gate delivery verdicts', () => {
     expect(message.content).toEqual(
       format === 'string' ? text : [{ type: 'text', text }],
     );
+  });
+
+  test.each([
+    'subagent_result',
+    'subagent_run',
+  ])('separates %s verdicts by a blank line when text blocks are concatenated', async (toolName) => {
+    const text = gateResult();
+    const task = { id: 'oracle-1', agent: 'thoth-oracle', result: text };
+    const event = {
+      ...toolEvent(
+        toolName === 'subagent_result'
+          ? { task }
+          : { mode: 'task', results: [task, { ...task, id: 'oracle-2' }] },
+      ),
+      toolName,
+      content: [{ type: 'text', text }],
+    };
+    const handler = handlerFor('tool_result');
+
+    const result = (await handler(event)) as any;
+    const joined = result.content
+      .filter((block: { type: string }) => block.type === 'text')
+      .map((block: { text: string }) => block.text)
+      .join('');
+
+    expect(joined).toContain('```\n\nthoth-gate-verdict ');
+    expect(joined).not.toContain('```thoth-gate-verdict ');
+    expect(joined.match(/\n\nthoth-gate-verdict /g)).toHaveLength(
+      toolName === 'subagent_result' ? 1 : 2,
+    );
+    for (const block of result.content.slice(event.content.length)) {
+      expect(block.text).toMatch(/^\n\nthoth-gate-verdict [^\n]+$/);
+    }
+    expect(await handler({ ...event, ...result })).toBeUndefined();
   });
 
   test.each([

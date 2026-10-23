@@ -1,4 +1,14 @@
-import { visibleWidth } from '@earendil-works/pi-tui';
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  Theme,
+} from '@earendil-works/pi-coding-agent';
+import { VERSION as PI_VERSION } from '@earendil-works/pi-coding-agent';
+import {
+  stripTerminalSequences,
+  type TUI,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
 import { formatAge } from './age.ts';
@@ -105,6 +115,69 @@ describe('renderWelcomeHeader', () => {
     expect(fullText).toContain('claude-3-7-sonnet');
   });
 
+  describe.each([
+    'nerd',
+    'unicode',
+    'ascii',
+  ] as const)('provider overflow in %s mode', (mode) => {
+    it.each([
+      [4, 0],
+      [5, 2],
+      [8, 5],
+    ])('shows %s providers with an exact overflow count of %s', (count, hidden) => {
+      const providers = [
+        'zeta',
+        'alpha',
+        'core',
+        'fourth',
+        'fifth',
+        'sixth',
+        'seventh',
+        'eighth',
+      ]
+        .slice(0, count)
+        .map((name) => ({ name, detail: 'read' }));
+      for (const width of [64, 80, 120]) {
+        const data = { ...sampleData, providers };
+        const lines = renderWelcomeHeader(mockTheme, data, width, mode);
+        const rightColumn = lines.map(
+          (line) =>
+            stripTerminalSequences(line).split(
+              mode === 'ascii' ? '|' : '│',
+            )[2] ?? '',
+        );
+        const start = rightColumn.findIndex((row) =>
+          row.includes('Tool Providers'),
+        );
+        const rows = rightColumn.slice(start + 1, start + 5);
+        const expectedNames =
+          hidden > 0
+            ? ['zeta', 'alpha', 'core']
+            : ['zeta', 'alpha', 'core', 'fourth'];
+
+        expect(
+          rows
+            .slice(0, expectedNames.length)
+            .map((row) => row.trim().split(' ')[1]),
+        ).toEqual(expectedNames);
+        if (hidden > 0) {
+          expect(rows[3].trim()).toBe(`+${hidden} more`);
+        } else {
+          expect(lines.join('\n')).not.toContain('more');
+        }
+        expect(lines).toHaveLength(
+          renderWelcomeHeader(
+            mockTheme,
+            { ...sampleData, providers: providers.slice(0, 4) },
+            width,
+            mode,
+          ).length,
+        );
+        for (const line of lines) expect(visibleWidth(line)).toBe(width);
+      }
+    });
+  });
+
   it('renders medium layout (50 columns) responsively without exceeding width', () => {
     const lines = renderWelcomeHeader(mockTheme, sampleData, 50, 'nerd');
     expect(lines.length).toBeGreaterThan(0);
@@ -164,6 +237,40 @@ describe('renderWelcomeHeader', () => {
 });
 
 describe('collectStartupResources', () => {
+  it('retains all provider groups so overflow reaches the welcome renderer', async () => {
+    const pi = {
+      getAllTools: () => [
+        { name: 'zeta_tool', sourceInfo: { source: 'npm:zeta' } },
+        { name: 'read', sourceInfo: { source: 'builtin' } },
+        { name: 'alpha_tool', sourceInfo: { source: 'npm:alpha' } },
+        { name: 'beta_tool', sourceInfo: { source: 'npm:beta' } },
+        { name: 'gamma_tool', sourceInfo: { source: 'npm:gamma' } },
+      ],
+    };
+    const data = await collectStartupResources(
+      pi as unknown as ExtensionAPI,
+      { cwd: '/workspace' } as ExtensionContext,
+      {
+        sessionLister: async () => [],
+      },
+    );
+
+    expect(data.providers.map((provider) => provider.name)).toEqual([
+      'core',
+      'alpha',
+      'beta',
+      'gamma',
+      'zeta',
+    ]);
+    const rendered = renderWelcomeHeader(mockTheme, data, 80, 'nerd')
+      .map(stripTerminalSequences)
+      .join('\n');
+    expect(rendered).toContain('+2 more');
+    expect(rendered).toContain('core');
+    expect(rendered).toContain('alpha');
+    expect(rendered).toContain('beta');
+  });
+
   it('collects data using injected data providers', async () => {
     const mockPi = {
       getAllTools: () => [
@@ -330,6 +437,49 @@ describe('WelcomeComponent', () => {
 });
 
 describe('registerWelcome', () => {
+  it.each([
+    'nerd',
+    'unicode',
+    'ascii',
+  ] as const)('adds exactly one blank row below the registered header in %s mode', (mode) => {
+    const setHeader = vi.fn<ExtensionContext['ui']['setHeader']>();
+    registerWelcome(
+      {} as ExtensionAPI,
+      {
+        hasUI: true,
+        cwd: '/workspace/test',
+        ui: { setHeader },
+      } as unknown as ExtensionContext,
+      { icons: mode } as ThemeConfig,
+      {
+        sessionLister: async () => [],
+      },
+    );
+    const factory = setHeader.mock.calls[0]?.[0];
+    if (!factory) throw new Error('header factory was not set');
+    const component = factory(
+      { requestRender: vi.fn() } as unknown as TUI,
+      mockTheme as unknown as Theme,
+    );
+    expect(component).toBeInstanceOf(WelcomeComponent);
+    const data: WelcomeData = {
+      version: PI_VERSION,
+      resources: {},
+      providers: [],
+      sessions: [],
+    };
+
+    for (const width of [80, 50, 30, 1]) {
+      const card = renderWelcomeHeader(mockTheme, data, width, mode);
+      const rendered = component.render(width);
+      expect(rendered).toEqual([...card, '']);
+      expect(component.render(width)).toBe(rendered);
+    }
+    expect(component.render(0)).toEqual([]);
+    expect(component.render(-1)).toEqual([]);
+    if (component instanceof WelcomeComponent) component.dispose();
+  });
+
   it('sets header component on ctx.ui.setHeader', () => {
     let capturedFactory: ((tui: any, theme: any) => any) | undefined;
     const mockCtx = {

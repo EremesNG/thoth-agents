@@ -46,13 +46,16 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
       const icon = getFileIcon(filePath, config.icons);
+      const offset = args.offset ?? undefined;
+      const limit = args.limit ?? undefined;
       let range = '';
-      if (args.offset !== undefined || args.limit !== undefined) {
-        const start = args.offset ?? 1;
+      if (
+        limit !== undefined ||
+        (offset !== undefined && Number(offset) !== 1)
+      ) {
+        const start = offset ?? 1;
         const end =
-          args.limit !== undefined
-            ? Number(start) + Number(args.limit) - 1
-            : '';
+          limit !== undefined ? Number(start) + Number(limit) - 1 : '';
         range = `:${start}${end ? `-${end}` : ''}`;
       }
       const borderTone = getToolBorderTone(context);

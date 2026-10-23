@@ -162,15 +162,21 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
         : getToolBorderTone({ isError: isErr, isPartial });
       syncElapsedTicker({ ...context, isPartial });
       const textOutput = getResultText(result);
-      const allLines = textOutput ? textOutput.split('\n') : [];
+      // An empty failed run carries the SDK sentinel before its status appendix.
+      const isEmptyOutput =
+        textOutput.trim() === '(no output)' ||
+        (isErr &&
+          /^\s*\(no output\)\s*\nCommand exited with code \d+\s*$/.test(
+            textOutput,
+          ));
+      const output = isEmptyOutput ? '' : textOutput;
+      const allLines = output ? output.split('\n') : [];
       const lineCount = allLines.length;
 
       const exitNum = extractShellExitCode(result, textOutput, isErr);
       const exitStr = `Exit ${exitNum}`;
 
-      const words = textOutput.trim()
-        ? textOutput.trim().split(/\s+/).length
-        : 0;
+      const words = output.trim() ? output.trim().split(/\s+/).length : 0;
       const wordsStr = words > 0 ? `~${words} words` : '';
 
       return createComponent((width: number) => {

@@ -38,9 +38,11 @@ export class WelcomeComponent implements Component {
     initialData: WelcomeData,
   ) {
     this.data = initialData;
-    this.renderCache = cachedComponent((width) =>
-      renderWelcomeHeader(theme, this.data, width, config.icons),
-    );
+    this.renderCache = cachedComponent((width) => {
+      const card = renderWelcomeHeader(theme, this.data, width, config.icons);
+      // Quiet startup leaves no spacer before the first chat message.
+      return card.length > 0 ? [...card, ''] : card;
+    });
   }
 
   get isDisposed(): boolean {

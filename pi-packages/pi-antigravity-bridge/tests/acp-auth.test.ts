@@ -1,6 +1,6 @@
 // /agy auth tests against the scripted fake ACP server (authenticate ->
-// {}), plus failure paths: dead binary, concurrent run, missing token.
-// Fully offline; the token directory is a fixture, never the real one.
+// {}), with tokenless session probes and auth-error invalidation.
+// Fully offline; token and verified-marker paths are fixtures, never real ones.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,13 +21,14 @@ function tmpDir(): string {
 }
 
 /** Wire a fake-server run whose token directory is a fixture under `dir`. */
-function authOpts(dir: string) {
+function authOpts(dir: string, scenario = "happy") {
 	return {
 		bin: process.execPath,
 		binArgs: [FAKE_SERVER],
 		cwd: dir,
-		extraEnv: { ACP_FAKE_SCENARIO: "happy", ACP_FAKE_LOG: path.join(dir, "fake-log.jsonl") },
+		extraEnv: { ACP_FAKE_SCENARIO: scenario, ACP_FAKE_LOG: path.join(dir, "fake-log.jsonl") },
 		tokenDir: path.join(dir, "token-fixture"),
+		authVerifiedFile: path.join(dir, "verified.json"),
 		tokenGraceMs: 200,
 		timeoutMs: 15_000,
 	};
@@ -47,6 +48,11 @@ describe("acp/auth runAcpAuth", () => {
 		const r = await runAcpAuth(authOpts(dir));
 		assert.equal(r.ok, true);
 		assert.equal(r.error, undefined);
+		assert.equal(r.note, undefined);
+		const marker = JSON.parse(fs.readFileSync(path.join(dir, "verified.json"), "utf8"));
+		assert.deepEqual(Object.keys(marker).sort(), ["at", "verified"]);
+		assert.equal(marker.verified, true);
+		assert.ok(Number.isFinite(Date.parse(marker.at)));
 		const requests = fs
 			.readFileSync(logPath, "utf8")
 			.trim()
@@ -75,10 +81,35 @@ describe("acp/auth runAcpAuth", () => {
 		assert.match(second.error ?? "", /already running/);
 	});
 
-	test("authenticate resolving without a token file is a distinct failure", async () => {
-		// Empty fixture dir: the RPC replies ok, but the token never lands.
-		const r = await runAcpAuth(authOpts(tmpDir()));
+	test("tokenless authenticate succeeds only after a live session probe in the configured cwd", async () => {
+		const dir = tmpDir();
+		assert.notEqual(dir, process.cwd());
+		const r = await runAcpAuth(authOpts(dir));
+		assert.equal(r.ok, true);
+		assert.match(r.note ?? "", /existing credentials/);
+		assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "verified.json"), "utf8")).verified, true);
+		assert.equal(fs.existsSync(path.join(dir, "token-fixture", "acp_token.json")), false);
+		const requests = fs.readFileSync(path.join(dir, "fake-log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+		assert.deepEqual(requests.map((request) => request.method), ["initialize", "authenticate", "session/new", "session/close"], "auth and probe share one connection");
+		const probe = requests.find((request) => request.method === "session/new");
+		assert.equal(probe?.params.cwd, dir, "probe must not use process.cwd()");
+		assert.ok(requests.some((request) => request.method === "session/close" && request.params.sessionId === "fake-session-0001"));
+	});
+
+	test.each(["authenticate", "session/new", "session/close"])("an auth error from %s clears an earlier verified marker", async (method) => {
+		const dir = tmpDir();
+		const opts = authOpts(dir);
+		fs.writeFileSync(opts.authVerifiedFile, '{"verified":true}');
+		const r = await runAcpAuth({ ...opts, extraEnv: { ...opts.extraEnv, ACP_FAKE_AUTH_ERROR_METHOD: method } });
 		assert.equal(r.ok, false);
-		assert.match(r.error ?? "", /token file appeared/);
+		assert.equal(fs.existsSync(opts.authVerifiedFile), false);
+	});
+
+	test("tokenless authenticate fails when the session probe finds no usable credentials", async () => {
+		const dir = tmpDir();
+		const r = await runAcpAuth(authOpts(dir, "auth-required"));
+		assert.equal(r.ok, false);
+		assert.match(r.error ?? "", /usable credentials.*session probe failed/);
+		assert.equal(fs.existsSync(path.join(dir, "verified.json")), false);
 	});
 });

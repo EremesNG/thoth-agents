@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { PassThrough, type Readable, type Writable } from "node:stream";
+import { PassThrough, type Readable, Writable } from "node:stream";
 import { launchInJob, JobLauncherUnavailable, type LaunchedJob } from "@thoth-agents/pi-core/windows-job";
 import { emitLifecycle } from "./lifecycle.js";
 import { resolveWindowsExecutable } from "./windows-executable.js";
@@ -49,6 +49,57 @@ export function onOwnedProcessSettled(child: OwnedProcess, listener: (code: numb
 	child.on("close", finish);
 }
 
+/** A writable, not a PassThrough: acknowledging a local buffer would falsely
+ * confirm prompt dispatch. Node serializes writes and applies backpressure until
+ * the acquired Job (or fallback child) acknowledges each write itself. */
+class OwnedStdin extends Writable {
+	#target: Writable | undefined;
+	#pending: { start: () => void; finish: (error?: Error | null) => void } | undefined;
+
+	attach(target: Writable): void {
+		this.#target = target;
+		target.on("error", error => this.destroy(error));
+		// A normal process exit closes an idle stdin without a write failure.
+		target.once("close", () => {
+			this.destroy(this.#pending && !target.writableFinished ? new Error("owned process stdin closed") : undefined);
+		});
+		if (this.destroyed) target.destroy();
+		else if (target.destroyed) this.destroy(target.errored ?? (this.#pending ? new Error("owned process stdin closed") : undefined));
+		else this.#pending?.start();
+	}
+
+	#forward(write: (target: Writable, callback: (error?: Error | null) => void) => void, callback: (error?: Error | null) => void): void {
+		let finished = false;
+		const finish = (error?: Error | null) => {
+			// Target close/destroy may race its eventual write callback.
+			if (finished) return;
+			finished = true;
+			this.#pending = undefined;
+			callback(error);
+		};
+		const start = () => {
+			try { write(this.#target!, finish); }
+			catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
+		};
+		this.#pending = { start, finish };
+		if (this.#target) start();
+	}
+
+	override _write(chunk: Buffer, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+		this.#forward((target, done) => { target.write(chunk, encoding, done); }, callback);
+	}
+
+	override _final(callback: (error?: Error | null) => void): void {
+		this.#forward((target, done) => { target.end(done); }, callback);
+	}
+
+	override _destroy(error: Error | null, callback: (error: Error | null) => void): void {
+		this.#pending?.finish(error ?? new Error("owned process stdin closed"));
+		this.#target?.destroy();
+		callback(error);
+	}
+}
+
 /** Synchronous ChildProcess subset. Job-backed `close` includes pipe drain and
  * cleanup; use onOwnedProcessSettled to preserve exit-based non-job behavior. */
 export function spawnOwnedProcess(file: string, args: string[], options: OwnedSpawnOptions = {}): OwnedProcess {
@@ -58,7 +109,7 @@ export function spawnOwnedProcess(file: string, args: string[], options: OwnedSp
 	const child = new EventEmitter() as OwnedProcess;
 	const sources: Readable[] = [];
 	const stdout = new PassThrough(), stderr = new PassThrough();
-	const stdin = Array.isArray(options.stdio) && options.stdio[0] === "ignore" ? null : new PassThrough();
+	const stdin = Array.isArray(options.stdio) && options.stdio[0] === "ignore" ? null : new OwnedStdin();
 	Object.assign(child, { pid: undefined, stdin, stdout, stderr, exitCode: null, signalCode: null });
 	let job: LaunchedJob | undefined;
 	Object.defineProperty(child, "jobBacked", { get: () => job !== undefined });
@@ -96,8 +147,12 @@ export function spawnOwnedProcess(file: string, args: string[], options: OwnedSp
 		else source.pipe(target);
 	};
 	const attachStdin = (target: Writable) => {
-		target.on("error", (error) => { if (stdin && !fenced) stdin.destroy(error); });
-		if (stdin) stdin.pipe(target); else target.end();
+		if (stdin) stdin.attach(target);
+		else {
+			// The Job still supplies a pipe when the public stdin is ignored.
+			target.on("error", () => {});
+			target.end();
+		}
 	};
 	const failed = (error: unknown) => {
 		child.exitCode = -1;

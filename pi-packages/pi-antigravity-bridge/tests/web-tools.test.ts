@@ -20,8 +20,9 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../src/config.js";
-import { registerWebTools, runWebAgent, sweepStaleWebAgents, WEB_AGENT_PREFIX } from "../src/web-tools.js";
+import { registerWebTools, runWebAgent, sweepStaleWebAgents, webAgentMd, WEB_AGENT_PREFIX } from "../src/web-tools.js";
 import type { WebRunOptions, WebRunResult } from "../src/web-tools.js";
+import { parseAgentFrontmatter } from "./helpers/frontmatter.js";
 
 // Each isolated file owns a fresh Windows job helper.
 beforeAll(warmJobLauncher, 60_000);
@@ -80,6 +81,14 @@ function fakePi(): { api: ExtensionAPI; registered: Array<{ name: string; descri
 	const api = { registerTool: (t: never) => registered.push(t) } as unknown as ExtensionAPI;
 	return { api, registered };
 }
+
+test("webAgentMd: frontmatter parses as YAML (issue #5 class)", () => {
+	const fm = parseAgentFrontmatter(webAgentMd("pi-bridge-web-x"));
+	expect(fm.name).toBe("pi-bridge-web-x");
+	expect(fm.description).toBe("Temporary Pi web delegate");
+	expect(fm.inheritMcp).toBe(false);
+	expect(fm.tools).toEqual(["search_web", "read_url_content"]);
+});
 
 describe("runWebAgent gate", () => {
 	test("observed search_web DONE + result SUCCESS returns the answer and removes the agent dir", async () => {

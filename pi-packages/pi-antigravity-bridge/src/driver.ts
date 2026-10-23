@@ -83,11 +83,10 @@ interface ActiveTurn {
 	parks: number;
 }
 
-/** The skip-permissions flag actually passed to agy. Plan mode never
- *  carries it: the flag auto-approves every permission request including
- *  plan mode's own approval gate, silently turning review-only into full
- *  write access. #start (argv + profile) and #recycleCause (comparison)
- *  must both go through this, or plan turns recycle on every turn. */
+/** Plan never auto-approves permissions: the CLI does not gate plan writes
+ *  (#1181), so even a no-skip run is not guaranteed read-only. #start (argv
+ *  + profile) and #recycleCause must share the effective value to avoid
+ *  recycling on every plan turn. */
 function effectiveSkipPermissions(mode: DriverTurnRequest["mode"], skipPermissions: boolean): boolean {
 	return mode !== "plan" && skipPermissions;
 }
@@ -284,16 +283,38 @@ export class StreamDriver implements TurnDriver {
 				event: "user",
 				message: { role: "user", content: request.prompt },
 			})}\n`;
-			const stdin = this.#child?.stdin;
+			const child = this.#child;
+			if (!child?.stdin) throw new Error("agy driver stdin unavailable");
+			let removeLaunchListener = () => {};
+			const dispatched = (async () => {
+				// Windows returns a facade before Job launch. Confirm both launch
+				// and the target pipe write before publishing this turn's handle.
+				if (!child.pid) await new Promise<void>(resolve => {
+					child.once("spawn", resolve);
+					removeLaunchListener = () => { child.removeListener("spawn", resolve); };
+				});
+				request.assertCurrent?.();
+				if (turn.closed) throw new Error("agy turn ended before prompt dispatch");
+				await new Promise<void>((resolve, reject) => {
+					child.stdin!.write(line, err => err ? reject(err) : resolve());
+				});
+			})();
 			try {
-				if (!stdin) throw new Error("agy driver stdin unavailable");
-				stdin.write(line);
+				await waitWithDeadline(Promise.race([
+					dispatched,
+					turn.outcome.then(outcome => { throw new Error(outcome.error ?? "agy turn ended before prompt dispatch"); }),
+				]), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "prompt dispatch");
 			} catch (err) {
+				// A pipe error may have settled the turn already. Still retire this
+				// captured transport before a later boundary can reuse it.
+				if (this.#child === child) await this.#killChild();
 				throw new Error(`failed to write to agy driver: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+			} finally {
+				removeLaunchListener();
 			}
 			return makeHandle(turn);
 		} catch (err) {
-			// Until the handle returns, only the driver can roll back ownership.
+			// Before dispatch confirmation, only the driver can roll back ownership.
 			// Fence cleanup to this turn and child, never a replacement or park.
 			try {
 				if (this.#active === turn && this.#child !== previousChild) this.#killChild();
@@ -369,13 +390,8 @@ export class StreamDriver implements TurnDriver {
 		this.#state = "starting";
 		this.#generation += 1;
 		const generation = this.#generation;
-		// Plan mode never carries the skip flag: the flag auto-approves ALL
-		// permission requests including plan mode's own approval gate, which
-		// would silently turn "review-only" into full write access (probed
-		// 2026-09-25: with the flag a plan session wrote files; without it,
-		// file and command attempts end exit 0 in ~20-30s with a "confirm
-		// plan" message). The profile stores the EFFECTIVE value so the
-		// recycle comparison stays consistent with the argv.
+		// Store the effective value so recycling compares what argv actually
+		// carries. Plan runs never auto-approve, but are not read-only (#1181).
 		const skipPermissions = effectiveSkipPermissions(request.mode, request.skipPermissions);
 		this.#profile = {
 			cwd: request.cwd,

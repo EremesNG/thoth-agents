@@ -51,10 +51,12 @@ import {
 	ToolRoundTrips,
 	WrapperReplay,
 	createStreamSimple,
+	defaultEscalateAfterMs,
 	formatEscalatedAck,
 	formatPollAnswer,
 	type NativeDisplayEvent,
 } from "../src/provider.js";
+import { PollRunFolder, type PollRunData } from "../src/poll-fold.js";
 import {
 	createShadowTool,
 	stripMarkerFields,
@@ -65,9 +67,9 @@ import { detectPermissionGateExtensions, resolveGateMode } from "../src/approval
 import { approvalHookFileName, hookScriptSource, removeGateHooks, stageGateHooks, sweepWorkspaceGateGroups } from "../src/approval-hook.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
-import { runAcpAuth } from "../src/acp/auth.js";
+import { runAcpAuth, type AcpAuthOptions } from "../src/acp/auth.js";
 import { setupAuthUrlCapture } from "../src/acp/browser-capture.js";
-import { ensureAcpReady, inspectAcpSetup } from "../src/acp/setup.js";
+import { clearAcpAuthVerified, ensureAcpReady, inspectAcpSetup } from "../src/acp/setup.js";
 import type { TurnDriver, TurnOutcome } from "../src/driver-types.js";
 import { CONFIG_PATH, loadConfig, logsDir, MAX_TURN_CAP_MIN, parseCapMinutes, saveConfig, type AgyMode, type BridgeTools, type Engine, type ThinkingTier } from "../src/config.js";
 import { agyMissingMessage, isAgyInstalled, savedEngineMessage, showEnginePicker, shouldOfferEnginePicker } from "../src/engine-picker.js";
@@ -85,7 +87,7 @@ import { agyConversationDir } from "../src/agy-paths.js";
 import { createDailyLogger, type DailyLogger } from "../src/daily-log.js";
 import { emitLifecycle } from "../src/lifecycle.js";
 import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.js";
-import { renderNativeEvent } from "../src/native-event-render.js";
+import { renderNativeEvent, renderPollRun } from "../src/native-event-render.js";
 import { registerWebTools } from "../src/web-tools.js";
 import { acquirePrivateBridgeServerName, bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
 import {
@@ -133,6 +135,10 @@ function setupProgressUi(message: string): string {
 
 function setUiStatus(ui: ExtensionUIContext | null | undefined, ...args: Parameters<ExtensionUIContext["setStatus"]>): void {
 	emitLifecycle(() => ui?.setStatus(...args));
+}
+
+function setDimStatus(ui: ExtensionUIContext | null, key: string, text: string | undefined): void {
+	emitLifecycle(() => ui?.setStatus(key, text === undefined ? undefined : ui.theme.fg("dim", text)));
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
@@ -236,6 +242,17 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	let projectTrusted = false;
 	let lifecycleEpoch = 0;
 	let stopped = false;
+	// Credentials (and the durable marker) are user-global, but callback
+	// ownership is not. Connections detach their callback when killed.
+	const invalidateAcpAuth = () => { if (!stopped) clearAcpAuthVerified(); };
+	const runOwnedAcpAuth = (opts: AcpAuthOptions) => {
+		const epoch = lifecycleEpoch;
+		return runAcpAuth({ ...opts, onAuthInvalidated: () => {
+			// An explicit sign-in may finish after /new or shutdown. Never let
+			// that old connection invalidate a later session's verification.
+			if (epoch === lifecycleEpoch) invalidateAcpAuth();
+		} });
+	};
 	let bridgeReady = false;
 	let startFlight: Promise<void> | null = null;
 	let shutdownFlight: Promise<void> | null = null;
@@ -374,6 +391,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// Resolved per connection: the setup flow can install the binary and
 		// update acp.bin mid-session; the next turn picks it up (no restart).
 		bin: () => loadConfig().acp.bin,
+		onAuthInvalidated: invalidateAcpAuth,
 		// Resolved per turn: /agy and AGY_USAGE_ESTIMATE changes apply without
 		// a restart. Without this the driver defaults to "estimate" and the
 		// config knob (incl. "off") is dead.
@@ -429,6 +447,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				d,
 				level ?? (s === "round-trip-fail" ? "warn" : "debug"),
 			),
+		// Re-read custom long-running names for each bridge call.
+		{ escalateAfterMs: (name) => defaultEscalateAfterMs(name, loadConfig().escalateLongTools) },
 	);
 	const replay = new WrapperReplay();
 	// Subagent roster: folded from every driver activity (both engines) via
@@ -439,15 +459,42 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// re-execute edits, park the turn, or add tool results to model context.
 	if (engine === "acp") {
 		pi.registerEntryRenderer<NativeDisplayEvent>("agy-native-event", renderNativeEvent);
+		pi.registerEntryRenderer<PollRunData>("agy-poll-run", renderPollRun);
 	}
 	let pendingNativeTools = 0;
+	const pollRuns = new PollRunFolder();
+	const persistPollRun = (run: PollRunData | undefined): void => {
+		if (run) emitLifecycle(() => pi.appendEntry<PollRunData>("agy-poll-run", run));
+	};
+	const closePollRun = (): void => {
+		persistPollRun(pollRuns.flush());
+		setDimStatus(activeUi, "agy-poll", undefined);
+	};
 	const onNativeEvent = (event: NativeDisplayEvent): void => {
-		if (engine !== "acp" || event.mcpServer === acpServerName) return;
+		if (engine !== "acp" || stopped) return;
+		// Polls never have real Pi cards; ACP can omit their MCP server tag.
+		if (event.name === POLL_TOOL_NAME) {
+			// One call emits start + completion frames. Count only the result.
+			if (event.status === "started") return;
+			const view = event.callId ? roundTrips.poll(event.callId) : undefined;
+			// Missing registry entries produce terminal errors in formatPollAnswer.
+			const state = event.status === "failed" ? "failed" : view?.state ?? "failed";
+			persistPollRun(pollRuns.add(view?.name ?? "unknown call", state, new Date()));
+			if (state !== "running") {
+				closePollRun();
+				return;
+			}
+			const open = pollRuns.open;
+			setDimStatus(activeUi, "agy-poll", open ? `♊︎ bridge_poll_result → ${open.target} (x${open.count})` : undefined);
+			return;
+		}
+		closePollRun();
+		if (event.mcpServer === acpServerName) return;
 		// MCP calls through our own pi-bridge already have genuine Pi tool cards;
 		// only native Antigravity / other MCP events need display-only entries.
 		if (event.status === "started") {
 			pendingNativeTools++;
-			setUiStatus(activeUi, "agy-native", `agy ${event.name}${resolveIcon('ellipsis', '…')} (${pendingNativeTools})`);
+			setDimStatus(activeUi, "agy-native", `agy ${event.name}${resolveIcon('ellipsis', '…')} (${pendingNativeTools})`);
 			return;
 		}
 		pendingNativeTools = Math.max(0, pendingNativeTools - 1);
@@ -482,6 +529,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			outcome.status === "OK" ? "info" : "warn",
 		);
 		roundTrips.failAll(FAIL_REASON_TURN_END);
+		closePollRun();
+		// Each park learns its conversation from its originating handle.outcome.
+		// A turn-end sweep would stamp still-running calls owned by other turns.
 	};
 	streamDriver.onTurnEnd = onTurnEnd;
 	acpDriver.onTurnEnd = onTurnEnd;
@@ -496,7 +546,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			const status = `ACP ≈ ${input} in / ${output} out`;
 			if (status !== lastUsageStatus) {
 				lastUsageStatus = status;
-				setUiStatus(ctx.ui, "agy-usage", status);
+				setDimStatus(ctx.ui, "agy-usage", status);
 			}
 		});
 		const clearUsageStatus = (_event: unknown, ctx: { hasUI: boolean; ui: ExtensionUIContext }) => {
@@ -506,11 +556,13 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		pi.on("agent_end", (event, ctx) => {
 			clearUsageStatus(event, ctx);
 			pendingNativeTools = 0;
+			closePollRun();
 			if (ctx.hasUI) setUiStatus(ctx.ui, "agy-native", undefined);
 		});
 		pi.on("session_shutdown", (event, ctx) => {
 			clearUsageStatus(event, ctx);
 			pendingNativeTools = 0;
+			closePollRun();
 			if (ctx.hasUI) setUiStatus(ctx.ui, "agy-native", undefined);
 		});
 	}
@@ -563,6 +615,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		fileLog,
 		roster,
 		authCapture: authCapture ?? null,
+		runAcpAuth: runOwnedAcpAuth,
 		runAcpPickSetup,
 	});
 
@@ -650,13 +703,13 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				"ACP server ready. Signing in: the Google sign-in opens in your browser and completes when you finish it.",
 				"info",
 			);
-			const r = await runAcpAuth({
+			const r = await runOwnedAcpAuth({
 				bin: status.bin,
 				...(authCapture ? { extraEnv: authCapture.browserEnv, authUrlFile: authCapture.file } : {}),
 				log: acpLog,
 			});
 			fileLog.log("acp-auth", r.ok ? { ok: true } : { ok: false, error: r.error }, r.ok ? "info" : "warn");
-			if (r.ok) notifyUi(ctx.ui, "Signed in. The ACP engine is ready; restart applies it.", "info");
+			if (r.ok) notifyUi(ctx.ui, `${r.note ? `Signed in (${r.note}).` : "Signed in."} The ACP engine is ready; restart applies it.`, "info");
 			else notifyUi(ctx.ui, `ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
 		} catch (err) {
 			setUiStatus(ctx.ui, "agy-acp", undefined);
@@ -868,7 +921,11 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (name === POLL_TOOL_NAME) {
 				const wanted = typeof args.callId === "string" ? args.callId : "";
 				mcpLog("poll-tool", { callId: wanted });
-				return Promise.resolve(formatPollAnswer(wanted, roundTrips.poll(wanted)));
+				const view = roundTrips.poll(wanted);
+				// Internal peeks stay pure; only an actual terminal poll answer counts.
+				// As upstream, a disconnect during the response write is not observable.
+				if (view && view.state !== "running") roundTrips.markDelivered(wanted);
+				return Promise.resolve(formatPollAnswer(wanted, view));
 			}
 			if (name !== ACTIVATE_SKILL_TOOL_NAME) {
 				// A cached MCP catalog is not authorization. An inactive/hidden tool
@@ -1073,6 +1130,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			mcpHandle = null;
 			await h?.close();
 			roundTrips.failAll(FAIL_REASON_SHUTDOWN);
+			roundTrips.clearEscalations(FAIL_REASON_SHUTDOWN);
 			// "recycle", NOT "shutdown": pi fires session_shutdown on /new, /resume
 			// and /fork (docs/extensions.md session lifecycle), not only on process
 			// exit. The drivers are process-lifetime singletons; closing them with
@@ -1146,10 +1204,13 @@ interface AgyCommandCtx {
 	/** BROWSER-capture handles; null when unavailable (Windows, unwritable
 	 *  data dir). /agy auth passes them to the sign-in process. */
 	authCapture: { browserEnv: Record<string, string>; file: string } | null;
+	/** Explicit sign-in with invalidation bound to this instance/session. */
+	runAcpAuth: typeof runAcpAuth;
 }
 
 interface PendingConfig {
 	mode?: AgyMode;
+	readOnly?: boolean;
 	skipPermissions?: boolean;
 	defaultModel?: string;
 	defaultThinking?: ThinkingTier;
@@ -1171,6 +1232,7 @@ function settingsRows(ctx: AgyCommandCtx): string[] {
 	const row = (label: string, value: string) => `  ${label.padEnd(24)} ${value}`;
 	return [
 		row("mode:", config.mode),
+		row("readOnly:", config.readOnly ? "on (provider turns and AskAntigravity are refused)" : "off"),
 		row("permissions:", perm),
 		row("AskAntigravity tool:", config.askTool ? "on" : "off"),
 		row("Web tools:", config.webTools ? "on" : "off"),
@@ -1193,7 +1255,7 @@ function statusText(ctx: AgyCommandCtx): string {
 		`  sessions:      ${ctx.store.size} bound`,
 		`  config:        ${CONFIG_PATH}`,
 		"",
-		"Subcommands: /agy auth, /agy auth-manual, /agy engine stream-json|acp, /agy mode plan|accept-edits, /agy permissions on|off, /agy ask on|off, /agy model <alias>, /agy thinking low|medium|high, /agy agent <name|off>, /agy subagents, /agy quota, /agy artifacts [open <n|name>], /agy tasks [tail <id>], /agy bridge all|mcp|none, /agy tools [hide|show <name>|reset], /agy web on|off, /agy digest on|off, /agy system-prompt on|off, /agy timeout <1-1440|off>, /agy acp-bin <path|auto>, /agy clear, /agy doctor",
+		"Subcommands: /agy auth, /agy auth-manual, /agy engine stream-json|acp, /agy mode plan|accept-edits, /agy readonly on|off, /agy permissions on|off, /agy ask on|off, /agy model <alias>, /agy thinking low|medium|high, /agy agent <name|off>, /agy subagents, /agy quota, /agy artifacts [open <n|name>], /agy tasks [tail <id>], /agy bridge all|mcp|none, /agy tools [hide|show <name>|reset], /agy web on|off, /agy digest on|off, /agy system-prompt on|off, /agy timeout <1-1440|off>, /agy acp-bin <path|auto>, /agy clear, /agy doctor",
 	].join("\n");
 }
 
@@ -1201,7 +1263,7 @@ function statusText(ctx: AgyCommandCtx): string {
 function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 	pi.registerCommand("agy", {
 		description:
-			"Antigravity provider: doctor (health + settings), settings picker, clear sessions. Usage: /agy [doctor|auth|auth-manual|engine stream-json|acp|mode plan|accept-edits|permissions on|off|ask on|off|model <alias>|thinking low|medium|high|agent <name|off>|subagents|quota|artifacts [open <n|name>]|tasks [tail <id>]|bridge all|mcp|none|tools [hide|show <name>|reset]|web on|off|digest on|off|system-prompt on|off|timeout <1-1440|off>|acp-bin <path|auto>|clear]",
+			"Antigravity provider: doctor (health + settings), settings picker, clear sessions. Usage: /agy [doctor|auth|auth-manual|engine stream-json|acp|mode plan|accept-edits|readonly on|off|permissions on|off|ask on|off|model <alias>|thinking low|medium|high|agent <name|off>|subagents|quota|artifacts [open <n|name>]|tasks [tail <id>]|bridge all|mcp|none|tools [hide|show <name>|reset]|web on|off|digest on|off|system-prompt on|off|timeout <1-1440|off>|acp-bin <path|auto>|clear]",
 		handler: async (args, cmdCtx: ExtensionCommandContext) => {
 			const ui = cmdCtx.ui;
 			if (ui) ctx.setUi(ui);
@@ -1339,7 +1401,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					"Signing in: the Google sign-in opens in your browser and completes when you finish it (minutes-scale). If no browser opens, pi shows the sign-in URL to copy.",
 					"info",
 				);
-				const r = await runAcpAuth({
+				const r = await ctx.runAcpAuth({
 					bin: status.bin,
 					extraEnv: ctx.authCapture?.browserEnv,
 					authUrlFile: ctx.authCapture?.file,
@@ -1347,7 +1409,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				});
 				ctx.fileLog.log("acp-auth", r.ok ? { ok: true } : { ok: false, error: r.error }, r.ok ? "info" : "warn");
 				if (r.ok) {
-					notifyUi(ui, "Signed in. The ACP engine is ready; takes effect on the next pi start (or /reload).", "info");
+					notifyUi(ui, `${r.note ? `Signed in (${r.note}).` : "Signed in."} The ACP engine is ready; takes effect on the next pi start (or /reload).`, "info");
 				} else {
 					notifyUi(ui, `ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
 				}
@@ -1464,13 +1526,36 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			if (sub === "mode") {
 				if (val === "plan" || val === "accept-edits") {
 					if (val === "plan" && ctx.engine === "acp") {
-						notifyUi(ui, "the ACP engine has no plan mode (RC01). /agy engine stream-json first, or /agy mode accept-edits.", "warning");
+						notifyUi(ui, "plan cannot be enforced on provider turns on either engine (#1181); ACP additionally has no plan mode (RC01). /agy mode accept-edits.", "warning");
 						return;
 					}
 					const next = saveConfig({ mode: val as AgyMode });
-					notifyUi(ui, `mode set to ${next.mode}`, "info");
+					// saveConfig returns raw-file values; warnings must use effective config.
+					const effective = loadConfig();
+					notifyUi(ui, effective.readOnly
+						? `mode set to ${next.mode}, but readOnly is on: provider turns are refused. /agy readonly off to lift (AGY_READONLY overrides config).`
+						: effective.mode === "plan"
+							? "mode set to plan: provider turns are REFUSED (the CLI does not gate writes under plan, #1181). Only AskAntigravity uses this mode."
+							: `mode set to ${next.mode}`, "info");
 				} else {
-					notifyUi(ui, `current mode: ${loadConfig().mode}\nusage: /agy mode plan|accept-edits`, "info");
+					const cfg = loadConfig();
+					notifyUi(ui, `current mode: ${cfg.mode}${cfg.readOnly ? " (readOnly on: provider turns are refused)" : ""}\nusage: /agy mode plan|accept-edits`, "info");
+				}
+				return;
+			}
+			if (sub === "readonly") {
+				if (val === "on" || val === "off") {
+					const next = saveConfig({ readOnly: val === "on" });
+					notifyUi(ui, next.readOnly
+						? "readOnly is on: provider turns and AskAntigravity are REFUSED (the agy CLI cannot enforce review-only, #1181). Enforce read-only in the host, then /agy readonly off."
+						: "readOnly off: provider turns follow /agy mode again.", "info");
+					const effective = loadConfig().readOnly;
+					if (effective !== next.readOnly) {
+						notifyUi(ui, `AGY_READONLY is set in this environment and overrides the config: readOnly stays ${effective ? "on (refusing)" : "off"} until you unset it.`, "warning");
+					}
+				} else {
+					const cfg = loadConfig();
+					notifyUi(ui, `readOnly is ${cfg.readOnly ? "on (provider turns and AskAntigravity are refused)" : "off"}\nusage: /agy readonly on|off. The CLI cannot enforce review-only; on = refuse. Enforce read-only in the host.`, "info");
 				}
 				return;
 			}
@@ -1832,9 +1917,16 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 			id: "mode",
 			label: "Execution mode",
 			description:
-				"accept-edits: agy applies edits directly. plan: review-only, no writes. Takes effect next turn.",
+				"accept-edits: agy applies edits. plan: provider turns are REFUSED (#1181); AskAntigravity stages a restricted agent as a damper, not a read-only guarantee. Takes effect next turn.",
 			currentValue: config.mode,
 			values: ["accept-edits", "plan"],
+		},
+		{
+			id: "readonly",
+			label: "Read-only kill switch",
+			description: "on: provider turns and AskAntigravity are REFUSED. The CLI cannot enforce review-only; enforce read-only in the host instead.",
+			currentValue: config.readOnly ? "on" : "off",
+			values: ["off", "on"],
 		},
 		{
 			id: "permissions",
@@ -1922,6 +2014,8 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 			(id, newValue) => {
 				if (id === "mode") {
 					pending.mode = newValue as AgyMode;
+				} else if (id === "readonly") {
+					pending.readOnly = newValue === "on";
 				} else if (id === "permissions") {
 					pending.skipPermissions = newValue === "auto-approved";
 				} else if (id === "model") {
@@ -1959,12 +2053,12 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 	if (Object.keys(pending).length === 0) return;
 
 	// The picker cannot switch engines (command-only: /agy engine), but the
-	// mode row can still produce plan while the latched engine is acp. ACP
-	// has no review-only mode (RC01); refuse the combination.
+	// mode row can still produce plan while the latched engine is acp.
+	// Neither engine enforces review-only (#1181); ACP has no plan mode (RC01).
 	const nextMode = pending.mode ?? config.mode;
 	if (nextMode === "plan" && ctx.engine === "acp") {
 		notifyUi(ui,
-			"plan + acp is not supported (RC01): the ACP engine has no review-only mode. /agy engine stream-json first, or /agy mode accept-edits.",
+			"plan cannot be enforced on provider turns on either engine (#1181); ACP additionally has no plan mode (RC01). /agy mode accept-edits.",
 			"warning",
 		);
 		return;
@@ -1974,6 +2068,7 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 		const next = saveConfig(pending);
 		const changed = [
 			pending.mode ? `mode=${next.mode}` : null,
+			pending.readOnly !== undefined ? `readOnly=${next.readOnly ? "on" : "off"}` : null,
 			pending.skipPermissions !== undefined
 				? `permissions=${next.skipPermissions ? "auto-approved" : "prompt"}`
 				: null,

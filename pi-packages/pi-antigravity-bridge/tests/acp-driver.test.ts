@@ -10,6 +10,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AcpDriver } from "../src/acp/driver.js";
+import { runAcpAuth } from "../src/acp/auth.js";
+import { clearAcpAuthVerified, ensureAcpReady, readAcpAuthVerified, writeAcpAuthVerified, writeAuthType } from "../src/acp/setup.js";
 import type { AcpPermissionHandler } from "../src/acp/connection.js";
 import type { DriverActivity } from "../src/driver-types.js";
 
@@ -693,11 +695,58 @@ describe("acp/driver timers", () => {
 });
 
 describe("acp/driver auth", () => {
-	test("auth-required surfaces AcpAuthError guidance in the turn error", async () => {
-		const run = await tracked("auth-required", { prompt: "hi" });
-		const outcome = await run.handle.outcome;
-		assert.equal(outcome.status, "ERROR");
-		assert.match(outcome.error ?? "", /auth-manual/);
+	test("two drivers keep invalidation wiring isolated while readiness re-reads the shared marker", async () => {
+		const dir = tmpDir();
+		const authVerifiedFile = path.join(dir, "shared-verified.json");
+		const geminiDir = path.join(dir, "settings");
+		writeAuthType("oauth-personal", geminiDir);
+		writeAcpAuthVerified(authVerifiedFile);
+		const counts = [0, 0];
+		const drivers = counts.map((_, i) => new AcpDriver({
+			bin: process.execPath, binArgs: [FAKE_SERVER],
+			extraEnv: { ACP_FAKE_SCENARIO: i === 0 ? "auth-required" : "happy" },
+			onAuthInvalidated: () => { counts[i]++; clearAcpAuthVerified(authVerifiedFile); },
+		}));
+		const request = { cwd: dir, model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi" };
+		const setup = { configBin: process.execPath, geminiDir, authVerifiedFile, env: {}, install: false };
+		try {
+			const ready = await ensureAcpReady(setup);
+			assert.equal(ready.ok && ready.needsLogin, false);
+			assert.equal((await (await drivers[1].run(request)).outcome).status, "OK");
+			await assert.rejects(drivers[0].run(request), /authentication required/);
+			assert.deepEqual(counts, [1, 0], "A's auth error must never call B's wiring");
+			assert.equal(readAcpAuthVerified(authVerifiedFile), false);
+			const pending = await ensureAcpReady(setup);
+			assert.equal(pending.ok && pending.needsLogin, true, "B cannot trust a stale in-memory readiness latch");
+			assert.equal((await (await drivers[1].run(request)).outcome).status, "OK", "A must not tear down B's live connection");
+			const auth = await runAcpAuth({
+				bin: process.execPath, binArgs: [FAKE_SERVER], cwd: dir,
+				extraEnv: { ACP_FAKE_SCENARIO: "happy", ACP_FAKE_LOG: path.join(dir, "auth.jsonl") },
+				tokenDir: geminiDir, tokenGraceMs: 0, authVerifiedFile,
+			});
+			assert.equal(auth.ok, true, "B's explicit sign-in re-verifies through the session probe");
+			assert.ok(sentRequests(path.join(dir, "auth.jsonl")).some((r) => r.method === "session/new"));
+			await drivers[0].close("recycle");
+			assert.deepEqual(counts, [1, 0], "tearing down A must not invoke either callback");
+			assert.equal(readAcpAuthVerified(authVerifiedFile), true, "teardown must not invalidate the freshly verified shared marker");
+		} finally {
+			await Promise.all(drivers.map((driver) => driver.close("shutdown")));
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("auth-required rejects the unpublished run with AcpAuthError guidance", async () => {
+		const dir = tmpDir();
+		const driver = new AcpDriver({ bin: process.execPath, binArgs: [FAKE_SERVER],
+			extraEnv: { ACP_FAKE_SCENARIO: "auth-required" } });
+		try {
+			await assert.rejects(driver.run({ cwd: dir, model: "gemini-3.8-flash", mode: "accept-edits",
+				skipPermissions: true, prompt: "hi" }), /auth-manual/);
+			assert.equal(driver.activeHandle, null);
+		} finally {
+			await driver.close("shutdown");
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

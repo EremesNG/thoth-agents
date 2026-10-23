@@ -5,7 +5,8 @@
 
 import assert from "node:assert/strict";
 import path from "node:path";
-import { beforeAll, describe, test } from "vitest";
+import { beforeAll, describe, test, vi } from "vitest";
+import * as ownedProcess from "../src/owned-process.js";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { StreamDriver } from "../src/driver.js";
 import type { DriverActivity } from "../src/driver-types.js";
@@ -254,8 +255,8 @@ describe("stream-json driver stderr redaction", () => {
 });
 
 describe("stream-json driver plan-mode skip-permission gating", () => {
-	// The skip-permissions flag is never passed in plan mode (it would
-	// auto-approve plan mode's own approval gate). #recycleCause compares
+	// Plan never auto-approves; it is not a read-only guarantee (#1181).
+	// #recycleCause compares
 	// the stored EFFECTIVE value, so two identical plan-mode requests must
 	// reuse the process; comparing effective vs raw recycled every turn.
 	test("two identical plan-mode turns reuse the process", async () => {
@@ -341,4 +342,24 @@ describe("stream-json progress-aware inactivity", () => {
 			assert.match(outcome.error ?? "", /activity inactivity/);
 		} finally { await driver.close("shutdown"); }
 	});
+});
+
+test.each(["plan", "accept-edits"] as const)("stream-json %s argv preserves the effective skip-permissions rule", async (mode) => {
+	const previousPath = process.env.PATH;
+	process.env.PATH = `${FAKE_BIN_DIR}${path.delimiter}${previousPath}`;
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
+	const driver = new StreamDriver();
+	try {
+		const turn = await driver.run({ prompt: "hi", cwd: process.cwd(), model: "gemini-3.8-flash", mode, skipPermissions: true, timeoutMin: 0.5, inactivityMin: 0.5 });
+		assert.equal((await turn.outcome).status, "OK");
+		assert.equal(spawn.mock.calls.length, 1);
+		const argv = spawn.mock.calls[0][1];
+		assert.equal(argv[argv.indexOf("--mode") + 1], mode);
+		assert.equal(argv.some(arg => arg.startsWith("--dangerously-skip-permissions")), mode === "accept-edits");
+	} finally {
+		await driver.close("shutdown");
+		spawn.mockRestore();
+		if (previousPath === undefined) delete process.env.PATH;
+		else process.env.PATH = previousPath;
+	}
 });

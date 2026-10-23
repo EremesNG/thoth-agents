@@ -43,8 +43,21 @@ test("normalized Gemini Flash usage reports catalog API-equivalent cost", () => 
 	expect(usage.totalTokens).toBe(3_000_000);
 });
 
-// Prices independently verified in installed pi-ai providers/data/*.json (USD/M).
+// USD/M verified via installed pi-ai 1.0.2 compat getModels("google"/"anthropic").
+// Single-tier discovery preserves the qualified id, so price those variants too.
 test.each([
+	["gemini-3-8-flash", 0.75, 3.75, 0.075, 0],
+	["gemini-3-8-flash-low", 0.75, 3.75, 0.075, 0],
+	["gemini-3-8-flash-medium", 0.75, 3.75, 0.075, 0],
+	["gemini-3-8-flash-high", 0.75, 3.75, 0.075, 0],
+	["claude-sonnet-5-5", 2, 10, 0.2, 2.5],
+	["claude-sonnet-5-5-low", 2, 10, 0.2, 2.5],
+	["claude-sonnet-5-5-medium", 2, 10, 0.2, 2.5],
+	["claude-sonnet-5-5-high", 2, 10, 0.2, 2.5],
+	["claude-opus-5-5", 4, 20, 0.2, 5],
+	["claude-opus-5-5-low", 4, 20, 0.2, 5],
+	["claude-opus-5-5-medium", 4, 20, 0.2, 5],
+	["claude-opus-5-5-high", 4, 20, 0.2, 5],
 	["gemini-3-7-flash", 0.75, 3.75, 0.075, 0],
 	["gemini-3-1-pro", 2, 12, 0.2, 0],
 	["claude-sonnet-4-6", 3, 15, 0.3, 3.75],
@@ -71,7 +84,20 @@ test.each([
 		cacheWrite,
 		total: input + output + cacheRead + cacheWrite,
 	});
+	expect(usage.cost.total).toBeGreaterThan(0);
 	expect(usage.totalTokens).toBe(4_000_000);
+});
+
+test("Gemini Argon stays zero-cost and warns once without a verified catalog equivalent", () => {
+	const events: unknown[][] = [];
+	const log = (...args: unknown[]) => events.push(args);
+	const usage = emptyUsage();
+	toPiUsage({ input_tokens: 1_000_000 }, usage, "gemini-3-6-flash");
+	expect(usage.cost.total).toBeGreaterThan(0);
+	toPiUsage({ output_tokens: 1_000_000 }, usage, "gemini-4-argon", log);
+	toPiUsage({ output_tokens: 2_000_000 }, usage, "gemini-4-argon", log);
+	expect(usage.cost).toEqual(emptyUsage().cost);
+	expect(events).toEqual([["usage-unpriced", { modelId: "gemini-4-argon" }, "warn"]]);
 });
 
 test("unmapped ids stay unpriced and log once, without guessing from CLI names", () => {

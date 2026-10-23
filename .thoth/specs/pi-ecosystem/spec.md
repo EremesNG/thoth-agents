@@ -485,3 +485,23 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** a host running Pi sessions in different directories in one process
 - **WHEN** each session sends a turn through the bridge
 - **THEN** each Claude Code query runs in its own session's directory
+
+### Requirement: Antigravity bridge read-only enforcement
+
+`@thoth-agents/pi-antigravity-bridge` MUST refuse with a visible error, without launching agy, every provider turn while `readOnly` is on or the provider mode is plan, and every AskAntigravity call while `readOnly` is on, and MUST never pass any spelling of agy's skip-permissions flag to a plan-mode run.
+
+#### Scenario: Antigravity bridge read-only enforcement
+
+- **GIVEN** `readOnly` on or provider mode plan; WHEN a provider turn starts, or an AskAntigravity call starts while `readOnly` is on; THEN it fails with a visible error and no agy process starts; and GIVEN an AskAntigravity plan run
+- **WHEN** agy is launched
+- **THEN** its arguments contain no skip-permissions flag
+
+### Requirement: Antigravity bridge re-delivers unpolled escalated results
+
+`@thoth-agents/pi-antigravity-bridge` MUST re-deliver, exactly once and at the next turn boundary, each escalated bridge call result that completed but was never returned by a poll, as a late prompt in the conversation it belongs to, keeping it pollable and leaving a result with no known conversation pollable without prompting.
+
+#### Scenario: Antigravity bridge re-delivers unpolled escalated results
+
+- **GIVEN** an escalated bridge call that completes after the model ended its turn without polling
+- **WHEN** the next turn boundary is reached
+- **THEN** the result is delivered once as a late prompt in its conversation and remains pollable

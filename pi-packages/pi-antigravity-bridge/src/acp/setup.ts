@@ -30,6 +30,9 @@ export interface SetupOptions {
 	installRoot?: string;
 	/** Server settings dir. Default ~/.gemini/antigravity-acp. */
 	geminiDir?: string;
+	/** Non-credential record of a verified sign-in. Defaults to the shared
+	 *  bridge data directory; tests supply a fixture file. */
+	authVerifiedFile?: string;
 	/** acp.bin from config (second resolution priority after AGY_ACP_BIN). */
 	configBin?: string;
 	/** Environment. Default process.env (test injection). */
@@ -229,8 +232,8 @@ export interface AuthState {
 }
 
 /** Token presence WITHOUT reading any credential value: acp_token.json is
- *  stat()ed, never opened. The token only exists after the browser login
- *  round-trip, so this is the real proof of a completed login. */
+ *  stat()ed, never opened. Some servers authenticate without writing it;
+ *  runAcpAuth verifies those credentials with a live session probe. */
 function tokenPresent(target: string): boolean {
 	try {
 		fs.statSync(path.join(target, "acp_token.json"));
@@ -243,6 +246,34 @@ function tokenPresent(target: string): boolean {
 /** Whether a login token exists (default dir, or an explicit one). */
 export function hasAcpToken(dir?: string): boolean {
 	return tokenPresent(dir ?? path.join(os.homedir(), ".gemini", "antigravity-acp"));
+}
+
+/** Shared user-global sign-in evidence, never a credential. A connection's
+ *  auth error clears it so readiness cannot hide a logout. */
+export function defaultAcpAuthVerifiedPath(): string {
+	return path.join(os.homedir(), ".pi", "agent", "antigravity-bridge", "acp-auth-verified.json");
+}
+
+export function readAcpAuthVerified(file: string = defaultAcpAuthVerifiedPath()): boolean {
+	try {
+		const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { verified?: unknown } | null;
+		return raw?.verified === true;
+	} catch {
+		return false;
+	}
+}
+
+export function writeAcpAuthVerified(file: string = defaultAcpAuthVerifiedPath()): void {
+	fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+	fs.writeFileSync(file, `${JSON.stringify({ verified: true, at: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function clearAcpAuthVerified(file: string = defaultAcpAuthVerifiedPath()): void {
+	try {
+		fs.rmSync(file, { force: true });
+	} catch {
+		/* best effort; an unwritable marker must not mask the auth error */
+	}
 }
 
 /** Auth state WITHOUT reading any credential value: settings.json carries
@@ -303,8 +334,12 @@ export function resolveInstalledBinary(opts: SetupOptions = {}): BinaryResolutio
 /** Read-only setup state (for /agy doctor): no installs, no writes. */
 export function inspectAcpSetup(opts: SetupOptions = {}): { bin: string | null; source: string | null; auth: string | null } {
 	const binary = resolveInstalledBinary(opts);
-	const auth = readAuthState(defaultGeminiDir(opts));
-	return { bin: binary.bin, source: binary.source, auth: auth.configured ? (auth.type ?? "token") : null };
+	const gdir = defaultGeminiDir(opts);
+	const auth = readAuthState(gdir);
+	if (!auth.configured) return { bin: binary.bin, source: binary.source, auth: null };
+	const type = auth.type ?? "token";
+	const verified = type !== "gemini-api-key" && !tokenPresent(gdir) && readAcpAuthVerified(opts.authVerifiedFile);
+	return { bin: binary.bin, source: binary.source, auth: verified ? `${type} (verified, no token file)` : type };
 }
 
 /** Orchestrate everything the ACP engine needs, in order: binary (install
@@ -357,12 +392,10 @@ export async function ensureAcpReady(opts: SetupOptions = {}): Promise<AcpSetupS
 			};
 		}
 	}
-	// settings.json alone proves nothing: setup writes it before the login,
-	// the token file only appears after the browser round-trip. oauth-personal
-	// without a token = login still pending, and every caller (switch toast,
-	// session_start self-heal) must keep saying so until the token exists.
-	// gemini-api-key has no browser login; a present token file means done.
-	const needsLogin = auth.type !== "gemini-api-key" && !tokenPresent(gdir);
+	// Settings alone prove nothing. Tokenless servers are ready only after
+	// runAcpAuth verifies a live session. Read the marker afresh on every
+	// check: another connection may have invalidated this user-global state.
+	const needsLogin = auth.type !== "gemini-api-key" && !tokenPresent(gdir) && !readAcpAuthVerified(opts.authVerifiedFile);
 	return {
 		ok: true,
 		bin: binary.bin!,

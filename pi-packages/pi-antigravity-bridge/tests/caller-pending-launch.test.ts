@@ -36,8 +36,7 @@ for (const caller of ["stream", "ACP", "AskAntigravity", "web"] as const) {
 		if (caller === "stream") {
 			const driver = new StreamDriver();
 			cleanup = () => driver.close("shutdown");
-			const handle = await driver.run({ cwd: process.cwd(), model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi", startupTimeoutMs: 25, timeoutMin: 0, inactivityMin: 0 });
-			run = handle.outcome;
+			run = driver.run({ cwd: process.cwd(), model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi", startupTimeoutMs: 25, timeoutMin: 0, inactivityMin: 0 });
 		} else if (caller === "ACP") {
 			const conn = new AcpConnection({ cwd: process.cwd(), bin: process.execPath, log: () => {}, onUpdate: () => {}, onExit: () => {} });
 			connection = conn;
@@ -54,7 +53,7 @@ for (const caller of ["stream", "ACP", "AskAntigravity", "web"] as const) {
 			await vi.advanceTimersByTimeAsync(caller === "ACP" ? 33_100 : 3_100);
 			assert.equal(settled, true, "caller must settle without any launcher notifications");
 			assert.ok(vi.mocked(launchInJob).mock.calls.length > 0);
-			if (caller === "stream") { assert.equal(result.status, "ERROR"); assert.match(result.error, /launch.*deadline/); }
+			if (caller === "stream") { assert.ok(result instanceof Error); assert.match(result.message, /launch.*deadline|prompt dispatch.*deadline/); }
 			else if (caller === "ACP") { assert.match(result.message, /timed out.*initialize/i); assert.equal(connection!.alive, false); }
 			else if (caller === "AskAntigravity") assert.equal(result.details.timedOut, true);
 			else { assert.equal(result.ok, false); assert.match(result.error, /timed out|timeout/i); }

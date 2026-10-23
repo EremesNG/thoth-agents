@@ -20,11 +20,14 @@ function exitBeforeDrain(output: string) {
 		exitCode: null as number | null, signalCode: null, kill: () => true,
 	});
 	queueMicrotask(() => {
-		child.exitCode = 0;
-		child.emit("exit", 0, null);
-		setImmediate(() => {
-			child.stdout.end(output); child.stderr.end();
-			setImmediate(() => child.emit("close", 0, null));
+		child.emit("spawn");
+		queueMicrotask(() => {
+			child.exitCode = 0;
+			child.emit("exit", 0, null);
+			setImmediate(() => {
+				child.stdout.end(output); child.stderr.end();
+				setImmediate(() => child.emit("close", 0, null));
+			});
 		});
 	});
 	return child;
@@ -93,8 +96,12 @@ for (const engine of ["stream-json", "acp"] as const) test(`${engine} abort duri
 	const driver = engine === "stream-json" ? new StreamDriver() : new AcpDriver({ bin: "offline-acp" });
 	const controller = new AbortController();
 	try {
-		const handle = await driver.run({ cwd: process.cwd(), model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi", timeoutMin: 0, inactivityMin: 0, signal: controller.signal });
+		const rejected = assert.rejects(driver.run({ cwd: process.cwd(), model: "gemini-3.6-flash", mode: "accept-edits",
+			skipPermissions: true, prompt: "hi", timeoutMin: 0, inactivityMin: 0, signal: controller.signal }), /abort|before prompt dispatch/);
+		await vi.waitFor(() => assert.ok(driver.activeHandle));
+		const handle = driver.activeHandle!;
 		controller.abort();
+		await rejected;
 		assert.equal((await handle.outcome).aborted, true);
 	} finally { await driver.close("shutdown"); }
 }, 1_000);
@@ -102,7 +109,10 @@ for (const engine of ["stream-json", "acp"] as const) test(`${engine} abort duri
 for (const caller of ["stream", "AskAntigravity", "ACP"] as const) test(`${caller} non-job leader exit settles without inherited pipe close`, async () => {
 	const child = Object.assign(new EventEmitter(), { pid: undefined, stdin: new PassThrough(),
 		stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null as number | null, signalCode: null, kill: () => true });
-	vi.spyOn(ownedProcess, "spawnOwnedProcess").mockReturnValue(child);
+	vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => {
+		queueMicrotask(() => child.emit("spawn"));
+		return child;
+	});
 	let run: Promise<any>;
 	let cleanup = async () => {};
 	if (caller === "stream") {

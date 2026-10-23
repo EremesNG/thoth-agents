@@ -6,7 +6,8 @@ import {
 	type RenderCardSection,
 	resolveStatusGlyph,
 } from "@thoth-agents/pi-core";
-import type { NativeDisplayEvent } from "./provider.js";
+import { POLL_TOOL_NAME, type NativeDisplayEvent } from "./provider.js";
+import type { PollRunData } from "./poll-fold.js";
 
 export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 	entry,
@@ -88,6 +89,42 @@ export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 					width,
 				);
 				native.setText([headline(), ...lines].join("\n"));
+				return native.render(width);
+			});
+		},
+		invalidate() {
+			memo.invalidate();
+			native.invalidate();
+		},
+	};
+};
+
+export const renderPollRun: EntryRenderer<PollRunData> = (
+	entry,
+	{ expanded },
+	theme,
+) => {
+	const run = entry.data;
+	const count = run?.count ?? 0;
+	const failed = run?.state === "failed";
+	const label = theme.fg("muted", `Poll ${run?.target ?? "bridge call"} (x${count}${failed ? ", failed" : ""})`);
+	const body = [label];
+	if (expanded && run) {
+		const time = (iso: string): string => new Date(iso).toLocaleTimeString();
+		body.push(theme.fg("dim", `${count} ${count === 1 ? "poll" : "polls"}, ${time(run.firstAt)} → ${time(run.lastAt)}`));
+	}
+	const native = new Text(`♊︎ ${theme.fg("toolTitle", POLL_TOOL_NAME)} ${body.join("\n")}`, 0, 0);
+	const memo = createKitRenderMemo();
+	return {
+		render(width) {
+			return memo.render(width, (kit) => {
+				if (kit) return kit.card(theme, {
+					title: POLL_TOOL_NAME,
+					body,
+					status: failed ? "failed" : run?.state === "done" ? "completed" : "running",
+					isSuccess: run?.state === "done",
+					isError: failed,
+				}, width);
 				return native.render(width);
 			});
 		},

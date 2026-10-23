@@ -15,7 +15,7 @@ import {
   selectTodoCounts,
   selectVisibleTasks,
 } from './state/selectors.js';
-import { applyTaskMutation } from './state/state-reducer.js';
+import { applyTaskMutation, changesState } from './state/state-reducer.js';
 import { commitState, getState, sid } from './state/store.js';
 import { canOpenTodoPanel, showTodoPanel } from './todo-panel.js';
 import { currentEpoch, isCompletedListHidden } from './todo-visibility.js';
@@ -24,6 +24,7 @@ import {
   COMMAND_NAME,
   ERR_REQUIRES_INTERACTIVE,
   MSG_NO_TODOS,
+  STATE_ENTRY_TYPE,
   type TaskMutationParams,
   TOOL_LABEL,
   TOOL_NAME,
@@ -97,20 +98,22 @@ export function registerTodoTool(pi: ExtensionAPI): void {
         params as TaskMutationParams,
       );
       if (result.op.kind !== 'error') commitState(id, result.state);
-      if (
-        result.op.kind === 'batch' ||
-        result.op.kind === 'create' ||
-        result.op.kind === 'delete' ||
-        result.op.kind === 'clear' ||
-        (result.op.kind === 'update' && result.op.changed)
-      )
-        publishTodoState(pi.events, id);
-      return buildToolResult(
+      const toolResult = buildToolResult(
         params.action,
         params as TaskMutationParams,
         result.state,
         result.op,
       );
+      if (changesState(result.op)) {
+        // Nested calls (e.g. codemode) have no standalone toolResult on the
+        // branch. Persist at commit time, before a direct call's result lands.
+        try {
+          pi.appendEntry(STATE_ENTRY_TYPE, toolResult.details);
+        } finally {
+          publishTodoState(pi.events, id);
+        }
+      }
+      return toolResult;
     },
 
     // renderCall shows only what the caller supplied (action + id/subject); the

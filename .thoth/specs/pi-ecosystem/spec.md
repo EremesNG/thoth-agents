@@ -515,3 +515,13 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** two background tasks of one session that complete while the agent is running a turn
 - **WHEN** the agent settles
 - **THEN** one follow-up message reports both completions and triggers one turn, and no second ordinary handoff happens before that turn starts
+
+### Requirement: Task-list replay of nested mutations
+
+`@thoth-agents/pi-todo` MUST persist the full task-list snapshot of each successful state-changing call, including calls nested inside another tool such as codemode, as a session entry. It MUST reconstruct the list from the latest such entry on the current branch, falling back to legacy `todo` tool-result snapshots only when the branch has none.
+
+#### Scenario: Task-list replay of nested mutations
+
+- **GIVEN** a session whose only task-list mutations were `todo` calls nested in codemode
+- **WHEN** the session is resumed, navigated or compacted
+- **THEN** the reconstructed list equals the list after the last nested mutation

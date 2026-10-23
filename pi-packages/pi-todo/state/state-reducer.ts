@@ -34,6 +34,17 @@ export type Op =
   | { kind: 'clear'; count: number }
   | { kind: 'error'; message: string };
 
+/** Shared publication/persistence policy: successful batches always carry a snapshot. */
+export function changesState(op: Op): boolean {
+  return (
+    op.kind === 'batch' ||
+    op.kind === 'create' ||
+    op.kind === 'delete' ||
+    op.kind === 'clear' ||
+    (op.kind === 'update' && op.changed)
+  );
+}
+
 export interface ApplyResult {
   state: TaskState;
   op: Op;

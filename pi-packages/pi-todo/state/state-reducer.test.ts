@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Task } from '../tool/types.js';
 import { isTransitionValid } from './invariants.js';
 import type { TaskState } from './state.js';
-import { applyTaskMutation } from './state-reducer.js';
+import { applyTaskMutation, changesState } from './state-reducer.js';
 
 const emptyState = (): TaskState => ({ tasks: [], nextId: 1 });
 
@@ -318,6 +318,79 @@ describe('applyTaskMutation — list/get/delete/clear', () => {
     const state = stateWith(task({ id: 1, subject: 'alpha' }));
     const result = applyTaskMutation(state, 'get', { id: 1 });
     expect(result.op).toEqual({ kind: 'get', task: state.tasks[0] });
+  });
+});
+
+describe('changesState — shared publication and persistence policy', () => {
+  const initial = () => stateWith(task({ id: 1, subject: 'a' }));
+
+  it.each([
+    [
+      'create',
+      () => applyTaskMutation(emptyState(), 'create', { subject: 'a' }),
+    ],
+    ['delete', () => applyTaskMutation(initial(), 'delete', { id: 1 })],
+    ['clear', () => applyTaskMutation(initial(), 'clear', {})],
+    ['clear when empty', () => applyTaskMutation(emptyState(), 'clear', {})],
+    [
+      'effective update',
+      () =>
+        applyTaskMutation(initial(), 'update', {
+          id: 1,
+          status: 'in_progress',
+        }),
+    ],
+    [
+      'batch',
+      () =>
+        applyTaskMutation(emptyState(), 'batch', {
+          ops: [{ action: 'create', subject: 'a' }],
+        }),
+    ],
+    [
+      'unchanged batch',
+      () =>
+        applyTaskMutation(initial(), 'batch', {
+          ops: [{ action: 'update', id: 1, subject: 'a' }],
+        }),
+    ],
+  ])('persists and publishes %s', (_label, run) => {
+    expect(changesState(run().op)).toBe(true);
+  });
+
+  it.each([
+    ['list', 'list', () => applyTaskMutation(initial(), 'list', {})],
+    ['get', 'get', () => applyTaskMutation(initial(), 'get', { id: 1 })],
+    [
+      'unchanged update',
+      'update',
+      () =>
+        applyTaskMutation(initial(), 'update', { id: 1, status: 'pending' }),
+    ],
+    [
+      'error',
+      'error',
+      () =>
+        applyTaskMutation(emptyState(), 'update', {
+          id: 99,
+          status: 'completed',
+        }),
+    ],
+    [
+      'rolled-back batch',
+      'error',
+      () =>
+        applyTaskMutation(emptyState(), 'batch', {
+          ops: [
+            { action: 'create', subject: 'Rolled back' },
+            { action: 'delete', id: 99 },
+          ],
+        }),
+    ],
+  ])('does not persist or publish %s', (_label, kind, run) => {
+    const { op } = run();
+    expect(op.kind).toBe(kind);
+    expect(changesState(op)).toBe(false);
   });
 });
 

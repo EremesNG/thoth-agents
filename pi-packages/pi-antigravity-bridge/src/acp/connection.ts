@@ -59,6 +59,9 @@ export interface AcpConnectionOptions {
 	 *  fake-server script for tests). */
 	bin: string;
 	binArgs?: string[];
+	/** Owning bridge's auth invalidation callback. Detached when this
+	 *  connection is killed; never shared across connection instances. */
+	onAuthInvalidated?: () => void;
 	extraEnv?: Record<string, string>;
 	log: (msg: string, data?: unknown) => void;
 	/** Verified `session/update` payloads (post-suppression). */
@@ -115,6 +118,7 @@ export type AcpPermissionHandler = (req: AcpPermissionRequest) => Promise<string
 
 export class AcpConnection {
 	#opts: AcpConnectionOptions;
+	#onAuthInvalidated: (() => void) | undefined;
 	#child: OwnedProcess | undefined;
 	#rpc: JsonRpcSession | undefined;
 	#stderrTail = "";
@@ -143,6 +147,7 @@ export class AcpConnection {
 
 	constructor(opts: AcpConnectionOptions) {
 		this.#opts = opts;
+		this.#onAuthInvalidated = opts.onAuthInvalidated;
 	}
 
 	get alive(): boolean {
@@ -209,7 +214,7 @@ export class AcpConnection {
 		});
 
 		const rpc = new JsonRpcSession({
-			send: (frame) => this.#write(frame),
+			send: (frame, onDispatched) => this.#write(frame, onDispatched),
 			onRequest: (method, params) => this.#onServerRequest(method, params),
 			onNotification: (method, params) => this.#onNotification(method, params),
 			onParseError: (line) => this.#log("parse-error", { line }),
@@ -301,13 +306,14 @@ export class AcpConnection {
 		this.lastConfigOptions = result?.configOptions;
 	}
 
-	/** No request timeout on purpose: the driver's overall/idle timers govern
-	 *  the turn and fire abortAll on breach. */
+	/** No response timeout on purpose: the driver bounds dispatch with its
+	 *  startup cap, then overall/idle timers govern the model response. */
 	async prompt(
 		sessionId: string,
 		text: string,
 		images: Array<{ data: string; mimeType: string }> = [],
 		contextBlock?: { uri: string; text: string },
+		onDispatched?: () => void,
 	): Promise<{ stopReason: string; usage?: AgyUsage }> {
 		// Block order: images, then the embedded-context resource (pi-side
 		// digest), then the text question last (it refers to everything before
@@ -330,7 +336,7 @@ export class AcpConnection {
 		const result = (await this.request("session/prompt", {
 			sessionId,
 			prompt: blocks,
-		})) as Record<string, unknown> | undefined;
+		}, undefined, onDispatched)) as Record<string, unknown> | undefined;
 		const stopReason = result?.stopReason;
 		if (typeof stopReason !== "string") {
 			throw new Error("ACP session/prompt returned no stopReason");
@@ -484,11 +490,16 @@ export class AcpConnection {
 		}
 	}
 
-	async request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
+	async request(method: string, params?: unknown, timeoutMs?: number, onDispatched?: () => void): Promise<unknown> {
 		if (!this.#rpc || !this.alive) throw new Error("ACP connection is not running");
 		try {
-			return await this.#rpc.request(method, params, timeoutMs);
+			return await this.#rpc.request(method, params, timeoutMs, onDispatched);
 		} catch (err) {
+			// Invalidate at the raw response boundary only: guarded/cancel may
+			// translate again, but must not fire the owner's callback twice.
+			if (err instanceof JsonRpcResponseError && err.code === -32000) {
+				emitLifecycle(() => this.#onAuthInvalidated?.());
+			}
 			throw translateError(method, err);
 		}
 	}
@@ -501,14 +512,17 @@ export class AcpConnection {
 		}
 	}
 
-	#write(frame: string): void {
+	#write(frame: string, onDispatched?: () => void): void {
 		const stdin = this.#child?.stdin;
 		if (!stdin || !stdin.writable || this.#exited) {
 			this.#finish("connection closed");
 			return;
 		}
 		try {
-			stdin.write(frame + "\n");
+			stdin.write(frame + "\n", (err) => {
+				if (err) this.#finish(redactText(err.message));
+				else onDispatched?.();
+			});
 		} catch (err) {
 			this.#log("write-failed", { message: err instanceof Error ? err.message : String(err) });
 			this.#finish("connection closed");
@@ -523,6 +537,7 @@ export class AcpConnection {
 	kill(): Promise<void> {
 		if (this.#killed) return this.#termination;
 		this.#killed = true;
+		this.#onAuthInvalidated = undefined;
 		this.abortAll("connection killed");
 		this.#authUrlWatcher?.close();
 		this.#authUrlWatcher = undefined;

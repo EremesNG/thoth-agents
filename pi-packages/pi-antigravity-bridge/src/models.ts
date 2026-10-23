@@ -2,20 +2,16 @@
 // they appear in the /model picker as antigravity/<slug>.
 //
 // agy prints TWO columns per line: "<slug>  <display label>". --model takes
-// ONLY the slug (col 1); the label is display-only. Verified live, e.g.:
-//   gemini-3.6-flash-high     Gemini 3.6 Flash (High)
-//   gemini-3.6-flash-medium   Gemini 3.6 Flash (Medium)   (+ -low)
-//   gemini-3.1-pro-high       Gemini 3.1 Pro (High)        (Pro has NO medium)
-//   claude-sonnet-4-6         Claude Sonnet 4.6 (Thinking) (fixed, no tiers)
-//   gpt-oss-120b-medium       GPT-OSS 120B (Medium)        (fixed, no tiers)
+// ONLY the slug (col 1); the label is display-only. Upstream catalog (2026-10):
+//   gemini-3.8-flash-high     Gemini 3.8 Flash (High)    (+ -medium, -low)
+//   gemini-3.1-pro-high       Gemini 3.1 Pro (High)      (Pro has NO medium)
+//   claude-sonnet-5-5-high    Claude Sonnet 5.5 (High)   (+ -medium, -low)
 //
-// Gemini models are collapsed to a BASE slug (gemini-3.6-flash) and exposed
-// with a thinking-effort toggle whose levels match exactly the tiers agy
-// offers that base (verified: Pro rejects medium). The picked level is sent as
-// agy --effort; a base slug is INVALID on its own, so effort is always passed.
-// Claude and GPT-OSS keep agy's exact slug with no toggle: their thinking is
-// fixed and agy rejects --effort for them. Google's Antigravity subscription
-// bills all of these through agy.
+// Gemini and Claude tier variants collapse to a BASE slug with a thinking
+// toggle restricted to the tiers agy offers. A bare tiered base is invalid
+// upstream, so every turn sends --effort. Unverified families stay whole
+// without a toggle; the retired GPT-OSS family is never registered. Google's
+// Antigravity subscription bills all of these through agy.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -81,9 +77,8 @@ export function toAgyEffort(
 	return efforts[0] ?? "low";
 }
 
-/** Split an agy slug into (base, tier). tier is null when the slug has no
- *  -high/-medium/-low suffix (claude-sonnet-4-6, gpt-oss-120b-medium's "medium"
- *  IS its suffix here, claude-opus-4-6-thinking is not a tier). */
+/** Split an agy slug into (base, tier). Unverified families stay whole even
+ *  when a -high/-medium/-low suffix matches. */
 const TIER_RE = /^(.+)-(high|medium|low)$/;
 
 /** agy emits clean slug ids (gemini-3.6-flash-high). Validate col1 of each
@@ -98,14 +93,18 @@ const MODEL_LINE_RE = /^[A-Za-z0-9][A-Za-z0-9._]*-[A-Za-z0-9._-]*$/;
  *  to a base slug with a thinking toggle. Any other family stays as agy's exact
  *  qualified slug (always valid on its own), so an unknown or fixed-thinking
  *  family degrades safely instead of forcing an unsupported --effort. Add a
- *  family here only after confirming base+--effort is accepted for it. */
-const EFFORT_CAPABLE_FAMILIES: readonly RegExp[] = [/^gemini-/];
+ *  family here only after confirming base+--effort is accepted for it.
+ *  Upstream verified Claude 5.5 low/medium/high support in 2026-10. */
+const EFFORT_CAPABLE_FAMILIES: readonly RegExp[] = [/^gemini-/, /^claude-/];
+
+/** Retired family: never register it, even while agy still lists it. */
+const HIDDEN_FAMILY_RE = /^gpt-oss-/;
 
 export interface AgyModelEntry {
-	/** Exact agy --model string to pass: a base slug ("gemini-3.6-flash") when
-	 *  effort-driven, else agy's full qualified slug ("claude-opus-4-6-thinking"). */
+	/** Exact agy --model string to pass: a base slug ("gemini-3.8-flash") when
+	 *  effort-driven, else agy's full qualified slug (unverified family). */
 	full: string;
-	/** pi model id, e.g. "gemini-3-6-flash". */
+	/** pi model id, e.g. "gemini-3-8-flash". */
 	id: string;
 	/** Present iff this is an effort-driven base slug. Lists the tiers agy
 	 *  accepts for it; pi's thinking toggle picks among them and we always pass
@@ -286,11 +285,10 @@ export async function refreshModelCatalogIfNeeded(
 
 /** Parse raw `agy models` text into the provider's model entries.
  *
- *  Effort-driven Gemini bases (>= 2 tier variants in the catalog) collapse to
- *  one BASE-slug entry carrying the tiers they accept. Models with 0 or 1 tier
- *  variants keep agy's exact qualified slug: a single suffix (gpt-oss-120b-
- *  medium) or none (claude-sonnet-4-6) means fixed thinking, where --effort is
- *  unsupported. Insertion order of first-seen bases is preserved. */
+ *  Verified effort-capable bases with >= 2 tier variants collapse to one
+ *  BASE-slug entry carrying the tiers they accept. Other models stay whole:
+ *  without verified effort support, --effort is never risked. Retired families
+ *  are dropped. Insertion order of first-seen bases is preserved. */
 export function entriesFromRaw(raw: string): AgyModelEntry[] {
 	// agy prints TWO columns: "<slug>  <display label>". --model takes only the
 	// slug, so split col1 and validate THAT; the label is display-only. A
@@ -300,6 +298,7 @@ export function entriesFromRaw(raw: string): AgyModelEntry[] {
 	for (const line of raw.split("\n")) {
 		const slug = line.trim().split(/\s+/)[0] ?? "";
 		if (!slug || !MODEL_LINE_RE.test(slug)) continue;
+		if (HIDDEN_FAMILY_RE.test(slug)) continue;
 		const m = TIER_RE.exec(slug);
 		const base = m ? (m[1] as string) : slug;
 		const tier = m ? (m[2] as AgyEffort) : null;
@@ -367,8 +366,7 @@ export function toPiModel(entry: AgyModelEntry, input: Array<"text" | "image"> =
 		// sentinel that no built-in provider claims, so it can never collide.
 		baseUrl: "agy-bridge://antigravity",
 		// reasoning=true only for effort-driven bases => pi shows the toggle.
-		// Fixed models (Claude/GPT-OSS) get no toggle: their thinking can't be
-		// changed and agy rejects --effort for them.
+		// Unverified families get no toggle: --effort support is unknown.
 		reasoning: effortDriven,
 		...(effortDriven ? { thinkingLevelMap: thinkingLevelMapFor(entry.efforts!) } : {}),
 		// Input advertising comes from the caller (engine-dependent): the ACP
@@ -389,9 +387,9 @@ export function toPiModel(entry: AgyModelEntry, input: Array<"text" | "image"> =
  *  list. Update these when agy ships new Gemini versions. */
 export const FALLBACK_MODELS: AgyModelEntry[] = [
 	{ full: "gemini-4-argon", id: "gemini-4-argon", efforts: ["low", "medium", "high"] },
-	{ full: "gemini-3.7-flash", id: "gemini-3-7-flash", efforts: ["low", "medium", "high"] },
+	{ full: "gemini-3.8-flash", id: "gemini-3-8-flash", efforts: ["low", "medium", "high"] },
 	{ full: "gemini-3.1-pro", id: "gemini-3-1-pro", efforts: ["low", "high"] },
-	{ full: "claude-sonnet-4-6", id: "claude-sonnet-4-6" },
+	{ full: "claude-sonnet-5-5", id: "claude-sonnet-5-5", efforts: ["low", "medium", "high"] },
 ];
 
 

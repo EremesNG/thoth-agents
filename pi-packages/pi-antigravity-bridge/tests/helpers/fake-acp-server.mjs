@@ -105,6 +105,18 @@ rl.on("close", () => {
 async function handle(msg) {
   const { id, method, params } = msg;
 
+  // Exercise auth failures at every RPC boundary, including a late response
+  // racing connection teardown. Never invokes a real server or browser.
+  if (method && method === process.env.ACP_FAKE_AUTH_ERROR_METHOD) {
+    const delay = Number(process.env.ACP_FAKE_AUTH_ERROR_DELAY_MS) || 0;
+    if (delay > 0) {
+      notifyChunk("AUTH_PENDING");
+      await sleep(delay);
+    }
+    error(id, -32000, "Authentication required");
+    return;
+  }
+
   // Client response to our request_permission probe (permission scenarios).
   // permission: one request (id 100). permission-twice: a second, identical
   // request (id 101) after the first answer, for allow_always memory tests.
@@ -206,6 +218,18 @@ async function handle(msg) {
       return;
 
     case "session/set_config_option":
+      if (params.configId === "mode" && process.env.ACP_FAKE_PAUSE_STDIN_MS &&
+          (!process.env.ACP_FAKE_PAUSE_STDIN_FILE || fs.existsSync(process.env.ACP_FAKE_PAUSE_STDIN_FILE))) {
+        // Stop before acknowledging setup so the next large prompt blocks at
+        // the real target pipe, including through the Windows Job facade.
+        rl.pause();
+        process.stdin.pause();
+        logReq({ _stdinPaused: true, pid: process.pid });
+        timers.push(setTimeout(() => {
+          logReq({ _stdinResumed: true });
+          rl.resume();
+        }, Number(process.env.ACP_FAKE_PAUSE_STDIN_MS)));
+      }
       result(id, {
         configOptions: [
           { id: params.configId, currentValue: params.value, options: [], type: "select", name: params.configId, category: params.configId },

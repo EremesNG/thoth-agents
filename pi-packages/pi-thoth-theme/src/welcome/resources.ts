@@ -104,7 +104,7 @@ function groupToolDetails(tools: readonly ToolInfo[]): WelcomeProvider[] {
     });
   }
 
-  return result.slice(0, 4);
+  return result;
 }
 
 export async function fetchRecentSessions(

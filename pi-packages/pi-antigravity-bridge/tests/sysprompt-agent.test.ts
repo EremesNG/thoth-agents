@@ -11,6 +11,7 @@ import {
 	stageSyspromptAgent,
 	syspromptAgentMd,
 } from "../src/sysprompt-agent.js";
+import { parseAgentFrontmatter } from "./helpers/frontmatter.js";
 
 function tmpAgentsRoot(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "agy-sys-agents-"));
@@ -20,7 +21,7 @@ afterEach(() => {
 	resetSyspromptAgentForTests();
 });
 
-test("agent.md keeps agy defaults: no tool/mcp/component overrides", () => {
+test("agent.md keeps agy defaults except the declared subagent masking", () => {
 	const md = syspromptAgentMd("pi-bridge-sys-x", "BODY");
 	assert.match(md, /^---\nname: pi-bridge-sys-x\n/);
 	// The carrier must NOT strip agy's defaults: provider sessions need the
@@ -29,6 +30,23 @@ test("agent.md keeps agy defaults: no tool/mcp/component overrides", () => {
 	assert.equal(md.includes("inheritMcp"), false);
 	assert.equal(md.includes("tools:"), false);
 	assert.ok(md.endsWith("BODY\n"));
+});
+
+test("frontmatter parses as YAML (agy drops unparsable agents, issue #5)", () => {
+	const fm = parseAgentFrontmatter(syspromptAgentMd("pi-bridge-sys-x", "BODY"));
+	assert.equal(fm.name, "pi-bridge-sys-x");
+	assert.equal(
+		fm.description,
+		"Pi bridge system-prompt carrier: pi operating instructions plus project AGENTS.md context",
+	);
+	assert.equal(fm.mainAgent, true);
+	assert.equal(fm.model, "inherit");
+});
+
+test("carrier declares native subagent masking explicitly (issue #7)", () => {
+	const fm = parseAgentFrontmatter(syspromptAgentMd("pi-bridge-sys-x", "BODY"));
+	assert.equal(fm.subagent, false);
+	assert.deepEqual(fm.agents, []);
 });
 
 test("stageSyspromptAgent writes agent.md + pid marker and returns the name", () => {

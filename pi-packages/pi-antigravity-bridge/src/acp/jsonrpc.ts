@@ -33,7 +33,9 @@ export interface JsonRpcIncoming {
 	error?: JsonRpcErrorShape;
 }
 
-export type SendFn = (frame: string) => void;
+/** The optional acknowledgement fires only after a successful transport write,
+ *  independently of the later JSON-RPC response. */
+export type SendFn = (frame: string, onDispatched?: () => void) => void;
 
 export interface JsonRpcSessionOptions {
 	send: SendFn;
@@ -175,8 +177,8 @@ export class JsonRpcSession {
 		emitLifecycle(() => this.#opts.onNotification?.(method, msg.params));
 	}
 
-	#sendFrame(frame: string): void {
-		const failure = emitLifecycle(() => this.#send(frame));
+	#sendFrame(frame: string, onDispatched?: () => void): void {
+		const failure = emitLifecycle(() => this.#send(frame, onDispatched));
 		// Preserve synchronous transport errors for the request's caller.
 		if (failure) throw failure.error;
 	}
@@ -188,7 +190,7 @@ export class JsonRpcSession {
 
 	/** Send a request. Resolves with the result value; rejects on error
 	 *  responses (JsonRpcResponseError), timeouts, or abortAll(). */
-	request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
+	request(method: string, params?: unknown, timeoutMs?: number, onDispatched?: () => void): Promise<unknown> {
 		if (this.#aborted) return Promise.reject(new Error("connection aborted"));
 		const id = this.#nextId++;
 		const effective = timeoutMs ?? this.#opts.defaultTimeoutMs ?? 0;
@@ -201,7 +203,7 @@ export class JsonRpcSession {
 				}, effective);
 			}
 			this.#pending.set(id, pending);
-			this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", id, method, params: params ?? {} }));
+			this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", id, method, params: params ?? {} }), onDispatched);
 		});
 	}
 

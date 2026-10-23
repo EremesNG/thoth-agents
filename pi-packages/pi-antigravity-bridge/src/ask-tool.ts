@@ -37,6 +37,8 @@ import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
 // --- Constants -------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MIN = 10;
+// Upstream aa1ee31: Node clamps timers above 2^31-1 ms to 1 ms.
+const MAX_TIMEOUT_MINUTES = Math.floor(2_147_483_647 / 60_000);
 const STATUS_INTERVAL_MS = 1000;
 const STATUS_TAIL_CHARS = 160;
 
@@ -58,16 +60,19 @@ const TIER_RANK: Record<ThinkingTier, number> = { low: 0, medium: 1, high: 2 };
 // Static alias overlay for non-Gemini models agy may or may not surface.
 // Live catalog entries win on case-insensitive full-string equality; the
 // overlay resolves the alias when agy doesn't list it. Names are agy's stable
-// slugs (the same ids `agy models` prints and `--model` accepts).
+// slugs (the same ids `agy models` prints and `--model` accepts). Claude's
+// overlay carries all three effort tiers, just like the discovered catalog.
 const STATIC_ALIAS_OVERLAY: ReadonlyArray<ModelEntry> = [
-	{ full: "claude-sonnet-4-6", family: "other", version: null, tier: null },
-	{ full: "claude-opus-4-6-thinking", family: "other", version: null, tier: null },
-	{ full: "gpt-oss-120b-medium", family: "other", version: null, tier: null },
+	{ full: "claude-sonnet-5-5-low", family: "other", version: null, tier: "low" },
+	{ full: "claude-sonnet-5-5-medium", family: "other", version: null, tier: "medium" },
+	{ full: "claude-sonnet-5-5-high", family: "other", version: null, tier: "high" },
+	{ full: "claude-opus-5-5-low", family: "other", version: null, tier: "low" },
+	{ full: "claude-opus-5-5-medium", family: "other", version: null, tier: "medium" },
+	{ full: "claude-opus-5-5-high", family: "other", version: null, tier: "high" },
 ];
 const STATIC_SHORT_ALIAS: ReadonlyMap<string, string> = new Map([
-	["sonnet", "claude-sonnet-4-6"],
-	["opus", "claude-opus-4-6-thinking"],
-	["gpt-oss", "gpt-oss-120b-medium"],
+	["sonnet", "claude-sonnet-5-5"],
+	["opus", "claude-opus-5-5"],
 ]);
 
 // agy conversation ids are UUID DB-stems. First char must be alphanumeric so a
@@ -75,8 +80,8 @@ const STATIC_SHORT_ALIAS: ReadonlyMap<string, string> = new Map([
 // body (real UUIDs contain them).
 const CONV_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
 
-const AGY_DESCRIPTION = `Delegate to Google Antigravity: gemini, antigravity and agy are equivalent names that route here. agy runs its own workspace tool loop and returns a final answer. Provide a self-contained prompt; it does not see this conversation. Omit conversationId for a one-shot or pass the previous details.conversationId to continue.
-Modes: plan for review; accept-edits (default) for workspace edits.`;
+const AGY_DESCRIPTION = `Delegate to Google Antigravity (gemini/antigravity/agy). Runs its own workspace tool loop. Supply all review material; it cannot see this conversation. Omit conversationId for one-shot; reuse details.conversationId to continue.
+Mode defaults to config; accept-edits edits the workspace. Plan adds a restricted reviewer as a damper, NOT a read-only guarantee: commands are not auto-approved and may fail. Only readOnly refuses outright; enforce read-only in the host.`;
 
 // --- Types -----------------------------------------------------------------
 
@@ -90,9 +95,9 @@ interface ModelEntry {
 }
 
 /** Argv-facing model resolution: the exact --model slug plus an optional
- *  --effort tier. Gemini bases split the tier out (the base slug alone is
- *  invalid without --effort); fixed-thinking families keep agy's exact slug
- *  and carry no effort. */
+ *  --effort tier. Gemini and Claude bases split the tier out (the base slug
+ *  alone is invalid without --effort); unverified families keep agy's exact
+ *  slug and carry no effort. */
 interface ResolvedModel {
 	model: string;
 	effort?: ThinkingTier;
@@ -150,17 +155,37 @@ function nearestTier(available: ThinkingTier[], preferred: ThinkingTier): Thinki
 	return sorted[0] ?? preferred;
 }
 
-/** Build the argv-facing resolution from a picked catalog entry. Gemini bases
- *  (slugs starting "gemini-") accept a separate --effort, so split the tier
- *  suffix out of the slug: the base alone (gemini-3.6-flash) is what --model
- *  wants, and the tier goes to --effort. Fixed-thinking families keep agy's
- *  exact slug even when it carries a -medium suffix (gpt-oss-120b-medium):
- *  agy rejects --effort for them, so the suffix stays part of the slug. */
+/** Gemini and Claude accept base + --effort, never a bare tiered base.
+ *  Keep unverified families whole so a tier-shaped suffix cannot trigger
+ *  an unsupported --effort. */
 function toResolved(full: string, tier: ThinkingTier | null): ResolvedModel {
-	if (tier && full.toLowerCase().startsWith("gemini-")) {
+	if (tier && /^(gemini|claude)-/.test(full.toLowerCase())) {
 		return { model: full.replace(/-(low|medium|high)$/, ""), effort: tier };
 	}
 	return { model: full };
+}
+
+/** Pick the nearest catalog tier for a base slug; bare tiered bases require
+ *  --effort upstream. Exact entries still pass through when no tiers exist. */
+function resolveTieredBase(
+	base: string,
+	entries: ModelEntry[],
+	defaultThinking: ThinkingTier,
+	preferredTier: ThinkingTier | undefined,
+): ResolvedModel {
+	const needle = base.toLowerCase();
+	const variants = entries.filter((e) => e.full.toLowerCase().startsWith(`${needle}-`));
+	if (variants.length > 0) {
+		const tiers = variants.map((e) => e.tier).filter((t): t is ThinkingTier => t !== null);
+		const preferred =
+			preferredTier ??
+			(tiers.includes(defaultThinking) ? defaultThinking : FAMILY_DEFAULT_TIER.other);
+		const chosen = nearestTier(tiers, preferred);
+		const picked = variants.find((e) => e.tier === chosen) ?? variants[0];
+		return toResolved(picked.full, picked.tier);
+	}
+	const fromCatalog = entries.find((e) => e.full.toLowerCase() === needle);
+	return toResolved(fromCatalog?.full ?? base, fromCatalog?.tier ?? null);
 }
 
 /** Resolve a friendly alias / partial name to an argv-facing {model, effort?}.
@@ -180,10 +205,9 @@ export function resolveModel(
 	const exact = entries.find((e) => e.full.toLowerCase() === lower);
 	if (exact) return toResolved(exact.full, exact.tier);
 
-	if (STATIC_SHORT_ALIAS.has(lower)) {
-		const target = STATIC_SHORT_ALIAS.get(lower) as string;
-		const fromCatalog = entries.find((e) => e.full.toLowerCase() === target.toLowerCase());
-		return toResolved(fromCatalog?.full ?? target, fromCatalog?.tier ?? null);
+	const aliasTarget = STATIC_SHORT_ALIAS.get(lower);
+	if (aliasTarget) {
+		return resolveTieredBase(aliasTarget, entries, defaultThinking, preferredTier);
 	}
 
 	const words = lower.replace(/[^a-z0-9.]+/g, " ").split(/\s+/);
@@ -200,7 +224,13 @@ export function resolveModel(
 	)) {
 		family = "flash";
 	}
-	if (!family) return null;
+	if (!family) {
+		// Provider-advertised Claude bases need the same tier pick as aliases.
+		if (entries.some((e) => e.full.toLowerCase().startsWith(`${lower}-`))) {
+			return resolveTieredBase(lower, entries, defaultThinking, preferredTier);
+		}
+		return null;
+	}
 
 	let candidates = entries.filter((e) => e.family === family);
 	if (candidates.length === 0) return null;
@@ -239,11 +269,17 @@ export function resolveModel(
 	return toResolved(picked.full, picked.tier);
 }
 
-/** Parse raw `agy models` text into tool-catalog entries (all families, plus
- *  the static sonnet/opus/gpt-oss overlay). Pure: no spawn. */
+/** Same retired-family policy as the provider catalog in models.ts. */
+const HIDDEN_FAMILY_RE = /^gpt-oss-/;
+
+/** Parse raw `agy models` text into tool-catalog entries (all active families,
+ *  plus the static sonnet/opus overlay). Pure: no spawn. */
 export function toolModelsFromRaw(raw: string): ModelEntry[] {
 	return mergeCatalog(
-		raw.split("\n").map(parseModelLine).filter((e): e is ModelEntry => e !== null),
+		raw
+			.split("\n")
+			.map(parseModelLine)
+			.filter((e): e is ModelEntry => e !== null && !HIDDEN_FAMILY_RE.test(e.full)),
 	);
 }
 
@@ -261,16 +297,26 @@ function extraArgs(): string[] {
 
 // --- Prompt assembly -------------------------------------------------------
 
-/** Guard for plan runs backed by the restricted reviewer agent. Difference
- *  to PLAN_HEADLESS_GUARD: commands are the analysis capability here (the
- *  agent's commandExecutionPolicy auto-approves them headless, probed
- *  2026-09-28), so the guard forbids FILE MUTATION - by tool or by shell -
- *  and keeps the answer-from-material discipline. */
+/** Local port of pi-ask-shared/src/text.ts at aa1ee31. Floor, never round up. */
+function buildTimeBudgetNotice(timeoutMs: number): string {
+	if (!Number.isFinite(timeoutMs) || timeoutMs < 1000) return "";
+	if (timeoutMs < 120_000) {
+		const sec = Math.floor(timeoutMs / 1000);
+		return `[TIME BUDGET] You have about ${sec} ${sec === 1 ? "second" : "seconds"}. The run is terminated at the limit and you may be cut off mid-task. Provide a direct, concise final answer immediately.`;
+	}
+	const min = Math.floor(timeoutMs / 60_000);
+	return `[TIME BUDGET] You have about ${min} minutes of wall-clock time. The run is terminated at the limit and you may be cut off mid-task. Deliver a complete final answer before it; if the task cannot fit, deliver the most valuable complete subset and state what remains.`;
+}
+
+/** The restricted reviewer agent is a damper, not enforcement (upstream
+ *  #1181). Unlike PLAN_HEADLESS_GUARD, forbid file mutation without banning
+ *  read commands outright. Prefer staged material and view_file: a headless
+ *  command can still be auto-denied, ending the run without an answer. */
 export const AGENT_REVIEW_GUARD = [
 	"",
 	"--- Review constraints ---",
 	"- Read-only review. Do not create, modify, or delete any files, including through shell commands (no redirects, tee, rm, mv, git commit).",
-	"- Read-only commands (git log, git diff, git show, rg, ls, cat, test runners) are allowed for analysis.",
+	"- Prefer the staged material and view_file for reading. If you run a read-only command (git log, git diff, rg, ls) and it comes back denied, the run ends without an answer: state what you could not check instead of retrying commands.",
 	"- Work from the material provided in this prompt; if information you need is missing, state exactly what is missing in your answer.",
 ].join("\n");
 
@@ -293,17 +339,17 @@ export const PLAN_HEADLESS_GUARD = [
 /** Assemble the prompt sent to agy: digest marker first (existing behavior),
  *  then the caller's prompt, then the plan-mode guard last - the position
  *  the model reads with the most recency. No user-config mutation: this is
- *  the only plan-mode lever the tool itself owns. */
+ *  a prompt damper alongside the restricted reviewer agent. */
 export function buildFinalPrompt(
 	prompt: string,
 	mode: AgyMode,
 	digest: boolean,
-	/** True when the restricted reviewer agent is staged: its empty edit
-	 *  toolset is the hard block, so the prompt may ALLOW read-only commands. */
-	agentEnforced = false,
+	/** The restricted reviewer is a damper, not enforcement (#1181).
+	 *  Its prompt permits read-only command attempts, which may be denied. */
+	agentDamper = false,
 ): string {
 	let out = digest ? `(Use compact digests, not full file contents.)\n${prompt}` : prompt;
-	if (mode === "plan") out += agentEnforced ? AGENT_REVIEW_GUARD : PLAN_HEADLESS_GUARD;
+	if (mode === "plan") out += agentDamper ? AGENT_REVIEW_GUARD : PLAN_HEADLESS_GUARD;
 	return out;
 }
 
@@ -318,12 +364,10 @@ export function askAgentsRoot(): string {
 const ASK_AGENT_PREFIX = "pi-bridge-ask-";
 const ASK_AGENT_TOOLS = ["view_file", "run_command"];
 
-/** agent.md for the plan-mode reviewer. The tools list is the ENFORCEMENT:
- *  with no file-editing tool present the model cannot emit an edit call at
- *  all (probed 2026-09-28 on agy 1.2.12: the toolset reports "none" for
- *  edits, with and without the skip flag). commandExecutionPolicy auto is
- *  what lets read commands run headless with no user allow rules. Never add
- *  a write-capable tool here. */
+/** Restricted plan reviewer: omits native editing tools as a damper, not
+ *  enforcement. The CLI does not reliably enforce review-only (#1181).
+ *  commandExecutionPolicy auto does not guarantee command approval; plan
+ *  runs never carry skip-permissions. Never add a write-capable tool here. */
 export function reviewerAgentMd(name: string): string {
 	return [
 		"---",
@@ -417,8 +461,7 @@ export async function registerAskAntigravityTool(
 			mode: Type.Optional(
 				Type.Union([Type.Literal("plan"), Type.Literal("accept-edits")], {
 					description:
-						"Plan removes file-editing tools; shell commands are read-only by prompt guard, not hard-blocked. Inline review material.",
-					default: "accept-edits",
+						"Omit to follow config. plan: review damper, not read-only; commands may fail. accept-edits: workspace edits.",
 				}),
 			),
 			digest: Type.Optional(
@@ -458,7 +501,7 @@ export async function registerAskAntigravityTool(
 					thinkingArg ? toAgyEffort(thinkingArg as ThinkingLevel, AGY_EFFORT_ORDER) : undefined,
 				) ?? { model: requestedModel };
 			const thinking: ThinkingTier = resolved.effort ?? cfg.defaultThinking;
-			const mode: AgyMode = (args.mode as AgyMode | undefined) ?? "accept-edits";
+			const mode: AgyMode = (args.mode as AgyMode | undefined) ?? cfg.mode;
 			const useDigest = typeof args.digest === "boolean" ? args.digest : mode === "plan";
 			const isContinue =
 				typeof args.conversationId === "string" && CONV_ID_RE.test(args.conversationId);
@@ -567,6 +610,14 @@ export async function registerAskAntigravityTool(
 			);
 		},
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const config = loadConfig();
+			// Fail closed before staging, discovery, or spawn; no mode can bypass it.
+			if (config.readOnly) {
+				return {
+					content: [{ type: "text", text: "readOnly is on: AskAntigravity is refused. The agy CLI cannot enforce review-only (#1181). Enforce read-only in the host, then /agy readonly off (AGY_READONLY overrides config)." }],
+					details: emptyDetails(),
+				};
+			}
 			// Circular-delegation guard: refuse if already running through the
 			// antigravity provider.
 			if (ctx.model?.provider === "antigravity" || ctx.model?.provider === "agy") {
@@ -581,7 +632,6 @@ export async function registerAskAntigravityTool(
 				};
 			}
 
-			const config = loadConfig();
 			const requestedModel = (params.model as string | undefined) ?? config.defaultModel;
 			if (typeof params.model === "string" && params.model.trim().startsWith("-")) {
 				return {
@@ -621,16 +671,21 @@ export async function registerAskAntigravityTool(
 			}
 
 			const timeoutMin = params.timeoutMinutes ?? DEFAULT_TIMEOUT_MIN;
+			if (!(Number.isFinite(timeoutMin) && timeoutMin > 0 && timeoutMin <= MAX_TIMEOUT_MINUTES)) {
+				return {
+					content: [{ type: "text", text: `timeoutMinutes must be a positive finite number of minutes up to ${MAX_TIMEOUT_MINUTES} (for example 0.5 for 30 seconds).` }],
+					details: emptyDetails(requestedModel, resolved.model),
+				};
+			}
 
 			const rawConvId = params.conversationId;
 			const isContinuation =
 				typeof rawConvId === "string" && rawConvId.length > 0 && CONV_ID_RE.test(rawConvId);
 			const snapshot = isContinuation ? null : snapshotConversations();
 
-			const mode: AgyMode = (params.mode as AgyMode | undefined) ?? "accept-edits";
-			// Plan runs stage a restricted reviewer agent: its tools list has NO
-			// file-editing tool, which is the hard edit block (the prompt guard
-			// alone was observed failing once - a sub-agent still edited files).
+			const mode: AgyMode = (params.mode as AgyMode | undefined) ?? config.mode;
+			// The restricted reviewer omits file-editing tools as a damper only:
+			// the CLI does not enforce review-only (#1181).
 			// Staging failure degrades to the legacy fallback: no agent, no skip
 			// flag, the stricter command-forbidding guard.
 			let reviewerAgent: { name: string; dir: string } | null = null;
@@ -643,8 +698,10 @@ export async function registerAskAntigravityTool(
 			}
 			const useDigest: boolean =
 				typeof params.digest === "boolean" ? params.digest : mode === "plan";
+			// Add the notice before prompt assembly so plan safety guards stay last.
+			const budget = buildTimeBudgetNotice(timeoutMin * 60_000);
 			const finalPrompt: string = buildFinalPrompt(
-				params.prompt,
+				budget ? `${params.prompt}\n\n${budget}` : params.prompt,
 				mode,
 				useDigest,
 				reviewerAgent !== null,
@@ -680,30 +737,19 @@ export async function registerAskAntigravityTool(
 				"info",
 			);
 			const extraRaw = extraArgs();
-			// Fail-closed on the fallback path: AGY_EXTRA_ARGS lands before the
-			// mode flags, so an env-injected skip flag would re-arm what the
-			// plan-mode rule strips. Only the enforced agent makes the flag safe.
-			const extra =
-				mode === "plan" && !reviewerAgent
-					? extraRaw.filter((a) => a !== "--dangerously-skip-permissions")
-					: extraRaw;
+			// Never auto-approve plan runs, even with the reviewer agent. Strip
+			// all upstream spellings, including =value and other suffixes.
+			const extra = mode === "plan"
+				? extraRaw.filter((a) => !a.startsWith("--dangerously-skip-permissions"))
+				: extraRaw;
 			if (extra.length) args.push(...extra);
 			if (resolved.model) args.push("--model", resolved.model);
 			if (resolved.effort) args.push("--effort", resolved.effort);
 			args.push("--mode", mode);
 			if (reviewerAgent) args.push("--agent", reviewerAgent.name);
-			// Honor the shared permissions setting (same knob as the provider).
-			// accept-edits: the flag keeps commands from hanging on an
-			// unanswerable prompt in -p mode. Plan runs WITH the reviewer agent:
-			// the flag is safe again because the agent's toolset has no
-			// file-editing tool - the 2026-09-25 write incident rode edit tools
-			// that existed then; probed 2026-09-28 the restricted toolset reports
-			// "none" for edits even with the flag, and plan discipline turned a
-			// create-a-file request into a proposed plan instead of a write. The
-			// flag is what lets analysis commands (builds, test runners) run for
-			// users without allow rules. Plan fallback (staging failed): strict
-			// legacy behavior, no flag - the prompt guard is all that is left.
-			if (config.skipPermissions !== false && (mode !== "plan" || reviewerAgent !== null)) {
+			// accept-edits needs auto-approval for headless commands. Plan never
+			// gets it: commands may be denied, so callers must supply material.
+			if (config.skipPermissions !== false && mode !== "plan") {
 				args.push("--dangerously-skip-permissions");
 			}
 			if (isContinuation) args.push("--conversation", rawConvId as string);

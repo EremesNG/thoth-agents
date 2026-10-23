@@ -11,6 +11,8 @@ import { dirname, join } from "path";
 export interface Config {
 	/** Date (YYYY-MM-DD) the one-time startup notice was shown. Written by the extension, not the user. */
 	startupNoticeShown?: string;
+	/** Date (YYYY-MM-DD) the AskClaude deprecation notice was shown. Written by the extension, not the user. */
+	askClaudeDeprecationShown?: string;
 	askClaude?: {
 		enabled?: boolean;
 		name?: string;
@@ -64,6 +66,15 @@ export function globalConfigPath(): string {
  *  leave a trailing comma in it. Losing the notice is the cheaper failure, so the write is
  *  skipped and the notice simply shows again next session. */
 export function markStartupNoticeShown(): string {
+	return markNoticeShown("startupNoticeShown");
+}
+
+/** Record the one-time AskClaude deprecation date without dropping other settings. */
+export function markAskClaudeDeprecationNoticeShown(): string {
+	return markNoticeShown("askClaudeDeprecationShown");
+}
+
+function markNoticeShown(field: "startupNoticeShown" | "askClaudeDeprecationShown"): string {
 	const path = globalConfigPath();
 	let existing: Partial<Config> = {};
 	if (existsSync(path)) {
@@ -75,7 +86,7 @@ export function markStartupNoticeShown(): string {
 		}
 	}
 	// en-CA renders YYYY-MM-DD in local time; toISOString() would report UTC.
-	const next = { ...existing, startupNoticeShown: new Date().toLocaleDateString("en-CA") };
+	const next = { ...existing, [field]: new Date().toLocaleDateString("en-CA") };
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
 	return path;
@@ -86,6 +97,7 @@ export function loadConfig(cwd: string): Config {
 	const project = tryParseJson(join(cwd, CONFIG_DIR_NAME, "claude-bridge.json"));
 	return {
 		startupNoticeShown: project.startupNoticeShown ?? global.startupNoticeShown,
+		askClaudeDeprecationShown: project.askClaudeDeprecationShown ?? global.askClaudeDeprecationShown,
 		askClaude: { ...global.askClaude, ...project.askClaude },
 		provider: { ...global.provider, ...project.provider },
 	};

@@ -444,7 +444,7 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 - **GIVEN** a terminal subagent task last active 20 days ago and the default retention
 - **WHEN** the pruning pass runs
-- **THEN** its snapshot, transcript and system prompt are cleared while `subagent_status`, `subagent_result`, the history listings and cost totals still show the task and its result 
+- **THEN** its snapshot, transcript and system prompt are cleared while `subagent_status`, `subagent_result`, the history listings and cost totals still show the task and its result
 
 ### Requirement: Subagent terminal task memory
 
@@ -454,7 +454,7 @@ After a subagent task is terminal, its runner has settled and its terminal recor
 
 - **GIVEN** a completed subagent task whose terminal record was persisted
 - **WHEN** later turns call `subagent_status`, `subagent_result` or `subagent_continue` for it
-- **THEN** they behave as before while the manager no longer holds that task's transcript, thread snapshot or system prompt 
+- **THEN** they behave as before while the manager no longer holds that task's transcript, thread snapshot or system prompt
 
 ### Requirement: Bounded subagent tool result details
 
@@ -464,4 +464,64 @@ Subagent tool results and progress updates MUST build task details through one e
 
 - **GIVEN** a running subagent with a long transcript
 - **WHEN** `subagent_run` emits progress updates and its final result
-- **THEN** no update or result details contain the transcript or system prompt, and both new and previously persisted tool cards render unchanged 
+- **THEN** no update or result details contain the transcript or system prompt, and both new and previously persisted tool cards render unchanged
+
+### Requirement: Claude bridge leaves session summaries to Pi
+
+`@thoth-agents/pi-claude-bridge` MUST NOT take over Pi's session compaction or branch-summary hooks, leaving summary generation and its failure handling to Pi and other extensions, and any summary model call it serves MUST run on its isolated path in the owning Pi session's working directory.
+
+#### Scenario: Claude bridge leaves session summaries to Pi
+
+- **GIVEN** a Pi session on a Claude bridge model
+- **WHEN** Pi compacts the session or summarizes a branch during tree navigation
+- **THEN** the bridge neither preempts nor cancels the hook, and a summary request routed to it runs isolated in that session's cwd
+
+### Requirement: Claude bridge uses the Pi session working directory
+
+`@thoth-agents/pi-claude-bridge` MUST run each Claude Code query and isolated call in the working directory of the Pi session that issued it, not the host process's working directory.
+
+#### Scenario: Claude bridge uses the Pi session working directory
+
+- **GIVEN** a host running Pi sessions in different directories in one process
+- **WHEN** each session sends a turn through the bridge
+- **THEN** each Claude Code query runs in its own session's directory
+
+### Requirement: Antigravity bridge read-only enforcement
+
+`@thoth-agents/pi-antigravity-bridge` MUST refuse with a visible error, without launching agy, every provider turn while `readOnly` is on or the provider mode is plan, and every AskAntigravity call while `readOnly` is on, and MUST never pass any spelling of agy's skip-permissions flag to a plan-mode run.
+
+#### Scenario: Antigravity bridge read-only enforcement
+
+- **GIVEN** `readOnly` on or provider mode plan; WHEN a provider turn starts, or an AskAntigravity call starts while `readOnly` is on; THEN it fails with a visible error and no agy process starts; and GIVEN an AskAntigravity plan run
+- **WHEN** agy is launched
+- **THEN** its arguments contain no skip-permissions flag
+
+### Requirement: Antigravity bridge re-delivers unpolled escalated results
+
+`@thoth-agents/pi-antigravity-bridge` MUST re-deliver, exactly once and at the next turn boundary, each escalated bridge call result that completed but was never returned by a poll, as a late prompt in the conversation it belongs to, keeping it pollable and leaving a result with no known conversation pollable without prompting.
+
+#### Scenario: Antigravity bridge re-delivers unpolled escalated results
+
+- **GIVEN** an escalated bridge call that completes after the model ended its turn without polling
+- **WHEN** the next turn boundary is reached
+- **THEN** the result is delivered once as a late prompt in its conversation and remains pollable
+
+### Requirement: Background completion callbacks wait for an idle agent
+
+`@thoth-agents/pi-background-tasks` MUST hold ordinary background completion callbacks while the Pi agent is busy and deliver a session's held callbacks as one aggregated follow-up that triggers a turn after the agent becomes idle. It MUST NOT hand off another ordinary callback batch until the previous handoff has started a run or failed, and MUST keep urgent notifications immediate.
+
+#### Scenario: Background completion callbacks wait for an idle agent
+
+- **GIVEN** two background tasks of one session that complete while the agent is running a turn
+- **WHEN** the agent settles
+- **THEN** one follow-up message reports both completions and triggers one turn, and no second ordinary handoff happens before that turn starts
+
+### Requirement: Task-list replay of nested mutations
+
+`@thoth-agents/pi-todo` MUST persist the full task-list snapshot of each successful state-changing call, including calls nested inside another tool such as codemode, as a session entry. It MUST reconstruct the list from the latest such entry on the current branch, falling back to legacy `todo` tool-result snapshots only when the branch has none.
+
+#### Scenario: Task-list replay of nested mutations
+
+- **GIVEN** a session whose only task-list mutations were `todo` calls nested in codemode
+- **WHEN** the session is resumed, navigated or compacted
+- **THEN** the reconstructed list equals the list after the last nested mutation

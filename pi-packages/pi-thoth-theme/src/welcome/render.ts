@@ -111,7 +111,8 @@ function buildProviderRows(
     return [` ${cDim('No tool providers')}`];
   }
 
-  return providers.slice(0, 4).map((p) => {
+  const listed = providers.slice(0, providers.length > 4 ? 3 : 4);
+  const rows = listed.map((p) => {
     const mark = cSuccess(bullet);
     const name = cMuted(p.name);
     const prefixWidth = visibleWidth(` ${bullet} ${p.name}: `);
@@ -121,6 +122,10 @@ function buildProviderRows(
     );
     return ` ${mark} ${name} ${detail}`;
   });
+  if (providers.length > listed.length) {
+    rows.push(` ${cDim(`+${providers.length - listed.length} more`)}`);
+  }
+  return rows;
 }
 
 function buildSessionRows(

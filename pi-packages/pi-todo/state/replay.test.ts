@@ -6,7 +6,11 @@ import {
   makeUserMessage,
 } from '../test/helpers.js';
 import { buildToolResult } from '../tool/response-envelope.js';
-import type { Task, TaskDetails } from '../tool/types.js';
+import {
+  STATE_ENTRY_TYPE,
+  type Task,
+  type TaskDetails,
+} from '../tool/types.js';
 import { isTaskDetails, replayFromBranch } from './replay.js';
 import { applyTaskMutation } from './state-reducer.js';
 
@@ -164,6 +168,120 @@ describe('replayFromBranch', () => {
     const fresh = replayFromBranch(ctx2);
     expect(fresh.tasks).toEqual([]);
     expect(fresh.nextId).toBe(1);
+  });
+});
+
+const snapshot = (tasks: Task[], nextId: number): TaskDetails => ({
+  action: 'update',
+  params: {},
+  tasks,
+  nextId,
+});
+const stateEntry = (data: unknown) => ({
+  type: 'custom',
+  customType: STATE_ENTRY_TYPE,
+  data,
+});
+const todoResult = (details: TaskDetails) => ({
+  type: 'message',
+  message: makeTodoToolResult(details),
+});
+
+describe('replayFromBranch — state entries', () => {
+  it('matches the state-entry persistence key', () => {
+    expect(STATE_ENTRY_TYPE).toBe('rpiv-todo-state');
+  });
+
+  it('replays the latest state entry on a nested-only branch', () => {
+    const ctx = createMockCtx({
+      branch: [
+        ...buildSessionEntries([makeUserMessage('hi')]),
+        stateEntry(snapshot([taskFixture(1, 'A')], 2)),
+        stateEntry(snapshot([taskFixture(1, 'A'), taskFixture(2, 'B')], 3)),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({
+      tasks: [taskFixture(1, 'A'), taskFixture(2, 'B')],
+      nextId: 3,
+    });
+  });
+
+  it.each([
+    'before',
+    'after',
+  ])('state entries outrank a legacy tool result placed %s them', (order) => {
+    const entry = stateEntry(
+      snapshot([taskFixture(1, 'T', { status: 'completed' })], 2),
+    );
+    const legacy = todoResult(
+      snapshot([taskFixture(1, 'T', { status: 'in_progress' })], 2),
+    );
+    const branch = order === 'before' ? [legacy, entry] : [entry, legacy];
+    expect(replayFromBranch(createMockCtx({ branch })).tasks[0]?.status).toBe(
+      'completed',
+    );
+  });
+
+  it('falls back to the latest legacy result when all custom entries are invalid or unrelated', () => {
+    const ctx = createMockCtx({
+      branch: [
+        todoResult(snapshot([taskFixture(1, 'old')], 2)),
+        stateEntry({ tasks: [], nextId: 'invalid' }),
+        { type: 'custom', customType: 'codemode-store', data: snapshot([], 1) },
+        todoResult(snapshot([taskFixture(1, 'legacy')], 2)),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({
+      tasks: [taskFixture(1, 'legacy')],
+      nextId: 2,
+    });
+  });
+
+  it('restores a cleared list instead of resurrecting tasks', () => {
+    const ctx = createMockCtx({
+      branch: [
+        stateEntry(snapshot([taskFixture(1, 'gone')], 2)),
+        stateEntry(snapshot([], 1)),
+        todoResult(snapshot([taskFixture(1, 'stale')], 2)),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({ tasks: [], nextId: 1 });
+  });
+
+  it('ignores malformed state entries and unrelated custom types after a valid entry', () => {
+    const ctx = createMockCtx({
+      branch: [
+        stateEntry(snapshot([taskFixture(1, 'good')], 2)),
+        stateEntry({ tasks: 'corrupt', nextId: 9 }),
+        stateEntry(null),
+        { type: 'custom', customType: 'codemode-store', data: snapshot([], 1) },
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({
+      tasks: [taskFixture(1, 'good')],
+      nextId: 2,
+    });
+  });
+
+  it('returns empty state when neither source has a valid snapshot', () => {
+    const ctx = createMockCtx({
+      branch: [
+        stateEntry(undefined),
+        ...buildSessionEntries([makeTodoToolResult({})]),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({ tasks: [], nextId: 1 });
+  });
+
+  it('clones the tasks from a custom entry', () => {
+    const fixture = taskFixture(1, 'original');
+    const replayed = replayFromBranch(
+      createMockCtx({ branch: [stateEntry(snapshot([fixture], 2))] }),
+    );
+    expect(replayed.tasks[0]).toEqual(fixture);
+    expect(replayed.tasks[0]).not.toBe(fixture);
+    fixture.subject = 'changed';
+    expect(replayed.tasks[0]?.subject).toBe('original');
   });
 });
 

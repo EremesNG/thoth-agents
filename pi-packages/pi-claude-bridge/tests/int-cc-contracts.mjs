@@ -11,9 +11,9 @@
 // as soon as the message they care about arrives. Run the whole file on every
 // @anthropic-ai/claude-agent-sdk or Claude Code bump.
 //
-// Verified against: SDK 0.3.284 / Claude Code 2.1.284. package.json declares
-// ^0.3.284 and package-lock.json resolves 0.3.285 (Claude Code 2.1.285), which
-// has not been run through this file.
+// Upstream verified against SDK 0.3.308 / Claude Code 2.1.308. This workspace
+// declares ^0.3.308 and pnpm-lock.yaml resolves 0.3.309; live contracts have not
+// been rerun locally as part of this sync.
 //
 // Assumptions that are NOT covered here, and why:
 //   - DISABLE_AUTO_COMPACT=1 stops CC-side autocompaction. Provoking it needs a
@@ -194,11 +194,15 @@ test("is_error can be true on a result whose subtype is still success", { timeou
 	// the dedicated error subtypes carry `errors` instead.
 	let result = null;
 	let threw = null;
+	const assistantMessages = [];
+	const streamEventTypes = [];
 	try {
 		for await (const message of query({
 			prompt: `Summarize this in one word:\n${"banana ".repeat(220_000)}`,
-			options: providerOptions({ maxTurns: 1, persistSession: false }),
+			options: providerOptions({ maxTurns: 1, persistSession: false, includePartialMessages: true }),
 		})) {
+			if (message.type === "stream_event") streamEventTypes.push(message.event?.type);
+			if (message.type === "assistant") assistantMessages.push(message);
 			if (message.type === "result") result = message;
 		}
 	} catch (error) {
@@ -212,6 +216,21 @@ test("is_error can be true on a result whose subtype is still success", { timeou
 	// The SDK then rejects the generator, which is why the provider's catch path
 	// has to prefer the text consumeQuery already recorded off the result.
 	assert.match(threw?.message ?? "", /too long/i, `SDK swallowed the cause: ${threw?.message}`);
+
+	// CC prefixes the failure with a `<synthetic>` assistant message carrying the
+	// same text — its own report, not model output. src/index.ts keys its
+	// keep-off-the-stream branch (issue #162) on model === "<synthetic>". With
+	// partial messages on, the failure is not preceded by content stream_events
+	// (message_start is fine; the branch drops abandoned blocks if one slipped
+	// through), so a synthetic report after a stalled stream is still handled.
+	assert.ok(assistantMessages.length > 0, "no assistant message preceded the failure result");
+	assert.ok(streamEventTypes.every((t) => t === "message_start" || t === "ping"),
+		`stream_events preceded the failure: ${JSON.stringify(streamEventTypes)}`);
+	for (const { message } of assistantMessages) {
+		assert.equal(message.model, "<synthetic>", `failure report is not synthetic: model=${message.model}`);
+		assert.ok((message.content ?? []).some((b) => b.type === "text" && /too long/i.test(b.text ?? "")),
+			`synthetic message lost the failure text: ${JSON.stringify(message.content)?.slice(0, 200)}`);
+	}
 });
 
 test("result.modelUsage reports the served context window", { timeout: 120_000 }, async () => {
@@ -437,7 +456,7 @@ test("CC writes each tool result of a parallel turn as its own transcript record
 	const jsonlPath = openSession({ sessionId: init.session_id, projectPath: CWD, claudeDir: process.env.CLAUDE_CONFIG_DIR }).jsonlPath;
 	const records = readFileSync(jsonlPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
 	const perRecord = records
-		.map((record) => (Array.isArray(record.message?.content) ? record.message.content.filter((b) => b.type === "tool_result").length : 0))
+		.map((record) => (record.type === "user" && Array.isArray(record.message?.content) ? record.message.content.filter((b) => b.type === "tool_result").length : 0))
 		.filter((count) => count > 0);
 
 	assert.deepEqual(perRecord, [1, 1],
@@ -511,7 +530,7 @@ test("--thinking-display summarized is still an accepted flag value", { timeout:
 	assert.equal(result?.subtype, "success", `CC rejected --thinking-display summarized: ${JSON.stringify(result)}`);
 });
 
-// --- The gitStatus cache pinning ---
+// --- Captured request contracts ---
 
 /** One-turn stub API: records every /v1/messages body, answers a canned "OK" SSE.
  *  Lets a contract assert on the exact request CC builds, at zero API cost. */
@@ -548,6 +567,42 @@ function stubApi(requests) {
  *  moves them (and a 1h ttl) between turns, so payload comparisons strip them. */
 const sansCacheControl = (m) => JSON.parse(JSON.stringify(m, (_k, v) => (v === null || v === undefined) ? v : (typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([key]) => key !== "cache_control")) : v)));
 
+// --- Native instruction exclusions ---
+
+test("claudeMdExcludes prevents native AGENTS.md from duplicating forwarded instructions", { timeout: 120_000 }, async () => {
+	const requests = [];
+	const api = await stubApi(requests);
+	const cwd = mkdtempSync(join(tmpdir(), "cc-agents-exclude-"));
+	const marker = `project-instructions-${randomUUID()}`;
+	writeFileSync(join(cwd, "AGENTS.md"), marker);
+	try {
+		for (const excluded of [false, true]) {
+			const { result } = await collect(query({
+				prompt: "Reply OK.",
+				options: providerOptions({
+					cwd, maxTurns: 1, persistSession: false,
+					env: { ...process.env, ANTHROPIC_BASE_URL: api.url, ENABLE_CLAUDEAI_MCP_SERVERS: "0", DISABLE_AUTO_COMPACT: "1" },
+					settings: { claudeMdExcludes: ["**/CLAUDE.md", "**/.claude/rules/**", ...(excluded ? ["**/AGENTS.md"] : [])] },
+					systemPrompt: { type: "preset", preset: "claude_code", append: marker },
+				}),
+			}));
+			assert.equal(result?.subtype, "success");
+			const request = requests.at(-1);
+			assert.ok(request, "CC sent no request");
+			const system = JSON.stringify(request.system);
+			const messages = JSON.stringify(request.messages);
+			assert.equal(system.split(marker).length - 1, 1, "forwarded instructions must remain");
+			assert.equal(messages.split(marker).length - 1, excluded ? 0 : 1,
+				excluded ? "native AGENTS.md survived the exclusion" : "CC did not load AGENTS.md — check ambient exclusions or native loading changes");
+		}
+	} finally {
+		api.close();
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+// --- The gitStatus cache pinning ---
+
 test("includeGitInstructions:false strips gitStatus and keeps the preset static across git transitions", { timeout: 180_000 }, async () => {
 	// The claude_code preset embeds a gitStatus snapshot (git status --short +
 	// log -n 5), and the bridge re-invokes CC every turn — so a git transition
@@ -578,7 +633,7 @@ test("includeGitInstructions:false strips gitStatus and keeps the preset static 
 		// Filter to our own requests by a preset anchor: if CC ever adds
 		// background side requests, slicing the last two off the raw log could
 		// compare those and pass for the wrong reason.
-		const presetReqs = () => requests.filter((b) => sysText(b).includes("You are an interactive agent"));
+		const presetReqs = () => requests.filter((b) => sysText(b).includes("You are a Claude agent, built on Anthropic's Claude Agent SDK"));
 
 		// Control: default preset carries the git snapshot, and a git transition
 		// moves it — the very break this test's positive side pins away. Grep the

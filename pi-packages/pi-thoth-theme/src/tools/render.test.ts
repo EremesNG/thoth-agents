@@ -195,6 +195,42 @@ describe('Built-in tool renderers', () => {
       expect(asciiLines[0]).toContain('src/main.ts:1-10');
     });
 
+    it.each([
+      [undefined, undefined, 'src/main.ts'],
+      [null, null, 'src/main.ts'],
+      [null, undefined, 'src/main.ts'],
+      [undefined, null, 'src/main.ts'],
+      [1, undefined, 'src/main.ts'],
+      [1, null, 'src/main.ts'],
+      [5, null, 'src/main.ts:5'],
+      [null, 5, 'src/main.ts:1-5'],
+      [1, 10, 'src/main.ts:1-10'],
+      [5, 3, 'src/main.ts:5-7'],
+    ])('renders read range with offset=%s and limit=%s as %s', (offset, limit, expectedPath) => {
+      const read = createCustomReadTool(cwd, createConfig('nerd'));
+      const title = stripTerminalSequences(
+        read
+          .renderCall(
+            { path: 'src/main.ts', offset, limit },
+            createAnsiTheme(),
+            baseContext,
+          )
+          .render(80)[0],
+      );
+
+      expect(title.match(/src\/main\.ts(?::[^ ]+)?/)?.[0]).toBe(expectedPath);
+    });
+
+    it.each([null, undefined])('keeps absent read args safe: %s', (args) => {
+      const read = createCustomReadTool(cwd, createConfig('nerd'));
+      const lines = read
+        .renderCall(args, createAnsiTheme(), baseContext)
+        .render(80);
+
+      expect(lines[0]).toContain('Read');
+      expect(lines.join('\n')).not.toMatch(/null|undefined|:1/);
+    });
+
     it('renders collapsed result with line count and expanded with full output', () => {
       const read = createCustomReadTool(cwd, createConfig('nerd'));
       const theme = createAnsiTheme();
@@ -335,6 +371,73 @@ describe('Built-in tool renderers', () => {
       }
     });
 
+    it.each([
+      '',
+      '(no output)',
+      ' \n(no output)\n ',
+    ])('does not count the SDK empty-output sentinel %j', (output) => {
+      const tool = createShellTool(cwd, createConfig('nerd'));
+      for (const expanded of [false, true]) {
+        const lines = tool
+          .renderResult(
+            textResult(output),
+            resultOpts(expanded),
+            createAnsiTheme(),
+            baseContext,
+          )
+          .render(120)
+          .map(stripTerminalSequences);
+
+        expect(lines).toHaveLength(2);
+        expect(lines[0].slice(2, -2).trim()).toBe('(no output)');
+        expect(lines.at(-1)).toContain('Exit 0 · 0 lines');
+        expect(lines.at(-1)).not.toContain('words');
+      }
+    });
+
+    it.each([
+      [true, 'Exit 3 · 0 lines', 2],
+      [false, 'Exit 0 · 2 lines · ~7 words', 3],
+    ] as const)('distinguishes the SDK empty-error appendix from genuine output (isError=%s)', (isError, summary, rowCount) => {
+      const tool = createShellTool(cwd, createConfig('nerd'));
+      const lines = tool
+        .renderResult(
+          textResult('(no output)\nCommand exited with code 3'),
+          resultOpts(),
+          createAnsiTheme(),
+          {
+            ...baseContext,
+            isError,
+          },
+        )
+        .render(120)
+        .map(stripTerminalSequences);
+
+      expect(lines).toHaveLength(rowCount);
+      expect(lines.at(-1)).toContain(summary);
+      if (isError) expect(lines.at(-1)).not.toContain('words');
+    });
+
+    it.each([
+      ['hello world', '1 line', '~2 words'],
+      ['(no output)\nhello', '2 lines', '~3 words'],
+      ['prefix (no output)', '1 line', '~3 words'],
+    ])('still counts genuine shell output %j', (output, count, words) => {
+      const tool = createShellTool(cwd, createConfig('nerd'));
+      const lines = tool
+        .renderResult(
+          textResult(output),
+          resultOpts(),
+          createAnsiTheme(),
+          baseContext,
+        )
+        .render(120)
+        .map(stripTerminalSequences);
+
+      expect(lines[0]).toContain(output.split('\n')[0]);
+      expect(lines.at(-1)).toContain(`Exit 0 · ${count} · ${words}`);
+    });
+
     it('omits elapsed when timing is unavailable', () => {
       const tool = createShellTool(cwd, createConfig('nerd'));
       const theme = createAnsiTheme();
@@ -429,6 +532,58 @@ describe('Built-in tool renderers', () => {
       expect(plain).toContain('Green output with bell␇');
       expect(plain).not.toContain('␛[32;1m');
       expect(plain).not.toContain('␛[0m');
+    });
+  });
+
+  describe('write tool', () => {
+    it.each([
+      ['hello', ['hello'], 1],
+      ['hello\n', ['hello'], 1],
+      ['hello\n\n', ['hello', ''], 2],
+      ['hello\n\nworld\n', ['hello', '', 'world'], 3],
+      ['\n', [''], 1],
+      ['', ['File written'], 1],
+    ] as const)('counts only written lines for %j', (content, expectedBody, count) => {
+      const write = createCustomWriteTool(cwd, createConfig('nerd'));
+      for (const expanded of [false, true]) {
+        const lines = write
+          .renderResult(
+            textResult('File written'),
+            resultOpts(expanded),
+            createAnsiTheme(),
+            {
+              ...baseContext,
+              args: { content },
+            },
+          )
+          .render(80)
+          .map(stripTerminalSequences);
+
+        expect(
+          lines.slice(0, -1).map((line) => line.slice(2, -2).trimEnd()),
+        ).toEqual(expectedBody);
+        expect(lines.at(-1)).toContain(`+${count} lines`);
+      }
+    });
+
+    it('does not hide a phantom line after a trailing newline at the preview limit', () => {
+      const write = createCustomWriteTool(cwd, createConfig('nerd'));
+      const lines = write
+        .renderResult(
+          textResult('File written'),
+          resultOpts(),
+          createAnsiTheme(),
+          {
+            ...baseContext,
+            args: { content: 'one\ntwo\nthree\nfour\nfive\nsix\n' },
+          },
+        )
+        .render(80)
+        .map(stripTerminalSequences);
+
+      expect(lines).toHaveLength(7);
+      expect(lines.at(-1)).toContain('+6 lines');
+      expect(lines.join('\n')).not.toContain('more lines');
     });
   });
 

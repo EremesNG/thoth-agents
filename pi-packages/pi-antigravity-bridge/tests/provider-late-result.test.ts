@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
 	normalizeContext,
 	type Api,
@@ -47,10 +47,10 @@ function tmpStorePath(): string {
 
 /** Fake driver with an always-active handle (bridge parks need one) and a
  *  run() that records the request. No agy spawn, no network. */
-function fakeDriver(seen: { opts?: DriverTurnRequest }) {
+function fakeDriver(seen: { opts?: DriverTurnRequest }, conversationId: string | null = "owner-conversation") {
 	const fakeHandle = {
 		id: "fake-turn",
-		outcome: Promise.resolve({ status: "OK" as const, response: "ok", finished: true, aborted: false }),
+		outcome: Promise.resolve({ status: "OK" as const, response: "ok", finished: true, aborted: false, conversationId: conversationId ?? undefined }),
 		next: async (): Promise<DriverActivity | null> => null,
 		pushExternal: (_a: DriverActivity) => {},
 	};
@@ -194,9 +194,10 @@ test("late delivery: tombstone is single-shot, the same context then errors as a
 	assert.equal(errors2[0].errorMessage, "No user message to send to agy.");
 });
 
-test("late delivery: a queued user message rides along with the late result", async () => {
+test("late delivery: a queued user message is dispatched separately from the owner's late result", async () => {
 	const seen: { opts?: DriverTurnRequest } = {};
 	const driver = fakeDriver(seen);
+	const run = vi.spyOn(driver, "run");
 	const rt = new ToolRoundTrips(driver);
 	await parkAndFail(rt, "call-1", "AskClaude", "expired");
 	const context: TranscriptContext = normalizeContext({
@@ -210,17 +211,24 @@ test("late delivery: a queued user message rides along with the late result", as
 	assert.equal(errors.length, 0);
 	assert.ok(seen.opts);
 	assert.match(seen.opts.prompt, /REVIEW OUTPUT/);
-	assert.match(seen.opts.prompt, /now run the tests$/);
+	assert.doesNotMatch(seen.opts.prompt, /now run the tests/);
+	assert.equal(seen.opts.conversationId, "owner-conversation");
+	assert.equal(run.mock.calls.length, 2);
+	assert.equal(run.mock.calls[0][0].prompt, "now run the tests");
+	assert.doesNotMatch(run.mock.calls[0][0].prompt, /REVIEW OUTPUT/);
 });
 
 test("late delivery: deferred while a pending park anchors the pass, delivered on the next fresh pass", async () => {
 	const seen: { opts?: DriverTurnRequest } = {};
-	const driver = fakeDriver(seen);
+	const driver = fakeDriver(seen, null);
 	const rt = new ToolRoundTrips(driver, undefined, { escalateAfterMs: 30 });
 	// A: escalated (poll handle out, pi still executing).
 	const a = rt.onToolCall("call-a", "AskClaude", {}, new AbortController().signal);
 	await a;
-	// B: park fails while A runs (abort path) -> tombstone.
+	// B belongs to another known handle and fails while A's result is pending.
+	Object.defineProperty(driver, "activeHandle", { get: () => ({ id: "b-owner",
+		outcome: Promise.resolve({ status: "OK" as const, response: "ok", finished: true, aborted: false, conversationId: "owner-b" }),
+		next: async () => null, pushExternal() {} }) });
 	const bCtrl = new AbortController();
 	const b = rt.onToolCall("call-b", "exec_command", {}, bCtrl.signal).catch(() => "rejected");
 	bCtrl.abort();
@@ -246,10 +254,11 @@ test("late delivery: deferred while a pending park anchors the pass, delivered o
 	for await (const ev of s1) {
 		if (ev.type === "error") errors1.push(ev.error);
 	}
-	assert.equal(errors1.length, 0); // quiet stop via the escalated path
+	assert.equal(errors1.length, 0); // quiet note: no stamped conversation
 	assert.deepEqual(rt.deadIds, ["call-b"]); // tombstone survived for pass 2
 	assert.equal(rt.poll("call-a")?.state, "done");
-	assert.equal(seen.opts, undefined); // no new agy prompt this pass
+	assert.equal(seen.opts, undefined); // unknown ownership must never create a prompt
+	assert.equal(rt.poll("call-a")?.delivered, false); // the sweep released its claim
 
 	// Pass 2: fresh pass (no pending parks) delivers B as a late prompt. A
 	// fresh driver instance keeps the per-pass capture clean.
@@ -273,8 +282,79 @@ test("late delivery: deferred while a pending park anchors the pass, delivered o
 	assert.ok(seen2.opts);
 	assert.match(seen2.opts.prompt, /B OUTPUT/);
 	assert.match(seen2.opts.prompt, /exec_command/);
-	assert.match(seen2.opts.prompt, /continue$/);
+	assert.doesNotMatch(seen2.opts.prompt, /continue/);
+	assert.equal(seen2.opts.conversationId, "owner-b");
+	// Unlike upstream's fresh-pass fallback, an unstamped result must not
+	// piggyback on B's unrelated conversation. A stays unclaimed and pollable.
+	assert.doesNotMatch(seen2.opts.prompt, /A OUTPUT/);
+	assert.equal(rt.poll("call-a")?.text, "A OUTPUT");
+	assert.equal(rt.poll("call-a")?.delivered, false);
 	assert.deepEqual(rt.deadIds, []);
+});
+
+test("late delivery: an orphaned failed escalation stays pollable without using the current conversation", async () => {
+	const seen: { opts?: DriverTurnRequest } = {};
+	const driver = fakeDriver(seen, null);
+	const rt = new ToolRoundTrips(driver, undefined, { escalateAfterMs: 1 });
+	const abort = new AbortController();
+	await rt.onToolCall("orphan", "read", {}, abort.signal);
+	abort.abort();
+	const store = new SessionStore(tmpStorePath());
+	store.set("cwd:" + process.cwd(), { conversationId: "unrelated", lastStepIdx: -1, lastMessageCount: 0 });
+	const simple = createStreamSimple({ entries: [], store, driver, roundTrips: rt });
+	const errors = await collect(simple(model, normalizeContext({ messages: [toolResultMessage("orphan", "PRIVATE RESULT")] })));
+	assert.equal(errors.length, 0);
+	assert.equal(seen.opts, undefined, "a failed park must not bypass ownership-safe redelivery");
+	assert.equal(rt.poll("orphan")?.text, "PRIVATE RESULT");
+	assert.equal(rt.poll("orphan")?.conversationId, undefined);
+	assert.equal(rt.poll("orphan")?.delivered ?? false, false);
+});
+
+test.each(["0", "1"])("late delivery: concurrent failed parks keep their own conversations with digest=%s", async digest => {
+	vi.stubEnv("AGY_DIGEST", digest);
+	try {
+		let source = fakeDriver({}, "owner-a");
+		const rt = new ToolRoundTrips(() => source, undefined, { escalateAfterMs: 0 });
+		await parkAndFail(rt, "a", "read", "expired A");
+		source = fakeDriver({}, "owner-b");
+		await parkAndFail(rt, "b", "read", "expired B");
+		const driver = fakeDriver({}, null);
+		const run = vi.spyOn(driver, "run");
+		const store = new SessionStore(tmpStorePath());
+		store.set("cwd:" + process.cwd(), { conversationId: "unrelated", lastStepIdx: -1, lastMessageCount: 0 });
+		const simple = createStreamSimple({ entries: [], store, driver, roundTrips: rt });
+		const errors = await collect(simple(model, normalizeContext({ messages: [
+			toolResultMessage("a", "PRIVATE A"), toolResultMessage("b", "PRIVATE B"),
+			{ role: "user", content: "CURRENT USER", timestamp: 0 },
+		] })));
+		assert.equal(errors.length, 0);
+		assert.deepEqual(run.mock.calls.map(([request]) => request.conversationId), ["unrelated", "owner-a", "owner-b"]);
+		assert.equal(run.mock.calls[0][0].prompt, "CURRENT USER");
+		assert.match(run.mock.calls[1][0].prompt, /PRIVATE A/);
+		assert.doesNotMatch(run.mock.calls[1][0].prompt, /PRIVATE B|CURRENT USER/);
+		assert.match(run.mock.calls[2][0].prompt, /PRIVATE B/);
+		assert.doesNotMatch(run.mock.calls[2][0].prompt, /PRIVATE A|CURRENT USER/);
+		assert.equal(rt.poll("a")?.delivered, true);
+		assert.equal(rt.poll("b")?.delivered, true);
+		assert.equal(store.get("cwd:" + process.cwd())?.conversationId, "unrelated");
+	} finally { vi.unstubAllEnvs(); }
+});
+
+test("late delivery: failed recovery dispatch releases the original owner's pollable result", async () => {
+	const driver = fakeDriver({});
+	const rt = new ToolRoundTrips(driver);
+	await parkAndFail(rt, "late", "read", "expired");
+	const run = vi.spyOn(driver, "run").mockRejectedValueOnce(new Error("dispatch failed"));
+	const simple = makeStreamSimple(driver, rt);
+	const errors = await collect(simple(model, normalizeContext({ messages: [toolResultMessage("late", "PRIVATE RESULT")] })));
+	assert.equal(errors.length, 1);
+	assert.equal(rt.poll("late")?.delivered, false);
+	assert.equal(rt.poll("late")?.conversationId, "owner-conversation");
+	assert.equal(rt.poll("late")?.text, "PRIVATE RESULT");
+	await collect(simple(model, normalizeContext({ messages: [] })));
+	assert.equal(run.mock.calls.length, 2);
+	assert.equal(run.mock.calls[1][0].conversationId, "owner-conversation");
+	assert.equal(rt.poll("late")?.delivered, true);
 });
 
 test("late delivery: error results are flagged in the prompt", async () => {

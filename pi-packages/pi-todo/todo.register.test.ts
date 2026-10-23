@@ -1,8 +1,11 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { subscribe, TODO_STATE_CHANNEL } from '@thoth-agents/pi-core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockCtx, createMockPi, makeTheme } from './test/helpers.js';
 import {
   __resetState,
+  getNextId,
+  getTodos,
   registerTodoTool,
   setActiveRenderSession,
   type TaskDetails,
@@ -18,7 +21,7 @@ function setup() {
   registerTodoTool(pi);
   const tool = captured.tools.get(TOOL_NAME);
   if (!tool) throw new Error('tool not registered');
-  return { tool, captured };
+  return { pi, tool, captured };
 }
 
 async function call(
@@ -121,6 +124,128 @@ describe('registerTodoTool — execute mutates module state', () => {
     const d = r?.details as TaskDetails;
     expect(d.tasks).toEqual([]);
     expect(d.nextId).toBe(1);
+  });
+});
+
+describe('registerTodoTool — execute persists state changes', () => {
+  it('publishes the committed snapshot even when appendEntry throws, then rejects with that error', async () => {
+    const { pi, tool } = setup();
+    const error = new Error('Session persistence failed');
+    vi.spyOn(pi, 'appendEntry').mockImplementation(() => {
+      throw error;
+    });
+    const onSnapshot = vi.fn();
+    subscribe(pi.events, TODO_STATE_CHANNEL, { onSnapshot });
+
+    await expect(
+      call(tool, { action: 'create', subject: 'Committed' }),
+    ).rejects.toBe(error);
+
+    expect(getTodos('test-session')).toEqual([
+      { id: 1, subject: 'Committed', status: 'pending' },
+    ]);
+    expect(getNextId('test-session')).toBe(2);
+    expect(onSnapshot).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sessionId: 'test-session',
+        source: '@thoth-agents/pi-todo',
+        data: {
+          tasks: [
+            { id: 1, subject: 'Committed', status: 'pending', blockedBy: [] },
+          ],
+          nextId: 2,
+          counts: { pending: 1, in_progress: 0, completed: 0, deleted: 0 },
+        },
+      }),
+    );
+  });
+
+  it('commits before appending, then publishes before returning', async () => {
+    const { pi, tool, captured } = setup();
+    const order: string[] = [];
+    const appendEntry = pi.appendEntry;
+    vi.spyOn(pi, 'appendEntry').mockImplementation((customType, data) => {
+      expect(getTodos('test-session')).toEqual([
+        { id: 1, subject: 'Ordered', status: 'pending' },
+      ]);
+      order.push('append');
+      appendEntry(customType, data);
+    });
+    subscribe(pi.events, TODO_STATE_CHANNEL, {
+      onSnapshot: () => {
+        order.push('publish');
+      },
+    });
+
+    const result = await call(tool, { action: 'create', subject: 'Ordered' });
+    order.push('return');
+
+    expect(order).toEqual(['append', 'publish', 'return']);
+    expect(captured.entries).toEqual([
+      { customType: 'rpiv-todo-state', data: result.details },
+    ]);
+  });
+
+  it('appends exactly one full details snapshot per create / update / delete / clear', async () => {
+    const { tool, captured } = setup();
+    const results = [
+      await call(tool, { action: 'create', subject: 'a' }),
+      await call(tool, { action: 'update', id: 1, status: 'in_progress' }),
+      await call(tool, { action: 'delete', id: 1 }),
+      await call(tool, { action: 'clear' }),
+    ];
+    expect(captured.entries).toEqual(
+      results.map((result) => ({
+        customType: 'rpiv-todo-state',
+        data: result.details,
+      })),
+    );
+    expect(captured.entries.at(-1)?.data).toMatchObject({
+      tasks: [],
+      nextId: 1,
+    });
+  });
+
+  it('appends nothing for reads, errors, unchanged updates or rolled-back batches', async () => {
+    const { tool, captured } = setup();
+    await call(tool, { action: 'create', subject: 'a' });
+    captured.entries.length = 0;
+    await call(tool, { action: 'list' });
+    await call(tool, { action: 'get', id: 1 });
+    await call(tool, { action: 'update', id: 99, status: 'completed' });
+    await call(tool, { action: 'create', subject: '' });
+    await call(tool, { action: 'delete', id: 99 });
+    await call(tool, { action: 'update', id: 1, status: 'pending' });
+    await call(tool, { action: 'update', id: 1, subject: 'a' });
+    const rolledBack = await call(tool, {
+      action: 'batch',
+      ops: [
+        { action: 'create', subject: 'Must not persist', ref: 'new' },
+        { action: 'update', id: 'missing', subject: 'Rejected' },
+      ],
+    });
+    expect(rolledBack.details).toMatchObject({
+      error: expect.stringContaining('op[1]'),
+      tasks: [{ id: 1, subject: 'a', status: 'pending' }],
+      nextId: 2,
+    });
+    expect(captured.entries).toEqual([]);
+  });
+
+  it('appends one full snapshot for every successful batch, even an unchanged batch', async () => {
+    const { tool, captured } = setup();
+    const created = await call(tool, {
+      action: 'batch',
+      ops: [{ action: 'create', subject: 'a', ref: 'a' }],
+    });
+    const unchanged = await call(tool, {
+      action: 'batch',
+      ops: [{ action: 'update', id: 1, subject: 'a' }],
+    });
+    expect(captured.entries).toEqual([
+      { customType: 'rpiv-todo-state', data: created.details },
+      { customType: 'rpiv-todo-state', data: unchanged.details },
+    ]);
   });
 });
 

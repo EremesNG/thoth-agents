@@ -14,9 +14,13 @@ import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import extension from "../extensions/index.js";
 import { loadConfig, saveConfig } from "../src/config.js";
+import { defaultAcpAuthVerifiedPath, readAcpAuthVerified, writeAcpAuthVerified, writeAuthType } from "../src/acp/setup.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
+import { ToolRoundTrips, POLL_TOOL_NAME, type PollView } from "../src/provider.js";
+import { StreamDriver } from "../src/driver.js";
+import type { TurnOutcome } from "../src/driver-types.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
 // Each isolated file owns a fresh Windows job helper.
@@ -408,6 +412,42 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	}
 });
 
+test("ACP extension instances invalidate shared sign-in evidence without affecting sibling lifecycle", async () => {
+	fixture();
+	const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
+	vi.stubEnv("AGY_ENGINE", "acp");
+	vi.stubEnv("AGY_ACP_BIN", bin);
+	const marker = defaultAcpAuthVerifiedPath();
+	dirs.push(marker, path.join(os.homedir(), ".gemini", "antigravity-acp"));
+	writeAuthType("oauth-personal");
+	writeAcpAuthVerified();
+	const a = session("other"); const b = session("other");
+	await extension(a.pi); await extension(b.pi);
+	await Promise.all([a.emit("session_start"), b.emit("session_start")]);
+	assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0, "auth wiring must preserve lazy startup");
+	assert.deepEqual(await b.turn("auth-sibling"), []);
+	vi.stubEnv("ACP_FAKE_SCENARIO", "auth-required");
+	assert.match((await a.turn("auth-owner")).join("\n"), /authentication required/i);
+	assert.equal(readAcpAuthVerified(), false);
+	const beforeReadiness = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length;
+	await b.command("engine acp");
+	assert.ok(b.notices.at(-1)?.includes("One-time sign-in needed"));
+	assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, beforeReadiness, "readiness never launches a probe");
+	vi.stubEnv("ACP_FAKE_SCENARIO", "happy");
+	await b.command("auth");
+	assert.ok(b.notices.at(-1)?.includes("Signed in (the server authenticated from existing credentials"));
+	assert.equal(readAcpAuthVerified(), true);
+	await a.emit("session_shutdown");
+	assert.equal(readAcpAuthVerified(), true, "A's teardown must not invalidate B's verified sign-in");
+	assert.deepEqual(await b.turn("auth-sibling"), [], "A's teardown must not close B's live ACP connection");
+	await b.emit("session_shutdown");
+	await b.emit("session_start", { reason: "resume" });
+	vi.stubEnv("ACP_FAKE_SCENARIO", "auth-required");
+	assert.match((await b.turn("auth-sibling-fresh")).join("\n"), /authentication required/i);
+	assert.equal(readAcpAuthVerified(), false, "B's fresh connection retains its own invalidation wiring after A stopped");
+}, 20_000);
+
 test("shutdown during the deferred version check cancels later startup and leaves no child process", async () => {
 	const spawn = fixture();
 	const bin = process.env.AGY_BIN!;
@@ -740,4 +780,139 @@ test("rejecting active UI notifications do not leak unhandled rejections or fail
 		assert.equal(notices, beforeCommand + 1, "command notifications are contained too");
 		await s.emit("session_shutdown");
 	});
+});
+
+test("/agy readonly toggles and reports the kill switch without starting agy", async () => {
+	const spawn = fixture();
+	const s = session("other");
+	await extension(s.pi);
+	spawn.mockClear();
+	vi.mocked(ownedProcess.spawnOwnedProcess).mockClear();
+	try {
+		await s.command("readonly on");
+		assert.equal(loadConfig().readOnly, true);
+		assert.match(s.notices.at(-1)!, /provider turns and AskAntigravity are REFUSED/);
+		await s.command("readonly");
+		assert.match(s.notices.at(-1)!, /readOnly is on/);
+		await s.command("readonly off");
+		assert.equal(loadConfig().readOnly, false);
+		assert.match(s.notices.at(-1)!, /readOnly off/);
+		assert.equal(spawn.mock.calls.length, 0);
+		assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0);
+	} finally { saveConfig({ readOnly: false }); }
+});
+
+test.each([
+	{ env: "1", value: "off", mismatch: true },
+	{ env: "0", value: "on", mismatch: true },
+	{ env: "0", value: "off", mismatch: false },
+	{ env: "yes", value: "on", mismatch: false },
+])("/agy readonly $value: warns accurately for AGY_READONLY=$env", async ({ env, value, mismatch }) => {
+	fixture();
+	vi.stubEnv("AGY_READONLY", env);
+	const s = session("other");
+	await extension(s.pi);
+	try {
+		await s.command(`readonly ${value}`);
+		assert.equal(s.notices.some((notice) => notice.includes("overrides the config")), mismatch);
+		if (mismatch) assert.match(s.notices.at(-1)!, new RegExp(`stays ${env === "0" ? "off" : "on"}`));
+	} finally { saveConfig({ readOnly: false }); }
+});
+
+test("/agy mode warns for effective env-only readOnly and for plan provider refusal", async () => {
+	fixture();
+	const s = session("other");
+	await extension(s.pi);
+	try {
+		vi.stubEnv("AGY_READONLY", "1");
+		await s.command("mode accept-edits");
+		assert.match(s.notices.at(-1)!, /readOnly is on: provider turns are refused/);
+		vi.stubEnv("AGY_READONLY", "0");
+		await s.command("mode plan");
+		assert.match(s.notices.at(-1)!, /provider turns are REFUSED/);
+	} finally { saveConfig({ readOnly: false, mode: "accept-edits" }); }
+});
+
+test.each([
+	{ engine: "stream-json", readOnly: "1", mode: "accept-edits" },
+	{ engine: "acp", readOnly: "1", mode: "accept-edits" },
+	{ engine: "stream-json", readOnly: "0", mode: "plan" },
+	{ engine: "acp", readOnly: "0", mode: "plan" },
+])("$engine readOnly=$readOnly mode=$mode: refused turn never enters lazy agy startup", async ({ engine, readOnly, mode }) => {
+	const spawn = fixture();
+	vi.stubEnv("AGY_ENGINE", engine);
+	vi.stubEnv("AGY_READONLY", readOnly);
+	vi.stubEnv("AGY_MODE", mode);
+	const s = session("other");
+	await extension(s.pi);
+	spawn.mockClear();
+	vi.mocked(ownedProcess.spawnOwnedProcess).mockClear();
+	const errors = await s.turn();
+	assert.equal(errors.length, 1);
+	assert.match(errors[0], /refused/);
+	assert.match(errors[0], /host/);
+	assert.equal(spawn.mock.calls.length, 0, "no version/auth/metadata probe from refused turn");
+	assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0, "no agy engine spawn");
+	assert.equal(privateConfigs().length, 0, "no bridge startup");
+});
+
+
+test("AC-4: an unknown owning outcome never borrows an unrelated turn's conversation", async () => {
+	fixture();
+	const failAll = vi.spyOn(ToolRoundTrips.prototype, "failAll");
+	const run = vi.spyOn(StreamDriver.prototype, "run");
+	const s = session();
+	await extension(s.pi);
+	await s.emit("session_start");
+	assert.deepEqual(await s.turn("prime-registry"), []);
+	const rt = failAll.mock.contexts[0] as ToolRoundTrips;
+	let finish!: (outcome: TurnOutcome) => void;
+	const owner = { id: "unknown-owner", outcome: new Promise<TurnOutcome>(resolve => { finish = resolve; }),
+		next: async () => null, pushExternal() {} };
+	const active = vi.spyOn(StreamDriver.prototype, "activeHandle", "get").mockReturnValue(owner);
+	vi.useFakeTimers();
+	try {
+		const park = rt.onToolCall("orphan", "read", {}, new AbortController().signal);
+		await vi.advanceTimersByTimeAsync(20_000);
+		await park;
+	} finally { vi.useRealTimers(); active.mockRestore(); }
+	finish({ status: "OK", response: "", finished: true, aborted: false });
+	await owner.outcome;
+	// The unrelated real driver's turn-end callback must not claim this orphan.
+	assert.deepEqual(await s.turn("unrelated-next-conversation"), []);
+	rt.resolve("orphan", "PRIVATE ORPHAN RESULT", false);
+	const callsBefore = run.mock.calls.length;
+	assert.deepEqual(await s.turn("unrelated-next-conversation"), []);
+	assert.equal(run.mock.calls.length, callsBefore + 1, "only the unrelated user prompt is dispatched");
+	assert.ok(run.mock.calls.every(([request]) => !request.prompt.includes("PRIVATE ORPHAN RESULT")));
+	assert.equal(rt.poll("orphan")?.conversationId, undefined);
+	assert.equal(rt.poll("orphan")?.text, "PRIVATE ORPHAN RESULT");
+	assert.equal(rt.poll("orphan")?.delivered ?? false, false);
+});
+
+test("AC-4: terminal poll answers mark delivery and shutdown clears the instance registry", async () => {
+	fixture();
+	const clear = vi.spyOn(ToolRoundTrips.prototype, "clearEscalations");
+	const mark = vi.spyOn(ToolRoundTrips.prototype, "markDelivered");
+	const poll = vi.spyOn(ToolRoundTrips.prototype, "poll");
+	const s = session();
+	await extension(s.pi);
+	await s.emit("session_start");
+	assert.deepEqual(await s.turn(), []);
+	const endpoint = Object.values(privateConfigs()[0].servers)[0];
+	const views: Array<PollView | undefined> = [undefined, { name: "tool", state: "running" },
+		{ name: "tool", state: "done", text: "ANSWER" }, { name: "tool", state: "failed", reason: "failed" }];
+	for (const [i, view] of views.entries()) {
+		poll.mockReturnValue(view);
+		const response = await fetch(endpoint.serverUrl, {
+			method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] },
+			body: JSON.stringify({ jsonrpc: "2.0", id: i + 1, method: "tools/call", params: { name: POLL_TOOL_NAME, arguments: { callId: "call-" + i } } }),
+		});
+		assert.equal(response.status, 200);
+		const text = await response.text();
+		if (view?.state === "done") assert.match(text, /ANSWER/);
+	}
+	assert.deepEqual(mark.mock.calls, [["call-2"], ["call-3"]]);
+	await s.emit("session_shutdown");
+	assert.deepEqual(clear.mock.calls, [["antigravity session shut down"]]);
 });

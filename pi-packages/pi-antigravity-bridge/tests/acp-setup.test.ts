@@ -232,6 +232,35 @@ describe("acp/setup ensureAcpReady", () => {
 		assert.equal(status.needsLogin, false);
 	});
 
+	test("a verified sign-in marker suppresses login-pending without a token file", async () => {
+		const gdir = tmpDir();
+		writeAuthType("oauth-personal", gdir);
+		const authVerifiedFile = path.join(tmpDir(), "verified.json");
+		fs.writeFileSync(authVerifiedFile, JSON.stringify({ verified: true, at: "2026-10-13T00:00:00.000Z" }));
+		const opts = { configBin: process.execPath, geminiDir: gdir, authVerifiedFile, env: {}, install: false };
+		const ready = await ensureAcpReady(opts);
+		assert.equal(ready.ok, true);
+		if (!ready.ok) return;
+		assert.equal(ready.needsLogin, false);
+		assert.equal(inspectAcpSetup(opts).auth, "oauth-personal (verified, no token file)");
+		fs.rmSync(authVerifiedFile);
+		const pending = await ensureAcpReady(opts);
+		assert.equal(pending.ok && pending.needsLogin, true, "readiness must not latch an earlier marker");
+	});
+
+	test("a malformed or false marker does not claim a verified sign-in", async () => {
+		const gdir = tmpDir();
+		writeAuthType("oauth-personal", gdir);
+		const authVerifiedFile = path.join(tmpDir(), "verified.json");
+		for (const content of ["not json", "null", '{"verified":false}', '{"verified":"true"}']) {
+			fs.writeFileSync(authVerifiedFile, content);
+			const opts = { configBin: process.execPath, geminiDir: gdir, authVerifiedFile, env: {}, install: false };
+			const status = await ensureAcpReady(opts);
+			assert.equal(status.ok && status.needsLogin, true);
+			assert.equal(inspectAcpSetup(opts).auth, "oauth-personal");
+		}
+	});
+
 	test("install failure returns the manual fallback text", async () => {
 		const status = await ensureAcpReady({
 			installRoot: tmpDir(),

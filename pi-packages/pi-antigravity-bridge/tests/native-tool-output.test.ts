@@ -45,7 +45,8 @@ const fakeChild = vi.hoisted(() => {
 	}
 
 	class FakeStdin extends FakeEmitter {
-		write(_chunk: string): boolean {
+		write(_chunk: string, onWritten?: () => void): boolean {
+			onWritten?.();
 			return true;
 		}
 	}
@@ -67,7 +68,8 @@ const fakeChild = vi.hoisted(() => {
 		spawn: vi.fn(() => {
 			const child = new FakeChild();
 			const frames = [...state.frames];
-			child.stdin.write = (_chunk: string): boolean => {
+			child.stdin.write = (_chunk: string, onWritten?: () => void): boolean => {
+				queueMicrotask(() => onWritten?.());
 				queueMicrotask(() => {
 					for (const frame of frames) child.stdout.emit("data", `${frame}\n`);
 				});

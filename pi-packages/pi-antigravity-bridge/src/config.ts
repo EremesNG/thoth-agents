@@ -91,11 +91,16 @@ export interface AgyConfig {
 	/** Official-server ACP engine options (used when engine = "acp"). */
 	acp: AcpConfig;
 	mode: AgyMode;
+	/** Fail-closed kill switch: refuse provider turns and AskAntigravity before
+	 *  startup. The CLI cannot enforce review-only on any path (#1181).
+	 *  Enforce read-only in the host instead. Env AGY_READONLY wins. */
+	readOnly: boolean;
 	/** Auto-approve all agy tool permission requests (--dangerously-skip-permissions).
 	 *  Required for non-interactive use: without it, any `run_command` triggers an
 	 *  interactive y/n prompt that hangs forever in `-p` mode. Defaults true.
 	 *  DANGEROUS: lets agy run arbitrary commands (including destructive ones)
-	 *  without review. Turn off only if you also set mode=plan (no execution). */
+	 *  without review. Plan runs never receive this flag; plan is not a
+	 *  read-only guarantee. */
 	skipPermissions: boolean;
 	/** AskAntigravity tool: default model alias (flash/pro/argon/gemini or exact). */
 	defaultModel: string;
@@ -120,6 +125,13 @@ export interface AgyConfig {
 	 *  "mcp" surface serves an empty catalog on installs without
 	 *  pi-mcp-adapter), "mcp" (pi-mcp-adapter tools + skills bridge only). */
 	bridgeTools: BridgeTools;
+	/** Extra pi tool names that get the long (120s) synchronous escalation
+	 *  window, in addition to delegation-shaped names (subagent_run,
+	 *  agent_spawn/agent_wait, *delegate*; issue #6). For custom tools that
+	 *  legitimately run minutes-long but must return a plain result to an
+	 *  orchestrator. Env AGY_ESCALATE_LONG_TOOLS (comma-separated) wins over
+	 *  the file. Takes effect on the next bridge call. */
+	escalateLongTools?: string[];
 	/** Private instance discovery by default; legacy-global retains shared registration.
 	 *  Latched at extension load; changing it requires a restart. */
 	bridgeDiscovery: BridgeDiscovery;
@@ -181,12 +193,14 @@ export interface AgyConfig {
 const DEFAULTS: AgyConfig = {
 	engine: "stream-json",
 	mode: "accept-edits",
+	readOnly: false,
 	skipPermissions: true,
 	defaultModel: "flash",
 	defaultThinking: "medium",
 	askTool: false,
 	webTools: false,
 	bridgeTools: "all",
+	escalateLongTools: [],
 	bridgeDiscovery: "private",
 	digest: false,
 	systemPrompt: true,
@@ -227,18 +241,23 @@ function parseWaitMs(raw: string | number | undefined): number {
 	return Number.isFinite(ms) && ms >= 0 && ms <= 86_400_000 ? ms : DEFAULT_WAIT_TIMEOUT_MS;
 }
 
-/** Load config merged over defaults. Env vars override the file when set. */
-export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
-	let file: Partial<AgyConfig> = {};
+/** Raw file only: saving must never persist environment overrides. */
+function readConfigFile(configPath: string): Partial<AgyConfig> {
 	try {
 		const raw = fs.readFileSync(configPath, "utf8");
 		const parsed = JSON.parse(raw);
 		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			file = parsed as Partial<AgyConfig>;
+			return parsed as Partial<AgyConfig>;
 		}
 	} catch {
-		/* missing or corrupt  -  fall back to defaults */
+		/* missing or corrupt - fall back to empty */
 	}
+	return {};
+}
+
+/** Load config merged over defaults. Env vars override the file when set. */
+export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
+	const file = readConfigFile(configPath);
 
 	// Env overrides file (matches the skipPermissions pattern).
 	// The naive OR `env === "plan" || file.mode === "plan"` would ignore an
@@ -263,6 +282,12 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		envPerm !== undefined
 			? envPerm === "1" || envPerm.toLowerCase() === "true"
 			: file.skipPermissions ?? DEFAULTS.skipPermissions;
+
+	// Safety knob: only explicit falsities disable it. Typos fail closed.
+	const envReadOnly = process.env.AGY_READONLY;
+	const readOnly = envReadOnly !== undefined
+		? envReadOnly !== "" && !["0", "false", "off"].includes(envReadOnly.trim().toLowerCase())
+		: file.readOnly ?? DEFAULTS.readOnly;
 
 	const defaultModelRaw =
 		process.env.AGY_DEFAULT_MODEL ?? file.defaultModel ?? DEFAULTS.defaultModel;
@@ -290,6 +315,20 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 
 	const discoveryRaw = String(process.env.AGY_BRIDGE_DISCOVERY ?? file.bridgeDiscovery ?? DEFAULTS.bridgeDiscovery).toLowerCase();
 	const bridgeDiscovery: BridgeDiscovery = discoveryRaw === "legacy-global" ? "legacy-global" : "private";
+
+	// Extra long-window tool names for the bridge escalation (issue #6).
+	// Comma-separated in the env; junk entries and junk shapes are dropped,
+	// not fatal - loadConfig runs per bridge call and must never throw.
+	const longToolsRaw: unknown =
+		process.env.AGY_ESCALATE_LONG_TOOLS ?? file.escalateLongTools;
+	const longToolsParts: unknown[] = typeof longToolsRaw === "string"
+		? longToolsRaw.split(",")
+		: Array.isArray(longToolsRaw) ? longToolsRaw : [];
+	const escalateLongTools = longToolsParts
+		.filter((s): s is string => typeof s === "string")
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0)
+		.slice(0, 32);
 
 	const digest = process.env.AGY_DIGEST !== undefined
 		? ["1", "true", "on"].includes(process.env.AGY_DIGEST.toLowerCase())
@@ -347,12 +386,14 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		engine,
 		acp,
 		mode,
+		readOnly,
 		skipPermissions,
 		defaultModel,
 		defaultThinking,
 		askTool,
 		webTools,
 		bridgeTools,
+		escalateLongTools,
 		bridgeDiscovery,
 		digest,
 		systemPrompt,
@@ -365,10 +406,21 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 	};
 }
 
-/** Atomically persist a config patch (temp + rename). */
+/** Atomically persist a patch over raw file values, never env overrides.
+ *  Normalize nested objects to known keys, including legacy null values. */
 export function saveConfig(patch: Partial<AgyConfig>, configPath: string = CONFIG_PATH): AgyConfig {
-	const current = loadConfig(configPath);
-	const next: AgyConfig = { ...current, ...patch };
+	const file = readConfigFile(configPath);
+	const acp: Partial<AcpConfig> = file.acp && typeof file.acp === "object" ? file.acp : {};
+	const approvals: Partial<GateConfig> = file.approvals && typeof file.approvals === "object" ? file.approvals : {};
+	const next: AgyConfig = {
+		...DEFAULTS,
+		turnTimeoutMin: defaultTurnTimeoutMin(),
+		...Object.fromEntries(Object.entries(file).filter(([key]) => Object.hasOwn(DEFAULTS, key))),
+		agent: normalizeAgyAgentName(file.agent),
+		acp: { bin: acp.bin ?? DEFAULTS.acp.bin, usageEstimate: acp.usageEstimate ?? DEFAULTS.acp.usageEstimate },
+		approvals: { gateMode: approvals.gateMode ?? DEFAULTS.approvals.gateMode, mode: approvals.mode ?? DEFAULTS.approvals.mode },
+		...patch,
+	};
 	const dir = path.dirname(configPath);
 	fs.mkdirSync(dir, { recursive: true });
 	const tmp = `${configPath}.${process.pid}.tmp`;

@@ -6,9 +6,10 @@
 //
 // Extracted from index.ts so tests can import without activating the extension.
 
-import type { AssistantMessage, AssistantMessageEventStream, Context, Model } from "@earendil-works/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { McpResult } from "./extract-tool-results.js";
 import type { PromptStream } from "./prompt-stream.js";
+import type { RateLimitInfo } from "./rate-limit.js";
 
 export interface PendingToolCall {
 	toolName: string;
@@ -19,6 +20,10 @@ export class QueryContext {
 	// Query-scoped (fully isolated per query)
 	activeQuery: unknown | null = null;
 	currentPiStream: AssistantMessageEventStream | null = null;
+	/** Callback belonging to the call that owns the open Pi stream. */
+	currentOnResponse: SimpleStreamOptions["onResponse"] | undefined;
+	/** Coalesced usage waiting for the next open stream; pi-core receives every event separately. */
+	heldRateLimit: RateLimitInfo | undefined;
 	latestCursor = 0;
 	/** Latest model-visible Pi history, including delivered tool results, before the final assistant. */
 	checkpointMessages: Context["messages"] = [];
@@ -33,6 +38,10 @@ export class QueryContext {
 	turnToolCallIds: string[] = [];
 	/** Streaming-input handle for the active query — how steers reach CC mid-turn. */
 	promptStream: PromptStream | null = null;
+	/** Binds a later run's abort signal to this query. Set by the run that opened it;
+	 *  a run that continues it from a tool result (e.g. after pi terminated a tool
+	 *  batch and ended the opening run) has no other way to stop it. */
+	bindRunSignal: ((signal: AbortSignal | undefined, runStream: AssistantMessageEventStream) => void) | null = null;
 	/** Last rate-limit rejection seen on this query. Claude Code sends it just before the
 	 *  failure it caused, which is the only thing tying the two together. */
 	rateLimitRejection: { rateLimitType?: string; resetsAt?: number } | null = null;

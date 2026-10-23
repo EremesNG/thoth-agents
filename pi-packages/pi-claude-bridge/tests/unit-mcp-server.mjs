@@ -169,6 +169,22 @@ describe("MCP tool schema advertisement", () => {
 	});
 });
 
+// Local root unions preserve constraints under input; the tests above cover that contract.
+describe("MCP tool description", () => {
+	async function listTool(inputSchema) {
+		const server = createToolServer("custom-tools", [
+			{ name: "union_tool", description: "d", inputSchema, handler: async () => ({ content: [] }) },
+		]);
+		const { request } = await connectClient(server);
+		return (await request("tools/list", {})).result.tools[0];
+	}
+
+	it("leaves the description alone when there is no top-level combinator", async () => {
+		const { description } = await listTool({ type: "object", properties: { a: { type: "string" } } });
+		assert.strictEqual(description, "d");
+	});
+});
+
 describe("MCP tool invocation", () => {
 	// Two tools, so a handler picked by position rather than by name/id is visible.
 	const twoTools = (record) => [

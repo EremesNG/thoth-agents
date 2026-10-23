@@ -1,5 +1,5 @@
-import { AcpConnection } from "./connection.js";
-import { hasAcpToken } from "./setup.js";
+import { AcpAuthError, AcpConnection } from "./connection.js";
+import { clearAcpAuthVerified, hasAcpToken, writeAcpAuthVerified } from "./setup.js";
 
 // Explicit sign-in (/agy auth): spawn a short-lived server, send
 // `authenticate` (the RPC that fires the loopback listener + browser OAuth
@@ -8,7 +8,8 @@ import { hasAcpToken } from "./setup.js";
 // turns; the next driver connection picks the token up. The real server
 // blocks until the browser round-trip completes; the observed window is
 // minutes-scale (one flow timed out at ~8.5 minutes), so the timeout is
-// generous.
+// generous. Some servers use existing credentials without writing a token;
+// a live session/new probe verifies that tokenless branch on this connection.
 
 export const AUTH_TIMEOUT_MS = 10 * 60_000;
 
@@ -25,14 +26,20 @@ export interface AcpAuthOptions {
 	 *  authenticate replies, but write-after-reply is unverified; after a
 	 *  successful reply the run polls for the token up to this long before
 	 *  SIGTERM, so a laggard write is never killed mid-flight. A token that
-	 *  never appears is a distinct failure, not silent success. */
+	 *  never appears is verified with a live session probe. */
 	tokenGraceMs?: number;
+	/** Bridge-side sign-in evidence; never contains a credential. */
+	authVerifiedFile?: string;
+	/** Owning bridge callback. Defaults to clearing authVerifiedFile. */
+	onAuthInvalidated?: () => void;
 	timeoutMs?: number;
 	log?: (msg: string, data?: unknown) => void;
 }
 
 export interface AcpAuthResult {
 	ok: boolean;
+	/** Tokenless sign-in was verified with a live session probe. */
+	note?: string;
 	/** Failure reason (spawn, timeout, -32000 family, concurrent run). Absent when ok. */
 	error?: string;
 }
@@ -46,6 +53,7 @@ export function runAcpAuth(opts: AcpAuthOptions): Promise<AcpAuthResult> {
 		cwd: opts.cwd ?? process.cwd(),
 		extraEnv: opts.extraEnv,
 		authUrlFile: opts.authUrlFile,
+		onAuthInvalidated: opts.onAuthInvalidated ?? (() => clearAcpAuthVerified(opts.authVerifiedFile)),
 		log: opts.log ?? (() => {}),
 		onUpdate: () => {},
 		onExit: () => {},
@@ -58,13 +66,25 @@ export function runAcpAuth(opts: AcpAuthOptions): Promise<AcpAuthResult> {
 			await conn.request("authenticate", { methodId: "oauth-personal" }, opts.timeoutMs ?? AUTH_TIMEOUT_MS);
 			const deadline = Date.now() + grace;
 			while (!hasAcpToken(opts.tokenDir) && Date.now() < deadline) await sleep(200);
+			const result: AcpAuthResult = { ok: true };
 			if (!hasAcpToken(opts.tokenDir)) {
-				return {
-					ok: false,
-					error: `the server accepted the sign-in, but no token file appeared in ${opts.tokenDir ?? "~/.gemini/antigravity-acp"} within ${Math.round(grace / 1000)}s`,
-				};
+				try {
+					const session = await conn.newSession(opts.cwd ?? process.cwd());
+					await conn.closeSession(session.sessionId).catch((err: unknown) => {
+						// Cleanup is best effort, but an auth error must not be
+						// overwritten by recording a new verified marker below.
+						if (err instanceof AcpAuthError) throw err;
+					});
+				} catch {
+					return {
+						ok: false,
+						error: `the server accepted the sign-in but holds no usable credentials (session probe failed; token file absent in ${opts.tokenDir ?? "~/.gemini/antigravity-acp"}). Finish the Google sign-in if a browser opened, then retry /agy auth.`,
+					};
+				}
+				result.note = "the server authenticated from existing credentials; no browser sign-in was needed";
 			}
-			return { ok: true };
+			writeAcpAuthVerified(opts.authVerifiedFile);
+			return result;
 		} catch (err) {
 			return { ok: false, error: err instanceof Error ? err.message : String(err) };
 		} finally {

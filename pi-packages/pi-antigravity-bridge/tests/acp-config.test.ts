@@ -71,6 +71,27 @@ test("AGY_ENGINE env overrides the file", () => {
 	}
 });
 
+test("escalateLongTools: junk file shapes fall back to empty, strings and env still parse (issue #6)", () => {
+	const p = tmpConfig();
+	const prevEnv = process.env.AGY_ESCALATE_LONG_TOOLS;
+	delete process.env.AGY_ESCALATE_LONG_TOOLS;
+	try {
+		// Non-array, non-string junk must not throw the per-call loadConfig.
+		fs.writeFileSync(p, JSON.stringify({ escalateLongTools: 42 }));
+		assert.deepEqual(loadConfig(p).escalateLongTools, []);
+		// Non-string elements are dropped; strings are trimmed.
+		fs.writeFileSync(p, JSON.stringify({ escalateLongTools: [" mem_search ", 1, null, "agent_x", ""] }));
+		assert.deepEqual(loadConfig(p).escalateLongTools, ["mem_search", "agent_x"]);
+		// Env string still wins over the file.
+		process.env.AGY_ESCALATE_LONG_TOOLS = " a ,, b ";
+		assert.deepEqual(loadConfig(p).escalateLongTools, ["a", "b"]);
+	} finally {
+		if (prevEnv === undefined) delete process.env.AGY_ESCALATE_LONG_TOOLS;
+		else process.env.AGY_ESCALATE_LONG_TOOLS = prevEnv;
+		rm(p);
+	}
+});
+
 test("AGY_ACP_BIN env overrides acp.bin", () => {
 	const p = tmpConfig();
 	const prev = process.env.AGY_ACP_BIN;
@@ -142,6 +163,32 @@ test("legacy acp.permissions key is ignored on load and dropped on save", () => 
 		const acpRaw = raw.acp as Record<string, unknown>;
 		assert.equal("permissions" in acpRaw, false);
 	} finally {
+		rm(p);
+	}
+});
+
+
+test("escalateLongTools: strings, cap, empty env and raw-file persistence", () => {
+	const p = tmpConfig();
+	const prev = process.env.AGY_ESCALATE_LONG_TOOLS;
+	delete process.env.AGY_ESCALATE_LONG_TOOLS;
+	try {
+		fs.writeFileSync(p, JSON.stringify({ escalateLongTools: "slow_one, slow_two" }));
+		assert.deepEqual(loadConfig(p).escalateLongTools, ["slow_one", "slow_two"]);
+		const names = Array.from({ length: 40 }, (_, i) => "tool_" + i);
+		fs.writeFileSync(p, JSON.stringify({ escalateLongTools: names }));
+		assert.equal(loadConfig(p).escalateLongTools?.length, 32);
+		saveConfig({ escalateLongTools: ["custom"] }, p);
+		process.env.AGY_ESCALATE_LONG_TOOLS = "override";
+		saveConfig({ digest: true }, p);
+		assert.deepEqual(loadConfig(p).escalateLongTools, ["override"]);
+		assert.deepEqual(JSON.parse(fs.readFileSync(p, "utf8")).escalateLongTools, ["custom"]);
+		process.env.AGY_ESCALATE_LONG_TOOLS = "";
+		assert.deepEqual(loadConfig(p).escalateLongTools, []);
+		delete process.env.AGY_ESCALATE_LONG_TOOLS;
+		assert.deepEqual(loadConfig(p).escalateLongTools, ["custom"]);
+	} finally {
+		if (prev === undefined) delete process.env.AGY_ESCALATE_LONG_TOOLS; else process.env.AGY_ESCALATE_LONG_TOOLS = prev;
 		rm(p);
 	}
 });

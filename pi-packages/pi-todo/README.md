@@ -109,9 +109,15 @@ strings are refs). Refs are not stored on tasks or available in later calls.
 ]}
 ```
 
-Tool-result details retain the upstream persistence format, so existing `todo`
-history replays without migration. Do not load both forks in the same session:
-they register the same tool and command.
+Each successful state-changing call persists its full details snapshot as an
+`rpiv-todo-state` custom session entry, including calls nested inside codemode
+and every successful batch. Reads, errors, rolled-back batches and unchanged
+single updates append nothing. Session resume, tree navigation and compaction
+replay the latest valid custom snapshot on the current branch, falling back to
+legacy `todo` tool-result details only when no valid custom snapshot exists.
+The upstream persistence format is retained, so existing history replays without
+migration. Do not load both forks in the same session: they register the same
+tool and command.
 
 ## Development
 

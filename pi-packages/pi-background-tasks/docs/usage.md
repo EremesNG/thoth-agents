@@ -47,6 +47,36 @@ Use `max_bytes` for a UTF-8 output budget and `lines` for log tail rows; the old
 
 Default scope is the current session. `all:true` explicitly allows inspection or by-ID mutation of another session's task. Bulk clear dismisses owned terminal tasks only. Completion callbacks are follow-ups tied to the task's originating session; cancellation is quiet.
 
+### Completion callbacks
+
+Ordinary callback-enabled terminal transitions stay in the extension queue while
+Pi is busy, compacting, or has no usable live context (`ctx.isIdle()` is false or
+throws). Once idle, completions share one compact `background-completion-batch`
+follow-up that triggers a turn, rather than preloading separate Pi follow-ups.
+`session_start`, `agent_start`, and `agent_settled` refresh availability; delivery
+is scheduled asynchronously after the default 100 ms accumulation window. A
+lightweight retry timer also detects idle transitions without lifecycle events,
+such as the end of manual compaction.
+
+Set `PI_BETTER_CALLBACK_BATCH_MS` to `0`–`5000` milliseconds to tune the window
+(invalid values use 100 ms). The existing 2 KiB default payload budget and overflow
+rules apply: only represented completions are receipted; overflow and new arrivals
+wait for the next available run. Failed sends restore events for retry. Ownership
+is rechecked before sending, and `callback:false` never enters the queue.
+
+After an ordinary handoff, an `awaitingRun` guard blocks another until Pi has
+been observed busy, or the send fails. If Pi accepts a handoff but never exposes
+that busy state, the guard remains latched; there is deliberately no timeout
+that could duplicate a deferred run. This is a handoff-level guarantee, not an
+exactly-once guarantee for model execution. Urgent failure alerts remain immediate
+and bypass this gate, independently of Pi's `followUpMode`.
+
+API wrappers share the queue through the host event bus or session-manager
+identity. On reload, the old instance cancels its pending entries and timers;
+the new instance replays unreceipted terminal tasks with fresh ownership checks.
+Shared in-memory handoff receipts prevent resending an accepted notification
+when its durable receipt write failed.
+
 ### Interactive history
 
 Run `/bg`, or focus the Work panel with ← on an empty editor and press Enter on

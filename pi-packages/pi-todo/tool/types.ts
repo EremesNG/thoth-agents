@@ -12,6 +12,12 @@ export const TOOL_NAME = 'todo';
 export const TOOL_LABEL = 'Todo';
 export const COMMAND_NAME = 'todos';
 
+/**
+ * Full details snapshot for every state-changing call, including nested calls
+ * that leave no standalone toolResult. Persistence key — DO NOT rename.
+ */
+export const STATE_ENTRY_TYPE = 'rpiv-todo-state';
+
 // ---------------------------------------------------------------------------
 // User-facing strings (kept stable for /todos UX parity).
 // ---------------------------------------------------------------------------
@@ -47,9 +53,10 @@ export interface Task {
 
 /**
  * Persistence + replay snapshot. Every successful `todo` tool call returns this
- * shape under `details`; `state/replay.ts` reads the latest one from the branch
- * to reconstruct module state. Field order and field names are pinned by
- * cross-version replay compatibility.
+ * shape under `details`; state-changing calls also persist it as a custom
+ * session entry. Replay prefers those entries, falling back to legacy tool
+ * results. Field order and field names are pinned by cross-version replay
+ * compatibility.
  */
 export interface TaskDetails {
   action: TaskAction;

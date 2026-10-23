@@ -83,10 +83,14 @@ export function createMockPi() {
       Parameters<ExtensionAPI['registerShortcut']>[1]
     >(),
     events: new Map<string, Handler[]>(),
+    entries: [] as { customType: string; data: unknown }[],
   };
   const events = createEventBus();
   const pi = {
     events,
+    appendEntry: (customType: string, data?: unknown) => {
+      captured.entries.push({ customType, data });
+    },
     registerTool: (tool: ToolDefinition) => captured.tools.set(tool.name, tool),
     registerCommand: (
       name: string,

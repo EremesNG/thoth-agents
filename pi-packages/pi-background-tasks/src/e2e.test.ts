@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import backgroundTasksExtension from "./index.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
@@ -27,7 +27,11 @@ type RegisteredTool = {
 
 const harnesses: ExtensionAPI[] = [];
 afterEach(() => {
-  for (const pi of harnesses.splice(0)) getBackgroundTasksNavigator(pi).dispose();
+  for (const pi of harnesses.splice(0)) {
+    getCallbackBatcher(pi).cancel();
+    getBackgroundTasksNavigator(pi).dispose();
+  }
+  vi.useRealTimers();
 });
 
 describe("extension e2e", () => {
@@ -146,6 +150,55 @@ describe("extension e2e", () => {
     } finally { rmSync(taskDir(id), { recursive: true, force: true }); }
   });
 
+  it("#409 holds time-separated completions while busy and drains once after agent_settled", async () => {
+    vi.useFakeTimers();
+    const sessionId = "availability-gated-completions";
+    const harness = createHarness({ sessionId });
+    const ids = ["bg_availability_first", "bg_availability_second"];
+    try {
+      await harness.fireSessionStart();
+      await harness.fireAgentStart();
+      for (const id of ids) {
+        writeMeta({ id, kind: "process", status: "succeeded", startedAt: Date.now() - 1_000, endedAt: Date.now(),
+          logPath: `${taskDir(id)}/output.log`, callback: true,
+          callbackOrigin: { cwd: process.cwd(), sessionId },
+          command: "build", cwd: process.cwd(), spawnPid: process.pid });
+        await harness.fireSessionStart();
+        await vi.advanceTimersByTimeAsync(200);
+        expect(harness.messages).toHaveLength(0);
+        expect(readMeta(id)?.callbackSentAt).toBeUndefined();
+      }
+      expect(getCallbackBatcher(harness.pi).pendingCount()).toBe(2);
+      await harness.fireAgentSettled();
+      expect(harness.messages).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(harness.messages).toHaveLength(1);
+      expect(harness.messages[0]).toContain("2 background completions are ready");
+      for (const id of ids) {
+        expect(harness.messages[0]).toContain(id);
+        expect(readMeta(id)?.callbackSentAt).toBeDefined();
+      }
+      await harness.fireAgentSettled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.messages).toHaveLength(1);
+    } finally {
+      getCallbackBatcher(harness.pi).cancel();
+      for (const id of ids) rmSync(taskDir(id), { recursive: true, force: true });
+    }
+  });
+
+  it.each(["session_start", "agent_start"])("holds callbacks without a live context until %s refreshes it", async (lifecycle) => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    const batcher = getCallbackBatcher(harness.pi);
+    batcher.enqueue({ source: "background-task", id: "before-context", label: "build", status: "succeeded", detailTool: "bg_task_status" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(harness.messages).toEqual([]);
+    await harness.fire(lifecycle); // An idle context refresh, not a foreground run.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(harness.messages).toHaveLength(1);
+  });
+
   it("shows unresolved sidecar evidence ahead of task progress on every inspection surface", async () => {
     const sessionId = "failure-surface-session";
     const harness = createHarness({ sessionId, mode: "tui", hasUI: true });
@@ -203,6 +256,7 @@ describe("extension e2e", () => {
 
   it("queues exactly one terminal callback for callback-enabled tasks", async () => {
     const harness = createHarness();
+    await harness.fireSessionStart();
 
     const launch = await harness.execute("bg_task_watch", {
       name: "e2e callback watch",
@@ -226,6 +280,7 @@ describe("extension e2e", () => {
 
   it("does not inspect or mutate terminal callbacks from a different session", async () => {
     const originHarness = createHarness({ sessionId: "session-a", failUserMessage: true });
+    await originHarness.fireSessionStart();
 
     const launch = await originHarness.execute("bg_task_watch", {
       name: "e2e callback isolation",
@@ -383,7 +438,8 @@ describe("extension e2e", () => {
 
 function createHarness(options: { cwd?: string; sessionId?: string; failUserMessage?: boolean; mode?: string; hasUI?: boolean } = {}) {
   const tools = new Map<string, RegisteredTool>();
-  const sessionStartHandlers: Array<(event: unknown, ctx: unknown) => unknown> = [];
+  const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
+  let idle = true;
   const messages: string[] = [];
   const messageAttempts: string[] = [];
   const commands = new Map<string, any>();
@@ -393,6 +449,7 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
   const sessionId = options.sessionId ?? "test-session";
   const context = {
     cwd,
+    isIdle: () => idle,
     mode: options.mode ?? "print",
     hasUI: options.hasUI ?? false,
     ui: panel.ui,
@@ -407,7 +464,10 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
       tools.set(tool.name, tool);
     },
     on(eventName: string, handler: (event: unknown, ctx: unknown) => unknown) {
-      if (eventName === "session_start") sessionStartHandlers.push(handler);
+      const list = handlers.get(eventName) ?? [];
+      list.push(handler);
+      handlers.set(eventName, list);
+      return () => { const index = list.indexOf(handler); if (index >= 0) list.splice(index, 1); };
     },
     sendMessage(message: { content: string }) {
       messageAttempts.push(message.content);
@@ -418,6 +478,9 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
 
   backgroundTasksExtension(pi);
   harnesses.push(pi);
+  const fire = async (eventName: string) => {
+    for (const handler of [...handlers.get(eventName) ?? []]) await handler({ type: eventName }, context);
+  };
 
   return {
     pi,
@@ -439,9 +502,10 @@ function createHarness(options: { cwd?: string; sessionId?: string; failUserMess
       );
       return result.content.map((part) => part.text).join("\n");
     },
-    async fireSessionStart() {
-      for (const handler of sessionStartHandlers) await handler({ type: "session_start" }, context);
-    },
+    fire,
+    async fireSessionStart() { await fire("session_start"); },
+    async fireAgentStart() { idle = false; await fire("agent_start"); },
+    async fireAgentSettled() { idle = true; await fire("agent_settled"); },
   };
 }
 

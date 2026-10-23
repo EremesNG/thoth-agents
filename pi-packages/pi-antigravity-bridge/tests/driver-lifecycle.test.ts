@@ -139,13 +139,11 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 `);
 	const driver = new AcpDriver({ bin: process.execPath, binArgs: [bin] });
 	try {
-		const handle = await driver.run({ cwd: dir, model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true, prompt: "hello", timeoutMin: 0, inactivityMin: 0, startupTimeoutMs: 100 });
-		const outcome = await Promise.race([
-			handle.outcome,
+		await Promise.race([
+			assert.rejects(driver.run({ cwd: dir, model: "gemini-3.6-flash", mode: "accept-edits", skipPermissions: true,
+				prompt: "hello", timeoutMin: 0, inactivityMin: 0, startupTimeoutMs: 100 }), /startup|termination/),
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ACP startup remained silent")), 2000)),
 		]);
-		assert.equal(outcome.status, "ERROR");
-		assert.match(outcome.error ?? "", /startup|termination/);
 		assert.equal(driver.activeHandle, null);
 	} finally {
 		await driver.close("shutdown");

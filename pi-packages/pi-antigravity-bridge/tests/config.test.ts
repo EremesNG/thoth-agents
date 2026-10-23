@@ -31,8 +31,8 @@ test("config: load/save expose only current runtime settings", () => {
 	try {
 		const keys = [
 			"acp", "agent", "approvals", "askTool", "bridgeDiscovery", "bridgeTools",
-			"defaultModel", "defaultThinking", "digest", "engine", "inactivityTimeoutMin",
-			"mode", "queueTimeoutMs", "skipPermissions", "startupTimeoutMs", "systemPrompt",
+			"defaultModel", "defaultThinking", "digest", "engine", "escalateLongTools", "inactivityTimeoutMin",
+			"mode", "queueTimeoutMs", "readOnly", "skipPermissions", "startupTimeoutMs", "systemPrompt",
 			"turnTimeoutMin", "webTools",
 		];
 		assert.deepEqual(Object.keys(loadConfig(p)).sort(), keys);

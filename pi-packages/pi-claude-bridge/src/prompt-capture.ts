@@ -1,6 +1,6 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { formatProjectContext } from "./agents-md.js";
-import { DEBUG_LOG_PATH } from "./log-paths.js";
+import { debugLogPath } from "./log-paths.js";
 import { renderSkillsBlock, type SkillReadTool } from "./skills.js";
 
 // What pi assembled for one agent, kept so the bridge can append only the
@@ -199,9 +199,11 @@ export class PromptCaptures {
 				+ `Closest known match diverges at offset ${matches[0]?.firstDivergent ?? "?"} `
 				+ `(${matches.length ? matches[0].key.length : 0}-char key${matches[0]?.source ? `, last recorded at ${matches[0].source}` : ""}). `
 				+ `Claude Code would receive none of this turn's context files, skills or custom instructions. `
-				+ `The usual cause is an extension loaded after claude-bridge that rewrites the system prompt from before_agent_start — `
-				+ `one that wraps it is fine, one that rebuilds or strips it leaves nothing to match. `
-				+ `(Also possible: pi rebuilt the prompt outside before_agent_start — a late-registered tool or fresh resource discovery.)`,
+				+ `When the divergence sits at a section's opening tag, the capture and this prompt disagree about that section — `
+				+ `pi's mcp_servers since pi 0.99.2, or one an extension added. `
+				+ `Otherwise an extension loaded after claude-bridge rewrote the system prompt from before_agent_start — `
+				+ `one that wraps it is fine, one that rebuilds or strips it leaves nothing to match — `
+				+ `or pi rebuilt the prompt outside before_agent_start (a late-registered tool or fresh resource discovery).`,
 			);
 		}
 
@@ -439,7 +441,7 @@ function assertSendablePrompt(parts: readonly PromptPart[], capture: PromptCaptu
 		`  Capture: ${capture.source ?? "unknown"}, ${capture.inherited.length} inherited capture(s) substituted.`,
 		"  If this came from an inherited pi prompt, see README \"Compatibility with other extensions\".",
 		"  If it is your own text, reword or remove it. CLAUDE_BRIDGE_DEBUG=1 writes the full prompt to",
-		`  ${DEBUG_LOG_PATH}.`,
+		`  ${debugLogPath()}.`,
 	].join("\n"));
 }
 

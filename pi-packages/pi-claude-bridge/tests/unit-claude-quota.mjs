@@ -229,7 +229,7 @@ it('handles stream and spawn errors without leaving a process or input open', as
   assert.deepEqual(await input, { value: undefined, done: true });
 });
 
-it('registers /claude quota, reuses bridge child settings, and does not fetch on startup or invalid arguments', async (t) => {
+it('registers /claude quota in the session cwd, reuses bridge child settings, and does not fetch on startup or invalid arguments', async (t) => {
   const { globalConfigPath } = await import('../src/config.js');
   const configPath = globalConfigPath();
   const previous = existsSync(configPath)
@@ -249,6 +249,7 @@ it('registers /claude quota, reuses bridge child settings, and does not fetch on
     '../src/index.js?quota-provider-config'
   );
   const cwd = mkdtempSync(join(tmpdir(), 'claude-quota-config-'));
+  assert.notEqual(cwd, process.cwd());
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   mkdirSync(join(cwd, CONFIG_DIR_NAME));
   writeFileSync(
@@ -292,8 +293,8 @@ it('registers /claude quota, reuses bridge child settings, and does not fetch on
     calls++;
     assert.equal(
       options.cwd,
-      process.cwd(),
-      'uses the provider cwd, not another command-context project',
+      cwd,
+      'uses the issuing Pi session cwd, not the host process cwd',
     );
     assert.equal(options.pathToClaudeCodeExecutable, 'configured-cli');
     assert.equal(

@@ -54,6 +54,8 @@ export interface AcpDriverOptions {
 	/** Record file for BROWSER-captured OAuth URLs; passed to the connection,
 	 *  which logs "auth-url" when the server tries to open a login. */
 	authUrlFile?: string;
+	/** Owning bridge callback, attached only to this driver's connections. */
+	onAuthInvalidated?: () => void;
 	/** Bridge registration for session/new AND session/load. */
 	mcpServers?: () => AcpMcpServer[];
 	/** Gate B stopgap: how ACP turns synthesize usage while the server sends
@@ -246,7 +248,8 @@ export class AcpDriver implements TurnDriver {
 		this.#active = turn;
 		this.#state = "running";
 		this.#stats.turns += 1;
-		const previousConnection = this.#conn;
+		let setupStarted = false;
+		let promptConnection: AcpConnection | undefined;
 		try {
 			const sinkFailure = this.#log("turn-start", {
 				model: request.model,
@@ -271,19 +274,35 @@ export class AcpDriver implements TurnDriver {
 				}
 			}
 
-			// Execute asynchronously: the handle returns as soon as the prompt is
-			// dispatched, and activities stream through next() (stream-json contract).
-			void this.#executeTurn(turn).catch((err: unknown) => {
+			setupStarted = true;
+			const conn = await waitWithDeadline(this.#prepareTurn(turn), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "ACP exclusive startup");
+			if (!conn || turn.closed) throw new Error((await turn.outcome).error ?? "ACP turn ended before prompt dispatch");
+			promptConnection = conn;
+
+			// Setup and prompt dispatch are separate startup-type waits. Bound the
+			// target pipe acknowledgement, not the later model response.
+			let onDispatched!: () => void;
+			const dispatched = new Promise<void>(resolve => { onDispatched = resolve; });
+			void this.#executeTurn(turn, conn, () => {
+				if (!turn.closed && conn.alive) onDispatched();
+			}).catch((err: unknown) => {
 				if (turn.closed || this.#active !== turn) return;
-				void this.#killConnection();
+				void this.#killConnection(conn);
 				this.#failTurn(turn, `ACP turn failed: ${describe(err)}`);
 			});
+			await waitWithDeadline(Promise.race([
+				dispatched,
+				turn.outcome.then(outcome => { throw new Error(outcome.error ?? "ACP turn ended before prompt dispatch"); }),
+			]), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "ACP prompt dispatch startup");
 			return this.#makeHandle(turn);
 		} catch (err) {
-			// No prompt RPC can run before this synchronous startup returns.
-			// Roll back the turn, but preserve a predecessor's reusable connection.
+			// An unacknowledged write can still be buffered, even on a reused
+			// connection. Retire that captured transport before releasing this run.
+			// Setup exceptions also retire pending RPCs, as before; a callback
+			// failure before setup leaves a predecessor's connection untouched.
 			try {
-				if (this.#active === turn && this.#conn !== previousConnection) this.#killConnection();
+				if (promptConnection) this.#killConnection(promptConnection);
+				else if (setupStarted && this.#active === turn) this.#killConnection();
 			} finally {
 				this.#failTurn(turn, `ACP startup failed: ${describe(err)}`);
 			}
@@ -370,10 +389,8 @@ export class AcpDriver implements TurnDriver {
 		return conn;
 	}
 
-	async #executeTurn(turn: ActiveTurn): Promise<void> {
+	async #executeTurn(turn: ActiveTurn, conn: AcpConnection, onDispatched: () => void): Promise<void> {
 		const request = turn.request;
-		const conn = await waitWithDeadline(this.#prepareTurn(turn), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "ACP exclusive startup");
-		if (!conn || turn.closed) return;
 
 		// Timers: overall (turn deadline, pause-aware) + idle (inactivity).
 		this.#armOverall(turn);
@@ -387,7 +404,7 @@ export class AcpDriver implements TurnDriver {
 		try {
 			// Nothing to cancel before the prompt RPC exists; see promptStarted.
 			turn.promptStarted = true;
-			const result = await conn.prompt(turn.sessionId, request.prompt, request.images, request.contextBlock);
+			const result = await conn.prompt(turn.sessionId, request.prompt, request.images, request.contextBlock, onDispatched);
 			if (turn.closed) return;
 			turn.sawResult = true;
 			// When a future server fills ACP PromptResponse.usage, exact counts
@@ -549,6 +566,7 @@ export class AcpDriver implements TurnDriver {
 			binArgs: this.#opts.binArgs,
 			extraEnv: this.#opts.extraEnv,
 			authUrlFile: this.#opts.authUrlFile,
+			onAuthInvalidated: this.#opts.onAuthInvalidated,
 			cwd: request.cwd,
 			mcpServers: this.#opts.mcpServers,
 			log: (msg, data) => this.#log(msg, data),

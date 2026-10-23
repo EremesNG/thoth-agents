@@ -135,6 +135,9 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
       const writeArgs = context?.args as WriteArgs | undefined;
       const content = String(writeArgs?.content ?? '');
       const contentLines = content ? content.split('\n') : [];
+      if (contentLines.length > 1 && contentLines.at(-1) === '') {
+        contentLines.pop();
+      }
       const lineCount = contentLines.length || 1;
 
       return createComponent((width: number) => {

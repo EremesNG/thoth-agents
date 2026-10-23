@@ -505,3 +505,13 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** an escalated bridge call that completes after the model ended its turn without polling
 - **WHEN** the next turn boundary is reached
 - **THEN** the result is delivered once as a late prompt in its conversation and remains pollable
+
+### Requirement: Background completion callbacks wait for an idle agent
+
+`@thoth-agents/pi-background-tasks` MUST hold ordinary background completion callbacks while the Pi agent is busy and deliver a session's held callbacks as one aggregated follow-up that triggers a turn after the agent becomes idle. It MUST NOT hand off another ordinary callback batch until the previous handoff has started a run or failed, and MUST keep urgent notifications immediate.
+
+#### Scenario: Background completion callbacks wait for an idle agent
+
+- **GIVEN** two background tasks of one session that complete while the agent is running a turn
+- **WHEN** the agent settles
+- **THEN** one follow-up message reports both completions and triggers one turn, and no second ordinary handoff happens before that turn starts

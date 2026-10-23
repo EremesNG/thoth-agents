@@ -29,11 +29,28 @@ Tests: `src/harness/core/agent-pack.test.ts`,
 ## Oracle gate results and ordinary returns
 
 Only Oracle plan-review and final-verification assignments return schema-versioned
-JSON in exactly one `thoth-result` fence as the entire final message. Root validates
-the unchanged native result before recording plan-review OKAY or final-verification
-PASS, then judges its evidence and content. Invalid results are not approval; at
-most one format-only repair may preserve the findings and verdict. A missing
-validator blocks only gate approvals, not ordinary delegation.
+JSON in exactly one `thoth-result` fence as the entire final message. Delivery adds
+one `thoth-gate-verdict` line without altering that envelope. Before recording
+plan-review OKAY or final-verification PASS, root requires exactly one delivered
+verdict outside the fence with `valid:true` and the assigned kind. Plan review
+requires `verdict:"OKAY"` and `record` null or the assigned record; ignore `mode`
+and `recordDigest`. Only final verification checks mode and digest: require
+`verdict:"PASS"` plus either the assigned `record`, `mode:"record"` and
+`recordDigest:"match"`, or, for a recordless small change, `mode:"no-record"`,
+null `record` and `recordSha256`, and `recordDigest:"none"`. Multiple verdicts
+or one inside the fence are invalid, not grounds for CLI fallback. Root
+copies the verdict and `recordSha256` into the record and still judges content,
+freshness, independence and provenance. Validation is not authorization.
+
+Never re-emit an envelope to validate it when a verdict exists. If a valid
+record-bound final-verification verdict reports `recordDigest:"unavailable"`,
+independently calculate the exact UTF-8 record-prefix hash before
+`## Authorization` and compare with `recordSha256`;
+mismatch or inability to calculate means no approval, without a validator rerun.
+Only when no verdict was delivered does root use the compact CLI fallback on the
+unchanged native result. Invalid results are not approval; at most one format-only
+repair, shared with runtime enforcement, may preserve findings and verdict. A
+missing validator blocks only gate approvals, not ordinary delegation.
 
 Other Thoth specialists, including Oracle diagnosis/advice, return compact
 markdown: conclusion, evidence, verification, risks, and openQuestions. Worker,
@@ -46,8 +63,9 @@ Root presents accepted results to the user as readable prose.
   exports `SPECIALIST_RESULT_CONTRACT` and types from
   [`result-contract.ts`](../../src/harness/core/result-contract.ts). The contract
   supports only role `oracle`, plan-review (OKAY|REJECT), and final-verification
-  (PASS|FAIL|BLOCKED). Final verification requires `reviewedRecord` and
-  `reviewedRecordSha256`. Unknown fields, duplicate keys, evidence references,
+  (PASS|FAIL|BLOCKED). Record-bound final verification requires `reviewedRecord`
+  and `reviewedRecordSha256`; recordless small-change verification omits both.
+  Unknown fields, duplicate keys, evidence references,
   verdict/status consistency, and record digest binding are checked.
 - **Generation and shipping:** `pnpm run generate:result-contract` writes
   [`skills/thoth-sdd/scripts/result-contract.json`](../../skills/thoth-sdd/scripts/result-contract.json).
@@ -55,11 +73,15 @@ Root presents accepted results to the user as readable prose.
   plugin. The dependency-free installed validator reads this adjacent data.
 - **Validator and diagnostics:**
   [`validate-result.mjs`](../../skills/thoth-sdd/scripts/validate-result.mjs)
-  exports `validateResult` and `RESULT_VALIDATOR_USAGE`. Its CLI is
-  `node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--input <path>]`.
-  Input is the full unchanged native terminal result from stdin or `--input`;
-  output is JSON with `valid`, `issues`, and an envelope on success. Exit codes
-  are 0 for valid, 1 for invalid, and 2 for invocation/input errors. Issue codes
+  exports `validateResult`, `summarizeGateResult`, `formatGateVerdict`, and
+  `RESULT_VALIDATOR_USAGE`. The explicit fallback CLI is
+  `node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]`.
+  Input is the full unchanged native result from stdin or an existing `--input`;
+  output is only compact summary JSON: `valid`, `role`, `kind`, `verdict`, `mode`,
+  `record`, `recordSha256`, `recordDigest`, and `issues` (code/path).
+  `recordDigest` is `none`, `match`, `mismatch`, or `unavailable`. Delivery lines
+  may also identify `agent` and `taskId`. Exit codes are 0 for structurally valid
+  (still check assignment/content), 1 for invalid, and 2 for invocation/input errors. Issue codes
   include `ENVELOPE_FORMAT`, `JSON_DUPLICATE_KEY`, `ROLE_MISMATCH`, and
   `RECORD_DIGEST_MISMATCH`. The approval/repair procedure belongs to
   [`skills/thoth-sdd/SKILL.md`](../../skills/thoth-sdd/SKILL.md).
@@ -67,7 +89,17 @@ Root presents accepted results to the user as readable prose.
   provides compact role fields with an Oracle-only gate exception.
   [`prompt-sections.ts`](../../src/agents/prompt-sections.ts) embeds these in
   specialist return contracts and gives root a gate-only validation pointer
-  across harnesses. Validation is prompt/skill-guided, not Pi runtime enforcement.
+  across harnesses. Runtime delivery validates structure and available record
+  binding; approval, provenance and authorization remain root judgments.
+- **Delivery surfaces:** Pi (`src/pi.ts`, `src/pi-gate-verdict.ts`) attaches verdicts
+  on completion notifications, `subagent_result`, and task-mode `subagent_run`;
+  match the delivered `taskId` to the assignment. OpenCode's
+  `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. Claude
+  Code's PostToolUse `Agent` hook covers completed foreground
+  `thoth-agents:oracle` only: run gates in the foreground, or use fallback if a
+  background run delivered no verdict. Codex's PostToolUse `wait_agent` hook needs
+  enabled, trusted plugin hooks; `agent` is the status-map key, not proof of Oracle
+  provenance. Claude and Codex use `plugin/thoth-hooks/gate-verdict.mjs`.
 - **Regression coverage:** contract/validator tests pin gate schema, generated-data
   equality, malformed JSON, evidence references, review verdicts/digests, CLI
   exits, plugin asset parity and standalone installed execution. Prompt-rendering

@@ -220,6 +220,7 @@ function createPluginManifest(
     description:
       'Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.',
     author: { name: 'thoth-agents' },
+    hooks: './claude-hooks/hooks.json',
   };
 }
 
@@ -291,6 +292,28 @@ export const claudeCodeAdapter: HarnessAdapter = {
     const componentArtifacts: HarnessArtifact[] = [
       ...renderSubagentArtifacts(config),
       renderOrchestratorArtifact(config),
+      {
+        harness: 'claude',
+        kind: 'hook-config',
+        path: 'claude-hooks/hooks.json',
+        description: 'Claude foreground Oracle gate verdict delivery hook.',
+        content: stableJson({
+          hooks: {
+            PostToolUse: [
+              {
+                matcher: 'Agent',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: `node "\${CLAUDE_PLUGIN_ROOT}/thoth-hooks/gate-verdict.mjs"`,
+                    timeout: 10,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      },
       {
         harness: 'claude',
         kind: 'mcp-config',

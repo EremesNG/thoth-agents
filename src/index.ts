@@ -8,6 +8,7 @@ import {
   createAutoUpdateCheckerHook,
   createDelegateTaskRetryHook,
   createJsonErrorRecoveryHook,
+  createOracleGateVerdictHook,
   ForegroundFallbackManager,
 } from './hooks';
 import { createBuiltinMcps } from './mcp';
@@ -107,6 +108,9 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
 
   // Initialize JSON parse error recovery hook
   const jsonErrorRecoveryHook = createJsonErrorRecoveryHook(ctx);
+
+  // Initialize delivery-time Oracle gate validation
+  const oracleGateVerdictHook = createOracleGateVerdictHook(ctx);
 
   // Initialize foreground fallback manager for runtime model switching
   const foregroundFallback = new ForegroundFallbackManager(
@@ -301,7 +305,7 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
       );
     },
 
-    // Post-tool hooks: retry guidance for delegation and JSON errors.
+    // Post-tool hooks: delegation retry, JSON recovery, then Oracle gate verdicts.
     'tool.execute.after': async (input, output) => {
       await delegateTaskRetryHook['tool.execute.after'](
         input as { tool: string },
@@ -320,6 +324,8 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
           metadata: unknown;
         },
       );
+
+      await oracleGateVerdictHook['tool.execute.after'](input, output);
     },
   };
 };

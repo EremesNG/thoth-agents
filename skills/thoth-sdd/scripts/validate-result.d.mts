@@ -44,4 +44,23 @@ export function validateResult(
   message: string,
   options?: ResultValidationOptions,
 ): ResultValidation;
+export interface GateSummaryOptions {
+  cwd?: string;
+}
+export interface GateResultSummary {
+  valid: boolean;
+  role: string | null;
+  kind: string | null;
+  verdict: string | null;
+  mode: 'record' | 'no-record';
+  record: string | null;
+  recordSha256: string | null;
+  recordDigest: 'none' | 'match' | 'mismatch' | 'unavailable';
+  issues: Pick<ResultValidationIssue, 'code' | 'path'>[];
+}
+export function summarizeGateResult(
+  message: string,
+  options?: GateSummaryOptions,
+): GateResultSummary;
+export function formatGateVerdict(summary: GateResultSummary): string;
 export const RESULT_VALIDATOR_USAGE: string;

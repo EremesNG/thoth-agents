@@ -557,8 +557,13 @@ export function validateCodexHookSurface(
     );
   }
 
+  // PostToolUse must be additive: Codex's `message` feedback can replace the result.
+  const supportedOutputFields =
+    input.event === 'PostToolUse'
+      ? ['additionalContext']
+      : SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS;
   const unsupportedOutputField = input.outputFields?.find(
-    (field) => !SUPPORTED_CODEX_HOOK_OUTPUT_FIELDS.includes(field),
+    (field) => !supportedOutputFields.includes(field),
   );
 
   if (unsupportedOutputField) {

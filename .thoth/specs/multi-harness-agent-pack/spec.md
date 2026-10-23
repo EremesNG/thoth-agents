@@ -114,13 +114,13 @@ native manager.
 
 ### Requirement: Generate the shared plugin from canonical source
 
-Claude agents MUST be generated from `src/agents/`. The shared bundle MUST receive one copy of the canonical thoth-owned `skills/` tree and MUST contain separate harness-specific manifests, MCP surfaces and Codex hook declarations with their payload files placed outside any path another harness auto-discovers and referenced explicitly by the Codex manifest. The Codex plugin manifest MUST NOT declare generated role TOMLs; the CLI writer remains their canonical delivery surface. Build and npm version lifecycle commands MUST synchronize the generated shared plugin output, including Codex hook payloads.
+Claude agents MUST be generated from `src/agents/`. The shared bundle MUST receive one copy of the canonical thoth-owned `skills/` tree and MUST contain separate harness-specific manifests, MCP surfaces, Codex hook declarations and Claude hook declarations, each with its payload or script files placed outside any path another harness auto-discovers and referenced explicitly by its own harness manifest, with no `plugin/hooks/hooks.json`. The Codex plugin manifest MUST NOT declare generated role TOMLs; the CLI writer remains their canonical delivery surface. Build and npm version lifecycle commands MUST synchronize the generated shared plugin output, including hook declarations, hook scripts and Codex hook payloads.
 
 #### Scenario: Generate the shared plugin from canonical source
 
 - **GIVEN** a changed canonical role prompt
 - **WHEN** the build runs
-- **THEN** the Codex hook payload for that role in `plugin/codex-hooks/` is regenerated while `codex-hooks/hooks.json` declarations remain byte-identical and no `plugin/hooks/hooks.json` exists for Claude Code to auto-discover
+- **THEN** the Codex hook payload for that role in `plugin/codex-hooks/` is regenerated while `codex-hooks/hooks.json` and `claude-hooks/hooks.json` declarations remain byte-identical and no `plugin/hooks/hooks.json` exists for either harness to auto-discover 
 
 ### Requirement: Preserve native plugin-manager ownership
 
@@ -533,13 +533,13 @@ Lean Pi children MUST keep the specialist prompt and lean isolation while receiv
 
 ### Requirement: Structured specialist results
 
-Only Oracle results that gate SDD transitions (plan review and final verification) MUST end with exactly one fenced `thoth-result` JSON envelope conforming to the gate contract, and root MUST validate it with the bundled validator before recording plan-review OKAY or final-verification PASS, treat a missing or malformed envelope as no approval, allow at most one format-only repair, and still judge the content; other Thoth specialist results use compact fields judged by root, user-defined agent results keep their own free format, and neither is rejected for format nor counts as an approval.
+Only Oracle results that gate SDD transitions (plan review and final verification) MUST end with exactly one fenced `thoth-result` JSON envelope conforming to the gate contract, and root MUST accept the result only from exactly one valid delivery verdict produced by the bundled validator for that result (or, when no verdict was delivered, from the bundled validator run explicitly) before recording plan-review OKAY or final-verification PASS, treat a missing or malformed envelope as no approval, allow at most one format-only repair, and still judge the content; other Thoth specialist results use compact fields judged by root, user-defined agent results keep their own free format, and neither is rejected for format nor counts as an approval.
 
 #### Scenario: Structured specialist results
 
-- **GIVEN** an Explorer answering a user question and an Oracle final verification without a valid envelope
+- **GIVEN** an Explorer answering a user question and an Oracle final verification whose delivery verdict reports an invalid envelope
 - **WHEN** root evaluates both
-- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval
+- **THEN** the Explorer result is judged on content without validation and the Oracle result records no approval 
 
 ### Requirement: Match progress concurrency to the native tool
 
@@ -570,3 +570,13 @@ The Codex plugin MUST deliver the ambient root prompt through a `SessionStart` h
 - **GIVEN** a trusted thoth-agents Codex plugin and thin agent TOMLs
 - **WHEN** a Codex session starts and spawns `thoth-agents-oracle`
 - **THEN** the root receives the orchestrator prompt as developer context, the child receives the Oracle role prompt as developer context, and no thoth content exists in `~/.codex/AGENTS.md`
+
+### Requirement: Delivery-time Oracle gate verdicts
+
+Each harness integration MUST validate Oracle gate envelopes at native result delivery with the bundled validator and add exactly one compact `thoth-gate-verdict` line per delivered message (Pi background completion notifications, `subagent_result` and task-mode `subagent_run` results, OpenCode `task` results, Claude Code foreground `Agent` results, Codex `wait_agent` results) without altering the envelope, MUST leave non-Oracle and non-gate results unchanged, and root MUST NOT re-emit an envelope to validate it when a verdict was delivered; the explicit validator fallback MUST print only the compact summary.
+
+#### Scenario: Delivery-time Oracle gate verdicts
+
+- **GIVEN** a Pi root whose background Oracle plan review completed with a valid envelope
+- **WHEN** root reads the completion notification
+- **THEN** the delivered result carries one `thoth-gate-verdict` line reporting valid, the kind, the verdict and the record, and root records OKAY without running the validator through bash 

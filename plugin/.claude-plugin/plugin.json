@@ -4,5 +4,6 @@
   "description": "Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.",
   "author": {
     "name": "thoth-agents"
-  }
+  },
+  "hooks": "./claude-hooks/hooks.json"
 }

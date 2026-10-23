@@ -1,0 +1,1 @@
+export { createOracleGateVerdictHook } from './hook';

@@ -148,6 +148,37 @@ detection remains separate from specialist validation. The seeded implemented
 fixture is checked offline against the installed verify and closeout validator.
 Root memory-provider calls are outside this suite's assertions.
 
+The grader's raw-envelope validation is separate from root's delivery contract:
+root uses exactly one harness-delivered `thoth-gate-verdict` outside the fence,
+requires `valid:true` and the assigned kind. Plan review requires `verdict:"OKAY"`
+and `record` null or the assigned record; mode and digest are not approval checks.
+Final verification requires `verdict:"PASS"` and either the assigned record with
+`mode:"record"` and matching record-prefix digest, or `mode:"no-record"`, null
+`record`/`recordSha256` and `recordDigest:"none"` for a recordless small change.
+It copies the verdict and `recordSha256` into the record without re-emitting the
+envelope. A valid record-bound final-verification verdict with
+`recordDigest:"unavailable"` needs an independent prefix-hash comparison only,
+never a validator rerun; disagreement blocks approval. Only no
+verdict delivered permits the unchanged-result CLI fallback, whose output is
+compact JSON (exit 0: structure only; 1: no approval; 2: validation unavailable).
+More than one verdict or a verdict inside the envelope is invalid, not fallback.
+
+Focused delivery tests: `src/pi-gate-verdict.test.ts`, `src/pi.test.ts`,
+`src/hooks/oracle-gate-verdict/index.test.ts`, and
+`src/harness/gate-hook-script.test.ts`. Prompt-rendering and bundled-skills tests
+cover root acceptance and fallback instructions; validator tests cover digest and
+CLI semantics. Regressions cover forged verdict markers, embedded OpenCode wrapper
+terminators, input preservation and freshly computed exact-tail deduplication.
+Unwrapped OpenCode output has no trusted boundary: always validate it whole and
+append, even on a hypothetical repeat (multiple verdicts fail closed).
+Pi covers completion notifications, `subagent_result`, and
+task-mode `subagent_run`; OpenCode covers Oracle `task` output. Claude covers
+completed foreground `Agent` results only (gate assignments must use foreground;
+background runs get no verdict). Codex covers completed `wait_agent` results with
+enabled, trusted hooks, preserving root's Oracle-provenance check against the
+`agent` status-map key. These tests do not claim equivalent harness enforcement.
+Closeout still requires the unchanged final-verification envelope in the record.
+
 Ordinary specialist returns use compact markdown and custom agents keep their own
 format; neither is envelope-graded or counts as approval. The memory case retains
 explicit MEMORY scope checks on every delegation, with no envelope requirement.

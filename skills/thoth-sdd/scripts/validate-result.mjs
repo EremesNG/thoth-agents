@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { recordPrefixSha256 } from './record-digest.mjs';
+import contract from './result-contract.json' with { type: 'json' };
 
-const contract = JSON.parse(
-  readFileSync(new URL('./result-contract.json', import.meta.url), 'utf8'),
-);
 const childPath = (path, key) =>
   `${path}/${String(key).replaceAll('~', '~0').replaceAll('/', '~1')}`;
 
@@ -123,32 +122,39 @@ function checkExpectations(options, issue) {
     );
 }
 
-export function validateResult(message, options = {}) {
+function parseEnvelope(message) {
+  const trimmed = typeof message === 'string' ? message.trim() : '';
+  const block = new RegExp(
+    `^\`\`\`${contract.fence}\\r?\\n([\\s\\S]*?)\\r?\\n\`\`\`$`,
+  ).exec(trimmed);
+  if (!block || (trimmed.match(/^```.*$/gm) ?? []).length !== 2) {
+    return {
+      issues: [
+        {
+          code: 'ENVELOPE_FORMAT',
+          path: '',
+          message:
+            'Expected exactly one thoth-result fence and no surrounding prose.',
+        },
+      ],
+    };
+  }
+  try {
+    return { envelope: parseStrictJSON(block[1]), issues: [] };
+  } catch (error) {
+    return { issues: [error] };
+  }
+}
+
+function validateEnvelope(parsed, options) {
   const issues = [];
   const issue = (code, path, text) =>
     issues.push({ code, path, message: text });
   const invalid = () => ({ valid: false, issues });
   checkExpectations(options, issue);
   if (issues.length) return invalid();
-  const trimmed = typeof message === 'string' ? message.trim() : '';
-  const block = new RegExp(
-    `^\`\`\`${contract.fence}\\r?\\n([\\s\\S]*?)\\r?\\n\`\`\`$`,
-  ).exec(trimmed);
-  if (!block || (trimmed.match(/^```.*$/gm) ?? []).length !== 2) {
-    issue(
-      'ENVELOPE_FORMAT',
-      '',
-      'Expected exactly one thoth-result fence and no surrounding prose.',
-    );
-    return invalid();
-  }
-  let envelope;
-  try {
-    envelope = parseStrictJSON(block[1]);
-  } catch (error) {
-    issues.push(error);
-    return invalid();
-  }
+  if (parsed.issues.length) return { valid: false, issues: parsed.issues };
+  const { envelope } = parsed;
   function check(value, schema, path) {
     const type =
       value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
@@ -314,9 +320,83 @@ export function validateResult(message, options = {}) {
   return issues.length ? invalid() : { valid: true, envelope, issues };
 }
 
+export function validateResult(message, options = {}) {
+  return validateEnvelope(parseEnvelope(message), options);
+}
+
+const stringOrNull = (value) => (typeof value === 'string' ? value : null);
+function gateMode(envelope) {
+  const review = envelope?.review;
+  return review?.kind === contract.rules.recordBindingReviewKind &&
+    contract.rules.recordBindingRequiredFields.every(
+      (key) => !Object.hasOwn(review, key),
+    )
+    ? 'no-record'
+    : 'record';
+}
+
+function recordDigest(review, cwd) {
+  if (!review || !Object.hasOwn(review, 'reviewedRecordSha256')) return 'none';
+  if (!cwd || typeof review.reviewedRecord !== 'string') return 'unavailable';
+  const inside = (root, path) => {
+    const fromRoot = relative(root, path);
+    return (
+      fromRoot !== '..' &&
+      !fromRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(fromRoot)
+    );
+  };
+  try {
+    const root = resolve(cwd);
+    const path = resolve(root, review.reviewedRecord);
+    if (!inside(root, path) || !inside(realpathSync(root), realpathSync(path)))
+      return 'unavailable';
+    return recordPrefixSha256(readFileSync(path, 'utf8')) ===
+      review.reviewedRecordSha256
+      ? 'match'
+      : 'mismatch';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+function summarizeValidation(envelope, result, cwd) {
+  const review = envelope?.review;
+  return {
+    valid: result.valid,
+    role: stringOrNull(envelope?.role),
+    kind: stringOrNull(review?.kind),
+    verdict: stringOrNull(review?.verdict),
+    mode: gateMode(envelope),
+    record: stringOrNull(review?.reviewedRecord),
+    recordSha256: stringOrNull(review?.reviewedRecordSha256),
+    recordDigest: recordDigest(review, cwd),
+    issues: result.issues.map(({ code, path }) => ({ code, path })),
+  };
+}
+
+export function summarizeGateResult(message, { cwd } = {}) {
+  const parsed = parseEnvelope(message);
+  return summarizeValidation(
+    parsed.envelope,
+    validateEnvelope(parsed, {
+      noRecord: gateMode(parsed.envelope) === 'no-record',
+    }),
+    cwd,
+  );
+}
+
+export function formatGateVerdict(summary) {
+  return `thoth-gate-verdict ${JSON.stringify(summary)}`;
+}
+
 export const RESULT_VALIDATOR_USAGE =
   'node validate-result.mjs [--role oracle] [--review-kind plan-review|final-verification] [--record-sha256 <hex>] [--no-record] [--input <path>]';
 function main(args) {
+  const print = (result, envelope) =>
+    console.log(
+      JSON.stringify(summarizeValidation(envelope, result, process.cwd())),
+    );
   const options = {};
   let input;
   const names = {
@@ -335,14 +415,7 @@ function main(args) {
       (flag !== '--no-record' &&
         (!args[index + 1] || args[index + 1].startsWith('--')))
     ) {
-      console.log(
-        JSON.stringify({
-          valid: false,
-          issues: [
-            { code: 'CLI_USAGE', path: '', message: RESULT_VALIDATOR_USAGE },
-          ],
-        }),
-      );
+      print({ valid: false, issues: [{ code: 'CLI_USAGE', path: '' }] });
       return 2;
     }
     seen.add(flag);
@@ -359,31 +432,27 @@ function main(args) {
     expectationIssues.push({ code, path, message });
   });
   if (expectationIssues.length) {
-    console.log(JSON.stringify({ valid: false, issues: expectationIssues }));
+    print({ valid: false, issues: expectationIssues });
     return 2;
   }
   let message;
   try {
     message = readFileSync(input ?? 0, 'utf8');
   } catch {
-    console.log(
-      JSON.stringify({
-        valid: false,
-        issues: [
-          { code: 'CLI_INPUT', path: '', message: 'Unable to read input.' },
-        ],
-      }),
-    );
+    print({ valid: false, issues: [{ code: 'CLI_INPUT', path: '' }] });
     return 2;
   }
-  const result = validateResult(message, options);
-  console.log(JSON.stringify(result));
+  const parsed = parseEnvelope(message);
+  const result = validateEnvelope(parsed, options);
+  print(result, parsed.envelope);
   if (result.valid) return 0;
   return result.issues.some((issue) => issue.code === 'EXPECTATION_INVALID')
     ? 2
     : 1;
 }
+// Bundled imports share the entry/chunk URL and must not invoke this CLI.
 if (
+  import.meta.url.endsWith('/validate-result.mjs') &&
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )

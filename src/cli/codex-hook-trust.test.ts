@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { codexAdapter } from '../harness/adapters/codex';
 import { codexHookTrustEntries } from './codex-hook-trust.js';
 
 describe('Codex 0.162.1 hook trust', () => {
@@ -126,6 +127,26 @@ describe('Codex 0.162.1 hook trust', () => {
         'sha256:08e76f0d3fae100991f3e7735681833a19e3a8f1fc0eb7ea53e0bf52d7cc21fc',
       'thoth-agents@personal:codex-hooks/hooks.json:subagent_start:0:0':
         'sha256:3325f77ea820492b2762908cbb2d957ead63be0bda938cba974ad2ac5a7e9fb0',
+    });
+  });
+
+  it.each([
+    'win32',
+    'linux',
+  ] as const)('trusts the new delivery declaration on %s without changing root/role hashes', (platform) => {
+    const artifact = codexAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(
+        (entry) => entry.path === '.codex-plugin/codex-hooks/hooks.json',
+      );
+    const declarations = JSON.parse(String(artifact?.content));
+    expect(codexHookTrustEntries(declarations, 'test', platform)).toEqual({
+      'test:session_start:0:0':
+        'sha256:08e76f0d3fae100991f3e7735681833a19e3a8f1fc0eb7ea53e0bf52d7cc21fc',
+      'test:subagent_start:0:0':
+        'sha256:3325f77ea820492b2762908cbb2d957ead63be0bda938cba974ad2ac5a7e9fb0',
+      'test:post_tool_use:0:0':
+        'sha256:4f046bcabe9e0faaea318a69a7d1262fa31f988fe1e0b9470a0fb8626095a4c1',
     });
   });
 

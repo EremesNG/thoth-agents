@@ -1,5 +1,19 @@
 {
   "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "additionalContextLimit": 0,
+            "command": "node -e \"import(require('url').pathToFileURL(require('path').join(process.env.PLUGIN_ROOT,'thoth-hooks','gate-verdict.mjs')).href)\"",
+            "commandWindows": "node -e \"import(require('url').pathToFileURL(require('path').join(process.env.PLUGIN_ROOT,'thoth-hooks','gate-verdict.mjs')).href)\"",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "^(multi_agent_v1)?wait_agent$"
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

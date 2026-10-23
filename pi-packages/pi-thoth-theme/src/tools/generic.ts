@@ -89,6 +89,7 @@ export function createGenericTool(
   toolName: string,
   config: ThemeConfig,
 ): ToolRenderers {
+  const ellipsis = semanticIcon('ellipsis', config.icons);
   const toolIcon = semanticIcon('tool', config.icons);
   const name = escapeControlCharacters(toolName);
 
@@ -116,6 +117,7 @@ export function createGenericTool(
                 theme.fg('dim', argsSummary),
                 width,
                 borderTone,
+                ellipsis,
               )
             : []),
         ];
@@ -188,7 +190,7 @@ export function createGenericTool(
 
         return [
           ...body.flatMap((line) =>
-            renderFrameRow(theme, line, width, borderTone),
+            renderFrameRow(theme, line, width, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, width, borderTone),
         ];

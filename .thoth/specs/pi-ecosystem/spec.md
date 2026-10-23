@@ -525,3 +525,13 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** a session whose only task-list mutations were `todo` calls nested in codemode
 - **WHEN** the session is resumed, navigated or compacted
 - **THEN** the reconstructed list equals the list after the last nested mutation
+
+### Requirement: Narrow-width expansion hints
+
+`@thoth-agents/pi-thoth-theme` MUST keep the expansion key visible when a collapsed row that ends in a `<key> to expand` hint is wider than its available width. It does so by first shortening the hint to the bare key and then truncating the preceding text, at every theme truncation boundary, including render-kit cards. It MUST leave rows that fit, rows without such a hint, and rows too narrow to keep at least one column of preceding text unchanged apart from ordinary truncation.
+
+#### Scenario: Narrow-width expansion hints
+
+- **GIVEN** a collapsed bash result whose row `… 120 more lines · ctrl+o to expand` is wider than a 20-column frame even after the hint is shortened to `ctrl+o`
+- **WHEN** it renders
+- **THEN** the row ends with `· ctrl+o`, preceded by truncated text; and the same result at 120 columns renders exactly as before

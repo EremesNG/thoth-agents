@@ -101,6 +101,8 @@ restore and replay-duplicate suppression are unchanged. See
 Provides the Render KIT v1 contract defined by `@thoth-agents/pi-core` for
 first-party tools, custom messages and above-editor widgets. The kit shares this
 package's frames, theme roles, collapse hints and working/elapsed indicators.
+At narrow widths, trailing `<key> to expand` hints shorten to the key before
+truncating the preceding text. Fitting rows and free-form hints stay unchanged.
 The Render KIT v1 semantic icon table includes `elapsed` for work-panel metrics,
 with nerd-clock, Unicode and ASCII alternatives.
 Producers discover it at render time, so extension load order does not matter;

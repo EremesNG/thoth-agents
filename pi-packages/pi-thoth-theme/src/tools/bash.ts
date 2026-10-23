@@ -82,6 +82,7 @@ function extractShellExitCode(
 }
 
 function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
+  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
@@ -111,7 +112,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
           return [
             ...renderFrameTop(theme, title, safeWidth, borderTone),
             ...preview.flatMap((l) =>
-              renderFrameRow(theme, l, safeWidth, borderTone),
+              renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
             ),
             ...renderFrameDivider(theme, 'Output', safeWidth, borderTone),
           ];
@@ -120,7 +121,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
         return [
           ...renderFrameTop(theme, title, safeWidth, borderTone),
           ...preview.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone),
+            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
@@ -200,7 +201,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
           const emptyBody = [theme.fg('dim', '(no output)')];
           return [
             ...emptyBody.flatMap((l) =>
-              renderFrameRow(theme, l, safeWidth, borderTone),
+              renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -228,7 +229,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
 
         return [
           ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone),
+            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];

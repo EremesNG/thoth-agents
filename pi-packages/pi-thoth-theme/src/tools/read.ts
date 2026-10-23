@@ -37,6 +37,7 @@ interface ToolContext extends ElapsedRenderContext {
 }
 
 export function createCustomReadTool(cwd: string, config: ThemeConfig) {
+  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ToolContext) {
@@ -130,7 +131,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
           const footer = toolFooter(theme, footerOptions, config.icons);
           const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Failed to read file')}`;
           return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone),
+            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
@@ -151,6 +152,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               theme.fg('dim', note),
               safeWidth,
               borderTone,
+              ellipsis,
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -171,6 +173,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               theme.fg('dim', summary),
               safeWidth,
               borderTone,
+              ellipsis,
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -183,6 +186,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               theme.fg('dim', '(empty file)'),
               safeWidth,
               borderTone,
+              ellipsis,
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -190,7 +194,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...lines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, borderTone),
+            renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];

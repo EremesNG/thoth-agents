@@ -75,6 +75,7 @@ function colorDiffLine(line: string, theme: Theme): string {
 }
 
 export function createCustomEditTool(cwd: string, config: ThemeConfig) {
+  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: EditContext) {
@@ -157,7 +158,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', diffText || 'Edit failed')}`;
           return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone),
+            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
             ...renderFrameBottom(
               theme,
               toolFooter(theme, footerOptions, config.icons),
@@ -197,6 +198,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
               theme.fg('dim', '(no changes)'),
               safeWidth,
               borderTone,
+              ellipsis,
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
@@ -221,7 +223,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone),
+            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
           ),
           ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];

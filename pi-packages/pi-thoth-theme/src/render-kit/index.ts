@@ -131,6 +131,7 @@ function card(
       .join(' ');
   }
   const body = rows(options.body);
+  const ellipsis = icon('ellipsis', mode);
   const borderState = {
     isError: options.isError,
     isSuccess: options.isSuccess === true,
@@ -140,6 +141,7 @@ function card(
       ...options,
       ...borderState,
       footer,
+      ellipsis,
     });
   }
   const borderTone = getBorderTone(borderState);
@@ -148,12 +150,17 @@ function card(
       ? []
       : options.title
         ? renderFrameTop(theme, options.title, safeWidth, borderTone)
-        : renderBox(theme, [], safeWidth, borderState).slice(0, 1)),
-    ...body.flatMap((row) => renderFrameRow(theme, row, safeWidth, borderTone)),
+        : renderBox(theme, [], safeWidth, { ...borderState, ellipsis }).slice(
+            0,
+            1,
+          )),
+    ...body.flatMap((row) =>
+      renderFrameRow(theme, row, safeWidth, borderTone, ellipsis),
+    ),
     ...(options.sections ?? []).flatMap((section) => [
       ...renderFrameDivider(theme, section.title ?? '', safeWidth, borderTone),
       ...rows(section.rows).flatMap((row) =>
-        renderFrameRow(theme, row, safeWidth, borderTone),
+        renderFrameRow(theme, row, safeWidth, borderTone, ellipsis),
       ),
     ]),
     ...(options.part === 'start'

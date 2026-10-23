@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +14,7 @@ import { describe, expect, test } from 'vitest';
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { piAdapter } from './adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
+import { renderGateHookScript } from './gate-hook-script';
 import {
   formatIntegrationDiagnostic,
   generateIntegrationPackages,
@@ -108,7 +110,13 @@ describe('generateIntegrationPackages', () => {
         mcpServers: './codex.mcp.json',
       });
       expect(codexManifest.hooks).toBe('./codex-hooks/hooks.json');
-      expect(claudeManifest).not.toHaveProperty('hooks');
+      expect(claudeManifest.hooks).toBe('./claude-hooks/hooks.json');
+      expect(
+        readFileSync(join(pluginRoot, 'thoth-hooks/gate-verdict.mjs'), 'utf8'),
+      ).toBe(renderGateHookScript());
+      expect(existsSync(join(pluginRoot, 'claude-hooks/hooks.json'))).toBe(
+        true,
+      );
       expect(existsSync(join(pluginRoot, 'hooks'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'hooks', 'hooks.json'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'codex-hooks', 'context.cjs'))).toBe(
@@ -200,6 +208,75 @@ describe('generateIntegrationPackages', () => {
       expect(initContract).not.toContain('--harness');
       expect(initScript).not.toContain("'.agents'");
       expect(initScript).not.toContain('OWNED_SKILL_NAMES');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('runs both generated hook commands from outside a plugin path containing spaces', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth gate commands-'));
+    try {
+      generateIntegrationPackages({ projectRoot: dir });
+      const pluginRoot = join(dir, 'plugin');
+      const codex = JSON.parse(
+        readFileSync(join(pluginRoot, 'codex-hooks/hooks.json'), 'utf8'),
+      );
+      const claude = JSON.parse(
+        readFileSync(join(pluginRoot, 'claude-hooks/hooks.json'), 'utf8'),
+      );
+      const codexHandler = codex.hooks.PostToolUse[0].hooks[0];
+      expect(codexHandler.commandWindows).toBe(codexHandler.command);
+      const claudeCommand = claude.hooks.PostToolUse[0].hooks[0].command;
+      const message = '```thoth-result\n{}\n```';
+      const cases = [
+        {
+          args: ['-e', codexHandler.command.slice('node -e "'.length, -1)],
+          payload: {
+            tool_name: 'multi_agent_v1wait_agent',
+            tool_response: JSON.stringify({
+              status: { 'thread-123': { completed: message } },
+              timed_out: false,
+            }),
+          },
+        },
+        {
+          args: [
+            claudeCommand
+              .slice('node "'.length, -1)
+              .replace(`\${CLAUDE_PLUGIN_ROOT}`, pluginRoot),
+          ],
+          payload: {
+            tool_name: 'Agent',
+            tool_input: { subagent_type: 'thoth-agents:oracle' },
+            tool_response: {
+              status: 'completed',
+              content: [{ type: 'text', text: message }],
+            },
+          },
+        },
+      ];
+      for (const { args, payload } of cases) {
+        const output = spawnSync(process.execPath, args, {
+          cwd: tmpdir(),
+          env: { ...process.env, PLUGIN_ROOT: pluginRoot },
+          input: JSON.stringify({
+            hook_event_name: 'PostToolUse',
+            cwd: dir,
+            ...payload,
+          }),
+          encoding: 'utf8',
+          timeout: 5_000,
+        });
+        expect(output.error).toBeUndefined();
+        expect(output.status).toBe(0);
+        expect(output.stderr).toBe('');
+        expect(JSON.parse(output.stdout)).toEqual({
+          hookSpecificOutput: {
+            hookEventName: 'PostToolUse',
+            additionalContext: expect.stringMatching(/^thoth-gate-verdict /),
+          },
+        });
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

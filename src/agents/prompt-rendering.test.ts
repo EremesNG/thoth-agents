@@ -764,15 +764,37 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
-  ])('validates only Oracle gates before approvals in $harness', (dialect) => {
+  ])('uses delivery verdicts before Oracle gate approvals in $harness', (dialect) => {
     const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
+    expect(root).toContain('Only Oracle gates:');
     expect(root).toContain(
-      'Only Oracle gates (plan-review/final-verification)',
+      'node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]',
     );
-    expect(root).toContain(
-      'node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record]',
-    );
-    expect(root).toContain('validate before recording OKAY/PASS');
+    for (const rule of [
+      'before recording plan-review OKAY / final-verification PASS',
+      'harness-delivered `thoth-gate-verdict`',
+      'exactly one per delivered result',
+      'more than one, or one inside the envelope fence = invalid',
+      '`valid:true`',
+      'assigned `kind`',
+      '`verdict` = OKAY/PASS respectively',
+      'Plan review: `record` null or assigned record; ignore `mode`/`recordDigest`.',
+      'Final verification only: record-bound requires `record` = assigned record, `mode:"record"`',
+      'Recordless small-change final verification requires `mode:"no-record"`',
+      'null `record`/`recordSha256`, `recordDigest:"none"`',
+      '`recordDigest:"match"`',
+      '`recordDigest:"unavailable"`',
+      'independently hash the prefix before `## Authorization`',
+      'mismatch = no approval, no validator rerun',
+      'Copy verdict and `recordSha256` into the record',
+      'Never re-emit the envelope to validate it',
+      'Only when no verdict was delivered',
+      'unchanged result; it prints the compact summary',
+      'shared with runtime enforcement',
+      'validation is not authorization',
+    ])
+      expect(root).toContain(rule);
+    expect(root).not.toMatch(/unchanged\s+stdin/);
     expect(root).toContain(
       'Invalid: no approval; at most one format-only repair; preserve findings/verdict',
     );
@@ -785,6 +807,31 @@ describe('AI-first prompt rendering', () => {
     expect(root).toContain('scope, evidence, checks, freshness/provenance');
     expect(root).not.toContain('--role <role>');
     expect(root).not.toContain('accept nothing');
+  });
+
+  test.each([
+    [
+      'OpenCode',
+      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
+      'Delivery verdicts are appended to Oracle `task` output.',
+    ],
+    [
+      'Codex',
+      renderCodexRootInstructions,
+      'Delivery verdicts arrive with `wait_agent` only when plugin hooks are enabled and trusted; `agent` is the status-map key, not proof of Oracle provenance.',
+    ],
+    [
+      'Claude Code',
+      renderClaudeCodeRootInstructions,
+      'Run Oracle gate assignments in the foreground; only completed foreground `Agent` results receive delivery verdicts, not background runs.',
+    ],
+    [
+      'Pi',
+      renderPiRootInstructions,
+      'Delivery verdicts arrive on completion notifications, `subagent_result`, and task-mode `subagent_run`; match `taskId` to the assignment.',
+    ],
+  ] as const)('renders the %s gate delivery guidance', (_harness, render, line) => {
+    expect(render()).toContain(line);
   });
 
   describe.each(HARNESS_RENDERERS)('$harness specialist outputs', ({
@@ -919,11 +966,11 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 12_500],
-      [renderCodexRootInstructions(), 13_800],
-      [renderClaudeCodeRootInstructions(), 13_300],
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_300],
+      [renderCodexRootInstructions(), 14_800],
+      [renderClaudeCodeRootInstructions(), 14_200],
       // Pi tool schemas and the subagents-configuration skill own operator details.
-      [piRoot, 15_600],
+      [piRoot, 16_700],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
@@ -945,7 +992,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "2010c2de0601e7d9096491a52b83052988a9955bb5727210fa0f7d6686841ec3",
+          "0099335c22dc163a218d314c0c594a7fa301ce435e99efed1a79057d0eb3a864",
           "a10821acadc00a4da671aafd6b437fa9b6932d5e3e9a8e0bd1dfb610b42a52e4",
           "634bafad130132eeb0b0a6ba1f3688922ea18439201b9adbd365fcb4685d2383",
           "5a7e7a2d890e939bb5aa8ef1b2a5dd04c708894a15ca0d0b0beb81be6f8246ad",
@@ -956,7 +1003,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "5a33aa17514abf89926e6839ddc4f5fc45a5cea9d1d7d23a3a3fb7d229a9d294",
+          "a4c9e38fb582b6d52086e67f30561d558753de869e1b29a2072a855bc56cc4fe",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
@@ -967,7 +1014,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "af8a8399787cba28b8e279c52b154f0d6224881e812c38cf80211b3dc78bf663",
+          "1f0832743bfd1bf759f6febbf72a75d097cb98b276ab2cf0a7db192a0aea9fc2",
           "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
           "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
           "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
@@ -979,19 +1026,19 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
   `);
 });
 
-// Baseline refreshed for the grill-me rename, covering every configured role.
+// Baseline refreshed for delivery verdict guidance; specialist prompts stay unchanged.
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    'cc5f7c38f1d33de60d6123e9366f6102d39bfff3b8be350ef21487187b4a3383',
+    'fcbcd1d42aa4bb24f94dfa59907abd3b70a19ba15e5346bf5a4fd798c18d3ddb',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '1dd10b380770b1a16f220866ebda705361e49bde53c520254a46a293cea56adb',
+    '5e72a5fd9b7e6855ed2fd909bfc4cfb6f59f1e77fbffc7d298df19e4ff7cb1b2',
   ],
   [
     PI_PROMPT_DIALECT,
-    'd29969d6396d526c1d17c17adee33fdd4ea4fb9e6267773f4460e59eeaed1253',
+    '58290ad26ce767b98549d4f4ef9ae99446cee3c939bf5d3a30aa58b266fdd025',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>
@@ -1015,7 +1062,7 @@ test('Codex hook root enforces capacity-aware scoped continuation', () => {
     'utf8',
   );
   expect(shippedPayload).toBe(payload);
-  expect(shippedPayload.length).toBeLessThanOrEqual(13_800);
+  expect(shippedPayload.length).toBeLessThanOrEqual(14_800);
   for (const rule of [
     'fork_turns: "none"',
     'role instructions from the plugin hook, not inherited history',

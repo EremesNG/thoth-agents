@@ -11,7 +11,7 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/hooks.json",
       "reference": "./codex-hooks/hooks.json",
-      "sha256": "sha256:b2949fe8110fdc7552bc09788d4b0b0543c9276f8fb90f155b5e974da91b8ece"
+      "sha256": "sha256:4f739213d552b50e9b64a6e17bdce2b2628f848f33f736c24798145751475392"
     },
     {
       "field": "hooks",
@@ -41,7 +41,7 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/root.md",
       "reference": "./codex-hooks/payloads/root.md",
-      "sha256": "sha256:62577f0e72e779ef78710fd64f482058f323275c1287cbc848242fa0afc82f90"
+      "sha256": "sha256:02310a4d5e17785493e9f21537a094ead7acd85e01ec627addaf8550d5c391c7"
     },
     {
       "field": "hooks",

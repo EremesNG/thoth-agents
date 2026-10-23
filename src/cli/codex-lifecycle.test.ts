@@ -138,6 +138,18 @@ function hookFixture(pluginId = 'thoth-agents@thoth-plugins') {
     hooks: {
       SessionStart: [{ hooks: [{ type: 'command', command: 'node test' }] }],
       SubagentStart: [{ hooks: [{ type: 'command', command: 'node role' }] }],
+      PostToolUse: [
+        {
+          matcher: '^(multi_agent_v1)?wait_agent$',
+          hooks: [
+            {
+              type: 'command',
+              command: 'node verdict.mjs',
+              additionalContextLimit: 0,
+            },
+          ],
+        },
+      ],
     },
   };
   writeFileSync(join(bundle, 'hooks.json'), JSON.stringify(declarations));
@@ -197,6 +209,7 @@ it('doctor diagnoses untrusted, modified, trusted hooks and missing Node without
   result = doctorCodex(f.context);
   expect(result.messages.join('\n')).toContain(': modified');
   expect(result.messages.join('\n')).toContain(': trusted');
+  expect(result.messages.join('\n')).toContain('post_tool_use:0:0: untrusted');
   expect(result.messages.join('\n')).toContain('Agent worker: owned');
   expect(result.messages.join('\n')).toContain('Threads: managed');
 });
@@ -423,7 +436,8 @@ it('doctor and uninstall accept native hook headers and preserve unrelated struc
   expect(result.messages.join('\n')).not.toContain('Error:');
   expect(
     result.messages.filter((message) => message.includes(': trusted')),
-  ).toHaveLength(2);
+  ).toHaveLength(3);
+  expect(result.messages.join('\n')).toContain('post_tool_use:0:0: trusted');
   expect(readFileSync(f.config, 'utf8')).toBe(before);
   const state = JSON.parse(readFileSync(f.state, 'utf8'));
   state.ownedHookTrustKeys = Object.keys(entries);
@@ -436,7 +450,7 @@ it('doctor and uninstall accept native hook headers and preserve unrelated struc
       .replace(
         '[features] # retained\nother = true',
         '[features] # retained\nother = true\ndefault_mode_request_user_input = true',
-      )}\n\n\n\n`,
+      )}\n\n\n\n\n\n`,
   );
   expect(after).not.toContain('sha256:');
 });

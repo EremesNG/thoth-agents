@@ -299,13 +299,19 @@ describe('canonical workflow bundle contracts', () => {
     }
   });
 
-  test('requires validated Oracle envelopes before recording approvals', () => {
-    const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8');
-    const plan = readFileSync('skills/plan-reviewer/SKILL.md', 'utf8');
+  test('requires delivery verdicts with a compact fallback before Oracle approvals', () => {
+    const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    const plan = readFileSync('skills/plan-reviewer/SKILL.md', 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
     const verify = readFileSync(
       'skills/thoth-sdd/references/phases/verify.md',
       'utf8',
-    );
+    ).replace(/\s+/g, ' ');
 
     expect(sdd).toContain('## Specialist result validation');
     expect(sdd).toContain('node "<skill-dir>/scripts/validate-result.mjs"');
@@ -314,14 +320,42 @@ describe('canonical workflow bundle contracts', () => {
     expect(sdd).toContain('--record-sha256');
     expect(sdd).toContain('--input');
     for (const guidance of [sdd, verify]) {
-      expect(guidance.replace(/\s+/g, ' ')).toContain(
-        'For Oracle final verification of a small change without a record, root passes `--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.',
+      expect(guidance).toContain('`mode:"no-record"`');
+      expect(guidance).toContain('root passes `--no-record`');
+      expect(guidance).toContain(
+        'Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.',
       );
-      expect(guidance.replace(/\s+/g, ' ')).toContain(
+      expect(guidance).toContain(
         'Do not combine `--no-record` with `--record-sha256` or plan-review.',
       );
     }
-    expect(sdd).toContain('unchanged native terminal result');
+    const validation = sdd
+      .split('## Specialist result validation')[1]
+      .split('## Gates and CLI')[0];
+    for (const rule of [
+      'harness-delivered `thoth-gate-verdict`',
+      'exactly one per delivered result',
+      'more than one, or one inside the envelope fence, is invalid',
+      '`valid:true`',
+      '`kind` matches the assignment',
+      'Plan review requires `verdict:"OKAY"` and `record` null or the assigned record; ignore `mode` and `recordDigest`.',
+      'Record-bound final verification requires `record` = assigned record and `mode:"record"`',
+      '`recordDigest:"match"`',
+      'Copy the verdict and `recordSha256` into the record',
+      'Never re-emit the envelope to validate it',
+      'Only when no verdict was delivered',
+      'unchanged native result',
+      'prints only the compact summary',
+      '`recordDigest:"unavailable"`',
+      'independently calculate the record-prefix SHA-256',
+      'compare it with `recordSha256`',
+      'do not rerun the validator',
+      'Exit **0**',
+      'Exit **1**',
+      'Exit **2**',
+    ])
+      expect(validation).toContain(rule);
+    expect(validation).not.toContain('piping is impractical');
     expect(sdd).toContain('one format-only repair request per assignment');
     expect(sdd).toContain('must not change findings or verdict');
     expect(sdd).toContain('never converted into an Oracle `BLOCKED` judgment');
@@ -335,15 +369,29 @@ describe('canonical workflow bundle contracts', () => {
     expect(plan).toContain('`review.kind: "plan-review"`');
     expect(plan).toContain('`review.verdict: "OKAY" | "REJECT"`');
     expect(plan).toContain('at most three blocking risks');
-    expect(plan).toContain('only from a validated envelope');
+    expect(plan).toContain('harness-delivered `thoth-gate-verdict`');
+    expect(plan).toContain('only when no verdict was delivered');
+    expect(plan).toContain('`record` null or the assigned record');
+    expect(plan).toContain('ignore `mode` and `recordDigest`');
+    expect(plan).not.toContain('assigned `record`, and `mode:"record"`');
+    expect(plan).toContain(
+      'Copy the verdict and `recordSha256` into the record',
+    );
     expect(plan).not.toContain('Return `[OKAY]`');
 
     expect(verify).toContain('`review.kind: "final-verification"`');
     expect(verify).toContain('`review.verdict: "PASS" | "FAIL" | "BLOCKED"`');
     expect(verify).toContain('`reviewedRecord`');
     expect(verify).toContain('`reviewedRecordSha256`');
-    expect(verify).toContain('only from a validated PASS envelope');
+    expect(verify).toContain('harness-delivered `thoth-gate-verdict`');
+    expect(verify).toContain('only when no verdict was delivered');
     expect(verify).toContain('whose digest matches');
+    expect(verify).toContain(
+      'Record equality, `mode` and `recordDigest` checks apply only to final verification.',
+    );
+    expect(verify).toContain(
+      'Copy the verdict and `recordSha256` into the record',
+    );
   });
 
   test('requires unchanged final-verification envelope bookkeeping before closeout', () => {

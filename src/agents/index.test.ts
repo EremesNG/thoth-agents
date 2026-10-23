@@ -175,7 +175,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
   test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt.length).toBeLessThanOrEqual(12_500);
+    expect(prompt.length).toBeLessThanOrEqual(13_300);
     expect(prompt).toContain('root coordinator');
     expect(prompt).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',

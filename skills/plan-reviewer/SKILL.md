@@ -38,11 +38,18 @@ message, following the Oracle gate contract: `role: "oracle"`,
 `review.kind: "plan-review"`, and `review.verdict: "OKAY" | "REJECT"`.
 Include concise evidence and at most three blocking risks for actual execution
 blockers with smallest repairs; mark cautions nonblocking. An OKAY requires
-`status: "complete"` and no blocking risks. Root validates the unchanged native
-terminal result with `--review-kind plan-review` using the sibling
-thoth-sdd skill's **Specialist result validation** procedure, including its shared
-one-request format-only repair budget. Root records plan-review `OKAY` only from a validated envelope
-and after judging the content; a malformed or missing envelope is not approval.
+`status: "complete"` and no blocking risks. Root uses the harness-delivered
+`thoth-gate-verdict` under the sibling thoth-sdd skill's **Specialist result
+validation** procedure: exactly one outside the envelope fence, `valid:true`,
+assigned `kind:"plan-review"`, `verdict:"OKAY"`, and `record` null or the assigned
+record; ignore `mode` and `recordDigest` (final-verification checks only).
+Never re-emit the envelope to validate it. Use the explicit
+compact CLI fallback with `--review-kind plan-review` only when no verdict was delivered;
+keep the native result unchanged. Claude Code gates run in the foreground.
+Copy the verdict and `recordSha256` into the record (accepted summary/digest
+in fallback). Keep the shared one-request format-only repair budget. Root records
+plan-review `OKAY` only after these checks and judging content and provenance;
+a malformed or missing envelope is not approval.
 Root repairs same-intent blockers in the same record, revalidates affected gates,
 and uses a fresh Oracle for each round. A human-owned material blocker stops the
 round. Root records both review disposition and selection provenance without

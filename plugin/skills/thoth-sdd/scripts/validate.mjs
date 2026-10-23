@@ -17,6 +17,7 @@ import {
   parseRequirementDelta,
   preflightRequirementDeltas,
 } from './durable-deltas.mjs';
+import { recordPrefixSha256 } from './record-digest.mjs';
 import { validateResult } from './validate-result.mjs';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -302,18 +303,12 @@ function coverageErrors(text, ids, errors, recordName) {
 
 // Whole-file textual binding: Markdown containers never hide candidates or markers.
 function scanOracleEnvelope(text) {
-  let offset = 0;
-  const lines = text.split(/(?<=\n)/).map((raw) => {
-    const entry = { raw, offset, line: raw.replace(/\r?\n$/, '') };
-    if (offset === 0) entry.line = entry.line.replace(/^\uFEFF/, '');
-    offset += raw.length;
-    return entry;
+  const lines = text.split(/(?<=\n)/).map((raw, index) => {
+    const line = raw.replace(/\r?\n$/, '');
+    return { raw, line: index === 0 ? line.replace(/^\uFEFF/, '') : line };
   });
   const markers = [];
   const fences = [];
-  const authorization = lines.findIndex(
-    ({ line }) => line === '## Authorization',
-  );
   const verification = lines.findIndex(
     ({ line }) => line === '## Verification',
   );
@@ -363,7 +358,6 @@ function scanOracleEnvelope(text) {
     markers,
     fences,
     positioned,
-    authorizationOffset: lines[authorization]?.offset,
   };
 }
 
@@ -727,10 +721,7 @@ export function validate({ change, through }) {
         : verificationText;
     const verified = verificationFields.trim();
     if (through === 'closeout') {
-      const prefix = text.slice(
-        0,
-        extraction.authorizationOffset ?? text.length,
-      );
+      const recordSha256 = recordPrefixSha256(text);
       if (
         !/^\*\*Reviewer\*\*: oracle$/m.test(verified) ||
         !/^\*\*Independent from implementer\*\*: Yes$/m.test(verified) ||
@@ -753,7 +744,7 @@ export function validate({ change, through }) {
               digestLines[0],
             )?.[1]
           : undefined;
-      if (reviewedDigest !== sha(prefix)) {
+      if (reviewedDigest !== recordSha256) {
         errors.push(
           issue(
             'SDD-VERIFICATION-STALE',
@@ -765,7 +756,7 @@ export function validate({ change, through }) {
       validateOracleEnvelope({
         extraction,
         verificationFields,
-        recordSha256: sha(prefix),
+        recordSha256,
         reviewedDigest,
         // Archived records retain the active path reviewed by the Oracle.
         expectedRecord: `.thoth/changes/${id}/${id}.md`,

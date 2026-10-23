@@ -183,6 +183,7 @@ function codexHookPackage(config?: PluginConfig) {
     (role) => role.name !== 'orchestrator',
   );
   const command = `node -e "require(require('path').join(process.env.PLUGIN_ROOT,'codex-hooks','context.cjs'))"`;
+  const gateCommand = `node -e "import(require('url').pathToFileURL(require('path').join(process.env.PLUGIN_ROOT,'thoth-hooks','gate-verdict.mjs')).href)"`;
   const handler = {
     type: 'command',
     command,
@@ -206,6 +207,16 @@ function codexHookPackage(config?: PluginConfig) {
           event: 'SubagentStart',
           matcher: `^(${roles.map((role) => role.name).join('|')})$`,
           handler,
+          outputFields: ['additionalContext'],
+        },
+        {
+          event: 'PostToolUse',
+          matcher: '^(multi_agent_v1)?wait_agent$',
+          handler: {
+            ...handler,
+            command: gateCommand,
+            commandWindows: gateCommand,
+          },
           outputFields: ['additionalContext'],
         },
       ],

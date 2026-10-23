@@ -19,6 +19,7 @@ describe('renderClaudeCodePluginPackage', () => {
         version: '1.2.3',
         description: 'pack',
         author: { name: 'thoth-agents' },
+        hooks: './claude-hooks/hooks.json',
       },
       componentArtifacts: [
         component(
@@ -39,11 +40,21 @@ describe('renderClaudeCodePluginPackage', () => {
           version: '1.2.3',
           description: 'pack',
           author: { name: 'thoth-agents' },
+          hooks: './claude-hooks/hooks.json',
         },
         null,
         2,
       )}\n`,
     );
+
+    const roundTrip = renderClaudeCodePluginPackage({
+      manifest: {
+        ...JSON.parse(String(manifest?.content)),
+        unknownField: true,
+      },
+      componentArtifacts: [],
+    });
+    expect(roundTrip.artifacts[0].content).toBe(manifest?.content);
 
     // Components are sorted by path: worker is the sole non-visual writer.
     const componentPaths = result.artifacts

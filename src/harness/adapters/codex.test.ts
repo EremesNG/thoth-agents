@@ -110,7 +110,7 @@ describe('Codex adapter v0.3', () => {
     const root = renderCodexRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Codex dialect.
-    expect(root.length).toBeLessThanOrEqual(13_800);
+    expect(root.length).toBeLessThanOrEqual(14_800);
     expect(root).toContain('root coordinator');
     expect(root).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
@@ -221,6 +221,15 @@ describe('Codex adapter v0.3', () => {
     ]);
     expect(hooks.SubagentStart).toHaveLength(1);
     expect(hooks.SubagentStart[0].hooks).toEqual([handler]);
+    const gateCommand = `node -e "import(require('url').pathToFileURL(require('path').join(process.env.PLUGIN_ROOT,'thoth-hooks','gate-verdict.mjs')).href)"`;
+    expect(hooks.PostToolUse).toEqual([
+      {
+        matcher: '^(multi_agent_v1)?wait_agent$',
+        hooks: [
+          { ...handler, command: gateCommand, commandWindows: gateCommand },
+        ],
+      },
+    ]);
     const matcher = new RegExp(hooks.SubagentStart[0].matcher);
     const tomls = result.artifacts.filter((a) => a.kind === 'agent-config');
     expect(tomls).toHaveLength(5);
@@ -250,7 +259,7 @@ describe('Codex adapter v0.3', () => {
         .replace(/^<!-- thoth-agents:codex-root:start -->\n/, '')
         .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
-    expect(root.length).toBeLessThanOrEqual(13_800);
+    expect(root.length).toBeLessThanOrEqual(14_800);
     expect(root).not.toContain('<!-- thoth-agents:codex-root:');
     const configured = codexAdapter.render({
       projectRoot: process.cwd(),

@@ -301,6 +301,40 @@ describe('Codex surface validation', () => {
     }
   });
 
+  test('permits additionalContext-only PostToolUse without blocking or output replacement', () => {
+    expect(
+      validateCodexHookSurface({
+        event: 'PostToolUse',
+        handler: { type: 'command', command: 'node verdict.mjs' },
+        outputFields: ['additionalContext'],
+      }),
+    ).toMatchObject({ ok: true, event: 'PostToolUse' });
+    for (const field of [
+      'message',
+      'block',
+      'decision',
+      'reason',
+      'updatedToolOutput',
+      'updatedMCPToolOutput',
+    ]) {
+      expect(
+        validateCodexHookSurface({
+          event: 'PostToolUse',
+          handler: { type: 'command', command: 'node verdict.mjs' },
+          outputFields: ['additionalContext', field],
+        }),
+      ).toMatchObject({ ok: false });
+    }
+    expect(
+      validateCodexHookSurface({
+        event: 'PostToolUse',
+        handler: { type: 'command', command: 'node verdict.mjs' },
+        outputFields: ['additionalContext'],
+        interceptsToolExecution: true,
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
   test('diagnoses unsupported Codex hook events and handler shapes', () => {
     const cases = [
       {

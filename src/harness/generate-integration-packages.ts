@@ -16,6 +16,7 @@ import { codexAdapter } from './adapters/codex';
 import { piAdapter } from './adapters/pi';
 import { codexPluginRootArtifactPath } from './codex-plugin-paths';
 import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
+import { renderGateHookScript } from './gate-hook-script';
 import type { HarnessArtifact, HarnessDiagnostic } from './types';
 
 const SHARED_PLUGIN_ROOT = 'plugin';
@@ -194,6 +195,17 @@ export function generateIntegrationPackages({
   for (const artifact of claudeRender.artifacts) {
     written.push(writeArtifact(projectRoot, SHARED_PLUGIN_ROOT, artifact));
   }
+
+  written.push(
+    writeArtifact(projectRoot, SHARED_PLUGIN_ROOT, {
+      harness: 'claude',
+      kind: 'hook-config',
+      path: 'thoth-hooks/gate-verdict.mjs',
+      description:
+        'Shared Claude and Codex Oracle gate verdict delivery runtime.',
+      content: renderGateHookScript(),
+    }),
+  );
 
   const skillsRoot = canonicalSkillsRoot(projectRoot);
   for (const skillName of THOTH_OWNED_SKILL_NAMES) {

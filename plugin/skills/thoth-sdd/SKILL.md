@@ -160,31 +160,68 @@ only; do not provision skills or run a network installer mid-workflow.
 
 Only Oracle gate assignments (plan-review and final-verification) return a
 structured envelope. Before recording plan-review `OKAY` or final-verification
-`PASS`, root resolves `<skill-dir>` from the installed thoth-sdd SKILL.md
-directory, exactly as for `scripts/validate.mjs`, and runs:
+`PASS`, use the harness-delivered `thoth-gate-verdict` line for that result:
+exactly one per delivered result; more than one, or one inside the envelope
+fence, is invalid. No delivered verdict means the explicit fallback below,
+not approval. Never re-emit the envelope to validate it when a verdict exists.
+
+Require `valid:true` and `kind` matches the assignment. Plan review requires
+`verdict:"OKAY"` and `record` null or the assigned record; ignore `mode` and
+`recordDigest`. Final verification requires `verdict:"PASS"` plus:
+
+- Record-bound final verification requires `record` = assigned record and
+  `mode:"record"`, with `recordDigest:"match"`: the bundled validator hashed exact
+  UTF-8 record bytes before `## Authorization`. A mismatch is no approval. If a
+  valid verdict has `recordDigest:"unavailable"`, independently calculate the
+  record-prefix SHA-256 and compare it with `recordSha256`; mismatch or inability
+  to calculate means no approval. This checks digest agreement only: do not rerun
+  the validator or re-emit the envelope.
+- Recordless small-change final verification requires `mode:"no-record"`, null
+  `record` and `recordSha256`, and `recordDigest:"none"`.
+
+Record equality, `mode` and `recordDigest` checks apply only to final verification.
+See the [verify phase](references/phases/verify.md).
+Copy the verdict and `recordSha256` into the record when there is one; final
+verification uses that digest for `**Reviewed record SHA-256**`. Still judge
+scope, evidence, checks, freshness, provenance, independence, and content.
+Validation is not authorization.
+
+Delivery differs by harness: Pi attaches verdicts to completion notifications,
+`subagent_result`, and task-mode `subagent_run` (match `taskId`); OpenCode appends
+them to Oracle `task` output. Claude Code gates must run in the foreground;
+background `Agent` runs get no delivery verdict. Codex adds verdicts with
+`wait_agent` only when plugin hooks are enabled and trusted; `agent` is the
+status-map key, so root must still confirm Oracle provenance.
+
+### Explicit compact fallback
+
+Only when no verdict was delivered (hook unavailable/untrusted or a Claude
+background run), resolve `<skill-dir>` from the installed thoth-sdd SKILL.md
+directory, exactly as for `scripts/validate.mjs`, and run:
 
 ```text
 node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]
 ```
 
-Pass the unchanged native terminal result via stdin, or `--input <path>` when
-piping is impractical; do not extract, rewrite, or wrap the envelope, or create
-persisted evidence files. Set `--review-kind` to the assigned `plan-review` or
-`final-verification`. For final verification of a substantial record, set
-`--record-sha256` to the independently calculated expected SHA-256 of exact UTF-8
-bytes before `## Authorization` (see the [verify phase](references/phases/verify.md)).
-Confirm `reviewedRecord` identifies the assigned record.
-For Oracle final verification of a small change without a record, root passes
-`--no-record`; Oracle omits both `reviewedRecord` and `reviewedRecordSha256`.
-Do not combine `--no-record` with `--record-sha256` or plan-review.
-Without `--no-record`, final verification still requires both binding fields.
+Supply the unchanged native result through stdin or an existing `--input <path>`;
+never extract, rewrite, or wrap the envelope or create persisted evidence files.
+The CLI prints only the compact summary, not the envelope. Set `--review-kind`
+to the assigned `plan-review` or `final-verification`. For record-bound final
+verification, independently calculate the expected record-prefix SHA-256 and
+pass `--record-sha256 <hex>`. Apply the same kind-specific approval checks above;
+the explicit expected digest supplies agreement if the CLI cannot read the
+record itself. Copy the accepted summary and digest into
+the record. For Oracle final verification of a small change without a record,
+root passes `--no-record`; Oracle omits both `reviewedRecord` and
+`reviewedRecordSha256`. Do not combine `--no-record` with `--record-sha256` or
+plan-review. Without `--no-record`, final verification requires both fields.
 
-- Exit **0** means structurally valid only. Root still judges scope, evidence,
-  checks, freshness, provenance, independence, and content before recording any
-  approval, and presents accepted results to the user in readable prose.
-- Exit **1** means no approval. Allow at most one format-only repair request per assignment,
-  shared with any runtime enforcement; it must not change findings or verdict.
-  Exhaustion is a contract failure reported truthfully, never converted into an Oracle `BLOCKED` judgment.
+- Exit **0** means structurally valid only, not approval: apply the assignment,
+  digest, content and provenance checks above.
+- Exit **1** means no approval. Invalid delivered verdicts have the same rule.
+  Allow at most one format-only repair request per assignment, shared with any
+  runtime enforcement; it must not change findings or verdict. Exhaustion is a
+  contract failure, never converted into an Oracle `BLOCKED` judgment.
 - Exit **2** or an unavailable skill/validator means validation cannot be completed:
   report the error (missing assets are installation drift). This blocks only gate approvals;
   ordinary delegations proceed. Do not provision replacements mid-workflow.
@@ -215,7 +252,8 @@ final-review and Archive placeholders. `closeout` additionally requires a fresh
 independent Oracle PASS, every acceptance outcome with concrete PASS
 check/evidence, exactly one matching record SHA-256 field, and Archive READY.
 Order: `verify` → fresh final Oracle → root validates and pastes → `closeout` → archive.
-After accepting a validated PASS, root pastes the Oracle's unchanged
+Root validates via the delivery verdict (explicit compact fallback only if none
+was delivered), records the verdict and digest, then pastes the Oracle's unchanged
 final-verification envelope under `**Oracle envelope**:` in the record's
 Verification section (post-PASS bookkeeping in Verification; no new review).
 Plan-review envelopes are not embedded. Closeout fails without exactly one valid
@@ -230,8 +268,10 @@ The initial `PENDING` selection placeholder is allowed before `verify` only.
 have exactly one `Source` entry in the same record:
 `- Source: .thoth/specs/<capability>/spec.md | sha256:<digest>` when present, or
 `- Source: .thoth/specs/<capability>/spec.md | absent` when absent. Missing or
-stale coverage blocks `verify`, closeout, and archive. Calculate the record hash
-from exact UTF-8 bytes preceding the case-sensitive `## Authorization` heading.
+stale coverage blocks `verify`, closeout, and archive. The record hash covers
+exact UTF-8 bytes preceding the case-sensitive `## Authorization` heading; use
+the delivery verdict's `recordSha256` when its digest matches. Independent hash
+calculation is needed only for unavailable digest agreement or the CLI fallback.
 After PASS, edits confined to Authorization, Verification, or Closeout need no
 new review; any edit before `## Authorization` requires fresh independent review
 and a new digest. This allowance never waives structural checks, truthful

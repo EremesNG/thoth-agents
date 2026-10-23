@@ -6,6 +6,7 @@ export const CLAUDE_PLUGIN_MANIFEST_FIELDS = [
   'version',
   'description',
   'author',
+  'hooks',
 ] as const;
 
 export interface ClaudeCodePluginAuthor {
@@ -19,14 +20,14 @@ export interface ClaudeCodePluginManifest {
   version: string;
   description: string;
   author?: ClaudeCodePluginAuthor | string;
+  hooks?: string;
 }
 
 export interface ClaudeCodePluginPackageInput {
   manifest: ClaudeCodePluginManifest;
   /**
-   * Already-rendered plugin component artifacts (subagents, `.mcp.json`,
-   * `hooks/`, skills). Auto-discovered by Claude Code, so the manifest does not
-   * reference them; the writer records their provenance.
+   * Already-rendered plugin components. Default paths are auto-discovered;
+   * custom hook paths are referenced by the manifest. The writer records provenance.
    */
   componentArtifacts: HarnessArtifact[];
 }

@@ -6,3 +6,4 @@ export {
   isRateLimitError,
 } from './foreground-fallback';
 export { createJsonErrorRecoveryHook } from './json-error-recovery';
+export { createOracleGateVerdictHook } from './oracle-gate-verdict';

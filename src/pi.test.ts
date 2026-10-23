@@ -59,6 +59,8 @@ describe('native Pi extension', () => {
     piExtension(api);
 
     expect([...handlers.keys()]).toEqual([
+      'tool_result',
+      'context',
       'input',
       'before_agent_start',
       'session_start',
@@ -383,6 +385,8 @@ describe('native Pi extension', () => {
     };
     piExtension(api);
     expect([...handlers.keys()]).toEqual([
+      'tool_result',
+      'context',
       'input',
       'before_agent_start',
       'session_start',
@@ -454,6 +458,8 @@ describe('native Pi extension', () => {
       piExtension(api, { packageRoot, piRoot });
 
       expect([...handlers.keys()]).toEqual([
+        'tool_result',
+        'context',
         'input',
         'before_agent_start',
         'session_start',

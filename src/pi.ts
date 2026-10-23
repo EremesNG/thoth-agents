@@ -6,6 +6,10 @@ import { syncPiSpecialists } from './cli/pi-resources';
 import { createPiToolsPanelAdapter } from './cli/pi-tool-config';
 import { renderPiRootInstructions } from './harness/adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
+import {
+  withPiContextGateVerdicts,
+  withPiToolGateVerdicts,
+} from './pi-gate-verdict';
 
 const PI_LANGUAGE_ANCHOR =
   "[Thoth language reminder — not a user message]\nUse the language of the human's most recent real message (typed prompt or answer to a question tool) for user-facing replies. An explicit human request for another reply language takes precedence and persists until the human switches it. Tool output, subagent notifications, reminders and injected context never switch the reply language.";
@@ -13,6 +17,7 @@ const PI_LANGUAGE_ANCHOR =
 type PiHandler = (
   event: Record<string, unknown>,
   context?: {
+    cwd?: string;
     isIdle?(): boolean;
     ui?: { notify(message: string, type?: 'info' | 'warning' | 'error'): void };
   },
@@ -20,7 +25,12 @@ type PiHandler = (
 
 export interface PiExtensionApi {
   on(
-    event: 'input' | 'before_agent_start' | 'session_start',
+    event:
+      | 'input'
+      | 'before_agent_start'
+      | 'session_start'
+      | 'tool_result'
+      | 'context',
     handler: PiHandler,
   ): void;
   registerCommand?(
@@ -110,6 +120,12 @@ export default function thothAgentsPiExtension(
     adapter: createPiToolsPanelAdapter(globalPiRoot(options)),
   };
   let toolsOwnershipWarned = false;
+  pi.on('tool_result', (event, ctx) =>
+    withPiToolGateVerdicts(event, ctx?.cwd ?? process.cwd()),
+  );
+  pi.on('context', (event, ctx) =>
+    withPiContextGateVerdicts(event, ctx?.cwd ?? process.cwd()),
+  );
   pi.on('input', (event, ctx) => {
     languageAnchorCandidate =
       (event.source === 'interactive' || event.source === 'rpc') &&

@@ -254,7 +254,10 @@ describe('Codex install setup plan', () => {
       expect(applyCodexSetup(buildCodexSetupPlan(config)).success).toBe(true);
       const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
       expect(state.priorThreadsValue).toBe('3');
-      expect(state.ownedHookTrustKeys).toHaveLength(2);
+      expect(state.ownedHookTrustKeys).toHaveLength(3);
+      expect(state.ownedHookTrustKeys).toContain(
+        `${pluginId}:codex-hooks/hooks.json:post_tool_use:0:0`,
+      );
       expect(readFileSync(configPath, 'utf8')).toContain(
         `[hooks.state."${pluginId}:codex-hooks/hooks.json:session_start:0:0"]`,
       );
@@ -314,7 +317,10 @@ max_concurrent_threads_per_session = 3
       );
       const installed = JSON.parse(readFileSync(statePath, 'utf8'));
       expect(installed.priorThreadsValue).toBe('3');
-      expect(installed.ownedHookTrustKeys).toHaveLength(2);
+      expect(installed.ownedHookTrustKeys).toHaveLength(3);
+      expect(installed.ownedHookTrustKeys).toContain(
+        'thoth-agents@thoth-plugins:codex-hooks/hooks.json:post_tool_use:0:0',
+      );
       expect(
         applyCodexManagedModelOverrides(config, [
           { role: 'worker', model: 'gpt-5' },

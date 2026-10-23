@@ -61,7 +61,28 @@
   preserves/reports operator changes or unverifiable ownership. It retains the
   request-user-input feature, provider thoth-mem surfaces, external skills and
   marketplace registration. See [Codex installation](../codex-install.md).
-- Claude packages root plus five generated namespaced subagents.
+- Claude packages root plus five generated namespaced subagents. Its manifest
+  explicitly references `claude-hooks/hooks.json`; PostToolUse `Agent` adds a
+  `thoth-gate-verdict` as parent context only for completed foreground
+  `thoth-agents:oracle` gate results. Root runs gate Oracles in the foreground;
+  background `async_launched` runs get no verdict.
+- Codex also declares PostToolUse `^(multi_agent_v1)?wait_agent$` in
+  `codex-hooks/hooks.json`. Enabled, trusted native hooks add one verdict per
+  completed gate message; `agent` is the response status-map key, so root retains
+  the Oracle-provenance check. Claude and Codex share the generated neutral
+  `thoth-hooks/gate-verdict.mjs`, which imports the bundled canonical validator.
+  Neither harness uses `plugin/hooks/hooks.json`; hook declarations are explicitly
+  referenced from their own manifests, outside the other's auto-discovery path.
+- Pi adds verdicts through `src/pi.ts` on completion notifications,
+  `subagent_result`, and task-mode `subagent_run`. OpenCode's
+  `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. All
+  delivery paths preserve the envelope. Root accepts exactly one verdict outside
+  the fence, checks the assignment and record-prefix digest, and copies verdict
+  and `recordSha256` into the record. It never re-emits an envelope to validate
+  it; only no delivered verdict permits the compact CLI fallback. An unavailable
+  delivered digest needs an independent hash comparison, not a validator rerun.
+  Approval/content/provenance remain root judgments, not equivalent runtime
+  enforcement across harnesses. Closeout still pastes the unchanged envelope.
 - Pi is published from the same `thoth-agents` npm artifact with exactly
   `./dist/pi.js` and `./skills` in `package.json#pi`. Generation writes five
   package-owned `pi/agents/*.md` assets plus `.thoth-agents-assets.json`; no

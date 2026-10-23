@@ -42,6 +42,7 @@ export interface CapabilityProfile {
 
 export interface HarnessPromptDialect {
   harness: HarnessId;
+  gateDeliveryInstruction: string;
   tools: ToolNomenclature;
   capabilities: CapabilityProfile;
   dispatchLabel(method: AgentDispatchMethod): string;
@@ -143,6 +144,8 @@ function piCapabilityDisclosure(
 
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'opencode',
+  gateDeliveryInstruction:
+    'Delivery verdicts are appended to Oracle `task` output.',
   tools: {
     delegationTool: 'task',
     backgroundDelegationTool: 'task(background=true)',
@@ -179,6 +182,8 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
 
 export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'codex',
+  gateDeliveryInstruction:
+    'Delivery verdicts arrive with `wait_agent` only when plugin hooks are enabled and trusted; `agent` is the status-map key, not proof of Oracle provenance.',
   tools: {
     delegationTool: 'collaboration.spawn_agent',
     backgroundDelegationTool: 'collaboration.spawn_agent',
@@ -233,6 +238,8 @@ export function claudeCodeSubagentType(role: AgentPromptRole): string {
 
 export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'claude',
+  gateDeliveryInstruction:
+    'Run Oracle gate assignments in the foreground; only completed foreground `Agent` results receive delivery verdicts, not background runs.',
   tools: {
     delegationTool: 'Agent',
     backgroundDelegationTool: 'Agent(run_in_background=true)',
@@ -278,6 +285,8 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
 
 export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
+  gateDeliveryInstruction:
+    'Delivery verdicts arrive on completion notifications, `subagent_result`, and task-mode `subagent_run`; match `taskId` to the assignment.',
   tools: {
     delegationTool: 'subagent_run',
     backgroundDelegationTool: 'subagent_run({ agent, task })',

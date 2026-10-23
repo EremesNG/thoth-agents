@@ -167,7 +167,7 @@ describe('Claude Code adapter v0.3', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Claude dialect.
-    expect(instructions.length).toBeLessThanOrEqual(13_300);
+    expect(instructions.length).toBeLessThanOrEqual(14_200);
     expect(instructions).toContain('root coordinator');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(
@@ -228,6 +228,43 @@ describe('Claude Code adapter v0.3', () => {
     expect(orchestrator).not.toMatch(/^tools:/m);
     expect(orchestrator).toContain('model: inherit');
     expect(settings.agent).toBe('orchestrator');
+  });
+
+  test('references custom Claude-only hooks without default hook discovery', () => {
+    const { artifacts } = render();
+    const manifest = JSON.parse(
+      String(artifact(artifacts, '.claude-plugin/plugin.json')?.content),
+    );
+    expect(manifest.hooks).toBe('./claude-hooks/hooks.json');
+    const hooks = JSON.parse(
+      String(artifact(artifacts, 'claude-hooks/hooks.json')?.content),
+    );
+    expect(hooks).toEqual({
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Agent',
+            hooks: [
+              {
+                type: 'command',
+                command: `node "\${CLAUDE_PLUGIN_ROOT}/thoth-hooks/gate-verdict.mjs"`,
+                timeout: 10,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(artifacts.some((entry) => entry.path === 'hooks/hooks.json')).toBe(
+      false,
+    );
+    const configured = renderWithConfig({
+      projectRoot: process.cwd(),
+      config: { agents: { oracle: { model: 'sonnet' } } },
+    }).artifacts;
+    expect(artifact(configured, 'claude-hooks/hooks.json')?.content).toBe(
+      artifact(artifacts, 'claude-hooks/hooks.json')?.content,
+    );
   });
 
   test('bundles unrelated MCP servers but no memory provider', () => {

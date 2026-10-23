@@ -61,6 +61,9 @@ console.log(JSON.stringify({
           ...process.env,
           PI_CODING_AGENT_DIR: path.join(cwd, 'global-agent'),
           PI_PACKAGE_DIR: undefined,
+          // pnpm bin shims export NODE_PATH with the hoisted store, which would
+          // let a host without YAML resolve it anyway.
+          NODE_PATH: undefined,
           ...env,
         },
       },

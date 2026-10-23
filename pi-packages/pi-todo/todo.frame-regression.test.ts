@@ -82,8 +82,12 @@ it.each([
       expect(plain).toHaveLength(bodyRows + 2);
       expect(plain[0]).toMatch(/^╭.*╮$/);
       expect(plain[1]).toMatch(/^│ list.*│$/);
-      if (populated) {
-        expect(plain[2]).toContain(expanded ? 'write tests' : 'more lines');
+      if (populated && expanded) {
+        expect(plain[2]).toContain('write tests');
+      } else if (populated) {
+        // Narrow rows keep the expand key and truncate the count text first.
+        expect(plain[2]).toContain('ctrl+o');
+        if (width >= 40) expect(plain[2]).toContain('more lines');
       } else {
         expect(plain[1]).toContain('no tasks');
       }

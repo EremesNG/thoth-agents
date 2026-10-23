@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-thoth-theme",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": false,
   "description": "Modular Thoth theme, status line, tool styling, and welcome header for Pi.",
   "license": "MIT",

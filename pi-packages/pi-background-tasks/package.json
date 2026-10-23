@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-background-tasks",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Pi extension for durable background shell tasks, watchers, logs, and status inspection.",
   "license": "MIT",
   "type": "module",

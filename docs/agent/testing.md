@@ -173,8 +173,16 @@ Unwrapped OpenCode output has no trusted boundary: always validate it whole and
 append, even on a hypothetical repeat (multiple verdicts fail closed).
 Pi covers completion notifications, `subagent_result`, and
 task-mode `subagent_run`; OpenCode covers Oracle `task` output. Claude covers
-completed foreground `Agent` results only (gate assignments must use foreground;
-background runs get no verdict). Codex covers only multi-agent v1 `wait_agent`
+Subagent hand-back reports (foreground or background; `agent` is the agent id,
+match it to the Agent result's `agentId`) and completed foreground `Agent` results
+whose content carries the report. Other deliveries (e.g. background runs without
+hand-back) carry none; root uses the explicit compact fallback. Hand-back fixtures
+pin the observed UserPromptSubmit frame, independent multiple frames, invalid
+envelopes, multiline headers, hook cwd digest resolution, and whole-prompt
+fail-closed framing (early closer/orphan tail/second closer, unmatched closer,
+nested start/resynchronization, unindented report lines, missing header/closer).
+They also cover non-hand-back prompts, malformed stdin and PostToolUse
+`handbackReport` non-duplication. Codex covers only multi-agent v1 `wait_agent`
 status-map results with enabled, trusted plugin hooks; `agent` is the status-map
 key, not proof of Oracle provenance. Multi-agent v2 delivers the Oracle's
 `FINAL_ANSWER` as an inter-agent message with no hook or verdict; root runs the

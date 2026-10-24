@@ -573,10 +573,10 @@ The Codex plugin MUST deliver the ambient root prompt through a `SessionStart` h
 
 ### Requirement: Delivery-time Oracle gate verdicts
 
-Each harness integration MUST validate Oracle gate envelopes at native result delivery with the bundled validator and add exactly one compact `thoth-gate-verdict` line per delivered message (Pi background completion notifications, `subagent_result` and task-mode `subagent_run` results, OpenCode `task` results, Claude Code foreground `Agent` results, Codex multi-agent v1 `wait_agent` results) without altering the envelope, MUST leave non-Oracle and non-gate results unchanged, and root MUST NOT re-emit an envelope to validate it when a verdict was delivered; where a delivery path exposes no native hook (Codex multi-agent v2 `FINAL_ANSWER` inter-agent messages, Claude Code background runs), the integration MUST declare that capability gap and root MUST use the explicit validator fallback, which MUST print only the compact summary.
+Each harness integration MUST validate Oracle gate envelopes at native result delivery with the bundled validator and add exactly one compact `thoth-gate-verdict` line per delivered message (Pi background completion notifications, `subagent_result` and task-mode `subagent_run` results, OpenCode `task` results, Claude Code `SubagentHandback` reports delivered to the root as `<agent-message>` prompts and completed foreground `Agent` results whose content carries the report, Codex multi-agent v1 `wait_agent` results) without altering the envelope, MUST leave non-Oracle and non-gate results unchanged, and root MUST NOT re-emit an envelope to validate it when a verdict was delivered; where a delivery path exposes no native hook (Codex multi-agent v2 `FINAL_ANSWER` inter-agent messages, Claude Code background runs without hand-back), the integration MUST declare that capability gap and root MUST use the explicit validator fallback, which MUST print only the compact summary.
 
 #### Scenario: Delivery-time Oracle gate verdicts
 
-- **GIVEN** a Codex multi-agent v2 root whose Oracle plan review returns its envelope as a `FINAL_ANSWER` inter-agent message
-- **WHEN** root evaluates it
-- **THEN** no delivery verdict is expected, the instructions direct root to the explicit compact fallback, and root records no approval without a valid fallback summary 
+- **GIVEN** a Claude Code root whose background Oracle plan review hands back a valid envelope
+- **WHEN** the hand-back `<agent-message>` reaches the root's `UserPromptSubmit` hook
+- **THEN** the root receives one `thoth-gate-verdict` line reporting valid, plan-review, the verdict and the agent id as additional context, and records OKAY without running the validator 

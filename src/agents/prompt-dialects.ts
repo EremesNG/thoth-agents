@@ -239,7 +239,7 @@ export function claudeCodeSubagentType(role: AgentPromptRole): string {
 export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'claude',
   gateDeliveryInstruction:
-    'Run Oracle gate assignments in the foreground; only completed foreground `Agent` results receive delivery verdicts, not background runs.',
+    'Verdicts: Subagent hand-back reports (foreground or background; match `agent` to Agent `agentId`) or completed foreground `Agent` report content; otherwise (e.g. background without hand-back) compact fallback.',
   tools: {
     delegationTool: 'Agent',
     backgroundDelegationTool: 'Agent(run_in_background=true)',

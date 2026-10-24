@@ -45,7 +45,11 @@ assigned `kind:"plan-review"`, `verdict:"OKAY"`, and `record` null or the assign
 record; ignore `mode` and `recordDigest` (final-verification checks only).
 Never re-emit the envelope to validate it. Use the explicit
 compact CLI fallback with `--review-kind plan-review` only when no verdict was delivered;
-keep the native result unchanged. Claude Code gates run in the foreground.
+keep the native result unchanged. Claude Code verdicts arrive with Subagent hand-back
+reports (foreground or background; `agent` is the agent id, match it to the Agent
+result's `agentId`) and completed foreground `Agent` results whose content carries
+the report. Other deliveries (e.g. background runs without hand-back) carry none;
+use the explicit compact CLI fallback.
 Copy the verdict and `recordSha256` into the record (accepted summary/digest
 in fallback). Keep the shared one-request format-only repair budget. Root records
 plan-review `OKAY` only after these checks and judging content and provenance;

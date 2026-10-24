@@ -62,10 +62,16 @@
   request-user-input feature, provider thoth-mem surfaces, external skills and
   marketplace registration. See [Codex installation](../codex-install.md).
 - Claude packages root plus five generated namespaced subagents. Its manifest
-  explicitly references `claude-hooks/hooks.json`; PostToolUse `Agent` adds a
-  `thoth-gate-verdict` as parent context only for completed foreground
-  `thoth-agents:oracle` gate results. Root runs gate Oracles in the foreground;
-  background `async_launched` runs get no verdict.
+  explicitly references `claude-hooks/hooks.json`; UserPromptSubmit validates
+  Subagent hand-back reports (foreground or background; `agent` is the agent id,
+  match it to the Agent result's `agentId`) and adds `thoth-gate-verdict` lines as
+  parent context. PostToolUse `Agent` covers completed foreground
+  `thoth-agents:oracle` results whose content carries the report; it never reads
+  `handbackReport`, avoiding duplicate verdicts. Other deliveries (e.g. background
+  runs without hand-back) carry none; root uses the explicit compact fallback.
+  The whole hand-back prompt is parsed before validation: any framing violation
+  invalidates all fenced frames, never approving a valid prefix. The hook exits
+  silently for prompts without gated frames or malformed hook input.
 - Codex also declares PostToolUse `^(multi_agent_v1)?wait_agent$` in
   `codex-hooks/hooks.json`. Only multi-agent v1 `wait_agent` status-map results get
   verdicts with enabled, trusted plugin hooks: one per completed gate message;

@@ -29,7 +29,7 @@
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:621dd66ef9b21d1a30e574a58ccf4035d5e500970a9ebd5d582f7f0fde8c438e"
+      "sha256": "sha256:3416fa6da73974241b6c40d1d6d15a6f09fa5b20cdb1e9e00cf90b0eab9b9f47"
     },
     {
       "path": "agents/worker.md",
@@ -39,7 +39,7 @@
     {
       "path": "claude-hooks/hooks.json",
       "kind": "hook-config",
-      "sha256": "sha256:ea4039cb05351b39021edc7249ac30c00c7d5c5385019610a557d84dcfa75f96"
+      "sha256": "sha256:6293aeb237f98e0827f6eed9209554a8ea8a3074643075ee75ef7b71f9c6fcd1"
     },
     {
       "path": "settings.json",

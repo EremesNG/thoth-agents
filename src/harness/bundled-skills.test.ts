@@ -394,6 +394,20 @@ describe('canonical workflow bundle contracts', () => {
     );
   });
 
+  test('declares the Codex v1 verdict path and v2 compact fallback', () => {
+    const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    for (const rule of [
+      'Codex verdicts arrive only with multi-agent v1 `wait_agent` results when plugin hooks are enabled and trusted',
+      '`agent` is the status-map key, not proof of Oracle provenance.',
+      "Multi-agent v2 delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook, so no verdict arrives and root uses the explicit compact fallback below on the unchanged result.",
+      'Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent v2 delivery, or a Claude background run)',
+    ])
+      expect(sdd).toContain(rule);
+  });
+
   test('requires unchanged final-verification envelope bookkeeping before closeout', () => {
     for (const path of [
       'skills/thoth-sdd/SKILL.md',

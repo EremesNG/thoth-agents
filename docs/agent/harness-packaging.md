@@ -67,11 +67,14 @@
   `thoth-agents:oracle` gate results. Root runs gate Oracles in the foreground;
   background `async_launched` runs get no verdict.
 - Codex also declares PostToolUse `^(multi_agent_v1)?wait_agent$` in
-  `codex-hooks/hooks.json`. Enabled, trusted native hooks add one verdict per
-  completed gate message; `agent` is the response status-map key, so root retains
-  the Oracle-provenance check. Claude and Codex share the generated neutral
-  `thoth-hooks/gate-verdict.mjs`, which imports the bundled canonical validator.
-  Neither harness uses `plugin/hooks/hooks.json`; hook declarations are explicitly
+  `codex-hooks/hooks.json`. Only multi-agent v1 `wait_agent` status-map results get
+  verdicts with enabled, trusted plugin hooks: one per completed gate message;
+  `agent` is the status-map key, not proof of Oracle provenance. Multi-agent v2
+  delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook or
+  verdict; root runs the explicit compact `validate-result.mjs` fallback on the
+  unchanged result. The v1 hook is unchanged. Claude and Codex share the generated
+  neutral `thoth-hooks/gate-verdict.mjs`, which imports the bundled canonical
+  validator. Neither harness uses `plugin/hooks/hooks.json`; hook declarations are explicitly
   referenced from their own manifests, outside the other's auto-discovery path.
 - Pi adds verdicts through `src/pi.ts` on completion notifications,
   `subagent_result`, and task-mode `subagent_run`. OpenCode's

@@ -818,7 +818,7 @@ describe('AI-first prompt rendering', () => {
     [
       'Codex',
       renderCodexRootInstructions,
-      'Delivery verdicts arrive with `wait_agent` only when plugin hooks are enabled and trusted; `agent` is the status-map key, not proof of Oracle provenance.',
+      'Verdicts: multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only; `agent` = status-map key, not provenance. V2 `FINAL_ANSWER` inter-agent messages: no hook/verdict; use compact fallback.',
     ],
     [
       'Claude Code',
@@ -1003,7 +1003,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "a4c9e38fb582b6d52086e67f30561d558753de869e1b29a2072a855bc56cc4fe",
+          "354f8474eec6971645c268754f6e2ea61749d0773ef7169717c1c9b930f3c398",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",

@@ -53,6 +53,43 @@ test('rejects malformed frontmatter and unsafe directory links, and no-op saves 
   expect(() => readPiModelConfig(linked)).toThrow(/symlink/i);
 });
 
+test('ignores legacy mode fields when reading and saving model choices', () => {
+  const piRoot = fixture();
+  const target = join(piRoot, 'agents', 'thoth-worker.md');
+  writeFileSync(
+    target,
+    readFileSync(target, 'utf8').replace(
+      'tools: read',
+      'tools: read\nsubagent_mode: unsupported\nsubagent_mode: [task]',
+    ),
+  );
+
+  const snapshot = readPiModelConfig(piRoot, ['worker']);
+  expect(snapshot.roles).toEqual([
+    {
+      role: 'worker',
+      model: 'provider/old',
+      effort: { kind: 'effort', value: 'low' },
+    },
+  ]);
+  expect(
+    savePiModelConfig(snapshot, [
+      {
+        role: 'worker',
+        model: 'provider/new',
+        effort: { kind: 'effort', value: 'max' },
+      },
+    ]),
+  ).toMatchObject({ success: true, changedRoles: ['worker'] });
+  expect(readPiModelConfig(piRoot, ['worker']).roles).toEqual([
+    {
+      role: 'worker',
+      model: 'provider/new',
+      effort: { kind: 'effort', value: 'max' },
+    },
+  ]);
+});
+
 test('reports partial writes and returns a retry snapshot without losing the draft', () => {
   const piRoot = fixture();
   const snapshot = readPiModelConfig(piRoot);

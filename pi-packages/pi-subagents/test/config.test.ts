@@ -59,6 +59,7 @@ import {
   matchesToolPattern,
 } from '../src/tool-patterns.js';
 import { registerSubagentTools } from '../src/tools.js';
+import { readToolsFields } from '../src/tools-panel/frontmatter.js';
 import type {
   EffectiveSubagentProfile,
   SubagentErrorMetadata,
@@ -421,31 +422,33 @@ describe('config and workflow loading', () => {
     });
   });
 
-  it('defaults to background while preserving explicit global and project modes', () => {
-    expect(readSubagentsConfig(tmp).default_mode).toBe('background');
-
+  it.each([
+    'task',
+    'background',
+    'sidecar',
+    { invalid: true },
+  ])('silently ignores legacy default_mode in global and project config: %j', (value) => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(
       path.join(agentDir, 'subagents.json'),
-      JSON.stringify({ default_mode: 'background' }),
+      JSON.stringify({ default_mode: value }),
     );
 
-    withAgentDir(agentDir, () => {
-      expect(readSubagentsConfig(tmp).default_mode).toBe('background');
-
-      fs.writeFileSync(
-        path.join(tmp, '.pi', 'subagents.json'),
-        JSON.stringify({ default_mode: 'task' }),
-      );
-      expect(readSubagentsConfig(tmp).default_mode).toBe('task');
-
-      fs.writeFileSync(
-        path.join(tmp, '.pi', 'subagents.json'),
-        JSON.stringify({ default_mode: 'sidecar' }),
-      );
-      expect(readSubagentsConfig(tmp).default_mode).toBe('background');
-    });
+    try {
+      withAgentDir(agentDir, () => {
+        expect(readSubagentsConfig(tmp)).not.toHaveProperty('default_mode');
+        fs.writeFileSync(
+          path.join(tmp, '.pi', 'subagents.json'),
+          JSON.stringify({ default_mode: value }),
+        );
+        expect(readSubagentsConfig(tmp)).not.toHaveProperty('default_mode');
+        expect(warning).not.toHaveBeenCalled();
+      });
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it('defaults lifecycle passthrough to bridges, background jobs and fast variants and lets project arrays replace global arrays', () => {
@@ -529,30 +532,14 @@ describe('config and workflow loading', () => {
     }
   });
 
-  it('resolves invocation and definition modes ahead of config and background fallback', () => {
+  it('runs in background unless the invocation explicitly requests task mode', () => {
     expect(resolveEffectiveSubagentMode({})).toBe('background');
-    expect(
-      resolveEffectiveSubagentMode({ config: { default_mode: 'task' } }),
-    ).toBe('task');
-    expect(
-      resolveEffectiveSubagentMode({
-        definition: { subagent_mode: 'background' },
-        config: { default_mode: 'task' },
-      }),
-    ).toBe('background');
-    expect(
-      resolveEffectiveSubagentMode({
-        definition: { subagent_mode: 'task' },
-        config: { default_mode: 'background' },
-      }),
-    ).toBe('task');
-    expect(
-      resolveEffectiveSubagentMode({
-        invocationMode: 'task',
-        definition: { subagent_mode: 'background' },
-        config: { default_mode: 'background' },
-      }),
-    ).toBe('task');
+    expect(resolveEffectiveSubagentMode({ invocationMode: 'background' })).toBe(
+      'background',
+    );
+    expect(resolveEffectiveSubagentMode({ invocationMode: 'task' })).toBe(
+      'task',
+    );
   });
 
   it('enables orchestrator channels by default and cascades the reply timeout and feature gate', () => {
@@ -622,7 +609,7 @@ describe('config and workflow loading', () => {
 
       fs.writeFileSync(
         path.join(tmp, '.pi', 'subagents.json'),
-        JSON.stringify({ default_mode: 'task' }),
+        JSON.stringify({}),
       );
       expect(readSubagentsConfig(tmp).enable_continue).toBe(true);
 
@@ -640,36 +627,44 @@ describe('config and workflow loading', () => {
     });
   });
 
-  it('rejects invalid subagent_mode values and leaves omitted definition modes unset', () => {
+  it.each([
+    'task',
+    'background',
+    'sidecar',
+    '{}',
+  ])('silently ignores legacy subagent_mode frontmatter: %s', (value) => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ndescription: analyst agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---
+name: analyst
+subagent_mode: ${value}
+tools: read
+---
+# Agent`,
     );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents', 'reviewer.md'),
-      `---\nname: reviewer\ndescription: reviewer agent\ntools:\n  - read\n---\n# Agent`,
-    );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents', 'invalid.md'),
-      `---\nname: invalid\ndescription: invalid agent\nsubagent_mode: sidecar\ntools:\n  - read\n---\n# Agent`,
-    );
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const agents = loadSubagents(tmp);
+      expect(agents).toHaveLength(1);
+      expect(agents[0]).not.toHaveProperty('subagent_mode');
+      expect(subagentSourceWarnings(tmp)).toEqual([]);
+      expect(warning).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
+  });
 
-    const agents = loadSubagents(tmp);
-    const warnings = subagentSourceWarnings(tmp);
-
-    expect(agents.find((agent) => agent.name === 'analyst')).toMatchObject({
-      subagent_mode: 'background',
-    });
-    expect(agents.find((agent) => agent.name === 'reviewer')).toMatchObject({
-      subagent_mode: undefined,
-    });
-    expect(agents.find((agent) => agent.name === 'invalid')).toBeUndefined();
-    expect(warnings).toContainEqual(
-      expect.stringContaining('Subagent "invalid"'),
-    );
-    expect(warnings).toContainEqual(expect.stringContaining('subagent_mode'));
-    expect(warnings).toContainEqual(expect.stringContaining('task'));
-    expect(warnings).toContainEqual(expect.stringContaining('background'));
+  it.each([
+    'task',
+    'background',
+    'sidecar',
+    '{}',
+  ])('tools panel ignores legacy subagent_mode frontmatter: %s', (value) => {
+    expect(
+      readToolsFields(
+        `---\nsubagent_mode: ${value}\ntools: read\n---\n# Agent`,
+      ),
+    ).toEqual({ tools: ['read'] });
   });
 
   it('defaults, cascades, normalizes and floors tool stall budgets', () => {
@@ -888,7 +883,6 @@ describe('config and workflow loading', () => {
     expect(config.max_concurrency).toBe(5);
     expect(config.timeout_ms).toBe(1200000);
     expect(config.stall_timeout_ms).toBe(240000);
-    expect(config.default_mode).toBe('background');
   });
 
   it('loads global subagents and lets project-local agents/config override them', () => {

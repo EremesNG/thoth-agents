@@ -4,7 +4,6 @@ description: "Own user-facing implementation choices and visual quality for UI w
 tools: "read, bash, edit, write, grep, find, ls, mem_recall, mem_get"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
-subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

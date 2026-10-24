@@ -12,7 +12,6 @@ export interface PiAgentDefinitionInput {
   model?: string;
   effort?: string;
   skills?: readonly string[];
-  subagentMode: 'task' | 'background';
 }
 
 const LIBRARIAN_RESEARCH_TOOLS = [
@@ -60,7 +59,6 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
     ...(input.skills !== undefined
       ? [`skills: ${JSON.stringify(input.skills)}`]
       : []),
-    `subagent_mode: ${yamlScalar(input.subagentMode)}`,
     `managed-by: ${PI_MANAGED_OWNER}`,
     '---',
     '',

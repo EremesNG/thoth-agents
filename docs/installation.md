@@ -555,7 +555,8 @@ provider. The ambient root retains Pi's selected model and effort settings:
 | designer | `openai-codex/gpt-6-luna` | `max` |
 | worker | `openai-codex/gpt-6-luna` | `max` |
 
-Definitions use runtime-supported `model`, `effort`, and `subagent_mode` fields.
+Definitions use runtime-supported `model` and `effort` fields. Omitted invocation
+mode runs in background; waiting requires explicit `mode: "task"`.
 Synchronization migrates legacy `thinking` values to `effort`, preserves
 explicit model and effort overrides (including `max`), and translates legacy
 `model: default` to `model: inherit`. Inheritance stays unpinned by omitting an

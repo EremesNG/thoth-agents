@@ -15,7 +15,6 @@ it('keeps all root and child tool definitions within the serialized character bu
   fs.writeFileSync(
     path.join(env.tmp, '.pi', 'subagents.json'),
     JSON.stringify({
-      default_mode: 'background',
       enable_continue: true,
       enable_ask_orchestrator: true,
     }),

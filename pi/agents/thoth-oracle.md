@@ -5,7 +5,6 @@ tools: "read, bash, grep, find, ls, mem_recall, mem_get"
 disallowed_tools: "ask_orchestrator"
 model: "openai-codex/gpt-6.1-sol"
 effort: "xhigh"
-subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

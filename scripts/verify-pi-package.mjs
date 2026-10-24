@@ -150,25 +150,16 @@ try {
     const effort = frontmatter
       .match(/^effort:\s*"?([^"\r\n]+)"?\s*$/m)?.[1]
       ?.trim();
-    const mode = frontmatter
-      .match(/^subagent_mode:\s*"?([^"\r\n]+)"?\s*$/m)?.[1]
-      ?.trim();
     if (
       !model ||
       !effort ||
       !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ||
-      !['task', 'background'].includes(mode) ||
+      /^subagent_mode:/m.test(frontmatter) ||
       /^(defaultContext|maxSubagentDepth|async):/m.test(frontmatter) ||
       /^thinking:/m.test(frontmatter)
     )
       throw new Error(`Packed specialist contract is stale: ${agent}`);
   }
-  if (
-    agentContents
-      .get('thoth-librarian.md')
-      ?.match(/^subagent_mode:\s*"?([^"\r\n]+)"?\s*$/m)?.[1] !== 'background'
-  )
-    throw new Error('Packed librarian must run in background.');
   const skills = readdirSync(join(candidate, 'skills'), { withFileTypes: true })
     .filter(
       (entry) =>

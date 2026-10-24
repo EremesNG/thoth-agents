@@ -151,10 +151,10 @@
   (including extension providers such as `openai-codex-2`); agent-loop requests
   routed through them send `service_tier: "priority"`, while compaction and
   other direct requests keep the standard tier.
-  Generated definitions use supported `model`, `effort`, and `subagent_mode`
-  fields; they do not claim fresh-context or depth enforcement. Omitted run mode
-  follows the selected definition and configuration, with background as the
-  runtime fallback; an explicit `mode: "task"` continues to wait. The
+  Generated definitions use supported `model` and `effort` fields; they do not
+  claim fresh-context or depth enforcement. Omitted invocation mode runs in
+  background for launches and continuations; waiting requires explicit
+  `mode: "task"`. The
   `/subagents-model` manages named model/effort profiles independently of
   definition scope. Storage is global `<agentDir>/thoth/profiles.json`
   (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) or project

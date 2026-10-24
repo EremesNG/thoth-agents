@@ -1,7 +1,6 @@
 import { isWorkPanelRootEditorInputActive } from '@thoth-agents/pi-core';
 import { Type } from 'typebox';
 import {
-  loadSubagents,
   readSubagentsConfig,
   resolveEffectiveSubagentMode,
 } from '../config.js';
@@ -80,8 +79,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
     name: 'subagent_run',
     label: 'Subagent Run',
     description: 'Delegate a task to exactly one markdown-defined subagent.',
-    promptSnippet:
-      'Omit mode: selected agent/configuration; background is the default if unset. Use mode=background to override task mode.',
+    promptSnippet: 'Omit mode: background by default.',
     promptGuidelines: [
       'mode=task only when the user explicitly asks to wait for completion.',
       'After background launch/continuation, respond immediately; wait for the automatic completion notification. No sleeping, polling status, or fetching results just to wait.',
@@ -127,13 +125,8 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
         const cwd = ctx?.cwd ?? process.cwd();
         const availability = () => continuationAvailable(cwd, pi);
         const subagentsConfig = readSubagentsConfig(cwd);
-        const definition = loadSubagents(cwd).find(
-          (candidate) => candidate.name === params.agent.toLowerCase(),
-        );
         const effectiveMode = resolveEffectiveSubagentMode({
           invocationMode: params.mode,
-          definition,
-          config: subagentsConfig,
         });
         const isBackground = effectiveMode === 'background';
         const canBackgroundInTaskMode = effectiveMode === 'task';

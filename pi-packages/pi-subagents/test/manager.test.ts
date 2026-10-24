@@ -383,83 +383,63 @@ describe('manager and history integration', () => {
     ]);
   });
 
-  it('resolves explicit, definition, config, and built-in mode defaults and waits only effective task members', async () => {
+  it('ignores legacy definition and config task modes for omitted multi-agent launches', async () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ default_mode: 'background' }),
+      JSON.stringify({ default_mode: 'task' }),
     );
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'analyst.md'),
-      `---\nname: analyst\ndescription: analyst agent\nsubagent_mode: task\ntools:\n  - read\n---\n# Agent`,
+      `---
+name: analyst
+subagent_mode: task
+tools: read
+---
+# Agent`,
     );
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents', 'reviewer.md'),
-      `---\nname: reviewer\ndescription: reviewer agent\ntools:\n  - read\n---\n# Agent`,
-    );
-
-    const releaseReviewer = vi.fn<() => void>();
-    const runner: SubagentRunner = async ({ definition }) => {
-      if (definition.name === 'reviewer') {
-        return await new Promise((resolve) => {
-          releaseReviewer.mockImplementationOnce(() =>
-            resolve({
-              result: 'reviewer handled review plan',
-              model: 'mock/model',
-              fallback_used: false,
-            }),
-          );
-        });
-      }
+    writeAgent('reviewer');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(async ({ definition }) => {
+      await gate;
       return {
-        result: 'analyst handled review plan',
+        result: definition.name,
         model: 'mock/model',
         fallback_used: false,
       };
-    };
-    const manager = createManager(runner);
+    });
 
-    const result = await manager.run(
-      { agents: ['analyst', 'reviewer'], task: 'review plan' },
-      { cwd: tmp },
-    );
-
-    expect(result.mode).toBe('mixed');
-    expect(result.waited_task_ids).toEqual([
-      result.results?.find((task) => task.agent === 'analyst')?.id,
-    ]);
-    expect(result.background_task_ids).toEqual([
-      result.results?.find((task) => task.agent === 'reviewer')?.id,
-    ]);
-    expect(
-      result.results?.map((task) => ({
-        agent: task.agent,
-        mode: task.mode,
-        effective_mode: task.effective_mode,
-        status: task.status,
-      })),
-    ).toEqual([
-      {
-        agent: 'analyst',
-        mode: 'task',
-        effective_mode: 'task',
-        status: 'completed',
-      },
-      {
-        agent: 'reviewer',
-        mode: 'background',
-        effective_mode: 'background',
-        status: 'running',
-      },
-    ]);
-    expect(manager.getTask(result.background_task_ids[0]!)?.status).toBe(
-      'running',
-    );
-
-    releaseReviewer();
+    try {
+      const result = await manager.run(
+        { agents: ['analyst', 'reviewer'], task: 'review plan' },
+        { cwd: tmp },
+      );
+      expect(result.mode).toBe('background');
+      expect(result.waited_task_ids).toEqual([]);
+      expect(result.background_task_ids).toEqual(result.task_ids);
+      expect(result.results).toMatchObject([
+        {
+          agent: 'analyst',
+          mode: 'background',
+          effective_mode: 'background',
+          status: 'running',
+        },
+        {
+          agent: 'reviewer',
+          mode: 'background',
+          effective_mode: 'background',
+          status: 'running',
+        },
+      ]);
+    } finally {
+      release();
+    }
     await vi.waitFor(() =>
-      expect(manager.getTask(result.background_task_ids[0]!)?.status).toBe(
-        'completed',
-      ),
+      expect(
+        manager.listTasks(tmp).every((task) => task.status === 'completed'),
+      ).toBe(true),
     );
   });
 
@@ -724,10 +704,13 @@ describe('manager and history integration', () => {
     });
   });
 
-  it('resolves continuation mode from explicit override, previous effective mode, and config fallback', async () => {
+  it.each([
+    undefined,
+    'background',
+  ] as const)('ignores legacy config and previous task mode unless continuation mode is explicit: %s', async (continuationMode) => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ enable_continue: true, default_mode: 'background' }),
+      JSON.stringify({ enable_continue: true, default_mode: 'task' }),
     );
     writeAgent('analyst');
     const nestedSessionPath = path.join(
@@ -802,7 +785,7 @@ describe('manager and history integration', () => {
       {
         task_id: taskTaskId,
         prompt: 'resume in background',
-        mode: 'background',
+        mode: continuationMode,
       },
       { cwd: tmp },
     );
@@ -851,7 +834,7 @@ describe('manager and history integration', () => {
     );
 
     const legacy = await legacyManager.continueTask(
-      { task_id: legacyTaskId, prompt: 'fallback to config default' },
+      { task_id: legacyTaskId, prompt: 'ignore legacy config default' },
       { cwd: tmp },
     );
     expect(legacy).toMatchObject({
@@ -1352,7 +1335,7 @@ describe('manager and history integration', () => {
   it('queues same-parent pre-ready messages, flushes them exactly once on bridge readiness, and preserves fail-closed checks', async () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
 
     let registerLiveBridge: ((bridge: any) => void) | undefined;
@@ -1439,11 +1422,11 @@ describe('manager and history integration', () => {
   it('accepts only same-parent running background tasks and rejects cross-session or foreground targets without mutation', async () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'tasker.md'),
-      `---\nname: tasker\ndescription: task agent\nsubagent_mode: task\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: tasker\ndescription: task agent\ntools:\n  - read\n---\n# Agent`,
     );
 
     const releases = new Map<string, () => void>();
@@ -1530,7 +1513,7 @@ describe('manager and history integration', () => {
   it('converts post-enqueue settlement, cancellation, and restart races into undelivered counts without replay', async () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     const releases = new Map<string, () => void>();
     const manager = createManager(
@@ -1615,7 +1598,7 @@ describe('manager and history integration', () => {
   it('cleans up an earlier flush failure without consuming a later forwarded message', async () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     const releases = new Map<string, () => void>();
     const failedMessage = 'first flush failure';
@@ -3163,7 +3146,11 @@ describe('manager and history integration', () => {
     );
     const taskId = initial.task_ids[0]!;
     const continued = await manager.continueTask(
-      { task_id: taskId, prompt: 'Please continue with the fix.' },
+      {
+        task_id: taskId,
+        prompt: 'Please continue with the fix.',
+        mode: 'task',
+      },
       { cwd: tmp },
     );
 
@@ -3221,7 +3208,7 @@ describe('manager and history integration', () => {
     );
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
 
     const releases = new Map<number, () => void>();
@@ -3394,6 +3381,7 @@ describe('manager and history integration', () => {
       {
         task_id: taskId,
         prompt: 'Continue with a different effort.',
+        mode: 'task',
         model: 'override/custom',
         effort: 'xhigh',
       },
@@ -3525,6 +3513,7 @@ describe('manager and history integration', () => {
       {
         task_id: run1.task_ids[0]!,
         prompt: 'resume task one',
+        mode: 'task',
       },
       { cwd: tmp },
     );

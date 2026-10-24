@@ -62,8 +62,6 @@ interface ParsedFrontmatter {
 
 const AMBIGUOUS_TOOLS_ISSUE =
   'choose either comma-separated inline tools or a multiline YAML tools list, not both';
-const SUBAGENT_MODE_ISSUE =
-  'subagent_mode must be exactly "task" or "background"';
 
 function parseInlineTools(value: string): string[] {
   return value
@@ -343,13 +341,6 @@ function parseLifecyclePassthrough(value: unknown): string[] {
   return names.filter((name) => name !== 'thoth-agents');
 }
 
-function parseDefaultMode(value: unknown): SubagentMode {
-  const mode = String(value ?? 'background')
-    .trim()
-    .toLowerCase();
-  return mode === 'task' ? 'task' : 'background';
-}
-
 function parseCtrlShortcut(value: any, fallback: string): string {
   const shortcut = String(value ?? fallback)
     .trim()
@@ -508,7 +499,6 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     default_effort: parseEffort(
       raw.default_effort ?? raw.default_thinking_level ?? raw.thinkingLevel,
     ),
-    default_mode: parseDefaultMode(raw.default_mode),
     timeout_ms: positiveInteger(raw.timeout_ms, DEFAULT_TIMEOUT_MS),
     stall_timeout_ms: stallTimeoutMs,
     tool_stall_timeout_ms: Math.max(
@@ -569,15 +559,8 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
 
 export function resolveEffectiveSubagentMode(input: {
   invocationMode?: SubagentMode;
-  definition?: Pick<SubagentDefinition, 'subagent_mode'>;
-  config?: Pick<SubagentsConfig, 'default_mode'>;
 }): SubagentMode {
-  return (
-    input.invocationMode ??
-    input.definition?.subagent_mode ??
-    input.config?.default_mode ??
-    'background'
-  );
+  return input.invocationMode ?? 'background';
 }
 
 interface BlockedSubagentDefinition {
@@ -629,15 +612,6 @@ function loadSubagentsFromDir(
         return [];
       }
       const description = String(data.description || `${name} subagent`).trim();
-      const rawSubagentMode = data.subagent_mode;
-      if (
-        rawSubagentMode !== undefined &&
-        rawSubagentMode !== 'task' &&
-        rawSubagentMode !== 'background'
-      ) {
-        onBlocked?.({ name, filePath, issues: [SUBAGENT_MODE_ISSUE] });
-        return [];
-      }
       const tools = sanitizeTools(
         Array.isArray(data.tools) ? data.tools.map(String) : [],
       );
@@ -651,7 +625,6 @@ function loadSubagentsFromDir(
           effort: parseEffort(
             data.effort ?? data.thinking_level ?? data.thinkingLevel,
           ),
-          subagent_mode: rawSubagentMode,
           tools,
           disallowed_tools: disallowedTools,
           skills: Array.isArray(data.skills)

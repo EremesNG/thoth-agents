@@ -33,7 +33,7 @@ function fixture() {
   for (const role of PI_SPECIALIST_ROLES) {
     writeFileSync(
       join(agents, `thoth-${role}.md`),
-      `---\nname: thoth-${role}\nmanaged-by: thoth-agents\nmodel: provider/${role}\neffort: high\nsubagent_mode: task\n---\nInstructions for ${role}.\n`,
+      `---\nname: thoth-${role}\nmanaged-by: thoth-agents\nmodel: provider/${role}\neffort: high\n---\nInstructions for ${role}.\n`,
     );
   }
   return root;
@@ -201,12 +201,30 @@ test('carries disallowed_tools into snapshots and preserves its bytes when savin
   ]);
 });
 
+test.each([
+  'subagent_mode: task',
+  'subagent_mode: background',
+  'subagent_mode: unsupported',
+  'subagent_mode: true',
+  'subagent_mode: null',
+  'subagent_mode: [task, background]',
+  'subagent_mode: {old: value}',
+  'subagent_mode: task\n  - background',
+  '"subagent_mode": unsupported',
+  '"subagent_\\u006dode": unsupported',
+  '? subagent_mode\n: unsupported',
+])('ignores legacy mode fields when reading tool overrides: %s', (field) => {
+  expect(
+    readPiSpecialistToolOverrides(`---\ntools: read\n${field}\n---\nBody.\n`),
+  ).toEqual({ tools: ['read'] });
+});
+
 test('reads explicit YAML mapping keys and rejects semantic duplicates', () => {
   expect(
     readPiSpecialistToolOverrides(
-      '---\n? tools\n: read\n? subagent_mode\n: task\n---\nInstructions.\n',
+      '---\n? tools\n: read\n? other-setting\n: keep\n---\nInstructions.\n',
     ),
-  ).toEqual({ tools: ['read'], subagentMode: 'task' });
+  ).toEqual({ tools: ['read'] });
 
   expect(() =>
     readPiSpecialistToolOverrides(
@@ -215,16 +233,16 @@ test('reads explicit YAML mapping keys and rejects semantic duplicates', () => {
   ).toThrow(/duplicate.*tools/i);
   expect(() =>
     readPiSpecialistToolOverrides(
-      '---\nsubagent_mode: task\n? subagent_mode\n: background\n---\nInstructions.\n',
+      '---\nother-setting: first\n? other-setting\n: second\n---\nInstructions.\n',
     ),
-  ).toThrow(/duplicate.*subagent_mode/i);
+  ).toThrow(/unique/i);
 });
 
 test('surgically updates escaped and explicit keys while preserving CRLF and unrelated bytes', () => {
   const piRoot = fixture();
   const target = join(piRoot, 'agents', 'thoth-worker.md');
   const original =
-    '---\r\nname: thoth-worker\r\nmanaged-by: thoth-agents\r\nmodel: provider/custom\r\neffort: max\r\n"\\u0074ools":\r\n  - read\r\n# keep this comment\r\n? subagent_mode\r\n: background\r\nother-setting: untouched\r\n---\r\nExact body.\r\n';
+    '---\r\nname: thoth-worker\r\nmanaged-by: thoth-agents\r\nmodel: provider/custom\r\neffort: max\r\n"\\u0074ools":\r\n  - read\r\n# keep this comment\r\n? preserved-setting\r\n: keep\r\nother-setting: untouched\r\n---\r\nExact body.\r\n';
   writeFileSync(target, original);
   const snapshot = readPiToolConfig(piRoot, ['worker']);
 
@@ -274,12 +292,12 @@ test('reads multiline tool items separated by column-zero comments', () => {
   });
 });
 
-test('saves explicit selections while preserving model, effort, mode, other frontmatter, and body', () => {
+test('saves explicit selections while preserving model, effort, other frontmatter, and body', () => {
   const piRoot = fixture();
   const target = join(piRoot, 'agents', 'thoth-worker.md');
   writeFileSync(
     target,
-    '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: provider/custom\neffort: max\nsubagent_mode: background\nother-setting: keep\ntools: "old_extension, read"\n---\nExact instruction body.\n',
+    '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: provider/custom\neffort: max\nother-setting: keep\ntools: "old_extension, read"\n---\nExact instruction body.\n',
   );
   const snapshot = readPiToolConfig(piRoot);
   const result = savePiToolConfig(snapshot, [
@@ -288,7 +306,7 @@ test('saves explicit selections while preserving model, effort, mode, other fron
 
   expect(result).toMatchObject({ success: true, changedRoles: ['worker'] });
   expect(readFileSync(target, 'utf8')).toBe(
-    '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: provider/custom\neffort: max\nsubagent_mode: background\nother-setting: keep\ntools: "retired_extension, bash"\n---\nExact instruction body.\n',
+    '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: provider/custom\neffort: max\nother-setting: keep\ntools: "retired_extension, bash"\n---\nExact instruction body.\n',
   );
   expect(
     readPiToolConfig(piRoot).roles.find(({ role }) => role === 'worker'),
@@ -424,15 +442,11 @@ test('rejects malformed and duplicate saved fields rather than guessing', () => 
 
 test('reads quoted and escaped YAML keys by their semantic values', () => {
   expect(
-    readPiSpecialistToolOverrides(
-      '---\n"tools": [read, bash]\n"subagent_mode": background\n---\nBody.\n',
-    ),
-  ).toEqual({ tools: ['read', 'bash'], subagentMode: 'background' });
+    readPiSpecialistToolOverrides('---\n"tools": [read, bash]\n---\nBody.\n'),
+  ).toEqual({ tools: ['read', 'bash'] });
   expect(
-    readPiSpecialistToolOverrides(
-      '---\n"\\u0074ools": [read]\n"subagent_\\u006dode": task\n---\nBody.\n',
-    ),
-  ).toEqual({ tools: ['read'], subagentMode: 'task' });
+    readPiSpecialistToolOverrides('---\n"\\u0074ools": [read]\n---\nBody.\n'),
+  ).toEqual({ tools: ['read'] });
   expect(
     readPiSpecialistToolOverrides('---\n"\\x74ools": [bash]\n---\nBody.\n'),
   ).toEqual({ tools: ['bash'] });
@@ -475,37 +489,18 @@ test.each([
     error: /tools.*continuation/i,
   },
   {
-    name: 'quoted duplicate subagent_mode semantic key',
-    fields: 'subagent_mode: task\n"subagent_mode" : background',
-    error: /duplicate.*subagent_mode/i,
-  },
-  {
-    name: 'escaped quoted duplicate subagent_mode semantic key',
-    fields: 'subagent_mode: task\n"subagent_\\u006dode" : background',
-    error: /duplicate.*subagent_mode/i,
-  },
-  {
-    name: 'escaped subagent_mode alias before plain duplicate key',
-    fields: '"subagent_\\u006dode": background\nsubagent_mode: task',
-    error: /duplicate.*subagent_mode/i,
-  },
-  {
-    name: 'subagent_mode scalar continuation',
-    fields: 'subagent_mode: task\n  - background',
-    error: /subagent_mode.*continuation/i,
-  },
-  {
-    name: 'subagent_mode scalar continuation after column-zero comment',
-    fields: 'subagent_mode: task\n# comment\n  - background',
+    name: 'unknown scalar continuation after column-zero comment',
+    fields: 'other-setting: first\n# comment\n  - second',
     error: /Invalid Pi specialist YAML frontmatter/i,
   },
 ])('rejects $name when reading specialist overrides', ({ fields, error }) => {
   const piRoot = fixture();
   const target = join(piRoot, 'agents', 'thoth-worker.md');
   const original = readFileSync(target, 'utf8');
-  const malformed = original
-    .replace('subagent_mode: task\n', '')
-    .replace('---\nInstructions', `${fields}\n---\nInstructions`);
+  const malformed = original.replace(
+    '---\nInstructions',
+    `${fields}\n---\nInstructions`,
+  );
   writeFileSync(target, malformed);
 
   expect(() => readPiSpecialistToolOverrides(malformed)).toThrow(error);
@@ -551,16 +546,6 @@ test.each([
     error: /tools.*continuation/i,
   },
   {
-    name: 'quoted duplicate subagent_mode semantic key',
-    fields: 'subagent_mode: task\n"subagent_mode" : background',
-    error: /duplicate.*subagent_mode/i,
-  },
-  {
-    name: 'explicit mapping duplicate subagent_mode semantic key',
-    fields: 'subagent_mode: task\n? subagent_mode\n: background',
-    error: /duplicate.*subagent_mode/i,
-  },
-  {
     name: 'unsupported alias usage',
     fields: 'defaults: &defaults [read]\ntools: *defaults',
     error: /anchors|aliases/i,
@@ -573,9 +558,10 @@ test.each([
   const target = join(piRoot, 'agents', 'thoth-worker.md');
   const cleanSnapshot = readPiToolConfig(piRoot, ['worker']);
   const original = readFileSync(target, 'utf8');
-  const malformed = original
-    .replace('subagent_mode: task\n', '')
-    .replace('---\nInstructions', `${fields}\n---\nInstructions`);
+  const malformed = original.replace(
+    '---\nInstructions',
+    `${fields}\n---\nInstructions`,
+  );
   writeFileSync(target, malformed);
   const snapshot = {
     ...cleanSnapshot,

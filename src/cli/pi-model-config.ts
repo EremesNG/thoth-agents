@@ -71,7 +71,6 @@ export function readOwnedPiSpecialistDefinition(
     'effort',
     'thinking',
     'tools',
-    'subagent_mode',
   ]) {
     if (
       [...frontmatter(content).matchAll(new RegExp(`^${name}:`, 'gm'))].length >

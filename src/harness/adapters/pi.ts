@@ -87,7 +87,6 @@ function roleArtifacts(config?: PluginConfig): HarnessArtifact[] {
           role: { ...role, name: role.name },
           model,
           effort: override ? undefined : preset.effort,
-          subagentMode: 'background',
           skills: config?.agents?.[role.name]?.skills,
           description: renderAgentRoutingDescription(role),
           instructions: [

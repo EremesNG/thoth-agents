@@ -4,7 +4,6 @@ description: "Gather current authoritative evidence and separate documented fact
 tools: "read, bash, grep, find, ls, mem_recall, mem_get, codemode, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
-subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

@@ -4,7 +4,6 @@ description: "Resolve broad or uncertain repository questions and return distill
 tools: "read, bash, grep, find, ls, mem_recall, mem_get, codemode"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
-subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

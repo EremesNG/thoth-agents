@@ -10,7 +10,7 @@ describe('subagent_send_message tool', () => {
     const path = await import('node:path');
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     let finish!: () => void;
     let started!: () => void;
@@ -115,7 +115,7 @@ describe('subagent_send_message tool', () => {
     const path = await import('node:path');
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
 
     const supportedSteer = vi.fn(async () => 'queued' as const);
@@ -186,11 +186,11 @@ describe('subagent_send_message tool', () => {
     const path = await import('node:path');
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'legacy.md'),
-      `---\nname: legacy\ndescription: legacy background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: legacy\ndescription: legacy background agent\ntools:\n  - read\n---\n# Agent`,
     );
 
     const releases = new Map<string, () => void>();

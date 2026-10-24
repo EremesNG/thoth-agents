@@ -18,7 +18,7 @@ import {
   renderSubagentRunCall,
   renderSubagentRunResult,
 } from '../render/tools/subagent-run.js';
-import type { SubagentTask } from '../types.js';
+import type { SubagentMode, SubagentTask } from '../types.js';
 import {
   installBackgroundHandoffShortcut,
   QUESTION_HANDOFF_GUIDANCE,
@@ -81,11 +81,11 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
     label: 'Subagent Run',
     description: 'Delegate a task to exactly one markdown-defined subagent.',
     promptSnippet:
-      'Omit mode to use the selected agent/configuration; background is the default if neither sets a mode. Use mode=background to override task mode.',
+      'Omit mode: selected agent/configuration; background is the default if unset. Use mode=background to override task mode.',
     promptGuidelines: [
-      'Use mode=task only when the user explicitly asks you to wait for completion.',
-      'After background launch or continuation, respond immediately and wait for the automatic completion notification instead of sleeping, polling status, or fetching results just to wait.',
-      'Replies, steering, and extensions require task ownership by the current Pi session.',
+      'mode=task only when the user explicitly asks to wait for completion.',
+      'After background launch/continuation, respond immediately; wait for the automatic completion notification. No sleeping, polling status, or fetching results just to wait.',
+      'Replies, steering, and extensions require current Pi session task ownership.',
     ],
     parameters: Type.Object({
       agent: Type.String(),
@@ -94,7 +94,10 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
       display_name: Type.Optional(Type.String()),
       context: Type.Optional(Type.String()),
       mode: Type.Optional(
-        Type.Union([Type.Literal('task'), Type.Literal('background')]),
+        Type.Unsafe<SubagentMode>({
+          type: 'string',
+          enum: ['task', 'background'],
+        }),
       ),
     }),
     renderShell: 'self',

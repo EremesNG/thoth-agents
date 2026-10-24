@@ -48,15 +48,16 @@ describe('subagent_run tool', () => {
     );
     expect(guidance).toContain('Omit mode');
     expect(guidance).toContain('selected agent/configuration');
-    expect(guidance).toContain('background is the default');
+    expect(guidance).toContain('background is the default if unset');
     expect(guidance).toContain('mode=background to override task mode');
     expect(guidance).toContain(
-      'mode=task only when the user explicitly asks you to wait',
+      'mode=task only when the user explicitly asks to wait for completion',
     );
+    expect(guidance).toContain('After background launch/continuation');
     expect(guidance).toContain('respond immediately');
     expect(guidance).toContain('automatic completion notification');
     expect(guidance).toContain(
-      'instead of sleeping, polling status, or fetching results just to wait',
+      'No sleeping, polling status, or fetching results just to wait',
     );
     expect(guidance.match(/mode=task only when/g)).toHaveLength(1);
     expect(guidance.match(/Omit mode/g)).toHaveLength(1);
@@ -64,7 +65,7 @@ describe('subagent_run tool', () => {
       1,
     );
     expect(runTool.promptGuidelines).toContain(
-      'Replies, steering, and extensions require task ownership by the current Pi session.',
+      'Replies, steering, and extensions require current Pi session task ownership.',
     );
     expect(runTool.renderShell).toBe('self');
     expect(runTool.parameters.properties.mode).toBeDefined();

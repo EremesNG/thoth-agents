@@ -177,10 +177,7 @@ const SingleParamsSchema = Type.Object({
   ),
 });
 
-const batchId = Type.Union([Type.Number(), Type.String()], {
-  description:
-    'Task id or ref from an earlier create in this batch (strings are always refs)',
-});
+const batchId = Type.Union([Type.Number(), Type.String()]);
 function withoutDescription<T extends TSchema>(schema: T): T {
   // TypeBox's kind/optional markers are non-enumerable; spreading loses them.
   const copy = Object.defineProperties(
@@ -199,28 +196,11 @@ const BatchOpSchema = Type.Object({
   owner: withoutDescription(SingleParamsSchema.properties.owner),
   metadata: withoutDescription(SingleParamsSchema.properties.metadata),
   action: StringEnum(['create', 'update', 'delete'] as const),
-  ref: Type.Optional(
-    Type.String({
-      description:
-        'Unique call-scoped ref (create only); later ops may use it as an id',
-    }),
-  ),
+  ref: Type.Optional(Type.String()),
   id: Type.Optional(batchId),
-  blockedBy: Type.Optional(
-    Type.Array(batchId, {
-      description: 'Initial dependencies (create): ids or earlier refs',
-    }),
-  ),
-  addBlockedBy: Type.Optional(
-    Type.Array(batchId, {
-      description: 'Dependencies to add (update): ids or earlier refs',
-    }),
-  ),
-  removeBlockedBy: Type.Optional(
-    Type.Array(batchId, {
-      description: 'Dependencies to remove (update): ids or earlier refs',
-    }),
-  ),
+  blockedBy: Type.Optional(Type.Array(batchId)),
+  addBlockedBy: Type.Optional(Type.Array(batchId)),
+  removeBlockedBy: Type.Optional(Type.Array(batchId)),
 });
 
 export const TodoParamsSchema = Type.Object({
@@ -237,7 +217,7 @@ export const TodoParamsSchema = Type.Object({
   ops: Type.Optional(
     Type.Array(BatchOpSchema, {
       description:
-        'Batch: 1–50 ordered create/update/delete ops; all succeed or none apply. Op fields match top-level fields, with ids or refs for dependencies.',
+        'Batch: 1–50 ordered create/update/delete ops, all-or-nothing. Op fields match top-level fields. ref: unique call-scoped name (create only). id/dependencies: numbers are task ids; strings are refs from earlier creates in this call, not persisted ids.',
       minItems: 1,
       maxItems: 50,
     }),

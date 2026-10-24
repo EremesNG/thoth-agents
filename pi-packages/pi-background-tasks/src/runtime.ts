@@ -345,7 +345,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
     getActiveSession?: ActiveSessionProvider,
   ): BackgroundTaskMeta {
     for (const [name, condition] of [["success_when", params.success_when], ["failure_when", params.failure_when]] as const) {
-      const error = condition && validateCondition(condition);
+      if (name === "failure_when" && condition === undefined) continue;
+      const error = validateCondition(condition);
       if (error) throw new Error(`${name}: ${error}`);
     }
     const blindChecks = readBlindChecks(params.blind_checks);

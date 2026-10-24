@@ -80,7 +80,7 @@ const STATIC_SHORT_ALIAS: ReadonlyMap<string, string> = new Map([
 // body (real UUIDs contain them).
 const CONV_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
 
-const AGY_DESCRIPTION = `Delegate to Google Antigravity (gemini/antigravity/agy). Runs its own workspace tool loop. Supply all review material; it cannot see this conversation. Omit conversationId for one-shot; reuse details.conversationId to continue.
+const AGY_DESCRIPTION = `Delegate to Google Antigravity (agy) for its own workspace tool loop. Supply all material: it cannot see this conversation.
 Mode defaults to config; accept-edits edits the workspace. Plan adds a restricted reviewer as a damper, NOT a read-only guarantee: commands are not auto-approved and may fail. Only readOnly refuses outright; enforce read-only in the host.`;
 
 // --- Types -----------------------------------------------------------------
@@ -439,50 +439,50 @@ export async function registerAskAntigravityTool(
 		parameters: Type.Object({
 			prompt: Type.String({
 				description:
-					"Task and all required context.",
+					"Task and context.",
 			}),
 			cwd: Type.Optional(
 				Type.String({
-					description: "Absolute workspace path agy runs in. Defaults to the current project root.",
+					description: "Absolute workspace path; default: current project root.",
 				}),
 			),
 			model: Type.Optional(
 				Type.String({
 					description:
-						"Model alias (flash/pro/argon/gemini or catalogued family) or exact id. Supports tiers ('flash high') and versions ('3.5 flash'); omit for configured default.",
+						"Model alias (flash/pro/argon/gemini/catalogued family) or exact id; tiers ('flash high'), versions ('3.5 flash'). Default: configured.",
 				}),
 			),
 			thinking: Type.Optional(
 				Type.String({
 					description:
-						"Thinking level (agy calls it effort): minimal|low|medium|high|xhigh|max, clamped to low|medium|high; unknown becomes low. Overrides model's tier; omit for configured default.",
+						"agy effort: minimal|low|medium|high|xhigh|max, clamped to low|medium|high; unknown=low. Overrides model tier. Default: configured.",
 				}),
 			),
 			mode: Type.Optional(
 				Type.Union([Type.Literal("plan"), Type.Literal("accept-edits")], {
 					description:
-						"Omit to follow config. plan: review damper, not read-only; commands may fail. accept-edits: workspace edits.",
+						"Delegation mode.",
 				}),
 			),
 			digest: Type.Optional(
 				Type.Boolean({
 					description:
-						"Compact digests instead of full files. Default: on for plan, off for accept-edits.",
+						"Compact digests, not full files. Default: plan=on, accept-edits=off.",
 				}),
 			),
 			conversationId: Type.Optional(
 				Type.String({
 					description:
-						"Previous call's details.conversationId.",
+						"Omit for one-shot; reuse details.conversationId to continue.",
 				}),
 			),
 			timeoutMinutes: Type.Optional(
-				Type.Number({ description: `Hard deadline in minutes. Default ${DEFAULT_TIMEOUT_MIN}.` }),
+				Type.Number({ description: `Hard deadline (minutes); default ${DEFAULT_TIMEOUT_MIN}.` }),
 			),
 			includeContext: Type.Optional(
 				Type.Boolean({
 					description:
-						"Export the full Pi conversation as temporary markdown for agy to read. Default false; enable only on explicit user request (costs extra tokens).",
+						"Export full Pi conversation as temporary markdown. Default false; only on explicit user request (extra tokens).",
 				}),
 			),
 		}),

@@ -462,13 +462,11 @@ it('registers ask_user_question and uses sequential fallback when the custom hos
   });
 });
 
-it('tells models to pass labels in the conversation language', () => {
+it('states context guidance once and localizes labels in the conversation language', () => {
   const tool = createQuestionTool();
   const guidelines = tool.promptGuidelines?.join(' ');
   expect(guidelines).toContain('same turn');
-  expect(guidelines).toContain(
-    'Reasoning/thinking is not shown as answer text',
-  );
+  expect(guidelines).toContain('reasoning/thinking (not shown as answer text)');
   expect(guidelines).toContain(
     'normal visible response text BEFORE calling this tool',
   );
@@ -480,7 +478,14 @@ it('tells models to pass labels in the conversation language', () => {
   expect(guidelines?.indexOf('BEFORE calling')).toBeLessThan(
     guidelines?.indexOf('secondary fallback') ?? 0,
   );
-  expect(tool.description).toContain('visible response text before');
+  const definition = JSON.stringify({
+    description: tool.description,
+    parameters: tool.parameters,
+    promptGuidelines: tool.promptGuidelines,
+  });
+  expect(definition.match(/secondary fallback/g)).toHaveLength(1);
+  expect(tool.description).toContain('Required is advisory');
+  expect(tool.description).toContain('recommendations are never preselected');
   expect(guidelines).toContain('self-contained');
   expect(guidelines).toContain('`context`');
   expect(guidelines).toContain('`preview`');

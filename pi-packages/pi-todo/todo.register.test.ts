@@ -57,13 +57,13 @@ describe('registerTodoTool — registration shape', () => {
   it('puts proactive usage and status timing in the description for bridge consumers', () => {
     const { tool } = setup();
     expect(tool.description).toContain(
-      'Use for requests with 3+ steps, user-given task lists, delegated work units or SDD phases; capture requirements right after new instructions.',
+      'Use for 3+ steps, user task lists, delegated units or SDD phases; capture requirements immediately after new instructions.',
     );
     expect(tool.description).toContain(
-      'Create items up front, mark in_progress BEFORE starting, and complete as soon as done. Parallel tasks may be in_progress together.',
+      'Create items up front; mark in_progress BEFORE starting, complete immediately when done. Parallel in_progress allowed.',
     );
     expect(tool.description).toContain(
-      'Skip single trivial tasks and purely conversational turns.',
+      'Skip trivial single tasks and conversation.',
     );
     for (const action of [
       'create',
@@ -81,6 +81,7 @@ describe('registerTodoTool — registration shape', () => {
       tool.description,
       tool.promptSnippet,
       ...(tool.promptGuidelines ?? []),
+      JSON.stringify(tool.parameters),
     ].join(' ');
     expect(guidance).toContain('refs');
     expect(guidance).toContain('50');

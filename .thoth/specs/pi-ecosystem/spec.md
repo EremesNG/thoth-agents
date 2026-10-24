@@ -418,13 +418,13 @@ On Windows `@thoth-agents/pi-antigravity-bridge` MUST launch every agy process t
 
 ### Requirement: Compact model-facing Pi tool definitions
 
-The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-antigravity-bridge, pi-askcodex and pi-subagents MUST keep each package's serialized tool definitions (name, description, parameter schema, prompt snippet and guidelines) within a size budget enforced by a package test, state shared guidance once per tool, and declare no deprecated parameter aliases; pi-background-tasks MUST expose the standalone tools `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop` and `bg_task_clear` and no action-wrapper tools.
+The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-antigravity-bridge, pi-askcodex and pi-subagents MUST keep each package's serialized tool definitions (name, description, parameter schema, prompt snippet and guidelines) within a size budget enforced by a package test, state shared guidance once per tool, and declare no deprecated parameter aliases; pi-background-tasks MUST expose the standalone tools `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop` and `bg_task_clear` and no action-wrapper tools, and MUST declare `bg_task_watch` conditions with one flat condition schema whose per-type fields are validated before launch; pi-antigravity-bridge MUST keep its `antigravity` replay wrapper active and executable while omitting its declaration from provider requests.
 
 #### Scenario: Compact model-facing Pi tool definitions
 
 - **GIVEN** a Pi session with these packages loaded
-- **WHEN** their registered tool definitions are serialized
-- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, and the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool
+- **WHEN** their registered tool definitions are serialized and a provider request is prepared
+- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool, a watch condition missing its per-type field is rejected before launch, and the request declares no `antigravity` tool while provider-emitted replay calls still execute 
 
 ### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
 

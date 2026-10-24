@@ -13,7 +13,7 @@ vi.mock("../src/models.js", async (original) => ({
 
 afterEach(() => vi.unstubAllEnvs());
 
-test("opt-in tool definitions stay within their serialized size budget", async () => {
+async function withRegisteredTools(check: (tools: ToolDefinition<TObject>[]) => void) {
 	vi.stubEnv("AGY_ENGINE", "stream-json");
 	vi.stubEnv("AGY_BIN", "/tool-budget/missing-agy");
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "private");
@@ -34,16 +34,36 @@ test("opt-in tool definitions stay within their serialized size budget", async (
 
 	try {
 		await extension(pi);
+		check(tools);
+	} finally {
+		for (const handler of shutdown) await handler({}, {});
+	}
+}
+
+test("opt-in tool definitions stay within their serialized size budget", async () => {
+	await withRegisteredTools((tools) => {
 		assert.deepEqual(tools.map(tool => tool.name), ["AskAntigravity", "antigravity"]);
 		const lengths = tools.map(({ name, description, parameters, promptSnippet, promptGuidelines }) => ({
 			name,
 			chars: JSON.stringify({ name, description, parameters, promptSnippet, promptGuidelines }).length,
 		}));
 		const total = lengths.reduce((sum, tool) => sum + tool.chars, 0);
-		// Baseline: 4,434 chars. Compacted: 2,139, with 5% headroom.
-		assert.ok(total <= 2_246, `Serialized tool definitions use ${total} chars: ${JSON.stringify(lengths)}`);
+		// Baseline: 4,434 chars. Compacted: 1,856, with <5% headroom.
+		assert.ok(total <= 1_930, `Serialized tool definitions use ${total} chars: ${JSON.stringify(lengths)}`);
 		assert.equal(tools[0].parameters.properties.effort, undefined, "thinking is the only effort-level parameter");
-	} finally {
-		for (const handler of shutdown) await handler({}, {});
-	}
+	});
+});
+
+test("replay wrapper hides its request declaration without disabling default activation", async () => {
+	await withRegisteredTools((tools) => {
+		const wrapper = tools.find(tool => tool.name === "antigravity");
+		assert.ok(wrapper);
+		assert.equal(wrapper.exposure ?? "direct", "direct", "hidden exposure would make replay unreachable");
+		assert.notEqual(wrapper.defaultActive, false, "replay requires the wrapper in the active set");
+		assert.ok(wrapper.prepareLoadout, "replay wrapper must omit its declaration from provider requests");
+		assert.deepEqual(wrapper.prepareLoadout({
+			declared: [], callable: [], registered: [],
+			getExposure: () => "direct", getNamespace: () => undefined,
+		}), { hiddenDeclarations: ["antigravity"] });
+	});
 });

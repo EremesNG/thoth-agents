@@ -124,22 +124,21 @@ describe('subagent_continue tool', () => {
     expect(guidance).toContain('exact persisted nested Pi session');
     expect(guidance).toContain('keeping task_id');
     expect(guidance).toContain(
-      'explicit user decision before you supply model or effort',
+      'Supply model or effort only after an explicit user decision',
     );
     expect(guidance).toContain("preserve the task's prior effective mode");
-    expect(guidance).toContain('background is the default if none exists');
+    expect(guidance).toContain('default background if none');
     expect(guidance).toContain(
-      'mode=task only when the user explicitly asks you to wait',
+      'mode=task only when the user explicitly asks to wait for completion',
     );
     expect(guidance).toContain('Never auto-switch models');
     expect(guidance.match(/prior effective mode/g)).toHaveLength(1);
     expect(guidance.match(/explicit user decision/g)).toHaveLength(1);
     expect(continueTool.renderShell).toBe('self');
-    expect(
-      continueTool.parameters.properties.mode.anyOf.map(
-        (entry: any) => entry.const,
-      ),
-    ).toEqual(['task', 'background']);
+    expect(continueTool.parameters.properties.mode.enum).toEqual([
+      'task',
+      'background',
+    ]);
     expect(renderedCall).toBe('');
     expect(result.details.task.id).toBe(taskId);
     expect(result.details.task.attempt).toBe(2);

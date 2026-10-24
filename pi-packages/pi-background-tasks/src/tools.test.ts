@@ -25,6 +25,8 @@ describe.each(['win32', 'linux'] as const)('registration-time shell disclosure o
       expect(tool.parameters.properties.shell.description).not.toContain('Detected shells');
       const text = tool.description;
       expect(text).toContain('D:/Git/bin/bash.exe');
+      expect(text).toContain('without fallback');
+      expect(text).toContain('Revalidated at launch');
       // Desktop 5.1 is Windows-only; a successful probe must not advertise it on POSIX.
       if (edition === 'missing' || (edition === 'Desktop' && platform === 'linux')) {
         expect(text).toContain('powershell unavailable');

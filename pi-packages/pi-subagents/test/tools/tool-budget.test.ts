@@ -62,6 +62,6 @@ it('keeps all root and child tool definitions within the serialized character bu
     };
   });
   const total = sizes.reduce((sum, tool) => sum + tool.chars, 0);
-  // Baseline: 4,869 chars; compacted: 4,049. Allow about 5% growth.
-  expect(total, JSON.stringify(sizes)).toBeLessThanOrEqual(4_252);
+  // Baseline: 4,869 chars; compacted: 3,739. Allow at most 5% growth.
+  expect(total, JSON.stringify(sizes)).toBeLessThanOrEqual(3_925);
 });

@@ -34,6 +34,6 @@ it('keeps the enabled AskCodex definition within its model-facing size budget', 
       }).length,
     0,
   );
-  // Baseline: 2,035 chars; compact definition: 1,537 chars + ~5% headroom.
-  expect(size).toBeLessThanOrEqual(1614);
+  // Baseline: 2,035 chars; compact definition: 1,435 chars + <5% headroom.
+  expect(size).toBeLessThanOrEqual(1506);
 });

@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { createQuestionTool } from '../src/index.js';
 import { questionParameters } from '../src/schema.js';
 import { validateQuestions } from '../src/validate.js';
 
@@ -272,19 +273,12 @@ it('advertises labels in the tool schema', () => {
 
 it('advertises self-contained prompts and optional markdown context and previews', () => {
   const question = questionParameters.properties.questions.items;
-  expect(question.properties.context).toMatchObject({
-    type: 'string',
-    description: expect.stringContaining('short markdown summary'),
-  });
-  expect(question.properties.context).toMatchObject({
-    description: expect.stringContaining('secondary fallback'),
-  });
-  expect(question.properties.prompt).toMatchObject({
-    description: expect.stringContaining('self-contained'),
-  });
-  expect(question.properties.options.items.properties.preview).toMatchObject({
-    description: expect.stringContaining('markdown'),
-  });
+  const guidelines = createQuestionTool().promptGuidelines?.join(' ');
+  expect(question.properties.context).toMatchObject({ type: 'string' });
+  expect(guidelines).toContain('short markdown summary');
+  expect(guidelines).toContain('secondary fallback');
+  expect(guidelines).toContain('`prompt` a concise, self-contained question');
+  expect(guidelines).toContain('`preview` for per-option markdown details');
 });
 
 it('preserves markdown context, omits blank context and rejects non-string context', () => {

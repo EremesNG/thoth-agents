@@ -504,7 +504,7 @@ describe('AskCodex', () => {
       /self-contained|conversationId|digest|Pi context/i,
     );
     expect(promptGuidelines?.join(' ')).toContain(
-      'Plan uses a read-only shell sandbox; MCP and Computer Use actions are not made read-only.',
+      'Plan: read-only shell sandbox, not MCP or Computer Use actions.',
     );
   });
   it('exposes only explicit web search modes', () => {

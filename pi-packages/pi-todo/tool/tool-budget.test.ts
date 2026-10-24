@@ -17,6 +17,6 @@ it('keeps the registered todo definition within its model-facing budget', () => 
     promptGuidelines: tool.promptGuidelines,
   });
 
-  // Baseline: 6,313 chars; compacted: 4,597, with 5% headroom.
-  expect(serialized.length).toBeLessThanOrEqual(4827);
+  // Baseline: 6,313 chars; compacted: 3,627, with at most 5% headroom.
+  expect(serialized.length).toBeLessThanOrEqual(3808);
 });

@@ -73,7 +73,7 @@ describe("extension e2e", () => {
     const harness = createHarness();
     const tool = harness.tools.get("bg_task_watch");
     expect(tool?.description).toContain("do not end it with `exit 0` or `|| true`");
-    expect(tool?.description).toContain("Map an unknown or unparseable state to failure");
+    expect(tool?.description).toContain("Map unknown/unparseable states to failure (non-zero), not pending");
     expect(tool?.description).toContain("jq -er");
     expect(tool?.parameters?.properties?.blind_checks?.description).toContain("0 turns it off");
     const definitions = JSON.stringify([...harness.tools.values()]);

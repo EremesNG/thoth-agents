@@ -66,7 +66,7 @@ export interface AskCodexDetails {
   errors: string[];
 }
 const DESCRIPTION =
-  "Delegate to the local OpenAI Codex harness with sandbox, web search, the user's Codex MCP/skills/plugins, and Computer Use over the user's real browser and native Windows apps when Codex Desktop is running. Codex runs its own tool loop.";
+  "Delegate to the local OpenAI Codex harness: sandbox, web search, the user's MCP/skills/plugins, own tool loop. Computer Use on the user's real browser/native Windows apps requires Codex Desktop running.";
 const preview = (text: string) =>
   text.slice(0, 1000).split('\n').slice(0, 6).join('\n');
 
@@ -87,11 +87,11 @@ export function registerAskCodexTool(
     renderShell: 'self',
     description: DESCRIPTION,
     promptGuidelines: [
-      'Plan uses a read-only shell sandbox; MCP and Computer Use actions are not made read-only.',
+      'Plan: read-only shell sandbox, not MCP or Computer Use actions.',
     ],
     parameters: Type.Object({
       prompt: Type.String({
-        description: 'Self-contained task and all necessary context for Codex.',
+        description: 'Self-contained task with all context.',
       }),
       mode: Type.Optional(
         Type.Union([Type.Literal('plan'), Type.Literal('accept-edits')], {
@@ -105,7 +105,7 @@ export function registerAskCodexTool(
       thinking: Type.Optional(effortSchema()),
       cwd: Type.Optional(
         Type.String({
-          description: 'Workspace directory; defaults to the current Pi cwd.',
+          description: 'Workspace directory (default: Pi cwd).',
         }),
       ),
       digest: Type.Optional(
@@ -118,7 +118,7 @@ export function registerAskCodexTool(
         Type.Boolean({
           default: false,
           description:
-            'Export the resolved Pi conversation to a private temporary file only when explicitly requested.',
+            'Export resolved Pi conversation to a private temp file only when explicitly requested.',
         }),
       ),
       webSearch: Type.Optional(

@@ -70,13 +70,13 @@ export { TOOL_NAME } from './tool/types.js';
 // Tool registration
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PROMPT_SNIPPET = 'Track task list progress';
+export const DEFAULT_PROMPT_SNIPPET = 'Track task lists';
 export const DEFAULT_PROMPT_GUIDELINES: string[] = [
-  'Batch known plans: 1–50 ordered create/update/delete ops, all-or-nothing. Example: {"action":"batch","ops":[{"action":"create","subject":"Research","ref":"research","status":"in_progress"},{"action":"create","subject":"Implement","blockedBy":["research"]}]}. String ids/dependencies are unique refs from earlier creates in this call, not persisted ids.',
-  'Never complete tasks with failing tests, partial implementation or unresolved errors; keep in_progress and create a blocker task.',
-  'To change status, use update with id and status; every update requires a mutable field. Set activeForm when marking in_progress.',
-  'Dependencies: A.blockedBy=[B] means A waits for B. Set blockedBy on create; update with addBlockedBy/removeBlockedBy, not the full array. Cycles are rejected.',
-  'Use short, imperative subjects; description holds detail.',
+  'Batch known plans, e.g. {"action":"batch","ops":[{"action":"create","subject":"Research"}]}.',
+  'Never complete with failing tests, partial work or unresolved errors: keep in_progress and create a blocker task.',
+  'Update status via id and status; every update needs a mutable field. Set activeForm when marking in_progress.',
+  'A.blockedBy=[B] means A waits for B. Set blockedBy on create; use addBlockedBy/removeBlockedBy on update, not the full array. Cycles are rejected.',
+  'Use short imperative subjects; put detail in description.',
 ];
 
 export function registerTodoTool(pi: ExtensionAPI): void {
@@ -84,7 +84,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
     name: TOOL_NAME,
     label: TOOL_LABEL,
     description:
-      'Track multi-step work. Use for requests with 3+ steps, user-given task lists, delegated work units or SDD phases; capture requirements right after new instructions. Create items up front, mark in_progress BEFORE starting, and complete as soon as done. Parallel tasks may be in_progress together. Skip single trivial tasks and purely conversational turns. Actions: create, update, list, get, delete (tombstone), clear (reset all), batch. Lifecycle: pending → in_progress → completed; deleted is a tombstone.',
+      'Use for 3+ steps, user task lists, delegated units or SDD phases; capture requirements immediately after new instructions. Create items up front; mark in_progress BEFORE starting, complete immediately when done. Parallel in_progress allowed. Skip trivial single tasks and conversation. Actions: create, update, list, get, delete, clear (reset all), batch. Lifecycle: pending → in_progress → completed; deleted is a tombstone.',
     promptSnippet: DEFAULT_PROMPT_SNIPPET,
     promptGuidelines: DEFAULT_PROMPT_GUIDELINES,
     parameters: TodoParamsSchema,

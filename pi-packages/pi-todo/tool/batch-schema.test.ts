@@ -20,9 +20,28 @@ it('documents shared batch fields only at the top level without changing their t
   }
   expect(TodoParamsSchema.required).toEqual(['action']);
   expect(batch.required).toEqual(['action']);
-  expect(Reflect.get(topLevel.ops, 'description')).toContain(
-    'Op fields match top-level fields',
+  const batchDescription = Reflect.get(topLevel.ops, 'description');
+  expect(batchDescription).toContain('Op fields match top-level fields');
+  expect(batchDescription).toContain(
+    '1–50 ordered create/update/delete ops, all-or-nothing',
   );
+  expect(batchDescription).toContain(
+    'ref: unique call-scoped name (create only)',
+  );
+  expect(batchDescription).toContain(
+    'id/dependencies: numbers are task ids; strings are refs from earlier creates in this call, not persisted ids',
+  );
+  for (const field of [
+    'ref',
+    'id',
+    'blockedBy',
+    'addBlockedBy',
+    'removeBlockedBy',
+  ] as const) {
+    expect(JSON.stringify(batch.properties[field])).not.toContain(
+      '"description"',
+    );
+  }
   expect(JSON.stringify(TodoParamsSchema)).not.toMatch(
     /"\$ref"|"additionalProperties"/,
   );

@@ -6,11 +6,27 @@ export interface ConditionMatch {
   error?: string;
 }
 
-export function validateCondition(condition: Condition): string | undefined {
-  if ((condition.type === "json_path_equals" || condition.type === "json_path_exists") && !parseJsonPath(condition.path)) {
-    return `unsupported JSON path: ${condition.path}. Use a root-prefixed path such as $.status or $.terminalFailure.`;
+export function validateCondition(input: unknown): string | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "condition must be an object.";
+  const condition = input as Record<string, unknown>;
+  switch (condition.type) {
+    case "exit_code":
+      return typeof condition.equals === "number" && Number.isFinite(condition.equals)
+        ? undefined : "exit_code requires numeric equals.";
+    case "stdout_contains":
+    case "stderr_contains":
+      return typeof condition.value === "string" ? undefined : `${condition.type} requires string value.`;
+    case "json_path_equals":
+    case "json_path_exists":
+      if (typeof condition.path !== "string") return `${condition.type} requires string path.`;
+      if (condition.type === "json_path_equals" && condition.value === undefined) {
+        return "json_path_equals requires value (any JSON value, including null).";
+      }
+      return parseJsonPath(condition.path) ? undefined
+        : `unsupported JSON path: ${condition.path}. Use a root-prefixed path such as $.status or $.terminalFailure.`;
+    default:
+      return "condition type must be exit_code, stdout_contains, stderr_contains, json_path_equals or json_path_exists.";
   }
-  return undefined;
 }
 
 export function evaluateCondition(condition: Condition, result: CommandResult): ConditionMatch {

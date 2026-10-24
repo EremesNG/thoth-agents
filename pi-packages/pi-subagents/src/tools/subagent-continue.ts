@@ -13,7 +13,7 @@ import {
   renderSubagentContinueCall,
   renderSubagentContinueResult,
 } from '../render/tools/subagent-continue.js';
-import type { SubagentTask } from '../types.js';
+import type { SubagentMode, SubagentTask } from '../types.js';
 import {
   installBackgroundHandoffShortcut,
   QUESTION_HANDOFF_GUIDANCE,
@@ -33,23 +33,22 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
     description:
       'Continue a completed, failed, or cancelled task in its exact persisted nested Pi session, keeping task_id.',
     promptSnippet:
-      "Omit mode to preserve the task's prior effective mode; background is the default if none exists. Overrides require an explicit user decision before you supply model or effort. Never auto-switch models.",
+      "Omit mode: preserve the task's prior effective mode; default background if none. Supply model or effort only after an explicit user decision. Never auto-switch models.",
     parameters: Type.Object({
       task_id: Type.String(),
       prompt: Type.String(),
       mode: Type.Optional(
-        Type.Union([Type.Literal('task'), Type.Literal('background')]),
+        Type.Unsafe<SubagentMode>({
+          type: 'string',
+          enum: ['task', 'background'],
+        }),
       ),
       model: Type.Optional(Type.String()),
       effort: Type.Optional(
-        Type.Union([
-          Type.Literal('off'),
-          Type.Literal('minimal'),
-          Type.Literal('low'),
-          Type.Literal('medium'),
-          Type.Literal('high'),
-          Type.Literal('xhigh'),
-        ]),
+        Type.Unsafe<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>({
+          type: 'string',
+          enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+        }),
       ),
     }),
     renderShell: 'self',

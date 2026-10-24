@@ -18,7 +18,7 @@ import { cancelCallbackBatch, getCallbackBatcher, setCallbackBatchContext } from
 import { inspectMeta, listMetasForOrigin, readMeta, writeMeta } from "./registry.js";
 import { awaitFirstWatchCheck, FIRST_WATCH_CHECK_WAIT_MS, resumeRunningTask, spawnTask, startWatchTask, stopTask, type WatchTaskParams } from "./runtime.js";
 import { runTaskMaintenance } from "./maintenance.js";
-import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta } from "./types.js";
+import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, Condition } from "./types.js";
 import { isTerminalStatus } from "./types.js";
 
 export { renderBackgroundTaskLogDisplay } from "./render/tools.js";
@@ -26,16 +26,16 @@ export { formatLaunch } from "./output.js";
 
 const JsonPathSchema = Type.String({
   pattern: "^\\$",
-  description: "Root-prefixed JSON path, e.g. $.status or $.steps[0].status; no bare keys or wildcards.",
+  description: "JSON path from $ (e.g. $.steps[0].status); no bare keys or wildcards.",
 });
 
-const ConditionSchema = Type.Union([
-  Type.Object({ type: Type.Literal("exit_code"), equals: Type.Number() }),
-  Type.Object({ type: Type.Literal("stdout_contains"), value: Type.String() }),
-  Type.Object({ type: Type.Literal("stderr_contains"), value: Type.String() }),
-  Type.Object({ type: Type.Literal("json_path_equals"), path: JsonPathSchema, value: Type.Any() }),
-  Type.Object({ type: Type.Literal("json_path_exists"), path: JsonPathSchema }),
-]);
+// Runtime validates per-kind fields before launch; retain the discriminated TypeScript API.
+const ConditionSchema = Type.Unsafe<Condition>(Type.Object({
+  type: Type.String({ enum: ["exit_code", "stdout_contains", "stderr_contains", "json_path_equals", "json_path_exists"] }),
+  equals: Type.Optional(Type.Number({ description: "Required for exit_code." })),
+  value: Type.Optional(Type.Any({ description: "Required for contains (string) or json_path_equals (any JSON)." })),
+  path: Type.Optional(JsonPathSchema),
+}));
 
 /**
  * String-to-string map declared with additionalProperties. Equivalent to
@@ -52,36 +52,36 @@ function StringMap(description: string) {
 // JSON Schema `anyOf` (Type.Unsafe), not Type.Union: Pi 0.82 converts a null to "" or [] through a
 // TypeBox union, and a Null-first union reports a malformed array as "must be null".
 const IntentFields = {
-  operation_id: Type.Optional(Type.Unsafe<string | null>({ anyOf: [{ type: "null" }, { type: "string" }], description: "Optional stable id (letters, digits, . _ : / -; up to 64) for one logical operation. Reuse it when you retry with a changed command, scope, or timeout: when a later task with the same operation_id succeeds, earlier failures of that operation in this session are recovered." })),
-  expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Optional distinct non-zero exit codes that are intentional for this command (e.g. [1] for a no-match probe). 0 is allowed and ignored: exit 0 is already success. Declared before launch; recorded as expected failures, not incidents needing action. Signals and timeouts are never expected." })),
+  operation_id: Type.Optional(Type.Unsafe<string | null>({ anyOf: [{ type: "null" }, { type: "string" }], description: "Stable operation id (letters/digits . _ : / -; max 64). Reuse across retries, even with changed command/scope/timeout; a later success recovers earlier failures with this id in this session." })),
+  expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Declare distinct intentional exit codes before launch (e.g. [1] for no match); recorded as expected failures, not actionable incidents. 0 is allowed but ignored (already success); signals/timeouts are never expected." })),
 };
 
-const SHELL_GUIDANCE = 'Declare shell:"bash" (default, Pi bash syntax), shell:"powershell" (PowerShell syntax), or shell:"none" with argv for direct execution. An unavailable requested shell fails without fallback.';
+const SHELL_GUIDANCE = 'shell:"bash" defaults to Pi bash syntax; "powershell" uses PowerShell syntax; "none" requires argv (no shell parsing). Unavailable shells fail without fallback.';
 
 const CommandFields = {
   name: Type.Optional(Type.String({ description: "Human-readable task label." })),
-  argv: Type.Optional(Type.Array(Type.String(), { description: 'Argument vector. Use with shell:"none" to avoid shell parsing.' })),
-  cwd: Type.Optional(Type.String({ description: "Working directory. Defaults to the current pi cwd." })),
+  argv: Type.Optional(Type.Array(Type.String(), { description: 'Direct argument vector for shell:"none".' })),
+  cwd: Type.Optional(Type.String({ description: "Working directory; default current pi cwd." })),
   env: Type.Optional(StringMap("Extra environment variables.")),
-  max_log_bytes: Type.Optional(Type.Number({ description: "Maximum retained raw-log bytes. Default 4194304 (4 MiB). Older output is compacted while the task runs." })),
-  callback: Type.Optional(Type.Boolean({ description: "Queue a follow-up when the task reaches a terminal state. Default true." })),
-  timeout_seconds: Type.Optional(Type.Number({ description: "Optional timeout in seconds. Command watchers default to 900 seconds when omitted; pass 0 to disable. Spawned processes have no default timeout." })),
+  max_log_bytes: Type.Optional(Type.Number({ description: "Raw-log retention: default 4194304 bytes (4 MiB); older output compacted while running." })),
+  callback: Type.Optional(Type.Boolean({ description: "Queue a terminal-state follow-up; default true." })),
+  timeout_seconds: Type.Optional(Type.Number({ description: "Timeout in seconds; watch default 900, spawn no default; 0 disables." })),
   ...IntentFields,
 };
 
-const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Consecutive exit-zero checks with stderr and no matched condition before flagging an actionable possibly-blind incident with the latest stderr line. Watch continues; no stderr or a matched condition recovers it. Default 3; 0 turns it off. Redirect expected stderr instead if appropriate." }));
+const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Consecutive exit-zero checks with stderr and no match before an actionable possibly-blind incident with latest stderr line. Watch continues; no stderr or a match recovers it. Default 3; 0 turns it off. Redirect expected stderr if appropriate." }));
 
 // A check that swallows its own errors can report pending forever.
-const WATCH_CHECK_GUIDANCE = "Waits up to 15s for the first check and returns its exit code with stdout and stderr tails; if it is still running, says so. "
-  + "Write the check so a broken check is visible: do not end it with `exit 0` or `|| true`, because a check that exits non-zero is recorded and escalates. "
-  + "Map an unknown or unparseable state to failure (exit non-zero), not to pending. Prefer structured output, e.g. `--format=json | jq -er '.status'`, over fragile format strings.";
+const WATCH_CHECK_GUIDANCE = "Waits up to 15s for first-check exit code and stdout/stderr tails; reports if still running. "
+  + "Expose check errors: do not end it with `exit 0` or `|| true`; non-zero exits are recorded and escalated. "
+  + "Map unknown/unparseable states to failure (non-zero), not pending. Prefer structured output (e.g. `--format=json | jq -er '.status'`) over fragile format strings.";
 
 const CursorFields = {
-  cursor: Type.Optional(Type.String({ description: "Caller-owned, session-scoped cursor: replay the same page or change notice; nextCursor continues. Callers are independent." })),
-  max_bytes: Type.Optional(Type.Number({ description: "UTF-8 page budget: default 1 KiB (raw 16 KiB); capped at status 2 KiB, log/list 4 KiB, raw 64 KiB." })),
-  all: Type.Optional(Type.Boolean({ description: "Include other sessions. Default false; unverifiable ownership is reported as a gap." })),
+  cursor: Type.Optional(Type.String({ description: "Caller-owned, session-scoped; same cursor replays page/change notice, nextCursor continues. Independent callers." })),
+  max_bytes: Type.Optional(Type.Number({ description: "UTF-8 page budget: default 1 KiB (raw 16 KiB); caps: status 2 KiB, log/list 4 KiB, raw 64 KiB." })),
+  all: Type.Optional(Type.Boolean({ description: "Include other sessions; default false. Unverifiable ownership is reported as a gap." })),
 };
-const VerboseField = Type.Optional(Type.Boolean({ description: "Debug raw metadata, environment values omitted; paged with cursor (16 KiB default, 64 KiB cap). Default false." }));
+const VerboseField = Type.Optional(Type.Boolean({ description: "Raw metadata without environment values; cursor-paged. Default false." }));
 const IdParams = Type.Object({
   id: Type.String({ description: "Background task id." }),
   verbose: VerboseField,
@@ -89,7 +89,7 @@ const IdParams = Type.Object({
 });
 const StatusParams = Type.Object({
   ...IdParams.properties,
-  history: Type.Optional(Type.Boolean({ description: "Include expected, recovered and superseded failure history; default shows only actionable incidents and counts the rest." })),
+  history: Type.Optional(Type.Boolean({ description: "Include expected/recovered/superseded failures; default: actionable incidents plus counts of the rest." })),
 });
 const ListParams = Type.Object({
   status: Type.Optional(Type.Array(Type.String({ description: "Statuses to include." }))),
@@ -110,15 +110,15 @@ const ClearParams = Type.Object({
 });
 
 const BACKGROUND_ORCHESTRATION_GUIDELINES = [
-  "Use background tasks for genuinely long-running processes or repeated checks. Run short commands in the foreground.",
-  "When a structured plan is active, keep it as the coordinator ledger: launch relevant background work early, continue unblocked foreground work without polling, and update the plan after inspecting each terminal result or failure.",
-  "Do not treat launch as completion of the parent milestone; relevant background work must be terminal, inspected, and integrated before verification or completion.",
+  "Use background tasks for genuinely long-running processes/repeated checks; short commands stay in the foreground.",
+  "When a structured plan is active, use it as coordinator ledger: launch relevant background work early, continue unblocked foreground work without polling, and update the plan after inspecting each terminal result/failure.",
+  "Launch is not parent-milestone completion: relevant background work must be terminal, inspected, and integrated before verification/completion.",
 ];
 
 export function registerTools(pi: ExtensionAPI): void {
   const detection = detectShells();
   const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
-  const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Windows PowerShell 5.1 lacks &&/||; use PowerShell 5.1-compatible syntax.' : ''} Availability is revalidated at launch.`;
+  const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||; use 5.1-compatible syntax.' : ''} Revalidated at launch.`;
   const fields = {
     ...CommandFields,
     command: Type.Optional(Type.String({ description: 'Command in the declared shell syntax; required unless shell:"none" with argv.' })),
@@ -162,7 +162,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_spawn",
     ...backgroundToolRenderers("bg_task_spawn"),
     label: "BG Spawn",
-    description: `Start a long-running background process and return immediately with its task id. ${shellGuidance}`,
+    description: `Start a long-running process; return its task id immediately. ${shellGuidance}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: SpawnParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -177,7 +177,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_watch",
     ...backgroundToolRenderers("bg_task_watch"),
     label: "BG Watch",
-    description: `Poll a command in the background until success_when, failure_when, or timeout matches. ${WATCH_CHECK_GUIDANCE} ${shellGuidance}`,
+    description: `Poll a command until success_when, failure_when, or timeout. ${WATCH_CHECK_GUIDANCE} ${shellGuidance}`,
     parameters: WatchParams,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -191,7 +191,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_list",
     ...backgroundToolRenderers("bg_task_list"),
     label: "BG List",
-    description: "List durable tasks newest first as compact rows. Nonblocking. Use nextCursor to reach every task, or statusCursor for no-change/failure-only updates; limit/max_bytes requests a larger page.",
+    description: "List durable tasks as compact rows, newest first, nonblocking. nextCursor pages all tasks; statusCursor gives no-change/failure-only updates. Increase limit/max_bytes for larger pages.",
     parameters: ListParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -203,7 +203,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_status",
     ...backgroundToolRenderers("bg_task_status"),
     label: "BG Status",
-    description: "Inspect a task: compact model-facing summary with matched condition, exit/signal, stop error and failure counts before progress. Use verbose:true only for explicit metadata recovery. Accepts raw log nextCursor or incidentCursor as cursor. After a terminal callback, call this first; use bg_task_log only if insufficient.",
+    description: "Inspect a compact model-facing summary: matched condition, exit/signal, stop error, failure counts before progress. Use verbose:true only for metadata recovery. Accepts raw-log nextCursor or incidentCursor as cursor. After a terminal callback, call this first; bg_task_log only if insufficient.",
     parameters: StatusParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -215,7 +215,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_log",
     ...backgroundToolRenderers("bg_task_log"),
     label: "BG Log",
-    description: "Read a compact 10-line terminal-aware tail. Nonblocking; lines:0 pages the retained raw log. Capture and retention loss are disclosed, never recovered as full history.",
+    description: "Read a compact 10-line terminal-aware tail, nonblocking; lines:0 pages the retained raw log. Capture/retention loss is disclosed, not recoverable as full history.",
     parameters: LogParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = ctx ? getCallbackOrigin(ctx) : activeSession;
@@ -227,7 +227,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_stop",
     ...backgroundToolRenderers("bg_task_stop"),
     label: "BG Stop",
-    description: "Cancel a watcher or terminate a background task. Only a task owned by the current session stops; a foreign-session or unverifiable task is refused unless all:true.",
+    description: "Cancel a watcher or terminate a task owned by this session; foreign/unverifiable ownership requires all:true.",
     parameters: StatusParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
@@ -241,7 +241,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_clear",
     ...backgroundToolRenderers("bg_task_clear"),
     label: "BG Clear",
-    description: "Dismiss terminal tasks without deleting their history. Running tasks must be stopped first.",
+    description: "Dismiss terminal tasks without deleting their history; stop running tasks first.",
     parameters: ClearParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);

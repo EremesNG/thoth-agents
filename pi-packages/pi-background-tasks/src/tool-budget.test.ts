@@ -18,8 +18,9 @@ vi.mock('./shell.js', async original => ({
 // Baseline with this fixture (8 tools): spawn 4128, watch 7487, list 1567,
 // status 2274, log 2038, stop 1569, bg_task 9617, bg_status 2253 = 30,933.
 const BASELINE_CHARACTERS = 30_933;
-// Measured compact total 13,605; still fits the existing cap (originally ~5% headroom).
-const BUDGET_CHARACTERS = 13_810;
+// Measured total 11,387; cap allows ~1.9% headroom while staying at least
+// 2,000 characters below the previous 13,605-character fixture.
+const BUDGET_CHARACTERS = 11_605;
 
 it('publishes exactly seven standalone tools within the compact definition budget', () => {
   const definitions: Array<{ name: string; description: string; parameters: unknown; promptSnippet?: string; promptGuidelines?: string[] }> = [];
@@ -31,6 +32,7 @@ it('publishes exactly seven standalone tools within the compact definition budge
   } as unknown as ExtensionAPI);
   const sizes = Object.fromEntries(definitions.map(definition => [definition.name, JSON.stringify(definition).length]));
   const total = Object.values(sizes).reduce((sum, size) => sum + size, 0);
+  console.info(`Serialized background tool characters: ${total}; ${JSON.stringify(sizes)}`);
   expect(definitions.map(tool => tool.name).sort()).toEqual([
     'bg_task_clear', 'bg_task_list', 'bg_task_log', 'bg_task_spawn', 'bg_task_status', 'bg_task_stop', 'bg_task_watch',
   ]);

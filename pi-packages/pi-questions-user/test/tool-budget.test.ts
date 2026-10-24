@@ -22,6 +22,7 @@ it('keeps the registered model-facing question tool within its size budget', () 
   });
   expect(serialized).not.toContain('"$ref":');
   expect(serialized).not.toContain('"additionalProperties":');
-  // Measured 5,759 chars before compaction, 3,880 after; allow 5% headroom.
-  expect(serialized.length).toBeLessThanOrEqual(4074);
+  // Measured 5,759 chars originally, 3,880 before this trim, 3,286 after.
+  // Allow at most 5% headroom.
+  expect(serialized.length).toBeLessThanOrEqual(3450);
 });

@@ -12,8 +12,7 @@ export function createSubagentListAgentsTool(manager: SubagentManager) {
     name: 'subagent_list_agents',
     label: 'Subagent List Agents',
     description: 'List available markdown-defined subagents.',
-    promptSnippet:
-      'Sources: global/project agents and subagents markdown directories.',
+    promptSnippet: 'Sources: global/project agents and subagents directories.',
     parameters: Type.Object({}),
     async execute(
       _id: string,

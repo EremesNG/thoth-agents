@@ -635,12 +635,13 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 
 	// Display-only wrapper tool: the provider emits mutating agy steps as
 	// toolCalls against it (never re-executed - execute() replays the output
-	// agy already recorded). Empty description on purpose: no model should
-	// call it, it exists so pi renders proper toolCall/toolResult cards.
+	// agy already recorded). Keep it active for replay but omit its declaration
+	// from provider requests; models must not call it.
 	registerTool({
 		name: "antigravity",
 		label: "Antigravity",
 		description: "",
+		prepareLoadout: () => ({ hiddenDeclarations: ["antigravity"] }),
 		parameters: Type.Object({
 			tool: Type.String({ description: "agy tool name that produced this step." }),
 			key: Type.String({ description: "Internal replay key. Do not fabricate." }),

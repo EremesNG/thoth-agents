@@ -241,6 +241,17 @@ describe('Claude Code adapter v0.3', () => {
     );
     expect(hooks).toEqual({
       hooks: {
+        UserPromptSubmit: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: `node "\${CLAUDE_PLUGIN_ROOT}/thoth-hooks/gate-verdict.mjs"`,
+                timeout: 10,
+              },
+            ],
+          },
+        ],
         PostToolUse: [
           {
             matcher: 'Agent',

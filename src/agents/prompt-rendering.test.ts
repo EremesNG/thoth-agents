@@ -823,7 +823,7 @@ describe('AI-first prompt rendering', () => {
     [
       'Claude Code',
       renderClaudeCodeRootInstructions,
-      'Run Oracle gate assignments in the foreground; only completed foreground `Agent` results receive delivery verdicts, not background runs.',
+      'Verdicts: Subagent hand-back reports (foreground or background; match `agent` to Agent `agentId`) or completed foreground `Agent` report content; otherwise (e.g. background without hand-back) compact fallback.',
     ],
     [
       'Pi',
@@ -992,7 +992,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "0099335c22dc163a218d314c0c594a7fa301ce435e99efed1a79057d0eb3a864",
+          "99f6030ff27313a81cefb4fde152b232475568fad57b1c7c7afed0a9c2adeef8",
           "a10821acadc00a4da671aafd6b437fa9b6932d5e3e9a8e0bd1dfb610b42a52e4",
           "634bafad130132eeb0b0a6ba1f3688922ea18439201b9adbd365fcb4685d2383",
           "5a7e7a2d890e939bb5aa8ef1b2a5dd04c708894a15ca0d0b0beb81be6f8246ad",
@@ -1003,7 +1003,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "354f8474eec6971645c268754f6e2ea61749d0773ef7169717c1c9b930f3c398",
+          "817a533e8620fbe4114585de009cde317fcbe2b5005c7a8e2d630f7918007f3d",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
@@ -1014,7 +1014,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "1f0832743bfd1bf759f6febbf72a75d097cb98b276ab2cf0a7db192a0aea9fc2",
+          "512b189380d6d7fd42db58448c2498a7378e5e9d8f709bca6c575933007d3326",
           "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
           "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
           "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
@@ -1030,15 +1030,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    'fcbcd1d42aa4bb24f94dfa59907abd3b70a19ba15e5346bf5a4fd798c18d3ddb',
+    'cc1743bc6e27a35bdb4af62a52ad592e4cadb62d7ff8cf0fa67306f42014b08d',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '5e72a5fd9b7e6855ed2fd909bfc4cfb6f59f1e77fbffc7d298df19e4ff7cb1b2',
+    '53c75eeb31b884ba4757e71dc2a9b6f6c8fb120c79abfcba019e544a4f836047',
   ],
   [
     PI_PROMPT_DIALECT,
-    '58290ad26ce767b98549d4f4ef9ae99446cee3c939bf5d3a30aa58b266fdd025',
+    '5e807bbabfc3b42e4ee86a9b707a61f47f084fa51cfa18a9bc5a8a38a29c576f',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>

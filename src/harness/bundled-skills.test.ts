@@ -403,9 +403,39 @@ describe('canonical workflow bundle contracts', () => {
       'Codex verdicts arrive only with multi-agent v1 `wait_agent` results when plugin hooks are enabled and trusted',
       '`agent` is the status-map key, not proof of Oracle provenance.',
       "Multi-agent v2 delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook, so no verdict arrives and root uses the explicit compact fallback below on the unchanged result.",
-      'Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent v2 delivery, or a Claude background run)',
+      'Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent v2 delivery, or a Claude background run without hand-back)',
     ])
       expect(sdd).toContain(rule);
+  });
+
+  test('describes Claude hand-back delivery without foreground-only gate requirements in canonical and generated assets', () => {
+    const skills = [
+      'thoth-sdd/SKILL.md',
+      'thoth-sdd/references/phases/verify.md',
+      'plan-reviewer/SKILL.md',
+    ];
+    for (const path of [
+      'src/agents/prompt-dialects.ts',
+      'plugin/agents/orchestrator.md',
+      ...['skills', 'plugin/skills'].flatMap((root) =>
+        skills.map((path) => `${root}/${path}`),
+      ),
+      ...['agents-and-delegation', 'harness-packaging', 'testing'].map(
+        (name) => `docs/agent/${name}.md`,
+      ),
+    ]) {
+      const text = readFileSync(path, 'utf8').replace(/\s+/g, ' ');
+      expect(text, path).toContain('Subagent hand-back');
+      expect(text, path).toContain('foreground or background');
+      expect(text, path).toContain('`agentId`');
+      expect(text, path).toMatch(
+        /content carries the report|`Agent` report content/,
+      );
+      expect(text, path).toMatch(/compact (?:CLI )?fallback/);
+      expect(text, path).not.toMatch(
+        /(?:run (?:Oracle )?(?:gate assignments|gate Oracles|gates) in the foreground|gates (?:must )?run in the foreground|gate assignments must use foreground|only completed foreground|completed foreground `Agent` results only|background (?:`Agent` )?runs get no (?:delivery )?verdict)/i,
+      );
+    }
   });
 
   test('requires unchanged final-verification envelope bookkeeping before closeout', () => {

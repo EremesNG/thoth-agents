@@ -95,9 +95,13 @@ Root presents accepted results to the user as readable prose.
   on completion notifications, `subagent_result`, and task-mode `subagent_run`;
   match the delivered `taskId` to the assignment. OpenCode's
   `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. Claude
-  Code's PostToolUse `Agent` hook covers completed foreground
-  `thoth-agents:oracle` only: run gates in the foreground, or use fallback if a
-  background run delivered no verdict. Codex's PostToolUse hook covers only
+  Code's UserPromptSubmit hook validates Subagent hand-back reports (foreground or
+  background; `agent` is the agent id, match it to the Agent result's `agentId`). Its
+  PostToolUse `Agent` hook covers completed foreground `thoth-agents:oracle`
+  results whose content carries the report; it never reads `handbackReport`, so
+  hand-back delivery does not produce a second verdict. Other deliveries (e.g.
+  background runs without hand-back) carry none; use the explicit compact fallback.
+  Codex's PostToolUse hook covers only
   multi-agent v1 `wait_agent` status-map results with enabled, trusted plugin hooks;
   `agent` is the status-map key, not proof of Oracle provenance. Multi-agent v2
   delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook or

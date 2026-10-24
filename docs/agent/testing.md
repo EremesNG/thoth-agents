@@ -174,9 +174,13 @@ append, even on a hypothetical repeat (multiple verdicts fail closed).
 Pi covers completion notifications, `subagent_result`, and
 task-mode `subagent_run`; OpenCode covers Oracle `task` output. Claude covers
 completed foreground `Agent` results only (gate assignments must use foreground;
-background runs get no verdict). Codex covers completed `wait_agent` results with
-enabled, trusted hooks, preserving root's Oracle-provenance check against the
-`agent` status-map key. These tests do not claim equivalent harness enforcement.
+background runs get no verdict). Codex covers only multi-agent v1 `wait_agent`
+status-map results with enabled, trusted plugin hooks; `agent` is the status-map
+key, not proof of Oracle provenance. Multi-agent v2 delivers the Oracle's
+`FINAL_ANSWER` as an inter-agent message with no hook or verdict; root runs the
+explicit compact `validate-result.mjs` fallback on the unchanged result. Tests pin
+this gap and preserve the v1 hook. They do not claim equivalent harness
+enforcement.
 Closeout still requires the unchanged final-verification envelope in the record.
 
 Ordinary specialist returns use compact markdown and custom agents keep their own

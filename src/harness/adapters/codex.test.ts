@@ -260,6 +260,13 @@ describe('Codex adapter v0.3', () => {
         .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
     expect(root.length).toBeLessThanOrEqual(14_800);
+    for (const rule of [
+      'multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only',
+      '`agent` = status-map key, not provenance',
+      'V2 `FINAL_ANSWER` inter-agent messages: no hook/verdict; use compact fallback.',
+      'unchanged result; it prints the compact summary',
+    ])
+      expect(root).toContain(rule);
     expect(root).not.toContain('<!-- thoth-agents:codex-root:');
     const configured = codexAdapter.render({
       projectRoot: process.cwd(),

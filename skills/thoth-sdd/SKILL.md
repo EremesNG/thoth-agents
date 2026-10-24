@@ -189,15 +189,18 @@ Validation is not authorization.
 Delivery differs by harness: Pi attaches verdicts to completion notifications,
 `subagent_result`, and task-mode `subagent_run` (match `taskId`); OpenCode appends
 them to Oracle `task` output. Claude Code gates must run in the foreground;
-background `Agent` runs get no delivery verdict. Codex adds verdicts with
-`wait_agent` only when plugin hooks are enabled and trusted; `agent` is the
-status-map key, so root must still confirm Oracle provenance.
+background `Agent` runs get no delivery verdict. Codex verdicts arrive only with
+multi-agent v1 `wait_agent` results when plugin hooks are enabled and trusted;
+`agent` is the status-map key, not proof of Oracle provenance. Multi-agent v2
+delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook, so no
+verdict arrives and root uses the explicit compact fallback below on the unchanged
+result.
 
 ### Explicit compact fallback
 
-Only when no verdict was delivered (hook unavailable/untrusted or a Claude
-background run), resolve `<skill-dir>` from the installed thoth-sdd SKILL.md
-directory, exactly as for `scripts/validate.mjs`, and run:
+Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent
+v2 delivery, or a Claude background run), resolve `<skill-dir>` from the installed
+thoth-sdd SKILL.md directory, exactly as for `scripts/validate.mjs`, and run:
 
 ```text
 node "<skill-dir>/scripts/validate-result.mjs" --review-kind <kind> [--record-sha256 <hex>] [--no-record] [--input <path>]

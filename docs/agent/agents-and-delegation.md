@@ -97,9 +97,12 @@ Root presents accepted results to the user as readable prose.
   `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. Claude
   Code's PostToolUse `Agent` hook covers completed foreground
   `thoth-agents:oracle` only: run gates in the foreground, or use fallback if a
-  background run delivered no verdict. Codex's PostToolUse `wait_agent` hook needs
-  enabled, trusted plugin hooks; `agent` is the status-map key, not proof of Oracle
-  provenance. Claude and Codex use `plugin/thoth-hooks/gate-verdict.mjs`.
+  background run delivered no verdict. Codex's PostToolUse hook covers only
+  multi-agent v1 `wait_agent` status-map results with enabled, trusted plugin hooks;
+  `agent` is the status-map key, not proof of Oracle provenance. Multi-agent v2
+  delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook or
+  verdict; root runs the explicit compact `validate-result.mjs` fallback on the
+  unchanged result. Claude and Codex use `plugin/thoth-hooks/gate-verdict.mjs`.
 - **Regression coverage:** contract/validator tests pin gate schema, generated-data
   equality, malformed JSON, evidence references, review verdicts/digests, CLI
   exits, plugin asset parity and standalone installed execution. Prompt-rendering

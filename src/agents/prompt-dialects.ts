@@ -183,7 +183,7 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
 export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'codex',
   gateDeliveryInstruction:
-    'Delivery verdicts arrive with `wait_agent` only when plugin hooks are enabled and trusted; `agent` is the status-map key, not proof of Oracle provenance.',
+    'Verdicts: multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only; `agent` = status-map key, not provenance. V2 `FINAL_ANSWER` inter-agent messages: no hook/verdict; use compact fallback.',
   tools: {
     delegationTool: 'collaboration.spawn_agent',
     backgroundDelegationTool: 'collaboration.spawn_agent',

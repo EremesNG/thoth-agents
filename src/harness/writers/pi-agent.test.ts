@@ -132,7 +132,7 @@ describe('Pi agent writer', () => {
         /^effort: "(?:low|medium|high|xhigh|max)"$/m,
       );
       expect(artifact.content).not.toMatch(/^skills:/m);
-      expect(artifact.content).toContain('subagent_mode: "background"');
+      expect(artifact.content).not.toMatch(/^subagent_mode:/m);
       expect(artifact.content).not.toMatch(
         /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
       );

@@ -260,10 +260,6 @@ describe('tool render helpers', () => {
   });
 
   it('renders the effective subagent_run mode in execution title and returns empty tool call lines', () => {
-    fs.writeFileSync(
-      path.join(env.tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ default_mode: 'background' }),
-    );
     env.writeAgent('analyst');
     const previousCwd = process.cwd();
     process.chdir(env.tmp);
@@ -690,104 +686,59 @@ describe('tool render helpers', () => {
     expectNativeShell(plain, 30);
   });
 
-  it('renders the effective continuation mode from explicit override, previous task state, and config fallback', async () => {
-    const { resolveContinuationEffectiveMode } = await import(
-      '../../src/continuation-mode.js'
-    );
+  it.each([
+    'task',
+    'background',
+  ] as const)('renders effective continuation mode %s and keeps call lines empty', (mode) => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ enable_continue: true, default_mode: 'background' }),
+      JSON.stringify({ enable_continue: true }),
     );
-    env.writeAgent('analyst');
-    const previousCwd = process.cwd();
-    process.chdir(env.tmp);
-    try {
-      const manager = env.createManager(env.mockRunner());
-      let continueTool: any;
-      registerSubagentTools(
+    const manager = env.createManager(env.mockRunner());
+    let continueTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_continue') continueTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    const theme = {
+      fg: (_name: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    expect(
+      continueTool
+        .renderCall({ task_id: 't1', prompt: 'Resume.' }, theme)
+        .render(200),
+    ).toHaveLength(0);
+    const rendered = continueTool
+      .renderResult(
         {
-          registerTool: (tool: any) => {
-            if (tool.name === 'subagent_continue') continueTool = tool;
+          details: {
+            task: {
+              id: 't1',
+              agent: 'analyst',
+              status: 'running',
+              attempt: 2,
+              mode,
+              effective_mode: mode,
+            },
           },
         },
-        manager,
-      );
-
-      const backgroundTask = await manager.run(
-        {
-          agent: 'analyst',
-          task: 'persist background mode',
-          mode: 'background',
-        },
-        { cwd: env.tmp },
-      );
-      const bgTaskObj = manager.getTask(backgroundTask.task_ids[0]!, env.tmp);
-      expect(
-        resolveContinuationEffectiveMode({
-          previousTask: bgTaskObj,
-          config: { default_mode: 'background' },
-        }),
-      ).toBe('background');
-
-      expect(
-        resolveContinuationEffectiveMode({
-          explicitMode: 'task',
-          previousTask: bgTaskObj,
-          config: { default_mode: 'background' },
-        }),
-      ).toBe('task');
-
-      const taskTask = await manager.run(
-        { agent: 'analyst', task: 'persist task mode', mode: 'task' },
-        { cwd: env.tmp },
-      );
-      const taskTaskObj = manager.getTask(taskTask.task_ids[0]!, env.tmp);
-      expect(
-        resolveContinuationEffectiveMode({
-          explicitMode: 'background',
-          previousTask: taskTaskObj,
-          config: { default_mode: 'background' },
-        }),
-      ).toBe('background');
-
-      const legacyTaskId = 'subtask_legacy_render_continue';
-      const legacySessionPath = path.join(
-        env.tmp,
-        'legacy-render-session.jsonl',
-      );
-      fs.writeFileSync(legacySessionPath, '{"type":"session"}\n');
-      (manager as any).history.upsertTask(env.tmp, {
-        id: legacyTaskId,
-        agent: 'analyst',
-        mode: 'legacy',
-        status: 'completed',
-        task: 'legacy task',
-        created_at: new Date().toISOString(),
-        nested_session_path: legacySessionPath,
-        result: 'legacy result',
-        attempt: 1,
-      } as any);
-      const legacyTaskObj = manager.getTask(legacyTaskId, env.tmp);
-      expect(
-        resolveContinuationEffectiveMode({
-          previousTask: legacyTaskObj,
-          config: { default_mode: 'background' },
-        }),
-      ).toBe('background');
-
-      // Call lines return 0 lines to avoid separate text outside frame
-      const callLines = continueTool
-        .renderCall(
-          { task_id: legacyTaskId, prompt: 'Resume the legacy task.' },
-          {
-            fg: (_name: string, text: string) => text,
-            bold: (text: string) => text,
-          },
-        )
-        .render(200);
-      expect(callLines).toHaveLength(0);
-    } finally {
-      process.chdir(previousCwd);
+        { expanded: false, isPartial: false },
+        theme,
+      )
+      .render(200)
+      .join('\n');
+    expect(rendered).toContain('resumed #2');
+    if (mode === 'background') {
+      expect(rendered).toContain('launched (background)');
+    } else {
+      expect(rendered).toContain('running');
+      expect(rendered).not.toContain('(background)');
     }
   });
 

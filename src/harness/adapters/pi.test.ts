@@ -89,7 +89,7 @@ describe('Pi adapter', () => {
       );
       expect(artifact?.content).toContain(`model: "openai-codex/${model}"`);
       expect(artifact?.content).toContain(`effort: "${effort}"`);
-      expect(artifact?.content).toContain('subagent_mode: "background"');
+      expect(artifact?.content).not.toMatch(/^subagent_mode:/m);
       expect(artifact?.content).not.toMatch(
         /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
       );

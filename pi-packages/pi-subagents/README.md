@@ -2,7 +2,7 @@
 
 Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated persisted Pi SDK sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.0.2`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Existing configuration, model/tool commands, run-mode defaults, and continuation policy are preserved.
+Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.0.2`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Launches and continuations run in background by default; only explicit invocation `mode: "task"` waits. Model/tool commands and opt-in continuation availability are unchanged.
 
 ## What it provides
 
@@ -207,7 +207,6 @@ Supported frontmatter:
 | `disallowed_tools` | Manually configured exact tool names removed after allowlist resolution, for injected tools and trimming glob results. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
-| `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
 
 ### `/subagents-tools`
 
@@ -321,7 +320,7 @@ Choose the narrowest scope that matches the intended behavior:
 |---|---|---|
 | Global defaults | `$PI_CODING_AGENT_DIR/subagents.json`, or `~/.pi/agent/subagents.json` when the environment variable is unset | The setting should apply across projects unless locally overridden. |
 | Project-local overrides | `.pi/subagents.json` | This workspace needs different defaults, shortcuts, or tools. |
-| One definition | Frontmatter in the selected global/project Markdown definition | Only that subagent needs `subagent_mode`, or an explicit per-file model/effort override. |
+| One definition | Frontmatter in the selected global/project Markdown definition | Only that subagent needs a tool allowlist or an explicit per-file model/effort override. |
 
 Config resolves as a field-by-field cascade:
 
@@ -344,15 +343,15 @@ You can ask the bundled `subagents-configuration` skill for setup or explanation
 2. a project-local override for the current workspace; or
 3. a change to one subagent definition only.
 
-The agent should also ask for unresolved behavior choices—such as whether omitted runs default to `task` or `background`—before editing. A question about how configuration works is not authorization to change files, and the agent should not edit both global and project config unless you explicitly request both.
+The agent should also ask for unresolved configuration choices—such as which model or effort to use—before editing. Execution mode is not configurable: omitted launch and continuation mode always means `background`; only explicit invocation `mode: "task"` waits. A question about how configuration works is not authorization to change files, and the agent should not edit both global and project config unless you explicitly request both.
 
 Example requests:
 
 ```txt
-Explain whether default_mode belongs in global or project config. Do not edit anything.
-Set default_mode to background only for this project.
+Explain whether default_effort belongs in global or project config. Do not edit anything.
+Set default_effort to medium only for this project.
 Configure the global reviewer profile, but leave project overrides unchanged.
-Give the project-local discovery definition background mode without changing other agents.
+Give the project-local discovery definition read-only tools without changing other agents.
 ```
 
 ### Config example
@@ -363,7 +362,6 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 {
   "default_model": "anthropic/claude-sonnet-4-5",
   "default_effort": "medium",
-  "default_mode": "background",
   "enable_continue": false,
   "enable_ask_orchestrator": true,
   "enable_notify_orchestrator": true,
@@ -408,7 +406,6 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 |---|---:|---|
 | `default_model` | current orchestrator model | Fallback model for all subagents. Format: `provider/model-id`. |
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
-| `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
 | `enable_notify_orchestrator` | `true` | Independently inject child-provided `notify_orchestrator` unless denied by the definition. Follows the global/project cascade. |
 | `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
@@ -585,7 +582,7 @@ Parameters:
 
 Behavior:
 
-- Invocation mode stays optional. Effective resolution is `input.mode ?? definition.subagent_mode ?? config.default_mode ?? "background"`. An explicit `mode: "task"` remains effective when the user asks to wait.
+- Invocation mode stays optional. Effective resolution is `input.mode ?? "background"`: omitted mode always runs in background, regardless of definition or configuration. Only an explicit `mode: "task"` waits when the user asks to wait.
 - `name` and `display_name` set an optional task display label; non-empty `display_name` takes precedence over `name`.
 - `mode: "task"` waits for completion and returns compact task summaries, unless handed off to background manually or on timeout attention.
 - Successful task results contain only the last assistant message with non-empty text, not earlier narration or progress notes. A textless trailing message falls back to the latest text message. Continuations select only from the current continuation's messages; earlier text remains in transcript/history.
@@ -596,7 +593,7 @@ Behavior:
 Examples:
 
 ```ts
-// Omitted mode: use the selected definition or config; otherwise background.
+// Omitted mode: always background.
 { agent: "analyst", task: "review the plan" }
 
 // Explicit request to wait: task mode is preserved.
@@ -625,11 +622,11 @@ Behavior:
 
 - Continuations keep the same `task_id` and exact persisted nested Pi session.
 - New continuations and continuation guidance are available only while the task cwd resolves `enable_continue: true`.
-- Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "background"`.
+- Effective continuation mode resolves once as `input.mode ?? "background"`. Only an explicit `mode: "task"` waits.
 - `mode: "task"` waits, renders `(task)`, and remains eligible for manual `ctrl+h` handoff.
 - `mode: "background"` returns immediately, renders `(background)`, and relies on the automatic completion notification.
 - The shared Work panel shows an `Agents · N running` section while work is active, with one compact row per eligible task and `+N more` counting only eligible overflow. Live tasks and current-prompt failures remain eligible, alongside at most the 3 latest current-prompt completions; earlier terminal tasks stay in history. While idle with no live tasks, it collapses to `Agents · N done · M failed` using session totals. Each row shows a running braille animation (or a distinct queued/terminal glyph), agent, concise task label and tool uses, lifetime input/output tokens, context percentage, average output speed (`N tok/s`) and active elapsed time, plus task cost. Metrics use semantic icons in nerd/unicode modes and text labels in ASCII; reserved widths keep wrapping stable across number-format boundaries. Running/queued rows retain a warning-colored `⚠ N dropped` count when tools were dropped. The task label truncates before warnings and metrics; narrow widths move metrics to continuation rows. Token counts exclude caches. Output speed divides accumulated measured assistant output tokens by generation time, excluding tools and compaction; its counters persist across continuations. Unavailable live values show `?`, while measured zeroes remain visible; persisted history rows omit missing metrics and separators. Resolved model, activity and other details remain in the existing task panel. With an empty root editor, press ← to focus Work, ↑↓ to select across sections, Enter to open the selected task (or history on the collapsed Agents line), or x twice to cancel a running task. Esc/→ return to the editor. Unfocused ↑↓ retain prompt history, and overlays, dialogs and the task panel receive their keys. The pi-core host alone owns the Work widget, navigation listener and running-only refresh lifecycle. Separate foreground task-mode double-Escape and manual handoff listeners reuse the host's editor-focus, overlay and suspension guard without requiring empty input; without an installed Work host they retain their existing handling.
-- When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
+- Omitted continuation mode always runs in background, regardless of the previous attempt's mode, agent definition, or configuration.
 - Model and effort overrides still require an explicit user decision before use.
 
 ### Timeout attention and `subagent_extend`

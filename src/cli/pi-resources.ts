@@ -125,12 +125,6 @@ function preserveOverrides(
       'disallowed_tools',
       JSON.stringify(toolOverrides.disallowedTools.join(', ')),
     );
-  if (toolOverrides.subagentMode)
-    frontmatter = replaceField(
-      frontmatter,
-      'subagent_mode',
-      JSON.stringify(toolOverrides.subagentMode),
-    );
 
   return `${frontmatter}${next.slice(end)}`;
 }
@@ -204,7 +198,7 @@ export function syncPiSpecialists(
           content = preserveOverrides(content, current, role);
         } catch (error) {
           diagnostics.push(
-            `Preserved ${name} unchanged because its tool, disallowed_tools, skills, or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
+            `Preserved ${name} unchanged because its tool, disallowed_tools, or skills override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
           );
           continue;
         }

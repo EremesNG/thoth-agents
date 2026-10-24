@@ -15,11 +15,7 @@ describe('subagent_run tool', () => {
     const fs = await import('node:fs');
     const readme = fs.readFileSync('README.md', 'utf8');
 
-    expect(readme).toContain('subagent_mode');
-    expect(readme).toContain('default_mode');
-    expect(readme).toContain(
-      'input.mode ?? definition.subagent_mode ?? config.default_mode',
-    );
+    expect(readme).toContain('input.mode ?? \"background\"');
     expect(readme).toContain('agent: string;');
     expect(readme).not.toContain('agents?: string[];');
     expect(readme).not.toContain('Multiple agents can run from one request');
@@ -47,9 +43,7 @@ describe('subagent_run tool', () => {
       'exactly one markdown-defined subagent',
     );
     expect(guidance).toContain('Omit mode');
-    expect(guidance).toContain('selected agent/configuration');
-    expect(guidance).toContain('background is the default if unset');
-    expect(guidance).toContain('mode=background to override task mode');
+    expect(guidance).toContain('Omit mode: background by default');
     expect(guidance).toContain(
       'mode=task only when the user explicitly asks to wait for completion',
     );
@@ -104,13 +98,21 @@ describe('subagent_run tool', () => {
     expect(manager.listTasks(env.tmp)).toHaveLength(0);
   });
 
-  it('treats omitted mode that resolves to background as background UI behavior', async () => {
+  it.each([
+    'definition',
+    'config',
+  ])('ignores legacy %s task mode for omitted launch mode and background UI behavior', async (source) => {
     const fs = await import('node:fs');
+    if (source === 'config') {
+      fs.writeFileSync(
+        `${env.tmp}/.pi/subagents.json`,
+        JSON.stringify({ default_mode: 'task' }),
+      );
+    }
     fs.writeFileSync(
-      `${env.tmp}/.pi/subagents.json`,
-      JSON.stringify({ default_mode: 'background' }),
+      `${env.tmp}/.pi/subagents/analyst.md`,
+      `---\nname: analyst\n${source === 'definition' ? 'subagent_mode: task\n' : ''}tools: read\n---\n# Agent`,
     );
-    env.writeAgent('analyst');
     const manager = env.createManager(env.mockRunner(50));
     let runTool: any;
     const onUpdate = vi.fn();
@@ -201,12 +203,7 @@ describe('subagent_run tool', () => {
     }
   });
 
-  it('waits for explicit task mode even when the configuration default is background', async () => {
-    const fs = await import('node:fs');
-    fs.writeFileSync(
-      `${env.tmp}/.pi/subagents.json`,
-      JSON.stringify({ default_mode: 'background' }),
-    );
+  it('waits only for explicit task mode', async () => {
     env.writeAgent('analyst');
     let markRunnerStarted!: () => void;
     const runnerStarted = new Promise<void>((resolve) => {
@@ -603,7 +600,7 @@ describe('subagent_run tool', () => {
     const fs = await import('node:fs');
     fs.writeFileSync(
       `${env.tmp}/.pi/subagents.json`,
-      JSON.stringify({ default_mode: 'task', enable_continue: true }),
+      JSON.stringify({ enable_continue: true }),
     );
     env.writeAgent('analyst');
     env.writeAgent('reviewer');
@@ -685,7 +682,7 @@ describe('subagent_run tool', () => {
     const first = runTool
       .execute(
         '1',
-        { agent: 'analyst', task: 'asking' },
+        { agent: 'analyst', task: 'asking', mode: 'task' },
         undefined,
         undefined,
         ctx,
@@ -700,7 +697,7 @@ describe('subagent_run tool', () => {
         '2',
         peer === 'continue'
           ? { task_id: previous!.task_ids[0], prompt: 'resume', mode: 'task' }
-          : { agent: 'reviewer', task: 'waiting' },
+          : { agent: 'reviewer', task: 'waiting', mode: 'task' },
         undefined,
         undefined,
         peer === 'other-session' ? { ...ctx, sessionId: 'other' } : ctx,

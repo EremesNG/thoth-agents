@@ -13,15 +13,11 @@ import {
   themeTitle,
   themeWarning,
 } from '../completion-message.js';
-import {
-  loadSubagents,
-  readSubagentsConfig,
-  resolveEffectiveSubagentMode,
-} from '../config.js';
+import { readSubagentsConfig } from '../config.js';
 import { iconAwareRenderer } from '../icon-aware-component.js';
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
-import type { SubagentMode, SubagentTask } from '../types.js';
+import type { SubagentTask } from '../types.js';
 import {
   boxedComponent,
   emptyComponent,
@@ -48,21 +44,6 @@ export function renderSubagentTaskCall(
   _detail?: string,
 ) {
   return emptyComponent();
-}
-
-function resolveRenderedSubagentRunMode(args: any, cwd: string): SubagentMode {
-  if (args.mode === 'task' || args.mode === 'background') return args.mode;
-  const config = readSubagentsConfig(cwd);
-  const definitions = new Map(
-    loadSubagents(cwd).map((definition) => [definition.name, definition]),
-  );
-  return resolveEffectiveSubagentMode({
-    invocationMode: args.mode,
-    definition: args.agent
-      ? definitions.get(String(args.agent).toLowerCase())
-      : undefined,
-    config,
-  });
 }
 
 export function renderSubagentRunCall(_args: any, _theme: any) {

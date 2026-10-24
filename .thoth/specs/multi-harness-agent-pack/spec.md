@@ -287,13 +287,13 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST use the configured agent/config mode or otherwise background, and explicit task/background modes MUST remain supported. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi `>=0.99.0` through the `1.0.2` development pin with its registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
+Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST run in background for both subagent_run and subagent_continue, task mode MUST occur only when the invocation explicitly passes `mode: "task"`, and agent definitions, subagent configuration and previous attempts MUST NOT select the execution mode. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi `>=0.99.0` through the `1.0.2` development pin with its registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
 
 #### Scenario: Native lifecycle translation
 
-- **GIVEN** an active root using the adopted fork on Pi 0.99.0 or 1.0.2
-- **WHEN** it launches an LLM subagent, selects tools, or sends live input
-- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities
+- **GIVEN** an agent definition or configuration that previously requested task mode
+- **WHEN** root calls subagent_run or subagent_continue without mode
+- **THEN** the child runs in background, and only an explicit `mode: "task"` invocation blocks
 
 ### Requirement: Expose routable role contracts
 
@@ -579,4 +579,4 @@ Each harness integration MUST validate Oracle gate envelopes at native result de
 
 - **GIVEN** a Claude Code root whose background Oracle plan review hands back a valid envelope
 - **WHEN** the hand-back `<agent-message>` reaches the root's `UserPromptSubmit` hook
-- **THEN** the root receives one `thoth-gate-verdict` line reporting valid, plan-review, the verdict and the agent id as additional context, and records OKAY without running the validator 
+- **THEN** the root receives one `thoth-gate-verdict` line reporting valid, plan-review, the verdict and the agent id as additional context, and records OKAY without running the validator

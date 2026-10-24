@@ -99,7 +99,11 @@ describe('subagent_continue tool', () => {
     const taskId = first.task_ids[0]!;
     const renderedCall = continueTool
       .renderCall(
-        { task_id: taskId, prompt: 'Continue with the approved fix.' },
+        {
+          task_id: taskId,
+          prompt: 'Continue with the approved fix.',
+          mode: 'task',
+        },
         {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
@@ -109,7 +113,11 @@ describe('subagent_continue tool', () => {
       .join('\n');
     const result = await continueTool.execute(
       '1',
-      { task_id: taskId, prompt: 'Continue with the approved fix.' },
+      {
+        task_id: taskId,
+        prompt: 'Continue with the approved fix.',
+        mode: 'task',
+      },
       undefined,
       undefined,
       { cwd: env.tmp },
@@ -126,13 +134,11 @@ describe('subagent_continue tool', () => {
     expect(guidance).toContain(
       'Supply model or effort only after an explicit user decision',
     );
-    expect(guidance).toContain("preserve the task's prior effective mode");
-    expect(guidance).toContain('default background if none');
+    expect(guidance).toContain('Omit mode: background by default');
     expect(guidance).toContain(
       'mode=task only when the user explicitly asks to wait for completion',
     );
     expect(guidance).toContain('Never auto-switch models');
-    expect(guidance.match(/prior effective mode/g)).toHaveLength(1);
     expect(guidance.match(/explicit user decision/g)).toHaveLength(1);
     expect(continueTool.renderShell).toBe('self');
     expect(continueTool.parameters.properties.mode.enum).toEqual([
@@ -389,7 +395,7 @@ describe('subagent_continue tool', () => {
     const continued = continueTool
       .execute(
         '2',
-        { task_id: taskId, prompt: 'Resume with a question.' },
+        { task_id: taskId, prompt: 'Resume with a question.', mode: 'task' },
         undefined,
         undefined,
         ctx,
@@ -506,7 +512,7 @@ describe('subagent_continue tool', () => {
 
     const result = await continueTool.execute(
       '2',
-      { task_id: taskId, prompt: 'Use the current tools.' },
+      { task_id: taskId, prompt: 'Use the current tools.', mode: 'task' },
       undefined,
       undefined,
       ctx,
@@ -603,7 +609,11 @@ describe('subagent_continue tool', () => {
 
     const result = await continueTool.execute(
       '1',
-      { task_id: first.task_ids[0], prompt: 'Run the delayed live test.' },
+      {
+        task_id: first.task_ids[0],
+        prompt: 'Run the delayed live test.',
+        mode: 'task',
+      },
       undefined,
       (update: any) => updates.push(update),
       ctx,
@@ -718,7 +728,11 @@ describe('subagent_continue tool', () => {
     const abort = vi.fn();
     const resultPromise = continueTool.execute(
       '1',
-      { task_id: first.task_ids[0], prompt: 'Keep running until cancelled.' },
+      {
+        task_id: first.task_ids[0],
+        prompt: 'Keep running until cancelled.',
+        mode: 'task',
+      },
       undefined,
       vi.fn(),
       {
@@ -770,7 +784,7 @@ describe('subagent_continue tool', () => {
     const path = await import('node:path');
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     const nestedSessionPath = `${env.tmp}/fresh-continuation-session.jsonl`;
     fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
@@ -851,9 +865,15 @@ describe('subagent_continue tool', () => {
     });
   });
 
-  it('uses the default background mode for an omitted launch and preserves it on continuation', async () => {
-    await enableContinue();
+  it.each([
+    'background',
+    'task',
+  ] as const)('ignores legacy config and previous %s mode for an omitted continuation mode', async (previousMode) => {
     const fs = await import('node:fs');
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents.json`,
+      JSON.stringify({ enable_continue: true, default_mode: 'task' }),
+    );
     env.writeAgent('backgrounder');
     const nestedSessionPath = `${env.tmp}/omitted-background-continue-session.jsonl`;
     fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
@@ -892,7 +912,7 @@ describe('subagent_continue tool', () => {
     );
 
     const first = await manager.run(
-      { agent: 'backgrounder', task: 'initial execution' },
+      { agent: 'backgrounder', task: 'initial execution', mode: previousMode },
       { cwd: env.tmp },
     );
     await vi.waitFor(() =>
@@ -923,23 +943,34 @@ describe('subagent_continue tool', () => {
         'running',
       ),
     );
-    const immediateResult = await resultPromise;
+    const outcome = await Promise.race([
+      resultPromise.then((value: any) => ({ status: 'returned', value })),
+      new Promise<{ status: 'pending' }>((resolve) =>
+        setTimeout(() => resolve({ status: 'pending' }), 50),
+      ),
+    ]);
 
-    expect(renderedCall).toBe('');
-    expect(immediateResult.content[0].text).toContain(
-      'Continued 1 subagent task(s) to background',
-    );
-    expect(immediateResult.content[0].text).toContain(
-      'The subagent will notify this chat automatically when it finishes.',
-    );
-    expect(manager.getTask(first.task_ids[0]!, env.tmp)).toMatchObject({
-      attempt: 2,
-      mode: 'background',
-      effective_mode: 'background',
-      status: 'running',
-    });
-
-    releaseContinuation?.();
+    try {
+      expect(outcome.status).toBe('returned');
+      expect(renderedCall).toBe('');
+      if ('value' in outcome) {
+        expect(outcome.value.content[0].text).toContain(
+          'Continued 1 subagent task(s) to background',
+        );
+        expect(outcome.value.content[0].text).toContain(
+          'The subagent will notify this chat automatically when it finishes.',
+        );
+      }
+      expect(manager.getTask(first.task_ids[0]!, env.tmp)).toMatchObject({
+        attempt: 2,
+        mode: 'background',
+        effective_mode: 'background',
+        status: 'running',
+      });
+    } finally {
+      releaseContinuation?.();
+      await resultPromise;
+    }
     await vi.waitFor(() =>
       expect(manager.getTask(first.task_ids[0]!, env.tmp)?.status).toBe(
         'completed',
@@ -953,7 +984,7 @@ describe('subagent_continue tool', () => {
     const path = await import('node:path');
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
-      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+      `---\nname: backgrounder\ndescription: background agent\ntools:\n  - read\n---\n# Agent`,
     );
     const nestedSessionPath = `${env.tmp}/explicit-task-continue-session.jsonl`;
     fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
@@ -1172,7 +1203,11 @@ describe('subagent_continue tool', () => {
     const terminalHandlers: Array<(data: string) => any> = [];
     const resultPromise = continueTool.execute(
       '1',
-      { task_id: first.task_ids[0], prompt: 'Continue in background.' },
+      {
+        task_id: first.task_ids[0],
+        prompt: 'Continue in background.',
+        mode: 'task',
+      },
       undefined,
       vi.fn(),
       {
@@ -1256,7 +1291,11 @@ describe('subagent_continue tool', () => {
     );
     const result = await continueTool.execute(
       '1',
-      { task_id: first.task_ids[0], prompt: 'Try the next step.' },
+      {
+        task_id: first.task_ids[0],
+        prompt: 'Try the next step.',
+        mode: 'task',
+      },
       undefined,
       undefined,
       { cwd: env.tmp },

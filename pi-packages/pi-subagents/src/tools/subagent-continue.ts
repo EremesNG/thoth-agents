@@ -33,7 +33,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
     description:
       'Continue a completed, failed, or cancelled task in its exact persisted nested Pi session, keeping task_id.',
     promptSnippet:
-      "Omit mode: preserve the task's prior effective mode; default background if none. Supply model or effort only after an explicit user decision. Never auto-switch models.",
+      'Omit mode: background by default. Use mode=task only when explicitly asked to wait. Supply model or effort only after an explicit user decision. Never auto-switch models.',
     parameters: Type.Object({
       task_id: Type.String(),
       prompt: Type.String(),
@@ -67,12 +67,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
         let latestTasks: SubagentTask[] = [];
         const cwd = ctx?.cwd ?? process.cwd();
         const availability = () => continuationAvailable(cwd, pi);
-        const existing = manager.getTask(params.task_id, cwd);
         const config = readSubagentsConfig(cwd);
         const effectiveMode = resolveContinuationEffectiveMode({
           explicitMode: params.mode,
-          previousTask: existing,
-          config,
         });
         // This input survives tool return while prior runner cleanup is pending.
         const continuationInput = { ...params };
@@ -241,7 +238,6 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
         args?.task_id
           ? manager.getTask(args.task_id, process.cwd())
           : undefined,
-        process.cwd(),
       ),
     renderResult: renderSubagentContinueResult,
   };

@@ -19,7 +19,6 @@ const { isAlias, isMap, isScalar, isSeq, parseDocument } =
 export interface ToolsFields {
   tools?: string[];
   disallowedTools?: string[];
-  subagentMode?: 'task' | 'background';
 }
 
 interface ParsedFrontmatter {
@@ -54,7 +53,7 @@ function parseFrontmatter(content: string): ParsedFrontmatter {
   });
   const mapping = document.contents;
   if (isMap(mapping)) {
-    for (const name of ['tools', 'disallowed_tools', 'subagent_mode']) {
+    for (const name of ['tools', 'disallowed_tools']) {
       const occurrences = mapping.items.filter(
         ({ key }) => isScalar(key) && key.value === name,
       );
@@ -121,7 +120,7 @@ function assertSupportedYamlFeatures(node: unknown): void {
 
 function fieldPair(
   mapping: YAMLMap,
-  name: 'tools' | 'disallowed_tools' | 'subagent_mode',
+  name: 'tools' | 'disallowed_tools',
 ): Pair | undefined {
   return mapping.items.find(({ key }) => isScalar(key) && key.value === name);
 }
@@ -260,28 +259,14 @@ function parseDisallowedToolsField(
   return [...new Set(tools)];
 }
 
-function parseModeField(
-  mapping: YAMLMap,
-  source: string,
-): 'task' | 'background' | undefined {
-  const pair = fieldPair(mapping, 'subagent_mode');
-  if (!pair) return undefined;
-  const mode = scalarString(pair.value, 'subagent_mode', source);
-  if (mode !== 'task' && mode !== 'background')
-    throw new Error('Invalid subagent_mode; expected "task" or "background".');
-  return mode;
-}
-
 export function readToolsFields(content: string): ToolsFields {
   if (!/^(?:\uFEFF)?---/.test(content)) return {};
   const { mapping, source } = parseFrontmatter(content);
   const parsedTools = parseToolsField(mapping, source);
   const disallowedTools = parseDisallowedToolsField(mapping, source);
-  const subagentMode = parseModeField(mapping, source);
   return {
     ...(parsedTools.present ? { tools: parsedTools.tools } : {}),
     ...(disallowedTools !== undefined ? { disallowedTools } : {}),
-    ...(subagentMode ? { subagentMode } : {}),
   };
 }
 

@@ -425,7 +425,7 @@ describe('runtime restricted YAML frontmatter', () => {
   ])('loads quoted YAML-like text without treating it as syntax: %s', (text) => {
     fs.writeFileSync(
       path.join(cwd, '.pi', 'subagents', 'worker.md'),
-      `---\nname: worker\ndescription: ${JSON.stringify(text)}\ntools: ["*"]\nnotes: {'&': '*', '<< text': '!foo'}\n# &anchor *alias << !foo\ndisallowed_tools: [ask_orchestrator, bash]\nmodel: {provider: openai, id: fixture}\neffort: max\nsubagent_mode: task\n---\nProject worker`,
+      `---\nname: worker\ndescription: ${JSON.stringify(text)}\ntools: ["*"]\nnotes: {'&': '*', '<< text': '!foo'}\n# &anchor *alias << !foo\ndisallowed_tools: [ask_orchestrator, bash]\nmodel: {provider: openai, id: fixture}\neffort: max\n---\nProject worker`,
     );
 
     expect(loadSubagents(cwd)).toEqual([
@@ -437,7 +437,6 @@ describe('runtime restricted YAML frontmatter', () => {
         disallowed_tools: ['ask_orchestrator', 'bash'],
         model: { provider: 'openai', id: 'fixture' },
         effort: 'max',
-        subagent_mode: 'task',
         instructions: 'Project worker',
       }),
     ]);
@@ -499,7 +498,6 @@ describe('runtime strict YAML frontmatter validation', () => {
     ['effort', 'effort: true'],
     ['thinking_level', 'thinking_level: []'],
     ['thinkingLevel', 'thinkingLevel: null'],
-    ['subagent_mode', 'subagent_mode: {}'],
   ])('blocks fallback for invalid YAML types or explicit tags in %s: %s', (field, raw) => {
     const file = path.join(cwd, '.pi', 'subagents', 'worker.md');
     fs.writeFileSync(file, `---\n${raw}\n---\nProject worker`);
@@ -630,7 +628,7 @@ describe('runtime strict YAML frontmatter validation', () => {
     ],
     [
       'normalized model and effort values',
-      '"tools": []\nmodel: { provider: " openai ", id: " fixture/path " }\neffort: " MAX "\nsubagent_mode: task',
+      '"tools": []\nmodel: { provider: " openai ", id: " fixture/path " }\neffort: " MAX "',
       {
         tools: [
           'read',
@@ -645,7 +643,6 @@ describe('runtime strict YAML frontmatter validation', () => {
         ],
         model: { provider: 'openai', id: 'fixture/path' },
         effort: 'max',
-        subagent_mode: 'task',
       },
     ],
   ])('loads valid YAML values for %s', (_label, fields, expected) => {

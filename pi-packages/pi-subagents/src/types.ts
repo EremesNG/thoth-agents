@@ -67,7 +67,6 @@ export type SubagentDefinition = {
   instructions: string;
   model?: ModelRef;
   effort?: ThinkingEffort;
-  subagent_mode?: SubagentMode;
   tools: string[];
   disallowed_tools?: string[];
   skills?: string[];
@@ -84,7 +83,6 @@ export type SubagentsRenderDebugConfig = {
 export type SubagentsConfig = {
   default_model?: ModelRef;
   default_effort?: ThinkingEffort;
-  default_mode?: SubagentMode;
   timeout_ms: number;
   timeout_warning_ms?: number;
   max_total_timeout_ms?: number;

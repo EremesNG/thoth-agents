@@ -1760,8 +1760,6 @@ export class SubagentManager {
     );
     const effectiveMode = resolveContinuationEffectiveMode({
       explicitMode: input.mode,
-      previousTask: latest,
-      config,
     });
     const continuationPrompt = sanitizeInteractionTransportText(input.prompt);
     const continuationSessionId = sessionIdFromContext(ctx);
@@ -1942,8 +1940,6 @@ export class SubagentManager {
     });
     const effectiveMode = resolveEffectiveSubagentMode({
       invocationMode: mode,
-      definition,
-      config,
     });
     const task: SubagentTask = {
       id: taskId(definition.name),

@@ -440,7 +440,7 @@ describe('Atelier child usage artifacts', () => {
       });
 
       await fixture.manager.continueTask(
-        { task_id: taskId, prompt: 'continue in same root' },
+        { task_id: taskId, prompt: 'continue in same root', mode: 'task' },
         fixture.context(),
       );
       expect(fixture.manager.getTask(taskId)?.usage?.input).toBe(10);
@@ -479,7 +479,11 @@ describe('Atelier child usage artifacts', () => {
       });
       const referencesBeforeReplacement = fixture.references.length;
       await fixture.manager.continueTask(
-        { task_id: taskId, prompt: 'continue in replacement root' },
+        {
+          task_id: taskId,
+          prompt: 'continue in replacement root',
+          mode: 'task',
+        },
         fixture.context(),
       );
 

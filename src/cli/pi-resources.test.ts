@@ -142,7 +142,13 @@ Old body.
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
-  test('preserves explicit tools and mode while missing values acquire package defaults', () => {
+  test.each([
+    'task',
+    'background',
+    'unsupported',
+    'true',
+    '[task]',
+  ])('drops legacy mode %s on sync while preserving other overrides and applying missing defaults', (mode) => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -156,7 +162,7 @@ Old body.
     const worker = join(agents, 'thoth-worker.md');
     writeFileSync(
       worker,
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: max\nsubagent_mode: task\ntools: [retired_extension, read]\n---\nCustom instructions.\n',
+      `---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: max\nsubagent_mode: ${mode}\ntools: [retired_extension, read]\ndisallowed_tools: [bash]\nskills: [tdd]\n---\nCustom instructions.\n`,
     );
     const explorer = join(agents, 'thoth-explorer.md');
     writeFileSync(
@@ -165,19 +171,20 @@ Old body.
     );
 
     const synchronized = syncPiSpecialists(options);
-    expect(synchronized.error).toBeUndefined();
-    expect(readFileSync(worker, 'utf8')).toContain(
-      'tools: "retired_extension, read"',
-    );
-    expect(readFileSync(worker, 'utf8')).toContain('subagent_mode: "task"');
-    expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
-    expect(readFileSync(worker, 'utf8')).toContain('effort: max');
-    expect(readFileSync(explorer, 'utf8')).toContain(
+    expect(synchronized.success).toBe(true);
+    expect(synchronized.diagnostics).toEqual([]);
+    const workerContent = readFileSync(worker, 'utf8');
+    expect(workerContent).toContain('tools: "retired_extension, read"');
+    expect(workerContent).not.toMatch(/^subagent_mode:/m);
+    expect(workerContent).toContain('disallowed_tools: "bash"');
+    expect(workerContent).toContain('skills: ["tdd"]');
+    expect(workerContent).toContain('model: custom/model');
+    expect(workerContent).toContain('effort: max');
+    const explorerContent = readFileSync(explorer, 'utf8');
+    expect(explorerContent).toContain(
       'tools: "read, bash, grep, find, ls, mem_recall, mem_get, codemode"',
     );
-    expect(readFileSync(explorer, 'utf8')).toContain(
-      'subagent_mode: "background"',
-    );
+    expect(explorerContent).not.toMatch(/^subagent_mode:/m);
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
@@ -304,7 +311,7 @@ Old body.
     }
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(dirname(target), { recursive: true });
-    const original = `---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\nsubagent_mode: task\ntools: ${value}\nother-setting: keep\n---\nKeep this exact body.\n`;
+    const original = `---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\ntools: ${value}\nother-setting: keep\n---\nKeep this exact body.\n`;
     writeFileSync(target, original);
 
     const result = syncPiSpecialists(options);
@@ -322,7 +329,7 @@ Old body.
     expect(readFileSync(target, 'utf8')).toBe(original);
   });
 
-  test('leaves malformed tool and mode overrides unchanged with diagnostics', () => {
+  test('leaves malformed tool overrides unchanged with diagnostics', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -332,26 +339,18 @@ Old body.
       );
     }
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
-    const badMode = join(options.piRoot, 'agents', 'thoth-explorer.md');
     mkdirSync(dirname(target), { recursive: true });
     const legacy =
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "read,"\nsubagent_mode: task\n---\nKeep this exact file.\n';
-    const malformed =
-      '---\nname: thoth-explorer\nmanaged-by: thoth-agents\nsubagent_mode: unsupported\n---\nKeep this file too.\n';
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "read,"\n---\nKeep this exact file.\n';
     writeFileSync(target, legacy);
-    writeFileSync(badMode, malformed);
 
     const result = syncPiSpecialists(options);
     expect(result.error).toBeUndefined();
     expect(result.diagnostics.join(' ')).toMatch(/worker.*invalid.*tool/i);
-    expect(result.diagnostics.join(' ')).toMatch(
-      /explorer.*subagent_mode|subagent_mode.*explorer/i,
-    );
     expect(readFileSync(target, 'utf8')).toBe(legacy);
-    expect(readFileSync(badMode, 'utf8')).toBe(malformed);
   });
 
-  test('preserves malformed semantic tool and mode fields byte-for-byte with diagnostics', () => {
+  test('preserves malformed semantic tool fields byte-for-byte with diagnostics', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -378,8 +377,8 @@ Old body.
       },
       {
         role: 'oracle',
-        fields: 'subagent_mode: task\n"subagent_mode" : background',
-        diagnostic: /oracle.*duplicate.*subagent_mode/i,
+        fields: 'disallowed_tools: read\n"disallowed_tools" : bash',
+        diagnostic: /oracle.*duplicate.*disallowed_tools/i,
       },
       {
         role: 'designer',
@@ -430,13 +429,13 @@ Old body.
       },
       {
         role: 'librarian',
-        fields: '"subagent_\\u006dode": background',
-        accepted: 'subagent_mode: "background"',
+        fields: '"disallowed_\\u0074ools": bash',
+        accepted: 'disallowed_tools: "bash"',
       },
       {
         role: 'oracle',
-        fields: 'subagent_mode: task\n? subagent_mode\n: background',
-        diagnostic: /oracle.*duplicate.*subagent_mode/i,
+        fields: 'disallowed_tools: read\n? disallowed_tools\n: bash',
+        diagnostic: /oracle.*duplicate.*disallowed_tools/i,
       },
       {
         role: 'designer',
@@ -637,7 +636,7 @@ Old body.
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md'),
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\nsubagent_mode: "task"\n---\nfresh\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(dirname(target), { recursive: true });
@@ -666,7 +665,7 @@ Old body.
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md'),
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\nsubagent_mode: "task"\n---\nfresh\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(dirname(target), { recursive: true });

@@ -18,6 +18,14 @@ const model = {
 const context = { messages: [{ role: "user", content: "offline", timestamp: 0 }], tools: [] };
 const diagnostic = "Claude Code process exited with code 17. stderr: OFFLINE_DIAGNOSTIC_MARKER";
 
+// Hardlink when possible; CI runners keep node and the temp dir on different devices.
+function placeRuntime(target) {
+	try { fs.linkSync(process.execPath, target); } catch (error) {
+		if (error.code !== "EXDEV") throw error;
+		fs.copyFileSync(process.execPath, target);
+	}
+}
+
 async function sdkFailure(options) {
 	const q = query({ prompt: "offline", options });
 	try {
@@ -44,7 +52,7 @@ for (const insideOrca of [false, true]) {
 			const dir = fs.mkdtempSync(join(tmpdir(), "bridge-auxiliary-runtime-"));
 			t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 			const executable = join(dir, "claude.exe");
-			fs.linkSync(process.execPath, executable);
+			placeRuntime(executable);
 			const launchedPath = join(dir, "launched-path.txt");
 			const launchOptions = {
 				executableArgs: ["-e", "require('node:fs').writeFileSync(process.env.RUNTIME_LAUNCHED_PATH, process.execPath); process.stderr.write(' '.repeat(2 * 1024 * 1024) + 'OFFLINE_DIAGNOSTIC_MARKER', () => process.exit(17))", "--"],

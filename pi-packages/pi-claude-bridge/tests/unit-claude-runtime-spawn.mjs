@@ -21,12 +21,20 @@ const model = {
 };
 const context = { messages: [{ role: "user", content: "hello", timestamp: 0 }], tools: [] };
 
+// Hardlink when possible; CI runners keep node and the temp dir on different devices.
+function placeRuntime(target) {
+	try { fs.linkSync(process.execPath, target); } catch (error) {
+		if (error.code !== "EXDEV") throw error;
+		fs.copyFileSync(process.execPath, target);
+	}
+}
+
 for (const path of ["provider", "summary", "AskClaude", "quota"]) {
 	test(`${path} spawns the neutral Orca runtime, preserves SDK options and forwards stderr once`, { timeout: 10000 }, async (t) => {
 		const dir = fs.mkdtempSync(join(tmpdir(), "bridge-runtime-spawn-"));
 		t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 		const command = join(dir, "claude.exe");
-		fs.linkSync(process.execPath, command);
+		placeRuntime(command);
 		const previousPane = process.env.ORCA_PANE_KEY;
 		process.env.ORCA_PANE_KEY = "test-pane";
 		t.after(() => {

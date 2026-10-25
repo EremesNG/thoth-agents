@@ -2,6 +2,8 @@
 
 ## UNRELEASED
 
+- **Fix: avoid Orca foreground-agent misidentification** — Launch native Claude children through a neutral sibling hardlink inside Orca terminals across provider, summaries, AskClaude and quota. Validate aliases only by bigint file identity, publish replacements atomically, memoize per process and retain the original command when hardlinking or replacement fails; never copy the binary. Keep the SDK built-in launcher for auxiliary calls, selecting the alias through `pathToClaudeCodeExecutable` while preserving native stderr draining, callbacks and failure-tail diagnostics. The provider retains its exit-observing custom spawn with one stderr drain and callback. Other terminals and executable names are unchanged.
+
 - **Fix: allow on-demand Claude quota fetching** — Remove the non-essential-traffic suppression flag only from the short-lived `/claude quota` child, leaving normal queries and the Pi environment unchanged. Distinguish ineligible authentication from a usage request that returned no data.
 
 - **Bump: upstream sync through `df964a9`** — Integrate upstream 0.9.2/0.9.3 and unreleased fixes from `9dafd03`: native Pi summaries, session cwd, quota headers, continuation recovery, isolated effort, AskClaude deprecation and lazy diagnostics. Retain local prompt/cache/checkpoint, quota, rendering and schema-wrapping behavior; Pi stays at 1.0.2 and the scoped package version stays 0.2.5. Agent SDK is `^0.3.308`.

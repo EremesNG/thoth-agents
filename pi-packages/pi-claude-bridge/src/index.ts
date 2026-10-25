@@ -4,7 +4,6 @@ import { buildSessionContext, type ExtensionAPI, type ExtensionContext, type Ext
 import { query, type EffortLevel, type SDKMessage, type SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { Base64ImageSource, ContentBlockParam } from "@anthropic-ai/sdk/resources";
 import { createSession, deleteSession, getClaudeDir, getSessionPath, openSession, repairToolPairing } from "cc-session-io";
-import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.js";
@@ -39,6 +38,7 @@ import { reportClaudeProviderLimit } from "./provider-limits.js";
 import { fetchClaudeQuota } from "./quota.js";
 import { forgetSessionCwd, rememberSessionCwd, rememberSummarySession, sessionCwdFor, summarySessionFor } from "./session-cwd.js";
 import { rateLimitResponse } from "./rate-limit.js";
+import { resolveAuxiliaryClaudeExecutable, spawnClaudeRuntime } from "./claude-runtime.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -126,6 +126,16 @@ function makeCliDebugOptions(tag: string): { debug?: boolean; debugFile?: string
 				if (line) debug(`[cli-stderr ${tag}#${seq}] ${line}`);
 			}
 		},
+	};
+}
+
+// Keep the SDK launcher for auxiliary calls: it owns stderr draining, callback
+// delivery and stderr-tail enrichment of exit errors.
+function makeAuxiliaryCliOptions(tag: string, executable?: string) {
+	const resolved = resolveAuxiliaryClaudeExecutable(executable);
+	return {
+		...(resolved ? { pathToClaudeCodeExecutable: resolved } : {}),
+		...makeCliDebugOptions(tag),
 	};
 }
 
@@ -641,8 +651,7 @@ async function runIsolatedSummary(
 				model: cliModel,
 				maxTurns: 1,
 				...(effort ? { effort } : {}),
-				...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
-				...makeCliDebugOptions("compact-summary"),
+				...makeAuxiliaryCliOptions("compact-summary", claudeExecutable),
 			},
 		});
 
@@ -2213,9 +2222,8 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 			type: "preset", preset: "claude_code",
 			append: recordedAppend || undefined,
 		},
-		spawnClaudeCodeProcess: ({ command, args, ...spawnOptions }) => {
-			const child = spawn(command, args, { ...spawnOptions, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-			child.stderr.on("data", (chunk) => queryOptions.stderr?.(chunk.toString()));
+		spawnClaudeCodeProcess: (spawnOptions) => {
+			const child = spawnClaudeRuntime(spawnOptions, (data) => queryOptions.stderr?.(data));
 			processExited = new Promise((resolve) => {
 				child.once("exit", (code, signal) => resolve(code === 0 && signal === null));
 				child.once("error", () => resolve(false));
@@ -2581,8 +2589,7 @@ async function promptAndWait(
 			extraArgs,
 			...(resumeSessionId ? { resume: resumeSessionId } : {}),
 			...(options?.isolated ? { persistSession: false } : {}),
-			...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
-			...makeCliDebugOptions("askclaude"),
+			...makeAuxiliaryCliOptions("askclaude", claudeExecutable),
 		},
 	});
 
@@ -2720,7 +2727,7 @@ export default function (pi: ExtensionAPI) {
 				settings: { ...claudeCodeSettings(providerSettings), claudeMdExcludes: CLAUDE_MD_EXCLUDES, includeGitInstructions: false },
 				permissionMode: "bypassPermissions",
 				strictMcpConfig: true,
-				...makeCliDebugOptions("quota"),
+				...makeAuxiliaryCliOptions("quota", childOptions.pathToClaudeCodeExecutable),
 			}, sessionId);
 			ctx.ui.notify(output, output.startsWith("Claude quota failed:") ? "error" : "info");
 		},

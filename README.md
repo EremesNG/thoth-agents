@@ -93,9 +93,11 @@ Both commands are registered by pi-subagents on pi-core's shared list-editor
 shell, with native CSI-u/kitty and legacy navigation keys and wheel support in
 regular and fullscreen TUI mode. Use `/subagents-tools` to edit resolved global/project definitions' tool
 lists, including registered active and inactive extension and MCP tools. Thoth
-supplies managed-specialist validation and reset defaults through an optional adapter. Globs (including `*`) are
-manual advanced selections over all registered root tools; the panel preserves
-them read-only. Edit `disallowed_tools` manually for injected tools and trimming
+supplies managed-specialist validation and reset defaults through an optional adapter. In a tool picker,
+`a` adds a name or glob; `d`/Delete removes a selected Manual entries row, and `s`
+saves from the overview. Manual rows show session match counts and case hints.
+Globs (including `*`) remain advanced, case-sensitive selections over all registered
+root tools; unmatched globs contribute nothing when a tool/server is not registered. Edit `disallowed_tools` manually for injected tools and trimming
 globs; only Oracle denies `ask_orchestrator` by default, while all five roles keep
 `notify_orchestrator`. Child `ask_orchestrator({ message })` carries blocking
 questions only; `notify_orchestrator({ message })` records one-way progress or

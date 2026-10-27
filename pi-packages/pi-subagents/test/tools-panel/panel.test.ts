@@ -19,7 +19,9 @@ const roles = [
   'worker',
 ] as const;
 
-function sampleSnapshot(): PiToolConfigSnapshot {
+function sampleSnapshot(
+  explorerTools = ['read', 'write'],
+): PiToolConfigSnapshot {
   return {
     cwd: '/project',
     piRoot: '/global/.pi/agent',
@@ -27,7 +29,7 @@ function sampleSnapshot(): PiToolConfigSnapshot {
       role,
       filePath: `/global/.pi/agent/agents/${role}.md`,
       scope: 'global',
-      tools: ['read', 'write'],
+      tools: role === 'explorer' ? [...explorerTools] : ['read', 'write'],
       defaultTools: ['read', 'write'],
       disallowedTools: role === 'oracle' ? ['ask_orchestrator'] : [],
     })),
@@ -165,7 +167,7 @@ describe('global Pi tools panel', () => {
     expect(onDone).toHaveBeenCalledWith({ kind: 'cancelled' });
   });
 
-  test('edits registered exact names only and retains manual entries through normal save', () => {
+  test('checkbox edits retain manual entries through normal save', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
@@ -192,7 +194,9 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toEqual(snapshot.roles[0]?.tools);
     panel.handleInput('\r');
     const text = panel.render(240).join('\n');
-    expect(text).toContain('Read-only: *, agent_browser_*, retired_tool');
+    expect(text).toContain('Manual entries · *');
+    expect(text).toContain('Manual entries · agent_browser_*');
+    expect(text).toContain('Manual entries · retired_tool');
     expect(text).toContain('ask_orchestrator: child-provided');
     expect(text).toContain('enable_ask_orchestrator');
     expect(text).toContain('notify_orchestrator: child-provided');
@@ -215,6 +219,220 @@ describe('global Pi tools panel', () => {
       'agent_browser_*',
       'retired_tool',
     ]);
+  });
+
+  test('lists manual entries in draft order with session counts and case-sensitive hints', () => {
+    const snapshot = sampleSnapshot([
+      'retired_tool',
+      'mcp__roblox*',
+      'mcp__Roblox*',
+      '*',
+      'ask_orchestrator',
+      'read',
+    ]);
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: [
+        { name: 'read', active: true },
+        { name: 'mcp__Roblox_Studio', active: true },
+        { name: 'mcp__Roblox_Other', active: false },
+        { name: 'subagent_run', active: true },
+        { name: 'ask_orchestrator', active: false },
+        { name: 'mcp__Roblox_Studio', active: true },
+      ],
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('\r');
+    const text = panel.render(300).join('\n');
+    expect(text).not.toContain('Read-only');
+    expect(text).toContain(
+      'Manual entries · retired_tool · 0 matches (expected if tool/server is not registered)',
+    );
+    expect(text).toContain('Manual entries · mcp__roblox* · 0 matches');
+    expect(text).toContain(
+      'Case-sensitive; check: mcp__Roblox_Studio, mcp__Roblox_Other',
+    );
+    expect(text).toContain('Manual entries · mcp__Roblox* · 2 matches');
+    expect(text).toContain('Manual entries · * · 5 matches');
+    expect(text).toContain('Manual entries · ask_orchestrator · 1 match');
+    expect(text.indexOf('Manual entries · retired_tool')).toBeLessThan(
+      text.indexOf('Manual entries · mcp__roblox*'),
+    );
+    panel.handleInput('G');
+    expect(panel.render(300).join('\n')).toContain(
+      'selected: ask_orchestrator',
+    );
+  });
+
+  test('adds a trimmed manual entry through isolated text input without saving', () => {
+    const snapshot = sampleSnapshot();
+    const save = vi.fn();
+    const onDone = vi.fn();
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: sampleDiscovered,
+      save,
+      onDone,
+    });
+    panel.handleInput('\r');
+    panel.handleInput('a');
+    expect(panel.render(120).join('\n')).toContain('Add tool entry · explorer');
+    // These are ordinary text while input owns focus, not panel actions.
+    for (const key of ['s', 'r', 'q', 'd', 'j', 'k', 'g', 'G', ' '])
+      panel.handleInput(key);
+    expect(panel.getState().draft).toEqual(snapshot.roles);
+    expect(save).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+    panel.handleInput('\x15'); // Ctrl+U clears
+    panel.handleInput('  mcp__Roblox_Studio*x');
+    panel.handleInput('\x7f'); // Backspace
+    panel.handleInput('  ');
+    panel.handleInput('\r');
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'read',
+      'write',
+      'mcp__Roblox_Studio*',
+    ]);
+    expect(panel.render(160).join('\n')).toContain(
+      'Manual entries · mcp__Roblox_Studio*',
+    );
+    expect(panel.render(160).join('\n')).toContain('a add');
+    expect(panel.render(160).join('\n')).toContain('d/delete remove');
+    expect(save).not.toHaveBeenCalled();
+    panel.handleInput('\x1b'); // Back to overview, then retain dirty discard confirmation.
+    panel.handleInput('\x1b');
+    expect(panel.render(120).join('\n')).toContain('Discard unsaved draft?');
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'd',
+    '\x1b[3~',
+    '\x1b[3;1:1~',
+  ])('removes only the selected manual entry with %j, keeping draft order until save', (key) => {
+    const snapshot = sampleSnapshot([
+      'first_*',
+      'read',
+      'retired_tool',
+      'last_*',
+    ]);
+    const save = vi.fn((_base, draft) => successfulSave(snapshot, draft));
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: sampleDiscovered,
+      save,
+      onDone: vi.fn(),
+    });
+    panel.handleInput('\r');
+    panel.handleInput(key); // Registered exact rows are not removed.
+    expect(panel.getState().draft[0]?.tools).toEqual(snapshot.roles[0]?.tools);
+    panel.handleInput('G');
+    panel.handleInput('k'); // Middle manual entry, not the final one.
+    expect(panel.render(220).join('\n')).toContain('selected: retired_tool');
+    panel.handleInput(' '); // Manual entries are not checkbox toggles.
+    expect(panel.getState().draft[0]?.tools).toEqual(snapshot.roles[0]?.tools);
+    panel.handleInput(key);
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'first_*',
+      'read',
+      'last_*',
+    ]);
+    expect(panel.render(220).join('\n')).not.toContain('retired_tool');
+    expect(save).not.toHaveBeenCalled();
+    panel.handleInput('q');
+    panel.handleInput('s');
+    expect(save.mock.calls[0]?.[1][0]?.tools).toEqual([
+      'first_*',
+      'read',
+      'last_*',
+    ]);
+  });
+
+  test.each([
+    '@active',
+    'SUBAGENT_KILL',
+    'tool name',
+    'tool,name',
+    'read',
+    'existing_*',
+  ])('keeps invalid or duplicate entry %j open with an inline validation error', (candidate) => {
+    const snapshot = sampleSnapshot(['read', 'write', 'existing_*']);
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('\r');
+    panel.handleInput('a');
+    panel.handleInput(candidate);
+    panel.handleInput('\r');
+    const text = panel.render(180).join('\n');
+    expect(text).toContain('Add tool entry · explorer');
+    expect(text).toMatch(
+      /no longer supported|not allowed|Invalid Subagent|Duplicate Subagent/,
+    );
+    expect(panel.getState().draft).toEqual(snapshot.roles);
+    panel.handleInput('\x15');
+    panel.handleInput('new_extension');
+    panel.handleInput('\r');
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'read',
+      'write',
+      'existing_*',
+      'new_extension',
+    ]);
+    expect(panel.render(180).join('\n')).toContain('Choose tools · explorer');
+  });
+
+  test('adding a registered eligible exact name checks its row instead of creating a manual entry', () => {
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('\r');
+    panel.handleInput('a');
+    panel.handleInput('  custom_inactive  ');
+    panel.handleInput('\x1b[13u');
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'read',
+      'write',
+      'custom_inactive',
+    ]);
+    const text = panel.render(180).join('\n');
+    expect(text).toContain('[x] custom_inactive (inactive)');
+    expect(text).not.toContain('Manual entries · custom_inactive');
+  });
+
+  test.each([
+    '\x1b',
+    '\x1b[27u',
+    '\x03',
+    '\x1b[99;5u',
+  ])('cancels text entry without leaving the picker or mutating drafts (%j)', (key) => {
+    const snapshot = sampleSnapshot();
+    const onDone = vi.fn();
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone,
+    });
+    panel.handleInput('\r');
+    panel.handleInput('a');
+    panel.handleInput('new_tool');
+    panel.handleInput(key);
+    expect(panel.getState().draft).toEqual(snapshot.roles);
+    expect(panel.render(140).join('\n')).toContain('Choose tools · explorer');
+    expect(onDone).not.toHaveBeenCalled();
+    panel.handleInput('a');
+    panel.handleInput('   ');
+    panel.handleInput('\r'); // Empty trimmed confirmation just closes.
+    expect(panel.getState().draft).toEqual(snapshot.roles);
+    expect(panel.render(140).join('\n')).toContain('Choose tools · explorer');
   });
 
   test('renders global scope, five roles, ambient-root warning and override boundary', () => {
@@ -327,12 +545,19 @@ describe('global Pi tools panel', () => {
     expect(panel.render(30).every((line) => visibleWidth(line) <= 30)).toBe(
       true,
     );
+    panel.handleInput('a');
+    panel.handleInput('a_very_long_manual_tool_entry_*');
+    expect(panel.render(30).every((line) => visibleWidth(line) <= 30)).toBe(
+      true,
+    );
   });
 
   test('keeps the selected role and tool visible in short overlays and after resize', () => {
     let maxHeight = 9; // 90% of a ten-row terminal
+    const snapshot = sampleSnapshot();
+    for (const role of snapshot.roles) role.tools = ['tool_00'];
     const panel = createToolsPanel({
-      snapshot: sampleSnapshot(),
+      snapshot,
       discoveredTools: Array.from({ length: 30 }, (_, index) => ({
         name: `tool_${index.toString().padStart(2, '0')}`,
         active: true,
@@ -360,7 +585,7 @@ describe('global Pi tools panel', () => {
     panel.handleInput(' ');
     expect(render()).toContain('›   [x] tool_29');
     panel.handleInput('g');
-    expect(render()).toContain('›   [ ] tool_00');
+    expect(render()).toContain('›   [x] tool_00');
 
     maxHeight = 5;
     panel.handleInput('G');
@@ -412,7 +637,7 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toContain('custom_inactive');
   });
 
-  test('shows unregistered role defaults read-only after reset', () => {
+  test('shows unregistered role defaults as manual entries after reset', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
@@ -431,10 +656,10 @@ describe('global Pi tools panel', () => {
     panel.handleInput('\r');
     panel.handleInput('r');
     expect(panel.render(120).join('\n')).toContain(
-      'Read-only: default_extension',
+      'Manual entries · default_extension',
     );
     expect(panel.render(120).join('\n')).not.toContain('[x] default_extension');
-    panel.handleInput('G'); // read is the only registered choice
+    panel.handleInput('g'); // read is the first and only registered choice
     panel.handleInput(' ');
     expect(panel.getState().draft[0]?.tools).toEqual(['default_extension']);
   });
@@ -457,17 +682,17 @@ describe('global Pi tools panel', () => {
     });
     panel.handleInput('\r'); // edit explorer
     const text = panel.render(80).join('\n');
-    expect(text).toContain('Read-only: legacy_mcp_tool');
+    expect(text).toContain('Manual entries · legacy_mcp_tool');
     expect(text).not.toContain('[x] legacy_mcp_tool');
 
     panel.handleInput('G');
-    panel.handleInput(' '); // toggle the last registered choice, not the unknown name
+    panel.handleInput(' '); // Manual entries are not checkbox toggles.
     expect(panel.getState().draft[0]?.tools).toContain('legacy_mcp_tool');
     panel.handleInput('r');
     expect(panel.getState().draft[0]?.tools).toEqual(['read', 'write']);
   });
 
-  test('removed active-selection keys do not edit or persist in either screen', () => {
+  test('legacy active-selection shortcuts do not edit or persist outside text entry', () => {
     const snapshot = sampleSnapshot();
     const save = vi.fn();
     const panel = createToolsPanel({
@@ -481,7 +706,6 @@ describe('global Pi tools panel', () => {
     panel.handleInput('*');
     expect(panel.getState().draft).toEqual(snapshot.roles);
     panel.handleInput('\r');
-    panel.handleInput('a');
     panel.handleInput('A');
     panel.handleInput('*');
     expect(panel.getState().draft).toEqual(snapshot.roles);
@@ -665,8 +889,9 @@ describe('global Pi tools panel', () => {
         active: true,
       }),
     );
+    const snapshot = sampleSnapshot(['tool_00']);
     const panel = createToolsPanel({
-      snapshot: sampleSnapshot(),
+      snapshot,
       discoveredTools: manyTools,
       save: vi.fn(),
       onDone: vi.fn(),

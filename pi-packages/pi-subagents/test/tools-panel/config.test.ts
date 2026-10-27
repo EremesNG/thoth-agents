@@ -6,6 +6,7 @@ import {
   readToolsConfig,
   saveToolsConfig,
 } from '../../src/tools-panel/config.js';
+import { createToolsPanel } from '../../src/tools-panel/panel.js';
 import { toolsPanelRegistryKey } from '../../src/tools-panel/registry.js';
 
 const roots: string[] = [];
@@ -41,6 +42,40 @@ test('generic save edits only tools and preserves manual globs, unknown names, C
       '"\\u0074ools":\r\n  - "*"\r\n  - agent_browser_*\r\n  - retired_tool\r\n  - read',
       '"\\u0074ools": "*, agent_browser_*, retired_tool, bash"',
     ),
+  );
+});
+
+test('panel additions and removals round-trip through the unchanged config save path', () => {
+  const { root, target } = fixture(
+    '---\nname: worker\ntools: "read, retired_tool" # keep\n---\nBody.\n',
+  );
+  const panel = createToolsPanel({
+    snapshot: readToolsConfig(root),
+    discoveredTools: [{ name: 'read', active: true }],
+    save: saveToolsConfig,
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput('G');
+  panel.handleInput('d');
+  for (const entry of ['mcp__Roblox_Studio*', 'mcp__Other__Tool']) {
+    panel.handleInput('a');
+    panel.handleInput(entry);
+    panel.handleInput('\r');
+  }
+  expect(readToolsConfig(root).roles[0]?.tools).toEqual([
+    'read',
+    'retired_tool',
+  ]);
+  panel.handleInput('q');
+  panel.handleInput('s');
+  expect(readToolsConfig(root).roles[0]?.tools).toEqual([
+    'read',
+    'mcp__Roblox_Studio*',
+    'mcp__Other__Tool',
+  ]);
+  expect(fs.readFileSync(target, 'utf8')).toBe(
+    '---\nname: worker\ntools: "read, mcp__Roblox_Studio*, mcp__Other__Tool" # keep\n---\nBody.\n',
   );
 });
 

@@ -212,16 +212,23 @@ Supported frontmatter:
 
 Pi-subagents owns `/subagents-tools` (from `0.3.0`). In interactive TUI mode it
 opens the shared pi-core list-editor shell: arrows/j/k, g/G or wheel navigate;
-enter/e edits a definition, space toggles an exact tool, enter/esc/q returns,
-s saves, and esc/q cancels with dirty-draft discard confirmation. The wide table
+enter/e edits a definition, space toggles a registered exact tool, and `a` adds
+a name or glob. In the picker, `d`/Delete removes the selected manual entry;
+enter/esc/q returns, s saves, and esc/q cancels with dirty-draft discard confirmation.
+The add input supports Enter to confirm, Esc to cancel, Backspace to delete,
+and Ctrl+U to clear. The wide table
 starts at 84 columns and the cursor-centered viewport follows terminal height.
 
 The editor targets the global/project definitions currently resolved by this
 extension, including project overrides. It discovers all registered root tools
 (active and inactive) on each open and identifies the child-provided
 `ask_orchestrator` and `notify_orchestrator` separately. Native `subagent_*` controls are not selectable.
-There is no dynamic `*` mode, and `@active` is rejected. Existing globs and
-unrecognized names remain read-only and are preserved on normal save.
+There is no dynamic `*` mode, and `@active` is rejected. The navigable Manual
+entries rows show globs and unregistered exact names with this session's match
+counts and case hints. Globs are advanced, case-sensitive selections over all
+registered tools; unmatched globs contribute nothing at launch, which is expected
+when a tool/server is not registered. Adding a registered eligible exact name
+checks its checkbox instead. All edits remain drafts until save.
 
 Saving edits only the definition's `tools` field, preserving unrelated
 frontmatter, `disallowed_tools` and body bytes. Stale files and pre-write races
@@ -736,7 +743,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `/subagents` | Open the session-focused TUI subagent history panel. |
 | `/subagents-history-compact` | Explicitly prune expired execution detail and reclaim database disk space with VACUUM; report database + WAL sizes before and after. |
 | `/subagents-model` | Manage named model profiles and select them for the session, project, or globally. |
-| `/subagents-tools` | Edit tools in resolved global or project definitions; reset requires adapter defaults. |
+| `/subagents-tools` | Toggle tools and add/remove manual names or globs in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
 | `x` | Cancel the currently selected queued/running subagent from the open history/detail panel by default. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
 | `ctrl+h` | Send the running task-mode subagent task to the background by default. Configurable via `background_handoff_shortcut` in `subagents.json`. |

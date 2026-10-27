@@ -16,7 +16,9 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import * as ownedProcess from "../src/owned-process.js";
+import { completedChild, makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../src/config.js";
@@ -81,6 +83,20 @@ function fakePi(): { api: ExtensionAPI; registered: Array<{ name: string; descri
 	const api = { registerTool: (t: never) => registered.push(t) } as unknown as ExtensionAPI;
 	return { api, registered };
 }
+
+test.each([false, true])("web delegates use the child cwd for their neutral runtime executable inside Orca (bare=%s)", async (bare) => {
+	const f = makeAgyRuntimeFixture({ bare });
+	const output = [
+		{ event: "step_update", step_update: { step_type: "tool", tool_name: "search_web", state: "DONE" } },
+		{ event: "result", result: { status: "SUCCESS", response: "offline web answer" } },
+	].map(frame => JSON.stringify(frame) + "\n").join("");
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => completedChild(output) as unknown as ownedProcess.OwnedProcess);
+	try {
+		expect(await runWebAgent({ prompt: "offline", gatedTool: "search_web", cwd: f.root, agentsRoot: path.join(f.root, "agents") }))
+			.toEqual({ ok: true, response: "offline web answer" });
+		f.assertAlias(spawn.mock.calls[0][0]);
+	} finally { spawn.mockRestore(); f.cleanup(); }
+});
 
 test("webAgentMd: frontmatter parses as YAML (issue #5 class)", () => {
 	const fm = parseAgentFrontmatter(webAgentMd("pi-bridge-web-x"));

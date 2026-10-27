@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { beforeAll, test } from "vitest";
+import { beforeAll, test, vi } from "vitest";
+import * as ownedProcess from "../src/owned-process.js";
+import { AcpConnection } from "../src/acp/connection.js";
+import { makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { spawnAgyRaw } from "../src/models.js";
@@ -18,6 +21,21 @@ type AskTool = {
 		details: { aborted: boolean; timedOut: boolean };
 	}>;
 };
+
+test.each(["agy", "other"])("ACP uses a neutral runtime executable only for agy, not another configured server: %s", async (kind) => {
+	const f = makeAgyRuntimeFixture({ bare: true });
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => { throw new Error("offline launch boundary"); });
+	const connection = new AcpConnection({
+		bin: kind === "agy" ? "agy" : process.execPath, cwd: f.root,
+		extraEnv: { PATH: "", PATHEXT: ".CMD;.EXE" }, log: () => {}, onUpdate: () => {}, onExit: () => {},
+	});
+	try {
+		await assert.rejects(connection.start(), /offline launch boundary/);
+		if (kind === "agy") f.assertAlias(spawn.mock.calls[0][0]);
+		else assert.equal(spawn.mock.calls[0][0], process.execPath);
+		assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
+	} finally { await connection.kill(); spawn.mockRestore(); f.cleanup(); }
+});
 
 async function assertProbeStopped(pids: number[]): Promise<void> {
  if (process.platform !== "win32") return assertTreeExited(pids);

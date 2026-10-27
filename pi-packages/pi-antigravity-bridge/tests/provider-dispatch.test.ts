@@ -13,6 +13,7 @@ import * as ownedProcess from "../src/owned-process.js";
 import { ToolRoundTrips, createStreamSimple } from "../src/provider.js";
 import { SessionStore } from "../src/sessions.js";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
+import { makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 
 vi.mock("@thoth-agents/pi-core/windows-job", async (original) => {
 	const actual = await original<typeof import("@thoth-agents/pi-core/windows-job")>();
@@ -26,6 +27,17 @@ const model = { id: "gemini-flash", name: "Flash", api: "agy-bridge", provider: 
 const request = { cwd: process.cwd(), model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true,
 	prompt: "seed", timeoutMin: 0, inactivityMin: 0 };
 const server = path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs");
+
+test.each([false, true])("stream-json provider honors AGY_BIN and uses the child cwd for its neutral runtime executable inside Orca (bare=%s)", async (bare) => {
+	const f = makeAgyRuntimeFixture({ bare });
+	const driver = new StreamDriver(path.join(f.root, "private"));
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => { throw new Error("offline launch boundary"); });
+	try {
+		await assert.rejects(driver.run({ ...request, cwd: f.root }), /offline launch boundary/);
+		f.assertAlias(spawn.mock.calls[0][0]);
+		assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
+	} finally { await driver.close("shutdown"); spawn.mockRestore(); f.cleanup(); }
+});
 
 function requests(file: string): Array<{ method?: string; params?: { prompt?: unknown }; message?: { content?: string } }> {
 	return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];

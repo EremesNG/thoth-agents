@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "vitest";
+import { test, vi } from "vitest";
+import * as childProcess from "node:child_process";
+import { completedChild, makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 import {
 	agyVersionVerdict,
 	checkAgyCliVersion,
@@ -21,6 +23,17 @@ import {
 	parseAgyVersionTriple,
 	resetAgyVersionCache,
 } from "../src/agy-version.js";
+
+test.each([false, true])("the version check uses a neutral runtime executable inside Orca (bare=%s)", async (bare) => {
+	const f = makeAgyRuntimeFixture({ bare });
+	const cwd = vi.spyOn(process, "cwd").mockReturnValue(f.root);
+	const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => completedChild("1.2.14"));
+	try {
+		assert.equal((await checkAgyCliVersion(bare ? "agy" : f.binary)).status, "ok");
+		f.assertAlias(spawn.mock.calls[0][0]);
+		assert.deepEqual(spawn.mock.calls[0][1], ["--version"]);
+	} finally { spawn.mockRestore(); cwd.mockRestore(); f.cleanup(); resetAgyVersionCache(); }
+});
 
 /** A fake binary printing `output` to stdout and exiting 0. */
 function makeFakeBinary(output: string): string {

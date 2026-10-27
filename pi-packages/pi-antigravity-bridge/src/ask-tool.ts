@@ -29,6 +29,7 @@ import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } fro
 import { renderToolCard } from "./render-tool-card.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
+import { resolveAgyCommand } from "./agy-runtime.js";
 import { emitLifecycle } from "./lifecycle.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
 import { AGY_EFFORT_ORDER, spawnAgyModelsRaw, toAgyEffort } from "./models.js";
@@ -814,7 +815,7 @@ export async function registerAskAntigravityTool(
 					aborted: boolean;
 					timedOut: boolean;
 				}>((resolveP, rejectP) => {
-					const proc = spawnOwnedProcess(binary, args, {
+					const proc = spawnOwnedProcess(resolveAgyCommand(binary, process.env, cwd), args, {
 						cwd,
 						log: log ? (message, data) => emitLog(message, data, "warn") : undefined,
 						stdio: ["ignore", "pipe", "pipe"],

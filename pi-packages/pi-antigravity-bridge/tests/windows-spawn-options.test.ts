@@ -1,36 +1,25 @@
 import assert from "node:assert/strict";
 import * as childProcess from "node:child_process";
 import * as ownedProcess from "../src/owned-process.js";
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, test, vi } from "vitest";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import { checkAgyCliVersion, resetAgyVersionCache } from "../src/agy-version.js";
 import { spawnAgyModelsRaw } from "../src/models.js";
 import { fetchAgyQuota } from "../src/usage.js";
-
-// Observe the OS launch boundary without opening real consoles during the
-// regression's red phase. Keep real tool registration and execution.
-function fakeChild(output: string) {
-	const child = Object.assign(new EventEmitter(), {
-		stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
-		exitCode: null as number | null, signalCode: null,
-		kill: vi.fn(), unref: vi.fn(),
-	});
-	queueMicrotask(() => {
-		child.stdout.write(output);
-		child.exitCode = 0;
-		child.emit("exit", 0);
-		child.emit("close", 0);
-	});
-	return child as unknown as childProcess.ChildProcessWithoutNullStreams;
-}
+import { listAgyAgents } from "../src/agents.js";
+import { completedChild as fakeChild, makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
 	resetAgyVersionCache();
+});
+
+test("provider fixtures do not inherit the operator's agy binary or Orca identity", () => {
+	assert.equal(process.env.AGY_BIN, undefined);
+	assert.equal(process.env.ORCA_PANE_KEY, undefined);
+	assert.equal(process.env.ORCA_TERMINAL_HANDLE, undefined);
 });
 
 test.each(["win32", "linux", "darwin"])("AskAntigravity uses the hidden owned launch with platform-specific detachment on %s", async (platform) => {
@@ -51,6 +40,32 @@ test.each(["win32", "linux", "darwin"])("AskAntigravity uses the hidden owned la
 	} finally {
 		Object.defineProperty(process, "platform", platformDescriptor);
 	}
+});
+
+test.each([false, true])("AskAntigravity uses AGY_BIN and the child cwd for its neutral runtime executable inside Orca (bare=%s)", async (bare) => {
+	const f = makeAgyRuntimeFixture({ bare });
+	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess").mockImplementation(() => fakeChild("offline answer") as unknown as ownedProcess.OwnedProcess);
+	try {
+		let tool: any;
+		await registerAskAntigravityTool({ registerTool: (value: unknown) => { tool = value; } } as unknown as ExtensionAPI, [], undefined, "private");
+		const result = await tool.execute("alias-test", { prompt: "offline", conversationId: "alias-test" }, undefined, undefined, { cwd: f.root });
+		assert.match(result.content[0].text, /offline answer/);
+		f.assertAlias(spawn.mock.calls[0][0]);
+		assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
+	} finally { spawn.mockRestore(); f.cleanup(); }
+});
+
+test("quota and agent listing share the neutral runtime executable inside Orca", async () => {
+	const f = makeAgyRuntimeFixture();
+	const spawn = vi.spyOn(childProcess, "spawn")
+		.mockImplementationOnce(() => fakeChild(JSON.stringify({ command: { name: "usage", data: { groups: [{ name: "Gemini", buckets: [] }] } } })))
+		.mockImplementationOnce(() => fakeChild("reviewer\n"));
+	try {
+		assert.ok(await fetchAgyQuota(f.binary));
+		assert.deepEqual(await listAgyAgents(f.binary), ["reviewer"]);
+		for (const call of spawn.mock.calls) f.assertAlias(call[0]);
+		assert.equal(spawn.mock.calls[0][0], spawn.mock.calls[1][0]);
+	} finally { spawn.mockRestore(); f.cleanup(); }
 });
 
 test("the CLI version probe hides its console", async () => {

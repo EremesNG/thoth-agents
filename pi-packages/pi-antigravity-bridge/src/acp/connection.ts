@@ -30,6 +30,7 @@ import type { AgyUsage } from "../driver-types.js";
 import { redactText } from "../redact.js";
 import { terminateProcessTree } from "../process-termination.js";
 import { emitLifecycle } from "../lifecycle.js";
+import { resolveAgyCommand } from "../agy-runtime.js";
 import { JsonRpcResponseError, JsonRpcSession } from "./jsonrpc.js";
 
 export interface AcpMcpServer {
@@ -188,13 +189,14 @@ export class AcpConnection {
 	async start(): Promise<void> {
 		if (this.#child) return;
 		const args = [...(this.#opts.binArgs ?? [])];
-		const child = spawnOwnedProcess(this.#opts.bin, args, {
+		const env = this.#opts.extraEnv ? { ...process.env, ...this.#opts.extraEnv } : process.env;
+		const child = spawnOwnedProcess(resolveAgyCommand(this.#opts.bin, env, this.#opts.cwd), args, {
 			cwd: this.#opts.cwd,
 			stdio: ["pipe", "pipe", "pipe"],
 			log: (message, data) => { this.#log(message, data); },
 			detached: process.platform !== "win32",
 			windowsHide: true,
-			...(this.#opts.extraEnv ? { env: { ...process.env, ...this.#opts.extraEnv } } : {}),
+			...(this.#opts.extraEnv ? { env } : {}),
 		});
 		this.#child = child;
 		// Guard process errors even if subsequent transport setup throws.

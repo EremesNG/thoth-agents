@@ -16,6 +16,7 @@
 
 import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
 import { TurnQueue } from "./turn-queue.js";
+import { resolveAgyCommand } from "./agy-runtime.js";
 import { onOwnedProcessSettled, spawnOwnedProcess, type OwnedProcess } from "./owned-process.js";
 import { randomUUID } from "node:crypto";
 import { parseAgyLine } from "./stream-events.js";
@@ -425,7 +426,7 @@ export class StreamDriver implements TurnDriver {
 			"--disable-slash-commands",
 		);
 
-		const child = spawnOwnedProcess("agy", args, {
+		const child = spawnOwnedProcess(resolveAgyCommand(process.env.AGY_BIN || "agy", process.env, request.cwd), args, {
 			cwd: request.cwd,
 			stdio: ["pipe", "pipe", "pipe"],
 			log: (message, data) => { this.#log(message, data); },

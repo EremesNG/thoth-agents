@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "vitest";
+import { test, vi } from "vitest";
+import * as childProcess from "node:child_process";
+import { completedChild, makeAgyRuntimeFixture } from "./helpers/agy-runtime-fixture.js";
 import {
 	entriesFromRaw,
 	FALLBACK_MODELS,
@@ -23,6 +25,27 @@ import {
 	spawnAgyModelsRaw,
 	toPiModel,
 } from "../src/models.js";
+
+test("an unprovided bare agy fixture cannot fall through to the operator's install", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-no-fixture-"));
+	vi.stubEnv("PATH", root);
+	try {
+		const child = childProcess.spawn("agy", ["models"]);
+		const error = await new Promise<NodeJS.ErrnoException & { path: string }>(resolve => child.once("error", resolve));
+		assert.equal(path.basename(error.path), "missing-agy-fixture");
+	} finally { vi.unstubAllEnvs(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test.each([false, true])("catalog discovery uses a neutral runtime executable inside Orca (bare=%s)", async (bare) => {
+	const f = makeAgyRuntimeFixture({ bare });
+	const cwd = vi.spyOn(process, "cwd").mockReturnValue(f.root);
+	const spawn = vi.spyOn(childProcess, "spawn").mockImplementation(() => completedChild("gemini-4-argon-low"));
+	try {
+		assert.equal(await loadModelCatalogRaw(bare ? "agy" : f.binary, path.join(f.root, "models-cache.json")), "gemini-4-argon-low");
+		f.assertAlias(spawn.mock.calls[0][0]);
+		assert.deepEqual(spawn.mock.calls[0][1], ["models"]);
+	} finally { spawn.mockRestore(); cwd.mockRestore(); f.cleanup(); }
+});
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

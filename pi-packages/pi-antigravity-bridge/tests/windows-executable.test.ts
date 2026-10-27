@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { resolveWindowsExecutable } from "../src/windows-executable.js";
 import { spawnOwnedProcess } from "../src/owned-process.js";
 
 const windows = test.skipIf(process.platform !== "win32");
 windows("Windows resolver differential matrix matches the executable Node spawn runs", async () => {
+	// This matrix supplies native temp executables and must observe Node itself,
+	// not the portable fake-agy redirection used by provider tests.
+	const { spawn } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
 	const root = mkdtempSync(join(tmpdir(), "agy-resolver-"));
 	const cwd = join(root, "cwd"), path = join(root, "path;quoted"), relative = join(cwd, "relative");
 	for (const dir of [cwd, path, relative]) mkdirSync(dir);

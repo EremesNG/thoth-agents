@@ -15,10 +15,10 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { Api, Model, ThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { terminateProcessTree } from "./process-termination.js";
+import { antigravityBridgeDir, resolveAgyCommand } from "./agy-runtime.js";
 
 const DISCOVERY_TIMEOUT_MS = 8_000;
 
@@ -128,7 +128,7 @@ export async function spawnAgyRaw(
 ): Promise<string> {
 	try {
 		return await new Promise<string>((resolve, reject) => {
-			const proc = spawn(binary, args, {
+			const proc = spawn(resolveAgyCommand(binary, process.env, process.cwd()), args, {
 				stdio: ["ignore", "pipe", "ignore"],
 				shell: false,
 				detached: process.platform !== "win32",
@@ -183,13 +183,7 @@ export async function spawnAgyModelsRaw(binary: string): Promise<string> {
 
 export const MODELS_CACHE_TTL_MS = 5 * 60_000;
 
-const MODELS_CACHE_PATH = path.join(
-	os.homedir(),
-	".pi",
-	"agent",
-	"antigravity-bridge",
-	"models-cache.json",
-);
+const MODELS_CACHE_PATH = path.join(antigravityBridgeDir(), "models-cache.json");
 
 interface ModelsCache {
 	raw: string;

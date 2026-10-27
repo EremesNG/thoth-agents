@@ -24,6 +24,7 @@ import { Type } from "typebox";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { emitLifecycle } from "./lifecycle.js";
+import { resolveAgyCommand } from "./agy-runtime.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const WEB_AGENT_PREFIX = "pi-bridge-web-";
@@ -141,6 +142,7 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 	writeFileSync(path.join(agentDir, ".pid"), `${process.pid}\n`, { mode: 0o600 });
 
 	const bin = opts.bin ?? process.env.AGY_BIN ?? "agy";
+	const cwd = opts.cwd ?? process.cwd();
 	const args = [
 		"--agent", agentName,
 		"--print", opts.prompt,
@@ -150,9 +152,9 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 	];
 	emitLifecycle(() => opts.log?.("web-run-start", { agent: agentName, gatedTool: opts.gatedTool }));
 
-	const child = spawnOwnedProcess(bin, args, {
+	const child = spawnOwnedProcess(resolveAgyCommand(bin, process.env, cwd), args, {
 		log: opts.log ? (message, data) => opts.log!(message, data, "warn") : undefined,
-		cwd: opts.cwd ?? process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+		cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
 		detached: process.platform !== "win32",
 	});
 	let termination: Promise<void> | undefined;

@@ -13,6 +13,7 @@
 // there: the one known-good build must not be locked out by a CLI number.
 
 import { spawn } from "node:child_process";
+import { resolveAgyCommand } from "./agy-runtime.js";
 import { terminateProcessTree } from "./process-termination.js";
 
 /** Floor for the stream-json CLI. Matches the protocol grammar our driver
@@ -93,7 +94,7 @@ export function checkAgyCliVersion(binary: string = "agy"): Promise<AgyVersionCh
 		};
 		let proc: ReturnType<typeof spawn>;
 		try {
-			proc = spawn(binary, ["--version"], {
+			proc = spawn(resolveAgyCommand(binary, process.env, process.cwd()), ["--version"], {
 				stdio: ["ignore", "pipe", "ignore"], shell: false, detached: process.platform !== "win32", windowsHide: true,
 			});
 		} catch {

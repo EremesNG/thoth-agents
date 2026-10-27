@@ -189,8 +189,10 @@
   marked canonical global `agents/thoth-*.md` specialists; project and unmanaged
   definitions use generic persistence. Reset is unavailable without adapter
   defaults. `/subagents-tools` discovers registered tools (active and inactive)
-  and edits exact names only. Globs and unrecognized names are shown read-only
-  and retained on normal save and retry; explicit defaults reset replaces them.
+  and toggles exact names as checkboxes. Globs and unrecognized names appear as
+  `Manual entries` with session match counts and case-only hints; `a` adds and
+  `d`/Delete removes them in the draft. They are retained on normal save and
+  retry; explicit defaults reset replaces them.
   There is no `*` control or dynamic mode. The registry also publishes command
   ownership: new Thoth warns once at session start when it is absent, and new
   pi-subagents warns about duplicate owners exposed by Pi's command registry.

@@ -864,6 +864,7 @@ describe('work panel updates and animation lifecycle', () => {
     cleanups.push(unregister, await ensureWorkPanel(session.ctx));
     expect(session.render()[1]).toBe('  └─ ⠋ Background task');
     session.tui.requestRender.mockClear();
+    // Boundary-aligned subscriptions cap the delay at 100 ms, without a +1 ms nudge.
     vi.advanceTimersByTime(99);
     expect(session.tui.requestRender).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
@@ -874,6 +875,9 @@ describe('work panel updates and animation lifecycle', () => {
     expect(session.render()[1]).toBe('  └─ ⠹ Background task');
     running = false;
     notify();
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(100);
+    expect(session.render()[1]).toBe('  └─ ✓ Background task');
     expect(vi.getTimerCount()).toBe(0);
     session.tui.requestRender.mockClear();
     vi.advanceTimersByTime(1000);
@@ -889,6 +893,7 @@ describe('work panel updates and animation lifecycle', () => {
 
   it('redraws in-progress items without a provider interval and leaves initially idle items untimed', async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
     const session = uiSession();
     let status = 'completed';
     let notify = () => {};

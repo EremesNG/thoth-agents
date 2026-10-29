@@ -8,13 +8,13 @@ Durable behavior for pi-ecosystem.
 
 ### Requirement: Shared Pi ecosystem contract package
 
-`@thoth-agents/pi-core` MUST define the name, version and payload type of every cross-package Thoth Pi channel introduced through it, including subagent usage, MUST wrap payloads in an envelope carrying version, source package, session ID, timestamp and data, and its subscribe helper MUST ignore payloads with an unsupported version, foreign session filter mismatch or invalid shape instead of throwing; producers MUST publish complete snapshots after each state change and in answer to a request for their session.
+`@thoth-agents/pi-core` MUST define the name, version and payload type of every cross-package Thoth Pi channel introduced through it, including subagent usage, MUST wrap payloads in an envelope carrying version, source package, session ID, timestamp and data, and its subscribe helper MUST ignore payloads with an unsupported version, foreign session filter mismatch or invalid shape instead of throwing; producers MUST publish complete snapshots after each state change and in answer to a request for their session, except that where a channel requirement explicitly permits bounded coalescing of specified changes, the producer MAY instead publish one complete snapshot carrying the latest state for the changes coalesced within that bound.
 
 #### Scenario: Shared Pi ecosystem contract package
 
 - **GIVEN** a producer and a consumer using pi-core in one Pi session
-- **WHEN** the consumer subscribes and then requests the snapshot
-- **THEN** it receives the current full snapshot for its session and later snapshots after each change, while malformed or other-version payloads are ignored
+- **WHEN** the consumer subscribes, requests the snapshot, and then several changes occur that the channel requirement permits coalescing within one bound
+- **THEN** it receives the current full snapshot for its session, later one complete snapshot with the latest state for that bound and snapshots after every other change, while malformed or other-version payloads are ignored
 
 ### Requirement: Thoth Pi task-list extension
 
@@ -228,13 +228,13 @@ pi-core MUST export panel primitives (titled frame, cell-width truncation, keybo
 
 ### Requirement: Pi task state channels
 
-pi-subagents and pi-background-tasks MUST publish current-session task summary snapshots on versioned pi-core channels after each change and on request, containing only identity, status, agent/model/effort or kind, lifecycle times, usage/cost, exit and short preview fields, never prompts, transcripts, results, commands, environment or logs; the subagents snapshot MUST also carry a bounded set of the session's persisted task summaries selected by highest cost with the same fields; subagent usage MUST be published only on the pi-core usage channel and the Thoth status line MUST consume it from there.
+pi-subagents and pi-background-tasks MUST publish current-session task summary snapshots on versioned pi-core channels after each change and on request, containing only identity, status, agent/model/effort or kind, lifecycle times, usage/cost, exit and short preview fields, never prompts, transcripts, results, commands, environment or logs; pi-subagents MUST publish task additions, removals, status changes and on-request snapshots immediately and, as a bounded exception to publishing after each change, MAY coalesce changes that only affect activity, usage or preview fields into at most one complete publication per 150 ms per session carrying the latest state; the subagents snapshot MUST also carry a bounded set of the session's persisted task summaries selected by highest cost with the same fields; subagent usage MUST be published only on the pi-core usage channel and the Thoth status line MUST consume it from there.
 
 #### Scenario: Pi task state channels
 
-- **GIVEN** a resumed session with more than 100 persisted subagent tasks and running background tasks
-- **WHEN** a task changes state or a consumer requests snapshots
-- **THEN** both packages publish envelope snapshots for that session with summary fields only, the subagents snapshot includes the highest-cost persisted tasks up to its bound, and the status line shows cumulative subagent cost from the usage channel
+- **GIVEN** four running subagents streaming in one session
+- **WHEN** their activity updates arrive within one 150 ms window and then one of them completes
+- **THEN** at most one activity snapshot is published for that window carrying the latest state of all four, and the completion is published immediately
 
 ### Requirement: Discoverable work-panel registry
 
@@ -424,7 +424,7 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 - **GIVEN** a Pi session with these packages loaded
 - **WHEN** their registered tool definitions are serialized and a provider request is prepared
-- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool, a watch condition missing its per-type field is rejected before launch, and the request declares no `antigravity` tool while provider-emitted replay calls still execute 
+- **THEN** each package stays within its tested budget, no definition declares `maxBytes`, `tail_lines` or an `effort` alias, the background-task tools are exactly the seven standalone tools with shell guidance stated once per tool, a watch condition missing its per-type field is rejected before launch, and the request declares no `antigravity` tool while provider-emitted replay calls still execute
 
 ### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
 

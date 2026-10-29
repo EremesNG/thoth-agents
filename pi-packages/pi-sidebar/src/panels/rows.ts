@@ -16,7 +16,7 @@ export function clean(value: string): string {
   }).join('');
 }
 
-/** Plain, serializable Session inputs; doubles as the plan cache key. */
+/** Plain Session inputs, assembled only when rebuilding the panel plan. */
 export interface SessionView {
   provider?: string;
   model?: string;

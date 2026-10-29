@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   consumeInteractionResponse,
   consumeLatestInteractionRequest,
@@ -8,6 +8,15 @@ import {
   resolveInteractionRequest,
   sanitizeInteractionTransportText,
 } from '../src/interaction-channel.js';
+
+// Preserve the original implementation as the output-equivalence oracle.
+function referenceSanitizeInteractionTransportText(text: string): string {
+  if (!text) return text;
+  return text.replace(
+    /interaction_required:[^\r\n]*/g,
+    '[interaction request hidden]',
+  );
+}
 
 describe('generic subagent interaction channel', () => {
   it('publishes arbitrary interaction requests and responses by handle/request id', () => {
@@ -63,6 +72,79 @@ describe('generic subagent interaction channel', () => {
         details: { interactionRequest: { payload: request } },
       }),
     ).toMatchObject(request);
+  });
+
+  it('matches the original sanitizer for adversarial transport text', () => {
+    const marker = 'interaction_required:';
+    const longText = 'streaming output 🙂\ud800\udfff '.repeat(50_000);
+    const inputs = [
+      '',
+      'ordinary output without a marker',
+      'interaction_required',
+      'interaction_required :payload',
+      'interaction-required:payload',
+      'interaction_required\uff1apayload',
+      'INTERACTION_REQUIRED:payload',
+      'Interaction_required:payload',
+      'interaction_Required:payload',
+      marker,
+      `${marker}payload`,
+      `prefix ${marker}`,
+      `prefix ${marker}payload suffix`,
+      `${marker}${marker}payload`,
+      `prefix ${marker}first ${marker}second`,
+      `${marker}first\n${marker}second\n${marker}`,
+      '🙂\ud800\udfff',
+      longText,
+      `${marker}${longText}`,
+      `${longText}${marker}`,
+      `${longText}${marker}payload\n${longText}${marker}`,
+      `${marker}payload\n`.repeat(10_000),
+    ];
+
+    for (const separator of ['\n', '\r\n', '\r', '\u2028', '\u2029']) {
+      inputs.push(
+        `${separator}${marker}`,
+        `${marker}payload${separator}safe text`,
+        `safe text${separator}${marker}payload`,
+        `${marker}first${separator}${marker}second${separator}tail`,
+        `🙂\ud800${marker}\udfff${separator}🙂\udfff`,
+      );
+    }
+
+    for (const [index, text] of inputs.entries()) {
+      expect(sanitizeInteractionTransportText(text), `input ${index}`).toBe(
+        referenceSanitizeInteractionTransportText(text),
+      );
+    }
+  });
+
+  it('returns marker-free text unchanged without calling replace', () => {
+    const inputs = [
+      '',
+      'ordinary streaming output',
+      'interaction_required',
+      'interaction_required :payload',
+      'INTERACTION_REQUIRED:payload',
+      'Interaction_required:payload',
+      'interaction_Required:payload',
+      '🙂\ud800x\udfff\n\r\u2028\u2029',
+      'streaming output\n'.repeat(100_000),
+    ];
+    const replace = vi.spyOn(String.prototype, 'replace');
+    let results: string[];
+    let replaceCalls: number;
+    try {
+      results = inputs.map(sanitizeInteractionTransportText);
+      replaceCalls = replace.mock.calls.length;
+    } finally {
+      replace.mockRestore();
+    }
+
+    for (const [index, text] of inputs.entries()) {
+      expect(results[index]).toBe(text);
+    }
+    expect(replaceCalls).toBe(0);
   });
 
   it('sanitizes generic interaction marker transport text', () => {

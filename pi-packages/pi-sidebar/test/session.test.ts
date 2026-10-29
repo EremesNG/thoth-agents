@@ -17,10 +17,22 @@ import {
   SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
+  subscribeAnimationClock,
   subscribeUIPreferences,
   WORK_PANEL_VERSION,
 } from '@thoth-agents/pi-core';
+import { createWorkPanelColumnPlan } from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it, vi } from 'vitest';
+
+vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('@thoth-agents/pi-core/panel')>();
+  return {
+    ...original,
+    createWorkPanelColumnPlan: vi.fn(original.createWorkPanelColumnPlan),
+  };
+});
+
 import { uiSession } from '../../pi-core/test/work-panel-fixture.js';
 import sidebar from '../src/index.js';
 import { agentRow, source as historySource, strip } from './fixture.js';
@@ -31,6 +43,8 @@ afterEach(() => {
   for (const off of cleanup.splice(0).reverse()) off();
   vi.unstubAllEnvs();
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 function setup(regular = false) {
   vi.useFakeTimers();
@@ -157,7 +171,7 @@ function setup(regular = false) {
     shutdown: () => handlers.get('session_shutdown')?.({}, ctx),
   };
 }
-function source(pi: any) {
+function source(pi: any, status?: string) {
   let change = () => {};
   let primary = 'Task one';
   const off = registerWorkPanelProvider(pi, {
@@ -166,7 +180,7 @@ function source(pi: any) {
     label: 'Tasks',
     priority: 10,
     visibleCount: () => 1,
-    listRows: () => [{ id: 'one', primary }],
+    listRows: () => [{ id: 'one', primary, status }],
     detail: () => undefined,
     armCloseLabel: () => '',
     close: () => {},
@@ -777,8 +791,153 @@ it('renders resize guidance inside the sidebar and removes it on confirm and rev
   expect(app.screen()).not.toContain('RESIZE');
 });
 
+it('reuses one plan through sync, render and unconsumed keystrokes without serializing lines', () => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  source({ on() {} }, 'running');
+  app.handlers.get('session_start')?.({}, app.ctx);
+  expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(1);
+  app.tui.start();
+  app.tui.renderNow(true);
+  const stringify = vi.spyOn(JSON, 'stringify');
+  for (let index = 0; index < 20; index++) {
+    app.observe();
+    expect(app.input('ordinary editor input')).toBeUndefined();
+    app.tui.renderNow(true);
+  }
+  expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(101);
+  expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(2);
+  expect(stringify).not.toHaveBeenCalled();
+});
+
+it.each(
+  [false, true].flatMap((animated) =>
+    ['provider', 'registry', 'limits', 'usage', 'state'].map((event) => ({
+      animated,
+      event,
+    })),
+  ),
+)('refreshes $event immediately when idle and on the next clock tick when animated ($animated)', ({
+  animated,
+  event,
+}) => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  const changed = source({ on() {} }, animated ? 'running' : 'pending');
+  app.handlers.get('session_start')?.({}, app.ctx);
+  const render = vi.spyOn(app.tui, 'requestRender');
+  render.mockClear();
+  const builds = vi.mocked(createWorkPanelColumnPlan).mock.calls.length;
+  if (event === 'provider') changed();
+  else if (event === 'registry') {
+    cleanup.push(
+      registerWorkPanelProvider(
+        { on() {} } as any,
+        {
+          version: WORK_PANEL_VERSION,
+          id: 'new-source',
+          label: 'New source',
+          priority: 20,
+          listRows: () => [{ id: 'new', primary: 'New task' }],
+        } as any,
+      ),
+    );
+  } else if (event === 'limits') {
+    const base = {
+      provider: 'sidebar-scheduling',
+      window: 'test',
+      observedAt: 1000,
+      sessionId: 'session',
+    };
+    cleanup.push(() => reportProviderLimit({ ...base, status: 'allowed' }));
+    reportProviderLimit({ ...base, status: 'rejected' });
+  } else if (event === 'usage') {
+    publish(app.events, SUBAGENTS_USAGE_CHANNEL, {
+      sessionId: 'session',
+      source: 'test',
+      data: { totalCost: 1, runCount: 1 },
+    });
+  } else {
+    publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+      sessionId: 'session',
+      source: 'test',
+      data: stateSnapshot(1),
+    });
+  }
+  if (animated) {
+    expect(render).not.toHaveBeenCalled();
+    expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds);
+    vi.advanceTimersByTime(101);
+  }
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(
+    vi.mocked(createWorkPanelColumnPlan).mock.calls.length,
+  ).toBeGreaterThan(builds);
+});
+
+it.each([
+  'idle',
+  'hidden',
+  'clipped',
+])('does not subscribe to the clock for %s rows', (state) => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  source({ on() {} }, state === 'idle' ? 'pending' : 'running');
+  if (state === 'hidden')
+    writeFileSync(
+      join(app.dir, 'thoth-sidebar.json'),
+      JSON.stringify({ startup: 'off' }),
+    );
+  if (state === 'clipped') app.terminal.rows = 3;
+  const timers = vi.getTimerCount();
+  app.handlers.get('session_start')?.({}, app.ctx);
+  expect(vi.getTimerCount()).toBe(timers + 1); // Initial workspace debounce only.
+  const off = subscribeAnimationClock(() => {});
+  cleanup.push(off);
+  expect(vi.getTimerCount()).toBe(timers + 2);
+  off();
+  app.shutdown();
+  expect(vi.getTimerCount()).toBe(timers);
+});
+
+it('shares the aligned clock and defers animated provider bursts until its next tick', () => {
+  const app = setup();
+  vi.setSystemTime(1050);
+  const tick = vi.fn();
+  const off = subscribeAnimationClock(tick);
+  cleanup.push(off);
+  const changed = source({ on() {} }, 'running');
+  const timers = vi.getTimerCount();
+  app.handlers.get('session_start')?.({}, app.ctx);
+  // The only extra timer is the initial event-driven workspace read.
+  expect(vi.getTimerCount()).toBe(timers + 1);
+  app.tui.start();
+  app.tui.renderNow(true);
+  const render = vi.spyOn(app.tui, 'requestRender');
+  render.mockClear();
+  changed();
+  changed();
+  expect(render).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(50);
+  expect(render).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(1);
+  expect(tick).toHaveBeenCalledExactlyOnceWith(1101);
+  expect(render).toHaveBeenCalledTimes(1);
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('Task two');
+  app.commands.get('sidebar').handler('off', app.ctx);
+  off();
+  const idleTimers = vi.getTimerCount();
+  const idleTick = subscribeAnimationClock(() => {});
+  cleanup.push(idleTick);
+  expect(vi.getTimerCount()).toBe(idleTimers + 1);
+  idleTick();
+});
+
 it('ticks animated visible work at the host cadence and stops on completion, hide and disposal', () => {
   const app = setup();
+  vi.setSystemTime(1000);
   let running = true;
   let change = () => {};
   cleanup.push(
@@ -808,10 +967,14 @@ it('ticks animated visible work at the host cadence and stops on completion, hid
   app.handlers.get('session_start')?.({}, app.ctx);
   const render = vi.spyOn(app.tui, 'requestRender');
   render.mockClear();
-  vi.advanceTimersByTime(100);
+  vi.advanceTimersByTime(101);
   expect(render).toHaveBeenCalled();
+  render.mockClear();
   running = false;
   change();
+  expect(render).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(100);
+  expect(render).toHaveBeenCalledTimes(1);
   render.mockClear();
   vi.advanceTimersByTime(300);
   expect(render).not.toHaveBeenCalled();

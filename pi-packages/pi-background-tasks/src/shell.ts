@@ -1,5 +1,5 @@
 import { getShellConfig, SettingsManager } from '@earendil-works/pi-coding-agent';
-import { resolvePowerShellConfig } from './powershell.js';
+import { resolvePowerShellConfig, resolvePowerShellConfigForRegistration } from './powershell.js';
 
 export type ShellKind = 'bash' | 'powershell' | 'none';
 export interface ResolvedShell {
@@ -12,9 +12,9 @@ export interface ResolvedShell {
 }
 export interface ShellDetection { available: ResolvedShell[]; unavailable: Partial<Record<ShellKind, string>> }
 
-function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string): ResolvedShell {
+function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string, powerShellConfig = resolvePowerShellConfig): ResolvedShell {
   if (kind === 'powershell') {
-    const config = resolvePowerShellConfig();
+    const config = powerShellConfig();
     return { kind, ...config, label: `PowerShell ${config.edition} ${config.version} (${config.executable})` };
   }
   const setting = SettingsManager.create(cwd).getShellPath();
@@ -28,10 +28,11 @@ function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string): ResolvedS
   return { kind, executable: config.shell, args: [...config.args], label: `bash (${config.shell})` };
 }
 
-export function detectShells(cwd = process.cwd()): ShellDetection {
+export function detectShells(cwd = process.cwd(), { registration = false }: { registration?: boolean } = {}): ShellDetection {
+  const powerShellConfig = registration ? resolvePowerShellConfigForRegistration : resolvePowerShellConfig;
   const detection: ShellDetection = { available: [], unavailable: {} };
   for (const kind of ['bash', 'powershell'] as const) {
-    try { detection.available.push(discoverShell(kind, cwd)); }
+    try { detection.available.push(discoverShell(kind, cwd, powerShellConfig)); }
     catch (error) { detection.unavailable[kind] = error instanceof Error ? error.message : String(error); }
   }
   detection.available.push({ kind: 'none', executable: '', args: [], label: 'none (direct argv)' });

@@ -37,6 +37,7 @@ import {
 } from './chrome.js';
 import { type CostTracker, formatUsd, renderCostRows } from './cost.js';
 import {
+  activeLimit,
   clean,
   renderSessionRows,
   renderWorkspaceRows,
@@ -308,7 +309,7 @@ export interface SidebarPanelsOptions {
 }
 
 export class SidebarPanels implements Component {
-  private cachedKey = '';
+  private cachedKey: readonly unknown[] | undefined;
   private cachedPlan: PanelData[] = [];
   private cachedLines: string[] | undefined;
   private kit = getRenderKit();
@@ -343,6 +344,7 @@ export class SidebarPanels implements Component {
     });
     this.sessionLeafId = leafId;
     this.sessionDirty = false;
+    this.revision++;
   }
   refreshSessionCost(): void {
     // message_end precedes persistence; the leaf check catches a later append.
@@ -534,6 +536,7 @@ export class SidebarPanels implements Component {
   private plan(height: number, width = DEFAULT_SIDEBAR_WIDTH): PanelData[] {
     if (width < MIN_PANEL_WIDTH) {
       this.animated = false;
+      this.cachedKey = undefined;
       return [];
     }
     this.readSession();
@@ -550,24 +553,54 @@ export class SidebarPanels implements Component {
     }
     const now = Date.now();
     const frame = Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS);
-    // Animation state is part of the key, so the key is re-read after planning.
-    const makeKey = () =>
-      JSON.stringify([
-        sources,
-        height,
-        width,
-        this.revision,
-        this.animated ? frame : 0,
-        options.config,
-        options.workspace(),
-        options.cost?.().revision,
-        options.resizeWidth?.(),
-        this.sessionView(),
-        icons,
-        [...this.snapshots].map(([id, snapshot]) => [id, snapshot.items]),
-        options.home,
-      ]);
-    if (makeKey() === this.cachedKey) return this.cachedPlan;
+    const ctx = options.context();
+    const workspace = options.workspace();
+    const git = workspace.git;
+    const limit = activeLimit(options.limits?.() ?? []);
+    // Only small input fields are compared structurally. Provider rows are
+    // covered by source revisions; session traversals stay behind readSession.
+    const key = [
+      height,
+      width,
+      this.revision,
+      this.sessionLeafId,
+      options.cost?.().revision,
+      options.resizeWidth?.(),
+      ctx.model?.provider,
+      ctx.model?.id,
+      ctx.thinkingLevel ?? options.thinking(),
+      options.subagentCost(),
+      limit?.window,
+      limit?.status,
+      limit?.utilization,
+      limit?.provider,
+      workspace.cwd,
+      workspace.branch,
+      workspace.note,
+      git?.state,
+      git?.files,
+      git?.added,
+      git?.removed,
+      git?.untracked,
+      git?.binary,
+      git?.conflicts,
+      options.config.startup,
+      options.config.width,
+      options.config.panels.length,
+      ...options.config.panels.flatMap(({ id, visible }) => [id, visible]),
+      sources.length,
+      ...sources.flatMap(({ id, revision }) => [id, revision]),
+      kit,
+      icons,
+      options.home,
+      this.animated ? frame : 0,
+    ];
+    const cachedKey = this.cachedKey;
+    if (
+      cachedKey?.length === key.length &&
+      key.every((value, index) => Object.is(value, cachedKey[index]))
+    )
+      return this.cachedPlan;
     for (const id of this.snapshots.keys()) {
       if (!sources.some((source) => source.id === id))
         this.snapshots.delete(id);
@@ -666,6 +699,7 @@ export class SidebarPanels implements Component {
         });
         snapshot.items = retainedRows(raw, panel.id);
         snapshot.frame = frame;
+        this.cachedKey = undefined;
         return this.plan(height, width);
       }
       panel.rows = indices.flatMap((index) => panel.block(index));
@@ -693,7 +727,9 @@ export class SidebarPanels implements Component {
       if (!visible.some((panel) => panel.id === id && panel.height >= 3))
         snapshot.animated = false;
     }
-    this.cachedKey = makeKey();
+    // Planning discovers whether the frame is an input, without another key read.
+    key[key.length - 1] = this.animated ? frame : 0;
+    this.cachedKey = key;
     this.cachedPlan = visible;
     this.cachedLines = undefined;
     return visible;

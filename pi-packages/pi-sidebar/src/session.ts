@@ -17,12 +17,12 @@ import {
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
   subscribe,
+  subscribeAnimationClock,
   subscribeProviderLimits,
   subscribeWorkPanelRegistry,
   updateUIPreferences,
   withdrawUIPreferences,
 } from '@thoth-agents/pi-core';
-import { WORK_PANEL_ANIMATION_INTERVAL_MS } from '@thoth-agents/pi-core/panel';
 import {
   changePanel,
   loadConfig,
@@ -49,6 +49,20 @@ import { SidebarPanels } from './panels/sidebar.js';
 import { WorkspaceReader, type WorkspaceSnapshot } from './panels/workspace.js';
 import { openSettings } from './settings.js';
 
+function sameLines(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((line, index) => line === right[index])
+  );
+}
+
+interface SidebarOutput {
+  displayed: boolean;
+  width: number;
+  height: number;
+  lines: readonly string[];
+}
+
 export class SidebarSession {
   private context: ExtensionContext;
   private readonly config: SidebarConfig;
@@ -61,12 +75,12 @@ export class SidebarSession {
   private readonly costTracker = new CostTracker();
   private limits: readonly ProviderLimitEntry[] = [];
   private preference: symbol | undefined;
-  private absorbed = '';
-  private renderedSignature = '';
+  private absorbed: readonly string[] = [];
+  private rendered: SidebarOutput | undefined;
   private appliedWidth = DEFAULT_SIDEBAR_WIDTH;
   private resizeStatus: string | undefined;
   private resizeInputRelease: (() => void) | undefined;
-  private animationTimer: ReturnType<typeof setTimeout> | undefined;
+  private animationRelease: (() => void) | undefined;
   private mounted = false;
   private disposed = false;
   private readonly releases: Array<() => void> = [];
@@ -118,7 +132,7 @@ export class SidebarSession {
     this.releases.push(
       subscribeWorkPanelRegistry(() => {
         this.discover();
-        this.refresh();
+        this.providerChanged();
       }),
     );
     // Subscriptions replay nothing, so read the registry once at start.
@@ -126,7 +140,7 @@ export class SidebarSession {
     this.releases.push(
       subscribeProviderLimits(() => {
         this.limits = listProviderLimits();
-        this.refresh();
+        this.providerChanged();
       }),
     );
     this.releases.push(
@@ -135,7 +149,7 @@ export class SidebarSession {
         onSnapshot: ({ data }) => {
           this.subagentCost = data.totalCost;
           this.panels.refreshSessionCost();
-          this.refresh();
+          this.providerChanged();
         },
       }),
     );
@@ -144,7 +158,7 @@ export class SidebarSession {
         sessionId: ctx.sessionManager.getSessionId(),
         onSnapshot: ({ data, at }) => {
           this.costTracker.update(data, at);
-          this.refresh();
+          this.providerChanged();
         },
       }),
     );
@@ -156,7 +170,7 @@ export class SidebarSession {
       this.prioritizeInput(input);
     }
     this.sync();
-    this.renderedSignature = this.signature();
+    this.rendered = this.output();
     request(pi.events, SUBAGENTS_USAGE_REQUEST, {
       sessionId: ctx.sessionManager.getSessionId(),
       source: '@thoth-agents/pi-sidebar',
@@ -191,43 +205,46 @@ export class SidebarSession {
     const displayed = this.adapter.isDisplayed();
     this.syncAnimation(displayed && this.panels.hasAnimation(width));
     const ids = displayed ? this.panels.sourceIds(width) : [];
-    const key = JSON.stringify(ids);
     if (!displayed || ids.length === 0) {
       if (this.preference) withdrawUIPreferences(this.preference);
       this.preference = undefined;
-      this.absorbed = '';
+      this.absorbed = [];
     } else if (!this.preference) {
       this.preference = registerUIPreferences({
         absorbedWorkPanelSources: ids,
         isActive: () => this.adapter.isDisplayed(),
       });
-      this.absorbed = key;
-    } else if (this.absorbed !== key) {
+      this.absorbed = ids;
+    } else if (!sameLines(this.absorbed, ids)) {
       updateUIPreferences(this.preference, {
         absorbedWorkPanelSources: ids,
         isActive: () => this.adapter.isDisplayed(),
       });
-      this.absorbed = key;
+      this.absorbed = ids;
     }
   }
   private syncAnimation(active: boolean): void {
     if (!active) {
-      if (this.animationTimer !== undefined) clearTimeout(this.animationTimer);
-      this.animationTimer = undefined;
-    } else if (this.animationTimer === undefined) {
-      this.animationTimer = setTimeout(() => {
-        this.animationTimer = undefined;
-        this.refresh();
-      }, WORK_PANEL_ANIMATION_INTERVAL_MS);
+      this.animationRelease?.();
+      this.animationRelease = undefined;
+    } else if (!this.animationRelease) {
+      this.animationRelease = subscribeAnimationClock(() => this.refresh());
     }
   }
-  private signature(): string {
-    return JSON.stringify([
-      this.adapter.isDisplayed(),
-      this.appliedWidth,
-      this.tui.terminal.rows,
-      this.adapter.isDisplayed() ? this.panels.render(this.appliedWidth) : [],
-    ]);
+  private providerChanged(): void {
+    // Invalidate now, but coalesce refresh/render requests into the shared tick
+    // while visible rows animate. Static sidebars remain event-driven.
+    this.panels.invalidate();
+    if (!this.animationRelease) this.refresh();
+  }
+  private output(): SidebarOutput {
+    const displayed = this.adapter.isDisplayed();
+    return {
+      displayed,
+      width: this.appliedWidth,
+      height: this.tui.terminal.rows,
+      lines: displayed ? this.panels.render(this.appliedWidth) : [],
+    };
   }
   refresh(ctx?: ExtensionContext, workspace = false, cost = false): void {
     if (this.disposed) return;
@@ -239,9 +256,15 @@ export class SidebarSession {
     }
     if (workspace) this.workspaceReader.refresh();
     this.sync();
-    const signature = this.signature();
-    if (signature !== this.renderedSignature) {
-      this.renderedSignature = signature;
+    const output = this.output();
+    if (
+      !this.rendered ||
+      output.displayed !== this.rendered.displayed ||
+      output.width !== this.rendered.width ||
+      output.height !== this.rendered.height ||
+      !sameLines(output.lines, this.rendered.lines)
+    ) {
+      this.rendered = output;
       this.tui.requestRender();
     }
   }

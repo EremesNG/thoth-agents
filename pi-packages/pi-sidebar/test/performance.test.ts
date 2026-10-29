@@ -5,7 +5,10 @@ import {
   WORK_PANEL_VERSION,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
-import { renderWorkPanelRow } from '@thoth-agents/pi-core/panel';
+import {
+  createWorkPanelColumnPlan,
+  renderWorkPanelRow,
+} from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it, vi } from 'vitest';
 
 vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
@@ -13,6 +16,7 @@ vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
     await importOriginal<typeof import('@thoth-agents/pi-core/panel')>();
   return {
     ...original,
+    createWorkPanelColumnPlan: vi.fn(original.createWorkPanelColumnPlan),
     renderWorkPanelRow: vi.fn(original.renderWorkPanelRow),
   };
 });
@@ -24,6 +28,7 @@ const releases: (() => void)[] = [];
 afterEach(() => {
   for (const off of releases.splice(0).reverse()) off();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 it('shares one bounded plan per frame and never scans session entries on render', () => {
@@ -216,6 +221,110 @@ function regressionProvider(rows: () => any[]) {
   );
   return read;
 }
+it('builds once per revision input set across animation, source and render queries', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  let changed = () => {};
+  const rows = vi.fn(() => [
+    { id: 'active', status: 'running', primary: 'active task' },
+  ]);
+  releases.push(
+    registerWorkPanelProvider(
+      { on() {} } as any,
+      {
+        version: WORK_PANEL_VERSION,
+        id: 'keyed',
+        label: 'Tasks',
+        priority: 10,
+        listRows: rows,
+        onVisibleChanged: (notify: () => void) => {
+          changed = notify;
+          return () => {};
+        },
+      } as any,
+    ),
+  );
+  const config = {
+    startup: 'auto' as const,
+    panels: [
+      { id: 'session', visible: true },
+      { id: 'workspace', visible: true },
+      { id: 'keyed', visible: true },
+    ],
+  };
+  const workspace = { cwd: '.', branch: 'main' };
+  let leaf = 'first';
+  let width = 44;
+  let height = 40;
+  const ctx = {
+    model: { provider: 'paid', id: 'model' },
+    getContextUsage: () => undefined,
+    sessionManager: { getEntries: () => [], getLeafId: () => leaf },
+  } as unknown as ExtensionContext;
+  const panel = new SidebarPanels({
+    config,
+    context: () => ctx,
+    theme: { fg: (_role, text) => text },
+    thinking: () => 'off',
+    subscriptionProviders: [],
+    subagentCost: () => 0,
+    workspace: () => ({ ...workspace }), // Value-equivalent snapshots are hits.
+    height: () => height,
+  });
+  const query = () => {
+    panel.hasAnimation(width);
+    panel.sourceIds(width);
+    return panel.render(width);
+  };
+  let builds = vi.mocked(createWorkPanelColumnPlan).mock.calls.length;
+  const mutations = [
+    () => {},
+    () => changed(),
+    () => {
+      config.panels[0].visible = false;
+    },
+    () => {
+      workspace.branch = 'feature';
+    },
+    () => {
+      width++;
+    },
+    () => {
+      height++;
+    },
+    () => {
+      vi.advanceTimersByTime(100);
+    },
+    () => panel.refreshSessionCost(),
+    () => {
+      leaf = 'appended';
+    },
+  ];
+  for (const mutate of mutations) {
+    mutate();
+    const lines = query();
+    expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(++builds);
+    for (let index = 0; index < 5; index++) expect(query()).toBe(lines);
+    expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds);
+  }
+  expect(rows).toHaveBeenCalledTimes(3); // Initial, source revision, animation frame.
+});
+
+it('does not serialize rows or snapshots on unchanged query and render cache hits', () => {
+  regressionProvider(() => [
+    { id: 'static', status: 'pending', primary: 'stable' },
+  ]);
+  const { panel } = sessionFixture();
+  const first = panel.render(44);
+  const stringify = vi.spyOn(JSON, 'stringify');
+  for (let index = 0; index < 20; index++) {
+    panel.hasAnimation(44);
+    panel.sourceIds(44);
+    expect(panel.render(44)).toBe(first);
+  }
+  expect(stringify).not.toHaveBeenCalled();
+});
+
 it('does zero native usage calls or session traversals across 60 unchanged renders', () => {
   const fixture = sessionFixture();
   fixture.panel.render(44);

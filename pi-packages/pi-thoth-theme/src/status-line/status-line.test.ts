@@ -1126,7 +1126,7 @@ describe('registerStatusLine', () => {
     }
   });
 
-  it('animates working status at twenty fps, preserves native retry, and cleans up lifecycle ownership', () => {
+  it('animates working status on the shared clock, preserves native retry, and cleans up lifecycle ownership', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const mocks = createMocks();
@@ -1149,11 +1149,13 @@ describe('registerStatusLine', () => {
         '◭ working… · 0s',
       );
       mocks.tui.requestRender.mockClear();
-      vi.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(2499);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(24);
+      vi.advanceTimersByTime(1);
       expect(stripTerminalSequences(editor.render(80)[0])).toContain(
         '◭ working… · 2s',
       );
-      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(50);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(25);
       expect(component.render(80)).toBe(footer);
       expect(mocks.sessionManager.getEntries).toHaveBeenCalledTimes(1);
       attach('retry', 'retrying…');
@@ -1225,7 +1227,7 @@ describe('registerStatusLine', () => {
       expect(vi.getTimerCount()).toBe(2); // Animation and Orca lease heartbeat.
       mocks.tui.requestRender.mockClear();
       vi.advanceTimersByTime(250);
-      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(5);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
       expect(editor.render(100)[0]).not.toBe(first);
       expect(borders(editor, 100).top).toContain('working… · 5 bg');
       publishSubagentState(mocks.events, 'parent-session', ['completed']);
@@ -1624,6 +1626,38 @@ describe('registerStatusLine', () => {
 
       publishUsage(mocks.events, 'parent-session', 0, 0);
       expect(component.render(120)[0]).toContain('\uf155 0.300');
+    } finally {
+      component.dispose();
+    }
+  });
+
+  it('requests usage renders only when the displayed cumulative cost changes', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    try {
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
+      const current = component.render(120);
+      const fgCalls = mocks.theme.fg.mock.calls.length;
+      mocks.tui.requestRender.mockClear();
+
+      // Each publish carries a new object; run count is not displayed.
+      publishUsage(mocks.events, 'parent-session', 0.7, 1);
+      publishUsage(mocks.events, 'parent-session', 0.7, 2);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      expect(component.render(120)).toBe(current);
+      expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
+
+      publishUsage(mocks.events, 'parent-session', 1.2, 2);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+      expect(component.getStatusSnapshot().subagentCost).toBe(1.2);
+      expect(component.render(120)[0]).toContain('\uf155 1.500');
+
+      publishUsage(mocks.events, 'parent-session', 0, 0);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+      expect(component.render(120)[0]).toContain('\uf155 0.300');
+      mocks.tui.requestRender.mockClear();
+      publishUsage(mocks.events, 'parent-session', 0, 0);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
     } finally {
       component.dispose();
     }

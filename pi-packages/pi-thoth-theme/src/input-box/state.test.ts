@@ -66,7 +66,7 @@ describe('input-box working status', () => {
       expect(stripTerminalSequences(first)).toBe('△ working… · 3 bg');
       requestRender.mockClear();
       vi.advanceTimersByTime(250);
-      expect(requestRender).toHaveBeenCalledTimes(5);
+      expect(requestRender).toHaveBeenCalledTimes(2);
       const next = state.status(undefined, 40);
       expect(next).not.toBe(first);
       expect(stripTerminalSequences(next)).toContain('working… · 3 bg');
@@ -131,7 +131,7 @@ describe('input-box working status', () => {
     }
   });
 
-  it('renders at twenty fps while active and displays only whole elapsed seconds', () => {
+  it('renders on shared clock boundaries while active and displays only whole elapsed seconds', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const requestRender = vi.fn();
@@ -141,32 +141,47 @@ describe('input-box working status', () => {
       renderInBorder: vi.fn(() => '△ working…'),
     };
 
-    expect(state.isWorking).toBe(false);
-    expect(state.status(undefined, 30)).toBe('▲ ready');
-    state.start();
-    expect(state.isWorking).toBe(true);
-    expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
-      '△ working… · 0s',
-    );
-    expect(indicator.renderInBorder).toHaveBeenLastCalledWith(25);
-    requestRender.mockClear();
-    vi.advanceTimersByTime(2999);
-    expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
-      '△ working… · 2s',
-    );
-    expect(requestRender).toHaveBeenCalledTimes(59);
-    vi.advanceTimersByTime(1);
-    expect(requestRender).toHaveBeenCalledTimes(60);
-    expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
-      '△ working… · 3s',
-    );
-    state.end();
-    expect(state.isWorking).toBe(false);
-    expect(state.status(undefined, 30)).toBe('▲ ready');
-    requestRender.mockClear();
-    vi.advanceTimersByTime(3000);
-    expect(requestRender).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
+    try {
+      expect(state.isWorking).toBe(false);
+      expect(state.status(undefined, 30)).toBe('▲ ready');
+      expect(vi.getTimerCount()).toBe(0);
+      state.start();
+      expect(requestRender).toHaveBeenCalledExactlyOnceWith();
+      expect(state.isWorking).toBe(true);
+      expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
+        '△ working… · 0s',
+      );
+      expect(indicator.renderInBorder).toHaveBeenLastCalledWith(25);
+      requestRender.mockClear();
+      // The 100 ms delay cap keeps a boundary-aligned start on exact boundaries.
+      vi.advanceTimersByTime(99);
+      expect(requestRender).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(requestRender).toHaveBeenCalledExactlyOnceWith();
+      vi.advanceTimersByTime(2899);
+      expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
+        '△ working… · 2s',
+      );
+      expect(requestRender).toHaveBeenCalledTimes(29);
+      vi.advanceTimersByTime(1);
+      expect(requestRender).toHaveBeenCalledTimes(30);
+      expect(stripTerminalSequences(state.status(indicator, 30))).toBe(
+        '△ working… · 3s',
+      );
+      vi.advanceTimersByTime(1);
+      expect(requestRender).toHaveBeenCalledTimes(30);
+      expect(requestRender).toHaveBeenLastCalledWith();
+      state.end();
+      expect(requestRender).toHaveBeenCalledTimes(31);
+      expect(state.isWorking).toBe(false);
+      expect(state.status(undefined, 30)).toBe('▲ ready');
+      requestRender.mockClear();
+      vi.advanceTimersByTime(3000);
+      expect(requestRender).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      state.dispose();
+    }
   });
 
   it.each([
@@ -205,41 +220,107 @@ describe('input-box working status', () => {
   it('preserves retry and compaction messages and falls back for unsupported or empty indicators', () => {
     vi.useFakeTimers();
     const state = createWorkingState(() => {});
-    state.start();
-    vi.advanceTimersByTime(1500);
-    for (const kind of ['retry', 'compaction', 'extension']) {
-      expect(
-        state.status(
-          { kind, renderInBorder: () => '\x1b[31mnative message\x1b[0m' },
-          30,
-        ),
-      ).toBe('\x1b[31mnative message\x1b[0m');
+    try {
+      state.start();
+      vi.advanceTimersByTime(1500);
+      for (const kind of ['retry', 'compaction', 'extension']) {
+        expect(
+          state.status(
+            { kind, renderInBorder: () => '\x1b[31mnative message\x1b[0m' },
+            30,
+          ),
+        ).toBe('\x1b[31mnative message\x1b[0m');
+      }
+      for (const indicator of [
+        null,
+        {},
+        { renderInBorder: 1 },
+        { renderInBorder: () => '' },
+      ]) {
+        expect(state.status(indicator, 30)).toBe('▲ ready');
+      }
+    } finally {
+      state.dispose();
     }
-    for (const indicator of [
-      null,
-      {},
-      { renderInBorder: 1 },
-      { renderInBorder: () => '' },
-    ]) {
-      expect(state.status(indicator, 30)).toBe('▲ ready');
-    }
-    state.dispose();
   });
 
-  it('owns one ticker across restarts and ignores lifecycle callbacks after disposal', () => {
+  it('renders lifecycle changes immediately and stays subscribed until both working sources settle', () => {
     vi.useFakeTimers();
     const requestRender = vi.fn();
     const state = createWorkingState(requestRender);
-    state.start();
-    state.start();
-    expect(vi.getTimerCount()).toBe(1);
-    state.dispose();
-    expect(state.isWorking).toBe(false);
-    requestRender.mockClear();
-    state.start();
-    state.end();
-    vi.advanceTimersByTime(2000);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(requestRender).not.toHaveBeenCalled();
+    try {
+      state.start();
+      state.start();
+      expect(requestRender).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(1);
+      state.setPendingBackground(2);
+      expect(requestRender).toHaveBeenCalledTimes(3);
+      state.setPendingBackground(2);
+      expect(requestRender).toHaveBeenCalledTimes(3);
+      state.end();
+      expect(requestRender).toHaveBeenCalledTimes(4);
+      expect(state.isWorking).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+      state.start();
+      state.setPendingBackground(0);
+      expect(requestRender).toHaveBeenCalledTimes(6);
+      expect(state.isWorking).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+      state.end();
+      expect(requestRender).toHaveBeenCalledTimes(7);
+      expect(state.isWorking).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+      state.setPendingBackground(1);
+      expect(requestRender).toHaveBeenCalledTimes(8);
+      expect(vi.getTimerCount()).toBe(1);
+      state.dispose();
+      state.dispose();
+      expect(state.isWorking).toBe(false);
+      requestRender.mockClear();
+      state.start();
+      state.end();
+      state.setPendingBackground(2);
+      vi.advanceTimersByTime(2000);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(requestRender).not.toHaveBeenCalled();
+    } finally {
+      state.dispose();
+    }
+  });
+
+  it('shares aligned ticks across working states and releases only its own subscription', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const parentRender = vi.fn();
+    const backgroundRender = vi.fn();
+    const parent = createWorkingState(parentRender);
+    const background = createWorkingState(backgroundRender);
+    try {
+      parent.start();
+      vi.advanceTimersByTime(50);
+      background.setPendingBackground(1);
+      expect(vi.getTimerCount()).toBe(1);
+      parentRender.mockClear();
+      backgroundRender.mockClear();
+      vi.advanceTimersByTime(49);
+      expect(parentRender).not.toHaveBeenCalled();
+      expect(backgroundRender).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(parentRender).toHaveBeenCalledExactlyOnceWith();
+      expect(backgroundRender).toHaveBeenCalledExactlyOnceWith();
+
+      parent.end();
+      parentRender.mockClear();
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(100);
+      expect(parentRender).not.toHaveBeenCalled();
+      expect(backgroundRender).toHaveBeenCalledTimes(2);
+      background.setPendingBackground(0);
+      expect(backgroundRender).toHaveBeenCalledTimes(3);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      parent.dispose();
+      background.dispose();
+    }
   });
 });

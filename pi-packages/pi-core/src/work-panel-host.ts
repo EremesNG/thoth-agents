@@ -67,6 +67,7 @@ export function createWorkPanelHost(
   let disposed = false;
   let installed = false;
   let requestRender: (() => void) | undefined;
+  let requestProviderRender: (() => void) | undefined;
   let slot: EditorSlotHandle | undefined;
   let removeLifecycle: (() => void) | undefined;
   let tui: FocusTUI | undefined;
@@ -396,7 +397,7 @@ export function createWorkPanelHost(
     }
     if (animating) {
       removeAnimation ??= subscribeAnimationClock(() => {
-        if (providerDirty) refreshNow();
+        if (providerDirty) refreshNow(true);
         else {
           scheduleRender();
           requestRender?.();
@@ -412,15 +413,17 @@ export function createWorkPanelHost(
     }
   }
 
-  function refreshNow(): void {
+  function refreshNow(providerChange = false): void {
     if (disposed) return;
     if (!installed && loaded && providers().length) install();
     if (!installed) return;
     providerDirty = false;
     const count = rows().length;
     scheduleRender();
-    refreshStatusCue(count, true);
-    requestRender?.();
+    refreshStatusCue(count, !providerChange);
+    // An open detail UI may change even when the host's own lines do not.
+    if (providerChange && !suspended) requestProviderRender?.();
+    else requestRender?.();
   }
 
   const host: WorkPanelHost = {
@@ -476,7 +479,7 @@ export function createWorkPanelHost(
     refresh() {
       if (disposed) return;
       if (removeAnimation) providerDirty = true;
-      else refreshNow();
+      else refreshNow(true);
     },
     dispose() {
       if (disposed) return;
@@ -517,35 +520,53 @@ export function createWorkPanelHost(
         aboveEditor: (widgetTui, theme) => {
           panelTui = widgetTui;
           requestRender = () => widgetTui.requestRender();
+          let renderedLines: string[] | undefined;
+          let renderedStatusCue: string | undefined;
+          const render = (width: number) => {
+            panelWidth = width;
+            refreshStatusCue(rows().length);
+            const entry = selected();
+            const label = panelCloseLabel(entry);
+            return renderPanel(sections(), width, Date.now(), theme, clip, {
+              measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
+              selectedKey: focused ? selectedKey : undefined,
+              budget: panelBudget(),
+              hint: focused
+                ? [
+                    !entry?.sectionSummary || rows().length > 1
+                      ? `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`
+                      : '',
+                    entry?.sectionSummary
+                      ? entry.provider.openHistory
+                        ? entry.provider.retention === 'prompt'
+                          ? 'Enter history'
+                          : 'Enter open'
+                        : ''
+                      : 'Enter open',
+                    label ? `x ${label}` : '',
+                    'Esc back',
+                  ]
+                    .filter(Boolean)
+                    .join(` ${resolveIcon('separator', '·')} `)
+                : `${resolveIcon('arrowLeft', '←')} interact`,
+            });
+          };
+          requestProviderRender = () => {
+            const lines = render(panelWidth ?? widgetTui.terminal.columns);
+            const changed =
+              renderedStatusCue !== statusCue ||
+              renderedLines?.length !== lines.length ||
+              lines.some((line, index) => line !== renderedLines?.[index]);
+            // Remember requested output too, coalescing notifications before Pi renders.
+            renderedLines = lines;
+            renderedStatusCue = statusCue;
+            if (changed) requestRender?.();
+          };
           return {
             render(width) {
-              panelWidth = width;
-              refreshStatusCue(rows().length);
-              const entry = selected();
-              const label = panelCloseLabel(entry);
-              return renderPanel(sections(), width, Date.now(), theme, clip, {
-                measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
-                selectedKey: focused ? selectedKey : undefined,
-                budget: panelBudget(),
-                hint: focused
-                  ? [
-                      !entry?.sectionSummary || rows().length > 1
-                        ? `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`
-                        : '',
-                      entry?.sectionSummary
-                        ? entry.provider.openHistory
-                          ? entry.provider.retention === 'prompt'
-                            ? 'Enter history'
-                            : 'Enter open'
-                          : ''
-                        : 'Enter open',
-                      label ? `x ${label}` : '',
-                      'Esc back',
-                    ]
-                      .filter(Boolean)
-                      .join(` ${resolveIcon('separator', '·')} `)
-                  : `${resolveIcon('arrowLeft', '←')} interact`,
-              });
+              renderedLines = render(width);
+              renderedStatusCue = statusCue;
+              return renderedLines;
             },
             invalidate() {},
           };
@@ -566,7 +587,7 @@ export function createWorkPanelHost(
       import('./panel-primitives.js').catch(() => undefined),
     ]);
     loaded = true;
-    host.refresh();
+    refreshNow();
   })().catch(() => {
     // An absent optional SDK or UI hook must not fail extension loading.
     host.dispose();

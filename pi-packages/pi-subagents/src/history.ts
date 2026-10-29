@@ -15,6 +15,8 @@ export type PruneExecutionDetailResult = {
   attemptsCleared: number;
   eventsDeleted: number;
   busy: boolean;
+  /** The pass was cancelled; counts include only committed work. */
+  aborted?: true;
 };
 
 export type CompactHistoryResult = {
@@ -29,10 +31,15 @@ type PruneOptions = {
   batchSize?: number;
   /** Monotonic clock; injectable for deterministic slice scheduling tests. */
   now?: () => number;
+  /** Activity gate before opening and every batch; must wake when the signal aborts. */
+  waitUntilIdle?: (signal: AbortSignal) => Promise<void> | undefined;
+  /** Cancellation stops at a batch boundary, never halfway through a write. */
+  signal?: AbortSignal;
 };
 type HistoryPathState = {
   stores: Set<SubagentHistoryStore>;
   pruning: Set<Promise<PruneExecutionDetailResult>>;
+  pausedPruning: Set<AbortController>;
   compacting: boolean;
 };
 const HISTORY_CONNECTIONS_KEY = Symbol.for(
@@ -48,9 +55,16 @@ function historyState(file: string): HistoryPathState {
   const key = process.platform === 'win32' ? file.toLowerCase() : file;
   let state = historyPaths.get(key);
   if (!state) {
-    state = { stores: new Set(), pruning: new Set(), compacting: false };
+    state = {
+      stores: new Set(),
+      pruning: new Set(),
+      pausedPruning: new Set(),
+      compacting: false,
+    };
     historyPaths.set(key, state);
   }
+  // Older module copies can leave or insert v1 entries without pause tracking.
+  state.pausedPruning ??= new Set();
   return state;
 }
 
@@ -669,6 +683,8 @@ export class SubagentHistoryStore {
     let db: Db | undefined;
     let acquired = false;
     try {
+      // Idle waits must not delay exclusivity until unrelated tasks finish.
+      for (const paused of state.pausedPruning) paused.abort();
       // Prevent new maintenance passes, and let every current batch/pass settle.
       await Promise.allSettled([...state.pruning]);
       const beforeBytes = historyFileBytes(file);
@@ -740,8 +756,28 @@ export class SubagentHistoryStore {
         eventsDeleted: 0,
         busy: true,
       };
+    const controller = new AbortController();
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal;
+    const waitUntilIdle = options.waitUntilIdle;
     const pass = SubagentHistoryStore.pruneOnDb(
-      options,
+      {
+        ...options,
+        signal,
+        waitUntilIdle: waitUntilIdle
+          ? (signal) => {
+              const pause = waitUntilIdle(signal);
+              if (!pause) return;
+              state.pausedPruning.add(controller);
+              // Compaction may have started during the preceding batch's rest.
+              if (state.compacting) controller.abort();
+              return pause.finally(() =>
+                state.pausedPruning.delete(controller),
+              );
+            }
+          : undefined,
+      },
       () => this.db('', PRUNE_BACKGROUND_BUSY_TIMEOUT_MS),
       true,
     );
@@ -754,7 +790,13 @@ export class SubagentHistoryStore {
   }
 
   private static async pruneOnDb(
-    { olderThanMs, batchSize, now = () => performance.now() }: PruneOptions,
+    {
+      olderThanMs,
+      batchSize,
+      now = () => performance.now(),
+      waitUntilIdle,
+      signal = new AbortController().signal,
+    }: PruneOptions,
     openDb: () => Db,
     background = false,
   ): Promise<PruneExecutionDetailResult> {
@@ -770,65 +812,104 @@ export class SubagentHistoryStore {
       eventsDeleted: 0,
       busy: false,
     };
+    const pauseForIdle = () => {
+      signal.throwIfAborted();
+      return waitUntilIdle?.(signal);
+    };
     let db: Db | undefined;
     try {
+      for (let pause = pauseForIdle(); pause; pause = pauseForIdle())
+        await pause;
+      signal.throwIfAborted();
       db = openDb();
       db.exec(
         `PRAGMA busy_timeout = ${background ? PRUNE_BACKGROUND_BUSY_TIMEOUT_MS : PRUNE_BUSY_TIMEOUT_MS}`,
       );
-      const batches = [
+      const detailPredicate =
+        'thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL';
+      const detailBatches = [
         {
+          table: 'subagent_tasks',
+          keys: ['id'],
           count: 'tasksCleared' as const,
           args: [...TERMINAL_STATUSES, cutoff],
-          initialSize: batchSize ?? 1,
-          maxSize: batchSize ?? 100,
-          statement: db.prepare(`
-      UPDATE subagent_tasks
-      SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
-      WHERE rowid IN (
-        SELECT rowid FROM subagent_tasks
-        WHERE status IN (${TERMINAL_STATUSES.map(() => '?').join(', ')})
-          AND julianday(COALESCE(last_activity_at, ended_at, started_at, created_at)) < julianday(?)
-          AND (thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL)
-        LIMIT ?
-      )
-    `),
+          predicate: `status IN (${TERMINAL_STATUSES.map(() => '?').join(', ')})
+            AND julianday(COALESCE(last_activity_at, ended_at, started_at, created_at)) < julianday(?)
+            AND (${detailPredicate})`,
         },
         {
+          table: 'subagent_task_attempts',
+          keys: ['task_id', 'attempt'],
           count: 'attemptsCleared' as const,
           args: [],
-          initialSize: batchSize ?? 1,
-          maxSize: batchSize ?? 100,
-          statement: db.prepare(`
-        UPDATE subagent_task_attempts
-        SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
-        WHERE rowid IN (
-          SELECT rowid FROM subagent_task_attempts
-          WHERE thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL
-          LIMIT ?
-        )
-      `),
-        },
-        {
-          count: 'eventsDeleted' as const,
-          args: [],
-          initialSize: batchSize ?? 100,
-          maxSize: batchSize ?? 10000,
-          statement: db.prepare(
-            `DELETE FROM subagent_events WHERE id IN (SELECT id FROM subagent_events LIMIT ?)`,
-          ),
+          predicate: `(${detailPredicate})`,
         },
       ];
+      const connection = db;
+      const batches = detailBatches.map((batch) => {
+        const select = connection.prepare(`
+          SELECT ${batch.keys.join(', ')} FROM ${batch.table}
+          WHERE ${batch.predicate} LIMIT ?
+        `);
+        return {
+          count: batch.count,
+          initialSize: batchSize ?? 1,
+          maxSize: batchSize ?? 100,
+          selectBatch(size: number) {
+            // Scan without the write lock; recheck eligibility after acquiring it.
+            const candidates = select.all(...batch.args, size) as Record<
+              string,
+              unknown
+            >[];
+            const placeholders = `(${batch.keys.map(() => '?').join(', ')})`;
+            const keyPredicate = candidates.length
+              ? `(${batch.keys.join(', ')}) IN (${candidates.map(() => placeholders).join(', ')})`
+              : '0';
+            return {
+              statement: connection.prepare(`
+                UPDATE ${batch.table}
+                SET thread_snapshot_json = NULL, transcript = NULL, system_prompt = NULL
+                WHERE ${keyPredicate} AND ${batch.predicate}
+              `),
+              args: [
+                ...candidates.flatMap((row) =>
+                  batch.keys.map((key) => row[key]),
+                ),
+                ...batch.args,
+              ],
+              candidateCount: candidates.length,
+            };
+          },
+        };
+      });
+      const events = db.prepare(
+        'DELETE FROM subagent_events WHERE id IN (SELECT id FROM subagent_events LIMIT ?)',
+      );
+      const eventBatch = {
+        count: 'eventsDeleted' as const,
+        initialSize: batchSize ?? 100,
+        maxSize: batchSize ?? 10000,
+        selectBatch: (size: number) => ({
+          statement: events,
+          args: [size],
+          candidateCount: undefined,
+        }),
+      };
       const changes = db.prepare('SELECT changes() AS count');
-      for (const batch of batches) {
+      for (const batch of [...batches, eventBatch]) {
         let size = batch.initialSize;
         while (true) {
+          for (let pause = pauseForIdle(); pause; pause = pauseForIdle())
+            await pause;
+          signal.throwIfAborted();
           const startedAt = now();
+          const selected = batch.selectBatch(size);
+          signal.throwIfAborted();
           let changed: number;
           // A failed BEGIN is handled by the outer busy catch, with nothing to roll back.
           db.exec('BEGIN IMMEDIATE');
           try {
-            batch.statement.run(...batch.args, size);
+            selected.statement.run(...selected.args);
             changed = (changes.all()[0] as { count: number }).count;
             db.exec('COMMIT');
             counts[batch.count] += changed;
@@ -840,13 +921,22 @@ export class SubagentHistoryStore {
           // Timers/input get a real rest, not just another immediate callback.
           // Match overruns too, keeping maintenance's duty cycle at most ~50%.
           await new Promise<void>((resolve) => {
+            const finish = () => {
+              clearTimeout(timer);
+              signal.removeEventListener('abort', finish);
+              resolve();
+            };
             const timer = setTimeout(
-              resolve,
+              finish,
               Math.max(PRUNE_SLICE_BUDGET_MS, elapsed),
             );
             if (background) timer.unref();
+            signal.addEventListener('abort', finish, { once: true });
+            if (signal.aborted) finish();
           });
-          if (changed < size) break;
+          signal.throwIfAborted();
+          // Concurrently rejected keys must not hide later eligible candidates.
+          if ((selected.candidateCount ?? changed) < size) break;
           // SQLite calls cannot be preempted. Shrink after an overrun (even to a
           // single heavy row); grow cautiously when there is ample headroom.
           if (elapsed > PRUNE_SLICE_BUDGET_MS)
@@ -856,8 +946,9 @@ export class SubagentHistoryStore {
         }
       }
     } catch (error) {
-      if (!isSqliteBusy(error)) throw error;
-      counts.busy = true;
+      if (signal.aborted && error === signal.reason) counts.aborted = true;
+      else if (isSqliteBusy(error)) counts.busy = true;
+      else throw error;
     } finally {
       db?.exec(`PRAGMA busy_timeout = ${HISTORY_BUSY_TIMEOUT_MS}`);
     }

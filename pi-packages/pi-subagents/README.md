@@ -820,12 +820,17 @@ of days, including fractional values; `0` disables pruning).
 Age uses last activity, then end/start/creation time. Queued, running and stopping
 tasks are never pruned. Task rows, prompts/context, results, errors, timestamps,
 usage/cost and nested session paths are kept. Expired detail is marked in the
-history panel; the final response remains available. Maintenance starts 30 seconds
-after session start and uses small background slices with adaptive batches and
-pauses for terminal input and timers, including the first pass after upgrading a
-large history. Individual synchronous SQLite calls can still exceed the slice
-target. It skips busy databases and is throttled to at most one pass per hour per
-process, requested by a later session start; there is no recurring timer.
+history panel; the final response remains available. Maintenance is deferred at
+least 30 seconds after session start and waits while any subagent in this process
+is queued, running or stopping. If activity starts between batches, the same pass
+resumes when the process becomes idle, unless its owning session context is
+replaced or shut down, or explicit compaction cancels the paused pass. A cancelled
+pass releases the hourly throttle so a later session start can retry. It uses
+small background slices with adaptive batches and pauses for terminal input and
+timers, including the first pass after upgrading a large history. Individual
+synchronous SQLite calls can still exceed the slice target. It skips busy
+databases and is otherwise throttled to at most one pass per hour per process,
+requested by a later session start; there is no recurring timer.
 
 ### `/subagents-history-compact`
 
@@ -836,12 +841,13 @@ project's retention setting for the shared history database, across all projects
 with retention `0` it only compacts, without pruning.
 
 Close other Pi processes or database viewers using this history database first,
-and preferably let active subagents finish. The command waits for in-flight
-local maintenance, suspends new maintenance/history access, and closes this
-process's history connections. It then acquires SQLite exclusive access **before
-any pruning**, retains it across all pruning commits and `VACUUM`, and releases
-it by closing its dedicated connection. Other established WAL connections or
-write locks cause refusal without data changes; newly arriving connections
+and preferably let active subagents finish. The command cancels local maintenance
+paused for subagent activity and waits for other in-flight maintenance to settle;
+an executing batch finishes normally. It suspends new maintenance/history access
+and closes this process's history connections. It then acquires SQLite exclusive
+access **before any pruning**, retains it across all pruning commits and `VACUUM`,
+and releases it by closing its dedicated connection. Other established WAL
+connections or write locks cause refusal without data changes; newly arriving connections
 cannot initialize or write until exclusion is released. A writer whose busy
 timeout expires receives a persistence error rather than losing committed rows.
 Normal local history access reopens lazily afterwards, including after failure.

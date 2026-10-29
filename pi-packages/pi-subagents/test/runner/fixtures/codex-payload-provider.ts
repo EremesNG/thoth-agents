@@ -10,16 +10,16 @@ export default function codexPayloadProvider(pi: ExtensionAPI) {
     apiKey: 'not-used',
     baseUrl: 'https://fixture.invalid',
     models: [
-      {
-        id: 'gpt-fixture',
-        name: 'GPT Fixture',
-        reasoning: false,
-        input: ['text'],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 4096,
-        maxTokens: 1024,
-      },
-    ],
+      { id: 'gpt-fixture', name: 'GPT Fixture' },
+      { id: 'gpt-physical-fast', name: 'Physical model ending in -fast' },
+    ].map((model) => ({
+      ...model,
+      reasoning: false,
+      input: ['text'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 4096,
+      maxTokens: 1024,
+    })),
     streamSimple(model, _context, options) {
       const stream = createAssistantMessageEventStream();
       // Mirror Pi's real adapters: build the body, let onPayload replace it, then send it.

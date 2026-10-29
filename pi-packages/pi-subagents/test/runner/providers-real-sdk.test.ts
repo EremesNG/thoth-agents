@@ -1017,6 +1017,55 @@ const codexPayloadExtension = fileURLToPath(
 const openAiFastExtension = fileURLToPath(
   new URL('../../../pi-openai-fast/src/index.ts', import.meta.url),
 );
+const fastRuntimeObserverExtension = fileURLToPath(
+  new URL('./fixtures/fast-runtime-observer/index.ts', import.meta.url),
+);
+
+it.each([
+  { selection: 'physical model', id: 'gpt-fixture' },
+  { selection: 'physical model ending in -fast', id: 'gpt-physical-fast' },
+  {
+    selection: 'physical model with explicit passthrough',
+    id: 'gpt-fixture',
+    lifecycle_passthrough: [
+      '@thoth-agents/pi-openai-fast',
+      '@thoth-agents/pi-claude-bridge',
+    ],
+  },
+])('skips fast variant registration for a lean child selecting a $selection while preserving other passthrough packages', async ({
+  id,
+  lifecycle_passthrough,
+}) => {
+  const parent = await fixture([
+    codexPayloadExtension,
+    openAiFastExtension,
+    fastRuntimeObserverExtension,
+  ]);
+  try {
+    const result = await parent.run({
+      definition: {
+        name: 'physical-child',
+        description: 'Physical model child',
+        filePath: codexPayloadExtension,
+        instructions: 'Reply.',
+        tools: [],
+        model: { provider: 'codex-payload-fixture', id },
+      },
+      config: { ...config, lifecycle_passthrough },
+    });
+    const payload = JSON.parse(result.result);
+    expect(payload).toMatchObject({ model: id });
+    expect(payload).not.toHaveProperty('service_tier');
+    expect(
+      parent.trace().filter((event) => event.startsWith('fast-observer:')),
+    ).toEqual([
+      'fast-observer:session_start',
+      'fast-observer:virtual-models:0',
+    ]);
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
 
 it.each([
   ['gpt-fixture-fast', { model: 'gpt-fixture', service_tier: 'priority' }],
@@ -1045,3 +1094,40 @@ it.each([
   },
   30_000,
 );
+
+it('preserves priority payloads for a lean child inheriting a root fast model with explicit passthrough', async () => {
+  const parent = await fixture([codexPayloadExtension, openAiFastExtension]);
+  try {
+    const model = parent.modelRegistry.find(
+      'codex-payload-fixture',
+      'gpt-fixture-fast',
+    );
+    if (!model) throw new Error('Missing fixture fast model');
+    expect(model.api).toBe('pi-virtual');
+    await parent.session.setModel(model);
+    const result = await parent.run({
+      definition: {
+        name: 'inherited-fast-child',
+        description: 'Inherit the root fast model',
+        filePath: codexPayloadExtension,
+        instructions: 'Reply.',
+        tools: [],
+      },
+      ctx: {
+        model: parent.session.model,
+        modelRegistry: parent.modelRegistry,
+        settingsManager: parent.settingsManager,
+      },
+      config: {
+        ...config,
+        lifecycle_passthrough: ['@thoth-agents/pi-openai-fast'],
+      },
+    });
+    expect(JSON.parse(result.result)).toMatchObject({
+      model: 'gpt-fixture',
+      service_tier: 'priority',
+    });
+  } finally {
+    await parent.close();
+  }
+}, 30_000);

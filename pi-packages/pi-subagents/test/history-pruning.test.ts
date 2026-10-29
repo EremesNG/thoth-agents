@@ -13,6 +13,117 @@ afterEach(() => {
 });
 
 describe('time-sliced history pruning', () => {
+  it.each([
+    { column: 'status', value: 'running' },
+    { column: 'status', value: 'queued' },
+    { column: 'last_activity_at', value: '2026-10-02T00:00:00.000Z' },
+  ])('selects detail keys outside write locks and rechecks concurrent $column=$value changes', async ({
+    column,
+    value,
+  }) => {
+    const history = env.createHistoryStore();
+    for (const id of ['old-0', 'old-1'])
+      history.upsertTask(env.tmp, {
+        id,
+        agent: 'worker',
+        mode: 'task',
+        status: 'completed',
+        task: 'keep',
+        created_at: '2020-01-01',
+        transcript: 'detail',
+      });
+    const writer = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    writer.exec(
+      "UPDATE subagent_task_attempts SET transcript = 'legacy detail'",
+    );
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let inTransaction = false;
+    const reads: string[] = [];
+    const writes: string[] = [];
+    const prepare = DatabaseSync.prototype.prepare;
+    vi.spyOn(DatabaseSync.prototype, 'prepare').mockImplementation(function (
+      this: InstanceType<typeof DatabaseSync>,
+      sql: string,
+    ) {
+      const statement = prepare.call(this, sql);
+      if (
+        /^\s*SELECT (?:id|task_id, attempt) FROM subagent_(?:tasks|task_attempts)\b/.test(
+          sql,
+        )
+      ) {
+        const all = statement.all;
+        vi.spyOn(statement, 'all').mockImplementation(function (
+          this: typeof statement,
+          ...args: Parameters<typeof all>
+        ) {
+          expect(inTransaction).toBe(false);
+          const rows = all.apply(this, args);
+          reads.push(sql);
+          if (
+            rows.length &&
+            /FROM subagent_tasks\b/.test(sql) &&
+            reads.filter((read) => /FROM subagent_tasks\b/.test(read))
+              .length === 1
+          )
+            writer
+              .prepare(
+                `UPDATE subagent_tasks SET ${column} = ? WHERE id = 'old-0'`,
+              )
+              .run(value);
+          if (rows.length && /FROM subagent_task_attempts\b/.test(sql))
+            writer
+              .prepare(
+                'UPDATE subagent_task_attempts SET transcript = NULL WHERE task_id = ? AND attempt = ?',
+              )
+              .run(
+                (rows[0] as { task_id: string }).task_id,
+                (rows[0] as { attempt: number }).attempt,
+              );
+          return rows;
+        });
+      }
+      if (/UPDATE subagent_(?:tasks|task_attempts)\b/.test(sql))
+        writes.push(sql);
+      return statement;
+    });
+    const exec = DatabaseSync.prototype.exec;
+    vi.spyOn(DatabaseSync.prototype, 'exec').mockImplementation(function (
+      this: InstanceType<typeof DatabaseSync>,
+      sql: string,
+    ) {
+      const result = exec.call(this, sql);
+      if (sql === 'BEGIN IMMEDIATE') inTransaction = true;
+      if (sql === 'COMMIT' || sql === 'ROLLBACK') inTransaction = false;
+      return result;
+    });
+    try {
+      const pruning = history.pruneExecutionDetail({
+        olderThanMs,
+        batchSize: 1,
+        now: () => 0,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pruning).toEqual({
+        tasksCleared: 1,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: false,
+      });
+      expect(reads.some((sql) => /FROM subagent_tasks\b/.test(sql))).toBe(true);
+      expect(
+        reads.some((sql) => /FROM subagent_task_attempts\b/.test(sql)),
+      ).toBe(true);
+      expect(writes.every((sql) => !/SELECT/.test(sql))).toBe(true);
+      expect(history.getTask(env.tmp, 'old-0')).toMatchObject({
+        [column]: value,
+        transcript: 'detail',
+      });
+      expect(history.getTask(env.tmp, 'old-1')?.transcript).toBeUndefined();
+    } finally {
+      writer.close();
+    }
+  });
+
   it('shrinks slow committed slices to one row, regrows fast batches, and rests between every slice', async () => {
     const history = env.createHistoryStore();
     for (let index = 0; index < 25; index++)
@@ -43,19 +154,19 @@ describe('time-sliced history pruning', () => {
       sql: string,
     ) {
       const statement = prepare.call(this, sql);
-      if (/UPDATE subagent_tasks\s/.test(sql)) {
-        const run = statement.run;
-        vi.spyOn(statement, 'run').mockImplementation(function (
+      if (/SELECT id FROM subagent_tasks\s/.test(sql)) {
+        const all = statement.all;
+        vi.spyOn(statement, 'all').mockImplementation(function (
           this: typeof statement,
-          ...args: Parameters<typeof run>
+          ...args: Parameters<typeof all>
         ) {
           limits.push(args.at(-1) as number);
-          // First a slow statement, then a slow COMMIT: both must shrink batches.
+          // First a slow read, then a slow COMMIT: measure the whole batch.
           commitDuration = taskBatch === 1 ? 39 : 1;
           const statementDuration = taskBatch++ === 0 ? 39 : 1;
           duration = statementDuration + commitDuration;
           elapsed += statementDuration;
-          return run.apply(this, args);
+          return all.apply(this, args);
         });
       }
       return statement;
@@ -68,12 +179,12 @@ describe('time-sliced history pruning', () => {
       if (sql.startsWith('PRAGMA busy_timeout')) busyTimeouts.push(sql);
       if (sql === 'BEGIN IMMEDIATE') {
         yieldsBeforeSlice.push(timers.mock.calls.length);
-        duration = 1;
-        commitDuration = 1;
       }
       if (sql === 'COMMIT') {
         elapsed += commitDuration;
         slices.push(duration);
+        duration = 1;
+        commitDuration = 1;
       }
       return exec.call(this, sql);
     });
@@ -171,21 +282,30 @@ describe('time-sliced history pruning', () => {
         sql: string,
       ) {
         const statement = prepare.call(this, sql);
-        const table = /UPDATE subagent_tasks\s/.test(sql)
+        const table = /SELECT id FROM subagent_tasks\s/.test(sql)
           ? 'tasks'
-          : /UPDATE subagent_task_attempts\s/.test(sql)
+          : /SELECT task_id, attempt FROM subagent_task_attempts\s/.test(sql)
             ? 'attempts'
             : /DELETE FROM subagent_events/.test(sql)
               ? 'events'
               : undefined;
-        if (table) {
+        if (table === 'events') {
           const run = statement.run;
           vi.spyOn(statement, 'run').mockImplementation(function (
             this: typeof statement,
             ...args: Parameters<typeof run>
           ) {
-            limits[table].push(args.at(-1) as number);
+            limits.events.push(args.at(-1) as number);
             return run.apply(this, args);
+          });
+        } else if (table) {
+          const all = statement.all;
+          vi.spyOn(statement, 'all').mockImplementation(function (
+            this: typeof statement,
+            ...args: Parameters<typeof all>
+          ) {
+            limits[table].push(args.at(-1) as number);
+            return all.apply(this, args);
           });
         }
         return statement;

@@ -759,12 +759,15 @@ describe('subagents smoke', () => {
       on,
     });
     try {
+      // Maintenance observes the manager independently of the session panel.
+      expect(listeners.size).toBe(1);
       await handlers.get('session_start')?.({}, first.ctx);
       expect(first.listenerCount()).toBe(1);
+      expect(listeners.size).toBe(2);
       await handlers.get('session_start')?.({}, second.ctx);
       expect(first.listenerCount()).toBe(0);
       expect(second.listenerCount()).toBe(1);
-      expect(listeners.size).toBe(1);
+      expect(listeners.size).toBe(2);
     } finally {
       await handlers.get('session_shutdown')?.({}, second.ctx);
     }

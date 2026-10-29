@@ -60,11 +60,58 @@ const HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const HISTORY_PRUNE_DELAY_MS = 30000;
 const HISTORY_PRUNE_KEY = Symbol.for('pi.subagents.historyPruning.v1');
 const shared = globalThis as typeof globalThis & {
-  [HISTORY_PRUNE_KEY]?: { lastRunAt: number; pending: boolean };
+  [HISTORY_PRUNE_KEY]?: {
+    lastRunAt: number;
+    pending: boolean;
+    managers: Set<SubagentManager>;
+    idleWaiters: Set<() => void>;
+  };
 };
 // Child session loaders can evaluate separate copies of this module in one process.
-shared[HISTORY_PRUNE_KEY] ??= { lastRunAt: -Infinity, pending: false };
+shared[HISTORY_PRUNE_KEY] ??= {
+  lastRunAt: -Infinity,
+  pending: false,
+  managers: new Set(),
+  idleWaiters: new Set(),
+};
 const historyPruning = shared[HISTORY_PRUNE_KEY];
+// /reload can retain the v1 object created before activity gating existed.
+historyPruning.managers ??= new Set();
+historyPruning.idleWaiters ??= new Set();
+
+function waitForHistoryIdle(signal: AbortSignal): Promise<void> | undefined {
+  if (signal.aborted || !hasActiveHistoryTasks()) return;
+  return new Promise((resolve) => {
+    const finish = () => {
+      historyPruning.idleWaiters.delete(check);
+      signal.removeEventListener('abort', finish);
+      resolve();
+    };
+    const check = () => {
+      if (!hasActiveHistoryTasks()) finish();
+    };
+    historyPruning.idleWaiters.add(check);
+    signal.addEventListener('abort', finish, { once: true });
+    if (signal.aborted) finish();
+  });
+}
+
+function hasActiveHistoryTasks(): boolean {
+  return [...historyPruning.managers].some((manager) =>
+    manager
+      .listTasks()
+      .some(
+        (task) =>
+          task.status === 'queued' ||
+          task.status === 'running' ||
+          task.status === 'stopping',
+      ),
+  );
+}
+
+function notifyHistoryActivity(): void {
+  for (const check of historyPruning.idleWaiters) check();
+}
 
 function currentSessionId(ctx: any): string | undefined {
   const direct = ctx?.sessionManager?.getSessionId?.() ?? ctx?.sessionId;
@@ -119,6 +166,7 @@ export default function subagentsExtension(pi: any): void {
   let activeSessionId: string | undefined;
   let rootRunActive = false;
   let notificationCtx: ExtensionContext | undefined;
+  let cancelHistoryPruning: (() => Promise<void>) | undefined;
   // Pi followUps cannot be selectively cancelled once queued during a turn.
   const notificationOutbox: Array<() => void> = [];
   const deliverNotification = (send: () => void) => {
@@ -207,6 +255,8 @@ export default function subagentsExtension(pi: any): void {
     },
     (taskId) => triggerTaskBackgroundHandoff(manager, taskId, 'attention'),
   );
+  historyPruning.managers.add(manager);
+  const releaseHistoryActivity = manager.onTaskUpdate(notifyHistoryActivity);
   const sessionModelProfile = new SessionModelProfile(
     typeof pi.appendEntry === 'function'
       ? (type, data) => pi.appendEntry(type, data)
@@ -288,6 +338,7 @@ export default function subagentsExtension(pi: any): void {
   });
 
   pi.on?.('session_start', async (event: any, ctx: any) => {
+    if (notificationCtx !== ctx) void cancelHistoryPruning?.();
     notificationOutbox.length = 0;
     rootRunActive = false;
     notificationCtx = ctx;
@@ -369,10 +420,26 @@ export default function subagentsExtension(pi: any): void {
       Date.now() - historyPruning.lastRunAt >= HISTORY_PRUNE_INTERVAL_MS
     ) {
       historyPruning.pending = true;
+      const controller = new AbortController();
+      const previousLastRunAt = historyPruning.lastRunAt;
+      let started = false;
+      let aborted = false;
+      let resolveDone = () => {};
+      const done = new Promise<void>((resolve) => {
+        resolveDone = resolve;
+      });
+      const finish = () => {
+        if (aborted || controller.signal.aborted)
+          historyPruning.lastRunAt = previousLastRunAt;
+        historyPruning.pending = false;
+        cancelHistoryPruning = undefined;
+        resolveDone();
+      };
       // No DB work or config reads on the startup path, and no recurring timer.
       const timer = setTimeout(async () => {
+        started = true;
         try {
-          if (notificationCtx !== ctx) return;
+          if (controller.signal.aborted || notificationCtx !== ctx) return;
           const days =
             readSubagentsConfig(cwd).history_detail_retention_days ??
             DEFAULT_HISTORY_DETAIL_RETENTION_DAYS;
@@ -380,9 +447,12 @@ export default function subagentsExtension(pi: any): void {
           historyPruning.lastRunAt = Date.now();
           const history = new SubagentHistoryStore();
           try {
-            await history.pruneExecutionDetail({
+            const result = await history.pruneExecutionDetail({
               olderThanMs: Date.now() - days * 86400000,
+              waitUntilIdle: waitForHistoryIdle,
+              signal: controller.signal,
             });
+            aborted = result.aborted === true;
           } finally {
             history.close();
           }
@@ -392,10 +462,18 @@ export default function subagentsExtension(pi: any): void {
             error,
           );
         } finally {
-          historyPruning.pending = false;
+          finish();
         }
       }, HISTORY_PRUNE_DELAY_MS);
       timer.unref();
+      cancelHistoryPruning = () => {
+        controller.abort();
+        if (!started) {
+          clearTimeout(timer);
+          finish();
+        }
+        return done;
+      };
     }
   });
 
@@ -403,6 +481,7 @@ export default function subagentsExtension(pi: any): void {
     pi.on?.('agent_end', () => usageEvents.flush());
 
   pi.on?.('session_shutdown', async () => {
+    const canceledHistoryPruning = cancelHistoryPruning?.();
     notificationOutbox.length = 0;
     rootRunActive = false;
     notificationCtx = undefined;
@@ -424,6 +503,10 @@ export default function subagentsExtension(pi: any): void {
         error,
       );
     } finally {
+      await canceledHistoryPruning;
+      releaseHistoryActivity();
+      historyPruning.managers.delete(manager);
+      notifyHistoryActivity();
       // Keep capture installed through the final child report during shutdown.
       providerLimits.dispose();
       usageEvents?.dispose();

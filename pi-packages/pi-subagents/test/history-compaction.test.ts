@@ -2,7 +2,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
-import { SubagentHistoryStore } from '../src/history.js';
+import {
+  resolveSubagentHistoryDbPath,
+  SubagentHistoryStore,
+} from '../src/history.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
 const require = createRequire(import.meta.url);
@@ -87,6 +90,69 @@ function lateWriter(mode: 'initialize' | 'write') {
 }
 
 describe('explicit history compaction', () => {
+  it.each([
+    { timing: 'before', compacting: false },
+    { timing: 'after', compacting: false },
+    { timing: 'before', compacting: true },
+    { timing: 'after', compacting: true },
+  ])('hydrates a legacy history entry inserted $timing reload without resetting compacting=$compacting', async ({
+    timing,
+    compacting,
+  }) => {
+    const history = seed();
+    const file = resolveSubagentHistoryDbPath();
+    const key = process.platform === 'win32' ? file.toLowerCase() : file;
+    const paths = Reflect.get(
+      globalThis,
+      Symbol.for('pi.subagents.historyConnections.v1'),
+    ) as Map<
+      string,
+      {
+        stores: Set<SubagentHistoryStore>;
+        pruning: Set<Promise<unknown>>;
+        compacting: boolean;
+      }
+    >;
+    const previous = paths.get(key);
+    if (!previous) throw new Error('Missing seeded history state.');
+    const legacy = {
+      stores: previous.stores,
+      pruning: previous.pruning,
+      compacting,
+    };
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      if (timing === 'before') paths.set(key, legacy);
+      vi.resetModules();
+      const ReloadedStore = (await import('../src/history.js'))
+        .SubagentHistoryStore;
+      if (timing === 'after') paths.set(key, legacy);
+      if (compacting) {
+        await expect(
+          ReloadedStore.compactHistory({ olderThanMs }),
+        ).rejects.toThrow('compaction is already running');
+      } else {
+        const result = ReloadedStore.compactHistory({ olderThanMs }).catch(
+          (error: unknown) => error,
+        );
+        await vi.runAllTimersAsync();
+        expect(await result).toMatchObject({
+          pruned: { tasksCleared: 1, busy: false },
+        });
+        expect(history.getTask(env.tmp, 'old')?.result).toBe('keep the result');
+      }
+      expect(paths.get(key)).toBe(legacy);
+      expect(legacy.stores).toBe(previous.stores);
+      expect(legacy.pruning).toBe(previous.pruning);
+      expect(legacy.compacting).toBe(compacting);
+      expect(Reflect.get(legacy, 'pausedPruning')).toBeInstanceOf(Set);
+    } finally {
+      paths.set(key, previous);
+      vi.useRealTimers();
+      vi.resetModules();
+    }
+  });
+
   it.each([
     'established WAL reader',
     'write lock',

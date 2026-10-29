@@ -21,6 +21,8 @@ beforeEach(() => {
         Object.assign(this, {
           setSessionModelProfile: vi.fn(),
           reconcileOrphanedTasks: vi.fn(),
+          listTasks: () => [],
+          onTaskUpdate: () => () => {},
           close: vi.fn(),
           clearResultAcknowledgmentCandidates: vi.fn(),
           resetResultAcknowledgments: vi.fn(),

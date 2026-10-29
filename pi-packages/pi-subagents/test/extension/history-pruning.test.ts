@@ -313,6 +313,11 @@ describe('deferred session-start history maintenance', () => {
       expect(
         exec.mock.calls.filter(([sql]) => sql === 'BEGIN IMMEDIATE'),
       ).toHaveLength(0);
+      expect(
+        exec.mock.calls.some(([sql]) =>
+          sql.includes('idx_subagent_tasks_retention_detail'),
+        ),
+      ).toBe(false);
       expect(history.getTask(env.tmp, 'old')?.transcript).toBe(
         'execution detail',
       );
@@ -330,6 +335,11 @@ describe('deferred session-start history maintenance', () => {
       expect(
         exec.mock.calls.filter(([sql]) => sql === 'BEGIN IMMEDIATE').length,
       ).toBeGreaterThan(0);
+      expect(
+        exec.mock.calls.some(([sql]) =>
+          sql.includes('idx_subagent_tasks_retention_detail'),
+        ),
+      ).toBe(true);
     } finally {
       const closing = child('session_shutdown');
       await vi.runAllTimersAsync();

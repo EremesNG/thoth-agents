@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureWorkPanel,
+  registerUIPreferences,
   registerWorkPanelProvider,
   subscribeAnimationClock,
+  withdrawUIPreferences,
 } from '../src/index.js';
 import { provider, uiSession } from './work-panel-fixture.js';
 
@@ -18,6 +20,233 @@ afterEach(() => {
 });
 
 describe('work panel shared animation', () => {
+  it.each([
+    'absorbed',
+    'hidden',
+  ])('does not invalidate the UI for notifications from a source that is %s', async (visibility) => {
+    const session = uiSession();
+    let primary = 'first';
+    let notify = () => {};
+    if (visibility === 'absorbed') {
+      const token = registerUIPreferences({
+        absorbedWorkPanelSources: ['agents'],
+      });
+      cleanups.push(() => withdrawUIPreferences(token));
+    }
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'task', primary, status: 'running' }],
+        showSection: () => visibility !== 'hidden',
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+    session.tui.requestRender.mockClear();
+    session.ui.setStatus.mockClear();
+
+    primary = 'latest';
+    notify();
+    notify();
+    notify();
+
+    expect(session.render()).toEqual([]);
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    expect(session.ui.setStatus).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders idle changes immediately and coalesces unchanged notifications even before Pi renders', async () => {
+    const session = uiSession();
+    let primary = 'first';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'task', primary, status: 'completed' }],
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toContain('  ✓ first');
+    session.tui.requestRender.mockClear();
+    session.ui.setStatus.mockClear();
+    notify();
+    notify();
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    expect(session.ui.setStatus).not.toHaveBeenCalled();
+
+    primary = 'latest';
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    notify();
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render()).toContain('  ✓ latest');
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders a changed status cue even when the widget lines are unchanged', async () => {
+    const session = uiSession();
+    let count = 1;
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () =>
+          Array.from({ length: count }, (_, index) => ({
+            id: `${index}`,
+            primary: 'Task',
+            status: 'completed',
+          })),
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render(0)).toEqual([]);
+    session.tui.requestRender.mockClear();
+    count = 2;
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 2',
+    );
+    expect(session.render(0)).toEqual([]);
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores absorbed updates beside a visible idle source and restores the source when its owner becomes inactive', async () => {
+    const session = uiSession();
+    let active = true;
+    let notify = () => {};
+    const token = registerUIPreferences({
+      absorbedWorkPanelSources: ['agents'],
+      isActive: () => active,
+    });
+    cleanups.push(() => withdrawUIPreferences(token));
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('todos', 'Todos'),
+        listRows: () => [{ id: 'todo', primary: 'Todo', status: 'completed' }],
+      }),
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toContain('  ✓ Todo');
+    session.tui.requestRender.mockClear();
+    session.ui.setStatus.mockClear();
+    notify();
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    expect(session.ui.setStatus).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    active = false;
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render()).toContain('  ◐ Agents item');
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it.each([
+    'expiry',
+    'linger',
+  ])('reschedules an unchanged row at its updated %s deadline without rendering early', async (deadline) => {
+    const session = uiSession();
+    let endsAt = 1080;
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        retention: deadline === 'linger' ? 'prompt' : undefined,
+        listRows: () => [
+          {
+            id: 'task',
+            primary: 'Task',
+            status: 'completed',
+            ...(deadline === 'linger'
+              ? { endedAt: endsAt - 10_000 }
+              : { expiresAt: endsAt }),
+          },
+        ],
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toContain('  ✓ Task');
+    session.tui.requestRender.mockClear();
+    endsAt = 1120;
+    notify();
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(38);
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(40);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render().join('\n')).not.toContain('Task');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('refreshes an open detail when provider evidence changes but host lines do not', async () => {
+    const session = uiSession();
+    let evidence = 'first output';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'task', primary: 'Task', status: 'completed' }],
+        detail: () => ({
+          id: 'task',
+          title: 'Task',
+          metadata: [],
+          evidence: { label: 'Output', text: evidence },
+        }),
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.key('\x1b[D');
+    session.key('\r');
+    const hostLines = session.render();
+    expect(session.customRender().join('\n')).toContain('first output');
+    session.tui.requestRender.mockClear();
+
+    evidence = 'latest output';
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render()).toEqual(hostLines);
+    expect(session.customRender().join('\n')).toContain('latest output');
+    session.closeCustom();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
   it('defers provider refreshes while animating, publishes the latest rows on the next tick, then refreshes idle changes immediately', async () => {
     const session = uiSession();
     let primary = 'first';

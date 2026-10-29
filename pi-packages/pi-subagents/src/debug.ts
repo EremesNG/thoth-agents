@@ -1,11 +1,38 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { readSubagentsConfig } from './config.js';
+
+// Pick up config edits without doing synchronous config I/O on every event.
+const DEBUG_CONFIG_CACHE_MS = 1000;
+const debugEnabledCache = new Map<
+  string,
+  { enabled: boolean; checkedAt: number }
+>();
 
 export function isSubagentsDebugEnabled(cwd?: string): boolean {
   if (!cwd) return false;
   try {
-    return readSubagentsConfig(cwd).debug === true;
+    const agentDir =
+      process.env.PI_CODING_AGENT_DIR ||
+      path.join(os.homedir(), '.pi', 'agent');
+    const key = JSON.stringify([path.resolve(cwd), path.resolve(agentDir)]);
+    const now = Date.now();
+    const cached = debugEnabledCache.get(key);
+    if (
+      cached &&
+      now >= cached.checkedAt &&
+      now - cached.checkedAt < DEBUG_CONFIG_CACHE_MS
+    ) {
+      return cached.enabled;
+    }
+
+    let enabled = false;
+    try {
+      enabled = readSubagentsConfig(cwd).debug === true;
+    } catch {}
+    debugEnabledCache.set(key, { enabled, checkedAt: now });
+    return enabled;
   } catch {
     return false;
   }

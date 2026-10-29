@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ResolvedPaths } from '@earendil-works/pi-coding-agent';
-import { DEFAULT_LIFECYCLE_PASSTHROUGH } from '../config.js';
+import {
+  DEFAULT_LIFECYCLE_PASSTHROUGH,
+  OPENAI_FAST_PACKAGE,
+} from '../config.js';
 import { SubagentStructuredError } from '../error-metadata.js';
 import { resolveSubagentsHistoryHome } from '../history.js';
 import { resolveEffectiveSubagentProfile } from '../profile-resolver.js';
@@ -541,6 +544,14 @@ async function createSession(
       diagnostic,
     );
     options.settingsManager = resources.settingsManager;
+    // Skip fast-variant registration for physical children. Extension-driven
+    // switching to fast variants is unsupported in their own runtimes;
+    // runner-selected virtual models (including inherited root selections) work.
+    const lifecyclePassthrough = (
+      config.lifecycle_passthrough ?? DEFAULT_LIFECYCLE_PASSTHROUGH
+    ).filter(
+      (name) => model?.api === 'pi-virtual' || name !== OPENAI_FAST_PACKAGE,
+    );
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir,
@@ -561,7 +572,7 @@ async function createSession(
       extensionsOverride: (base: any) =>
         isolateSubagentExtensions(
           base,
-          config.lifecycle_passthrough ?? DEFAULT_LIFECYCLE_PASSTHROUGH,
+          lifecyclePassthrough,
           backgroundShutdown,
         ),
     });

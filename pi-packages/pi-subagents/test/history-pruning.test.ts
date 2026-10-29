@@ -1,5 +1,7 @@
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resolveSubagentHistoryDbPath } from '../src/history.js';
+import { TERMINAL_STATUSES } from '../src/types.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
 const require = createRequire(import.meta.url);
@@ -7,12 +9,203 @@ const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
 const env = installSubagentTestEnv();
 const olderThanMs = Date.parse('2026-10-01T00:00:00.000Z');
 
+function retentionIndexes(db: InstanceType<typeof DatabaseSync>) {
+  return db
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE name IN ('idx_subagent_tasks_retention_detail', 'idx_subagent_task_attempts_retention_detail') ORDER BY name",
+    )
+    .all();
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe('time-sliced history pruning', () => {
+  it('lazily indexes legacy detail during pruning and keeps repeated passes idempotent', async () => {
+    const history = env.createHistoryStore();
+    history.upsertTask(env.tmp, {
+      id: 'legacy',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'keep the task',
+      created_at: '2020-01-01',
+      result: 'keep the result',
+      transcript: 'legacy detail',
+    });
+    const db = new DatabaseSync(resolveSubagentHistoryDbPath());
+    try {
+      // Opening and initializing a pre-maintenance store must stay cheap.
+      const otherHistory = env.createHistoryStore();
+      otherHistory.listTasks(env.tmp);
+      expect(retentionIndexes(db)).toEqual([]);
+      db.exec(
+        "UPDATE subagent_task_attempts SET system_prompt = 'legacy attempt detail'",
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const pruning = history.pruneExecutionDetail({
+        olderThanMs,
+        now: () => 0,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pruning).toEqual({
+        tasksCleared: 1,
+        attemptsCleared: 1,
+        eventsDeleted: 0,
+        busy: false,
+      });
+      const expectedIndexes = [
+        { name: 'idx_subagent_task_attempts_retention_detail' },
+        { name: 'idx_subagent_tasks_retention_detail' },
+      ];
+      expect(retentionIndexes(db)).toEqual(expectedIndexes);
+      expect(history.getTask(env.tmp, 'legacy')).toMatchObject({
+        result: 'keep the result',
+        transcript: undefined,
+      });
+      expect(
+        history.listTaskAttempts(env.tmp, 'legacy')[0]?.system_prompt,
+      ).toBeUndefined();
+      const again = otherHistory.pruneExecutionDetail({
+        olderThanMs,
+        now: () => 0,
+      });
+      await vi.runAllTimersAsync();
+      expect(await again).toEqual({
+        tasksCleared: 0,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: false,
+      });
+      expect(retentionIndexes(db)).toEqual(expectedIndexes);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('skips a busy index build without scanning or clearing detail and retries on a later pass', async () => {
+    const history = env.createHistoryStore();
+    history.upsertTask(env.tmp, {
+      id: 'busy',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'keep',
+      created_at: '2020-01-01',
+      transcript: 'detail',
+    });
+    const writer = new DatabaseSync(resolveSubagentHistoryDbPath());
+    let locked = false;
+    try {
+      writer.exec('BEGIN IMMEDIATE');
+      locked = true;
+      const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
+      const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+      await expect(
+        history.pruneExecutionDetail({ olderThanMs }),
+      ).resolves.toEqual({
+        tasksCleared: 0,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: true,
+      });
+      expect(
+        exec.mock.calls.some(([sql]) =>
+          sql.includes(
+            'CREATE INDEX IF NOT EXISTS idx_subagent_tasks_retention_detail',
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        prepare.mock.calls.some(([sql]) =>
+          /^\s*SELECT (?:id|task_id, attempt) FROM subagent_(?:tasks|task_attempts)\b/.test(
+            sql,
+          ),
+        ),
+      ).toBe(false);
+      expect(retentionIndexes(writer)).toEqual([]);
+      expect(history.getTask(env.tmp, 'busy')?.transcript).toBe('detail');
+      writer.exec('ROLLBACK');
+      locked = false;
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const retry = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
+      await vi.runAllTimersAsync();
+      expect(await retry).toEqual({
+        tasksCleared: 1,
+        attemptsCleared: 0,
+        eventsDeleted: 0,
+        busy: false,
+      });
+      expect(retentionIndexes(writer)).toHaveLength(2);
+      expect(history.getTask(env.tmp, 'busy')?.transcript).toBeUndefined();
+    } finally {
+      if (locked) writer.exec('ROLLBACK');
+      writer.close();
+    }
+  });
+
+  it('uses the partial indexes for the actual detail-first candidate queries instead of table scans', async () => {
+    const history = env.createHistoryStore();
+    history.listTasks(env.tmp);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+    const pruning = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
+    await vi.runAllTimersAsync();
+    expect(await pruning).toMatchObject({ busy: false });
+    const queries = prepare.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql) =>
+        /^\s*SELECT (?:id|task_id, attempt) FROM subagent_(?:tasks|task_attempts)\b/.test(
+          sql,
+        ),
+      );
+    prepare.mockRestore();
+    expect(queries).toHaveLength(2);
+    const db = new DatabaseSync(resolveSubagentHistoryDbPath());
+    const plans = () =>
+      queries.map((sql, index) =>
+        db
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all(
+            ...(index === 0
+              ? [...TERMINAL_STATUSES, new Date(olderThanMs).toISOString(), 1]
+              : [1]),
+          )
+          .map((row) => row.detail)
+          .join('\n'),
+      );
+    try {
+      db.exec(`
+        DROP INDEX idx_subagent_tasks_retention_detail;
+        DROP INDEX idx_subagent_task_attempts_retention_detail;
+      `);
+      expect(plans()).toEqual([
+        'SCAN subagent_tasks',
+        'SCAN subagent_task_attempts',
+      ]);
+      const again = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
+      await vi.runAllTimersAsync();
+      expect(await again).toMatchObject({ busy: false });
+      // EXPLAIN alone can retain this observer's pre-build schema cache.
+      expect(retentionIndexes(db)).toHaveLength(2);
+      const indexedPlans = plans();
+      expect(indexedPlans[0]).toContain(
+        'SEARCH subagent_tasks USING INDEX idx_subagent_tasks_retention_detail (status=?)',
+      );
+      expect(indexedPlans[1]).toContain(
+        'SCAN subagent_task_attempts USING INDEX idx_subagent_task_attempts_retention_detail',
+      );
+      for (const sql of queries)
+        expect(sql).toMatch(
+          /WHERE\s+\(thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL\)\s+(?:AND|LIMIT)\b/,
+        );
+    } finally {
+      db.close();
+    }
+  });
+
   it.each([
     { column: 'status', value: 'running' },
     { column: 'status', value: 'queued' },

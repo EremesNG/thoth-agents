@@ -827,15 +827,26 @@ export class SubagentHistoryStore {
       );
       const detailPredicate =
         'thread_snapshot_json IS NOT NULL OR transcript IS NOT NULL OR system_prompt IS NOT NULL';
+      // Build only during maintenance, after the activity gate, never at startup.
+      // A busy build ends the pass via the outer catch, just like a busy batch;
+      // IF NOT EXISTS lets later passes/processes retry safely without shared state.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_subagent_tasks_retention_detail
+          ON subagent_tasks(status, last_activity_at, ended_at, started_at, created_at, id)
+          WHERE ${detailPredicate};
+        CREATE INDEX IF NOT EXISTS idx_subagent_task_attempts_retention_detail
+          ON subagent_task_attempts(task_id, attempt)
+          WHERE ${detailPredicate};
+      `);
       const detailBatches = [
         {
           table: 'subagent_tasks',
           keys: ['id'],
           count: 'tasksCleared' as const,
           args: [...TERMINAL_STATUSES, cutoff],
-          predicate: `status IN (${TERMINAL_STATUSES.map(() => '?').join(', ')})
-            AND julianday(COALESCE(last_activity_at, ended_at, started_at, created_at)) < julianday(?)
-            AND (${detailPredicate})`,
+          predicate: `(${detailPredicate})
+            AND status IN (${TERMINAL_STATUSES.map(() => '?').join(', ')})
+            AND julianday(COALESCE(last_activity_at, ended_at, started_at, created_at)) < julianday(?)`,
         },
         {
           table: 'subagent_task_attempts',

@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { subscribeAnimationClock } from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
 import { frames, icon } from '../shared/icons.ts';
@@ -11,20 +12,19 @@ import {
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
   let pendingBackground = 0;
-  let ticker: ReturnType<typeof setInterval> | undefined;
+  let offAnimationClock: (() => void) | undefined;
   let disposed = false;
 
   function stop() {
-    if (ticker !== undefined) clearInterval(ticker);
-    ticker = undefined;
+    offAnimationClock?.();
+    offAnimationClock = undefined;
   }
 
-  function syncTicker() {
+  function syncAnimation() {
     if (startedAt === undefined && pendingBackground === 0) {
       stop();
-    } else if (ticker === undefined) {
-      ticker = setInterval(requestRender, 50);
-      ticker.unref?.();
+    } else if (offAnimationClock === undefined) {
+      offAnimationClock = subscribeAnimationClock(() => requestRender());
     }
     requestRender();
   }
@@ -36,17 +36,17 @@ export function createWorkingState(requestRender: () => void) {
     start() {
       if (disposed) return;
       startedAt = Date.now();
-      syncTicker();
+      syncAnimation();
     },
     end() {
       if (disposed) return;
       startedAt = undefined;
-      syncTicker();
+      syncAnimation();
     },
     setPendingBackground(count: number) {
       if (disposed || pendingBackground === count) return;
       pendingBackground = count;
-      syncTicker();
+      syncAnimation();
     },
     status(
       indicator: unknown,

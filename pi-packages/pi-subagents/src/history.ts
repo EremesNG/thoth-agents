@@ -567,6 +567,8 @@ function initializeHistorySchema(db: Db): void {
     FOREIGN KEY(task_id) REFERENCES subagent_tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_subagent_tasks_created ON subagent_tasks(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_subagent_tasks_session_status ON subagent_tasks(cwd, session_id, status, id);
+  CREATE INDEX IF NOT EXISTS idx_subagent_tasks_session_cost ON subagent_tasks(cwd, session_id, usage_cost DESC, created_at DESC, id DESC);
   CREATE INDEX IF NOT EXISTS idx_subagent_events_task ON subagent_events(task_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_subagent_attempts_task ON subagent_task_attempts(task_id, attempt);
 `);

@@ -148,10 +148,10 @@ export function registerStatusLine(
       offSubagentUsage = subscribe(pi.events, SUBAGENTS_USAGE_CHANNEL, {
         sessionId,
         onSnapshot: ({ data }) => {
-          if (disposed) return;
+          if (disposed || subagentCost === data.totalCost) return;
           // The publisher sends a cumulative snapshot, not a delta.
           subagentCost = data.totalCost;
-          requestRender();
+          invalidateRender();
         },
       });
       request(pi.events, SUBAGENTS_USAGE_REQUEST, {

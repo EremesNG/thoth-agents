@@ -611,16 +611,25 @@ describe('subagents smoke', () => {
       expect(vi.getTimerCount()).toBe(1);
       task.status = 'completed';
       task.ended_at = '2026-01-01T00:00:00.100Z';
+      const beforeCompletion = fixture.tui.requestRender.mock.calls.length;
       notify?.();
+      expect(fixture.tui.requestRender).toHaveBeenCalledTimes(beforeCompletion);
+      // The boundary-aligned clock already ticked; completion waits one interval.
+      vi.advanceTimersByTime(100);
+      expect(fixture.tui.requestRender).toHaveBeenCalledTimes(
+        beforeCompletion + 1,
+      );
       const terminal = fixture.render();
       const requests = fixture.tui.requestRender.mock.calls.length;
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(1900);
       expect(fixture.render()).toEqual(terminal);
       expect(terminal.join(' ')).toContain('worker');
       expect(terminal.join(' ')).toContain('✓');
       expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
       expect(vi.getTimerCount()).toBe(1);
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(7999);
+      expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
+      vi.advanceTimersByTime(1);
       expect(fixture.render().join(' ')).toContain(
         'Agents · 1 done · 0 failed',
       );

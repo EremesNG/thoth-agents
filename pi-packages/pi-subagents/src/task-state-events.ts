@@ -12,6 +12,14 @@ import type { SubagentManager } from './manager.js';
 import type { SubagentTask } from './types.js';
 import { formatTaskSummary } from './ui/background-widget.js';
 
+const ACTIVITY_PUBLICATION_INTERVAL_MS = 150;
+// All other summary fields, including future additions, publish immediately.
+const COALESCIBLE_SUMMARY_KEYS = new Set<keyof SubagentTaskSummary>([
+  'lastActivityAt',
+  'usage',
+  'preview',
+]);
+
 type TaskStateSource = Pick<
   SubagentManager,
   | 'listActiveSessionTasks'
@@ -65,16 +73,34 @@ function summarizeTask(task: SubagentTask): SubagentTaskSummary {
   };
 }
 
+function hasImmediateSummaryChange(
+  current: SubagentTaskSummary,
+  previous: SubagentTaskSummary | undefined,
+): boolean {
+  if (!previous) return true;
+  const keys = Object.keys({ ...previous, ...current }) as Array<
+    keyof SubagentTaskSummary
+  >;
+  return keys.some(
+    (key) =>
+      !COALESCIBLE_SUMMARY_KEYS.has(key) &&
+      !Object.is(current[key], previous[key]),
+  );
+}
+
 export class SubagentsStatePublisher {
   private session: { cwd: string; sessionId: string } | undefined;
   private readonly offRequest: () => void;
   private readonly offTaskUpdate: () => void;
+  private publishedTasks = new Map<string, SubagentTaskSummary>();
+  private lastPublishedAt = 0;
+  private publicationTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly events: EventBus,
     private readonly source: TaskStateSource,
   ) {
-    this.offTaskUpdate = source.onTaskUpdate(() => this.publish());
+    this.offTaskUpdate = source.onTaskUpdate(() => this.onTaskUpdate());
     this.offRequest = onRequest(events, SUBAGENTS_STATE_REQUEST, {
       // Unready requests are answered together by the next readiness broadcast;
       // never read another session's tasks to answer them early.
@@ -93,15 +119,49 @@ export class SubagentsStatePublisher {
   dispose(): void {
     this.offRequest();
     this.offTaskUpdate();
+    this.clearPublicationTimer();
     this.session = undefined;
   }
 
-  private publish(): void {
+  private onTaskUpdate(): void {
     if (!this.session) return;
     const { cwd, sessionId } = this.session;
     const tasks = this.source
       .listActiveSessionTasks(cwd, sessionId)
       .map(summarizeTask);
+    const immediateChange =
+      tasks.length !== this.publishedTasks.size ||
+      tasks.some((task) =>
+        hasImmediateSummaryChange(task, this.publishedTasks.get(task.id)),
+      );
+    if (immediateChange) {
+      this.publish(tasks);
+      return;
+    }
+    if (this.publicationTimer !== undefined) return;
+    const delay =
+      this.lastPublishedAt + ACTIVITY_PUBLICATION_INTERVAL_MS - Date.now();
+    if (delay <= 0) {
+      this.publish(tasks);
+      return;
+    }
+    this.publicationTimer = setTimeout(() => this.publish(), delay);
+    this.publicationTimer.unref?.();
+  }
+
+  private clearPublicationTimer(): void {
+    if (this.publicationTimer === undefined) return;
+    clearTimeout(this.publicationTimer);
+    this.publicationTimer = undefined;
+  }
+
+  private publish(activeTasks?: SubagentTaskSummary[]): void {
+    this.clearPublicationTimer();
+    if (!this.session) return;
+    const { cwd, sessionId } = this.session;
+    const tasks =
+      activeTasks ??
+      this.source.listActiveSessionTasks(cwd, sessionId).map(summarizeTask);
     const liveIds = new Set(tasks.map(({ id }) => id));
     const history = this.source
       .listSessionHistoryByCost(cwd, sessionId)
@@ -119,6 +179,8 @@ export class SubagentsStatePublisher {
         0,
       ),
     };
+    this.publishedTasks = new Map(tasks.map((task) => [task.id, task]));
+    this.lastPublishedAt = Date.now();
     publish(this.events, SUBAGENTS_STATE_CHANNEL, {
       sessionId,
       source: '@thoth-agents/pi-subagents',

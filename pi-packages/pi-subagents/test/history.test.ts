@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SubagentHistoryStore } from '../src/history.js';
 import type { SubagentTask } from '../src/types.js';
 
@@ -286,6 +286,40 @@ describe('subagent history persistence and display_name compatibility', () => {
     fs.mkdirSync(tmp, { recursive: true });
   });
 
+  it.each([
+    ['snapshotSessionTaskCounts', 'idx_subagent_tasks_session_status'],
+    ['listSessionTaskMetadataByCost', 'idx_subagent_tasks_session_cost'],
+  ] as const)('uses an index search for %s', (read, index) => {
+    const store = createHistoryStore();
+    store.listTasks(tmp);
+    const { DatabaseSync } =
+      require('node:sqlite') as typeof import('node:sqlite');
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+    let sql: string;
+    try {
+      // Capture the exact publisher query, including its metadata projection.
+      store[read](tmp, 'parent');
+      expect(prepare).toHaveBeenCalledOnce();
+      sql = prepare.mock.calls[0]![0];
+    } finally {
+      prepare.mockRestore();
+    }
+
+    const db = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    try {
+      const plan = db
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(tmp, 'parent')
+        .map((row) => row.detail)
+        .join('\n');
+      expect(plan).toContain('SEARCH subagent_tasks');
+      expect(plan).toContain(index);
+      expect(plan).not.toContain('SCAN subagent_tasks');
+    } finally {
+      db.close();
+    }
+  });
+
   it('snapshots exact session status counts beyond the history row cap', () => {
     const store = createHistoryStore();
     const task: SubagentTask = {
@@ -327,6 +361,88 @@ describe('subagent history persistence and display_name compatibility', () => {
     expect(
       store.snapshotSessionTaskCounts(tmp, 'empty-session').counts,
     ).toEqual({});
+  });
+
+  it('ranks session metadata by cost with deterministic ties, NULL costs and a 100-row cap', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'expensive-old',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'persisted task',
+      created_at: '2026-01-01T00:00:00Z',
+      session_id: 'cost-session',
+      transcript: 'excluded execution detail',
+    };
+    const usage = (cost: number) => ({
+      input: 1,
+      output: 2,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost,
+      contextTokens: 3,
+      turns: 1,
+    });
+    for (const row of [
+      { ...task, usage: usage(9) },
+      { ...task, id: 'tied-old', usage: usage(2) },
+      {
+        ...task,
+        id: 'tied-new-a',
+        created_at: '2026-01-03T00:00:00Z',
+        usage: usage(2),
+      },
+      {
+        ...task,
+        id: 'tied-new-z',
+        created_at: '2026-01-03T00:00:00Z',
+        usage: usage(2),
+      },
+      { ...task, id: 'zero', usage: usage(0) },
+      { ...task, id: 'null-old' },
+      { ...task, id: 'null-new-a', created_at: '2026-01-04T00:00:00Z' },
+      { ...task, id: 'null-new-z', created_at: '2026-01-04T00:00:00Z' },
+    ])
+      store.upsertTask(tmp, row);
+    store.upsertTask(tmp, {
+      ...task,
+      id: 'foreign-session',
+      session_id: 'other-session',
+      usage: usage(100),
+    });
+    store.upsertTask(path.join(tmp, 'other-cwd'), {
+      ...task,
+      id: 'foreign-cwd',
+      usage: usage(100),
+    });
+
+    const ranked = store.listSessionTaskMetadataByCost(tmp, 'cost-session');
+    expect(ranked.map((row) => row.id)).toEqual([
+      'expensive-old',
+      'tied-new-z',
+      'tied-new-a',
+      'tied-old',
+      'zero',
+      'null-new-z',
+      'null-new-a',
+      'null-old',
+    ]);
+    for (const row of ranked) expect(row.transcript).toBeUndefined();
+    expect(store.listSessionTaskMetadataByCost(tmp, 'empty-session')).toEqual(
+      [],
+    );
+
+    for (let index = 0; index < 101; index++)
+      store.upsertTask(tmp, {
+        ...task,
+        id: `capped-${index}`,
+        usage: usage(1000 + index),
+      });
+    const capped = store.listSessionTaskMetadataByCost(tmp, 'cost-session');
+    expect(capped).toHaveLength(100);
+    expect(capped[0].id).toBe('capped-100');
+    expect(capped[99].id).toBe('capped-1');
   });
 
   it('persists and retrieves display_name across task queries and attempts', () => {
@@ -528,7 +644,7 @@ describe('subagent history persistence and display_name compatibility', () => {
     }
   });
 
-  it('migrates older databases without display_name column and leaves legacy rows with undefined display_name', () => {
+  it('migrates older databases without display_name or session indexes idempotently', () => {
     const dbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH!;
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
@@ -661,6 +777,14 @@ describe('subagent history persistence and display_name compatibility', () => {
         'legacy task',
         '2026-01-01T00:00:00.000Z',
       );
+    expect(
+      legacyDb
+        .prepare(`
+          SELECT name FROM sqlite_master
+          WHERE name LIKE 'idx_subagent_tasks_session_%'
+        `)
+        .all(),
+    ).toEqual([]);
     legacyDb.close();
 
     // Opening with SubagentHistoryStore should trigger ensureColumn migration
@@ -706,5 +830,36 @@ describe('subagent history persistence and display_name compatibility', () => {
     const newFromList = all.find((t) => t.id === 'subtask_post_migration');
     expect(legacyFromList?.display_name).toBeUndefined();
     expect(newFromList?.display_name).toBe('Post Migration Task');
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      const sessionIndexes = () =>
+        db
+          .prepare(`
+            SELECT name, rootpage FROM sqlite_master
+            WHERE name LIKE 'idx_subagent_tasks_session_%'
+            ORDER BY name
+          `)
+          .all();
+      const indexes = sessionIndexes();
+      expect(indexes).toEqual([
+        {
+          name: 'idx_subagent_tasks_session_cost',
+          rootpage: expect.any(Number),
+        },
+        {
+          name: 'idx_subagent_tasks_session_status',
+          rootpage: expect.any(Number),
+        },
+      ]);
+      for (let open = 0; open < 2; open++) {
+        const reopened = createHistoryStore();
+        expect(reopened.listTasks(tmp)).toEqual(all);
+        expect(sessionIndexes()).toEqual(indexes);
+        reopened.close();
+      }
+    } finally {
+      db.close();
+    }
   });
 });

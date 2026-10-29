@@ -1,5 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
+import { subscribeAnimationClock } from './animation-clock.js';
 import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
@@ -25,7 +26,6 @@ import {
   renderPanel,
   safely,
   singleLine,
-  WORK_PANEL_ANIMATION_INTERVAL_MS,
   workPanelRenderStatus,
 } from './work-panel-render.js';
 import { workPanelRegistry } from './work-panel-state.js';
@@ -76,7 +76,9 @@ export function createWorkPanelHost(
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let suspended = false;
   let dismissDetail: (() => void) | undefined;
-  let renderTimer: ReturnType<typeof setTimeout> | undefined;
+  let retentionTimer: ReturnType<typeof setTimeout> | undefined;
+  let removeAnimation: (() => void) | undefined;
+  let providerDirty = false;
   let statusCue: string | undefined;
   let panelWidth: number | undefined;
   let panelTui: TUI | undefined;
@@ -177,7 +179,7 @@ export function createWorkPanelHost(
     ) {
       clearCloseArm();
       safely(() => entry.provider.close(entry.row.id), undefined);
-      host.refresh();
+      refreshNow();
       return;
     }
     clearCloseArm();
@@ -188,7 +190,7 @@ export function createWorkPanelHost(
     );
     closeTimer = setTimeout(() => {
       clearCloseArm();
-      host.refresh();
+      refreshNow();
     }, CLOSE_ARM_MS);
     closeTimer.unref?.();
   }
@@ -254,7 +256,7 @@ export function createWorkPanelHost(
             selected: sectionSelected,
             select(next) {
               selectedKey = next.key;
-              host.refresh();
+              refreshNow();
             },
             closeItem: handleClose,
             clearCloseArm,
@@ -302,11 +304,11 @@ export function createWorkPanelHost(
       suspended = false;
       dismissDetail = undefined;
       safely(releaseFocus, undefined);
-      safely(() => host.refresh(), undefined);
+      safely(refreshNow, undefined);
     };
     try {
       releaseFocus();
-      host.refresh();
+      refreshNow();
       return Promise.resolve(show()).then(
         () => {
           finished();
@@ -331,7 +333,7 @@ export function createWorkPanelHost(
     if (!rootEditorInputActive() || ctx.ui.getEditorText?.() !== '') {
       if (focused) {
         releaseFocus();
-        host.refresh();
+        refreshNow();
       }
       return undefined;
     }
@@ -362,25 +364,26 @@ export function createWorkPanelHost(
       if (entry?.sectionSummary) return undefined;
       if (entry) handleClose(entry);
     } else return undefined;
-    host.refresh();
+    refreshNow();
     return { consume: true };
   }
 
-  function stopRenderTimer(): void {
-    if (renderTimer) clearTimeout(renderTimer);
-    renderTimer = undefined;
+  function stopRetentionTimer(): void {
+    if (retentionTimer) clearTimeout(retentionTimer);
+    retentionTimer = undefined;
   }
   function scheduleRender(): void {
-    stopRenderTimer();
+    stopRetentionTimer();
     const now = Date.now();
     let delay = Infinity;
+    let animating = false;
     for (const { provider, rows } of sections()) {
       if (
         rows.some(({ row }) =>
           ['running', 'in_progress'].includes(workPanelRenderStatus(row)),
         )
       ) {
-        delay = Math.min(delay, WORK_PANEL_ANIMATION_INTERVAL_MS);
+        animating = true;
       }
       for (const { row } of rows) {
         const expiresAt =
@@ -391,10 +394,33 @@ export function createWorkPanelHost(
           delay = Math.min(delay, expiresAt - now);
       }
     }
-    if (Number.isFinite(delay)) {
-      renderTimer = setTimeout(() => host.refresh(), delay);
-      renderTimer.unref?.();
+    if (animating) {
+      removeAnimation ??= subscribeAnimationClock(() => {
+        if (providerDirty) refreshNow();
+        else {
+          scheduleRender();
+          requestRender?.();
+        }
+      });
+    } else {
+      removeAnimation?.();
+      removeAnimation = undefined;
     }
+    if (Number.isFinite(delay)) {
+      retentionTimer = setTimeout(refreshNow, delay);
+      retentionTimer.unref?.();
+    }
+  }
+
+  function refreshNow(): void {
+    if (disposed) return;
+    if (!installed && loaded && providers().length) install();
+    if (!installed) return;
+    providerDirty = false;
+    const count = rows().length;
+    scheduleRender();
+    refreshStatusCue(count, true);
+    requestRender?.();
   }
 
   const host: WorkPanelHost = {
@@ -444,23 +470,21 @@ export function createWorkPanelHost(
         provider.close(entry.row.id);
         return 'ok' as const;
       }, 'unavailable' as WorkPanelActionResult);
-      host.refresh();
+      refreshNow();
       return Promise.resolve(result);
     },
     refresh() {
       if (disposed) return;
-      if (!installed && loaded && providers().length) install();
-      if (!installed) return;
-      const count = rows().length;
-      scheduleRender();
-      refreshStatusCue(count, true);
-      requestRender?.();
+      if (removeAnimation) providerDirty = true;
+      else refreshNow();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       releaseFocus();
-      stopRenderTimer();
+      stopRetentionTimer();
+      removeAnimation?.();
+      removeAnimation = undefined;
       dismissDetail?.();
       slot?.dispose();
       removeLifecycle?.();
@@ -533,8 +557,8 @@ export function createWorkPanelHost(
     tui = slot.tui;
     installed = true;
   }
-  const removePreferences = subscribeUIPreferences(() => host.refresh());
-  removeLifecycle = onWorkPanelLifecycleChanged(ctx, () => host.refresh());
+  const removePreferences = subscribeUIPreferences(refreshNow);
+  removeLifecycle = onWorkPanelLifecycleChanged(ctx, refreshNow);
   host.ready = (async () => {
     [agent, toolkit, primitives] = await Promise.all([
       import('@earendil-works/pi-coding-agent').catch(() => undefined),

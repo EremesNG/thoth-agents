@@ -244,6 +244,280 @@ describe('subagent task-state publication', () => {
     }
   });
 
+  it('coalesces activity, usage and previews across four tasks into one leading and one latest trailing snapshot', () => {
+    vi.useFakeTimers();
+    const { events, snapshots } = collectSnapshots();
+    const tasks = ['a', 'b', 'c', 'd'].map((id) =>
+      task({ id, status: 'running' }),
+    );
+    const source = taskSource(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      vi.advanceTimersByTime(150);
+      snapshots.length = 0;
+      source.listSessionHistoryByCost.mockClear();
+      source.snapshotSessionTaskCounts.mockClear();
+
+      for (const entry of tasks) {
+        entry.output_preview = `first ${entry.id}`;
+        source.update();
+      }
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0].data.tasks.map(({ preview }) => preview)).toEqual([
+        'first a',
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(source.listSessionHistoryByCost).toHaveBeenCalledTimes(1);
+      expect(source.snapshotSessionTaskCounts).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(100);
+      for (const entry of tasks) {
+        entry.output_preview = `latest ${entry.id}`;
+        entry.last_activity_at = '2026-01-01T00:00:01.000Z';
+        entry.usage = {
+          input: 12,
+          output: 34,
+          cost: 0.125,
+          cacheRead: 0,
+          cacheWrite: 0,
+          contextTokens: 0,
+          turns: 1,
+        };
+        source.update();
+      }
+      vi.advanceTimersByTime(49);
+      expect(snapshots).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1].data.tasks.map(({ preview }) => preview)).toEqual([
+        'latest a',
+        'latest b',
+        'latest c',
+        'latest d',
+      ]);
+      expect(
+        snapshots[1].data.tasks.every(
+          ({ lastActivityAt }) => lastActivityAt === 1767225601000,
+        ),
+      ).toBe(true);
+      expect(snapshots[1].data.tasks.map(({ usage }) => usage)).toEqual([
+        { input: 12, output: 34, cost: 0.125 },
+        { input: 12, output: 34, cost: 0.125 },
+        { input: 12, output: 34, cost: 0.125 },
+        { input: 12, output: 34, cost: 0.125 },
+      ]);
+      expect(source.listSessionHistoryByCost).toHaveBeenCalledTimes(2);
+      expect(source.snapshotSessionTaskCounts).toHaveBeenCalledTimes(2);
+      expect(snapshots.every(({ data }) => isSubagentsSnapshot(data))).toBe(
+        true,
+      );
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(300);
+      expect(snapshots).toHaveLength(2);
+      source.update();
+      expect(snapshots).toHaveLength(3);
+    } finally {
+      publisher.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    'addition',
+    'removal',
+    'replacement',
+    'status',
+  ] as const)('publishes a task %s immediately during a pending activity window', (change) => {
+    vi.useFakeTimers();
+    const { events, snapshots } = collectSnapshots();
+    const tasks = [
+      task({ status: 'running' }),
+      task({ id: 'task-b', status: 'running' }),
+    ];
+    const source = taskSource(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      vi.advanceTimersByTime(50);
+      tasks[0].output_preview = 'pending activity';
+      source.update();
+      expect(snapshots).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(1);
+
+      switch (change) {
+        case 'addition':
+          tasks.push(task({ id: 'task-c', status: 'queued' }));
+          break;
+        case 'removal':
+          tasks.pop();
+          break;
+        case 'replacement':
+          tasks[1] = task({ id: 'task-c', status: 'running' });
+          break;
+        case 'status':
+          tasks[1].status = 'completed';
+          break;
+      }
+      source.update();
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1].data.tasks[0].preview).toBe('pending activity');
+      const expectedTasks = {
+        addition: [
+          ['task-a', 'running'],
+          ['task-b', 'running'],
+          ['task-c', 'queued'],
+        ],
+        removal: [['task-a', 'running']],
+        replacement: [
+          ['task-a', 'running'],
+          ['task-c', 'running'],
+        ],
+        status: [
+          ['task-a', 'running'],
+          ['task-b', 'completed'],
+        ],
+      };
+      expect(
+        snapshots[1].data.tasks.map(({ id, status }) => [id, status]),
+      ).toEqual(expectedTasks[change]);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(150);
+      expect(snapshots).toHaveLength(2);
+    } finally {
+      publisher.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['effort', { effort: 'high' }, 'high'],
+    ['model', { model: 'provider/new-model' }, 'provider/new-model'],
+    ['model', { model: undefined }, undefined],
+    ['displayName', { display_name: 'New name' }, 'New name'],
+    ['agent', { agent: 'reviewer' }, 'reviewer'],
+    ['mode', { mode: 'task' }, 'task'],
+    ['createdAt', { created_at: '2026-01-01T00:00:01.000Z' }, 1767225601000],
+    ['startedAt', { started_at: '2026-01-01T00:00:01.000Z' }, 1767225601000],
+    ['endedAt', { ended_at: '2026-01-01T00:00:02.000Z' }, 1767225602000],
+  ] as const)('publishes a same-status %s change (%j) immediately during a pending activity window', (field, change, expected) => {
+    vi.useFakeTimers();
+    const { events, snapshots } = collectSnapshots();
+    const tasks = [
+      task({
+        status: 'running',
+        effort: 'low',
+        model: 'provider/old-model',
+        display_name: 'Old name',
+      }),
+    ];
+    const source = taskSource(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      vi.advanceTimersByTime(50);
+      tasks[0].output_preview = 'pending activity';
+      source.update();
+      expect(snapshots).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(1);
+
+      Object.assign(tasks[0], change);
+      source.update();
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1].data.tasks[0]).toMatchObject({
+        status: 'running',
+        preview: 'pending activity',
+      });
+      expect(snapshots[1].data.tasks[0][field]).toBe(expected);
+      expect(isSubagentsSnapshot(snapshots[1].data)).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(150);
+      expect(snapshots).toHaveLength(2);
+    } finally {
+      publisher.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers requests immediately with the latest complete state and cancels pending activity publication', () => {
+    vi.useFakeTimers();
+    const { events, snapshots } = collectSnapshots();
+    const tasks = [task({ status: 'running' })];
+    const source = taskSource(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      vi.advanceTimersByTime(50);
+      tasks[0].output_preview = 'pending activity';
+      source.update();
+      expect(snapshots).toHaveLength(1);
+      request(events, SUBAGENTS_STATE_REQUEST, {
+        sessionId: 'parent-a',
+        source: 'consumer',
+        data: {},
+      });
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1].data.tasks[0].preview).toBe('pending activity');
+      expect(isSubagentsSnapshot(snapshots[1].data)).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(100);
+      tasks[0].output_preview = 'after request';
+      source.update();
+      expect(snapshots).toHaveLength(2);
+      vi.advanceTimersByTime(50);
+      expect(snapshots).toHaveLength(3);
+      expect(snapshots[2].data.tasks[0].preview).toBe('after request');
+    } finally {
+      publisher.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['dispose', undefined],
+    ['end', undefined],
+    ['replace', 'parent-b'],
+    ['refresh', 'parent-a'],
+  ] as const)('clears pending activity publication on session %s', (action, sessionId) => {
+    vi.useFakeTimers();
+    const { events, snapshots } = collectSnapshots();
+    const tasks = [
+      task({ status: 'running' }),
+      task({ id: 'task-b', session_id: 'parent-b', status: 'running' }),
+    ];
+    const source = taskSource(tasks);
+    const publisher = new SubagentsStatePublisher(events, source);
+    try {
+      publisher.startSession('/workspace', 'parent-a');
+      vi.advanceTimersByTime(50);
+      tasks[0].output_preview = 'old session activity';
+      source.update();
+      expect(snapshots).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(1);
+      if (action === 'dispose') publisher.dispose();
+      else publisher.startSession('/workspace', sessionId);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(snapshots).toHaveLength(sessionId ? 2 : 1);
+      if (action === 'replace') {
+        expect(snapshots[1].sessionId).toBe('parent-b');
+        expect(snapshots[1].data.tasks.map(({ id }) => id)).toEqual(['task-b']);
+      }
+      snapshots.length = 0;
+      vi.advanceTimersByTime(300);
+      expect(snapshots).toEqual([]);
+      if (action === 'dispose' || action === 'end') {
+        source.update();
+        expect(snapshots).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+      }
+    } finally {
+      publisher.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it('reuses the manager 150-ms activity coalescing without delaying lifecycle transitions', async () => {
     env.writeAgent('worker');
     let reportActivity!: (activity: SubagentActivity) => void;
@@ -404,7 +678,8 @@ describe('subagent task-state publication', () => {
     expect(snapshots).toEqual([]);
   });
 
-  it('publishes complete live counts and freshly read persisted totals for the switched session on each manager update', () => {
+  it('publishes complete live counts and freshly read history and totals for the switched session on each publication', () => {
+    vi.useFakeTimers();
     const { events, snapshots } = collectSnapshots();
     const tasks = [
       task(),
@@ -469,12 +744,57 @@ describe('subagent task-state publication', () => {
         '/workspace-b',
         'parent-b',
       );
+      source.listSessionHistoryByCost.mockClear();
+      source.snapshotSessionTaskCounts.mockClear();
+      vi.advanceTimersByTime(150);
+      source.snapshotSessionTaskCounts.mockReturnValue({
+        counts: { stopping: 1, completed: 3 },
+        statusesById: new Map(),
+      });
+      source.update();
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1].data.totals).toMatchObject({
+        total: 4,
+        completed: 3,
+      });
+
+      vi.advanceTimersByTime(50);
+      source.snapshotSessionTaskCounts.mockReturnValue({
+        counts: { stopping: 1, completed: 4 },
+        statusesById: new Map(),
+      });
+      source.update();
+      vi.advanceTimersByTime(99);
+      expect(snapshots).toHaveLength(2);
+      expect(source.snapshotSessionTaskCounts).toHaveBeenCalledTimes(1);
+      expect(source.listSessionHistoryByCost).toHaveBeenCalledTimes(1);
+      // Changes persisted after the notification must be read at publication time.
+      source.snapshotSessionTaskCounts.mockReturnValue({
+        counts: { stopping: 1, completed: 5 },
+        statusesById: new Map(),
+      });
+      source.listSessionHistoryByCost.mockReturnValue([
+        task({ id: 'latest-history', session_id: 'parent-b' }),
+      ]);
+      vi.advanceTimersByTime(1);
+      expect(snapshots).toHaveLength(3);
+      expect(snapshots[2].data.totals).toMatchObject({
+        total: 6,
+        completed: 5,
+      });
+      expect(snapshots[2].data.counts.stopping).toBe(1);
+      expect(snapshots[2].data.history.map(({ id }) => id)).toEqual([
+        'latest-history',
+      ]);
+      expect(source.snapshotSessionTaskCounts).toHaveBeenCalledTimes(2);
+      expect(source.listSessionHistoryByCost).toHaveBeenCalledTimes(2);
       snapshots.length = 0;
       publisher.startSession('/workspace-b', undefined);
       source.update();
       expect(snapshots).toEqual([]);
     } finally {
       publisher.dispose();
+      vi.useRealTimers();
     }
     snapshots.length = 0;
     source.update();

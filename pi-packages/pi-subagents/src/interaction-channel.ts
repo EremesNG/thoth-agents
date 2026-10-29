@@ -232,8 +232,10 @@ export function consumeInteractionResponse(
   return response;
 }
 
+const INTERACTION_TRANSPORT_MARKER = 'interaction_required:';
+
 export function sanitizeInteractionTransportText(text: string): string {
-  if (!text) return text;
+  if (!text || !text.includes(INTERACTION_TRANSPORT_MARKER)) return text;
   return text.replace(
     /interaction_required:[^\r\n]*/g,
     '[interaction request hidden]',

@@ -116,7 +116,7 @@ const BACKGROUND_ORCHESTRATION_GUIDELINES = [
 ];
 
 export function registerTools(pi: ExtensionAPI): void {
-  const detection = detectShells();
+  const detection = detectShells(undefined, { registration: true });
   const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
   const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||; use 5.1-compatible syntax.' : ''} Revalidated at launch.`;
   const fields = {

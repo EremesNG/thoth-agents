@@ -10,6 +10,52 @@ const validation = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); 
 
 export interface PowerShellConfig { executable: string; args: string[]; edition: string; version: string }
 
+type DetectionResult = PowerShellConfig | string;
+interface DetectionCache { version: 1; entries: Map<string, DetectionResult> }
+const detectionCacheKey = Symbol.for('thoth.pi-background-tasks.powershell-detection.v1');
+const shared = globalThis as typeof globalThis & { [detectionCacheKey]?: unknown };
+
+function detectionCache(): Map<string, DetectionResult> | undefined {
+  try {
+    if (shared[detectionCacheKey] === undefined) {
+      shared[detectionCacheKey] = { version: 1, entries: new Map() };
+    }
+    const state = shared[detectionCacheKey] as DetectionCache | null;
+    if (state?.version !== 1) return undefined;
+    const entries = state.entries;
+    if (!(entries instanceof Map)) return undefined;
+    for (const [key, config] of entries) {
+      if (typeof key !== 'string') return undefined;
+      if (typeof config === 'string') continue;
+      if (!config || typeof config.executable !== 'string'
+        || !Array.isArray(config.args) || !config.args.every(arg => typeof arg === 'string')
+        || typeof config.edition !== 'string' || typeof config.version !== 'string') return undefined;
+    }
+    return entries;
+  } catch {
+    // Foreign records and accessors must not break extension activation.
+    return undefined;
+  }
+}
+
+/** Registration only: share discovery across independently loaded extension copies. */
+export function resolvePowerShellConfigForRegistration(): PowerShellConfig {
+  const key = JSON.stringify([process.platform, process.env.PI_BACKGROUND_TASKS_PWSH, process.env.PATH,
+    process.env.SystemRoot, process.env.ProgramFiles, process.env.LOCALAPPDATA, process.cwd()]);
+  let cache = detectionCache();
+  let result: DetectionResult | undefined;
+  try { result = cache?.get(key); }
+  catch { cache = undefined; }
+  if (result === undefined) {
+    try { result = resolvePowerShellConfig(); }
+    catch (error) { result = error instanceof Error ? error.message : String(error); }
+    try { cache?.set(key, result); }
+    catch { /* An incompatible cache must not turn successful discovery into failure. */ }
+  }
+  if (typeof result === 'string') throw new Error(result);
+  return result;
+}
+
 /** Trusted shell discovery only; user commands always launch inside the Job Object. */
 export function resolvePowerShellConfig(): PowerShellConfig {
   const windows = process.platform === 'win32';

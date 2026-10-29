@@ -1,3 +1,4 @@
+export { subscribeAnimationClock } from './animation-clock.js';
 export type {
   BackgroundCounts,
   BackgroundSnapshot,

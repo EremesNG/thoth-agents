@@ -1,6 +1,9 @@
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveSubagentHistoryDbPath } from '../src/history.js';
+import {
+  resolveSubagentHistoryDbPath,
+  type SubagentHistoryStore,
+} from '../src/history.js';
 import { TERMINAL_STATUSES } from '../src/types.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
@@ -17,13 +20,43 @@ function retentionIndexes(db: InstanceType<typeof DatabaseSync>) {
     .all();
 }
 
-afterEach(() => {
+const pruningCleanups: (() => Promise<void>)[] = [];
+
+function createPruner() {
+  const controller = new AbortController();
+  const pending: Promise<unknown>[] = [];
+  pruningCleanups.push(async () => {
+    controller.abort();
+    await Promise.all(pending);
+  });
+  return (
+    history: SubagentHistoryStore,
+    options: Parameters<SubagentHistoryStore['pruneExecutionDetail']>[0],
+  ) => {
+    const pruning = history.pruneExecutionDetail({
+      ...options,
+      signal: controller.signal,
+    });
+    // Handle failures immediately without swallowing the promise the test awaits.
+    pending.push(pruning.catch(() => {}));
+    const draining = vi.runAllTimersAsync().then(() => pruning);
+    // Let a timed-out body unwind its own finally before closing its stores.
+    pending.push(draining.catch(() => {}));
+    return draining;
+  };
+}
+
+afterEach(async () => {
+  // Vitest's default stack order runs this before env closes stores/removes the DB.
+  for (const cleanup of pruningCleanups) await cleanup();
+  pruningCleanups.length = 0;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe('time-sliced history pruning', () => {
   it('lazily indexes legacy detail during pruning and keeps repeated passes idempotent', async () => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     history.upsertTask(env.tmp, {
       id: 'legacy',
@@ -45,12 +78,7 @@ describe('time-sliced history pruning', () => {
         "UPDATE subagent_task_attempts SET system_prompt = 'legacy attempt detail'",
       );
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      const pruning = history.pruneExecutionDetail({
-        olderThanMs,
-        now: () => 0,
-      });
-      await vi.runAllTimersAsync();
-      expect(await pruning).toEqual({
+      expect(await prune(history, { olderThanMs, now: () => 0 })).toEqual({
         tasksCleared: 1,
         attemptsCleared: 1,
         eventsDeleted: 0,
@@ -68,12 +96,7 @@ describe('time-sliced history pruning', () => {
       expect(
         history.listTaskAttempts(env.tmp, 'legacy')[0]?.system_prompt,
       ).toBeUndefined();
-      const again = otherHistory.pruneExecutionDetail({
-        olderThanMs,
-        now: () => 0,
-      });
-      await vi.runAllTimersAsync();
-      expect(await again).toEqual({
+      expect(await prune(otherHistory, { olderThanMs, now: () => 0 })).toEqual({
         tasksCleared: 0,
         attemptsCleared: 0,
         eventsDeleted: 0,
@@ -86,6 +109,7 @@ describe('time-sliced history pruning', () => {
   });
 
   it('skips a busy index build without scanning or clearing detail and retries on a later pass', async () => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     history.upsertTask(env.tmp, {
       id: 'busy',
@@ -130,9 +154,7 @@ describe('time-sliced history pruning', () => {
       writer.exec('ROLLBACK');
       locked = false;
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      const retry = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
-      await vi.runAllTimersAsync();
-      expect(await retry).toEqual({
+      expect(await prune(history, { olderThanMs, now: () => 0 })).toEqual({
         tasksCleared: 1,
         attemptsCleared: 0,
         eventsDeleted: 0,
@@ -147,13 +169,14 @@ describe('time-sliced history pruning', () => {
   });
 
   it('uses the partial indexes for the actual detail-first candidate queries instead of table scans', async () => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     history.listTasks(env.tmp);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
-    const pruning = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
-    await vi.runAllTimersAsync();
-    expect(await pruning).toMatchObject({ busy: false });
+    expect(await prune(history, { olderThanMs, now: () => 0 })).toMatchObject({
+      busy: false,
+    });
     const queries = prepare.mock.calls
       .map(([sql]) => sql)
       .filter((sql) =>
@@ -185,9 +208,11 @@ describe('time-sliced history pruning', () => {
         'SCAN subagent_tasks',
         'SCAN subagent_task_attempts',
       ]);
-      const again = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
-      await vi.runAllTimersAsync();
-      expect(await again).toMatchObject({ busy: false });
+      expect(await prune(history, { olderThanMs, now: () => 0 })).toMatchObject(
+        {
+          busy: false,
+        },
+      );
       // EXPLAIN alone can retain this observer's pre-build schema cache.
       expect(retentionIndexes(db)).toHaveLength(2);
       const indexedPlans = plans();
@@ -214,6 +239,7 @@ describe('time-sliced history pruning', () => {
     column,
     value,
   }) => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     for (const id of ['old-0', 'old-1'])
       history.upsertTask(env.tmp, {
@@ -290,13 +316,9 @@ describe('time-sliced history pruning', () => {
       return result;
     });
     try {
-      const pruning = history.pruneExecutionDetail({
-        olderThanMs,
-        batchSize: 1,
-        now: () => 0,
-      });
-      await vi.runAllTimersAsync();
-      expect(await pruning).toEqual({
+      expect(
+        await prune(history, { olderThanMs, batchSize: 1, now: () => 0 }),
+      ).toEqual({
         tasksCleared: 1,
         attemptsCleared: 0,
         eventsDeleted: 0,
@@ -318,6 +340,7 @@ describe('time-sliced history pruning', () => {
   });
 
   it('shrinks slow committed slices to one row, regrows fast batches, and rests between every slice', async () => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     for (let index = 0; index < 25; index++)
       history.upsertTask(env.tmp, {
@@ -382,13 +405,9 @@ describe('time-sliced history pruning', () => {
       return exec.call(this, sql);
     });
 
-    const pruning = history.pruneExecutionDetail({
-      olderThanMs,
-      batchSize: 4,
-      now: () => elapsed,
-    });
-    await vi.runAllTimersAsync();
-    expect(await pruning).toEqual({
+    expect(
+      await prune(history, { olderThanMs, batchSize: 4, now: () => elapsed }),
+    ).toEqual({
       tasksCleared: 25,
       attemptsCleared: 0,
       eventsDeleted: 0,
@@ -413,7 +432,9 @@ describe('time-sliced history pruning', () => {
     });
   });
 
+  // Large legacy blobs and 80k inserts need headroom on slow Windows runners.
   it('starts heavy tables at one row, grows tiny event batches to a cap, and preserves history in a large legacy database', async () => {
+    const prune = createPruner();
     const history = env.createHistoryStore();
     for (let index = 0; index < 14; index++)
       history.upsertTask(env.tmp, {
@@ -504,12 +525,7 @@ describe('time-sliced history pruning', () => {
         return statement;
       });
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      const pruning = history.pruneExecutionDetail({
-        olderThanMs,
-        now: () => 0,
-      });
-      await vi.runAllTimersAsync();
-      expect(await pruning).toEqual({
+      expect(await prune(history, { olderThanMs, now: () => 0 })).toEqual({
         tasksCleared: 12,
         attemptsCleared: 14,
         eventsDeleted: 80000,
@@ -546,9 +562,7 @@ describe('time-sliced history pruning', () => {
       expect(
         db.prepare('SELECT COUNT(*) AS count FROM subagent_events').get(),
       ).toEqual({ count: 0 });
-      const again = history.pruneExecutionDetail({ olderThanMs, now: () => 0 });
-      await vi.runAllTimersAsync();
-      expect(await again).toEqual({
+      expect(await prune(history, { olderThanMs, now: () => 0 })).toEqual({
         tasksCleared: 0,
         attemptsCleared: 0,
         eventsDeleted: 0,
@@ -557,5 +571,5 @@ describe('time-sliced history pruning', () => {
     } finally {
       db.close();
     }
-  });
+  }, 60_000);
 });

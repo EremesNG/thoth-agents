@@ -1351,6 +1351,42 @@ it('requests subagent state, ranks live and persisted cost from state snapshots 
   expect(app.listeners.get(SUBAGENTS_STATE_CHANNEL.name)?.size).toBe(0);
 });
 
+it('marks the running subagent and the total, and clears both once the task leaves the live snapshot', () => {
+  const app = setup();
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({ panels: [{ id: 'cost', visible: true }] }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  const send = (data: ReturnType<typeof stateSnapshot>) =>
+    publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+      sessionId: 'session',
+      source: 'test',
+      data,
+    });
+  const line = (text: string) => {
+    app.tui.renderNow(true);
+    return (
+      app
+        .screen()
+        .split('\n')
+        .find((row) => row.includes(text)) ?? ''
+    );
+  };
+  send(stateSnapshot(1));
+  expect(line('Fix auth')).toContain('↑');
+  expect(line('Old review')).not.toContain('↑');
+  expect(line('COST')).toContain('$3.00↑');
+  // The runtime stops reporting the task without ever giving it an end time.
+  send({ ...stateSnapshot(1), tasks: [] });
+  expect(line('Fix auth')).toContain('Fix auth');
+  expect(line('Fix auth')).not.toContain('↑');
+  expect(line('COST')).toContain('$3.00');
+  expect(line('COST')).not.toContain('↑');
+  app.shutdown();
+});
+
 it('lists Cost last and appends it to saved orders without rearranging them', () => {
   const app = setup();
   writeFileSync(

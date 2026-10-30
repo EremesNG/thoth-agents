@@ -33,7 +33,7 @@ guaranteed on every version.
   default width (**←/→**, **Shift** steps four, 36–72). **Enter** saves to
   `thoth-sidebar.json`; **Esc** or **q** cancels. A saved width applies immediately.
 - `/sidebar cost` opens an overlay with cumulative subagent cost curves per task
-  over time; **q** or **Esc** closes it.
+  over time, colored like the Cost panel's legend; **q** or **Esc** closes it.
 - `/sidebar panels` lists panel ids in order, including unavailable saved ids.
 - `/sidebar panels show|hide|up|down <id>` changes panel visibility or order.
 - `/sidebar startup auto|manual|off` saves the next session's startup preference.
@@ -99,18 +99,39 @@ are never rearranged; Cost is appended when missing.
   counts remain provider totals and full history remains in `/subagents`, `/bg`
   and `/todos`. Only displayed sources are declared absorbed; their work-panel
   sections return when hidden, too small, too narrow or disposed.
-- **Cost**: horizontal bars for the five most expensive subagent tasks of the
-  session, live and persisted, labeled by task display name (or a short name
-  derived from the Agents row's task summary, with leading PHASE/CHANGE dispatch
-  envelopes, Repo root phrases and absolute path tokens stripped, and the change name retained) and scaled to the
-  largest with eighth blocks (`#` in ASCII). The header shows the session
-  subagent total and the footer `/sidebar cost ▸ curves`. Data comes from the
+- **Cost**: how the session's subagent cost splits across tasks, live and
+  persisted. The first body row is one share-of-total bar over the full inner
+  width: each legend entry owns a segment sized by its share of the panel total
+  (the larger of the reported subagent total and the tracked task sum) with
+  largest-remainder rounding and at least one cell each. Every segment but the
+  last ends in a half block `▌` so neighbours stay distinct without color, and
+  nothing is scaled by the largest task; ASCII fills each segment with its legend
+  digit (`1`–`0`) and the remainder with `.`. Below the bar a ranked legend
+  shows at most five entries: a marker in the segment's color, the task display
+  name (or a short name derived from the Agents row's task summary, with leading
+  PHASE/CHANGE dispatch envelopes, Repo root phrases and absolute path tokens
+  stripped, and the change name retained) truncated with `…` to the width left
+  after the columns (at least 30 cells at 50 columns, 14 at 36), the integer
+  share (muted; `<1%` below one percent; each share is rounded on its own, so
+  they may not add up to 100) and the amount; the share column is dropped below
+  an inner width of 28. With more than five tasks, or untracked cost (panel
+  total minus tracked total) of at least half a cent, the legend shows the top
+  four tasks and a muted `░` remainder entry, `+N more tasks` (`+1 more task`;
+  `other` when no task is hidden), whose share and amount are the panel total
+  minus the four shown. A running task gets an accent `↑` (`^` in ASCII) in a
+  trailing column reserved on every row, so labels never shift, and the header
+  total shows `↑` while any task runs; running follows the latest live
+  snapshot, so a task that disappears from it stops being marked. Segment and
+  marker colors follow the rank and come from the palette shared with the
+  curves view (warning/amber first, error/red last), so rank N has the same
+  color and ASCII digit in both views. The header shows the panel total and the
+  footer `/sidebar cost ▸ curves`. Data comes from the
   `thoth:subagents:state` v2 snapshots (including up to 100 cost-ranked
   persisted summaries in `history`); the curves view retains the top ten and plots cumulative cost samples recorded
   from them during this session against elapsed time since each task's start,
   with a duration axis from zero to the longest task duration (running tasks use
   the current time). Tasks without samples draw a straight segment from `(0,0)`
-  to `(duration, final cost)`. Curve legends show `agent · label` (once when identical); sidebar bars keep the label alone.
+  to `(duration, final cost)`. Curve legends show `agent · label` (once when identical); the sidebar legend keeps the label alone.
 
 ### Degradation
 
@@ -120,15 +141,21 @@ in configured order, whole rows at a time. Metric rows are indivisible: when a
 row needs more than the minimum body, `+N more` occupies that body until enough
 height is available. A work or Cost panel that does not fit shows its first rows
 and `+N more`, with its detail command right-aligned on that line when both fit.
-Otherwise the command is omitted; standalone footers drop before rows.
+Otherwise the command is omitted; standalone footers drop before rows. Cost
+keeps its bar and first legend entry together as one block and folds the other
+entries from the bottom, so its `+N more` counts hidden tasks (a folded
+remainder entry counts all the tasks it covers); below that block it collapses to
+its title and total, never a bare count.
 Panels whose minimum cannot fit retain their title and summary. Gaps drop first
 when necessary to keep every title; only when height is smaller than the number
 of titles is an unavoidable bounded prefix shown. Measured height equals actual
 rendered height. Below 24 columns the sidebar shows only
 `widen: /sidebar resize`. Rendering is event-driven and cached: no session
-traversal per render. The shared 100 ms cadence runs only for visible animated
-work rows, not finished history; plan keys include retained rows, source
-summaries, workspace, cost revision and animation frame.
+traversal per render. Cost reads only what the tracker cached when a snapshot
+arrived (ranking, total, task count and running flags). The shared 100 ms
+cadence runs only for visible animated work rows, not finished history; plan
+keys include retained rows, source summaries, workspace, cost revision (which
+also changes when a task starts or stops running) and animation frame.
 
 ## Preferences
 
@@ -188,6 +215,8 @@ pnpm --filter @thoth-agents/pi-sidebar build
   Use existing source commands or restore the Work panel with `/sidebar off`
   for actions. Cost curves show only progression observed while the sidebar ran;
   tasks first seen in persisted history are drawn as a straight segment.
+- Cost draws `●` and `↑`, which some terminals render two cells wide; legend
+  rows can then misalign, and ASCII icon mode avoids both glyphs.
 - Real-terminal checks in both modes remain necessary, particularly scrollback,
   mouse dragging, focus restoration and terminal/custom keybinding behavior.
 

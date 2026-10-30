@@ -114,7 +114,7 @@ event-driven and works without the theme. Shared root `formatCwd` abbreviates
 paths; porcelain v2 and numstat compare tracked changes against HEAD. Work
 panels show discovery summaries, degrading columns and detail-command footers.
 `/sidebar settings` persists visibility/order/startup/default width;
-`/sidebar cost` shows cumulative curves behind the top-ten task-cost bars.
+`/sidebar cost` shows cumulative curves behind the share-of-total Cost bar.
 
 pi-core's process-wide UI-preferences registry unions owner-declared absorbed
 work sources. The host excludes them from rendering, selection and focus until

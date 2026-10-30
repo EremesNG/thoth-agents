@@ -487,3 +487,122 @@ it('reuses the plan across renders and replans only when the cost data revision 
   for (let i = 0; i < 20; i++) expect(panel.render(44)).toBe(second);
   expect(ranked).toHaveBeenCalledTimes(settled);
 });
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: SGR stripping
+const stripSgr = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, '');
+const liveTask = (
+  id: string,
+  cost: number,
+  status: 'running' | 'completed',
+) => ({
+  id,
+  agent: 'worker',
+  displayName: `Task ${id}`,
+  mode: 'task' as const,
+  status,
+  createdAt: 0,
+  usage: { cost },
+});
+const stateOf = (...tasks: ReturnType<typeof liveTask>[]) => ({
+  tasks,
+  history: [],
+  counts: {} as never,
+  totals: {} as never,
+});
+
+async function costFixture() {
+  const { CostTracker } = await import('../src/panels/cost.js');
+  const data = new CostTracker();
+  const reads = {
+    ranked: vi.spyOn(data, 'ranked'),
+    total: vi.spyOn(data, 'total'),
+    count: vi.spyOn(data, 'count'),
+    active: vi.spyOn(data, 'active'),
+  };
+  const entries = vi.fn(() => []);
+  const panel = new SidebarPanels({
+    config: { startup: 'auto', panels: [{ id: 'cost', visible: true }] },
+    context: () =>
+      ({
+        model: { provider: 'test', id: 'test' },
+        getContextUsage: () => undefined,
+        sessionManager: { getEntries: entries },
+      }) as unknown as ExtensionContext,
+    theme: { fg: (_role, text) => text },
+    thinking: () => 'off',
+    subscriptionProviders: [],
+    subagentCost: () => 0,
+    workspace: () => ({ cwd: '.' }),
+    cost: () => data,
+    height: () => 20,
+  });
+  const readCount = () =>
+    Object.values(reads).map((spy) => spy.mock.calls.length);
+  return { data, panel, entries, readCount };
+}
+
+it('renders Cost from cached tracker state only, with no reads while the revision is unchanged', async () => {
+  const { data, panel, entries, readCount } = await costFixture();
+  data.update(
+    stateOf(liveTask('a', 1, 'running'), liveTask('b', 0.5, 'completed')),
+    1000,
+  );
+  const first = panel.render(50);
+  expect(first.join('\n')).toContain('↑');
+  const settled = readCount();
+  const sessionReads = entries.mock.calls.length;
+  for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(first);
+  expect(readCount()).toEqual(settled);
+  // An identical snapshot changes nothing, so it neither bumps nor replans.
+  const revision = data.revision;
+  data.update(
+    stateOf(liveTask('a', 1, 'running'), liveTask('b', 0.5, 'completed')),
+    2000,
+  );
+  expect(data.revision).toBe(revision);
+  expect(panel.render(50)).toBe(first);
+  expect(readCount()).toEqual(settled);
+  expect(entries.mock.calls.length).toBe(sessionReads);
+});
+
+it('replans Cost when only a running state changes, reading each cached value once', async () => {
+  const { data, panel, entries, readCount } = await costFixture();
+  data.update(stateOf(liveTask('a', 1, 'running')), 1000);
+  const running = panel.render(50);
+  expect(running.join('\n')).toContain('↑');
+  const before = readCount();
+  const sessionReads = entries.mock.calls.length;
+  // Same cost and name; only the task stopped running.
+  data.update(stateOf(liveTask('a', 1, 'completed')), 2000);
+  const idle = panel.render(50);
+  expect(idle).not.toBe(running);
+  expect(idle.join('\n')).not.toContain('↑');
+  const after = readCount();
+  const [ranked, total, count, active] = after.map((n, i) => n - before[i]);
+  expect(ranked).toBeGreaterThanOrEqual(1);
+  expect([total, count, active].every((n) => n >= 1)).toBe(true);
+  // A cost change replans through cached state, never re-reading the session.
+  expect(entries.mock.calls.length).toBe(sessionReads);
+  const settled = readCount();
+  for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(idle);
+  expect(readCount()).toEqual(settled);
+});
+
+it('bounds the work behind a Cost replan by the legend, not by the tracked tasks', async () => {
+  const { data, panel, readCount } = await costFixture();
+  data.update(
+    stateOf(
+      ...Array.from({ length: 200 }, (_, i) =>
+        liveTask(`t${i}`, 0.01 + i / 1000, i % 2 ? 'running' : 'completed'),
+      ),
+    ),
+    1000,
+  );
+  const lines = panel.render(50);
+  expect(data.count()).toBe(200);
+  expect(data.ranked()).toHaveLength(10);
+  // Four ranked tasks and one remainder, however many tasks are tracked.
+  const legend = lines.map(stripSgr).filter((line) => /^│ [●░] /.test(line));
+  expect(legend).toHaveLength(5);
+  expect(Math.max(...readCount())).toBeLessThanOrEqual(3);
+});

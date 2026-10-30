@@ -454,7 +454,8 @@ Esc revert), with a live hint inside the sidebar; fullscreen also supports divid
 startup and default-width overlay (Space, Shift+↑/↓, ←/→; Enter saves, Esc
 cancels). Saved default width applies immediately; resize width and current
 mode/enabled state are session-only. `/sidebar cost` opens cumulative task-cost
-curves from observed snapshots, with straight segments for unsampled history.
+curves from observed snapshots, with straight segments for unsampled history,
+colored like the Cost panel legend.
 
 Session uses pi-core's `computeSessionCost` and
 `combineSessionAndSubagentCost`, shared with the theme; cumulative subagent
@@ -477,10 +478,19 @@ columns), done ✓, actionable failed ✗ (incl. timed out) and muted cancelled 
 zero counts omitted (Todos keeps completed/total). Cancelled/interrupted never
 count as failed; background expected exits and journal-resolved failures do not
 either. Rows are columns (two lines for Agents), with `/subagents`, `/todos`, `/bg` footers; empty panels keep
-a title-plus-command line. Cost shows the top ten live/persisted session task
-costs as bars, using display names or short task-summary names. Curves plot
-elapsed time per task from zero to the longest task duration. Under pressure footers drop before
-rows, panels reduce to titles, and widths below 24 show `/sidebar resize`.
+a title-plus-command line. Cost shows how the session's live/persisted subagent
+cost splits across tasks: one full-width share-of-total bar over a ranked legend
+of at most five entries (display names or short task-summary names, share and
+amount). With more than five tasks, or untracked cost of at least half a cent,
+the legend shows the top four plus a muted `+N more tasks`/`other` remainder
+entry. Running tasks carry an accent `↑` in a reserved column, and the header
+total shows it while any task runs, read from the latest live snapshot. Colors
+follow rank from a series palette shared with the curves view (warning first,
+error last). Curves plot elapsed time per task from zero to the longest task
+duration. Under pressure footers drop before rows, Cost keeps its bar together
+with at least its first legend entry (folding the rest into a `+N more` that
+counts hidden tasks) before collapsing to its title, other panels reduce to
+titles, and widths below 24 show `/sidebar resize`.
 
 The process-wide, owner-tokened `registerUIPreferences` / `updateUIPreferences` /
 `withdrawUIPreferences` registry merges `absorbedWorkPanelSources`. The host

@@ -119,7 +119,7 @@ for owned writes.
   - Focused check and PASS evidence: pi-thoth-theme Vitest suite and typecheck green
   - Return milestone: final report with rendered samples, tests, commands and changed files
   - Stop / reassessment: a glyph needs a shared module outside pi-thoth-theme
-- [ ] AC-4: Routed docs and local closeout gate
+- [x] AC-4: Routed docs and local closeout gate
   - Outcome: `docs/agent/harness-packaging.md` states the single context rule, the remainder arrow and the hairline editor-border bar; Pi sidebar gate green; live check collected
   - Known entrypoints and skill paths: `docs/agent/harness-packaging.md:414–417`, `docs/agent/testing.md:299–400`, `C:/DEV/Proyectos/Webstorm/thoth-agents/skills/thoth-sdd/scripts/validate.mjs`
   - Inputs: accepted AC-1, AC-2 and AC-3 results
@@ -151,27 +151,160 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 81fbd817f96afd42fd81bfa45c21db837d2680fd5788a09e2fa48364ed5e02ad
+
+Fresh Oracle round 1 (task subtask_thoth-oracle_1793386084564_e46e0ffb); harness gate verdict valid, kind final-verification, mode record, recordDigest match.
 
 **Oracle envelope**:
 
 ```thoth-result
-PENDING
+{
+  "schemaVersion": 1,
+  "role": "oracle",
+  "status": "complete",
+  "conclusion": "PASS. No blocking findings. AC-1 through AC-4, Decisions, Non-goals and all three Durable deltas are satisfied.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "integrity",
+      "locator": ".thoth/changes/pi-context-polish/pi-context-polish.md",
+      "claim": "Independently calculated prefix SHA-256 matches the assigned digest. HEAD is 1e0b6862028182ebbce58889b8c06b7de448fce6; the only working-tree change is the AC-4 checkbox. Committed and working-tree diff checks pass.",
+      "basis": "observed",
+      "uncertainty": "None."
+    },
+    {
+      "id": "E2",
+      "kind": "source-review",
+      "locator": "pi-packages/pi-sidebar/src/panels/cost.ts:58-139,193-222,334-340",
+      "claim": "Update sorts all tracked tasks before truncating to ten and caches whether any task at rank five or lower runs. Running-state changes trigger revision increments. Rendering reads cached state; an untracked-only other entry cannot have a hidden running task. Remainder arrows use the existing reserved accent column and ASCII caret.",
+      "basis": "observed",
+      "uncertainty": "None."
+    },
+    {
+      "id": "E3",
+      "kind": "source-review",
+      "locator": "pi-packages/pi-core/src/work-panel-render.ts:1055-1103; pi-packages/pi-sidebar/src/panels/rows.ts:150-160",
+      "claim": "Agents uses strict >70 and >90 comparisons on received percentage text, retaining base dim and finished-row dimming. Session retains its strict comparisons on raw percentages and base success.",
+      "basis": "observed",
+      "uncertainty": "Agents' existing one-decimal precision is intentionally unchanged."
+    },
+    {
+      "id": "E4",
+      "kind": "source-review",
+      "locator": "pi-packages/pi-thoth-theme/src/status-line/layout.ts:128-198",
+      "claim": "Editor-border fill and percentage use strict >70 and >90 roles with success as base. Unicode/Nerd use ━, ╾ and dim ─. Eight-cell/sixteen-half-step geometry, minimum nonzero half step, ASCII rendering and narrow variants remain unchanged.",
+      "basis": "observed",
+      "uncertainty": "None."
+    },
+    {
+      "id": "E5",
+      "kind": "executed-tests",
+      "locator": "Focused Vitest runs with --maxWorkers=2",
+      "claim": "All 463 focused tests passed: sidebar cost/session/performance/chrome 273; core work-panel-two-line 15; theme layout/status-line/decorate/real-theme 175. Coverage includes hidden ranks beyond ten, set/clear and revision/cache behavior, other suppression, ASCII arrows, exact color boundaries, finished dimming, glyph samples and narrow rendering.",
+      "basis": "observed",
+      "uncertainty": "These are focused reruns, not a repeat of the broad closeout gate."
+    },
+    {
+      "id": "E6",
+      "kind": "documentation-review",
+      "locator": "pi-packages/pi-sidebar/README.md:71-78,130-140,185-192; pi-packages/pi-thoth-theme/README.md:175-177; docs/agent/harness-packaging.md:417-420,493-499",
+      "claim": "Routed documentation describes the remainder arrow, strict shared context rule and hairline editor-border bar. The obsolete at-70/at-90 threshold wording is absent.",
+      "basis": "observed",
+      "uncertainty": "None."
+    },
+    {
+      "id": "E7",
+      "kind": "contract-validation",
+      "locator": ".thoth/specs/pi-ecosystem/spec.md:569-587; installed thoth-sdd validator --through verify",
+      "claim": "Verify gate passes. Canonical baseline SHA-256 matches c605026ea9e607df835b7d1bbdb6968a35530543b00377b8fcb7e56dff493687. The modified cost requirement matches implementation; both added requirements introduce distinct behavior without overlapping existing requirements.",
+      "basis": "observed",
+      "uncertainty": "Validator overlap warnings were resolved by semantic baseline review."
+    },
+    {
+      "id": "E8",
+      "kind": "reported-validation",
+      "locator": "Delegated task: ROOT-RECORDED EVIDENCE",
+      "claim": "Root reports the full local gate and seven package suites/typechecks passing, rebuilt merged artifacts, and the user's post-restart live confirmation: Si se ve bien.",
+      "basis": "observed",
+      "uncertainty": "Broad checks, merge/rebuild and live appearance were reported by root, not independently repeated."
+    }
+  ],
+  "verification": [
+    {
+      "check": "Record binding and baseline freshness",
+      "method": "Independent hashes, git identity/status checks and installed verify gate.",
+      "outcome": "pass",
+      "evidenceIds": ["E1", "E7"],
+      "reason": "Assigned record digest and reviewed canonical baseline match."
+    },
+    {
+      "check": "AC-1",
+      "method": "Tracker/render-path inspection and focused cost, session and cache regressions.",
+      "outcome": "pass",
+      "evidenceIds": ["E2", "E5"],
+      "reason": "Full-ranking cached flag, revision invalidation, remainder marking and other suppression satisfy the contract."
+    },
+    {
+      "check": "AC-2",
+      "method": "Inspect all three threshold owners and execute boundary regressions.",
+      "outcome": "pass",
+      "evidenceIds": ["E3", "E4", "E5"],
+      "reason": "Strict thresholds and existing precision/base-role behavior are preserved as specified."
+    },
+    {
+      "check": "AC-3",
+      "method": "Review glyph-only geometry changes and execute layout/editor integration tests.",
+      "outcome": "pass",
+      "evidenceIds": ["E4", "E5"],
+      "reason": "Hairline glyphs, colors and required examples pass; ASCII and narrow behavior remain unchanged."
+    },
+    {
+      "check": "AC-4",
+      "method": "Review routed documentation and root-provided closeout/live evidence.",
+      "outcome": "pass",
+      "evidenceIds": ["E6", "E8"],
+      "reason": "Documentation matches implementation and removes the stale threshold rule."
+    },
+    {
+      "check": "Decisions, Non-goals and Durable deltas",
+      "method": "Review implementation diff against the record and canonical baseline.",
+      "outcome": "pass",
+      "evidenceIds": ["E1", "E2", "E3", "E4", "E7"],
+      "reason": "All three deltas match behavior; no precision transport, fold-line, geometry, preference coupling, pi-core API or package-version changes were introduced."
+    }
+  ],
+  "risks": [
+    {
+      "description": "Agents retains the accepted one-decimal precision difference from raw-percentage surfaces near thresholds.",
+      "severity": "low",
+      "blocking": false,
+      "evidenceIds": ["E3"]
+    }
+  ],
+  "openQuestions": [],
+  "nextAction": "Root should validate and record this result, then complete closeout and archive without changing reviewed inputs.",
+  "review": {
+    "kind": "final-verification",
+    "verdict": "PASS",
+    "reviewedRecord": ".thoth/changes/pi-context-polish/pi-context-polish.md",
+    "reviewedRecordSha256": "81fbd817f96afd42fd81bfa45c21db837d2680fd5788a09e2fa48364ed5e02ad"
+  }
+}
 ```
 
 After PASS, root pastes the Oracle's unchanged final-verification envelope here.
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
+- AC-1: PASS | cached full-ranking hidden-running flag, remainder ↑/^ incl. beyond rank ten, other unmarked, revision replan (cost, session, performance tests) | Oracle r1 E2/E5
+- AC-2: PASS | strict >70/>90 on Session, Agents (one-decimal) and editor border with base roles kept (chrome, work-panel-two-line, layout tests) | Oracle r1 E3/E4/E5
+- AC-3: PASS | eight-cell ━/╾/dim ─ editor-border bar, ASCII and narrow variants unchanged (layout, status-line, decorate, real-theme tests) | Oracle r1 E4/E5
+- AC-4: PASS | READMEs and harness-packaging docs; local gate green (seven packages); merged 9bb696e8 and rebuilt; user live check "Si se ve bien" | Oracle r1 E6/E8
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:c605026ea9e607df835b7d1bbdb6968a35530543b00377b8fcb7e56dff493687
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

@@ -568,13 +568,13 @@ Subagent tool results and progress updates MUST build task details through one e
 
 ### Requirement: Sidebar cost share panel
 
-The pi-sidebar Cost panel MUST render one bar spanning the panel's inner width whose segments are sized by each displayed entry's share of the panel total (the larger of the authoritative subagent total and the tracked task sum) and stay distinguishable without color, colored from a series palette shared with the `/sidebar cost` curves view that starts with the theme warning color and places the error color last, followed by a ranked legend of at most five entries showing each task display name with its share and amount, where tasks beyond the top four or untracked cost collapse into one remainder entry; it MUST mark running tasks and the total while any task runs, MUST keep the bar together with at least one legend entry under height pressure while counting hidden tasks when folding, and MUST render only from state cached at update time.
+The pi-sidebar Cost panel MUST render one bar spanning the panel's inner width whose segments are sized by each displayed entry's share of the panel total (the larger of the authoritative subagent total and the tracked task sum) and stay distinguishable without color, colored from a series palette shared with the `/sidebar cost` curves view that starts with the theme warning color and places the error color last, followed by a ranked legend of at most five entries showing each task display name with its share and amount, where tasks beyond the top four or untracked cost collapse into one remainder entry; it MUST mark running tasks, the remainder entry while any task it groups runs, and the total while any task runs, MUST keep the bar together with at least one legend entry under height pressure while counting hidden tasks when folding, and MUST render only from state cached at update time.
 
 #### Scenario: Sidebar cost share panel
 
-- **GIVEN** 23 subagent tasks whose top four cost $3.42, $1.96, $1.31 and $0.88 within a $9.64 total, the first of them still running, at the default 50-column width
+- **GIVEN** 23 subagent tasks whose top four cost $3.42, $1.96, $1.31 and $0.88 within a $9.64 total, the first of them and one hidden task still running, at the default 50-column width
 - **WHEN** the Cost panel renders
-- **THEN** it shows one full-width segmented bar, four legend entries with readable display names, shares and amounts, a `+19 more tasks` entry with `21%` and `$2.07`, `↑` on the running entry and on the total, and the `/sidebar cost ▸ curves` footer
+- **THEN** it shows one full-width segmented bar, four legend entries with readable display names, shares and amounts, a `+19 more tasks` entry with `21%` and `$2.07`, `↑` on the running entry, on the `+19 more tasks` entry and on the total, and the `/sidebar cost ▸ curves` footer
 
 ### Requirement: Sidebar bar style preference
 
@@ -585,3 +585,23 @@ The pi-sidebar Cost panel MUST render one bar spanning the panel's inner width w
 - **GIVEN** no saved bar style, four subagent tasks costing $2.64, $0.73, $0.25 and $0.17 and a session context at 52% at the default 50-column width
 - **WHEN** the sidebar renders and the user then selects `classic` in `/sidebar settings` and saves
 - **THEN** the Cost bar first shows hairline segments of 32, 9, 3 and 2 cells with `╸` caps and the context meter shows a 16-cell hairline with a `╾` boundary, after saving both render as block bars with a 10-cell context meter, and `thoth-sidebar.json` records `classic`
+
+### Requirement: Context usage colors
+
+Every Thoth Pi surface that colors a context-usage percentage, namely the pi-sidebar Session context meter, the work-panel context metric of running Agents rows and the pi-thoth-theme editor-border context bar, MUST keep its base role up to 70%, use the warning role above 70% and the error role above 90%, judged on the most precise percentage that surface receives.
+
+#### Scenario: Context usage colors
+
+- **GIVEN** context usage of 70%, 70.5%, 90% and 95%
+- **WHEN** the Session meter, a running Agents row and the editor-border bar render each value
+- **THEN** 70% keeps the base role, 70.5% and 90% use the warning role and 95% uses the error role on all three surfaces
+
+### Requirement: Editor-border context hairline bar
+
+The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicode and Nerd modes as hairlines, `━` for a full cell, `╾` for a half cell and a dim `─` for empty cells, with sixteen half steps where any nonzero percentage fills at least one half step, the filled cells and percentage in the context usage color, and its ASCII form and narrow variants unchanged.
+
+#### Scenario: Editor-border context hairline bar
+
+- **GIVEN** a context usage of 85% and a wide editor border in Unicode mode
+- **WHEN** the border renders
+- **THEN** the context shows `━━━━━━━─` followed by `85%` in the warning role, and in ASCII mode it shows the existing bracketed `#`/`=`/`-` bar

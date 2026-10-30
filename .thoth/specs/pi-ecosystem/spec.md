@@ -575,3 +575,13 @@ The pi-sidebar Cost panel MUST render one bar spanning the panel's inner width w
 - **GIVEN** 23 subagent tasks whose top four cost $3.42, $1.96, $1.31 and $0.88 within a $9.64 total, the first of them still running, at the default 50-column width
 - **WHEN** the Cost panel renders
 - **THEN** it shows one full-width segmented bar, four legend entries with readable display names, shares and amounts, a `+19 more tasks` entry with `21%` and `$2.07`, `↑` on the running entry and on the total, and the `/sidebar cost ▸ curves` footer
+
+### Requirement: Sidebar bar style preference
+
+`@thoth-agents/pi-sidebar` MUST persist a bar style preference that is edited only through the `/sidebar settings` overlay and defaults to `thin`, and MUST draw the Cost share bar and the Session context meter in that style: `thin` draws hairline segments (`━` with `╸` caps, `╾` for a trailing half cell) on a dim `─` track with a context meter of up to 16 cells, while `classic` keeps block bars with a `░` track and a context meter of up to 10 cells; ASCII mode MUST render identically in both styles, and saving a new style MUST re-render the sidebar without restarting Pi or traversing the session on each render.
+
+#### Scenario: Sidebar bar style preference
+
+- **GIVEN** no saved bar style, four subagent tasks costing $2.64, $0.73, $0.25 and $0.17 and a session context at 52% at the default 50-column width
+- **WHEN** the sidebar renders and the user then selects `classic` in `/sidebar settings` and saves
+- **THEN** the Cost bar first shows hairline segments of 32, 9, 3 and 2 cells with `╸` caps and the context meter shows a 16-cell hairline with a `╾` boundary, after saving both render as block bars with a 10-cell context meter, and `thoth-sidebar.json` records `classic`

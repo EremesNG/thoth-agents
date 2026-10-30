@@ -158,7 +158,7 @@ for owned writes.
   - Focused check and PASS evidence: docs match behavior; `git diff --check` clean
   - Return milestone: designer session result with changed files and test evidence
   - Stop / reassessment: none
-- [ ] AC-6: Local closeout gate and live check of both styles
+- [x] AC-6: Local closeout gate and live check of both styles
   - Outcome: repository gate green, Source digest refreshed, record ready for final verification, user live check of thin and classic
   - Known entrypoints and skill paths: `docs/agent/testing.md:299–400`, `C:/DEV/Proyectos/Webstorm/thoth-agents/skills/thoth-sdd/scripts/validate.mjs`
   - Inputs: accepted designer result
@@ -192,29 +192,157 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 307de07f8c0410eeea65271012b297018dd35c38c94a1d331077b87dc288a7dd
+
+Final verification round 1: fresh thoth-oracle task `subtask_thoth-oracle_1793380620652_43505187`; delivered `thoth-gate-verdict` valid, kind `final-verification`, verdict `PASS`, mode `record`, `recordDigest` `match`, `recordSha256` `307de07f8c0410eeea65271012b297018dd35c38c94a1d331077b87dc288a7dd`. The Oracle's independent pi-sidebar run passed 21 files / 492 tests and the typecheck.
 
 **Oracle envelope**:
 
 ```thoth-result
-PENDING
+{
+  "schemaVersion": 1,
+  "role": "oracle",
+  "status": "complete",
+  "conclusion": "PASS. AC-1–AC-6, the reviewed cautions, durable delta and non-goals are satisfied. The recorded deviations preserve the contract.",
+  "evidence": [
+    {
+      "id": "binding",
+      "kind": "artifact",
+      "locator": ".thoth/changes/pi-sidebar-bar-style/pi-sidebar-bar-style.md; git diff 2a4b8f90 c521be99",
+      "claim": "Record-prefix SHA-256 matches 307de07f8c0410eeea65271012b297018dd35c38c94a1d331077b87dc288a7dd. HEAD is c521be99; the diff contains only declared implementation, tests, documentation and record changes. Only the assigned record is modified in the working tree.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "preference",
+      "kind": "source-and-tests",
+      "locator": "pi-packages/pi-sidebar/src/{config,settings,session}.ts; src/panels/sidebar.ts; test/{config,settings,session}.test.ts",
+      "claim": "Loading drops invalid bars values; rendering and settings resolve absence to thin. The Bars draft cycles both styles, Enter persists and refreshes immediately, and Esc discards it. Keeping the saved field optional satisfies AC-1's effective default.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "rendering",
+      "kind": "source-and-tests",
+      "locator": "pi-packages/pi-sidebar/src/panels/{meter,cost,rows}.ts; test/{cost,chrome,degradation}.test.ts",
+      "claim": "Thin implements the exact 32/9/3/2 COST example, half-cell caps, dim solid ─ remainder and ○ marker, and half-rounded Context fill up to 16 cells. Classic preserves prior glyphs, roles and 10-cell geometry. Both-style tests cover degradation and complete ASCII panels at widths 36 and 50; ASCII retains classic geometry and coloring.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "cache",
+      "kind": "source-and-tests",
+      "locator": "pi-packages/pi-sidebar/src/panels/sidebar.ts; test/performance.test.ts",
+      "claim": "Style participates in the cached-plan key. A style change rebuilds from cached inputs, subsequent renders reuse the result, and session traversal remains behind the unchanged dirty/leaf guard. Moving contextMeter into meter.ts and returning fill/track preserves these boundaries.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "execution",
+      "kind": "execution",
+      "locator": "Independent pi-sidebar Vitest/typecheck; git diff --check; installed thoth-sdd validator --through verify",
+      "claim": "Fresh execution passed all 21 files / 492 tests and package typecheck. Commit and working-tree whitespace checks passed. The verify validator returned valid:true, with only the ADDED-requirement semantic-review warning.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "spec-and-docs",
+      "kind": "artifact-review",
+      "locator": ".thoth/specs/pi-ecosystem/spec.md; assigned record Durable deltas; pi-packages/pi-sidebar/README.md; docs/agent/harness-packaging.md",
+      "claim": "Canonical spec SHA-256 matches 30bed5c6a4af290f704c8d8f3515e2d48e7418dea716be642878b17698336990. The added requirement owns preference/glyph behavior, complementing the general sidebar requirement and glyph-agnostic cost-share requirement without duplicating them. Both documentation surfaces accurately describe styles, default and Bars settings.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "recorded-gate",
+      "kind": "recorded-evidence-review",
+      "locator": "Assigned record Verification notes; docs/agent/testing.md; six unchanged package manifests/imports",
+      "claim": "Recorded designer and root checks cover the required local gate. Reusing the six other package results is justified: their code, manifests, shared inputs and lockfile are unchanged, and they do not depend on or import pi-sidebar. Recorded user confirmation covers classic and both Pi modes; the screenshot evidence is explicitly limited to thin.",
+      "basis": "inferred",
+      "uncertainty": "Broad gate executions and live feedback are root-recorded evidence, not independently repeated; the screenshot was not supplied directly to this reviewer."
+    },
+    {
+      "id": "memory",
+      "kind": "recall",
+      "locator": "thoth-mem record 54cdd36f-7c39-55a8-aa8b-7afd68ef015f",
+      "claim": "Selected decision recalled under verified project git:3726a62c-51e1-43ba-a466-57d41c5b7048 corroborates the style contract. Recall only; no memory writes or lifecycle operations.",
+      "basis": "observed",
+      "uncertainty": "Project-scoped context; no session-attributed continuity asserted."
+    }
+  ],
+  "verification": [
+    {
+      "check": "Record binding and scope",
+      "method": "Hash exact prefix bytes; inspect implementation diff and final workspace status.",
+      "outcome": "pass",
+      "evidenceIds": ["binding"],
+      "reason": "Assigned digest matches; no unrelated, generated or version changes."
+    },
+    {
+      "check": "AC-1",
+      "method": "Trace config normalization, settings draft/save/cancel and live refresh; inspect and execute tests.",
+      "outcome": "pass",
+      "evidenceIds": ["preference", "execution"],
+      "reason": "Absent and invalid saved values effectively default to thin; explicit choices persist without restart."
+    },
+    {
+      "check": "AC-2–AC-4 and post-review cautions",
+      "method": "Compare algorithms with baseline and exact glyph, role, geometry, parity and degradation assertions.",
+      "outcome": "pass",
+      "evidenceIds": ["rendering", "execution"],
+      "reason": "Required thin rendering, unchanged classic behavior, both-style coverage and solid track are present."
+    },
+    {
+      "check": "AC-5",
+      "method": "Trace cache key and traversal guards; execute performance regressions.",
+      "outcome": "pass",
+      "evidenceIds": ["cache", "execution"],
+      "reason": "One replan per changed input set; repeated renders neither rebuild nor traverse session entries."
+    },
+    {
+      "check": "AC-6 and durable delta",
+      "method": "Compare documentation and normative delta with implementation and current canonical requirements; hash baseline.",
+      "outcome": "pass",
+      "evidenceIds": ["spec-and-docs", "execution"],
+      "reason": "Documentation is accurate; source digest is current and the additive requirement has distinct ownership."
+    },
+    {
+      "check": "Evidence sufficiency and reuse",
+      "method": "Review recorded gate/live provenance and unchanged-package dependency boundaries.",
+      "outcome": "pass",
+      "evidenceIds": ["recorded-gate", "execution", "binding"],
+      "reason": "Fresh sidebar results corroborate designer checks; unchanged independent package checks remain reusable. Verbal live confirmation is acceptable without screenshots of every variant."
+    }
+  ],
+  "risks": [],
+  "openQuestions": [],
+  "nextAction": "Root may record this bound PASS, complete the AC evidence rows, validate closeout, then archive.",
+  "review": {
+    "kind": "final-verification",
+    "verdict": "PASS",
+    "reviewedRecord": ".thoth/changes/pi-sidebar-bar-style/pi-sidebar-bar-style.md",
+    "reviewedRecordSha256": "307de07f8c0410eeea65271012b297018dd35c38c94a1d331077b87dc288a7dd"
+  }
+}
 ```
 
 After PASS, root pastes the Oracle's unchanged final-verification envelope here.
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
+- AC-1: PASS | bars normalization, Bars row cycle/save/cancel, live re-render (config, settings, session tests) | Oracle r1 preference/execution
+- AC-2: PASS | thin 32/9/3/2 segments with ╸ caps, dim ─ remainder and ○ marker (cost.test.ts, both styles) | Oracle r1 rendering
+- AC-3: PASS | 16-cell half-rounded Context hairline with ╾ and dim track, thresholds unchanged (chrome.test.ts) | Oracle r1 rendering
+- AC-4: PASS | classic glyph parity and complete ASCII panels at widths 36/50 in both styles (cost, chrome, degradation tests) | Oracle r1 rendering
+- AC-5: PASS | style in the cached plan key, one re-plan, no session traversal (performance.test.ts) | Oracle r1 cache
+- AC-6: PASS | README and harness-packaging docs; local gate green; user live check | Oracle r1 spec-and-docs/recorded-gate
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:30bed5c6a4af290f704c8d8f3515e2d48e7418dea716be642878b17698336990
 
 Implementation (thoth-designer task `subtask_thoth-designer_1793379419853_a45c02f1`): pi-sidebar suite 21 files / 492 tests, typecheck and Biome green. Noted deviations: `bars` stays optional in the saved config and absent or invalid values fall back to `thin` at the use sites (an existing test pins the saved keys after `startup off`); `contextMeter` moved to the new `src/panels/meter.ts` and returns fill and track; ASCII digit handling for COST stays in `cost.ts`; test fixtures gained an optional `bars` argument and an ASCII render kit that keeps theme colors.
 Local closeout gate (root, 2026-10-30, Windows): `pnpm install --frozen-lockfile`, `pnpm run check:ci` (954 files, no errors; the 767 warnings are unchanged from the previous gate), `pnpm run typecheck`, `pnpm run build`, `pnpm run test:pi-extensions`, pi-sidebar typecheck, pi-sidebar Vitest 21 files / 492 tests and `git diff --check` exit 0. pi-core, pi-thoth-theme, pi-subagents, pi-questions-user, pi-background-tasks and pi-todo are unchanged since today's green run for `pi-sidebar-cost-share` and do not depend on pi-sidebar, so those results are reused.
+Implementation commit `c521be99`; at the user's request root merged the branch `--no-ff` into the main checkout master as `093345f4` (main was clean) and rebuilt pi-sidebar there.
+User live check (2026-10-30, after restarting Pi): "Se ve todo bien" with one screenshot of the owning Pi in the thin style. The Context meter is an amber 84% hairline over a dim track, and COST shows hairline segments with half-cell gaps and a `○ +6 more tasks 14% $1.24` remainder entry. The classic switch and the second Pi mode were covered by the user's verbal confirmation, not by a screenshot.
 
 Source digest refreshed after `pi-sidebar-cost-share` archived (commit `2a4b8f90`), which modified **Thoth Pi sidebar** and added **Sidebar cost share panel**; the ADDED **Sidebar bar style preference** still does not overlap them.
 
@@ -222,4 +350,4 @@ Source digest refreshed after `pi-sidebar-cost-share` archived (commit `2a4b8f90
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

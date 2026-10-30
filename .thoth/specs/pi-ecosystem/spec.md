@@ -268,13 +268,13 @@ the Antigravity bridge MUST report API-equivalent message cost through an explic
 
 ### Requirement: Thoth Pi sidebar
 
-`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace, work-panel source and Cost panels that can be shown, hidden and reordered with persisted order and visibility, including through a `/sidebar settings` overlay, MUST default to a 50-column width that the user can resize through `/sidebar resize`, settings and fullscreen divider drag without a keyboard shortcut down to a 36-column minimum, following the pi-atelier auto-hide rules, MUST render atelier-style themed panel chrome with per-panel icons and colors and per-element row colors drawn from the active theme roles, work-panel header summaries and detail-command footers, a Workspace path abbreviated like the editor border with changed-file and line counts versus HEAD, and a subagent cost bar panel with a `/sidebar cost` curves view, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
+`@thoth-agents/pi-sidebar` MUST render a read-only right sidebar in Pi fullscreen and regular modes through guarded, owner-checked layout adapters that fall back to no sidebar with a diagnostic, MUST offer Session, Workspace, work-panel source and Cost panels that can be shown, hidden and reordered with persisted order and visibility, including through a `/sidebar settings` overlay, MUST default to a 50-column width that the user can resize through `/sidebar resize`, settings and fullscreen divider drag without a keyboard shortcut down to a 36-column minimum, following the pi-atelier auto-hide rules, MUST render atelier-style themed panel chrome with per-panel icons and colors and per-element row colors drawn from the active theme roles, work-panel header summaries and detail-command footers, a Workspace path abbreviated like the editor border with changed-file and line counts versus HEAD, and a subagent cost-share panel with a `/sidebar cost` curves view, and MUST declare the work-panel sources it displays through a pi-core UI-preferences registry so the work panel neither renders nor selects nor focuses them while their sidebar panels are visible.
 
 #### Scenario: Thoth Pi sidebar
 
 - **GIVEN** a 160-column fullscreen session with a running subagent, two todos and modified files and no saved width
 - **WHEN** the sidebar is visible with Agents, Todos, Workspace and Cost panels
-- **THEN** the sidebar is 50 columns wide, `/sidebar resize` cannot shrink it below 36, each panel shows its themed title with a summary, Agents and Todos show their detail commands, Workspace shows `~`-abbreviated path and `Changed N files +A −D`, Cost shows bars by task display name, and the work panel no longer shows the absorbed sections or accepts ← focus for them
+- **THEN** the sidebar is 50 columns wide, `/sidebar resize` cannot shrink it below 36, each panel shows its themed title with a summary, Agents and Todos show their detail commands, Workspace shows `~`-abbreviated path and `Changed N files +A −D`, Cost shows a share-of-total bar keyed by task display names, and the work panel no longer shows the absorbed sections or accepts ← focus for them
 
 ### Requirement: Stable work-panel row height
 
@@ -565,3 +565,13 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** a running child that finishes a tool and then streams a long final answer before its turn ends
 - **WHEN** those events occur
 - **THEN** history is written when the tool ends and when the turn ends, and nothing is written while the answer streams
+
+### Requirement: Sidebar cost share panel
+
+The pi-sidebar Cost panel MUST render one bar spanning the panel's inner width whose segments are sized by each displayed entry's share of the panel total (the larger of the authoritative subagent total and the tracked task sum) and stay distinguishable without color, colored from a series palette shared with the `/sidebar cost` curves view that starts with the theme warning color and places the error color last, followed by a ranked legend of at most five entries showing each task display name with its share and amount, where tasks beyond the top four or untracked cost collapse into one remainder entry; it MUST mark running tasks and the total while any task runs, MUST keep the bar together with at least one legend entry under height pressure while counting hidden tasks when folding, and MUST render only from state cached at update time.
+
+#### Scenario: Sidebar cost share panel
+
+- **GIVEN** 23 subagent tasks whose top four cost $3.42, $1.96, $1.31 and $0.88 within a $9.64 total, the first of them still running, at the default 50-column width
+- **WHEN** the Cost panel renders
+- **THEN** it shows one full-width segmented bar, four legend entries with readable display names, shares and amounts, a `+19 more tasks` entry with `21%` and `$2.07`, `↑` on the running entry and on the total, and the `/sidebar cost ▸ curves` footer

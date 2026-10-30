@@ -10,6 +10,7 @@ import {
 import type { PanelPreference } from './config.js';
 import type { Startup } from './controls.js';
 import { sidebarWidth } from './layout/adapter.js';
+import { BAR_STYLES, type BarStyle } from './panels/meter.js';
 
 const NAMES: Record<string, string> = {
   session: 'Session',
@@ -21,16 +22,24 @@ const NAMES: Record<string, string> = {
 };
 const STARTUPS: readonly Startup[] = ['auto', 'manual', 'off'];
 
+/** The value after `current` in the direction of `delta`, wrapping at the ends. */
+const cycle = <T>(values: readonly T[], current: T, delta: number): T =>
+  values[
+    (values.indexOf(current) + Math.sign(delta) + values.length) % values.length
+  ];
+
 export interface SettingsDraft {
   panels: PanelPreference[];
   startup: Startup;
   width: number;
+  bars: BarStyle;
 }
 
 export interface SettingsOptions {
   panels: readonly PanelPreference[];
   startup: Startup;
   width: number;
+  bars: BarStyle;
   /** Panels whose source is not registered right now. */
   unavailable?(id: string): boolean;
   /** Persist the draft; throwing keeps the overlay open with the message. */
@@ -55,6 +64,7 @@ export function createSettingsPanel(options: SettingsOptions): Component {
     panels: options.panels.map((panel) => ({ ...panel })),
     startup: options.startup,
     width: sidebarWidth(options.width),
+    bars: options.bars,
   };
   const visible = new Map(options.panels.map((p) => [p.id, p.visible]));
   const row = (id: string, label: string, dirty: boolean): ListEditorRow => ({
@@ -80,6 +90,7 @@ export function createSettingsPanel(options: SettingsOptions): Component {
       `Width    ‹ ${draft.width} ›`,
       draft.width !== sidebarWidth(options.width),
     ),
+    row('bars', `Bars     ‹ ${draft.bars} ›`, draft.bars !== options.bars),
   ];
   const editor = createListEditor({
     overview: {
@@ -97,6 +108,7 @@ export function createSettingsPanel(options: SettingsOptions): Component {
           panels: draft.panels.map((panel) => ({ ...panel })),
           startup: draft.startup,
           width: draft.width,
+          bars: draft.bars,
         });
         return { success: true };
       } catch (error) {
@@ -127,13 +139,10 @@ export function createSettingsPanel(options: SettingsOptions): Component {
   };
   const step = (delta: number) => {
     const id = rows()[editor.getState().selectedIndex]?.id;
-    if (id === 'startup') {
-      const at = STARTUPS.indexOf(draft.startup);
-      draft.startup =
-        STARTUPS[(at + Math.sign(delta) + STARTUPS.length) % STARTUPS.length];
-    } else if (id === 'width') {
-      draft.width = sidebarWidth(draft.width + delta);
-    } else return;
+    if (id === 'startup') draft.startup = cycle(STARTUPS, draft.startup, delta);
+    else if (id === 'width') draft.width = sidebarWidth(draft.width + delta);
+    else if (id === 'bars') draft.bars = cycle(BAR_STYLES, draft.bars, delta);
+    else return;
     editor.invalidate();
   };
   return {

@@ -1,5 +1,6 @@
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it } from 'vitest';
+import type { BarStyle } from '../src/panels/meter.js';
 import { WIDEN_HINT } from '../src/panels/sidebar.js';
 import {
   agentRow,
@@ -198,8 +199,22 @@ it('keeps Cost content visible under metric-heavy Agent growth, measuring only r
   }
 });
 
-const costOnly = (data: ReturnType<typeof tracker>, extra = []) =>
-  sidebar([{ id: 'cost', visible: true }, ...extra], { cost: () => data });
+const costOnly = (
+  data: ReturnType<typeof tracker>,
+  extra = [],
+  bars?: BarStyle,
+) =>
+  sidebar(
+    [{ id: 'cost', visible: true }, ...extra],
+    { cost: () => data },
+    bars,
+  );
+/** Bar glyphs per style: segment fill and cap, remainder track and marker. */
+const BARS = {
+  thin: { fill: '━', cap: '╸', track: '─', remainder: '○' },
+  classic: { fill: '█', cap: '▌', track: '░', remainder: '░' },
+} as const;
+const STYLES = ['thin', 'classic'] as const;
 const threeTasks = () =>
   tracker([
     task('a', 3, { displayName: 'Alpha' }),
@@ -207,19 +222,24 @@ const threeTasks = () =>
     task('c', 1, { displayName: 'Gamma' }),
   ]);
 
-it('collapses Cost to its title with the total until the bar and its first entry fit together', () => {
-  const panel = costOnly(threeTasks());
+it.each(
+  STYLES,
+)('collapses Cost to its title with the total until the bar and its first entry fit together (%s)', (bars) => {
+  const { fill, cap } = BARS[bars];
+  const panel = costOnly(threeTasks(), [], bars);
   for (const height of [1, 2, 3]) {
     const lines = render(panel, height);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('COST');
     expect(lines[0]).toContain('$6.00');
     // No bar and no bare overflow count in the intermediate state.
-    expect(lines[0]).not.toMatch(/more|[█░]/);
+    expect(lines[0]).not.toMatch(/more|[█▌░━╸╾○]/);
   }
   const head = render(panel, 4);
   expect(head).toHaveLength(4);
-  expect(head[1]).toMatch(/^│ █+▌█+▌█+ │$/);
+  expect(head[1]).toMatch(
+    new RegExp(`^│ ${fill}+${cap}${fill}+${cap}${fill}+ │$`),
+  );
   expect(head[2]).toMatch(/^│ ● Alpha +50% \$3\.00 {2}│$/);
   expect(head[3]).toMatch(/^╰/);
 });
@@ -256,7 +276,13 @@ it('counts hidden tasks, including those inside a folded remainder entry, in the
   expect(room.join('\n')).toContain('+19 more tasks');
 });
 
-it('never renders the Cost bar without its first entry, nor a bare count, at any height or width', () => {
+it.each(
+  STYLES,
+)('never renders the Cost bar without its first entry, nor a bare count, at any height or width (%s)', (bars) => {
+  const { fill, cap, track, remainder } = BARS[bars];
+  const barRow = new RegExp(`^│ [${fill}${cap}${track}]+ │$`);
+  const legend = new RegExp(`^│ [●${remainder}] `);
+  let seen = 0;
   const data = tracker(
     Array.from({ length: 9 }, (_, i) =>
       task(`t${i}`, 9 - i, { displayName: `Task ${i}` }),
@@ -272,17 +298,24 @@ it('never renders the Cost bar without its first entry, nor a bare count, at any
     const panel = sidebar(
       order.map((id) => ({ id, visible: true })),
       { cost: () => data },
+      bars,
     );
     for (let height = 0; height <= 40; height++) {
       const lines = render(panel, height, width);
       lines.forEach((line, index) => {
-        if (/^│ [█▌░]+ │$/.test(line))
-          expect(lines[index + 1]).toMatch(/^│ [●░] /);
+        if (barRow.test(line)) {
+          seen++;
+          expect(lines[index + 1]).toMatch(legend);
+        }
         if (/^│ \+\d+ more/.test(line))
-          expect(lines[index - 1]).toMatch(/^│ (?:[●░] |[█▌░]+ │)/);
+          expect(lines[index - 1]).toMatch(
+            new RegExp(`^│ (?:[●${remainder}] |[${fill}${cap}${track}]+ │)`),
+          );
       });
     }
   }
+  // The shape checks above must have run against real bars.
+  expect(seen).toBeGreaterThan(0);
 });
 
 it('keeps the fold text of other panels while Cost counts tasks', () => {

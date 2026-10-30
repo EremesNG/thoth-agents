@@ -176,7 +176,7 @@ for owned writes.
   - Focused check and PASS evidence: docs match the implemented behavior; `pnpm run check:ci` stays green
   - Return milestone: designer session result with changed files and test evidence
   - Stop / reassessment: none
-- [ ] AC-7: Local closeout gate
+- [x] AC-7: Local closeout gate
   - Outcome: repository gate green and record ready for final verification
   - Known entrypoints and skill paths: `docs/agent/testing.md:299–400` (local closeout gate, Pi sidebar/layout/UI-preference rules), `C:/DEV/Proyectos/Webstorm/thoth-agents/skills/thoth-sdd/scripts/validate.mjs`
   - Inputs: accepted designer result
@@ -210,30 +210,187 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: af1d2cd312dc7f2bff8cdc81b891b262018abfca1a2c4e96fac790a6895226f9
+
+Final verification round 1: fresh thoth-oracle task `subtask_thoth-oracle_1793379079028_00f5411a`; delivered `thoth-gate-verdict` valid, kind `final-verification`, verdict `PASS`, mode `record`, `recordDigest` `match`, `recordSha256` `af1d2cd312dc7f2bff8cdc81b891b262018abfca1a2c4e96fac790a6895226f9`.
+Oracle's independent pi-sidebar run (Windows): first suite 415/416 with the unchanged `test/session.test.ts:265` timing out at 5000 ms; one rerun of the session file passed 99/99 and the package typecheck passed. Both outcomes are kept as a transient Windows timing failure.
 
 **Oracle envelope**:
 
 ```thoth-result
-PENDING
+{
+  "schemaVersion": 1,
+  "role": "oracle",
+  "status": "complete",
+  "conclusion": "AC-1 through AC-7 are satisfied. The second-instance running-arrow diagnosis is supported; absence of an owning-process live arrow observation does not change PASS.",
+  "evidence": [
+    {
+      "id": "record",
+      "kind": "governance",
+      "locator": ".thoth/changes/pi-sidebar-cost-share/pi-sidebar-cost-share.md",
+      "claim": "Prefix SHA-256 is af1d2cd312dc7f2bff8cdc81b891b262018abfca1a2c4e96fac790a6895226f9; bundled --through verify validation passes.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "implementation",
+      "kind": "diff",
+      "locator": "git diff 7fd4b063 61ffa37e",
+      "claim": "Share allocation, ranked legend/remainder, shared palette, ASCII fallback and reserved running column implement the accepted behavior. Curves changes are confined to palette extraction/order. No unrelated or generated changes were found.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "performance",
+      "kind": "source-and-tests",
+      "locator": "pi-packages/pi-sidebar/src/panels/{cost,sidebar}.ts; test/{performance,degradation}.test.ts",
+      "claim": "Aggregation/running detection occur during snapshot updates; rendering reads cached scalars and bounded rankings. Tracker revision invalidates the plan. COST keeps its head block intact, counts hidden tasks and preserves other panels' degradation.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "arrow",
+      "kind": "source-and-tests",
+      "locator": "pi-packages/pi-sidebar/test/{cost,session,performance}.test.ts; pi-subagents/src/{task-state-events,manager}.ts",
+      "claim": "Tests cover all statuses, absent/history-only tasks, revision changes, marker clearing and real session-channel rendering. Publisher copies status unchanged; process-local task ownership and startup orphan reconciliation explain the second-instance interrupted state and absent arrow.",
+      "basis": "observed",
+      "uncertainty": "The reported screenshots and owning-process live observation were not independently inspected. Automated and source evidence adequately establish AC-4."
+    },
+    {
+      "id": "fresh-checks",
+      "kind": "execution",
+      "locator": "pnpm --filter @thoth-agents/pi-sidebar test --maxWorkers=2; session-file rerun; typecheck",
+      "claim": "Initial suite: 415/416 passed; unchanged session.test.ts:265 timed out at 5000 ms. One unchanged-input rerun passed all 99 session tests. Package typecheck passed.",
+      "basis": "observed",
+      "uncertainty": "Timeout was not reproducible; its precise environmental cause was not established."
+    },
+    {
+      "id": "deltas",
+      "kind": "baseline-comparison",
+      "locator": ".thoth/specs/pi-ecosystem/spec.md; assigned record Durable deltas",
+      "claim": "Source digest matches 4f4a72721e9f56ede60899576cb6e657f0245a009c069f6244cc7db2400b1fc2. Exact comparison confirms MODIFIED requirement/scenario preserve every non-cost clause. ADDED requirement supplies the detailed cost-specific contract.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "reported-gate",
+      "kind": "recorded-execution",
+      "locator": "Assigned record Verification notes; docs/agent/testing.md local closeout gate",
+      "claim": "Recorded designer checks and seven-package local gate cover the required commands, with pi-subagents timeout and green reruns disclosed. Recorded user approval covers fullscreen and regular modes. Updated documentation matches implementation.",
+      "basis": "observed",
+      "uncertainty": "Broad gate results and live feedback are root-recorded evidence, not independently repeated."
+    },
+    {
+      "id": "freeze",
+      "kind": "workspace",
+      "locator": "git status; implementation comparison against 61ffa37e; git diff --check",
+      "claim": "Reviewed implementation remains unchanged; whitespace checks pass. Only record bookkeeping and the explicitly excluded bar-style record are outside the commit.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "memory",
+      "kind": "recall",
+      "locator": "mem_recall project git:3726a62c-51e1-43ba-a466-57d41c5b7048",
+      "claim": "Relevant recalled IDs: f9f9d00d-7a08-5d65-a57a-66e90fe962bf and 5bdac1da-b782-5734-abb3-b1386214b777. Recall was project-scoped only; no saves or session lifecycle operations occurred.",
+      "basis": "observed",
+      "uncertainty": "Compact recall was truncated and treated only as untrusted context."
+    }
+  ],
+  "verification": [
+    {
+      "check": "Record binding and structural gate",
+      "method": "Independent prefix/source hashes and bundled validator",
+      "outcome": "pass",
+      "evidenceIds": ["record", "deltas"],
+      "reason": "Assigned digest and current canonical baseline agree."
+    },
+    {
+      "check": "AC-1, AC-2, AC-3",
+      "method": "Actual diff and executed cost/curves assertions",
+      "outcome": "pass",
+      "evidenceIds": ["implementation", "fresh-checks"],
+      "reason": "Worked segment widths, legend/remainder rules, width handling and shared palette are covered."
+    },
+    {
+      "check": "AC-4 and anomaly diagnosis",
+      "method": "Trace publisher-to-session-to-tracker flow; inspect executed lifecycle and cache tests",
+      "outcome": "pass",
+      "evidenceIds": ["arrow", "fresh-checks"],
+      "reason": "No marker defect found. Missing owning-process live corroboration is nonblocking."
+    },
+    {
+      "check": "AC-5 and AC-6",
+      "method": "Planner/source inspection and executed degradation/performance tests",
+      "outcome": "pass",
+      "evidenceIds": ["performance", "fresh-checks"],
+      "reason": "Head-block, exact folding, unchanged non-cost behavior and bounded cached rendering hold."
+    },
+    {
+      "check": "Initial independent package suite",
+      "method": "Existing full suite, --maxWorkers=2",
+      "outcome": "fail",
+      "evidenceIds": ["fresh-checks"],
+      "reason": "One unchanged resume/history test exceeded its timeout; no changed-feature assertion failed."
+    },
+    {
+      "check": "Timeout resolution and package typecheck",
+      "method": "One complete session-file rerun; existing tsc --noEmit",
+      "outcome": "pass",
+      "evidenceIds": ["fresh-checks"],
+      "reason": "99/99 session tests and typecheck passed; together with initial results every package test has fresh passing evidence."
+    },
+    {
+      "check": "AC-7, durable deltas and scope hygiene",
+      "method": "Compare routed docs, canonical baseline, recorded gate and frozen diff",
+      "outcome": "pass",
+      "evidenceIds": ["deltas", "reported-gate", "freeze"],
+      "reason": "Documentation and deltas match the accepted scope; reported broad checks are sufficient without redundant reruns."
+    }
+  ],
+  "risks": [
+    {
+      "description": "A Windows timing failure occurred in an unchanged session test; its single rerun passed. Preserve both outcomes in Verification notes.",
+      "severity": "low",
+      "blocking": false,
+      "evidenceIds": ["fresh-checks"]
+    }
+  ],
+  "openQuestions": [],
+  "nextAction": "Record this PASS and the independent timeout/rerun evidence, then validate closeout before archiving.",
+  "review": {
+    "kind": "final-verification",
+    "verdict": "PASS",
+    "reviewedRecord": ".thoth/changes/pi-sidebar-cost-share/pi-sidebar-cost-share.md",
+    "reviewedRecordSha256": "af1d2cd312dc7f2bff8cdc81b891b262018abfca1a2c4e96fac790a6895226f9"
+  }
+}
 ```
 
 After PASS, root pastes the Oracle's unchanged final-verification envelope here.
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
+- AC-1: PASS | share bar allocation 13/13/12/6/2, `▌` caps, `░` remainder, no max scaling (cost.test.ts) | Oracle r1 implementation/fresh-checks
+- AC-2: PASS | ranked legend, `+19 more tasks` 21% $2.07, `other`, `<1%`, widths 36/50, share column drop (cost.test.ts) | Oracle r1 implementation/fresh-checks
+- AC-3: PASS | shared warning-first palette with curves parity and ASCII digits (curves.test.ts, cost.test.ts) | Oracle r1 implementation
+- AC-4: PASS | live-snapshot running flags, revision bump, marker clearing, header/row arrows (cost/session/performance tests); live `$5.40↑` in the owning Pi; second-instance anomaly diagnosed | Oracle r1 arrow
+- AC-5: PASS | unsplittable head block, task-counting fold, title-only boundary, other panels unchanged (degradation.test.ts) | Oracle r1 performance
+- AC-6: PASS | cached-state rendering and plan invalidation on revision (performance.test.ts) | Oracle r1 performance
+- AC-7: PASS | README, harness-packaging, architecture and installation docs; local gate green with disclosed timing reruns | Oracle r1 reported-gate/deltas
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:4f4a72721e9f56ede60899576cb6e657f0245a009c069f6244cc7db2400b1fc2
+
+Implementation (thoth-designer task `subtask_thoth-designer_1793346505093_a9517904`): pi-sidebar suite 21 files / 416 tests (baseline 367) and `tsc --noEmit` green; noted deviations: header keeps the existing chrome rule (`╭─ $ COST … ─╮`), bar cells are normalized by the displayed entries so the bar fills the inner width when untracked cost is under half a cent (shares still use the panel total), and Cost now needs four lines before showing more than its title.
+Root doc fixes outside the designer's writes: stale "top-ten task-cost bars" wording in `docs/agent/architecture.md` and `docs/installation.md`.
+Local closeout gate (root, 2026-10-30, Windows): `pnpm install --frozen-lockfile`, `pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm run test:pi-extensions` and `git diff --check` exit 0; typechecks exit 0 for all seven packages; Vitest pi-sidebar 416/416, pi-core 1107/1107, pi-thoth-theme 1432/1432, pi-questions-user 285/285, pi-background-tasks 756 passed + 4 skipped, pi-todo 318/318. pi-subagents (untouched by this change) first run: 4 tests in `test/history-compaction.test.ts` timed out at 5000 ms; rerun of that file 10/10 and full-suite rerun 106 files / 2017 passed + 1 skipped, so the failure was a transient Windows timing failure.
+Commit `61ffa37e` on `improve-sidebar-cost-chart` carries the implementation for the user's live check; at the user's request root merged it `--no-ff` into the main checkout master as `2d98142b` and rebuilt pi-sidebar there.
+User live check (2026-10-30, after a full Pi restart): fullscreen and regular modes, four screenshots; the share bar, legend, remainder fold (`+99 more` with the head block) and footer render as designed and the user approved the look ("Ya veo lo nuevo, me gusta", "Se ve bien"). Defect observed: while a background-mode subagent was running (Agents row and header showed `⊘`), COST showed no `↑` on its row or after the total; AC-4 is under diagnosis before final verification.
+Diagnosis (thoth-explorer tasks `subtask_thoth-explorer_1793376851620_e45c6c5a` and `subtask_thoth-explorer_1793378436892_3aafe751`, read-only): no code defect. Published statuses are copied unchanged, the live filter is shared by Agents and the state publisher, and both persisted tasks match the Pi session `01a18b97-5bfc-7160-92b3-55300b32ddac` and cwd. The theme's circle-slash glyph marks cancelled or interrupted tasks. The user confirmed that the regular-mode screenshot came from a second Pi instance opened on the same session while the first instance ran the subagent. That instance does not own the task, so it shows it as interrupted with its persisted cost and correctly draws no `↑`; AC-4 concerns the owning process. A live `↑` observation in the owning process is collected during final verification.
+Live `↑` observation (user screenshot from the owning fullscreen Pi during final verification, 2026-10-30): Agents showed the running Oracle with the running glyph (`◐1 ✓8`), and the COST header read `$5.40↑`. The running Oracle ($0.20) ranked outside the top four, inside `+5 more tasks 15% $0.82`, whose remainder entry carries no marker by design, so the row-level arrow was not visible in that state; row arrows remain covered by the AC-4 tests.
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

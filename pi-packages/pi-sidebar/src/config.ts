@@ -10,6 +10,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Startup } from './controls.js';
 import { sidebarWidth } from './layout/adapter.js';
+import { type BarStyle, isBarStyle } from './panels/meter.js';
 
 const isCost = (panel: PanelPreference) => panel.id === 'cost';
 
@@ -22,6 +23,8 @@ export interface SidebarConfig {
   startup: Startup;
   /** Preferred sidebar width in cells; absent means the built-in default. */
   width?: number;
+  /** Look of the Cost bar and Context meter; absent means `thin`. */
+  bars?: BarStyle;
   panels: PanelPreference[];
   [key: string]: unknown;
 }
@@ -61,7 +64,7 @@ export function loadConfig(path = configPath()): SidebarConfig {
         visible: typeof panel.visible === 'boolean' ? panel.visible : true,
       });
     }
-  const { width, ...rest } = raw;
+  const { width, bars, ...rest } = raw;
   return {
     ...rest,
     startup:
@@ -69,6 +72,7 @@ export function loadConfig(path = configPath()): SidebarConfig {
     ...(typeof width === 'number' && Number.isFinite(width)
       ? { width: sidebarWidth(width) }
       : {}),
+    ...(isBarStyle(bars) ? { bars } : {}),
     panels,
   };
 }

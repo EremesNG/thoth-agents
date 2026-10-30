@@ -5,6 +5,7 @@ import type {
 } from '@thoth-agents/pi-core';
 import { padPanelText, panelFg } from '@thoth-agents/pi-core/panel';
 import { isAsciiMode } from './chrome.js';
+import { type BarGlyphs, type BarStyle, barGlyphs } from './meter.js';
 import { clean } from './rows.js';
 import { paintSeries, seriesMarker } from './series.js';
 
@@ -229,31 +230,33 @@ function allocate(weights: readonly number[], cells: number): number[] {
 }
 
 /** Legend marker; the remainder uses its own fill, and ascii segments reuse it. */
-function marker(entry: LegendEntry, ascii: boolean): string {
+function marker(entry: LegendEntry, ascii: boolean, bars: BarGlyphs): string {
   if (entry.rank !== undefined) return seriesMarker(entry.rank, ascii);
-  return ascii ? '.' : '░';
+  return ascii ? '.' : bars.remainder;
 }
 
-/** Blocks end in a half cell, so neighbours stay distinct even without color. */
+/** Segments end in a half cell, so neighbours stay distinct even without color. */
 function segment(
   entry: LegendEntry,
   cells: number,
   last: boolean,
   ascii: boolean,
+  bars: BarGlyphs,
 ): string {
-  if (ascii || entry.rank === undefined)
-    return marker(entry, ascii).repeat(cells);
-  return last ? '█'.repeat(cells) : `${'█'.repeat(cells - 1)}▌`;
+  if (ascii) return marker(entry, ascii, bars).repeat(cells);
+  if (entry.rank === undefined) return bars.track.repeat(cells);
+  return `${bars.fill.repeat(cells - 1)}${last ? bars.fill : bars.cap}`;
 }
 
-/** Rank color for tasks, muted for the remainder. */
+/** Rank color for tasks, the style's remainder tone for the remainder. */
 function paint(
   theme: RenderKitTheme,
   entry: LegendEntry,
   text: string,
+  bars: BarGlyphs,
 ): string {
   return entry.rank === undefined
-    ? panelFg(theme, 'muted', text)
+    ? panelFg(theme, bars.tone, text)
     : paintSeries(theme, entry.rank, text);
 }
 
@@ -275,17 +278,20 @@ function shareText(cost: number, total: number): string {
 
 /**
  * The share bar and its legend. Segments split the inner width by each entry's
- * share of `total`; the legend keys them by rank color or digit.
+ * share of `total`; the legend keys them by rank color or digit. ASCII mode
+ * draws the same bar whatever the style.
  */
 export function renderCostRows(
   tracker: CostTracker,
   total: number,
   width: number,
   theme: RenderKitTheme,
+  style: BarStyle,
 ): CostRows {
   const entries = legendEntries(tracker, total);
   if (!entries.length) return { bar: '', entries: [], tasks: [] };
   const ascii = isAsciiMode();
+  const bars = barGlyphs(style);
   const inner = Math.max(0, width - 4);
   // Normalizing by the shown sum keeps the bar full when a half cent is untracked.
   const cells = allocate(
@@ -297,7 +303,8 @@ export function renderCostRows(
       paint(
         theme,
         entry,
-        segment(entry, cells[index], index === entries.length - 1, ascii),
+        segment(entry, cells[index], index === entries.length - 1, ascii, bars),
+        bars,
       ),
     )
     .join('');
@@ -318,7 +325,7 @@ export function renderCostRows(
     const arrow = entry.running
       ? panelFg(theme, 'accent', runningArrow())
       : ' ';
-    return `${paint(theme, entry, marker(entry, ascii))} ${tone(padPanelText(entry.label, labelWidth))}${share} ${tone(amounts[index].padStart(amountWidth))}${arrow}`;
+    return `${paint(theme, entry, marker(entry, ascii, bars), bars)} ${tone(padPanelText(entry.label, labelWidth))}${share} ${tone(amounts[index].padStart(amountWidth))}${arrow}`;
   });
   return { bar, entries: lines, tasks: entries.map((entry) => entry.tasks) };
 }

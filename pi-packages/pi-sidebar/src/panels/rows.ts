@@ -5,7 +5,20 @@ import {
   type RenderKitTheme,
 } from '@thoth-agents/pi-core';
 import { panelFg } from '@thoth-agents/pi-core/panel';
-import { isAsciiMode, labelColumn, labelRow, truncateStart } from './chrome.js';
+import {
+  isAsciiMode,
+  labelColumn,
+  labelRow,
+  type PanelRole,
+  truncateStart,
+} from './chrome.js';
+import {
+  type BarStyle,
+  contextMeter,
+  effectiveBarStyle,
+  type Meter,
+  meterCells,
+} from './meter.js';
 import type { WorkspaceSnapshot } from './workspace.js';
 
 /** Provider text is data, not terminal control sequences. */
@@ -95,21 +108,6 @@ const THINKING_ROLES: Record<string, Parameters<RenderKitTheme['fg']>[0]> = {
   high: 'thinkingHigh',
   xhigh: 'thinkingXhigh',
 };
-const EIGHTHS = ' ▏▎▍▌▋▊▉';
-
-/** Eighth-block meter; ASCII uses `#` and `-`. */
-export function contextMeter(percent: number, cells: number): string {
-  const ratio = Math.min(1, Math.max(0, percent / 100));
-  if (isAsciiMode()) {
-    const filled = Math.round(ratio * cells);
-    return '#'.repeat(filled) + '-'.repeat(cells - filled);
-  }
-  const eighths = Math.round(ratio * cells * 8);
-  const full = Math.floor(eighths / 8);
-  const partial = EIGHTHS[eighths % 8].trim();
-  const empty = cells - full - (partial ? 1 : 0);
-  return `${'█'.repeat(full)}${partial}${'░'.repeat(empty)}`;
-}
 
 export function limitText(limit: NonNullable<SessionView['limit']>): string {
   const detail =
@@ -125,6 +123,7 @@ export function renderSessionRows(
   view: SessionView,
   width: number,
   theme: RenderKitTheme,
+  bars: BarStyle,
 ): string[] {
   const row = (label: string, value: string) =>
     labelRow(label, value, width, theme);
@@ -139,6 +138,12 @@ export function renderSessionRows(
     ),
   ];
   const room = Math.max(0, width - 4 - labelColumn(width));
+  // Hairline tracks are dim; the other meters are one run in the threshold role.
+  const paintMeter = (meter: Meter, role: PanelRole) =>
+    effectiveBarStyle(bars) === 'thin'
+      ? (meter.fill ? fg(role, meter.fill) : '') +
+        (meter.track ? fg('dim', meter.track) : '')
+      : fg(role, meter.fill + meter.track);
   const context = view.context;
   if (!context || !context.known || context.percent == null)
     rows.push(row('Context', fg('muted', 'unknown')));
@@ -146,12 +151,13 @@ export function renderSessionRows(
     const percent = context.percent;
     const role = percent > 90 ? 'error' : percent > 70 ? 'warning' : 'success';
     const label = `${Math.round(percent)}%`;
-    const cells = Math.min(10, room - label.length - 1);
+    const cells = Math.min(meterCells(bars), room - label.length - 1);
     rows.push(
       row(
         'Context',
-        (cells >= 3 ? `${fg(role, contextMeter(percent, cells))} ` : '') +
-          fg(role, label),
+        (cells >= 3
+          ? `${paintMeter(contextMeter(percent, cells, bars), role)} `
+          : '') + fg(role, label),
       ),
     );
   }

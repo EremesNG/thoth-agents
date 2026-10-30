@@ -36,6 +36,7 @@ import {
   renderChrome,
 } from './chrome.js';
 import { type CostTracker, costSummary, renderCostRows } from './cost.js';
+import { DEFAULT_BAR_STYLE } from './meter.js';
 import {
   activeLimit,
   clean,
@@ -399,6 +400,7 @@ export class SidebarPanels implements Component {
     const options = this.options;
     const inner = Math.max(1, width - 4);
     const now = Date.now();
+    const bars = options.config.bars ?? DEFAULT_BAR_STYLE;
     const panels: PanelData[] = [];
     const resizeWidth = options.resizeWidth?.();
     if (resizeWidth !== undefined)
@@ -421,7 +423,7 @@ export class SidebarPanels implements Component {
           staticPanel(
             'session',
             'Session',
-            renderSessionRows(this.sessionView(), width, options.theme),
+            renderSessionRows(this.sessionView(), width, options.theme, bars),
           ),
         );
       } else if (preference.id === 'workspace') {
@@ -444,7 +446,7 @@ export class SidebarPanels implements Component {
         const tracker = options.cost?.();
         if (!tracker) continue;
         const total = Math.max(options.subagentCost() || 0, tracker.total());
-        const view = renderCostRows(tracker, total, width, options.theme);
+        const view = renderCostRows(tracker, total, width, options.theme, bars);
         // The bar is meaningless without a legend entry to key it.
         const blocks = view.entries.map((entry, index) =>
           index === 0 ? [view.bar, entry] : [entry],
@@ -611,6 +613,7 @@ export class SidebarPanels implements Component {
       git?.conflicts,
       options.config.startup,
       options.config.width,
+      options.config.bars,
       options.config.panels.length,
       ...options.config.panels.flatMap(({ id, visible }) => [id, visible]),
       sources.length,

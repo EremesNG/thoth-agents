@@ -1481,6 +1481,51 @@ it('leaves the config untouched when the settings overlay is cancelled', async (
   expect(readFileSync(path, 'utf8')).toBe(before);
 });
 
+it('switches the bar style from the settings overlay without restarting and persists it', async () => {
+  const app = setup();
+  const path = join(app.dir, 'thoth-sidebar.json');
+  writeFileSync(
+    path,
+    JSON.stringify({
+      panels: [
+        { id: 'session', visible: true },
+        { id: 'cost', visible: true },
+      ],
+    }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+    sessionId: 'session',
+    source: 'test',
+    data: stateSnapshot(1),
+  });
+  const rows = () => {
+    app.tui.renderNow(true);
+    return app.screen().split('\n').map(strip);
+  };
+  const contextRow = () => rows().find((row) => row.includes('Context')) ?? '';
+  // Nothing saved yet: hairlines in the Cost bar and the 16-cell Context meter.
+  expect(contextRow()).toMatch(/Context +━+╾?─+ 10%/);
+  expect(rows().some((row) => /│ [━╸]+ │/.test(row))).toBe(true);
+  const done = app.commands.get('sidebar').handler('settings', app.ctx);
+  await vi.waitFor(() => expect(app.overlay()).toBeDefined());
+  const overlay = app.overlay();
+  const text = overlay.render(80).join('\n');
+  expect(text).toContain('Bars     ‹ thin ›');
+  const DOWN = '\u001b[B';
+  const RIGHT = '\u001b[C';
+  // Past every panel row, then startup and width, switch the style and save.
+  const panelRows = text.match(/\[[ x]\]/g)?.length ?? 0;
+  for (const key of [...Array(panelRows + 2).fill(DOWN), RIGHT, '\r'])
+    overlay.handleInput(key);
+  await done;
+  expect(JSON.parse(readFileSync(path, 'utf8')).bars).toBe('classic');
+  expect(contextRow()).toMatch(/Context +█+[▏▎▍▌▋▊▉]?░+ 10%/);
+  expect(rows().some((row) => /│ [█▌]+ │/.test(row))).toBe(true);
+  expect(rows().join('\n')).not.toMatch(/[━╸╾○]/);
+});
+
 it('applies a saved default width at the next start', () => {
   const app = setup();
   writeFileSync(

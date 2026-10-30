@@ -31,6 +31,7 @@ function open(overrides: Partial<SettingsOptions> = {}) {
     panels,
     startup: 'auto',
     width: 44,
+    bars: 'thin',
     save,
     onDone,
     theme,
@@ -47,11 +48,12 @@ function open(overrides: Partial<SettingsOptions> = {}) {
 const order = (text: string) =>
   [...text.matchAll(/\[( |x)\] (\w+)/g)].map((m) => `${m[1]}${m[2]}`);
 
-it('lists panels with checkboxes, then the startup and width rows', () => {
+it('lists panels with checkboxes, then the startup, width and bars rows', () => {
   const { text } = open();
   expect(order(text())).toEqual(['xSession', 'xWorkspace', 'xAgents', ' Cost']);
   expect(text()).toContain('Startup  ‹ auto ›');
   expect(text()).toContain('Width    ‹ 44 ›');
+  expect(text()).toContain('Bars     ‹ thin ›');
   expect(text()).toContain('Space toggle');
 });
 
@@ -111,6 +113,20 @@ it('cycles startup with the arrow keys and clamps width within 36..72', () => {
   expect(text()).toContain('Width    ‹ 36 ›');
 });
 
+it('switches the bar style with either arrow and wraps between both values', () => {
+  const { text, press } = open();
+  press(DOWN, DOWN, DOWN, DOWN, DOWN, DOWN);
+  press(RIGHT);
+  expect(text()).toContain('Bars     ‹ classic ›');
+  press(RIGHT);
+  expect(text()).toContain('Bars     ‹ thin ›');
+  press(LEFT);
+  expect(text()).toContain('Bars     ‹ classic ›');
+  expect(text()).toContain('pending: 1 change');
+  press(LEFT);
+  expect(text()).toContain('pending: none');
+});
+
 it('ignores arrows and Space on rows where they do not apply', () => {
   const { text, press } = open();
   press(RIGHT, LEFT);
@@ -152,9 +168,26 @@ it('saves the edited draft on Enter, preserving unknown panel keys', () => {
   ]);
   expect(draft.startup).toBe('manual');
   expect(draft.width).toBe(48);
+  expect(draft.bars).toBe('thin');
   expect(onDone).toHaveBeenCalledWith(true);
   // The caller's objects are never mutated by drafting.
   expect(panels[1]).toEqual({ id: 'workspace', visible: true, custom: 'kept' });
+});
+
+it('saves a switched bar style on Enter and carries the opening style otherwise', () => {
+  const { save, press } = open({ bars: 'classic' });
+  press(ENTER);
+  expect(save.mock.calls[0]?.[0].bars).toBe('classic');
+  const next = open();
+  next.press(DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, RIGHT, ENTER);
+  expect(next.save.mock.calls[0]?.[0].bars).toBe('classic');
+});
+
+it('discards a switched bar style on Escape', () => {
+  const { save, onDone, press } = open();
+  press(DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, RIGHT, ESC);
+  expect(save).not.toHaveBeenCalled();
+  expect(onDone).toHaveBeenCalledWith(false);
 });
 
 it.each([

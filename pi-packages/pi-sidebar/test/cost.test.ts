@@ -1,6 +1,7 @@
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it } from 'vitest';
 import { formatUsd, renderCostRows } from '../src/panels/cost.js';
+import type { BarStyle } from '../src/panels/meter.js';
 import {
   sidebar,
   snapshot,
@@ -16,18 +17,31 @@ afterEach(() => {
   for (const off of releases.splice(0).reverse()) off();
 });
 
+/** Omitting the style exercises the default. */
 const cost = (
   data: ReturnType<typeof tracker>,
   width = 44,
   height = 40,
   subagentCost = 0,
+  bars?: BarStyle,
 ) =>
-  sidebar([{ id: 'cost', visible: true }], {
-    cost: () => data,
-    subagentCost: () => subagentCost,
-  })
+  sidebar(
+    [{ id: 'cost', visible: true }],
+    {
+      cost: () => data,
+      subagentCost: () => subagentCost,
+    },
+    bars,
+  )
     .renderAt(width, height)
     .map(strip);
+
+/** Glyphs per style and the theme role of the remainder segment and marker. */
+const LOOKS = {
+  thin: { fill: '━', cap: '╸', track: '─', remainder: '○', tone: 'dim' },
+  classic: { fill: '█', cap: '▌', track: '░', remainder: '░', tone: 'muted' },
+} as const;
+const STYLES = ['thin', 'classic'] as const;
 
 it('falls back to the bare command when the normal footer decoration does not fit', () => {
   const rows = cost(tracker([task('a', 1)]), 24);
@@ -138,61 +152,116 @@ const longTail = () =>
     task('e', 0.27, { displayName: 'Hidden largest' }),
     ...Array.from({ length: 18 }, (_, i) => task(`s${i}`, 0.1)),
   ]);
-const SEGMENT = /█*▌|█+|░+/g;
-const segments = (rows: string[]) =>
-  [...rows[1].slice(2, -2).matchAll(SEGMENT)].map((match) => match[0]);
+const segments = (rows: string[], bars: BarStyle) => {
+  const { fill, cap, track } = LOOKS[bars];
+  const part = new RegExp(`${fill}*${cap}|${fill}+|${track}+`, 'g');
+  return [...rows[1].slice(2, -2).matchAll(part)].map((match) => match[0]);
+};
 
-it('splits the bar by share of the total with largest-remainder cells', () => {
-  const rows = cost(flat(), 50, 40, 0.43);
-  expect(segments(rows).map((segment) => segment.length)).toEqual([
+it.each(
+  STYLES,
+)('splits the bar by share of the total with largest-remainder cells (%s)', (bars) => {
+  const { fill, cap } = LOOKS[bars];
+  const rows = cost(flat(), 50, 40, 0.43, bars);
+  expect(segments(rows, bars).map((segment) => segment.length)).toEqual([
     13, 13, 12, 6, 2,
   ]);
   expect(rows[1]).toBe(
-    `│ ${'█'.repeat(12)}▌${'█'.repeat(12)}▌${'█'.repeat(11)}▌${'█'.repeat(5)}▌██ │`,
+    `│ ${fill.repeat(12)}${cap}${fill.repeat(12)}${cap}${fill.repeat(11)}${cap}${fill.repeat(5)}${cap}${fill.repeat(2)} │`,
   );
 });
 
-it('ends every segment but the last in a half block so neighbours stay distinct', () => {
-  const parts = segments(cost(flat(), 50, 40, 0.43));
-  for (const part of parts.slice(0, -1)) expect(part.endsWith('▌')).toBe(true);
-  expect(parts.at(-1)).toBe('██');
+it.each(
+  STYLES,
+)('ends every segment but the last in a half cell so neighbours stay distinct (%s)', (bars) => {
+  const { fill, cap } = LOOKS[bars];
+  const parts = segments(cost(flat(), 50, 40, 0.43, bars), bars);
+  for (const part of parts.slice(0, -1)) expect(part.endsWith(cap)).toBe(true);
+  expect(parts.at(-1)).toBe(fill.repeat(2));
 });
 
-it('never scales the bar by the largest task and keeps one cell for tiny shares', () => {
+it.each(
+  STYLES,
+)('never scales the bar by the largest task and keeps one cell for tiny shares (%s)', (bars) => {
   const dominant = cost(
     tracker([task('big', 9, { displayName: 'Big' }), task('tiny', 0.01)]),
     50,
     40,
     9.01,
+    bars,
   );
-  expect(segments(dominant).map((segment) => segment.length)).toEqual([45, 1]);
+  expect(segments(dominant, bars).map((segment) => segment.length)).toEqual([
+    45, 1,
+  ]);
   const half = cost(
     tracker([task('a', 4, { displayName: 'A' }), task('b', 1)]),
     50,
     40,
+    0,
+    bars,
   );
-  expect(segments(half).map((segment) => segment.length)).toEqual([37, 9]);
+  expect(segments(half, bars).map((segment) => segment.length)).toEqual([
+    37, 9,
+  ]);
 });
 
-it('fills the whole inner width at every sidebar width', () => {
+it.each(
+  STYLES,
+)('fills the whole inner width at every sidebar width (%s)', (bars) => {
   for (const width of [24, 28, 36, 50, 72])
     expect(
-      segments(cost(flat(), width, 40, 0.43)).reduce(
+      segments(cost(flat(), width, 40, 0.43, bars), bars).reduce(
         (sum, segment) => sum + segment.length,
         0,
       ),
     ).toBe(width - 4);
 });
 
-it('renders the remainder entry of a long tail as a trailing light-shade segment', () => {
-  const rows = cost(longTail(), 50, 40, 9.64);
+it.each(
+  STYLES,
+)('renders the remainder entry of a long tail as a trailing track segment (%s)', (bars) => {
+  const { fill, cap, track } = LOOKS[bars];
+  const rows = cost(longTail(), 50, 40, 9.64, bars);
   expect(rows[1]).toBe(
-    `│ ${'█'.repeat(15)}▌${'█'.repeat(9)}▌${'█'.repeat(5)}▌███▌${'░'.repeat(10)} │`,
+    `│ ${fill.repeat(15)}${cap}${fill.repeat(9)}${cap}${fill.repeat(5)}${cap}${fill.repeat(3)}${cap}${track.repeat(10)} │`,
   );
 });
 
-it('hands the bar and the legend lines to the panel', () => {
-  const view = renderCostRows(flat(), 0.43, 50, theme);
+it('draws thin segments with hairlines and half-cell caps by default', () => {
+  // Four tasks within their $3.79 total take 32, 9, 3 and 2 cells at width 50.
+  const data = tracker([
+    task('a', 2.64, { displayName: 'Implement COST share panel' }),
+    task('b', 0.73, { displayName: 'Cost panel redesign mockups' }),
+    task('c', 0.25, { displayName: 'Plan review' }),
+    task('d', 0.17, { displayName: 'Map sidebar COST chart' }),
+  ]);
+  const bar = `│ ${'━'.repeat(31)}╸${'━'.repeat(8)}╸━━╸━━ │`;
+  expect(cost(data, 50, 40, 3.79)[1]).toBe(bar);
+  expect(cost(data, 50, 40, 3.79, 'thin')[1]).toBe(bar);
+});
+
+it.each(
+  STYLES,
+)('keeps one cell for tiny shares and fills the rest of a busy project with the track (%s)', (bars) => {
+  const { cap, track, remainder } = LOOKS[bars];
+  const busy = tracker([
+    task('a', 5, { displayName: 'Alpha' }),
+    task('b', 4.5, { displayName: 'Beta' }),
+    task('c', 2, { displayName: 'Gamma' }),
+    task('d', 2, { displayName: 'Delta' }),
+    ...Array.from({ length: 95 }, (_, i) => task(`s${i}`, 2)),
+  ]);
+  const rows = cost(busy, 50, 40, 203.5, bars);
+  expect(rows[1]).toBe(`│ ${cap.repeat(4)}${track.repeat(42)} │`);
+  expect(rows[6]).toBe(
+    `│ ${remainder} +95 more tasks                    93%  $190  │`,
+  );
+});
+
+it.each(
+  STYLES,
+)('hands the bar and the legend lines to the panel (%s)', (bars) => {
+  const view = renderCostRows(flat(), 0.43, 50, theme, bars);
   expect(panelVisibleWidth(view.bar)).toBe(46);
   expect(view.entries).toHaveLength(5);
 });
@@ -202,9 +271,11 @@ it('falls back to the tracked total when no usage total is available', () => {
   expect(rows[0]).toContain('$1.25');
 });
 
-it('fills ascii segments with their legend digit and keys the rows by the same digit', () => {
+it.each(
+  STYLES,
+)('fills ascii segments with their legend digit and keys the rows by the same digit (%s)', (bars) => {
   releases.push(useMode('ascii'));
-  const rows = cost(flat(), 50, 40, 0.43);
+  const rows = cost(flat(), 50, 40, 0.43, bars);
   expect(rows[1]).toBe(
     `| ${'1'.repeat(13)}${'2'.repeat(13)}${'3'.repeat(12)}${'4'.repeat(6)}55 |`,
   );
@@ -220,26 +291,61 @@ it('fills ascii segments with their legend digit and keys the rows by the same d
   );
 });
 
-it('fills the ascii remainder segment and marker with dots', () => {
+it.each(
+  STYLES,
+)('fills the ascii remainder segment and marker with dots (%s)', (bars) => {
   releases.push(useMode('ascii'));
-  const rows = cost(longTail(), 50, 40, 9.64);
+  const rows = cost(longTail(), 50, 40, 9.64, bars);
   expect(rows[1]).toBe(
     `| ${'1'.repeat(16)}${'2'.repeat(10)}${'3'.repeat(6)}${'4'.repeat(4)}${'.'.repeat(10)} |`,
   );
   expect(rows[6]).toBe('| . +19 more tasks                    21% $2.07  |');
 });
 
-it.each([
-  [44],
-  [36],
-  [30],
-  [28],
-  [24],
-])('renders only ascii glyphs at width %i', (width) => {
+it.each(
+  STYLES.flatMap((bars) =>
+    [44, 36, 30, 28, 24].map((width) => [bars, width] as const),
+  ),
+)('renders only ascii glyphs with %s bars at width %i', (bars, width) => {
   releases.push(useMode('ascii'));
-  const rows = cost(longTail(), width);
-  expect(rows.join('\n')).not.toMatch(/[█▌░●▸↑╭│╰…]/);
+  const rows = cost(longTail(), width, 40, 0, bars);
+  expect(rows.join('\n')).not.toMatch(/[█▌░━╸╾─○●▸↑╭│╰…]/);
   for (const row of rows) expect(panelVisibleWidth(row)).toBe(width);
+});
+
+// Today's ascii output, which the bar style must not change.
+const ASCII_PANELS = {
+  50: [
+    '+- $ COST ------------------------------- $9.64 -+',
+    '| 111111111111111122222222223333334444.......... |',
+    '| 1 Phase implementation: cost si...  35% $3.42  |',
+    '| 2 Final-verification cost chart     20% $1.96  |',
+    '| 3 Fresh read-only review            14% $1.31  |',
+    '| 4 Phase discovery: map cost chart    9% $0.88  |',
+    '| . +19 more tasks                    21% $2.07  |',
+    '|                         /sidebar cost > curves |',
+    '+------------------------------------------------+',
+  ],
+  36: [
+    '+- $ COST ----------------- $9.64 -+',
+    '| 1111111111122222223333444....... |',
+    '| 1 Phase implement...  35% $3.42  |',
+    '| 2 Final-verificat...  20% $1.96  |',
+    '| 3 Fresh read-only...  14% $1.31  |',
+    '| 4 Phase discovery...   9% $0.88  |',
+    '| . +19 more tasks      21% $2.07  |',
+    '|           /sidebar cost > curves |',
+    '+----------------------------------+',
+  ],
+} as const;
+
+it.each(
+  STYLES.flatMap((bars) =>
+    ([50, 36] as const).map((width) => [bars, width] as const),
+  ),
+)('renders the same complete ascii panel with %s bars at width %i', (bars, width) => {
+  releases.push(useMode('ascii'));
+  expect(cost(longTail(), width, 40, 9.64, bars)).toEqual(ASCII_PANELS[width]);
 });
 
 it('lists the ranked tasks under the bar with marker, name, share and amount', () => {
@@ -317,53 +423,75 @@ it('rounds each share on its own, so shares may not add up to 100', () => {
   ]);
 });
 
-it('shows at most five entries: five tasks stand alone', () => {
-  const rows = cost(flat(), 50, 40, 0.43).join('\n');
-  expect(rows).not.toContain('more task');
-  expect(rows).not.toContain('░');
-  expect(rows.match(/●/g)).toHaveLength(5);
+it.each(
+  STYLES,
+)('shows at most five entries: five tasks stand alone (%s)', (bars) => {
+  const { track, remainder } = LOOKS[bars];
+  const rows = cost(flat(), 50, 40, 0.43, bars);
+  expect(rows.join('\n')).not.toContain('more task');
+  expect(rows.join('\n')).not.toContain(remainder);
+  expect(rows[1]).not.toContain(track);
+  expect(rows.join('\n').match(/●/g)).toHaveLength(5);
 });
 
-it('folds the tasks beyond the top four into a remainder entry with the leftover share and amount', () => {
-  const rows = cost(longTail(), 50, 40, 9.64);
+it.each(
+  STYLES,
+)('folds the tasks beyond the top four into a remainder entry with the leftover share and amount (%s)', (bars) => {
+  const rows = cost(longTail(), 50, 40, 9.64, bars);
   expect(rows.slice(2, 7)).toEqual([
     '│ ● Phase implementation: cost side…  35% $3.42  │',
     '│ ● Final-verification cost chart     20% $1.96  │',
     '│ ● Fresh read-only review            14% $1.31  │',
     '│ ● Phase discovery: map cost chart    9% $0.88  │',
-    '│ ░ +19 more tasks                    21% $2.07  │',
+    `│ ${LOOKS[bars].remainder} +19 more tasks                    21% $2.07  │`,
   ]);
   expect(rows.at(-2)).toContain('/sidebar cost ▸ curves');
 });
 
-it.each([
-  [6, '+2 more tasks'],
-  [5, '+1 more task'],
-])('counts %i tracked tasks as hidden tasks in the remainder', (count, label) => {
+it.each(
+  STYLES.flatMap((bars) =>
+    (
+      [
+        [6, '+2 more tasks'],
+        [5, '+1 more task'],
+      ] as const
+    ).map(([count, label]) => [bars, count, label] as const),
+  ),
+)('counts hidden tasks in the remainder with %s bars: %i tracked tasks read %s', (bars, count, label) => {
   // Five equal tasks fit on their own, so one more cent makes the fifth hidden.
   const tasks = Array.from({ length: count }, (_, i) =>
     task(`t${i}`, 1, { displayName: `T${i}` }),
   );
-  const rows = cost(tracker(tasks), 50, 40, count === 5 ? count + 0.01 : count);
-  expect(rows.join('\n')).toContain(`░ ${label}`);
+  const rows = cost(
+    tracker(tasks),
+    50,
+    40,
+    count === 5 ? count + 0.01 : count,
+    bars,
+  );
+  expect(rows.join('\n')).toContain(`${LOOKS[bars].remainder} ${label}`);
   expect(rows.join('\n').match(/●/g)).toHaveLength(4);
 });
 
-it('names untracked cost other when every tracked task is already shown', () => {
+it.each(
+  STYLES,
+)('names untracked cost other when every tracked task is already shown (%s)', (bars) => {
+  const { remainder } = LOOKS[bars];
   const data = tracker([
     task('a', 0.6, { displayName: 'First' }),
     task('b', 0.4, { displayName: 'Second' }),
   ]);
-  const rows = cost(data, 50, 40, 1.5);
+  const rows = cost(data, 50, 40, 1.5, bars);
   expect(rows.slice(2, 5)).toEqual([
     '│ ● First                             40% $0.60  │',
     '│ ● Second                            27% $0.40  │',
-    '│ ░ other                             33% $0.50  │',
+    `│ ${remainder} other                             33% $0.50  │`,
   ]);
   // Under half a cent is rounding noise and creates no remainder.
-  const noisy = cost(data, 50, 40, 1.004).join('\n');
-  expect(noisy).not.toContain('other');
-  expect(noisy).not.toContain('░');
+  const noisy = cost(data, 50, 40, 1.004, bars);
+  expect(noisy.join('\n')).not.toContain('other');
+  expect(noisy.join('\n')).not.toContain(remainder);
+  expect(noisy[1]).not.toContain(LOOKS[bars].track);
 });
 
 it('drops the share column below an inner width of 28', () => {
@@ -377,11 +505,14 @@ it('drops the share column below an inner width of 28', () => {
   expect(cost(data, 24).join('\n')).not.toContain('%');
 });
 
-it('keys segments and rows by rank color, with the remainder and shares muted', () => {
+it.each(
+  STYLES,
+)('keys segments and rows by rank color, with the remainder styled by its tone and shares muted (%s)', (bars) => {
+  const { remainder, tone } = LOOKS[bars];
   const tagged = { fg: (role: string, text: string) => `<${role}>${text}</>` };
-  const view = renderCostRows(longTail(), 9.64, 50, tagged);
+  const view = renderCostRows(longTail(), 9.64, 50, tagged, bars);
   const roles = [...view.bar.matchAll(/<(\w+)>[^<]+<\/>/g)].map((m) => m[1]);
-  expect(roles).toEqual(['warning', 'success', 'mdCode', 'mdLink', 'muted']);
+  expect(roles).toEqual(['warning', 'success', 'mdCode', 'mdLink', tone]);
   const markers = view.entries.map((line) => line.match(/^<(\w+)>/)?.[1]);
   expect(markers).toEqual(roles);
   // Names and amounts are default text; the share is muted.
@@ -389,15 +520,19 @@ it('keys segments and rows by rank color, with the remainder and shares muted', 
     /^<warning>●<\/> Phase implementation: cost side… <muted> 35%<\/> \$3\.42/,
   );
   expect(view.entries[4]).toMatch(
-    /^<muted>░<\/> <muted>\+19 more tasks +<\/> <muted> 21%<\/> <muted>\$2\.07<\/>/,
+    new RegExp(
+      `^<${tone}>${remainder}</> <muted>\\+19 more tasks +</> <muted> 21%</> <muted>\\$2\\.07</>`,
+    ),
   );
   // The fifth rank has no theme role, so it keeps its fixed hue.
-  const flatView = renderCostRows(flat(), 0.43, 50, tagged);
+  const flatView = renderCostRows(flat(), 0.43, 50, tagged, bars);
   expect(flatView.bar).toContain('\x1b[38;2;180;142;240m');
 });
 
-it('reports the tasks behind every legend line so folding can count them', () => {
-  const view = renderCostRows(longTail(), 9.64, 50, theme);
+it.each(
+  STYLES,
+)('reports the tasks behind every legend line so folding can count them (%s)', (bars) => {
+  const view = renderCostRows(longTail(), 9.64, 50, theme, bars);
   expect(view.tasks).toEqual([1, 1, 1, 1, 19]);
 });
 
@@ -455,7 +590,7 @@ it('shows only five legend entries while retaining ten tasks for the curves over
     Array.from({ length: 12 }, (_, i) => task(`t${i}`, i + 1)),
   );
   const rows = cost(data);
-  expect(rows.filter((row) => /^│ [●░] /.test(row))).toHaveLength(5);
+  expect(rows.filter((row) => /^│ [●░○] /.test(row))).toHaveLength(5);
   expect(rows.join('\n')).toContain('+8 more tasks');
   expect(data.ranked()).toHaveLength(10);
   expect(data.count()).toBe(12);
@@ -582,9 +717,9 @@ it('uses a caret as the running arrow in ascii mode', () => {
   expect(rows.join('\n')).not.toContain('↑');
 });
 
-it('paints the arrow with the accent color', () => {
+it.each(STYLES)('paints the arrow with the accent color (%s)', (bars) => {
   const tagged = { fg: (role: string, text: string) => `<${role}>${text}</>` };
-  const view = renderCostRows(live(), 0.23, 50, tagged);
+  const view = renderCostRows(live(), 0.23, 50, tagged, bars);
   expect(view.entries[0]).toContain('<accent>↑</>');
   expect(view.entries[1]).not.toContain('↑');
 });

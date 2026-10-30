@@ -9,7 +9,7 @@ import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
 import { labelColumn, panelStyle, renderChrome } from '../src/panels/chrome.js';
-import { contextMeter } from '../src/panels/rows.js';
+import { type BarStyle, contextMeter } from '../src/panels/meter.js';
 import { SidebarPanels } from '../src/panels/sidebar.js';
 import type { WorkspaceSnapshot } from '../src/panels/workspace.js';
 
@@ -68,6 +68,20 @@ function useMode(mode: Mode) {
   );
   tokens.push(() => withdrawRenderKit(token));
 }
+/** ASCII glyphs with a kit that still applies the theme's colors. */
+function useColoredAscii() {
+  const table: Record<string, string> = MODES.ascii;
+  const token = registerRenderKit(
+    {
+      ...createTestRenderKit({
+        icon: (name: SemanticIconName) => table[name] ?? (name as string),
+      }),
+      fg: (theme, role, text) => theme.fg(role, text),
+    },
+    {},
+  );
+  tokens.push(() => withdrawRenderKit(token));
+}
 const plain: RenderKitTheme = { fg: (_role, text) => text };
 // Zero-width role markers, so truncation and padding behave as with real SGR.
 const ROLES = [
@@ -84,6 +98,7 @@ const ROLES = [
   'thinkingXhigh',
   'toolDiffAdded',
   'toolDiffRemoved',
+  'dim',
 ];
 const on = (role: string) => `\x1b[38;5;${ROLES.indexOf(role) + 1}m`;
 const styled: RenderKitTheme = {
@@ -112,6 +127,7 @@ function panels(options: {
   subagentCost?: number;
   limits?: () => import('@thoth-agents/pi-core').ProviderLimitEntry[];
   usage?: number;
+  bars?: BarStyle;
 }) {
   const ctx = options.ctx ?? context();
   return new SidebarPanels({
@@ -121,6 +137,7 @@ function panels(options: {
         id,
         visible: true,
       })),
+      ...(options.bars ? { bars: options.bars } : {}),
     },
     context: () => ctx,
     theme: options.theme ?? plain,
@@ -147,16 +164,24 @@ function panels(options: {
   });
 }
 
-it.each([
-  ['nerd', 44],
-  ['nerd', 30],
-  ['unicode', 44],
-  ['unicode', 30],
-  ['ascii', 44],
-  ['ascii', 30],
-] as const)('renders aligned atelier chrome in %s at width %i', (mode, width) => {
+const STYLES = ['thin', 'classic'] as const;
+
+it.each(
+  STYLES.flatMap((bars) =>
+    (
+      [
+        ['nerd', 44],
+        ['nerd', 30],
+        ['unicode', 44],
+        ['unicode', 30],
+        ['ascii', 44],
+        ['ascii', 30],
+      ] as const
+    ).map(([mode, width]) => [bars, mode, width] as const),
+  ),
+)('renders aligned atelier chrome with %s bars in %s at width %i', (bars, mode, width) => {
   useMode(mode);
-  const lines = panels({ subagentCost: 0.5 }).render(width);
+  const lines = panels({ subagentCost: 0.5, bars }).render(width);
   const text = lines.map(strip);
   for (const line of text)
     expect(panelVisibleWidth(line)).toBeLessThanOrEqual(width);
@@ -180,7 +205,7 @@ it.each([
     expect(panelVisibleWidth(line)).toBe(width);
   expect(text.some((line) => /Model\s+claude/.test(line))).toBe(true);
   expect(text.join('\n')).toMatch(/Changed\s+3 files \+12 [-−]4/);
-  if (mode === 'ascii') expect(text.join('\n')).not.toMatch(/[╭╮╰╯─│█▏−]/);
+  if (mode === 'ascii') expect(text.join('\n')).not.toMatch(/[╭╮╰╯─│━╸╾█░▏−]/);
 });
 
 it('uses a 12-cell label column that shrinks to 9 below 28 columns', () => {
@@ -271,12 +296,46 @@ it('colors panels by role with bold uppercase titles and dim borders', () => {
   ]);
 });
 
-it('draws the context meter with eighth blocks and colors by threshold', () => {
-  expect(contextMeter(0, 10)).toBe('░'.repeat(10));
-  expect(contextMeter(50, 10)).toBe('█████░░░░░');
-  expect(contextMeter(55, 10)).toBe('█████▌░░░░');
-  expect(contextMeter(100, 10)).toBe('█'.repeat(10));
-  expect(contextMeter(5.6, 10)).toBe('▌░░░░░░░░░');
+it('draws the classic context meter with eighth blocks and a light-shade track', () => {
+  const classic = (percent: number) => {
+    const meter = contextMeter(percent, 10, 'classic');
+    return meter.fill + meter.track;
+  };
+  expect(classic(0)).toBe('░'.repeat(10));
+  expect(classic(50)).toBe('█████░░░░░');
+  expect(classic(55)).toBe('█████▌░░░░');
+  expect(classic(100)).toBe('█'.repeat(10));
+  expect(classic(5.6)).toBe('▌░░░░░░░░░');
+  expect(contextMeter(55, 10, 'classic')).toEqual({
+    fill: '█████▌',
+    track: '░░░░',
+  });
+});
+
+it.each([
+  [0, '', '─'.repeat(16)],
+  [1, '', '─'.repeat(16)],
+  [3, '╾', '─'.repeat(15)],
+  [5.6, '━', '─'.repeat(15)],
+  [50, '━'.repeat(8), '─'.repeat(8)],
+  [52, `${'━'.repeat(8)}╾`, '─'.repeat(7)],
+  [53, `${'━'.repeat(8)}╾`, '─'.repeat(7)],
+  [56, '━'.repeat(9), '─'.repeat(7)],
+  [100, '━'.repeat(16), ''],
+  [140, '━'.repeat(16), ''],
+  [-5, '', '─'.repeat(16)],
+])('draws the thin context meter at %s%% on 16 cells in half-cell steps', (percent, fill, track) => {
+  expect(contextMeter(percent, 16, 'thin')).toEqual({ fill, track });
+});
+
+it('draws a shorter thin meter in the cells a narrow row leaves', () => {
+  expect(contextMeter(52, 7, 'thin')).toEqual({
+    fill: '━━━╾',
+    track: '───',
+  });
+});
+
+it.each(STYLES)('colors the context row by threshold (%s)', (bars) => {
   const roleFor = (percent: number | null) => {
     const ctx = context({
       getContextUsage: () => ({
@@ -286,7 +345,7 @@ it('draws the context meter with eighth blocks and colors by threshold', () => {
       }),
     });
     const row =
-      panels({ ctx, theme: styled })
+      panels({ ctx, theme: styled, bars })
         .render(44)
         .find((line) => line.includes('Context')) ?? '';
     const label = percent == null ? 'unknown' : `${percent}%`;
@@ -301,11 +360,113 @@ it('draws the context meter with eighth blocks and colors by threshold', () => {
   expect(roleFor(null)).toBe('muted');
 });
 
-it('uses an ASCII meter in ASCII mode', () => {
+it.each(
+  STYLES,
+)('uses a 10-cell ASCII meter in ASCII mode whatever the style (%s)', (bars) => {
   useMode('ascii');
-  expect(contextMeter(30, 10)).toBe('###-------');
-  const text = panels({}).render(44).map(strip).join('\n');
+  expect(contextMeter(30, 10, bars)).toEqual({
+    fill: '###',
+    track: '-------',
+  });
+  const text = panels({ bars }).render(44).map(strip).join('\n');
   expect(text).toMatch(/Context\s+#{6}-{4} 55%/);
+});
+
+/** Session panel with the context at `percent`. */
+function session(
+  width: number,
+  percent: number,
+  bars: BarStyle | undefined,
+  themed = plain,
+) {
+  const ctx = context({
+    getContextUsage: () => ({ tokens: 1, percent, contextWindow: 100 }),
+  });
+  return panels({ ids: ['session'], ctx, theme: themed, bars }).render(width);
+}
+const contextRow = (lines: string[]) =>
+  lines.find((line) => line.includes('Context')) ?? '';
+
+it.each([
+  [50, '│ Context                   ━━━━━━━━╾─────── 52% │'],
+  [36, '│ Context     ━━━━━━━━╾─────── 52% │'],
+  [30, '│ Context     ━━━━━───── 52% │'],
+  [24, '│ Context  ━━━╾─── 52% │'],
+])('draws the thin context row with up to 16 cells at width %i', (width, row) => {
+  expect(strip(contextRow(session(width, 52, 'thin')))).toBe(row);
+  expect(panelVisibleWidth(row)).toBe(width);
+});
+
+it.each([
+  [50, '│ Context                         █████▎░░░░ 52% │'],
+  [36, '│ Context           █████▎░░░░ 52% │'],
+])('keeps the classic context row at 10 cells at width %i', (width, row) => {
+  expect(strip(contextRow(session(width, 52, 'classic')))).toBe(row);
+  expect(panelVisibleWidth(row)).toBe(width);
+});
+
+it('uses the thin style when no style is configured', () => {
+  expect(strip(contextRow(session(50, 52, undefined)))).toBe(
+    strip(contextRow(session(50, 52, 'thin'))),
+  );
+});
+
+it('colors the thin fill, boundary and percentage by threshold and the track dim', () => {
+  const row = (percent: number) =>
+    contextRow(session(50, percent, 'thin', styled));
+  expect(row(52)).toContain(
+    `${tagged('success', '━━━━━━━━╾')}${tagged('dim', '───────')} ${tagged('success', '52%')}`,
+  );
+  expect(row(75)).toContain(
+    `${tagged('warning', '━'.repeat(12))}${tagged('dim', '─'.repeat(4))} ${tagged('warning', '75%')}`,
+  );
+  expect(row(95)).toContain(
+    `${tagged('error', '━'.repeat(15))}${tagged('dim', '─')} ${tagged('error', '95%')}`,
+  );
+  // A full meter has no track left to dim.
+  expect(row(100)).not.toContain(on('dim'));
+});
+
+it('colors the classic and ASCII meters as one threshold-role run', () => {
+  expect(contextRow(session(50, 52, 'classic', styled))).toContain(
+    `${tagged('success', '█████▎░░░░')} ${tagged('success', '52%')}`,
+  );
+  useColoredAscii();
+  for (const bars of STYLES)
+    expect(contextRow(session(50, 52, bars, styled))).toContain(
+      `${tagged('success', '#####-----')} ${tagged('success', '52%')}`,
+    );
+});
+
+// Today's ascii Session panels, which the bar style must not change.
+const ASCII_SESSIONS = {
+  50: [
+    '+- * SESSION ------------------------------------+',
+    '| Model                        claude-sonnet-5-5 |',
+    '| Provider                             anthropic |',
+    '| Thinking                                  high |',
+    '| Context                         #####----- 52% |',
+    '| Cost                                    $0.000 |',
+    '+------------------------------------------------+',
+  ],
+  36: [
+    '+- * SESSION ----------------------+',
+    '| Model          claude-sonnet-5-5 |',
+    '| Provider               anthropic |',
+    '| Thinking                    high |',
+    '| Context           #####----- 52% |',
+    '| Cost                      $0.000 |',
+    '+----------------------------------+',
+  ],
+} as const;
+
+it.each(
+  STYLES.flatMap((bars) =>
+    ([50, 36] as const).map((width) => [bars, width] as const),
+  ),
+)('renders the same complete ascii Session panel with %s bars at width %i', (bars, width) => {
+  useMode('ascii');
+  expect(session(width, 52, bars).map(strip)).toEqual(ASCII_SESSIONS[width]);
 });
 
 it('colors thinking by thinking roles', () => {

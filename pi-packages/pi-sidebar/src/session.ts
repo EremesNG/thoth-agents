@@ -47,6 +47,7 @@ import {
 } from './layout/index.js';
 import { concreteRenderer } from './layout/renderer.js';
 import { CostTracker } from './panels/cost.js';
+import { DEFAULT_BAR_STYLE } from './panels/meter.js';
 import { SidebarPanels } from './panels/sidebar.js';
 import { WorkspaceReader, type WorkspaceSnapshot } from './panels/workspace.js';
 import { openSettings } from './settings.js';
@@ -455,6 +456,7 @@ export class SidebarSession {
       panels: this.config.panels,
       startup: this.config.startup,
       width: this.config.width ?? DEFAULT_SIDEBAR_WIDTH,
+      bars: this.config.bars ?? DEFAULT_BAR_STYLE,
       unavailable: (id) =>
         !['session', 'workspace', 'cost'].includes(id) &&
         !listWorkPanelSources().some((source) => source.id === id),

@@ -11,6 +11,7 @@ import {
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import type { SidebarConfig } from '../src/config.js';
 import { CostTracker } from '../src/panels/cost.js';
+import type { BarStyle } from '../src/panels/meter.js';
 import {
   SidebarPanels,
   type SidebarPanelsOptions,
@@ -109,9 +110,10 @@ export const FULL_METRICS = {
 export function sidebar(
   panels: SidebarConfig['panels'],
   options: Partial<SidebarPanelsOptions> = {},
+  bars?: BarStyle,
 ): SidebarPanels {
   return new SidebarPanels({
-    config: { startup: 'auto', panels },
+    config: { startup: 'auto', panels, ...(bars ? { bars } : {}) },
     context,
     theme,
     thinking: () => 'off',

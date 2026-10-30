@@ -23,6 +23,8 @@ vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
 });
 
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import type { SidebarConfig } from '../src/config.js';
+import type { BarStyle } from '../src/panels/meter.js';
 import { SidebarPanels } from '../src/panels/sidebar.js';
 
 const releases: (() => void)[] = [];
@@ -510,8 +512,19 @@ const stateOf = (...tasks: ReturnType<typeof liveTask>[]) => ({
   totals: {} as never,
 });
 
-async function costFixture() {
+async function costFixture(
+  options: {
+    panels?: string[];
+    usage?: ReturnType<ExtensionContext['getContextUsage']>;
+    bars?: BarStyle;
+  } = {},
+) {
   const { CostTracker } = await import('../src/panels/cost.js');
+  const config: SidebarConfig = {
+    startup: 'auto',
+    panels: (options.panels ?? ['cost']).map((id) => ({ id, visible: true })),
+    ...(options.bars ? { bars: options.bars } : {}),
+  };
   const data = new CostTracker();
   const reads = {
     ranked: vi.spyOn(data, 'ranked'),
@@ -521,11 +534,11 @@ async function costFixture() {
   };
   const entries = vi.fn(() => []);
   const panel = new SidebarPanels({
-    config: { startup: 'auto', panels: [{ id: 'cost', visible: true }] },
+    config,
     context: () =>
       ({
         model: { provider: 'test', id: 'test' },
-        getContextUsage: () => undefined,
+        getContextUsage: () => options.usage,
         sessionManager: { getEntries: entries },
       }) as unknown as ExtensionContext,
     theme: { fg: (_role, text) => text },
@@ -538,7 +551,7 @@ async function costFixture() {
   });
   const readCount = () =>
     Object.values(reads).map((spy) => spy.mock.calls.length);
-  return { data, panel, entries, readCount };
+  return { config, data, panel, entries, readCount };
 }
 
 it('renders Cost from cached tracker state only, with no reads while the revision is unchanged', async () => {
@@ -588,8 +601,13 @@ it('replans Cost when only a running state changes, reading each cached value on
   expect(readCount()).toEqual(settled);
 });
 
-it('bounds the work behind a Cost replan by the legend, not by the tracked tasks', async () => {
-  const { data, panel, readCount } = await costFixture();
+const STYLES = ['thin', 'classic'] as const;
+const LEGEND = { thin: '●○', classic: '●░' } as const;
+
+it.each(
+  STYLES,
+)('bounds the work behind a Cost replan by the legend, not by the tracked tasks (%s)', async (bars) => {
+  const { data, panel, readCount } = await costFixture({ bars });
   data.update(
     stateOf(
       ...Array.from({ length: 200 }, (_, i) =>
@@ -602,7 +620,52 @@ it('bounds the work behind a Cost replan by the legend, not by the tracked tasks
   expect(data.count()).toBe(200);
   expect(data.ranked()).toHaveLength(10);
   // Four ranked tasks and one remainder, however many tasks are tracked.
-  const legend = lines.map(stripSgr).filter((line) => /^│ [●░] /.test(line));
+  const legend = lines
+    .map(stripSgr)
+    .filter((line) => new RegExp(`^│ [${LEGEND[bars]}] `).test(line));
   expect(legend).toHaveLength(5);
   expect(Math.max(...readCount())).toBeLessThanOrEqual(3);
+});
+
+it('replans once when the bar style changes and rebuilds Cost and Context from cached state', async () => {
+  const { config, data, panel, entries, readCount } = await costFixture({
+    panels: ['session', 'cost'],
+    usage: { tokens: 52000, percent: 52, contextWindow: 100000 },
+  });
+  data.update(
+    stateOf(liveTask('a', 1, 'running'), liveTask('b', 0.5, 'completed')),
+    1000,
+  );
+  const lines = (style: 'thin' | 'classic') =>
+    panel
+      .render(50)
+      .map(stripSgr)
+      .filter((line) =>
+        style === 'thin'
+          ? /^│ [━╸]+ │$|Context +━+╾?─* 52%/.test(line)
+          : /^│ [█▌]+ │$|Context +█+[▏▎▍▌▋▊▉]?░+ 52%/.test(line),
+      );
+  // No saved style draws the default hairlines.
+  const thin = panel.render(50);
+  expect(lines('thin')).toHaveLength(2);
+  const sessionReads = entries.mock.calls.length;
+  const settled = readCount();
+  for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(thin);
+  expect(readCount()).toEqual(settled);
+  // The settings overlay mutates the shared config in place and nothing else.
+  config.bars = 'classic';
+  const classic = panel.render(50);
+  expect(classic).not.toBe(thin);
+  expect(lines('classic')).toHaveLength(2);
+  expect(lines('thin')).toHaveLength(0);
+  const replanned = readCount().map((n, i) => n - settled[i]);
+  expect(replanned.every((n) => n >= 1)).toBe(true);
+  expect(entries.mock.calls.length).toBe(sessionReads);
+  const classicSettled = readCount();
+  for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(classic);
+  expect(readCount()).toEqual(classicSettled);
+  // Switching back replans once more and restores the first rendering.
+  config.bars = 'thin';
+  expect(panel.render(50).map(stripSgr)).toEqual(thin.map(stripSgr));
+  expect(entries.mock.calls.length).toBe(sessionReads);
 });

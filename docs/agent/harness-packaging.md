@@ -451,9 +451,11 @@ Esc revert), with a live hint inside the sidebar; fullscreen also supports divid
 `panels show|hide|up|down <id>` persists visibility/order, and
 `startup auto|manual|off` persists next-session policy in
 `~/.pi/agent/thoth-sidebar.json`. `/sidebar settings` opens a show/hide/order,
-startup and default-width overlay (Space, Shift+↑/↓, ←/→; Enter saves, Esc
-cancels). Saved default width applies immediately; resize width and current
-mode/enabled state are session-only. `/sidebar cost` opens cumulative task-cost
+startup, default-width and bar-style overlay (Space, Shift+↑/↓, ←/→; Enter
+saves, Esc cancels). Its `Bars` row switches between `thin` (default) and
+`classic` and is stored as `bars`; there is no command for it. Saved default
+width and bar style apply immediately; resize width and current mode/enabled
+state are session-only. `/sidebar cost` opens cumulative task-cost
 curves from observed snapshots, with straight segments for unsampled history,
 colored like the Cost panel legend.
 
@@ -465,7 +467,8 @@ worktrees) on session start, turn start, every tool result and turn end,
 coalesced to 250 ms without periodic polling. Discovered work-source panels read bounded
 data rows and use the current render kit with native fallback. Atelier-style
 chrome uses per-panel theme roles and SGR-dim borders. Session adds a context
-meter and warning/rejected Limit row. Workspace shares pi-core's root
+meter (up to 16 hairline cells in the thin style, 10 block cells in the classic
+one) and warning/rejected Limit row. Workspace shares pi-core's root
 `formatCwd`, showing Clean/Modified/Conflicts and `Changed N files +A −D` from
 porcelain v2 and numstat against HEAD (empty tree when unborn). Agents and
 Background list active rows first in launch order (`sortStartedAt`, then id),
@@ -481,8 +484,11 @@ either. Rows are columns (two lines for Agents), with `/subagents`, `/todos`, `/
 a title-plus-command line. Cost shows how the session's live/persisted subagent
 cost splits across tasks: one full-width share-of-total bar over a ranked legend
 of at most five entries (display names or short task-summary names, share and
-amount). With more than five tasks, or untracked cost of at least half a cent,
-the legend shows the top four plus a muted `+N more tasks`/`other` remainder
+amount). The bar follows the bar style: `thin` draws `━` segments with a `╸`
+half-cell cap and a dim `─` remainder track (remainder marker `○`), `classic`
+draws `█` with a `▌` cap and a muted `░` remainder, and ASCII mode ignores the
+style. With more than five tasks, or untracked cost of at least half a cent,
+the legend shows the top four plus a `+N more tasks`/`other` remainder
 entry. Running tasks carry an accent `↑` in a reserved column, and the header
 total shows it while any task runs, read from the latest live snapshot. Colors
 follow rank from a series palette shared with the curves view (warning first,

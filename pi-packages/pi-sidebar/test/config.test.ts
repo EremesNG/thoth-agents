@@ -127,3 +127,32 @@ it('keeps a valid default width, clamped to 36..72, and ignores anything else', 
   expect('width' in load(null)).toBe(false);
   expect('width' in loadConfig(fixture())).toBe(false);
 });
+
+it.each([
+  ['thin', 'thin'],
+  ['classic', 'classic'],
+  ['fat', undefined],
+  [3, undefined],
+  [null, undefined],
+])('keeps the saved bar style %j as %j and drops anything else, so the default applies', (bars, expected) => {
+  const path = fixture();
+  writeFileSync(path, JSON.stringify({ bars }));
+  const config = loadConfig(path);
+  expect(config.bars).toBe(expected);
+  expect('bars' in config).toBe(expected !== undefined);
+  expect('bars' in loadConfig(fixture())).toBe(false);
+});
+
+it('persists the chosen bar style next to the other preferences', () => {
+  const path = fixture();
+  writeFileSync(path, JSON.stringify({ startup: 'manual', future: 1 }));
+  const config = loadConfig(path);
+  config.bars = 'classic';
+  saveConfig(config, path);
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
+    bars: 'classic',
+    startup: 'manual',
+    future: 1,
+  });
+  expect(loadConfig(path).bars).toBe('classic');
+});

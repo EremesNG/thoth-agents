@@ -29,9 +29,11 @@ guaranteed on every version.
   and enable the sidebar. `on` enables without changing policy; `off` disables.
   Auto-hidden sidebars still require enough terminal width to appear.
 - `/sidebar settings` opens an overlay to show/hide and reorder panels
-  (**Space** toggles, **Shift+↑/↓** moves), cycle the startup mode and set the
-  default width (**←/→**, **Shift** steps four, 36–72). **Enter** saves to
-  `thoth-sidebar.json`; **Esc** or **q** cancels. A saved width applies immediately.
+  (**Space** toggles, **Shift+↑/↓** moves), cycle the startup mode, set the
+  default width (**←/→**, **Shift** steps four, 36–72) and switch the bar style
+  in the `Bars` row between `thin` (default) and `classic` (**←/→**). **Enter**
+  saves to `thoth-sidebar.json`; **Esc** or **q** cancels. A saved width or bar
+  style applies immediately, without restarting Pi.
 - `/sidebar cost` opens an overlay with cumulative subagent cost curves per task
   over time, colored like the Cost panel's legend; **q** or **Esc** closes it.
 - `/sidebar panels` lists panel ids in order, including unavailable saved ids.
@@ -66,7 +68,14 @@ are never rearranged; Cost is appended when missing.
   cost with `(sub)` for subscription providers plus the subagent cost, and a
   Limit row while a provider limit is warning or rejected. Subscription providers
   come from `statusLine.subscriptionProviders` in `pi-thoth-theme.json`
-  (default `claude-bridge` and `antigravity`).
+  (default `claude-bridge` and `antigravity`). The context meter follows the
+  bar style (see **Bar styles**): `thin` draws up to 16 cells, filled to the
+  nearest half cell with `━` and a trailing `╾`, over a dim `─` track, so 52%
+  reads `━━━━━━━━╾───────`; `classic` draws 10 cells of eighth blocks over a `░`
+  track. The fill, boundary and percentage take the threshold role (success up
+  to 70%, warning above 70%, error above 90%); only the thin track is dim. A row
+  too narrow for the full length gets fewer cells and none below three, and ASCII
+  mode keeps its 10-cell `#`/`-` meter in both styles.
 - **Workspace**: the path abbreviated by pi-core's root `formatCwd`, like the editor border, branch (including
   worktrees and detached HEAD), the state (Clean, Modified, Conflicts) in the
   header, `Changed N files +A −D` against HEAD, and Untracked/Binary/Conflicts
@@ -104,11 +113,13 @@ are never rearranged; Cost is appended when missing.
   width: each legend entry owns a segment sized by its share of the panel total
   (the larger of the reported subagent total and the tracked task sum) with
   largest-remainder rounding and at least one cell each. Every segment but the
-  last ends in a half block `▌` so neighbours stay distinct without color, and
-  nothing is scaled by the largest task; ASCII fills each segment with its legend
-  digit (`1`–`0`) and the remainder with `.`. Below the bar a ranked legend
-  shows at most five entries: a marker in the segment's color, the task display
-  name (or a short name derived from the Agents row's task summary, with leading
+  last ends in a half cell (`╸` in the thin style, `▌` in the classic one) so
+  neighbours stay distinct without color, and nothing is scaled by the largest
+  task; the thin style fills task segments with `━` and the classic style with
+  `█`, and a one-cell segment that is not last is the cap alone. ASCII fills each
+  segment with its legend digit (`1`–`0`) and the remainder with `.`, whatever
+  the style. Below the bar a ranked legend shows at most five entries: a marker
+  in the segment's color, the task display name (or a short name derived from the Agents row's task summary, with leading
   PHASE/CHANGE dispatch envelopes, Repo root phrases and absolute path tokens
   stripped, and the change name retained) truncated with `…` to the width left
   after the columns (at least 30 cells at 50 columns, 14 at 36), the integer
@@ -116,10 +127,12 @@ are never rearranged; Cost is appended when missing.
   they may not add up to 100) and the amount; the share column is dropped below
   an inner width of 28. With more than five tasks, or untracked cost (panel
   total minus tracked total) of at least half a cent, the legend shows the top
-  four tasks and a muted `░` remainder entry, `+N more tasks` (`+1 more task`;
-  `other` when no task is hidden), whose share and amount are the panel total
-  minus the four shown. A running task gets an accent `↑` (`^` in ASCII) in a
-  trailing column reserved on every row, so labels never shift, and the header
+  four tasks and a remainder entry, `+N more tasks` (`+1 more task`; `other`
+  when no task is hidden), whose share and amount are the panel total minus the
+  four shown. Its bar segment is the track (a dim `─` in the thin style, a muted
+  `░` in the classic one) and its marker is `○` (dim) or `░` (muted). A running
+  task gets an accent `↑` (`^` in ASCII) in a trailing column reserved on every
+  row, so labels never shift, and the header
   total shows `↑` while any task runs; running follows the latest live
   snapshot, so a task that disappears from it stops being marked. Segment and
   marker colors follow the rank and come from the palette shared with the
@@ -132,6 +145,23 @@ are never rearranged; Cost is appended when missing.
   with a duration axis from zero to the longest task duration (running tasks use
   the current time). Tasks without samples draw a straight segment from `(0,0)`
   to `(duration, final cost)`. Curve legends show `agent · label` (once when identical); the sidebar legend keeps the label alone.
+
+### Bar styles
+
+The Cost share bar and the Session context meter share one `bars` preference,
+`thin` (default) or `classic`, edited only in the `Bars` row of
+`/sidebar settings`; there is no command for it.
+
+| Style     | Cost segments      | Cost remainder track, marker | Context meter                              |
+| --------- | ------------------ | ---------------------------- | ------------------------------------------ |
+| `thin`    | `━` with a `╸` cap | dim `─`, dim `○`            | up to 16 cells, `━` and `╾` on a dim `─` |
+| `classic` | `█` with a `▌` cap | muted `░`, muted `░`        | 10 cells, eighth blocks on a `░` track    |
+
+For tasks costing $2.64, $0.73, $0.25 and $0.17 within $3.79 at width 50 the
+thin bar reads `━`×31 `╸`, `━`×8 `╸`, `━━╸`, `━━` (32, 9, 3 and 2 cells). Allocation,
+segment colors, legend, `+N more tasks` folding, running arrows and thresholds
+are the same in both styles, and ASCII icon mode ignores the style and draws
+its usual `1`–`0` digits, `.` and `#`/`-`.
 
 ### Degradation
 
@@ -155,7 +185,8 @@ traversal per render. Cost reads only what the tracker cached when a snapshot
 arrived (ranking, total, task count and running flags). The shared 100 ms
 cadence runs only for visible animated work rows, not finished history; plan
 keys include retained rows, source summaries, workspace, cost revision (which
-also changes when a task starts or stops running) and animation frame.
+also changes when a task starts or stops running), the bar style and animation
+frame, so saving a new style replans once.
 
 ## Preferences
 
@@ -164,6 +195,7 @@ also changes when a task starts or stops running) and animation frame.
 ```json
 {
   "startup": "auto",
+  "bars": "thin",
   "panels": [
     { "id": "session", "visible": true },
     { "id": "workspace", "visible": true }
@@ -173,7 +205,9 @@ also changes when a task starts or stops running) and animation frame.
 
 `startup` accepts `auto`, `manual` or `off` (default `auto`); it applies to the
 next session, not the current one. `width` (36–72, optional) is the default
-preferred width, applied at start and when saved from `/sidebar settings`. `panels` is an ordered array of non-empty
+preferred width, applied at start and when saved from `/sidebar settings`. `bars` (optional) is `thin` (default) or
+`classic`, the look of the Cost bar and Context meter, applied immediately when saved from `/sidebar settings`;
+anything else is ignored and the default applies. `panels` is an ordered array of non-empty
 string ids and boolean `visible` flags. Built-in ids are `session`, `workspace` and `cost`; work-source ids are
 `subagents`, `todos` and `background-tasks` (use `/sidebar panels` for all
 discovered ids). Display labels are not command ids.
@@ -217,6 +251,9 @@ pnpm --filter @thoth-agents/pi-sidebar build
   tasks first seen in persisted history are drawn as a straight segment.
 - Cost draws `●` and `↑`, which some terminals render two cells wide; legend
   rows can then misalign, and ASCII icon mode avoids both glyphs.
+- The thin style draws `━ ╸ ╾ ─ ○`, which need a font that carries them and,
+  in the dim `─` track, can read as a second border line under some themes. The
+  `classic` style and ASCII icon mode avoid those glyphs.
 - Real-terminal checks in both modes remain necessary, particularly scrollback,
   mouse dragging, focus restoration and terminal/custom keybinding behavior.
 

@@ -100,7 +100,7 @@ describe('data-only work panel rendering', () => {
       `${themed ? '       ' : '    '}elapsed 12s`,
       '← interact',
     ]);
-    vi.setSystemTime(100);
+    vi.advanceTimersByTime(100);
     expect(session.render(100)[1]).toContain('⠙ worker');
     expect(getWorkPanelSourceRows('golden-agents', { maxRows: 1 })).toEqual([
       agentRow,

@@ -18,6 +18,7 @@ import {
   renderToolFooter,
   resolveFrames,
   resolveIcon,
+  resolveStaticRunningGlyph,
   resolveStatusGlyph,
   type SemanticFrameName,
   type SemanticGlyphName,
@@ -248,6 +249,25 @@ describe('render kit registry', () => {
 });
 
 describe('semantic icon resolvers', () => {
+  it('resolves the mode-aware static running glyph through existing v1 status glyphs', () => {
+    expect(resolveStaticRunningGlyph()).toBe('◐');
+    for (const glyph of ['◐', '*']) {
+      const token = registerRenderKit({ ...kit, statusGlyph: () => glyph }, {});
+      expect(resolveStaticRunningGlyph()).toBe(glyph);
+      withdrawRenderKit(token);
+    }
+    registerRenderKit(
+      {
+        ...kit,
+        statusGlyph: () => {
+          throw new Error('foreign');
+        },
+      },
+      {},
+    );
+    expect(resolveStaticRunningGlyph()).toBe('◐');
+  });
+
   it('keeps current native glyphs and literals without a registered kit', () => {
     const nativeIcons: Record<SemanticGlyphName, string> = {
       branch: '⑂',

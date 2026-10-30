@@ -551,11 +551,12 @@ test.each([
   expect(JSON.stringify(payload)).toBe(before);
 });
 
-test('mounted AskAntigravity running body animates via the kit indicator and restores the native glyph', async () => {
+test('mounted AskAntigravity running body uses emitted frames and restores the native glyph', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(0);
   const tool = await askTool();
+  const payload = { content: [{ type: 'text' as const, text: 'working' }], details: { frame: 0 } };
   const component = tool.renderResult(
-    { content: [{ type: 'text', text: 'working' }], details: undefined },
+    payload,
     { expanded: false, isPartial: true }, theme, context(),
   );
   const native = component.render(120);
@@ -565,7 +566,12 @@ test('mounted AskAntigravity running body animates via the kit indicator and res
   tokens.push(token);
   expect(component.render(120).join('\n')).toContain('⠋ AskAntigravity');
   clock.mockReturnValue(80);
-  expect(component.render(120).join('\n')).toContain('⠙ AskAntigravity');
+  expect(component.render(120).join('\n')).toContain('⠋ AskAntigravity');
+  const next = tool.renderResult(
+    { ...payload, details: { frame: 1 } },
+    { expanded: false, isPartial: true }, theme, context(),
+  );
+  expect(next.render(120).join('\n')).toContain('⠙ AskAntigravity');
   withdrawRenderKit(token);
   expect(component.render(120)).toEqual(native);
 });

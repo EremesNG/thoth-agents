@@ -1,4 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -11,6 +17,7 @@ import {
   type MarkdownTheme,
   visibleWidth,
 } from '@earendil-works/pi-tui';
+import { getAnimationLevel, setAnimationLevel } from '@thoth-agents/pi-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import thothTheme from './index.ts';
 import type { ThemeConfig } from './shared/config.ts';
@@ -28,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setAnimationLevel('full');
   vi.unstubAllEnvs();
   rmSync(agentDir, { recursive: true, force: true });
 });
@@ -38,6 +46,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
     event: string;
     handler: LifecycleHandler;
   }> = [];
+  const registerCommand = vi.fn<ExtensionAPI['registerCommand']>();
   const registerTool = vi.fn();
   const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
   const registerMarkdownTransformer =
@@ -50,6 +59,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
     throw new Error('Pi settings are unavailable during extension load');
   });
   const pi = {
+    registerCommand,
     registerTool,
     registerToolRenderer,
     registerMarkdownTransformer,
@@ -59,6 +69,8 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
     },
   } as unknown as ExtensionAPI;
   const ui = {
+    select: vi.fn<ExtensionContext['ui']['select']>(),
+    notify: vi.fn<ExtensionContext['ui']['notify']>(),
     setFooter: vi.fn<ExtensionContext['ui']['setFooter']>(),
     setHeader: vi.fn<ExtensionContext['ui']['setHeader']>(),
     setEditorComponent: vi.fn<ExtensionContext['ui']['setEditorComponent']>(),
@@ -76,6 +88,13 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
   thothTheme(pi);
 
   return {
+    async animation(args: string) {
+      const command = registerCommand.mock.calls.find(
+        ([name]) => name === 'thoth-animation',
+      )?.[1];
+      if (!command) throw new Error('thoth-animation was not registered');
+      await command.handler(args, ctx as Parameters<typeof command.handler>[1]);
+    },
     registerTool,
     registerToolRenderer,
     registerMarkdownTransformer,
@@ -94,6 +113,159 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
     },
   };
 }
+
+describe('animation control', () => {
+  it.each([
+    ['full', 200, ['△', '◭', '▲', '◮']],
+    ['reduced', 200, ['△', '◭', '▲', '◮']],
+    ['minimal', 500, ['△', '◭', '▲', '◮']],
+    ['off', 500, ['◐']],
+  ] as const)('applies %s at extension load and session start with the native indicator', async (animation, intervalMs, frames) => {
+    const session = loadTheme({ animation });
+    expect(getAnimationLevel()).toBe(animation);
+    setAnimationLevel(animation === 'off' ? 'full' : 'off');
+    await session.start();
+    expect(getAnimationLevel()).toBe(animation);
+    expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
+      frames: [...frames],
+      intervalMs,
+    });
+  });
+
+  it('marks the current level in the selector, saves its choice and applies without restart', async () => {
+    const session = loadTheme({ animation: 'reduced' });
+    await session.start();
+    session.ui.select.mockResolvedValue('minimal');
+    await session.animation('');
+    expect(session.ui.select).toHaveBeenCalledWith('Thoth animation', [
+      'full',
+      'reduced (current)',
+      'minimal',
+      'off',
+    ]);
+    expect(getAnimationLevel()).toBe('minimal');
+    expect(
+      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8'))
+        .animation,
+    ).toBe('minimal');
+    expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
+      frames: ['△', '◭', '▲', '◮'],
+      intervalMs: 500,
+    });
+  });
+
+  it('applies a direct argument immediately and uses a mode-aware static native glyph', async () => {
+    const session = loadTheme({ icons: 'ascii' });
+    await session.start();
+    await session.animation('off');
+    expect(session.ui.select).not.toHaveBeenCalled();
+    expect(getAnimationLevel()).toBe('off');
+    expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
+      frames: ['*'],
+      intervalMs: 500,
+    });
+    expect(
+      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')),
+    ).toEqual({ icons: 'ascii', animation: 'off' });
+  });
+
+  it('rejects invalid arguments visibly and leaves disk and the current level unchanged', async () => {
+    const session = loadTheme({ animation: 'reduced' });
+    const before = readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8');
+    await session.animation('slow');
+    expect(session.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('full, reduced, minimal, off'),
+      'error',
+    );
+    expect(session.ui.select).not.toHaveBeenCalled();
+    expect(getAnimationLevel()).toBe('reduced');
+    expect(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')).toBe(
+      before,
+    );
+  });
+
+  it('saves a selection of the current marked level', async () => {
+    const session = loadTheme({ animation: 'reduced' });
+    session.ui.select.mockResolvedValue('reduced (current)');
+    await session.animation('');
+    expect(getAnimationLevel()).toBe('reduced');
+    expect(session.ui.notify).toHaveBeenLastCalledWith(
+      'Thoth animation: reduced',
+      'info',
+    );
+    expect(
+      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')),
+    ).toEqual({ animation: 'reduced' });
+  });
+
+  it('reports a failed save without applying the new level or native indicator', async () => {
+    const session = loadTheme({ animation: 'reduced' });
+    const path = join(agentDir, 'pi-thoth-theme.json');
+    rmSync(path);
+    mkdirSync(path);
+    await session.animation('off');
+    expect(getAnimationLevel()).toBe('reduced');
+    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
+    expect(session.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('Could not save animation'),
+      'error',
+    );
+  });
+
+  it.each([
+    '{ "icons": "ascii",\n',
+    '["hand-written", "settings"]\n',
+    '"hand-written settings"\n',
+    'null\n',
+    '42\n',
+    'false\n',
+  ])('reports invalid existing config %j without changing disk or the applied/persisted level', async (contents) => {
+    const session = loadTheme({ animation: 'reduced' });
+    const path = join(agentDir, 'pi-thoth-theme.json');
+    writeFileSync(path, contents);
+    const before = readFileSync(path);
+    await session.animation('off');
+    expect(readFileSync(path)).toEqual(before);
+    expect(getAnimationLevel()).toBe('reduced');
+    expect(session.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Could not save animation: Cannot save animation to ${path}`,
+      ),
+      'error',
+    );
+    expect(session.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('fix the file first'),
+      'error',
+    );
+    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
+    // Session startup reapplies the in-memory config, which must remain reduced.
+    setAnimationLevel('minimal');
+    await session.start();
+    expect(getAnimationLevel()).toBe('reduced');
+    expect(readFileSync(path)).toEqual(before);
+  });
+
+  it('creates a missing config with only animation and applies it immediately', async () => {
+    const session = loadTheme({ animation: 'reduced' });
+    const path = join(agentDir, 'pi-thoth-theme.json');
+    rmSync(path);
+    await session.animation('minimal');
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      animation: 'minimal',
+    });
+    expect(getAnimationLevel()).toBe('minimal');
+  });
+
+  it('cancels the selector without changing configuration', async () => {
+    const session = loadTheme({ animation: 'minimal' });
+    session.ui.select.mockResolvedValue(undefined);
+    await session.animation('');
+    expect(getAnimationLevel()).toBe('minimal');
+    expect(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')).toBe(
+      '{"animation":"minimal"}',
+    );
+  });
+});
 
 describe('Thoth extension composition', () => {
   it('frames user markdown at the available content width', () => {

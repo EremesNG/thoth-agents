@@ -391,7 +391,7 @@ describe('bounded subagent tool details', () => {
     expect(taskUpdates).toHaveLength(2);
     for (const [index, update] of taskUpdates.entries()) {
       expect(update.details).toMatchObject({
-        frame: index + 1,
+        frame: 0,
         backgroundable: true,
         backgroundShortcut: 'ctrl+h',
       });

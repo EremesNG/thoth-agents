@@ -1636,7 +1636,7 @@ it('keeps themed running rows animated rather than resolving a static status gly
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render()[1]).toBe('  └─ | Agents item');
-  vi.setSystemTime(100);
+  vi.advanceTimersByTime(100);
   expect(session.render()[1]).toBe('  └─ / Agents item');
   withdrawRenderKit(token);
   expect(session.render()[1]).toBe('  ◐ Agents item');

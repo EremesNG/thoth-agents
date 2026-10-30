@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -197,7 +203,15 @@ describe('render kit through Pi SDK 1.0.2', () => {
     await loadSession();
     const kit = getRenderKit();
     if (!kit) throw new Error('No theme kit');
-    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
     const requestRender = vi.fn();
     const component = new ToolExecutionComponent(
       'footer_probe',
@@ -321,7 +335,28 @@ describe('render kit through Pi SDK 1.0.2', () => {
       const parent = await loadSession();
       const kit = getRenderKit();
       expect(kit).toBeDefined();
-      vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+      // The runner checks the file before prompt() too, so seed a real SDK
+      // session rather than leaving its creation retries blocked by fake time.
+      const childSessionManager = SessionManager.create(
+        cwd,
+        join(root, 'child-sessions'),
+      );
+      childSessionManager.appendMessage({
+        role: 'user',
+        content: 'check kit lifecycle',
+        timestamp: Date.now(),
+      });
+      const nestedSessionPath = childSessionManager.getSessionFile();
+      expect(existsSync(nestedSessionPath ?? '')).toBe(true);
+      vi.useFakeTimers({
+        toFake: [
+          'Date',
+          'setInterval',
+          'clearInterval',
+          'setTimeout',
+          'clearTimeout',
+        ],
+      });
       const { component, requestRender } = toolComponent(parent, 'bash');
       component.markExecutionStarted();
       expect(text(component)).toContain('△ · 0s');
@@ -345,6 +380,12 @@ describe('render kit through Pi SDK 1.0.2', () => {
             content: [{ type: 'text', text: 'done' }],
           } as AssistantMessage;
           this.agent.state.messages.push(message);
+          // Mirror real prompt persistence so teardown does not wait on a
+          // session file the stub would otherwise never create under fake time.
+          this.sessionManager.appendMessage(message);
+          expect(existsSync(this.sessionManager.getSessionFile() ?? '')).toBe(
+            true,
+          );
           await this.extensionRunner.emit({
             type: 'agent_end',
             messages: [message],
@@ -366,6 +407,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
           task: 'check kit lifecycle',
           taskId: 'kit-child',
           cwd,
+          nested_session_path: nestedSessionPath,
           ctx: {
             cwd,
             modelRuntime,

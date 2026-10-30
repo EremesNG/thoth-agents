@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import {
+  registerRenderKit,
+  setAnimationLevel,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { progressText } from '../../src/render/tools/progress.js';
 import type { SubagentTask } from '../../src/types.js';
 
@@ -14,6 +20,25 @@ const task: SubagentTask = {
 };
 
 describe('progress text', () => {
+  it.each([
+    '◐',
+    '*',
+  ])('uses the static running glyph %s at off even with a supplied frame', (glyph) => {
+    const kit = createTestRenderKit();
+    kit.statusGlyph = () => glyph;
+    const token = registerRenderKit(kit, {});
+    setAnimationLevel('off');
+    onTestFinished(() => {
+      withdrawRenderKit(token);
+      setAnimationLevel('full');
+    });
+    for (const ui of [false, true]) {
+      expect(progressText([task], 9, { ui }).split('\n')[0]).toBe(
+        `${glyph} agent: analyst · status: running · attempt: 1 · effort: default/current`,
+      );
+      expect(progressText([], 9, { ui })).toBe(`${glyph} Starting subagent…`);
+    }
+  });
   it('separates model and usage in raw progress updates with a background hint', () => {
     const lines = progressText(
       [

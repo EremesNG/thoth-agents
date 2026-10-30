@@ -15,7 +15,10 @@ describe('input-box breathing animation', () => {
   it('breathes uniformly from dim sand through gold to bright gold over 2.4 seconds with light glyphs', () => {
     const border = '╭──╮││╰──╯';
     const render = (now: number) =>
-      colorBreathingBorder(border, createBreathingFrame(now, 'truecolor'));
+      colorBreathingBorder(
+        border,
+        createBreathingFrame(now / 100, 'truecolor'),
+      );
 
     expect(render(0)).toBe(`\x1b[38;2;115;104;80m${border}\x1b[39m`);
     expect(render(600)).toBe(`\x1b[38;2;212;175;55m${border}\x1b[39m`);
@@ -28,7 +31,7 @@ describe('input-box breathing animation', () => {
 
   it('uses sinusoidal easing with a symmetric rise and fall, including distant cycles', () => {
     const render = (now: number) =>
-      colorBreathingBorder('─', createBreathingFrame(now, 'truecolor'));
+      colorBreathingBorder('─', createBreathingFrame(now / 100, 'truecolor'));
 
     // At one sixth and one third of the cycle, brightness is 25% and 75%.
     expect(render(400)).toBe('\x1b[38;2;164;140;68m─\x1b[39m');
@@ -47,7 +50,7 @@ describe('input-box breathing animation', () => {
         [600, '\x1b[38;5;179m'],
         [1200, '\x1b[38;5;221m'],
       ] as const) {
-        const frame = createBreathingFrame(now);
+        const frame = createBreathingFrame(now / 100);
         const border = colorBreathingBorder('╭──╮', frame);
         const label = renderWorkingIndicator(
           '△ working…',
@@ -75,7 +78,7 @@ describe('input-box breathing animation', () => {
     '▲',
     '◮',
   ])('pulses native pyramid %s in the border color without bold while its label shimmers', (pyramid) => {
-    const frame = createBreathingFrame(1200, 'truecolor');
+    const frame = createBreathingFrame(12, 'truecolor');
     const native = `\x1b[1m${pyramid}\x1b[0m \x1b[36mworking…\x1b[0m`;
     const muted = (text: string) => `\x1b[38;2;168;154;120m${text}\x1b[39m`;
     const label = renderWorkingIndicator(native, frame, muted);
@@ -94,7 +97,7 @@ describe('input-box breathing animation', () => {
     const render = (now: number) =>
       renderWorkingIndicator(
         '\x1b[36m△ working…\x1b[0m',
-        createBreathingFrame(now, 'truecolor'),
+        createBreathingFrame(now / 100, 'truecolor'),
         muted,
       );
     const base = Array.from('working…').map(muted).join('');
@@ -133,7 +136,7 @@ describe('input-box breathing animation', () => {
     try {
       const label = renderWorkingIndicator(
         '\x1b[36mworking…\x1b[0m',
-        createBreathingFrame(1200, mode),
+        createBreathingFrame(12, mode),
         (text) => `${muted}${text}\x1b[39m`,
       );
       expect(label).toContain(`${bright}\x1b[1mi\x1b[22m\x1b[39m`);

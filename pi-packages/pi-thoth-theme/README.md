@@ -122,6 +122,7 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 ```json
 {
   "icons": "nerd",
+  "animation": "full",
   "statusLine": {
     "enabled": true,
     "subscriptionProviders": ["claude-bridge", "antigravity"]
@@ -134,6 +135,21 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
   "welcome": { "enabled": true }
 }
 ```
+
+`animation` accepts `"full"` (default), `"reduced"`, `"minimal"`, or `"off"`.
+Missing or malformed values use `"full"`. Run `/thoth-animation` to select a
+level (the current level is marked), or `/thoth-animation minimal` to apply one
+directly. Changes are saved atomically, preserve other configuration fields, and
+apply immediately without a restart. Invalid arguments leave the setting unchanged.
+Malformed or non-object configuration files must be fixed before the command can
+save; they are never overwritten with defaults.
+Animated surfaces step through every frame in order on a shared 100/200/500 ms
+clock; the native working indicator uses 200/200/500 ms frame intervals instead.
+At `"off"`, running indicators use `◐` (`*` in ASCII mode), input borders and labels
+are static, and elapsed times in the root input label and tool cards continue
+updating every second. Input refreshes stop when root work ends; background-only
+input labels need no timer. Pi's separate retry, compaction and branch-summary
+loaders are not controlled here.
 
 `icons` accepts `"nerd"` (default), `"unicode"` (native Render KIT glyphs,
 status symbols and animation frames, with Unicode substitutes for Nerd glyphs),
@@ -171,7 +187,8 @@ the full default list. Package names come from the nearest `package.json`
 walking upward from the tool's source directory. Built-ins always use the
 themed frames; tools absent from Pi's registry keep their own renderers.
 
-Configuration is read at extension load; use `/reload` after edits. Missing,
+Configuration is read at extension load; use `/reload` after manual file edits
+(or `/thoth-animation` for immediate animation changes). Missing,
 malformed or invalid values use defaults unless noted above. Pi settings are
 never read for package configuration.
 

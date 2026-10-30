@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureWorkPanel,
+  registerRenderKit,
   registerUIPreferences,
   registerWorkPanelProvider,
+  setAnimationLevel,
   subscribeAnimationClock,
+  withdrawRenderKit,
   withdrawUIPreferences,
 } from '../src/index.js';
+import { createTestRenderKit } from '../src/testing.js';
 import { provider, uiSession } from './work-panel-fixture.js';
 
 const cleanups: Array<() => void> = [];
@@ -15,11 +19,206 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  setAnimationLevel('full');
   expect(vi.getTimerCount()).toBe(0);
   vi.useRealTimers();
 });
 
 describe('work panel shared animation', () => {
+  it.each([
+    ['full', 100],
+    ['reduced', 200],
+    ['minimal', 500],
+  ] as const)('renders every braille frame in order at %s, not from wall-clock time', async (level, period) => {
+    vi.setSystemTime(0);
+    setAnimationLevel(level);
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [
+          {
+            id: 'task',
+            primary: 'Task',
+            status: 'running',
+            statusGlyph: 'running',
+          },
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toContain('  ⠋ Task');
+    const frames: string[] = [];
+    for (let step = 0; step < 10; step++) {
+      vi.advanceTimersByTime(period);
+      frames.push(
+        session.render().find((line: string) => line.includes('Task')) ?? '',
+      );
+    }
+    expect(frames).toEqual([
+      '  ⠙ Task',
+      '  ⠹ Task',
+      '  ⠸ Task',
+      '  ⠼ Task',
+      '  ⠴ Task',
+      '  ⠦ Task',
+      '  ⠧ Task',
+      '  ⠇ Task',
+      '  ⠏ Task',
+      '  ⠋ Task',
+    ]);
+    // Wall-clock changes and extra renders do not advance the animation.
+    const last = session.render();
+    vi.setSystemTime(999999);
+    expect(session.render()).toEqual(last);
+  });
+
+  it.each([
+    'native',
+    'themed',
+    'ascii',
+  ] as const)('at off renders static %s rows immediately, change-gates provider updates and refreshes data every second', async (mode) => {
+    if (mode !== 'native') {
+      const kit = createTestRenderKit();
+      const token = registerRenderKit(
+        { ...kit, statusGlyph: () => (mode === 'ascii' ? '*' : '◐') },
+        {},
+      );
+      cleanups.push(() => withdrawRenderKit(token));
+    }
+    setAnimationLevel('off');
+    const session = uiSession();
+    let primary = 'first';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [
+          { id: 'task', primary, status: 'running', statusGlyph: 'running' },
+        ],
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    const glyph = mode === 'ascii' ? '*' : '◐';
+    expect(session.render().join(' ')).toContain(`${glyph} first`);
+    session.tui.requestRender.mockClear();
+    expect(vi.getTimerCount()).toBe(1);
+    primary = 'latest';
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render().join(' ')).toContain(`${glyph} latest`);
+    vi.advanceTimersByTime(2000);
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(1);
+    setAnimationLevel('minimal');
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(4);
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(459);
+    expect(session.render().join(' ')).toMatch(/⠙ latest/);
+    setAnimationLevel('off');
+    expect(session.render().join(' ')).toContain(`${glyph} latest`);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('flushes a deferred provider update immediately when animation is turned off', async () => {
+    const session = uiSession();
+    let primary = 'first';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'task', primary, status: 'running' }],
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    session.tui.requestRender.mockClear();
+    primary = 'latest';
+    notify();
+    expect(session.tui.requestRender).not.toHaveBeenCalled();
+    setAnimationLevel('off');
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render()).toContain('  ◐ latest');
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('at off refreshes render-time elapsed data every second, keeps the glyph static and stops when running rows end', async () => {
+    vi.setSystemTime(0);
+    setAnimationLevel('off');
+    const session = uiSession();
+    let running = true;
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: (now) => [
+          {
+            id: 'task',
+            primary: `Task · ${Math.floor(now / 1000)}s`,
+            status: running ? 'running' : 'completed',
+            statusGlyph: running ? 'running' : 'completed',
+          },
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(session.render()).toContain('  ◐ Task · 0s');
+    const rendered: string[][] = [];
+    session.tui.requestRender.mockClear();
+    session.tui.requestRender.mockImplementation(() =>
+      rendered.push(session.render()),
+    );
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(999);
+    expect(rendered).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]).toContain('  ◐ Task · 1s');
+    vi.advanceTimersByTime(1000);
+    expect(rendered[1]).toContain('  ◐ Task · 2s');
+    running = false;
+    vi.advanceTimersByTime(1000);
+    expect(rendered[2]).toContain('  ✓ Task · 3s');
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(2000);
+    expect(rendered).toHaveLength(3);
+  });
+
+  it('at off stops the data refresh immediately when a provider reports completion', async () => {
+    setAnimationLevel('off');
+    const session = uiSession();
+    let status = 'running';
+    let notify = () => {};
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [{ id: 'task', primary: 'Task', status }],
+        onVisibleChanged(listener) {
+          notify = listener;
+          return () => {};
+        },
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    expect(vi.getTimerCount()).toBe(1);
+    session.tui.requestRender.mockClear();
+    status = 'completed';
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(session.render()).toContain('  ✓ Task');
+    expect(vi.getTimerCount()).toBe(0);
+    notify();
+    expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     'absorbed',
     'hidden',
@@ -464,7 +663,7 @@ describe('work panel shared animation', () => {
     expect(first.tui.requestRender).not.toHaveBeenCalled();
     expect(second.tui.requestRender).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(ticks).toHaveBeenCalledExactlyOnceWith(1101);
+    expect(ticks).toHaveBeenCalledExactlyOnceWith(1101, expect.any(Number));
     expect(first.tui.requestRender).toHaveBeenCalledTimes(1);
     expect(second.tui.requestRender).toHaveBeenCalledTimes(1);
     releaseFirst();

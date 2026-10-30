@@ -302,9 +302,9 @@ describe('theme kit icon lookup per mode', () => {
 
 describe('standard tool footer per mode', () => {
   it.each([
-    ['nerd', '▲ · 2s', '\u{f00c} · 2s · 1 line', '\u{f00d} · 2s · boom'],
-    ['unicode', '▲ · 2s', '✓ · 2s · 1 line', '✗ · 2s · boom'],
-    ['ascii', 'O | 2s', '+ | 2s | 1 line', 'x | 2s | boom'],
+    ['nerd', '△ · 2s', '\u{f00c} · 2s · 1 line', '\u{f00d} · 2s · boom'],
+    ['unicode', '△ · 2s', '✓ · 2s · 1 line', '✗ · 2s · boom'],
+    ['ascii', '. | 2s', '+ | 2s | 1 line', 'x | 2s | boom'],
   ] as const)('renders running, completed and failed in %s mode', (mode, running, done, failed) => {
     const kit = createRenderKit({}, undefined, mode);
     const footer = (status: RenderStatus, summary?: string) =>

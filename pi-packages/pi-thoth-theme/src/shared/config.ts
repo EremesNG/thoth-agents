@@ -1,6 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import type { AnimationLevel } from '@thoth-agents/pi-core';
 
 export type IconMode = 'nerd' | 'unicode' | 'ascii';
 
@@ -12,6 +20,8 @@ export const DEFAULT_RESPECT_PACKAGES: readonly string[] = [
 
 export interface ThemeConfig {
   icons: IconMode;
+  /** Omission uses full animation, preserving existing programmatic configs. */
+  animation?: AnimationLevel;
   statusLine: {
     enabled: boolean;
     subscriptionProviders?: string[];
@@ -56,12 +66,56 @@ function parseRespectPackages(value: unknown): string[] {
     : [...DEFAULT_RESPECT_PACKAGES];
 }
 
-export function loadConfig(
-  configPath = join(
+function defaultConfigPath(): string {
+  return join(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'),
     'pi-thoth-theme.json',
-  ),
-): ThemeConfig {
+  );
+}
+
+export const ANIMATION_LEVELS = ['full', 'reduced', 'minimal', 'off'] as const;
+
+export function isAnimationLevel(value: unknown): value is AnimationLevel {
+  return ANIMATION_LEVELS.some((level) => level === value);
+}
+
+/** Replace just the setting, preserving producer-owned and unknown JSON fields. */
+export function saveAnimationLevel(
+  animation: AnimationLevel,
+  configPath = defaultConfigPath(),
+): void {
+  let contents = '{}';
+  try {
+    contents = readFileSync(configPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  let config: Record<string, unknown>;
+  try {
+    const value: unknown = JSON.parse(contents);
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      throw new TypeError('Expected a JSON object');
+    config = value as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `Cannot save animation to ${configPath}: fix the file first; expected valid JSON containing an object.`,
+    );
+  }
+  mkdirSync(dirname(configPath), { recursive: true });
+  const temporary = `${configPath}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(
+      temporary,
+      `${JSON.stringify({ ...config, animation }, null, 2)}\n`,
+      { flag: 'wx', mode: 0o600 },
+    );
+    renameSync(temporary, configPath);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+export function loadConfig(configPath = defaultConfigPath()): ThemeConfig {
   let config: Record<string, unknown> = {};
   try {
     config = asObject(JSON.parse(readFileSync(configPath, 'utf8')));
@@ -69,6 +123,7 @@ export function loadConfig(
     // Missing or malformed package configuration uses package defaults.
   }
   return {
+    animation: isAnimationLevel(config.animation) ? config.animation : 'full',
     icons:
       config.icons === 'ascii' || config.icons === 'unicode'
         ? config.icons

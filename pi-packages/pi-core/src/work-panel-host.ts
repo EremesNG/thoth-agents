@@ -1,6 +1,10 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
-import { subscribeAnimationClock } from './animation-clock.js';
+import {
+  getAnimationLevel,
+  subscribeAnimationLevel,
+} from './animation-clock.js';
+import { subscribeAnimationSteps } from './animation-steps.js';
 import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
@@ -26,6 +30,7 @@ import {
   renderPanel,
   safely,
   singleLine,
+  WORK_PANEL_ANIMATION_INTERVAL_MS,
   workPanelRenderStatus,
 } from './work-panel-render.js';
 import { workPanelRegistry } from './work-panel-state.js';
@@ -79,6 +84,7 @@ export function createWorkPanelHost(
   let dismissDetail: (() => void) | undefined;
   let retentionTimer: ReturnType<typeof setTimeout> | undefined;
   let removeAnimation: (() => void) | undefined;
+  let animationFrame = 0;
   let providerDirty = false;
   let statusCue: string | undefined;
   let panelWidth: number | undefined;
@@ -396,12 +402,16 @@ export function createWorkPanelHost(
       }
     }
     if (animating) {
-      removeAnimation ??= subscribeAnimationClock(() => {
-        if (providerDirty) refreshNow(true);
-        else {
-          scheduleRender();
-          requestRender?.();
-        }
+      removeAnimation ??= subscribeAnimationSteps({
+        intendedMs: WORK_PANEL_ANIMATION_INTERVAL_MS,
+        onStep(step) {
+          if (!step.static) animationFrame++;
+          if (providerDirty) refreshNow(true);
+          else {
+            scheduleRender();
+            requestRender?.();
+          }
+        },
       });
     } else {
       removeAnimation?.();
@@ -478,7 +488,8 @@ export function createWorkPanelHost(
     },
     refresh() {
       if (disposed) return;
-      if (removeAnimation) providerDirty = true;
+      if (removeAnimation && getAnimationLevel() !== 'off')
+        providerDirty = true;
       else refreshNow(true);
     },
     dispose() {
@@ -492,6 +503,7 @@ export function createWorkPanelHost(
       slot?.dispose();
       removeLifecycle?.();
       removePreferences();
+      removeLevel();
       if (installed) {
         ctx.ui.setStatus(WIDGET_KEY, undefined);
       }
@@ -531,6 +543,7 @@ export function createWorkPanelHost(
               measure: primitives?.panelVisibleWidth ?? toolkit?.visibleWidth,
               selectedKey: focused ? selectedKey : undefined,
               budget: panelBudget(),
+              animationFrame,
               hint: focused
                 ? [
                     !entry?.sectionSummary || rows().length > 1
@@ -578,6 +591,7 @@ export function createWorkPanelHost(
     tui = slot.tui;
     installed = true;
   }
+  const removeLevel = subscribeAnimationLevel(() => refreshNow());
   const removePreferences = subscribeUIPreferences(refreshNow);
   removeLifecycle = onWorkPanelLifecycleChanged(ctx, refreshNow);
   host.ready = (async () => {

@@ -4,6 +4,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { TUI } from '@earendil-works/pi-tui';
 import {
+  getAnimationLevel,
   hasBlockingOverlay,
   isWorkPanelRootEditorInputActive,
   listProviderLimits,
@@ -17,7 +18,8 @@ import {
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
   subscribe,
-  subscribeAnimationClock,
+  subscribeAnimationLevel,
+  subscribeAnimationSteps,
   subscribeProviderLimits,
   subscribeWorkPanelRegistry,
   updateUIPreferences,
@@ -81,6 +83,7 @@ export class SidebarSession {
   private resizeStatus: string | undefined;
   private resizeInputRelease: (() => void) | undefined;
   private animationRelease: (() => void) | undefined;
+  private animationFrame = 0;
   private mounted = false;
   private disposed = false;
   private readonly releases: Array<() => void> = [];
@@ -130,6 +133,10 @@ export class SidebarSession {
     if (!this.mounted) return;
     this.adapter.setWidth(this.controls.width, this.appliedWidth);
     this.releases.push(
+      subscribeAnimationLevel(() => {
+        this.rendered = undefined;
+        this.refresh();
+      }),
       subscribeWorkPanelRegistry(() => {
         this.discover();
         this.providerChanged();
@@ -224,18 +231,28 @@ export class SidebarSession {
     }
   }
   private syncAnimation(active: boolean): void {
-    if (!active) {
-      this.animationRelease?.();
+    if (!active && this.animationRelease) {
+      this.animationRelease();
       this.animationRelease = undefined;
-    } else if (!this.animationRelease) {
-      this.animationRelease = subscribeAnimationClock(() => this.refresh());
+      this.panels.pauseAnimation();
+    } else if (active && !this.animationRelease) {
+      this.animationRelease = subscribeAnimationSteps({
+        intendedMs: 100,
+        onStep: (step) => {
+          // Retain the displayed frame when pausing replaces the subscription.
+          this.panels.stepAnimation(
+            step.static ? undefined : ++this.animationFrame,
+          );
+          this.refresh();
+        },
+      });
     }
   }
   private providerChanged(): void {
-    // Invalidate now, but coalesce refresh/render requests into the shared tick
-    // while visible rows animate. Static sidebars remain event-driven.
+    // Invalidate now, but coalesce animated provider changes into the next step.
+    // Idle sidebars and off-mode data changes remain event-driven.
     this.panels.invalidate();
-    if (!this.animationRelease) this.refresh();
+    if (!this.animationRelease || getAnimationLevel() === 'off') this.refresh();
   }
   private output(): SidebarOutput {
     const displayed = this.adapter.isDisplayed();

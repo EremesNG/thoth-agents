@@ -1,6 +1,6 @@
 import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
-import type { RenderKitTheme } from '@thoth-agents/pi-core';
-import { describe, expect, it } from 'vitest';
+import { type RenderKitTheme, setAnimationLevel } from '@thoth-agents/pi-core';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createRenderKit } from '../src/render-kit/index.ts';
 
 const theme: RenderKitTheme = { fg: (_role, text) => text };
@@ -10,7 +10,33 @@ const styledTheme: RenderKitTheme = {
   bold: (text) => `<bold>${text}</bold>`,
 };
 
+afterEach(() => setAnimationLevel('full'));
+
 describe('theme render kit', () => {
+  it.each([
+    'nerd',
+    'unicode',
+    'ascii',
+  ] as const)('uses the static %s running glyph at off even with caller frames, without changing footer text', (mode) => {
+    setAnimationLevel('off');
+    const local = createRenderKit({}, undefined, mode);
+    for (const status of ['running', 'in_progress'] as const) {
+      for (const frame of [undefined, 0, 1, 9, 10, -1, Number.NaN]) {
+        const indicator = local.indicator(
+          theme,
+          {},
+          { status, elapsedMs: 2250, frame },
+        );
+        const glyph = mode === 'ascii' ? '*' : '◐';
+        const separator = mode === 'ascii' ? '|' : '·';
+        expect(indicator.glyph).toBe(glyph);
+        expect(indicator.text).toBe(`${glyph} ${separator} 2s`);
+        expect(local.toolFooter?.(theme, { status, elapsedMs: 2250 })).toBe(
+          `${glyph} ${separator} 2s`,
+        );
+      }
+    }
+  });
   it('renders standard running and terminal tool footers with whole-second elapsed time', () => {
     expect(
       kit.toolFooter?.(styledTheme, {
@@ -18,7 +44,7 @@ describe('theme render kit', () => {
         elapsedMs: 2250,
         summary: 'ignored while running',
       }),
-    ).toBe('<accent>▲</accent><dim> · </dim><dim>2s</dim>');
+    ).toBe('<accent>△</accent><dim> · </dim><dim>2s</dim>');
     expect(
       kit.toolFooter?.(styledTheme, {
         status: 'completed',
@@ -173,7 +199,7 @@ describe('theme render kit', () => {
         { ...options, status, footer: indicator.text },
         24,
       );
-      expect(lines.at(-1)).toBe('╰── ◭ · 5s ────────────╯');
+      expect(lines.at(-1)).toBe('╰── △ · 5s ────────────╯');
       expect(lines.at(-1)).not.toMatch(/◐|Claude Code|running/);
     }
     expect(kit.card(theme, { status }, 24).at(-1)).toContain('╰── ◐ ');
@@ -199,7 +225,7 @@ describe('theme render kit', () => {
       };
       expect(
         kit.card(theme, { ...options, status: 'running', context }, 40).at(-1),
-      ).toContain('╰── ◭ · 5s ');
+      ).toContain('╰── △ · 5s ');
       expect(
         kit
           .card(
@@ -432,7 +458,7 @@ describe('theme render kit', () => {
     ).toBe('\uf00c');
   });
 
-  it('uses elapsed pyramid frames in footer text without changing caller-owned working prefixes', () => {
+  it('uses stepped pyramid frames in footer text without changing caller-owned working prefixes', () => {
     expect(
       kit.indicator(
         styledTheme,
@@ -447,7 +473,7 @@ describe('theme render kit', () => {
       glyph: '<accent>⠙</accent>',
       elapsedMs: 5000,
       elapsed: '5s',
-      text: '<accent>◭</accent><dim> · </dim><dim>5s</dim>',
+      text: '<accent>△</accent><dim> · </dim><dim>5s</dim>',
     });
     expect(kit.indicator(theme, undefined, { status: 'running' }).text).toBe(
       '△',
@@ -458,15 +484,15 @@ describe('theme render kit', () => {
     for (const status of ['running', 'in_progress'] as const) {
       expect(
         kit.indicator(theme, undefined, { status, elapsedMs: 1250 }).glyph,
-      ).toBe('◭');
+      ).toBe('△');
     }
     expect(
       kit.indicator(theme, undefined, { status: 'running', elapsedMs: 2250 }),
     ).toEqual({
-      glyph: '▲',
+      glyph: '△',
       elapsedMs: 2250,
       elapsed: '2s',
-      text: '▲ · 2s',
+      text: '△ · 2s',
     });
     expect(
       kit.indicator(theme, undefined, {

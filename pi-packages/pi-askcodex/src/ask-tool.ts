@@ -9,9 +9,12 @@ import {
 import {
   detachRenderContext,
   formatDuration,
+  getAnimationLevel,
   getQuestionService,
   getRenderKit,
   renderToolFooter,
+  resolveStaticRunningGlyph,
+  subscribeAnimationSteps,
 } from '@thoth-agents/pi-core';
 import { Type } from 'typebox';
 import {
@@ -58,6 +61,8 @@ export interface AskCodexDetails {
   effort?: string;
   mode: AskCodexMode;
   elapsedMs: number;
+  /** Stepper-owned frame carried only by partial updates. */
+  frame?: number;
   aborted: boolean;
   timedOut: boolean;
   stderrTail?: string;
@@ -166,10 +171,13 @@ export function registerAskCodexTool(
         .join('\n');
       const text = () => {
         const glyph =
-          getRenderKit()?.indicator(theme, context, {
-            status,
-            frame: Math.floor(Date.now() / 80),
-          }).glyph ?? (isPartial ? '◉' : status === 'completed' ? '✓' : '✗');
+          isPartial && getAnimationLevel() === 'off'
+            ? resolveStaticRunningGlyph()
+            : (getRenderKit()?.indicator(theme, context, {
+                status,
+                frame: d?.frame ?? 0,
+              }).glyph ??
+              (isPartial ? '◉' : status === 'completed' ? '✓' : '✗'));
         return (
           theme.fg(
             status === 'failed' ? 'error' : 'mdLink',
@@ -218,7 +226,7 @@ export function registerAskCodexTool(
       };
       let client: AppServerClient | undefined;
       let scratch: string | undefined;
-      let tick: ReturnType<typeof setInterval> | undefined;
+      let stopAnimation: (() => void) | undefined;
       let deadline: ReturnType<typeof setTimeout> | undefined;
       let interruptDeadline: ReturnType<typeof setTimeout> | undefined;
       let answer = '';
@@ -328,18 +336,21 @@ export function registerAskCodexTool(
         active.onNotification('error', (n) => {
           details.errors.push(n.error.message);
         });
-        tick = setInterval(() => {
-          details.elapsedMs = Date.now() - started;
-          onUpdate?.({
-            content: [
-              {
-                type: 'text',
-                text: `${formatDuration(details.elapsedMs)} · ${current}${tail ? ` · ${tail}` : ''}`,
-              },
-            ],
-            details: { ...details, status: 'inProgress' },
-          });
-        }, 1000);
+        stopAnimation = subscribeAnimationSteps({
+          intendedMs: 200,
+          onStep({ frame, now }) {
+            details.elapsedMs = now - started;
+            onUpdate?.({
+              content: [
+                {
+                  type: 'text',
+                  text: `${formatDuration(details.elapsedMs)} · ${current}${tail ? ` · ${tail}` : ''}`,
+                },
+              ],
+              details: { ...details, frame, status: 'inProgress' },
+            });
+          },
+        });
         const work = async () => {
           details.desktop = { running: await deps.desktopRunning() };
           if (details.desktop.running === false)
@@ -433,7 +444,7 @@ export function registerAskCodexTool(
       } finally {
         clearTimeout(deadline);
         clearTimeout(interruptDeadline);
-        clearInterval(tick);
+        stopAnimation?.();
         signal?.removeEventListener('abort', abort);
         try {
           if (client) {

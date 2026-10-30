@@ -1,4 +1,9 @@
-import { isWorkPanelRootEditorInputActive } from '@thoth-agents/pi-core';
+import {
+  getAnimationLevel,
+  isWorkPanelRootEditorInputActive,
+  subscribeAnimationLevel,
+  subscribeAnimationSteps,
+} from '@thoth-agents/pi-core';
 import { Type } from 'typebox';
 import {
   readSubagentsConfig,
@@ -28,8 +33,6 @@ import {
   compactTaskForToolResult,
 } from './result-details.js';
 import { fail, ok } from './tool-response.js';
-
-const FOREGROUND_RENDER_INTERVAL_MS = 250;
 
 export function installDoubleEscapeCancel(
   ctx: any,
@@ -142,10 +145,9 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
               },
             )
           : undefined;
-        let heartbeat: ReturnType<typeof setInterval> | undefined;
+        let heartbeat: (() => void) | undefined;
         const stopHeartbeat = () => {
-          if (heartbeat === undefined) return;
-          clearInterval(heartbeat);
+          heartbeat?.();
           heartbeat = undefined;
         };
         const syncHeartbeat = () => {
@@ -165,20 +167,32 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
             return;
           }
           if (heartbeat !== undefined) return;
-          heartbeat = setInterval(() => {
-            syncHeartbeat();
-            if (heartbeat !== undefined) emit();
-          }, FOREGROUND_RENDER_INTERVAL_MS);
-          heartbeat.unref?.();
+          const removeSteps = subscribeAnimationSteps({
+            intendedMs: 200,
+            onStep(step) {
+              syncHeartbeat();
+              if (!heartbeat) return;
+              // The initial progress update has already painted frame 0.
+              if (step.frame !== undefined) frame = step.frame + 1;
+              emit();
+            },
+          });
+          const removeLevel = subscribeAnimationLevel(() => emit());
+          heartbeat = () => {
+            removeSteps();
+            removeLevel();
+          };
         };
         const emit = () => {
-          if (!active || isBackground) return;
+          if (!active || isBackground || _signal?.aborted) return;
+          const currentFrame =
+            getAnimationLevel() === 'off' ? undefined : frame;
           try {
             onUpdate?.({
               content: [
                 {
                   type: 'text',
-                  text: progressText(latestTasks, frame, {
+                  text: progressText(latestTasks, currentFrame, {
                     backgroundable: canBackgroundInTaskMode,
                     backgroundShortcut,
                   }),
@@ -190,7 +204,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
                     includeResult: false,
                   }),
                 ),
-                frame: frame++,
+                frame: currentFrame,
                 backgroundable: canBackgroundInTaskMode,
                 backgroundShortcut,
               },

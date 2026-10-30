@@ -195,7 +195,7 @@ describe('subagents v2 render parity', () => {
     expect(rows[0]?.statusGlyph).toBe('running');
     for (const [width, lines] of themed ? themedGolden : nativeGolden)
       expect(session.render(width)).toEqual(lines);
-    vi.setSystemTime(now + 100);
+    vi.advanceTimersByTime(100);
     expect(session.render(100)[1]).toContain('⠙ worker');
     expect(session.render(100).join(' ')).toContain(
       themed ? '◷ 12s' : 'elapsed 12s',

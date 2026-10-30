@@ -5,12 +5,17 @@ import type {
   RenderIndicatorContext,
   RenderStatus,
 } from '@thoth-agents/pi-core';
-import { getToolElapsedMs } from '@thoth-agents/pi-core';
+import {
+  getToolElapsedMs,
+  subscribeAnimationLevel,
+  subscribeAnimationSteps,
+} from '@thoth-agents/pi-core';
 
 export type ElapsedRenderState = NonNullable<
   RenderIndicatorContext['state']
 > & {
-  elapsedTicker?: ReturnType<typeof setInterval>;
+  elapsedTicker?: () => void;
+  animationFrame?: number;
 };
 
 export interface ElapsedRenderContext extends RenderIndicatorContext {
@@ -51,7 +56,7 @@ export function getElapsedMs(
 }
 
 function stopElapsedTicker(state: ElapsedRenderState): void {
-  if (state.elapsedTicker !== undefined) clearInterval(state.elapsedTicker);
+  state.elapsedTicker?.();
   delete state.elapsedTicker;
   tickerStates.delete(state);
 }
@@ -65,7 +70,7 @@ export function stopElapsedTickers(owner: object): void {
   }
 }
 
-/** Keep one invalidation interval per state; explicit status wins over partial/error flags. */
+/** Keep one stepper per state; explicit status wins over partial/error flags. */
 export function syncElapsedTicker(
   context: ElapsedRenderContext,
   owner = activeOwner,
@@ -95,7 +100,19 @@ export function syncElapsedTicker(
     context.invalidate &&
     state.elapsedTicker === undefined
   ) {
-    state.elapsedTicker = setInterval(context.invalidate, 1000);
+    const stopSteps = subscribeAnimationSteps({
+      intendedMs: 1000,
+      onStep({ frame }) {
+        // Frame zero is already visible before the stepper's first callback.
+        if (frame !== undefined) state.animationFrame = frame + 1;
+        context.invalidate?.();
+      },
+    });
+    const stopLevel = subscribeAnimationLevel(() => context.invalidate?.());
+    state.elapsedTicker = () => {
+      stopSteps();
+      stopLevel();
+    };
     tickerStates.set(state, owner);
   }
 }

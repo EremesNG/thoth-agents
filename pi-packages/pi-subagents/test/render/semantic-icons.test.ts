@@ -306,10 +306,7 @@ it('retained running producer rows use kit indicator frames instead of static in
     }),
   );
   onTestFinished(await ensureWorkPanel(session.ctx as never));
-  const glyph = (at: number) => {
-    vi.setSystemTime(at);
-    return session.render(200)[1]?.match(/(\S) worker/u)?.[1];
-  };
+  const glyph = () => session.render(200)[1]?.match(/(\S) worker/u)?.[1];
   const kit = asciiKit();
   const indicator = kit.indicator;
   kit.indicator = (theme, context, options) => ({
@@ -318,11 +315,13 @@ it('retained running producer rows use kit indicator frames instead of static in
   });
   const token = registerRenderKit(kit, {});
   onTestFinished(() => withdrawRenderKit(token));
-  expect(glyph(0)).toBe('|');
-  expect(glyph(100)).toBe('/');
+  expect(glyph()).toBe('|');
+  vi.advanceTimersByTime(100);
+  expect(glyph()).toBe('/');
   withdrawRenderKit(token);
-  expect(glyph(0)).toBe('⠋');
-  expect(glyph(100)).toBe('⠙');
+  expect(glyph()).toBe('⠙');
+  vi.advanceTimersByTime(100);
+  expect(glyph()).toBe('⠹');
 });
 
 it.each([

@@ -430,9 +430,9 @@ describe('input-box editor composition', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('uses one time sample for the shimmer, pyramid, and every border even when native rendering advances the clock', () => {
+  it('uses one tick sample for the shimmer, pyramid, and every border even when native rendering advances wall time', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(600);
+    vi.setSystemTime(0);
     const { editor, deps, decorate } = setup();
     const muted = (text: string) => `\x1b[33m${text}\x1b[0m`;
     deps.theme.fg.mockImplementation((_token, text) => muted(text));
@@ -445,6 +445,7 @@ describe('input-box editor composition', () => {
     });
     decorate();
     deps.working.start();
+    vi.advanceTimersByTime(600);
     const lines = editor.render(40);
     const mode = getTerminalColorMode();
     const gold = foregroundAnsi(rgbColor(212, 175, 55), mode);

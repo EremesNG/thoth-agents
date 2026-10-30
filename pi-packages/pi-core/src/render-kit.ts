@@ -361,6 +361,11 @@ export function resolveStatusGlyph(
   return fallback ?? nativeStatusGlyphs[status];
 }
 
+/** Static, mode-aware in-progress glyph; never consults an animation frame. */
+export function resolveStaticRunningGlyph(): string {
+  return resolveStatusGlyph('running');
+}
+
 const terminalFooterGlyphs: Partial<Record<RenderStatus, string>> = {
   completed: '✓',
   deleted: '✓',

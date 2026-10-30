@@ -28,6 +28,7 @@ function loadTheme(toolsEnabled = true, hasUI = true): Session {
   );
   const handlers = new Map<string, Set<Handler>>();
   thothTheme({
+    registerCommand() {},
     registerToolRenderer() {},
     registerMarkdownTransformer() {},
     on(event: string, handler: Handler) {
@@ -219,7 +220,7 @@ describe('theme render-kit lifecycle', () => {
           context,
           elapsedMs: 5250,
         }),
-      ).toBe('◭ · 5s');
+      ).toBe('△ · 5s');
       expect(vi.getTimerCount()).toBe(1);
       vi.advanceTimersByTime(2250);
       expect(kit.toolFooter(theme, { status: 'running', context })).toBe(

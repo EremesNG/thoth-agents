@@ -457,7 +457,7 @@ describe('border segments', () => {
 
   it('offers context richest first and a dash when usage is absent', () => {
     expect(formatContextSegments(data)).toEqual([
-      '\uf2db ◆◆◆⬖◇◇◇◇ 43% 425.9K/1M',
+      '\uf2db ━━━╾──── 43% 425.9K/1M',
       '\uf2db 43% 425.9K/1M',
       '\uf2db 425.9K/1M',
     ]);
@@ -474,18 +474,18 @@ describe('border segments', () => {
     expect(formatContextSegments({})).toEqual(['—']);
     expect(
       formatContextSegments({ contextPercent: 0, contextTokens: 0 })[0],
-    ).toBe('\uf2db ◇◇◇◇◇◇◇◇ 0% 0');
+    ).toBe('\uf2db ──────── 0% 0');
   });
 
   it.each([
-    [0, '◇◇◇◇◇◇◇◇', '[--------]'],
-    [1, '⬖◇◇◇◇◇◇◇', '[=-------]'],
-    [3, '⬖◇◇◇◇◇◇◇', '[=-------]'],
-    [12, '◆◇◇◇◇◇◇◇', '[#-------]'],
-    [50, '◆◆◆◆◇◇◇◇', '[####----]'],
-    [85, '◆◆◆◆◆◆◆◇', '[#######-]'],
-    [100, '◆◆◆◆◆◆◆◆', '[########]'],
-  ])('draws %i%% as eight half-step diamonds', (percent, unicode, ascii) => {
+    [0, '────────', '[--------]'],
+    [1, '╾───────', '[=-------]'],
+    [3, '╾───────', '[=-------]'],
+    [12, '━───────', '[#-------]'],
+    [50, '━━━━────', '[####----]'],
+    [85, '━━━━━━━─', '[#######-]'],
+    [100, '━━━━━━━━', '[########]'],
+  ])('draws %i percent as eight half-step hairline cells', (percent, unicode, ascii) => {
     const bar = (mode: 'nerd' | 'unicode' | 'ascii') =>
       formatContextSegments(
         { contextPercent: percent, contextTokens: 1 },
@@ -496,25 +496,38 @@ describe('border segments', () => {
     expect(bar('ascii')).toContain(` ${ascii} ${percent}%`);
   });
 
-  it('colors filled diamonds by threshold and empties dim', () => {
+  it('colors filled hairlines by threshold and empties dim', () => {
     expect(
       formatContextSegments(
         { contextPercent: 50, contextTokens: 1 },
         { theme: mockTheme },
       )[0],
-    ).toContain('[success]◆◆◆◆[/success][dim]◇◇◇◇[/dim]');
+    ).toContain('[success]━━━━[/success][dim]────[/dim]');
+    expect(
+      formatContextSegments(
+        { contextPercent: 85, contextTokens: 1 },
+        { theme: mockTheme },
+      )[0],
+    ).toContain(
+      '[warning]━━━━━━━[/warning][dim]─[/dim] [warning]85%[/warning]',
+    );
   });
 
   it.each([
     [69, 'success'],
-    [70, 'warning'],
-    [90, 'error'],
-  ])('colors %i%% context with %s', (percent, token) => {
-    expect(
-      formatContextSegments(
-        { contextPercent: percent, contextTokens: 1 },
-        { theme: mockTheme },
-      )[1],
-    ).toContain(`[${token}]${percent}%[/${token}]`);
+    [70, 'success'],
+    [70.5, 'warning'],
+    [90, 'warning'],
+    [90.5, 'error'],
+    [100, 'error'],
+  ])('colors %s percent context with %s (warning above 70, error above 90)', (percent, token) => {
+    const [withBar, withPercent] = formatContextSegments(
+      { contextPercent: percent, contextTokens: 1 },
+      { theme: mockTheme },
+    );
+    const label = `${Math.round(percent)}%`;
+    expect(withPercent).toContain(`[${token}]${label}[/${token}]`);
+    expect(withBar).toContain(`[${token}]${label}[/${token}]`);
+    expect(withBar).toContain(`[${token}]━`);
   });
 });

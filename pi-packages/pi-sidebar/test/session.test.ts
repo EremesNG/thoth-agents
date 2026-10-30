@@ -1387,6 +1387,41 @@ it('marks the running subagent and the total, and clears both once the task leav
   app.shutdown();
 });
 
+it('marks the Cost remainder for a running task beyond rank ten and clears it when the task leaves', () => {
+  const app = setup();
+  writeFileSync(
+    join(app.dir, 'thoth-sidebar.json'),
+    JSON.stringify({ panels: [{ id: 'cost', visible: true }] }),
+  );
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  app.tui.start();
+  const data = stateSnapshot(1);
+  data.history = Array.from({ length: 11 }, (_, i) => ({
+    ...data.history[0],
+    id: `old${i}`,
+    displayName: `Old review ${i}`,
+    usage: { cost: 12 - i },
+  }));
+  const send = (snapshot: typeof data) => {
+    publish(app.events, SUBAGENTS_STATE_CHANNEL, {
+      sessionId: 'session',
+      source: 'test',
+      data: snapshot,
+    });
+    app.tui.renderNow(true);
+    return app.screen().split('\n');
+  };
+  const running = send(data);
+  expect(running.find((row) => row.includes('+8 more tasks'))).toContain('↑');
+  expect(running.find((row) => row.includes('COST'))).toContain('$78.0↑');
+  const stopped = send({ ...data, tasks: [] });
+  expect(stopped.find((row) => row.includes('+8 more tasks'))).not.toContain(
+    '↑',
+  );
+  expect(stopped.find((row) => row.includes('COST'))).not.toContain('↑');
+  app.shutdown();
+});
+
 it('lists Cost last and appends it to saved orders without rearranging them', () => {
   const app = setup();
   writeFileSync(

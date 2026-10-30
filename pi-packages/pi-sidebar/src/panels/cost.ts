@@ -54,6 +54,7 @@ export class CostTracker {
   private top: CostTask[] = [];
   private sum = 0;
   private anyRunning = false;
+  private hiddenRunning = false;
 
   /** Live tasks win over history entries with the same id. */
   update(snapshot: SubagentsSnapshot, at: number): void {
@@ -128,9 +129,11 @@ export class CostTracker {
     const all = [...this.tasks.values()];
     this.sum = all.reduce((total, task) => total + task.cost, 0);
     this.anyRunning = all.some((task) => task.running);
-    this.top = all
-      .sort((a, b) => b.cost - a.cost || a.label.localeCompare(b.label))
-      .slice(0, COST_TOP);
+    all.sort((a, b) => b.cost - a.cost || a.label.localeCompare(b.label));
+    this.hiddenRunning = all.some(
+      (task, rank) => rank >= LEGEND_ENTRIES - 1 && task.running,
+    );
+    this.top = all.slice(0, COST_TOP);
     this.revision++;
   }
 
@@ -152,6 +155,11 @@ export class CostTracker {
   /** Whether any tracked task is running. */
   active(): boolean {
     return this.anyRunning;
+  }
+
+  /** Whether a running tracked task ranks below the top four. */
+  remainderActive(): boolean {
+    return this.hiddenRunning;
   }
 }
 
@@ -206,7 +214,12 @@ function legendEntries(tracker: CostTracker, total: number): LegendEntry[] {
     hidden === 0 ? 'other' : `+${hidden} more task${hidden === 1 ? '' : 's'}`;
   return [
     ...entries,
-    { label, cost: Math.max(0, total - spent), tasks: hidden, running: false },
+    {
+      label,
+      cost: Math.max(0, total - spent),
+      tasks: hidden,
+      running: tracker.remainderActive(),
+    },
   ];
 }
 

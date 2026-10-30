@@ -131,10 +131,11 @@ are never rearranged; Cost is appended when missing.
   when no task is hidden), whose share and amount are the panel total minus the
   four shown. Its bar segment is the track (a dim `─` in the thin style, a muted
   `░` in the classic one) and its marker is `○` (dim) or `░` (muted). A running
-  task gets an accent `↑` (`^` in ASCII) in a trailing column reserved on every
-  row, so labels never shift, and the header
-  total shows `↑` while any task runs; running follows the latest live
-  snapshot, so a task that disappears from it stops being marked. Segment and
+  task, or a remainder grouping any running task, gets an accent `↑` (`^` in
+  ASCII) in a trailing column reserved on every row, so labels never shift;
+  the untracked-only `other` entry stays unmarked. The header total shows `↑`
+  while any task runs. Running follows the latest live snapshot, so a task
+  that disappears from it stops being marked. Segment and
   marker colors follow the rank and come from the palette shared with the
   curves view (warning/amber first, error/red last), so rank N has the same
   color and ASCII digit in both views. The header shows the panel total and the
@@ -182,11 +183,12 @@ of titles is an unavoidable bounded prefix shown. Measured height equals actual
 rendered height. Below 24 columns the sidebar shows only
 `widen: /sidebar resize`. Rendering is event-driven and cached: no session
 traversal per render. Cost reads only what the tracker cached when a snapshot
-arrived (ranking, total, task count and running flags). The shared 100 ms
+arrived (ranking, total, task count and running flags, including any running
+task below the top four even beyond the ten-entry ranking). The shared 100 ms
 cadence runs only for visible animated work rows, not finished history; plan
 keys include retained rows, source summaries, workspace, cost revision (which
-also changes when a task starts or stops running), the bar style and animation
-frame, so saving a new style replans once.
+also changes when a task starts or stops running, including in the remainder),
+the bar style and animation frame, so saving a new style replans once.
 
 ## Preferences
 

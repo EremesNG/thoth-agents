@@ -1052,11 +1052,11 @@ function dropTinySummary(
   return flattenItems(items.filter((_, position) => position !== index));
 }
 
-/** Context pressure by the displayed percentage: >= 70 warning, >= 90 error. */
+/** Context pressure by the displayed percentage: > 70 warning, > 90 error. */
 function contextRole(text: string): WorkPanelSegmentRole {
   const percent = Number(text.match(/(\d+(?:\.\d+)?)%/)?.[1]);
-  if (percent >= 90) return 'error';
-  return percent >= 70 ? 'warning' : 'dim';
+  if (percent > 90) return 'error';
+  return percent > 70 ? 'warning' : 'dim';
 }
 
 /** Per-element theme roles for one metric column; values keep their reserved text. */

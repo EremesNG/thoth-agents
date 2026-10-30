@@ -414,8 +414,10 @@ summary in all remaining width and elapsed; line 2, under the name, holds
 context, cost, speed, tokens, tools, warnings and model as the highest-priority
 prefix that fits (rows with only elapsed stay one line). Line-2 groups marked
 `pending` (running metrics without data yet) render blank with their separator
-at reserved width; context turns warning at 70% and error at 90%; finished rows
-render line 2 dim. A segment's optional `compact` text replaces it
+at reserved width; context turns warning above 70% and error above 90%, the
+single context rule shared with the sidebar Session meter and the pi-thoth-theme
+editor-border context bar (eight hairline cells: `━` full, `╾` half, dim `─`
+empty); finished rows render line 2 dim. A segment's optional `compact` text replaces it
 only in columns (pi-subagents uses it to drop the `thoth-` name prefix). Columns rows need keyed
 metrics and an identity of name/separator/summary, colored per element (status
 glyph and elapsed by state, tokens in/out from each segment's `direction`, cost
@@ -489,8 +491,9 @@ half-cell cap and a dim `─` remainder track (remainder marker `○`), `classic
 draws `█` with a `▌` cap and a muted `░` remainder, and ASCII mode ignores the
 style. With more than five tasks, or untracked cost of at least half a cent,
 the legend shows the top four plus a `+N more tasks`/`other` remainder
-entry. Running tasks carry an accent `↑` in a reserved column, and the header
-total shows it while any task runs, read from the latest live snapshot. Colors
+entry. Running tasks carry an accent `↑` in a reserved column, the remainder
+entry carries it while any task it groups runs, and the header total shows it
+while any task runs, read from the latest live snapshot. Colors
 follow rank from a series palette shared with the curves view (warning first,
 error last). Curves plot elapsed time per task from zero to the longest task
 duration. Under pressure footers drop before rows, Cost keeps its bar together

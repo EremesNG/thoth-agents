@@ -696,17 +696,91 @@ it('shows the arrow after the header total while any task runs and only then', (
   expect(idle.join('\n')).not.toContain('↑');
 });
 
-it('keeps the remainder entry free of markers while the header still reports a hidden running task', () => {
-  const data = tracker([
-    ...Array.from({ length: 5 }, (_, i) =>
-      task(`big${i}`, 5 - i * 0.1, { displayName: `Big ${i}` }),
-    ),
-    task('small', 0.5, { displayName: 'Small', status: 'running' }),
-  ]);
-  const rows = cost(data, 50, 40);
+/** Cheapest first, so cost ranks differ from snapshot order. */
+const rankedTasks = (...runningRanks: number[]) =>
+  Array.from({ length: 12 }, (_, i) =>
+    task(`t${i}`, 12 - i, {
+      status: runningRanks.includes(i + 1) ? 'running' : 'completed',
+    }),
+  ).reverse();
+
+it.each(
+  STYLES.flatMap((bars) => [5, 11].map((rank) => ({ bars, rank }))),
+)('marks the remainder when rank $rank is running ($bars)', ({
+  bars,
+  rank,
+}) => {
+  const data = tracker(rankedTasks(rank));
+  const rows = cost(data, 50, 40, 0, bars);
   expect(rows[0]).toMatch(/↑ ─╮$/);
+  expect(rows.filter((row) => row.includes('↑'))).toHaveLength(2);
+  expect(rows.find((row) => row.includes('+8 more tasks'))).toMatch(/↑ │$/);
+});
+
+it.each([
+  'stops',
+  'leaves',
+] as const)('clears the remainder when a hidden task %s while a top-four task still runs', (change) => {
+  const tasks = rankedTasks(1, 11);
+  const data = tracker(tasks);
+  const revision = data.revision;
+  const remainder = () =>
+    cost(data, 50).find((row) => row.includes('+8 more tasks'));
+  const running = remainder();
+  expect(running).toMatch(/↑ │$/);
+  const next = snapshot(
+    change === 'leaves'
+      ? tasks.filter((entry) => entry.id !== 't10')
+      : tasks.map((entry) =>
+          entry.id === 't10'
+            ? { ...entry, status: 'completed' as const }
+            : entry,
+        ),
+  );
+  data.update(next, 2000);
+  expect(data.revision).toBe(revision + 1);
+  expect(data.active()).toBe(true);
+  expect(remainder()).toBe(running?.replace('↑', ' '));
+  data.update(next, 3000);
+  expect(data.revision).toBe(revision + 1);
+});
+
+it.each(
+  STYLES,
+)('does not mark the remainder when only a top-four task runs (%s)', (bars) => {
+  const data = tracker(rankedTasks(4));
+  const rows = cost(data, 50, 40, 0, bars);
+  expect(rows[0]).toContain('↑');
+  expect(rows.find((row) => row.includes('more tasks'))).not.toContain('↑');
+  expect(rows.filter((row) => row.includes('↑'))).toHaveLength(2);
+});
+
+it.each(STYLES)('never marks an untracked-only other entry (%s)', (bars) => {
+  const rows = cost(live(), 50, 40, 1, bars);
+  expect(rows[0]).toContain('↑');
+  expect(rows.find((row) => row.includes('other'))).toMatch(/\$0\.77 {2}│$/);
+});
+
+it('keeps the height-pressure fold line unmarked while the header reports a hidden running task', () => {
+  const data = tracker(rankedTasks(11));
+  const rows = cost(data, 50, 5);
+  expect(rows[0]).toContain('↑');
+  expect(rows.find((row) => row.includes('+11 more'))).not.toContain('↑');
   expect(rows.filter((row) => row.includes('↑'))).toHaveLength(1);
-  expect(rows.find((row) => row.includes('more task'))).not.toContain('↑');
+});
+
+it.each(
+  STYLES,
+)('marks a running fifth task when untracked cost creates the remainder (%s)', (bars) => {
+  const data = tracker(
+    Array.from({ length: 5 }, (_, i) =>
+      task(`t${i}`, 5 - i, { status: i === 4 ? 'running' : 'completed' }),
+    ),
+  );
+  const shown = cost(data, 50, 40, 15, bars);
+  expect(shown.join('\n')).not.toContain('more task');
+  const collapsed = cost(data, 50, 40, 16, bars);
+  expect(collapsed.find((row) => row.includes('+1 more task'))).toMatch(/↑ │$/);
 });
 
 it('uses a caret as the running arrow in ascii mode', () => {
@@ -722,4 +796,24 @@ it.each(STYLES)('paints the arrow with the accent color (%s)', (bars) => {
   const view = renderCostRows(live(), 0.23, 50, tagged, bars);
   expect(view.entries[0]).toContain('<accent>↑</>');
   expect(view.entries[1]).not.toContain('↑');
+});
+
+it.each(
+  STYLES.flatMap((bars) =>
+    ['unicode', 'ascii'].map((mode) => ({ bars, mode })),
+  ),
+)('uses the trailing remainder arrow in $mode mode ($bars)', ({
+  bars,
+  mode,
+}) => {
+  if (mode === 'ascii') releases.push(useMode('ascii'));
+  const data = tracker(rankedTasks(11));
+  const tagged = { fg: (role: string, text: string) => `<${role}>${text}</>` };
+  const view = renderCostRows(data, 78, 50, tagged, bars);
+  const arrow = mode === 'ascii' ? '^' : '↑';
+  // The ASCII test kit strips color; without a kit the tagged theme proves accent.
+  const trailing = mode === 'ascii' ? '^' : '<accent>↑</>';
+  expect(view.entries.at(-1)?.endsWith(trailing)).toBe(true);
+  expect(view.entries.slice(0, 4).join('\n')).not.toContain(arrow);
+  if (mode === 'ascii') expect(view.entries.join('\n')).not.toContain('↑');
 });

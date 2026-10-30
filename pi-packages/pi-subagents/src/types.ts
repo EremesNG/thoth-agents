@@ -165,6 +165,8 @@ export type SubagentAssistantAccountingMessage = {
 
 export type SubagentActivity = {
   message: string;
+  /** Runner boundary write: tool/turn completion or a newly detected question. */
+  persist?: boolean;
   /** Persist a non-fatal diagnostic immediately, without activity coalescing. */
   diagnostic?: boolean;
   output?: string;

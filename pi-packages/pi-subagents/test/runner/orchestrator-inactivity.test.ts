@@ -54,6 +54,79 @@ function inactivitySession(
   };
 }
 
+it('keeps long thinking alive without projecting deltas, then stalls after silence', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession();
+  try {
+    for (let index = 0; index < 40; index++) {
+      await vi.advanceTimersByTimeAsync(500);
+      run.event({
+        type: 'message_update',
+        assistantMessageEvent: {
+          type: 'thinking_delta',
+          delta: 'still thinking',
+        },
+      });
+    }
+    expect(run.session.abort).not.toHaveBeenCalled();
+    expect(run.activities).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    expect((await run.outcome).error_metadata).toMatchObject({
+      category: 'stall_timeout',
+      details: {
+        stall_budget_kind: 'session',
+        stall_budget_ms: '1000',
+        last_session_event_type: 'message_update',
+        ms_since_last_session_event: '1500',
+      },
+    });
+    expect(JSON.stringify(run.activities)).not.toContain('still thinking');
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('does not let thinking deltas extend a silent tool budget', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(undefined, undefined, 2000);
+  try {
+    run.event({
+      type: 'tool_execution_start',
+      toolCallId: 'read-1',
+      toolName: 'read',
+    });
+    for (let index = 0; index < 4; index++) {
+      await vi.advanceTimersByTimeAsync(500);
+      run.event({
+        type: 'message_update',
+        assistantMessageEvent: {
+          type: 'thinking_delta',
+          delta: 'still thinking',
+        },
+      });
+    }
+    expect(run.session.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_budget_kind: 'tool',
+      stall_budget_ms: '2000',
+      active_tools: 'read (2500ms since update)',
+      last_session_event_type: 'message_update',
+      ms_since_last_session_event: '500',
+    });
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
 it('allows silent compaction longer than ordinary inactivity', async () => {
   vi.useFakeTimers();
   const run = inactivitySession();
@@ -458,11 +531,13 @@ it('checks each tool budget rather than only the oldest update and refreshes upd
     });
     await vi.advanceTimersByTimeAsync(5000);
     expect(run.session.abort).not.toHaveBeenCalled();
+    const activityCount = run.activities.length;
     run.event({
       type: 'tool_execution_update',
       toolCallId: 'short',
       toolName: 'read',
     });
+    expect(run.activities).toHaveLength(activityCount);
     await vi.advanceTimersByTimeAsync(5000);
     expect(run.session.abort).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(500);

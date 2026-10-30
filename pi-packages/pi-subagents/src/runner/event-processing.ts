@@ -117,25 +117,24 @@ function formatToolCall(name: string, args: any): string {
 }
 
 function eventTranscript(event: any): string {
-  const messageEvent = event?.assistantMessageEvent;
-  const delta =
-    messageEvent?.type === 'text_delta' &&
-    typeof messageEvent.delta === 'string'
-      ? messageEvent.delta
-      : undefined;
-  if (event?.type === 'message_update' && typeof delta === 'string')
-    return sanitizeInteractionTransportText(delta);
+  // Completed text replaces the concatenated delta stream, without separators.
+  if (event?.type === 'message_end' && event.message?.role === 'assistant')
+    return sanitizeInteractionTransportText(
+      assistantMessageText(event.message, ''),
+    );
 
   if (event?.type === 'tool_execution_start') {
     const name = event.toolName ?? 'tool';
     return `\n\n${formatToolCall(name, event.args ?? event.input ?? {})}\n`;
   }
-  if (event?.type === 'tool_execution_update')
-    return event.partialResult
-      ? `\n${sanitizeInteractionTransportText(shortJson(event.partialResult, 500))}\n`
-      : '';
-  if (event?.type === 'tool_execution_end')
-    return `\n${event.isError ? 'failed' : 'done'}\n`;
+  if (event?.type === 'tool_execution_end') {
+    const result = event.result ?? event.output ?? event.error;
+    const summary =
+      result !== undefined
+        ? `\n${sanitizeInteractionTransportText(shortJson(result, 500))}\n`
+        : '';
+    return `${summary}\n${event.isError ? 'failed' : 'done'}\n`;
+  }
   if (event?.type === 'message_start' && event.message?.role === 'assistant')
     return '\n\nPreparing for response\n\n';
   if (event?.type === 'auto_retry_start') return '\n\nauto retry start\n';
@@ -159,7 +158,6 @@ function activityMessage(
     );
   if (event?.type === 'tool_execution_end')
     return event.isError ? 'tool failed' : 'tool completed';
-  if (event?.type === 'tool_execution_update') return 'tool update';
   if (event?.type === 'auto_retry_start') return 'auto retry start';
   if (event?.type === 'auto_retry_end') return 'auto retry end';
   if (event?.type === 'agent_settled') return 'agent settled (awaiting result)';
@@ -258,13 +256,6 @@ class LiveActivityReducer {
     return this.emitRunningTools();
   }
 
-  toolUpdate(
-    id: string | undefined,
-  ): SubagentLiveActivityProjection | undefined {
-    if (id && !this.activeTools.has(id)) return undefined;
-    return this.emitRunningTools();
-  }
-
   toolEnd(
     id: string | undefined,
     name: string,
@@ -324,15 +315,7 @@ function collectFinalizedAssistantText(messages: any[]): string {
       typeof message?.errorMessage === 'string'
     )
       return '';
-    const content = message?.content;
-    const parts: string[] = [];
-    if (typeof content === 'string') parts.push(content);
-    if (Array.isArray(content)) {
-      for (const part of content)
-        if (part?.type === 'text' && typeof part.text === 'string')
-          parts.push(part.text);
-    }
-    return parts.join('\n').trim();
+    return assistantMessageText(message).trim();
   }
   return '';
 }
@@ -374,6 +357,7 @@ export async function promptWithInactivity(
   );
   const liveActivity = new LiveActivityReducer();
   let latestInteractionRequest: SubagentInteractionRequest | undefined;
+  const seenInteractionRequests = new Set<string>();
   const runtimeMetricsTracker = new SubagentRuntimeMetricsTracker(session);
   let usage = runtimeMetricsTracker.snapshot().usage ?? emptyUsage();
   let transcript = `${systemPrompt ? `# system prompt\n\n${systemPrompt}\n\n` : ''}# ${promptLabel === 'continuation' ? 'continuation prompt' : 'delegated prompt'}\n\n${prompt}\n\n# subagent execution\n`;
@@ -400,7 +384,9 @@ export async function promptWithInactivity(
     lastActivity = now;
     for (const tool of activeToolCalls.values()) tool.lastUpdate = now;
   };
-  const emitActivity = (activity: SubagentActivity): void => {
+  const emitActivity = (
+    activity: SubagentActivity & { persist: boolean },
+  ): void => {
     const snapshot = runtimeMetricsTracker.snapshot();
     usage = snapshot.usage ?? {
       ...usage,
@@ -413,6 +399,7 @@ export async function promptWithInactivity(
     });
   };
   emitActivity({
+    persist: false,
     message: 'session started',
     prompt,
     system_prompt: systemPrompt,
@@ -421,6 +408,32 @@ export async function promptWithInactivity(
     pi_retry_attempts: piRetryAttempts,
     live_activity: liveActivity.project(),
   });
+  const reportInteractionRequest = (
+    request: SubagentInteractionRequest,
+    thread_snapshot?: SubagentThreadSnapshot,
+  ): void => {
+    if (seenInteractionRequests.has(request.requestId)) return;
+    seenInteractionRequests.add(request.requestId);
+    latestInteractionRequest = request;
+    debugLog(cwd, 'interaction_bridge_payload_detected', {
+      requestId: request.requestId,
+      kind: request.kind,
+      origin: request.origin,
+      requester: request.requester,
+      hasPrompt: Boolean(request.prompt),
+      hasPayload: request.payload !== undefined,
+    });
+    emitActivity({
+      persist: true,
+      message: 'interaction required',
+      output,
+      transcript,
+      thread_snapshot: thread_snapshot ?? snapshotBuilder.snapshot(),
+      interaction_request: request,
+      pi_retry_attempts: piRetryAttempts,
+      live_activity: liveActivity.project(),
+    });
+  };
   const unsubscribe =
     session.subscribe?.((event: any) => {
       lastActivity = Date.now();
@@ -464,6 +477,18 @@ export async function promptWithInactivity(
             ? summarizeInteractionCarrier(event?.result)
             : undefined,
       });
+      // Token-level payloads carry liveness only, including unknown update kinds.
+      if (event?.type === 'message_update') return;
+      if (event?.type === 'tool_execution_update') {
+        const toolCallId = eventToolCallId(event);
+        const toolCall = toolCallId && activeToolCalls.get(toolCallId);
+        if (toolCall) toolCall.lastUpdate = observedAt;
+        const request = extractStructuredInteractionRequest(
+          event.partialResult,
+        );
+        if (request) reportInteractionRequest(request);
+        return;
+      }
       if (event?.type === 'auto_retry_start') piRetryAttempts += 1;
       if (event?.type === 'message_start' && event?.message?.role === 'user') {
         if (sawInitialUserMessage) onQueuedMessageStart?.();
@@ -492,10 +517,6 @@ export async function promptWithInactivity(
               maxTotalTimeoutMs,
             ),
           });
-        if (event.type === 'tool_execution_update' && toolCallId) {
-          const toolCall = activeToolCalls.get(toolCallId);
-          if (toolCall) toolCall.lastUpdate = Date.now();
-        }
         if (event.type === 'tool_execution_end' && toolCallId)
           activeToolCalls.delete(toolCallId);
       }
@@ -513,31 +534,13 @@ export async function promptWithInactivity(
       const transcriptChunk = eventTranscript(event);
       transcript += transcriptChunk;
       const interactionRequest = extractStructuredInteractionRequest(
-        event?.result ?? event?.partialResult ?? event,
+        event?.result ?? event,
       );
       if (interactionRequest) {
-        latestInteractionRequest = interactionRequest;
-        debugLog(cwd, 'interaction_bridge_payload_detected', {
-          requestId: interactionRequest.requestId,
-          kind: interactionRequest.kind,
-          origin: interactionRequest.origin,
-          requester: interactionRequest.requester,
-          hasPrompt: Boolean(interactionRequest.prompt),
-          hasPayload: interactionRequest.payload !== undefined,
-        });
-        emitActivity({
-          message: 'interaction required',
-          output,
-          transcript,
-          thread_snapshot,
-          interaction_request: latestInteractionRequest,
-          pi_retry_attempts: piRetryAttempts,
-          live_activity: liveActivity.project(),
-        });
+        reportInteractionRequest(interactionRequest, thread_snapshot);
       } else if (event?.type === 'tool_execution_end' && event?.isError) {
         const latest = consumeLatestInteractionRequest({ origin: 'subagent' });
         if (latest) {
-          latestInteractionRequest = latest;
           debugLog(cwd, 'interaction_bridge_payload_recovered_from_channel', {
             requestId: latest.requestId,
             kind: latest.kind,
@@ -547,15 +550,7 @@ export async function promptWithInactivity(
             hasPayload: latest.payload !== undefined,
             carrier: summarizeInteractionCarrier(event.result),
           });
-          emitActivity({
-            message: 'interaction required',
-            output,
-            transcript,
-            thread_snapshot,
-            interaction_request: latestInteractionRequest,
-            pi_retry_attempts: piRetryAttempts,
-            live_activity: liveActivity.project(),
-          });
+          reportInteractionRequest(latest, thread_snapshot);
         } else {
           debugLog(cwd, 'interaction_bridge_payload_missing', {
             toolName: event.toolName,
@@ -565,6 +560,7 @@ export async function promptWithInactivity(
       }
       if (snapshotUpdate.activityMessage) {
         emitActivity({
+          persist: false,
           message: snapshotUpdate.activityMessage,
           output,
           transcript,
@@ -574,12 +570,6 @@ export async function promptWithInactivity(
           live_activity: liveActivity.project(),
         });
       }
-      const messageEvent = event?.assistantMessageEvent;
-      const delta =
-        messageEvent?.type === 'text_delta' &&
-        typeof messageEvent.delta === 'string'
-          ? messageEvent.delta
-          : undefined;
       if (
         event?.type === 'message_end' &&
         event.message?.role === 'assistant' &&
@@ -590,34 +580,7 @@ export async function promptWithInactivity(
         event?.type === 'message_end'
           ? assistantAccountingMessage(event.message)
           : undefined;
-      if (event?.type === 'message_update' && typeof delta === 'string') {
-        output += sanitizeInteractionTransportText(delta);
-        emitActivity({
-          message: 'streaming response',
-          output,
-          transcript,
-          thread_snapshot,
-          interaction_request: latestInteractionRequest,
-          pi_retry_attempts: piRetryAttempts,
-          live_activity: liveActivity.streaming(),
-        });
-        return;
-      }
-      if (
-        event?.type === 'message_update' &&
-        messageEvent?.type === 'thinking_delta'
-      ) {
-        emitActivity({
-          message: 'streaming thinking',
-          output,
-          transcript,
-          thread_snapshot,
-          interaction_request: latestInteractionRequest,
-          pi_retry_attempts: piRetryAttempts,
-          live_activity: liveActivity.thinking(),
-        });
-        return;
-      }
+      if (assistant_message) output += transcriptChunk;
       const message =
         activityMessage(event, transcriptChunk) ??
         (event?.type === 'turn_end'
@@ -632,20 +595,24 @@ export async function promptWithInactivity(
       if (!message && !assistant_message) return;
       const toolCallId = eventToolCallId(event);
       const toolName = event?.toolName ?? event?.name ?? 'tool';
-      const projection =
-        event?.type === 'tool_execution_start'
-          ? liveActivity.toolStart(toolCallId, toolName)
-          : event?.type === 'tool_execution_update'
-            ? liveActivity.toolUpdate(toolCallId)
-            : event?.type === 'tool_execution_end'
-              ? liveActivity.toolEnd(
-                  toolCallId,
-                  toolName,
-                  Boolean(event?.isError),
-                )
-              : liveActivity.project();
+      let projection = liveActivity.project();
+      if (event?.type === 'tool_execution_start')
+        projection = liveActivity.toolStart(toolCallId, toolName);
+      else if (event?.type === 'tool_execution_end')
+        projection = liveActivity.toolEnd(
+          toolCallId,
+          toolName,
+          Boolean(event?.isError),
+        );
+      else if (assistant_message)
+        projection = transcriptChunk.trim()
+          ? liveActivity.streaming()
+          : liveActivity.thinking();
       emitActivity({
+        persist:
+          event?.type === 'tool_execution_end' || event?.type === 'turn_end',
         message: message ?? 'assistant message completed',
+        ...(assistant_message ? { output } : {}),
         transcript,
         thread_snapshot,
         interaction_request: latestInteractionRequest,
@@ -730,6 +697,7 @@ export async function promptWithInactivity(
         : `stalled for ${budgetMs}ms (${budgetKind} budget); aborting session`;
       transcript += `\n\n--- stall ---\n${stallMessage}\n`;
       emitActivity({
+        persist: false,
         message: stallMessage,
         output,
         transcript,
@@ -784,6 +752,7 @@ export async function promptWithInactivity(
       });
       transcript += `\n\n# subagent failure\n\n${metadata.message}`;
       emitActivity({
+        persist: false,
         message: `failed: ${metadata.message}`,
         output: '',
         transcript,
@@ -813,6 +782,7 @@ export async function promptWithInactivity(
       if (metadata) {
         transcript += `\n\n# subagent failure\n\n${metadata.message}`;
         emitActivity({
+          persist: false,
           message: `failed: ${metadata.message}`,
           output: '',
           transcript,
@@ -830,6 +800,7 @@ export async function promptWithInactivity(
     if (promptError && finalizedAssistantText) {
       transcript += `\n\n# final assistant text\n\n${finalizedAssistantText}`;
       emitActivity({
+        persist: false,
         message: 'collected final response',
         output: finalizedAssistantText,
         transcript,
@@ -881,6 +852,7 @@ export async function promptWithInactivity(
           }));
       transcript += `\n\n# subagent failure\n\n${metadata.message}`;
       emitActivity({
+        persist: false,
         message: `failed: ${metadata.message}`,
         output: '',
         transcript,
@@ -894,6 +866,7 @@ export async function promptWithInactivity(
     }
     transcript += `\n\n# final assistant text\n\n${collected}`;
     emitActivity({
+      persist: false,
       message: 'collected final response',
       output: collected,
       transcript,
@@ -918,19 +891,24 @@ export async function promptWithInactivity(
   }
 }
 
+function assistantMessageText(
+  message: { content?: unknown },
+  separator = '\n',
+): string {
+  const content = message?.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text)
+    .join(separator);
+}
+
 export function collectAssistantText(messages: any[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const msg = messages[index];
     if (msg?.role !== 'assistant') continue;
-    const parts: string[] = [];
-    const content = msg.content;
-    if (typeof content === 'string') parts.push(content);
-    if (Array.isArray(content)) {
-      for (const part of content)
-        if (part?.type === 'text' && typeof part.text === 'string')
-          parts.push(part.text);
-    }
-    const text = parts.join('\n').trim();
+    const text = assistantMessageText(msg).trim();
     if (text) return text;
   }
   return '';

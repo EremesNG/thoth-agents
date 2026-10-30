@@ -545,3 +545,23 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** Nerd icons and a running subagent
 - **WHEN** the user runs `/thoth-animation minimal` and later `/thoth-animation off`
 - **THEN** the braille indicator steps through all ten frames in order at one frame per 500 ms, and after `off` it shows a static `◐` with no animation timer while its elapsed time still advances
+
+### Requirement: Subagent boundary-driven event processing
+
+`@thoth-agents/pi-subagents` MUST treat child token-level events (assistant text and thinking deltas and other message update payloads) only as liveness and stall-diagnostic signals for its inactivity watchdog, and partial tool execution updates only as such signals for the active tool and as carriers inspected for orchestrator interaction requests; apart from handling a newly detected interaction request as it handles any other orchestrator question, it MUST NOT build thread snapshots, transcripts, previews or usage, emit activity, publish task state or persist history from them, and MUST build the live thread snapshot and transcript from completed assistant messages and tool execution results.
+
+#### Scenario: Subagent boundary-driven event processing
+
+- **GIVEN** a running child streaming a long assistant answer as many text deltas
+- **WHEN** the deltas arrive and the message then completes
+- **THEN** no activity, task-state publication or history write occurs during the deltas, the watchdog still sees the child alive, and on completion the live snapshot, transcript and preview contain the complete message text
+
+### Requirement: Subagent history persistence boundaries
+
+`@thoth-agents/pi-subagents` MUST write a running task's history record only when a tool execution ends, a turn ends, the task's lifecycle or status changes, an orchestrator question is raised or answered, an explicit progress notification arrives, a steering outcome, background-mode change or deadline extension occurs; it MUST NOT write on a timer, for token-level events, for partial tool updates other than one carrying a newly detected orchestrator question, or for tool execution start or assistant message completion alone, and a task interrupted between boundaries MUST keep its last persisted boundary detail.
+
+#### Scenario: Subagent history persistence boundaries
+
+- **GIVEN** a running child that finishes a tool and then streams a long final answer before its turn ends
+- **WHEN** those events occur
+- **THEN** history is written when the tool ends and when the turn ends, and nothing is written while the answer streams

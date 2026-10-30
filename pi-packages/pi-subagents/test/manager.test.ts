@@ -2007,7 +2007,7 @@ tools: read
     );
   });
 
-  it('throttles noisy activity persistence and update notifications while always flushing terminal state', async () => {
+  it('keeps ordinary activity memory-only and coalesces notifications while persisting each lifecycle transition', async () => {
     vi.useFakeTimers();
     writeAgent('analyst');
     const persisted: Array<{ task: SubagentTask; activity: string }> = [];
@@ -2054,10 +2054,11 @@ tools: read
     vi.useRealTimers();
 
     expect(result.results?.[0].status).toBe('completed');
-    expect(persisted.map((entry) => entry.activity)).toContain('queued');
-    expect(persisted.map((entry) => entry.activity)).toContain('started');
-    expect(persisted.map((entry) => entry.activity)).toContain('completed');
-    expect(persisted.length).toBeLessThan(10);
+    expect(persisted.map((entry) => entry.activity)).toEqual([
+      'queued',
+      'started',
+      'completed',
+    ]);
     expect(updates.length).toBeLessThan(10);
     expect(persisted.at(-1)?.task).toMatchObject({
       status: 'completed',

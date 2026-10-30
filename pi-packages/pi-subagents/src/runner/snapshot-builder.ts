@@ -212,10 +212,6 @@ type SteeringProjectionRecord = {
   state: 'queued' | 'consumed';
 };
 
-function debugLog(cwd: string | undefined, scope: string, data: unknown): void {
-  writeSubagentsDebugLog(cwd, scope, data);
-}
-
 function truncateSnapshotText(
   text: string | undefined,
   limit = SNAPSHOT_TEXT_LIMIT,
@@ -366,7 +362,6 @@ function parseRawToolJson(
 }
 
 export class ThreadSnapshotBuilder {
-  private cwd?: string;
   private readonly createdAt: string;
   private readonly items: SubagentThreadItem[] = [];
   private readonly toolIndex = new Map<string, number>();
@@ -378,12 +373,11 @@ export class ThreadSnapshotBuilder {
   constructor(
     prompt?: string,
     context?: string,
-    cwd?: string,
+    private readonly cwd?: string,
     seedSnapshot?: SubagentThreadSnapshot,
     promptLabel: 'delegated_task' | 'continuation' = 'delegated_task',
     attempt = 1,
   ) {
-    this.cwd = cwd;
     this.createdAt = seedSnapshot?.created_at ?? new Date().toISOString();
     if (isValidThreadSnapshot(seedSnapshot))
       this.items.push(
@@ -412,21 +406,25 @@ export class ThreadSnapshotBuilder {
 
   update(event: any): SnapshotUpdateResult {
     const now = new Date().toISOString();
-    const messageEvent = event?.assistantMessageEvent;
-    const textDelta =
-      event?.type === 'message_update' &&
-      messageEvent?.type === 'text_delta' &&
-      typeof messageEvent.delta === 'string'
-        ? messageEvent.delta
-        : undefined;
-    const thinkingDelta =
-      event?.type === 'message_update' &&
-      messageEvent?.type === 'thinking_delta' &&
-      typeof messageEvent.delta === 'string'
-        ? messageEvent.delta
-        : undefined;
-    if (textDelta !== undefined || thinkingDelta !== undefined) {
-      this.appendAssistantDelta(textDelta, thinkingDelta);
+    if (event?.type === 'message_end' && event.message?.role === 'assistant') {
+      const content = event.message.content;
+      let text = typeof content === 'string' ? content : '';
+      let thinking = '';
+      if (Array.isArray(content)) {
+        for (const part of content) {
+          if (part?.type === 'text' && typeof part.text === 'string')
+            text += part.text;
+          if (part?.type === 'thinking') {
+            const block =
+              typeof part.thinking === 'string' ? part.thinking : part.text;
+            if (typeof block === 'string') thinking += block;
+          }
+        }
+      }
+      // Same-kind blocks share a row. Sanitize the canonical message together,
+      // rather than leaking a hidden request's payload from a later block.
+      if (!text && !thinking) return { snapshotChanged: false };
+      this.appendAssistantBlock(text, thinking);
       return { snapshotChanged: true };
     }
     if (event?.type === 'queue_update') {
@@ -481,16 +479,6 @@ export class ThreadSnapshotBuilder {
         this.items.length,
       );
       this.items.push(item);
-      return { snapshotChanged: true };
-    }
-    if (event?.type === 'tool_execution_update') {
-      const id = eventToolCallId(event);
-      const index = id ? this.toolIndex.get(id) : undefined;
-      if (index === undefined) return { snapshotChanged: false };
-      const item: any = this.items[index];
-      const payload = resultPayload(event.partialResult, false);
-      if (item.type === 'tool') item.result = payload;
-      if (item.type === 'tool') item.status = 'partial';
       return { snapshotChanged: true };
     }
     if (event?.type === 'tool_execution_end') {
@@ -552,7 +540,7 @@ export class ThreadSnapshotBuilder {
     const eventItems = currentItems
       .filter((item) => item.type !== 'attempt' && !isInitialUserItem(item))
       .map((item) =>
-        this.finalizeEventItem(
+        finalizeEventItem(
           item,
           messageItems.length > 0,
           finalMessagesAlreadyHaveThinking,
@@ -582,6 +570,78 @@ export class ThreadSnapshotBuilder {
       },
       { textLimit: SNAPSHOT_TEXT_LIMIT },
     );
+  }
+
+  private dropTrailingRawToolJson(
+    toolName?: string,
+    toolCallId?: string,
+  ): void {
+    const item = this.items.at(-1);
+    if (
+      item?.type !== 'assistant' ||
+      !item.id?.startsWith('streaming-assistant-')
+    )
+      return;
+    const textParts = item.message.content.filter(
+      (part) => part.type === 'text',
+    );
+    if (
+      item.message.content.some((part) => part.type !== 'text') ||
+      !textParts.length
+    )
+      return;
+    const text = textParts.map((part) => part.text).join('');
+    const parsed = parseRawToolJson(text);
+    if (!parsed) return;
+    this.items.pop();
+    writeSubagentsDebugLog(this.cwd, 'live_raw_tool_json_dropped', {
+      toolName,
+      toolCallId,
+      jsonKind: parsed.kind,
+      keys: parsed.keys,
+      textLength: text.length,
+    });
+  }
+
+  /** Preserve the delta-built row grouping, but append only completed blocks. */
+  private appendAssistantBlock(text?: string, thinking?: string): void {
+    const last = this.items.at(-1);
+    let item =
+      last?.type === 'assistant' && last.id?.startsWith('streaming-assistant-')
+        ? last
+        : undefined;
+    if (!item) {
+      item = {
+        type: 'assistant',
+        id: `streaming-assistant-${++this.streamingAssistantSequence}`,
+        message: { role: 'assistant', content: [] },
+      };
+      this.items.push(item);
+    }
+    const content = item.message.content;
+    if (thinking) {
+      let part = content.find((part) => part.type === 'thinking');
+      if (!part) {
+        part = { type: 'thinking', text: '', thinking: '' };
+        const firstText = content.findIndex((part) => part.type === 'text');
+        if (firstText >= 0) content.splice(firstText, 0, part);
+        else content.push(part);
+      }
+      const combined =
+        truncateSnapshotText(
+          `${part.thinking ?? part.text ?? ''}${thinking}`,
+        ) ?? '';
+      part.text = combined;
+      part.thinking = combined;
+    }
+    if (text) {
+      let part = content.find((part) => part.type === 'text');
+      if (!part) {
+        part = { type: 'text', text: '' };
+        content.push(part);
+      }
+      part.text = truncateSnapshotText(`${part.text}${text}`) ?? '';
+    }
   }
 
   private projectQueuedSteering(event: any): boolean {
@@ -636,110 +696,6 @@ export class ThreadSnapshotBuilder {
       text: record.text,
     });
     return true;
-  }
-
-  private dropTrailingRawToolJson(
-    toolName?: string,
-    toolCallId?: string,
-  ): void {
-    const item = this.items.at(-1) as SubagentThreadItem | undefined;
-    if (
-      item?.type !== 'assistant' ||
-      !item.id?.startsWith('streaming-assistant-')
-    )
-      return;
-    const textParts = item.message.content.filter(
-      (part): part is { type: 'text'; text: string } => part.type === 'text',
-    );
-    const hasNonText = item.message.content.some(
-      (part) => part.type !== 'text',
-    );
-    if (hasNonText || !textParts.length) return;
-    const text = textParts.map((part) => part.text).join('');
-    const parsed = parseRawToolJson(text);
-    if (!parsed) return;
-
-    this.items.pop();
-    debugLog(this.cwd, 'live_raw_tool_json_dropped', {
-      toolName,
-      toolCallId,
-      jsonKind: parsed.kind,
-      keys: parsed.keys,
-      textLength: text.length,
-    });
-  }
-
-  private appendAssistantDelta(
-    textDelta?: string,
-    thinkingDelta?: string,
-  ): void {
-    let item = this.items.at(-1) as SubagentThreadItem | undefined;
-    if (
-      item?.type !== 'assistant' ||
-      !item.id?.startsWith('streaming-assistant-')
-    ) {
-      item = {
-        type: 'assistant',
-        id: `streaming-assistant-${++this.streamingAssistantSequence}`,
-        message: { role: 'assistant', content: [] },
-      };
-      this.items.push(item);
-    }
-    const content = item.message.content as any[];
-    if (thinkingDelta) {
-      let thinkingPart = content.find((part) => part.type === 'thinking');
-      if (!thinkingPart) {
-        thinkingPart = { type: 'thinking', text: '', thinking: '' };
-        const firstText = content.findIndex((part) => part.type === 'text');
-        if (firstText >= 0) content.splice(firstText, 0, thinkingPart);
-        else content.push(thinkingPart);
-      }
-      const thinking =
-        truncateSnapshotText(
-          `${thinkingPart.thinking ?? thinkingPart.text ?? ''}${thinkingDelta}`,
-        ) ?? '';
-      thinkingPart.text = thinking;
-      thinkingPart.thinking = thinking;
-    }
-    if (textDelta) {
-      let textPart = content.find((part) => part.type === 'text');
-      if (!textPart) {
-        textPart = { type: 'text', text: '' };
-        content.push(textPart);
-      }
-      textPart.text =
-        truncateSnapshotText(`${textPart.text ?? ''}${textDelta}`) ?? '';
-    }
-  }
-
-  private finalizeEventItem(
-    item: SubagentThreadItem,
-    hasFinalMessages: boolean,
-    finalMessagesAlreadyHaveThinking: boolean,
-  ): SubagentThreadItem | undefined {
-    if (
-      item.type !== 'assistant' ||
-      !item.id?.startsWith('streaming-assistant-')
-    )
-      return item;
-    if (!hasFinalMessages) return item;
-    if (finalMessagesAlreadyHaveThinking) return undefined;
-    const thinkingContent = item.message.content
-      .filter(
-        (
-          part,
-        ): part is { type: 'thinking'; text?: string; thinking?: string } =>
-          part.type === 'thinking' &&
-          Boolean((part.thinking ?? part.text)?.trim()),
-      )
-      .map((part) => ({
-        type: 'thinking' as const,
-        text: truncateSnapshotText(part.text),
-        thinking: truncateSnapshotText(part.thinking ?? part.text),
-      }));
-    return thinkingContent.length
-      ? { ...item, message: { ...item.message, content: thinkingContent } }
-      : undefined;
   }
 }
 
@@ -868,4 +824,28 @@ function assistantItemsFromMessages(messages: any[]): SubagentThreadItem[] {
       });
   }
   return items;
+}
+
+/** Preserve session precedence without copying content between message sources. */
+function finalizeEventItem(
+  item: SubagentThreadItem,
+  hasFinalMessages: boolean,
+  finalMessagesAlreadyHaveThinking: boolean,
+): SubagentThreadItem | undefined {
+  if (item.type !== 'assistant' || !hasFinalMessages) return item;
+  if (finalMessagesAlreadyHaveThinking) return undefined;
+  const thinkingContent = item.message.content
+    .filter(
+      (part): part is { type: 'thinking'; text?: string; thinking?: string } =>
+        part.type === 'thinking' &&
+        Boolean((part.thinking ?? part.text)?.trim()),
+    )
+    .map((part) => ({
+      type: 'thinking' as const,
+      text: truncateSnapshotText(part.text),
+      thinking: truncateSnapshotText(part.thinking ?? part.text),
+    }));
+  return thinkingContent.length
+    ? { ...item, message: { ...item.message, content: thinkingContent } }
+    : undefined;
 }

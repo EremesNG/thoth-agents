@@ -324,9 +324,9 @@ describe('Built-in tool renderers', () => {
       [Infinity, '0s', '0s', '△'],
       [999.9, '0s', '0s', '△'],
       [12345, '12s', '12s', '△'],
-      [45000, '45s', '45s', '◭'],
-      [845999.9, '14m 05s', '14m 05s', '◭'],
-      [7439999.9, '2h 03m', '2h 03m', '◮'],
+      [45000, '45s', '45s', '△'],
+      [845999.9, '14m 05s', '14m 05s', '△'],
+      [7439999.9, '2h 03m', '2h 03m', '△'],
     ])('formats %s ms as %s live and %s completed without overflowing', (ms, live, completed, frame) => {
       const tool = createShellTool(cwd, createConfig('nerd'));
       const theme = createAnsiTheme();

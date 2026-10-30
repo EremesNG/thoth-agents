@@ -771,6 +771,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   const prompt =
     continuation?.prompt ?? buildPrompt(definition, task, context, tools);
   onActivity?.({
+    persist: true,
     message: continuation
       ? 'continuation prompt prepared'
       : 'orchestrator prompt prepared',
@@ -782,6 +783,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
 
   async function attempt(model: any) {
     onActivity?.({
+      persist: true,
       notify_orchestrator_available: false,
       message: `starting ${definition.name} with model ${modelLabel(model) ?? 'unknown'}${effort ? ` effort ${effort}` : ''}`,
       prompt,
@@ -811,6 +813,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     try {
       registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
       onActivity?.({
+        persist: true,
         message: 'nested session ready',
         notify_orchestrator_available:
           tools.includes('notify_orchestrator') &&

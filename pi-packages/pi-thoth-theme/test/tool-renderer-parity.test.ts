@@ -71,6 +71,7 @@ async function loadTheme(tools: ToolInfo[] = [], respectPackages?: string[]) {
   const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
   const getAllTools = vi.fn(() => tools);
   thothTheme({
+    registerCommand() {},
     registerToolRenderer,
     registerMarkdownTransformer() {},
     getAllTools,

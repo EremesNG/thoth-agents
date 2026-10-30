@@ -24,7 +24,7 @@ import {
   scrollLabel,
   wrapContentRow,
 } from './frame.ts';
-import { type BreathingFrame, createBreathingFrame } from './gradient.ts';
+import type { BreathingFrame } from './gradient.ts';
 import type { WorkingState } from './state.ts';
 
 export const MIN_INPUT_BOX_WIDTH = 16;
@@ -161,7 +161,7 @@ export function decorateEditor(
         if (layoutWidth < 2) return nativeRender(this, width);
         // Share one time/color sample with the native status and every border.
         const frame = deps.working.isWorking
-          ? createBreathingFrame(Date.now())
+          ? deps.working.breathingFrame()
           : undefined;
         renderFrame = frame;
         outerWidth = boxWidth;

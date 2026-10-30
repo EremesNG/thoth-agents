@@ -1,3 +1,8 @@
+import {
+  getAnimationLevel,
+  subscribeAnimationLevel,
+  subscribeAnimationSteps,
+} from '@thoth-agents/pi-core';
 import { Type } from 'typebox';
 import { readSubagentsConfig } from '../config.js';
 import { continuationAvailable } from '../continuation-availability.js';
@@ -87,14 +92,54 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               },
             )
           : undefined;
+        let heartbeat: (() => void) | undefined;
+        const stopHeartbeat = () => {
+          heartbeat?.();
+          heartbeat = undefined;
+        };
+        const syncHeartbeat = () => {
+          const hasActiveForegroundTask =
+            active &&
+            !isBackground &&
+            !_signal?.aborted &&
+            latestTasks.some(
+              (task) =>
+                task.mode === 'task' &&
+                (task.status === 'queued' ||
+                  task.status === 'running' ||
+                  task.status === 'stopping'),
+            );
+          if (!hasActiveForegroundTask) {
+            stopHeartbeat();
+            return;
+          }
+          if (heartbeat !== undefined) return;
+          const removeSteps = subscribeAnimationSteps({
+            intendedMs: 200,
+            onStep(step) {
+              syncHeartbeat();
+              if (!heartbeat) return;
+              // The initial progress update has already painted frame 0.
+              if (step.frame !== undefined) frame = step.frame + 1;
+              emit();
+            },
+          });
+          const removeLevel = subscribeAnimationLevel(() => emit());
+          heartbeat = () => {
+            removeSteps();
+            removeLevel();
+          };
+        };
         const emit = () => {
-          if (!active || isBackground) return;
+          if (!active || isBackground || _signal?.aborted) return;
+          const currentFrame =
+            getAnimationLevel() === 'off' ? undefined : frame;
           try {
             onUpdate?.({
               content: [
                 {
                   type: 'text',
-                  text: progressText(latestTasks, frame, {
+                  text: progressText(latestTasks, currentFrame, {
                     backgroundable: canBackgroundInTaskMode,
                     backgroundShortcut,
                   }),
@@ -106,7 +151,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
                     includeResult: false,
                   }),
                 ),
-                frame: frame++,
+                frame: currentFrame,
                 backgroundable: canBackgroundInTaskMode,
                 backgroundShortcut,
               },
@@ -114,6 +159,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
           } catch {
             active = false;
           }
+          syncHeartbeat();
         };
         const uninstallCancel = isBackground
           ? () => {}
@@ -132,6 +178,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               () => latestTasks.map((task) => task.id),
               (tasks) => {
                 active = false;
+                stopHeartbeat();
                 resolveBackground?.({
                   mode: 'background',
                   task_ids: tasks.map((task) => task.id),
@@ -141,6 +188,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
               () => {
                 continuationInput.mode = 'background';
                 active = false;
+                stopHeartbeat();
                 resolveBackground?.({
                   mode: 'background',
                   task_ids: [params.task_id],
@@ -149,6 +197,8 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
             )
           : () => {};
         try {
+          if (!isBackground)
+            _signal?.addEventListener('abort', stopHeartbeat, { once: true });
           emit();
           const continuePromise = manager.continueTask(
             continuationInput,
@@ -226,6 +276,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
           };
         } finally {
           active = false;
+          stopHeartbeat();
+          if (!isBackground)
+            _signal?.removeEventListener('abort', stopHeartbeat);
           uninstallCancel();
           uninstallBackground();
         }

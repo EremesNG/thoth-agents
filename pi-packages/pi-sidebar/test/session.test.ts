@@ -11,17 +11,21 @@ import {
   ensureWorkPanel,
   getUIPreferences,
   publish,
+  registerRenderKit,
   registerWorkPanelProvider,
   reportProviderLimit,
   SUBAGENTS_STATE_CHANNEL,
   SUBAGENTS_STATE_REQUEST,
   SUBAGENTS_USAGE_CHANNEL,
   SUBAGENTS_USAGE_REQUEST,
+  setAnimationLevel,
   subscribeAnimationClock,
   subscribeUIPreferences,
   WORK_PANEL_VERSION,
+  withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { createWorkPanelColumnPlan } from '@thoth-agents/pi-core/panel';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
 
 vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
@@ -41,6 +45,7 @@ import { fullscreen, inline } from './layout/fixture.js';
 const cleanup: Array<() => void> = [];
 afterEach(() => {
   for (const off of cleanup.splice(0).reverse()) off();
+  setAnimationLevel('full');
   vi.unstubAllEnvs();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -171,7 +176,7 @@ function setup(regular = false) {
     shutdown: () => handlers.get('session_shutdown')?.({}, ctx),
   };
 }
-function source(pi: any, status?: string) {
+function source(pi: any, status?: string, semantic = false) {
   let change = () => {};
   let primary = 'Task one';
   const off = registerWorkPanelProvider(pi, {
@@ -180,7 +185,14 @@ function source(pi: any, status?: string) {
     label: 'Tasks',
     priority: 10,
     visibleCount: () => 1,
-    listRows: () => [{ id: 'one', primary, status }],
+    listRows: () => [
+      {
+        id: 'one',
+        primary,
+        status,
+        ...(semantic ? { statusGlyph: status } : {}),
+      },
+    ],
     detail: () => undefined,
     armCloseLabel: () => '',
     close: () => {},
@@ -812,18 +824,32 @@ it('reuses one plan through sync, render and unconsumed keystrokes without seria
 });
 
 it.each(
-  [false, true].flatMap((animated) =>
-    ['provider', 'registry', 'limits', 'usage', 'state'].map((event) => ({
-      animated,
-      event,
-    })),
+  (
+    [
+      ['full', 100],
+      ['reduced', 200],
+      ['minimal', 500],
+      ['off', 1000],
+    ] as const
+  ).flatMap(([level, period]) =>
+    [false, true].flatMap((animated) =>
+      ['provider', 'registry', 'limits', 'usage', 'state'].map((event) => ({
+        level,
+        period,
+        animated,
+        event,
+      })),
+    ),
   ),
-)('refreshes $event immediately when idle and on the next clock tick when animated ($animated)', ({
+)('refreshes $event immediately when idle/off and on the next $level step when animated ($animated)', ({
+  level,
+  period,
   animated,
   event,
 }) => {
   const app = setup();
   vi.setSystemTime(1000);
+  setAnimationLevel(level);
   const changed = source({ on() {} }, animated ? 'running' : 'pending');
   app.handlers.get('session_start')?.({}, app.ctx);
   const render = vi.spyOn(app.tui, 'requestRender');
@@ -865,10 +891,10 @@ it.each(
       data: stateSnapshot(1),
     });
   }
-  if (animated) {
+  if (animated && level !== 'off') {
     expect(render).not.toHaveBeenCalled();
     expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds);
-    vi.advanceTimersByTime(101);
+    vi.advanceTimersByTime(period);
   }
   expect(render).toHaveBeenCalledTimes(1);
   expect(
@@ -876,13 +902,17 @@ it.each(
   ).toBeGreaterThan(builds);
 });
 
-it.each([
-  'idle',
-  'hidden',
-  'clipped',
-])('does not subscribe to the clock for %s rows', (state) => {
+it.each(
+  (['full', 'off'] as const).flatMap((level) =>
+    ['idle', 'hidden', 'clipped'].map((state) => ({ level, state })),
+  ),
+)('leaves no animation or elapsed-refresh subscription for $state rows at $level', ({
+  level,
+  state,
+}) => {
   const app = setup();
   vi.setSystemTime(1000);
+  setAnimationLevel(level);
   source({ on() {} }, state === 'idle' ? 'pending' : 'running');
   if (state === 'hidden')
     writeFileSync(
@@ -895,7 +925,7 @@ it.each([
   expect(vi.getTimerCount()).toBe(timers + 1); // Initial workspace debounce only.
   const off = subscribeAnimationClock(() => {});
   cleanup.push(off);
-  expect(vi.getTimerCount()).toBe(timers + 2);
+  expect(vi.getTimerCount()).toBe(timers + (level === 'off' ? 1 : 2));
   off();
   app.shutdown();
   expect(vi.getTimerCount()).toBe(timers);
@@ -922,7 +952,7 @@ it('shares the aligned clock and defers animated provider bursts until its next 
   vi.advanceTimersByTime(50);
   expect(render).not.toHaveBeenCalled();
   vi.advanceTimersByTime(1);
-  expect(tick).toHaveBeenCalledExactlyOnceWith(1101);
+  expect(tick).toHaveBeenCalledExactlyOnceWith(1101, expect.any(Number));
   expect(render).toHaveBeenCalledTimes(1);
   app.tui.renderNow(true);
   expect(app.screen()).toContain('Task two');
@@ -933,6 +963,220 @@ it('shares the aligned clock and defers animated provider bursts until its next 
   cleanup.push(idleTick);
   expect(vi.getTimerCount()).toBe(idleTimers + 1);
   idleTick();
+});
+
+it.each(
+  (
+    [
+      [undefined, 100],
+      ['full', 100],
+      ['reduced', 200],
+      ['minimal', 500],
+    ] as const
+  ).flatMap(([level, period]) =>
+    [false, true].map((themed) => ({ level, period, themed })),
+  ),
+)('shows every consecutive sidebar frame at $level (unset defaults to full), themed $themed', ({
+  level,
+  period,
+  themed,
+}) => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  if (level !== undefined) setAnimationLevel(level);
+  if (themed) {
+    const token = registerRenderKit(createTestRenderKit(), {});
+    cleanup.push(() => withdrawRenderKit(token));
+  }
+  source({ on() {} }, 'running', true);
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  const frame = () => app.screen().match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u)?.[0] ?? 'missing';
+  const frames = [frame()];
+  for (let step = 0; step < 10; step++) {
+    vi.advanceTimersByTime(period);
+    app.tui.renderNow(true);
+    expect(frame()).not.toBe(frames.at(-1));
+    frames.push(frame());
+  }
+  expect(frames).toEqual([
+    '⠋',
+    '⠙',
+    '⠹',
+    '⠸',
+    '⠼',
+    '⠴',
+    '⠦',
+    '⠧',
+    '⠇',
+    '⠏',
+    '⠋',
+  ]);
+});
+
+it.each([
+  '◐',
+  '*',
+])('at off shows %s, refreshes provider changes immediately and elapsed every second only while running', (glyph) => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  setAnimationLevel('off');
+  const render = vi
+    .spyOn(app.tui, 'requestRender')
+    .mockImplementation(() => {});
+  const screen = () => {
+    app.tui.renderNow(true);
+    return strip(app.screen());
+  };
+  const kit = createTestRenderKit();
+  const token = registerRenderKit(
+    {
+      ...kit,
+      statusGlyph: (theme, status) =>
+        status === 'running' ? glyph : kit.statusGlyph(theme, status),
+    },
+    {},
+  );
+  cleanup.push(() => withdrawRenderKit(token));
+  let running = true;
+  let primary = 'First';
+  let changed = () => {};
+  cleanup.push(
+    registerWorkPanelProvider({ on() {} } as any, {
+      version: WORK_PANEL_VERSION,
+      id: 'elapsed',
+      label: 'Tasks',
+      priority: 10,
+      visibleCount: () => 1,
+      detail: () => null,
+      armCloseLabel: () => '',
+      close() {},
+      listRows: () => [
+        {
+          id: 'one',
+          primary: `${primary} elapsed ${Math.floor((Date.now() - 1000) / 1000)}s`,
+          status: running ? 'running' : 'completed',
+          statusGlyph: running ? 'running' : 'completed',
+        },
+      ],
+      onVisibleChanged: (notify) => {
+        changed = notify;
+        return () => {};
+      },
+    }),
+  );
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  expect(screen()).toContain(`${glyph} First elapsed 0s`);
+  expect(screen()).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u);
+  render.mockClear();
+  primary = 'Updated';
+  changed();
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('Updated elapsed 0s');
+  render.mockClear();
+  changed();
+  expect(render).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(999);
+  expect(render).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(1);
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain(`${glyph} Updated elapsed 1s`);
+  running = false;
+  render.mockClear();
+  changed();
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+  render.mockClear();
+  vi.advanceTimersByTime(2000);
+  expect(render).not.toHaveBeenCalled();
+  setAnimationLevel('full');
+  expect(vi.getTimerCount()).toBe(0);
+  app.shutdown();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('refreshes running text when the sidebar is re-shown without a step at off', () => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  setAnimationLevel('off');
+  cleanup.push(
+    registerWorkPanelProvider({ on() {} } as any, {
+      version: WORK_PANEL_VERSION,
+      id: 'reopen',
+      label: 'Tasks',
+      priority: 10,
+      visibleCount: () => 1,
+      detail: () => null,
+      armCloseLabel: () => '',
+      close() {},
+      listRows: () => [
+        {
+          id: 'one',
+          primary: `elapsed ${Date.now() / 1000}s`,
+          status: 'running',
+        },
+      ],
+    }),
+  );
+  app.handlers.get('session_start')?.({}, app.ctx);
+  app.tui.start();
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('elapsed 1s');
+  app.commands.get('sidebar').handler('off', app.ctx);
+  vi.setSystemTime(10000);
+  app.commands.get('sidebar').handler('on', app.ctx);
+  app.tui.renderNow(true);
+  expect(app.screen()).toContain('elapsed 10s');
+});
+
+it('repaints immediately on every level change and preserves consecutive frames across off and pause/resume', () => {
+  const app = setup();
+  vi.setSystemTime(1000);
+  const token = registerRenderKit(createTestRenderKit(), {});
+  cleanup.push(() => withdrawRenderKit(token));
+  source({ on() {} }, 'running');
+  app.handlers.get('session_start')?.({}, app.ctx);
+  const render = vi
+    .spyOn(app.tui, 'requestRender')
+    .mockImplementation(() => {});
+  app.tui.start();
+  const screen = () => {
+    app.tui.renderNow(true);
+    return strip(app.screen());
+  };
+  vi.advanceTimersByTime(200);
+  expect(screen()).toContain('⠹ Task one');
+  render.mockClear();
+  setAnimationLevel('off');
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('◐ Task one');
+  vi.advanceTimersByTime(1000);
+  expect(screen()).toContain('◐ Task one');
+  render.mockClear();
+  setAnimationLevel('minimal');
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('⠹ Task one');
+  vi.advanceTimersByTime(500);
+  expect(screen()).toContain('⠸ Task one');
+  render.mockClear();
+  setAnimationLevel('reduced');
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('⠸ Task one');
+  vi.advanceTimersByTime(200);
+  expect(screen()).toContain('⠼ Task one');
+  app.commands.get('sidebar').handler('off', app.ctx);
+  vi.advanceTimersByTime(1000);
+  app.commands.get('sidebar').handler('on', app.ctx);
+  expect(screen()).toContain('⠼ Task one');
+  vi.advanceTimersByTime(200);
+  expect(screen()).toContain('⠴ Task one');
+  app.shutdown();
+  render.mockClear();
+  setAnimationLevel('full');
+  expect(render).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it('ticks animated visible work at the host cadence and stops on completion, hide and disposal', () => {

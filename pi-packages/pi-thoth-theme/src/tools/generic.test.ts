@@ -162,11 +162,11 @@ describe('generic tool frame', () => {
     [0, '0s', '0s', '△'],
     [999, '0s', '0s', '△'],
     [12345, '12s', '12s', '△'],
-    [45000, '45s', '45s', '◭'],
+    [45000, '45s', '45s', '△'],
     [60000, '1m 00s', '1m 00s', '△'],
-    [845999, '14m 05s', '14m 05s', '◭'],
+    [845999, '14m 05s', '14m 05s', '△'],
     [3600000, '1h 00m', '1h 00m', '△'],
-    [7439999, '2h 03m', '2h 03m', '◮'],
+    [7439999, '2h 03m', '2h 03m', '△'],
   ])('shows %s ms as %s live and %s completed within the frame width', (ms, live, completed, frame) => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

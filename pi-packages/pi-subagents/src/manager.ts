@@ -443,7 +443,6 @@ function createLimiter(max: number) {
   };
 }
 
-const ACTIVITY_RECORD_FLUSH_MS = 250;
 const ACTIVITY_UPDATE_FLUSH_MS = 150;
 const SESSION_TASK_CACHE_MS = 1500;
 const MAX_PENDING_MESSAGES = 16;
@@ -453,13 +452,6 @@ const MAX_PENDING_MESSAGE_BYTES = 64 * 1024;
 function utf8ByteLength(text: string): number {
   return Buffer.byteLength(text, 'utf8');
 }
-
-type PendingRecord = {
-  cwd: string;
-  task: SubagentTask;
-  activity: string;
-  timer: NodeJS.Timeout;
-};
 
 type PendingMessageEntry = {
   message: string;
@@ -561,7 +553,6 @@ export class SubagentManager {
   private releasedTasks = new WeakSet<SubagentTask>();
   private controllers = new Map<string, AbortController>();
   private limiters = new Map<string, ReturnType<typeof createLimiter>>();
-  private pendingRecords = new Map<string, PendingRecord>();
   private pendingUpdates = new Map<string, NodeJS.Timeout>();
   private sessionTaskCache = new Map<
     string,
@@ -776,7 +767,7 @@ export class SubagentManager {
     for (const listener of this.questionPendingListeners.get(task.id) ?? [])
       listener(entries.length > 0, entries.length);
     const cwd = this.taskCwds.get(task.id);
-    if (cwd) this.record(cwd, task, task.last_activity ?? 'running', true);
+    if (cwd) this.record(cwd, task, task.last_activity ?? 'running');
     this.notifyTaskUpdate(task.id, undefined, true);
   }
 
@@ -994,7 +985,7 @@ export class SubagentManager {
     task.last_activity = `progress: ${compactOutput(text)}`;
     task.last_activity_at = created_at;
     const cwd = this.taskCwds.get(taskId);
-    if (cwd) this.record(cwd, task, task.last_activity, true);
+    if (cwd) this.record(cwd, task, task.last_activity);
     this.notifyTaskUpdate(taskId, undefined, true);
   }
 
@@ -1098,7 +1089,7 @@ export class SubagentManager {
         }),
       );
       updated.error = deriveErrorString(updated.error_metadata);
-      this.recordNow(
+      this.record(
         cwd,
         updated,
         updated.last_activity ?? 'interrupted at startup',
@@ -1135,7 +1126,7 @@ export class SubagentManager {
       // Mode is the durable notification intent; runner cleanup still owns stopping.
       task.mode = 'background';
       task.effective_mode = 'background';
-      this.record(cwd, task, task.last_activity ?? 'running', true);
+      this.record(cwd, task, task.last_activity ?? 'running');
       changed.push(task);
     }
     return changed;
@@ -1246,7 +1237,7 @@ export class SubagentManager {
     task.last_activity = `live steering message ${outcome}`;
     task.last_activity_at = nowIso();
     const cwd = this.taskCwds.get(task.id);
-    if (cwd) this.record(cwd, task, task.last_activity, true);
+    if (cwd) this.record(cwd, task, task.last_activity);
   }
 
   private removeLiveMessage(
@@ -1361,12 +1352,7 @@ export class SubagentManager {
     state.arm();
     const cwd = this.taskCwds.get(taskId);
     if (cwd)
-      this.record(
-        cwd,
-        task,
-        `deadline extended by ${deadline - previous}ms`,
-        true,
-      );
+      this.record(cwd, task, `deadline extended by ${deadline - previous}ms`);
     this.notifyTaskUpdate(taskId, undefined, true);
     return {
       task_id: taskId,
@@ -1857,7 +1843,7 @@ export class SubagentManager {
       delete task.live_activity;
       task.pending_message_count = 0;
       task.undelivered_message_count = task.undelivered_message_count ?? 0;
-      if (cwd) this.record(cwd, task, task.last_activity, true);
+      if (cwd) this.record(cwd, task, task.last_activity);
       return task;
     }
     if (task.status === 'stopping') return task;
@@ -1882,7 +1868,7 @@ export class SubagentManager {
     task.last_activity_at = nowIso();
     task.ended_at = undefined;
     delete task.interaction_request;
-    if (cwd) this.record(cwd, task, reason, true);
+    if (cwd) this.record(cwd, task, reason);
   }
 
   private finalizeStop(
@@ -1914,7 +1900,7 @@ export class SubagentManager {
         : (task.stop_reason ?? task.error);
     delete task.interaction_request;
     this.stopDispositions.delete(task.id);
-    this.record(cwd, task, task.last_activity, true);
+    this.record(cwd, task, task.last_activity);
     this.notifyTaskUpdate(task.id, onTaskUpdate, true);
   }
 
@@ -2036,7 +2022,7 @@ export class SubagentManager {
     if (parentSignal?.aborted) abortFromParent();
     else
       parentSignal?.addEventListener('abort', abortFromParent, { once: true });
-    this.record(cwd, task, 'queued', true);
+    this.record(cwd, task, 'queued');
     this.notifyTaskUpdate(id, onTaskUpdate, true);
 
     const run = async () => {
@@ -2067,7 +2053,7 @@ export class SubagentManager {
         }
         task.last_activity_at = task.started_at;
         task.last_activity = 'started';
-        this.record(cwd, task, 'started', true);
+        this.record(cwd, task, 'started');
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         let interactionsHandled = 0;
         let result: Awaited<ReturnType<SubagentRunner>> | undefined;
@@ -2232,7 +2218,17 @@ export class SubagentManager {
                 Boolean(activity.interaction_request) ||
                 (Boolean(activity.thread_snapshot) &&
                   !activity.message.startsWith('streaming '));
-              this.record(cwd, task, activity.message, importantActivity);
+              // Runner flags are authoritative; unflagged activities write
+              // only for the existing immediate diagnostic/interaction classes.
+              if (
+                activity.persist !== false &&
+                (activity.persist === true ||
+                  activity.diagnostic === true ||
+                  activity.dropped_tools !== undefined ||
+                  activity.message === 'interaction required' ||
+                  Boolean(activity.interaction_request))
+              )
+                this.record(cwd, task, activity.message);
               this.notifyTaskUpdate(id, onTaskUpdate, importantActivity);
             },
           });
@@ -2343,7 +2339,7 @@ export class SubagentManager {
           if (result.nested_session_path)
             task.nested_session_path = result.nested_session_path;
           task.interaction_request = interactionRequest;
-          this.record(cwd, task, task.last_activity, true);
+          this.record(cwd, task, task.last_activity);
           this.notifyTaskUpdate(id, onTaskUpdate, true);
 
           subagentAuditLog(cwd, 'interaction_bridge_prompt_main_thread', {
@@ -2381,7 +2377,7 @@ export class SubagentManager {
             'interaction answered by main user; retrying subagent';
           delete task.interaction_request;
           task.last_activity_at = nowIso();
-          this.record(cwd, task, task.last_activity, true);
+          this.record(cwd, task, task.last_activity);
           this.notifyTaskUpdate(id, onTaskUpdate, true);
         }
 
@@ -2419,7 +2415,7 @@ export class SubagentManager {
           task.nested_session_path = result.nested_session_path;
         delete task.interaction_request;
         task.ended_at = task.last_activity_at;
-        this.record(cwd, task, 'completed', true);
+        this.record(cwd, task, 'completed');
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         if (task.mode === 'background') {
           ctx?.ui?.notify?.(
@@ -2469,7 +2465,7 @@ export class SubagentManager {
         task.last_activity = `failed: ${task.error}`;
         task.last_activity_at = nowIso();
         task.ended_at = task.last_activity_at;
-        this.record(cwd, task, task.last_activity, true);
+        this.record(cwd, task, task.last_activity);
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         ctx?.ui?.notify?.(
           `Subagent ${definition.name} failed: ${task.error}`,
@@ -2551,50 +2547,7 @@ export class SubagentManager {
     }
   }
 
-  private record(
-    cwd: string,
-    task: SubagentTask,
-    activity: string,
-    immediate = false,
-  ): void {
-    if (
-      !immediate &&
-      (task.status === 'stopping' || isTerminalStatus(task.status))
-    )
-      return;
-    if (immediate) {
-      this.flushRecord(task.id);
-      this.recordNow(cwd, task, activity);
-      return;
-    }
-    const pending = this.pendingRecords.get(task.id);
-    if (pending) {
-      pending.cwd = cwd;
-      pending.task = task;
-      pending.activity = activity;
-      return;
-    }
-    const timer = setTimeout(
-      () => this.flushRecord(task.id),
-      ACTIVITY_RECORD_FLUSH_MS,
-    );
-    timer.unref?.();
-    this.pendingRecords.set(task.id, { cwd, task, activity, timer });
-  }
-
-  private flushRecord(taskId: string): void {
-    const pending = this.pendingRecords.get(taskId);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pendingRecords.delete(taskId);
-    this.recordNow(pending.cwd, pending.task, pending.activity);
-  }
-
-  private recordNow(
-    cwd: string,
-    task: SubagentTask,
-    activity: string,
-  ): boolean {
+  private record(cwd: string, task: SubagentTask, activity: string): boolean {
     try {
       this.invalidateSessionTaskCache(cwd, task);
       this.history.upsertTask(cwd, task);

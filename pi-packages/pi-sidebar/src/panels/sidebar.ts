@@ -3,6 +3,7 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
 import {
   computeSessionCost,
+  getAnimationLevel,
   getRenderKit,
   getWorkPanelSourceRows,
   listWorkPanelSources,
@@ -19,7 +20,6 @@ import {
   panelVisibleWidth,
   renderWorkPanelRow,
   truncatePanelText,
-  WORK_PANEL_ANIMATION_INTERVAL_MS,
   workPanelRenderStatus,
   workPanelRowLineCount,
 } from '@thoth-agents/pi-core/panel';
@@ -316,6 +316,7 @@ export class SidebarPanels implements Component {
   private icons = iconSignature();
   private revision = 0;
   private animated = false;
+  private animationFrame = 0;
   private panelGap = 1;
   private cost: ReturnType<typeof computeSessionCost>;
   private usage: ReturnType<ExtensionContext['getContextUsage']>;
@@ -325,9 +326,9 @@ export class SidebarPanels implements Component {
     string,
     {
       revision: number;
-      frame: number;
       items: WorkPanelRow[];
-      animated: boolean;
+      /** Undefined until the fresh snapshot has been budgeted. */
+      animated: boolean | undefined;
     }
   >();
   constructor(private readonly options: SidebarPanelsOptions) {
@@ -354,6 +355,24 @@ export class SidebarPanels implements Component {
   invalidate(): void {
     this.revision++;
     this.cachedLines = undefined;
+  }
+  /** A step refreshes visible live data even when off keeps the same frame. */
+  stepAnimation(frame: number | undefined): void {
+    if (frame !== undefined) this.animationFrame = frame;
+    if (this.animated) {
+      for (const [id, snapshot] of this.snapshots) {
+        if (snapshot.animated) this.snapshots.delete(id);
+      }
+      this.invalidate();
+    }
+  }
+  /** Re-exposed rows must refresh even when no animation step ran while hidden. */
+  pauseAnimation(): void {
+    for (const snapshot of this.snapshots.values()) {
+      if (snapshot.animated) snapshot.animated = false;
+    }
+    this.animated = false;
+    this.cachedKey = undefined;
   }
   private sessionView(): SessionView {
     return sessionView(
@@ -450,11 +469,7 @@ export class SidebarPanels implements Component {
   ): PanelData {
     const options = this.options;
     let snapshot = this.snapshots.get(source.id);
-    if (
-      !snapshot ||
-      snapshot.revision !== source.revision ||
-      (snapshot.animated && snapshot.frame !== frame)
-    ) {
+    if (!snapshot || snapshot.revision !== source.revision) {
       const raw = getWorkPanelSourceRows(source.id, {
         // Exact retention/overflow counts require the complete snapshot.
         maxRows: Number.MAX_SAFE_INTEGER,
@@ -463,9 +478,8 @@ export class SidebarPanels implements Component {
       const items = retainedRows(raw, source.id);
       snapshot = {
         revision: source.revision,
-        frame,
         items,
-        animated: false,
+        animated: undefined,
       };
       this.snapshots.set(source.id, snapshot);
     }
@@ -499,6 +513,7 @@ export class SidebarPanels implements Component {
         renderWorkPanelRow(items[index], {
           width: inner,
           now,
+          animationFrame: frame,
           theme: options.theme,
           clip: truncatePanelText,
           measure: panelVisibleWidth,
@@ -535,8 +550,7 @@ export class SidebarPanels implements Component {
   }
   private plan(height: number, width = DEFAULT_SIDEBAR_WIDTH): PanelData[] {
     if (width < MIN_PANEL_WIDTH) {
-      this.animated = false;
-      this.cachedKey = undefined;
+      this.pauseAnimation();
       return [];
     }
     this.readSession();
@@ -551,8 +565,7 @@ export class SidebarPanels implements Component {
       this.snapshots.clear();
       this.invalidate();
     }
-    const now = Date.now();
-    const frame = Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS);
+    const frame = this.animationFrame;
     const ctx = options.context();
     const workspace = options.workspace();
     const git = workspace.git;
@@ -593,6 +606,7 @@ export class SidebarPanels implements Component {
       kit,
       icons,
       options.home,
+      getAnimationLevel(),
       this.animated ? frame : 0,
     ];
     const cachedKey = this.cachedKey;
@@ -689,8 +703,7 @@ export class SidebarPanels implements Component {
       // Refresh newly exposed animation before rendering. Replan because fresh
       // provider text can change row count and line costs as well.
       if (
-        snapshot &&
-        snapshot.frame !== frame &&
+        snapshot?.animated === false &&
         indices.some((index) => panel.animated?.[index])
       ) {
         const raw = getWorkPanelSourceRows(panel.id, {
@@ -698,7 +711,7 @@ export class SidebarPanels implements Component {
           respectRowCap: false,
         });
         snapshot.items = retainedRows(raw, panel.id);
-        snapshot.frame = frame;
+        snapshot.animated = true;
         this.cachedKey = undefined;
         return this.plan(height, width);
       }
@@ -749,8 +762,12 @@ export class SidebarPanels implements Component {
     return this.renderAt(width, this.options.height());
   }
   renderAt(width: number, height: number): string[] {
-    if (width <= 0 || height <= 0) return [];
-    if (width < MIN_PANEL_WIDTH)
+    if (width <= 0 || height <= 0) {
+      this.pauseAnimation();
+      return [];
+    }
+    if (width < MIN_PANEL_WIDTH) {
+      this.pauseAnimation();
       return [
         panelFg(
           this.options.theme,
@@ -758,6 +775,7 @@ export class SidebarPanels implements Component {
           truncatePanelText(WIDEN_HINT, width),
         ),
       ];
+    }
     const plan = this.plan(height, width);
     if (this.cachedLines) return this.cachedLines;
     const theme = this.options.theme;

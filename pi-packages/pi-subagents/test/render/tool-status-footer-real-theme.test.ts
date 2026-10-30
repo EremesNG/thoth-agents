@@ -147,7 +147,11 @@ it.each([
   expect(footer(running)).toMatch(/^╰── △ · 0s /);
   expect(running.render(120).join('\n')).toContain(`status: ${status}`);
   expect(vi.getTimerCount()).toBe(1);
-  vi.advanceTimersByTime(2250);
+  vi.advanceTimersByTime(1000);
+  expect(context.invalidate).toHaveBeenCalledTimes(1);
+  running.invalidate();
+  expect(footer(running)).toMatch(/^╰── ◭ · 1s /);
+  vi.advanceTimersByTime(1250);
   expect(context.invalidate).toHaveBeenCalledTimes(2);
   running.invalidate();
   expect(footer(running)).toMatch(/^╰── ▲ · 2s /);

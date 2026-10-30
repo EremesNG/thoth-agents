@@ -348,12 +348,10 @@ describe('subagent_run tool', () => {
 
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(onUpdate).toHaveBeenCalledTimes(updateCount + 4);
+      expect(onUpdate).toHaveBeenCalledTimes(updateCount + 5);
       const heartbeats = onUpdate.mock.calls.slice(updateCount);
       for (const [index, [update]] of heartbeats.entries()) {
-        expect(update.details.frame).toBe(
-          runningUpdate.details.frame + index + 1,
-        );
+        expect(update.details.frame).toBe(index + 1);
         expect(update.details.tasks).toEqual(runningUpdate.details.tasks);
         expect(rendered[updateCount + index].split('\n')[1]).toContain(
           'subagent · analyst · running',

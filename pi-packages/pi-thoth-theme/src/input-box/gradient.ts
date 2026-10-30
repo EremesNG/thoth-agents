@@ -7,6 +7,7 @@ import {
   styleText,
   type TerminalColorMode,
 } from '@earendil-works/pi-tui';
+import { getAnimationCycleSteps } from '@thoth-agents/pi-core';
 import { frames } from '../shared/icons.ts';
 
 const GOLD = parseColor('#D4AF37');
@@ -14,26 +15,29 @@ const BRIGHT_GOLD = parseColor('#F2C94C');
 const DIM = parseColor('#736850');
 const MUTED = parseColor('#A89A78');
 const BREATHING_CYCLE_MS = 2400;
-const SHIMMER_LAP_MS = 2400;
 const SHIMMER_BAND_CELLS = 3;
 
 export interface BreathingFrame {
   now: number;
+  phase: number;
   foreground: string;
   mode: TerminalColorMode;
 }
 
 export function createBreathingFrame(
-  now: number,
+  step: number,
   mode = getTerminalColorMode(),
+  now = Date.now(),
 ): BreathingFrame {
-  const phase = ((now % BREATHING_CYCLE_MS) / BREATHING_CYCLE_MS) * 2 * Math.PI;
-  const intensity = (1 - Math.cos(phase)) / 2;
+  const steps = getAnimationCycleSteps(BREATHING_CYCLE_MS);
+  const phase =
+    steps === undefined ? 0 : (((step % steps) + steps) % steps) / steps;
+  const intensity = (1 - Math.cos(phase * 2 * Math.PI)) / 2;
   const color =
     intensity <= 0.5
       ? mixColors(DIM, GOLD, intensity * 2, 'srgb')
       : mixColors(GOLD, BRIGHT_GOLD, (intensity - 0.5) * 2, 'srgb');
-  return { now, foreground: foregroundAnsi(color, mode), mode };
+  return { now, phase, foreground: foregroundAnsi(color, mode), mode };
 }
 
 // Only call with generated border segments, never label or editor content.
@@ -67,8 +71,7 @@ export function renderWorkingIndicator(
     plain.slice(glyph === undefined ? 0 : glyph.length + spacing.length),
   );
   const head =
-    ((frame.now % SHIMMER_LAP_MS) / SHIMMER_LAP_MS) *
-      (letters.length + SHIMMER_BAND_CELLS * 2) -
+    frame.phase * (letters.length + SHIMMER_BAND_CELLS * 2) -
     SHIMMER_BAND_CELLS;
   const label = letters
     .map((letter, index) => {

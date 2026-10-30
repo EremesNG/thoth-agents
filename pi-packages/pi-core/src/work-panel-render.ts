@@ -1,9 +1,11 @@
+import { getAnimationLevel } from './animation-clock.js';
 import {
   getRenderKit,
   type RenderKitTheme,
   type RenderStatus,
   resolveFrames,
   resolveIcon,
+  resolveStaticRunningGlyph,
   resolveStatusGlyph,
 } from './render-kit.js';
 import type {
@@ -1610,6 +1612,8 @@ function segmentStyler(
 export interface WorkPanelRowRenderOptions {
   width: number;
   now: number;
+  /** Caller-owned tick-stepped frame; rendering alone never advances it. */
+  animationFrame?: number;
   theme: RenderKitTheme;
   clip(text: string, width: number): string;
   measure?: Measure;
@@ -1648,7 +1652,7 @@ export function renderWorkPanelRow(
   row: WorkPanelRow,
   options: WorkPanelRowRenderOptions,
 ): string[] {
-  const { width, now, theme, clip } = options;
+  const { width, theme, clip } = options;
   if (!(width > 0)) return [];
   const kit = getRenderKit();
   const measure = options.measure ?? defaultMeasure;
@@ -1663,26 +1667,26 @@ export function renderWorkPanelRow(
   );
   const entry = { row };
   const status = workPanelRenderStatus(row);
-  const indicator = !row.summary
-    ? kit?.indicator(theme, undefined, {
-        status,
-        frame: Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS),
-      })
-    : undefined;
+  const staticAnimation = getAnimationLevel() === 'off';
+  const frame = options.animationFrame ?? 0;
+  const indicator =
+    !row.summary && !staticAnimation
+      ? kit?.indicator(theme, undefined, { status, frame })
+      : undefined;
   const semanticGlyph = workPanelStatusGlyph(row);
   const running = status === 'running' || status === 'in_progress';
   const frames = resolveFrames('spinnerFrames');
   const native =
     semanticGlyph && running
-      ? frames[
-          Math.floor(now / WORK_PANEL_ANIMATION_INTERVAL_MS) % frames.length
-        ]
+      ? frames[frame % frames.length]
       : nativeGlyphs[status];
   const glyph =
     semanticGlyph === 'taskInProgress'
       ? resolveIcon('taskInProgress', '◇')
       : running
-        ? (indicator?.glyph ?? native)
+        ? staticAnimation
+          ? resolveStaticRunningGlyph()
+          : (indicator?.glyph ?? native)
         : resolveStatusGlyph(status, native);
   const content = contentFor(entry);
   const body = content.segments
@@ -1723,6 +1727,7 @@ export function renderPanel(
     selectedKey?: string;
     hint?: string;
     budget?: number;
+    animationFrame?: number;
     measure?: (text: string) => number;
   } = {},
 ): string[] {
@@ -1763,6 +1768,7 @@ export function renderPanel(
         theme,
         clip,
         measure,
+        animationFrame: options.animationFrame,
         selected:
           isSelectablePanelRow(entry) && options.selectedKey === entry.key,
         last:

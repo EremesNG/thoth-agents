@@ -20,6 +20,7 @@ import { beforeAll, expect, test, vi } from "vitest";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+import { getAnimationLevel, setAnimationLevel } from "@thoth-agents/pi-core";
 
 vi.mock("../src/mcp-registration.js", () => ({
 	acquireBridgeSuppression: () => () => {},
@@ -201,6 +202,9 @@ test("live running counters floor elapsed time to whole seconds", async () => {
 	const tool = await registerTool(bin);
 	vi.stubEnv("AGY_BIN", bin);
 	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+	// Sample the 1 s static refresh; animated cadence is covered separately.
+	const previousLevel = getAnimationLevel();
+	setAnimationLevel("off");
 	const now = 1700000000000;
 	const clock = vi.spyOn(Date, "now").mockReturnValue(now);
 	try {
@@ -229,6 +233,7 @@ test("live running counters floor elapsed time to whole seconds", async () => {
 		]);
 	} finally {
 		clock.mockRestore();
+		setAnimationLevel(previousLevel);
 		vi.useRealTimers();
 		vi.unstubAllEnvs();
 	}

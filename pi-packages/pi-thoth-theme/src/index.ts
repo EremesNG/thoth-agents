@@ -5,15 +5,17 @@ import {
   registerRenderKit,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
+import { registerAnimation } from './animation.ts';
 import { createRenderKit } from './render-kit/index.ts';
 import { loadConfig } from './shared/config.ts';
-import { frames, icon } from './shared/icons.ts';
+import { icon } from './shared/icons.ts';
 import { registerStatusLine } from './status-line/index.ts';
 import { createToolRendererResolver, registerTools } from './tools/index.ts';
 import { registerWelcome } from './welcome/index.ts';
 
 export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
+  registerAnimation(pi, config);
   pi.registerMarkdownTransformer((markdown, context) => {
     if (context.messageType !== 'user' || !markdown.trim()) return markdown;
     if (
@@ -58,10 +60,6 @@ export default function thothTheme(pi: ExtensionAPI): void {
     if (!ctx.ui) return;
     if (config.statusLine.enabled) {
       if (config.inputBox?.enabled !== false) {
-        ctx.ui.setWorkingIndicator?.({
-          frames: [...frames('workingFrames', config.icons)],
-          intervalMs: 200,
-        });
         ctx.ui.setWorkingMessage?.(`working${icon('ellipsis', config.icons)}`);
       }
       registerStatusLine(pi, ctx, config);

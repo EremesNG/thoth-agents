@@ -255,8 +255,7 @@ describe('Agents work-panel rows', () => {
         .sort(),
     ).toEqual(['cancelled', 'completed', 'failed', 'queued', 'running']);
     const session = await mount(agents);
-    const glyphs = (at: number) => {
-      vi.setSystemTime(at);
+    const glyphs = () => {
       const lines = session.render(200);
       return [0, 1, 2, 3, 4].map((index) =>
         lines
@@ -264,8 +263,9 @@ describe('Agents work-panel rows', () => {
           ?.slice(2, 3),
       );
     };
-    expect(glyphs(now)).toEqual(['⠋', '○', '✓', '■', '✗']);
-    expect(glyphs(now + 100)).toEqual(['⠙', '○', '✓', '■', '✗']);
+    expect(glyphs()).toEqual(['⠋', '○', '✓', '■', '✗']);
+    vi.advanceTimersByTime(100);
+    expect(glyphs()).toEqual(['⠙', '○', '✓', '■', '✗']);
     expect(agents.refreshIntervalMs).toBe(100);
   });
   it.each([

@@ -128,13 +128,13 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 ### Requirement: Standard tool status footer
 
-`@thoth-agents/pi-core` MUST define a render-kit contract that produces the tool card status footer from a status and the tool render context, with a plain-text fallback when no kit is registered; `@thoth-agents/pi-thoth-theme` MUST implement it so that every running first-party tool card (theme built-ins and kit producers) shows the theme working animation frame for the configured icon mode and elapsed time, and every finished tool card shows the theme completed or failed status icon for the configured icon mode, the elapsed time and the tool optional summary.
+`@thoth-agents/pi-core` MUST define a render-kit contract that produces the tool card status footer from a status and the tool render context, with a plain-text fallback when no kit is registered; `@thoth-agents/pi-thoth-theme` MUST implement it so that every running first-party tool card (theme built-ins and kit producers) shows the theme working animation frame for the configured icon mode, or the static running glyph for that mode when the animation intensity is `off`, and elapsed time, and every finished tool card shows the theme completed or failed status icon for the configured icon mode, the elapsed time and the tool optional summary.
 
 #### Scenario: Standard tool status footer
 
 - **GIVEN** a themed read, bash or subagent tool card with Nerd icons
 - **WHEN** it is running and then finishes
-- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `<completed icon> · <elapsed>[ · summary]` or `<failed icon> · <elapsed>[ · summary]` after finishing, and in ASCII mode the ASCII frame, separator and status icons
+- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running (`◐ · <elapsed>` when the animation intensity is `off`) and `<completed icon> · <elapsed>[ · summary]` or `<failed icon> · <elapsed>[ · summary]` after finishing, and in ASCII mode the ASCII frame, separator and status icons
 
 ### Requirement: Thoth Pi question tool
 
@@ -535,3 +535,33 @@ Subagent tool results and progress updates MUST build task details through one e
 - **GIVEN** a collapsed bash result whose row `… 120 more lines · ctrl+o to expand` is wider than a 20-column frame even after the hint is shortened to `ctrl+o`
 - **WHEN** it renders
 - **THEN** the row ends with `· ctrl+o`, preceded by truncated text; and the same result at 120 columns renders exactly as before
+
+### Requirement: Animation intensity
+
+`@thoth-agents/pi-thoth-theme` MUST offer an `animation` setting in `pi-thoth-theme.json` with the levels `full`, `reduced`, `minimal` and `off`, defaulting to `full` when missing or malformed, changeable at runtime through `/thoth-animation` and persisted; `@thoth-agents/pi-core` MUST drive first-party periodic animation through one shared clock ticking every 100, 200 or 500 ms for `full`, `reduced` and `minimal` and not at all for `off`, and every animated glyph or effect MUST advance by exactly one frame or step per fixed number of ticks rather than from wall-clock time or per emission, so every frame appears in order at every level; the theme-configured native Pi working indicator is the exception and MUST use Pi's loader at 200, 200 or 500 ms; with `off`, running indicators and tool footers MUST show the mode-aware static running glyph, continuous effects MUST be static and the native working indicator MUST show a single frame, while elapsed times keep updating at least every second without animating.
+
+#### Scenario: Animation intensity
+
+- **GIVEN** Nerd icons and a running subagent
+- **WHEN** the user runs `/thoth-animation minimal` and later `/thoth-animation off`
+- **THEN** the braille indicator steps through all ten frames in order at one frame per 500 ms, and after `off` it shows a static `◐` with no animation timer while its elapsed time still advances
+
+### Requirement: Subagent boundary-driven event processing
+
+`@thoth-agents/pi-subagents` MUST treat child token-level events (assistant text and thinking deltas and other message update payloads) only as liveness and stall-diagnostic signals for its inactivity watchdog, and partial tool execution updates only as such signals for the active tool and as carriers inspected for orchestrator interaction requests; apart from handling a newly detected interaction request as it handles any other orchestrator question, it MUST NOT build thread snapshots, transcripts, previews or usage, emit activity, publish task state or persist history from them, and MUST build the live thread snapshot and transcript from completed assistant messages and tool execution results.
+
+#### Scenario: Subagent boundary-driven event processing
+
+- **GIVEN** a running child streaming a long assistant answer as many text deltas
+- **WHEN** the deltas arrive and the message then completes
+- **THEN** no activity, task-state publication or history write occurs during the deltas, the watchdog still sees the child alive, and on completion the live snapshot, transcript and preview contain the complete message text
+
+### Requirement: Subagent history persistence boundaries
+
+`@thoth-agents/pi-subagents` MUST write a running task's history record only when a tool execution ends, a turn ends, the task's lifecycle or status changes, an orchestrator question is raised or answered, an explicit progress notification arrives, a steering outcome, background-mode change or deadline extension occurs; it MUST NOT write on a timer, for token-level events, for partial tool updates other than one carrying a newly detected orchestrator question, or for tool execution start or assistant message completion alone, and a task interrupted between boundaries MUST keep its last persisted boundary detail.
+
+#### Scenario: Subagent history persistence boundaries
+
+- **GIVEN** a running child that finishes a tool and then streams a long final answer before its turn ends
+- **WHEN** those events occur
+- **THEN** history is written when the tool ends and when the turn ends, and nothing is written while the answer streams

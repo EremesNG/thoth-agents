@@ -1,4 +1,23 @@
-export { subscribeAnimationClock } from './animation-clock.js';
+export type {
+  AnimationLevel,
+  AnimationLevelListener,
+  AnimationListener,
+} from './animation-clock.js';
+export {
+  getAnimationLevel,
+  getAnimationPeriodMs,
+  setAnimationLevel,
+  subscribeAnimationClock,
+  subscribeAnimationLevel,
+} from './animation-clock.js';
+export type {
+  AnimationStep,
+  AnimationStepsOptions,
+} from './animation-steps.js';
+export {
+  getAnimationCycleSteps,
+  subscribeAnimationSteps,
+} from './animation-steps.js';
 export type {
   BackgroundCounts,
   BackgroundSnapshot,
@@ -82,6 +101,7 @@ export {
   renderToolFooter,
   resolveFrames,
   resolveIcon,
+  resolveStaticRunningGlyph,
   resolveStatusGlyph,
   withdrawRenderKit,
 } from './render-kit.js';

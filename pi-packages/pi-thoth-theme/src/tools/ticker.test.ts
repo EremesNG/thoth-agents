@@ -7,6 +7,7 @@ import {
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
 import { stripTerminalSequences, type TUI } from '@earendil-works/pi-tui';
+import { setAnimationLevel } from '@thoth-agents/pi-core';
 import {
   afterEach,
   beforeAll,
@@ -110,11 +111,48 @@ beforeEach(() => {
 afterEach(() => {
   for (const cleanup of cleanups) cleanup();
   cleanups.length = 0;
+  setAnimationLevel('full');
   vi.clearAllTimers();
   vi.useRealTimers();
 });
 
 describe('Live tool elapsed through the real SDK', () => {
+  it.each([
+    'full',
+    'reduced',
+    'minimal',
+  ] as const)('steps every footer frame in order at %s, independent of elapsed time', (level) => {
+    setAnimationLevel(level);
+    const { component } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    const glyph = () =>
+      /╰── (.) ·/u.exec(renderText(component))?.[1] ?? 'missing';
+    const glyphs = [glyph()];
+    for (let step = 0; step < 8; step++) {
+      vi.advanceTimersByTime(1000);
+      glyphs.push(glyph());
+    }
+    expect(glyphs).toEqual(['△', '◭', '▲', '◮', '△', '◭', '▲', '◮', '△']);
+    vi.setSystemTime(new Date('2026-01-02T00:00:00Z'));
+    component.invalidate();
+    expect(renderText(component)).toContain('△ · 24h 00m');
+  });
+
+  it('immediately repaints at off and keeps refreshing elapsed without advancing the static footer', () => {
+    const { component, requestRender } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    renderText(component);
+    requestRender.mockClear();
+    setAnimationLevel('off');
+    expect(requestRender).toHaveBeenCalledOnce();
+    expect(renderText(component)).toContain('◐ · 0s');
+    requestRender.mockClear();
+    vi.advanceTimersByTime(3000);
+    expect(requestRender).toHaveBeenCalledTimes(3);
+    expect(renderText(component)).toContain('◐ · 3s');
+    component.updateResult(partialResult, false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('keeps parent tickers live across headless child start/end/shutdown and disposal', () => {
     const parent = createSession();
     const { component, requestRender } = parent.createBashComponent();
@@ -282,7 +320,7 @@ describe('Live tool elapsed through the real SDK', () => {
       if (index === 0) component.updateResult(partialResult, true);
       renderText(component);
     }
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(1500);
     for (const { requestRender } of tools) requestRender.mockClear();
 

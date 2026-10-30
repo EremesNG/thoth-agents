@@ -1,10 +1,12 @@
 import { Box } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  getAnimationLevel,
   type RenderIndicatorContext,
   type RenderStatus,
   renderToolFooter,
   resolveIcon,
+  resolveStaticRunningGlyph,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -91,6 +93,8 @@ export interface BoxedComponentOptions {
   message?: boolean;
   /** Index of the generated progress row, never a user response row. */
   workingRow?: number;
+  /** Caller-owned stepper frame for live progress. */
+  animationFrame?: number;
 }
 
 export function boxedComponent(
@@ -113,7 +117,13 @@ export function boxedComponent(
         : options?.context?.isError
           ? 'failed'
           : 'completed');
-    const indicator = kit?.indicator(theme, options?.context, { status });
+    const indicator =
+      status === 'running' && getAnimationLevel() === 'off'
+        ? { glyph: resolveStaticRunningGlyph() }
+        : kit?.indicator(theme, options?.context, {
+            status,
+            frame: options?.animationFrame,
+          });
     // Working glyphs are theme-owned whenever a KIT is available.
     const workingGlyph = (text: string) =>
       indicator && status === 'running'

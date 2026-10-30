@@ -1,6 +1,8 @@
 import {
+  getAnimationLevel,
   resolveFrames,
   resolveIcon,
+  resolveStaticRunningGlyph,
   resolveStatusGlyph,
 } from '@thoth-agents/pi-core';
 import type { SubagentTask } from '../types.js';
@@ -10,6 +12,7 @@ const RUNNING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 
 export function statusGlyph(status: string, frame = 0, ui = true): string {
   if (status === 'running') {
+    if (getAnimationLevel() === 'off') return resolveStaticRunningGlyph();
     const frames = ui
       ? resolveFrames('spinnerFrames', RUNNING_FRAMES)
       : RUNNING_FRAMES;

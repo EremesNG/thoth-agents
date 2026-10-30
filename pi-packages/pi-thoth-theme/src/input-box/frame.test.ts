@@ -34,7 +34,7 @@ describe('input-box frame', () => {
       wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme),
       renderInputBottom(40, mutedTheme, {}, 34),
     ];
-    const frame = createBreathingFrame(now, mode);
+    const frame = createBreathingFrame(now / 100, mode);
     const animated = [
       renderInputTop(40, mutedTheme, { left: [label] }, 12, frame),
       wrapContentRow(cursor, 40, mutedTheme, frame),

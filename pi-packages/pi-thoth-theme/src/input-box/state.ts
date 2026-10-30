@@ -1,8 +1,18 @@
-import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
-import { subscribeAnimationClock } from '@thoth-agents/pi-core';
+import {
+  stripTerminalSequences,
+  truncateToWidth,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
+import {
+  getAnimationLevel,
+  getAnimationPeriodMs,
+  subscribeAnimationClock,
+  subscribeAnimationLevel,
+  subscribeAnimationSteps,
+} from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
-import { frames, icon } from '../shared/icons.ts';
+import { frames, icon, statusIcon } from '../shared/icons.ts';
 import {
   type BreathingFrame,
   createBreathingFrame,
@@ -12,24 +22,85 @@ import {
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
   let pendingBackground = 0;
-  let offAnimationClock: (() => void) | undefined;
+  let offRefresh: (() => void) | undefined;
   let disposed = false;
+  let effectStep = 0;
+  let glyphStep = 0;
+  let glyphTicks = 0;
+
+  const offLevel = subscribeAnimationLevel(() => {
+    glyphTicks = 0;
+    stop();
+    syncAnimation();
+  });
+
+  function breathingFrame(): BreathingFrame {
+    return createBreathingFrame(effectStep);
+  }
+
+  function workingGlyph(mode: IconMode): string {
+    const glyphs = frames('workingFrames', mode);
+    return getAnimationLevel() === 'off'
+      ? statusIcon('running', mode)
+      : glyphs[glyphStep % glyphs.length];
+  }
+
+  function workingLabel(
+    native: string,
+    frame: BreathingFrame,
+    mode: IconMode,
+    styleMuted: (text: string) => string,
+  ): string {
+    const glyphs = [
+      ...frames('workingFrames', mode),
+      statusIcon('running', mode),
+    ];
+    const plain = stripTerminalSequences(native);
+    const original = glyphs.find(
+      (glyph) =>
+        plain.startsWith(glyph) && /^\s|^$/u.test(plain.slice(glyph.length)),
+    );
+    const label =
+      original === undefined || getAnimationLevel() !== 'off'
+        ? native
+        : workingGlyph(mode) + plain.slice(original.length);
+    return renderWorkingIndicator(label, frame, styleMuted, glyphs);
+  }
 
   function stop() {
-    offAnimationClock?.();
-    offAnimationClock = undefined;
+    offRefresh?.();
+    offRefresh = undefined;
   }
 
   function syncAnimation() {
-    if (startedAt === undefined && pendingBackground === 0) {
+    const staticMode = getAnimationLevel() === 'off';
+    if (startedAt === undefined && (pendingBackground === 0 || staticMode)) {
       stop();
-    } else if (offAnimationClock === undefined) {
-      offAnimationClock = subscribeAnimationClock(() => requestRender());
+    } else if (offRefresh === undefined && staticMode) {
+      // Root work still displays elapsed text; background-only labels do not.
+      offRefresh = subscribeAnimationSteps({
+        intendedMs: 1000,
+        onStep: () => requestRender(),
+      });
+    } else if (offRefresh === undefined) {
+      const ticksPerGlyph = Math.max(
+        1,
+        Math.round(200 / (getAnimationPeriodMs() ?? 100)),
+      );
+      offRefresh = subscribeAnimationClock(() => {
+        effectStep++;
+        if (++glyphTicks >= ticksPerGlyph) {
+          glyphTicks = 0;
+          glyphStep++;
+        }
+        requestRender();
+      });
     }
     requestRender();
   }
 
   return {
+    breathingFrame,
     get isWorking() {
       return startedAt !== undefined || pendingBackground > 0;
     },
@@ -61,13 +132,11 @@ export function createWorkingState(requestRender: () => void) {
       const fallback = () => {
         if (pendingBackground === 0)
           return styleMuted(truncateToWidth(ready, width, ''));
-        const glyphs = frames('workingFrames', mode);
-        const glyph = glyphs[Math.floor(now / 200) % glyphs.length];
-        const label = renderWorkingIndicator(
-          `${glyph} working${icon('ellipsis', mode)}`,
-          frame ?? createBreathingFrame(now),
+        const label = workingLabel(
+          `${workingGlyph(mode)} working${icon('ellipsis', mode)}`,
+          frame ?? breathingFrame(),
+          mode,
           styleMuted,
-          glyphs,
         );
         return truncateToWidth(
           `${label}${styleMuted(` ${separator} ${pendingBackground} bg`)}`,
@@ -96,12 +165,7 @@ export function createWorkingState(requestRender: () => void) {
       const fitted = truncateToWidth(native, nativeWidth, '');
       const label =
         working && startedAt !== undefined
-          ? renderWorkingIndicator(
-              fitted,
-              frame ?? createBreathingFrame(now),
-              styleMuted,
-              frames('workingFrames', mode),
-            )
+          ? workingLabel(fitted, frame ?? breathingFrame(), mode, styleMuted)
           : fitted;
       return truncateToWidth(
         `${label}${elapsed ? styleMuted(elapsed) : ''}`,
@@ -113,6 +177,7 @@ export function createWorkingState(requestRender: () => void) {
       disposed = true;
       startedAt = undefined;
       pendingBackground = 0;
+      offLevel();
       stop();
     },
   };

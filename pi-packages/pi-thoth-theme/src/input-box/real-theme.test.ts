@@ -150,7 +150,7 @@ describe('input box with the real Pi Thoth theme', () => {
       [1800, gold],
       [2400, dim],
     ] as const) {
-      vi.setSystemTime(now);
+      vi.advanceTimersByTime(now - Date.now());
       const animated = editor.render(40);
       expect(animated[0]).toBe(
         `${color}╭─ \x1b[39m${muted}▲ ready\x1b[39m${color} ${'─'.repeat(28)}╮\x1b[39m`,
@@ -204,7 +204,7 @@ describe('input box with the real Pi Thoth theme', () => {
       [845400, gold, '14m 05s', null, 15],
       [7380000, dim, '2h 03m', null, 16],
     ] as const) {
-      vi.setSystemTime(now);
+      vi.advanceTimersByTime(now - Date.now());
       const lines = editor.render(40);
       expect(lines[0].startsWith(`${color}╭─ \x1b[39m${color}△\x1b[39m `)).toBe(
         true,

@@ -1,19 +1,39 @@
-import { WORK_PANEL_ANIMATION_INTERVAL_MS } from './work-panel-render.js';
-
-type AnimationListener = (now: number) => void;
+export type AnimationLevel = 'full' | 'reduced' | 'minimal' | 'off';
+export type AnimationListener = (now: number, tick: number) => void;
+export type AnimationLevelListener = (level: AnimationLevel) => void;
 
 interface AnimationClock {
-  version: 1;
+  version: 2;
+  level: AnimationLevel;
+  tick: number;
   listeners: Set<AnimationListener>;
+  levelListeners: Set<AnimationLevelListener>;
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-const registryKey = Symbol.for('thoth.pi-core.animation-clock.v1');
+// Never inspect or mutate v1: its scheduling closure belongs to legacy copies.
+const registryKey = Symbol.for('thoth.pi-core.animation-clock.v2');
 const shared = globalThis as typeof globalThis & { [registryKey]?: unknown };
 const localClock = createClock();
 
 function createClock(): AnimationClock {
-  return { version: 1, listeners: new Set(), timer: undefined };
+  return {
+    version: 2,
+    level: 'full',
+    tick: 0,
+    listeners: new Set(),
+    levelListeners: new Set(),
+    timer: undefined,
+  };
+}
+
+function isAnimationLevel(level: unknown): level is AnimationLevel {
+  return (
+    level === 'full' ||
+    level === 'reduced' ||
+    level === 'minimal' ||
+    level === 'off'
+  );
 }
 
 function animationClock(): AnimationClock {
@@ -21,12 +41,19 @@ function animationClock(): AnimationClock {
     if (shared[registryKey] === undefined) shared[registryKey] = createClock();
     const clock = shared[registryKey] as AnimationClock | null;
     if (
-      clock?.version === 1 &&
-      clock.listeners instanceof Set &&
-      [...clock.listeners].every(
-        (listener) => typeof listener === 'function',
+      clock?.version === 2 &&
+      isAnimationLevel(clock.level) &&
+      Number.isSafeInteger(clock.tick) &&
+      clock.tick >= 0 &&
+      [clock.listeners, clock.levelListeners].every(
+        (listeners) =>
+          listeners instanceof Set &&
+          [...listeners].every((listener) => typeof listener === 'function'),
       ) &&
-      Object.getOwnPropertyDescriptor(clock, 'timer')?.writable === true &&
+      ['timer', 'level', 'tick'].every(
+        (field) =>
+          Object.getOwnPropertyDescriptor(clock, field)?.writable === true,
+      ) &&
       (clock.timer === undefined ||
         (typeof clock.timer === 'object' &&
           clock.timer !== null &&
@@ -40,22 +67,41 @@ function animationClock(): AnimationClock {
   return localClock;
 }
 
+/** Undefined at off; reading the cadence never starts a timer. */
+export function getAnimationPeriodMs(
+  level: AnimationLevel = getAnimationLevel(),
+): number | undefined {
+  switch (level) {
+    case 'full':
+      return 100;
+    case 'reduced':
+      return 200;
+    case 'minimal':
+      return 500;
+    case 'off':
+      return undefined;
+  }
+}
+
 function scheduleTick(clock: AnimationClock): void {
-  if (clock.timer !== undefined || !clock.listeners.size) return;
-  const delay = Math.min(
-    WORK_PANEL_ANIMATION_INTERVAL_MS,
-    WORK_PANEL_ANIMATION_INTERVAL_MS -
-      (Date.now() % WORK_PANEL_ANIMATION_INTERVAL_MS) +
-      1,
-  );
+  const period = getAnimationPeriodMs(clock.level);
+  if (
+    clock.timer !== undefined ||
+    !clock.listeners.size ||
+    period === undefined
+  )
+    return;
+  // Preserve the +1 ms boundary nudge, capped at one period for provider refreshes.
+  const delay = Math.min(period, period - (Date.now() % period) + 1);
   clock.timer = setTimeout(() => {
     clock.timer = undefined;
     const now = Date.now();
+    const tick = ++clock.tick;
     scheduleTick(clock);
     for (const listener of [...clock.listeners]) {
       if (!clock.listeners.has(listener)) continue;
       try {
-        listener(now);
+        listener(now, tick);
       } catch {
         // One surface must not prevent another surface from animating.
       }
@@ -64,20 +110,51 @@ function scheduleTick(clock: AnimationClock): void {
   clock.timer.unref?.();
 }
 
+export function getAnimationLevel(): AnimationLevel {
+  return animationClock().level;
+}
+
+/** Apply immediately, including cancelling or realigning an already pending tick. */
+export function setAnimationLevel(level: AnimationLevel): void {
+  const clock = animationClock();
+  if (!isAnimationLevel(level) || clock.level === level) return;
+  clock.level = level;
+  clearTimeout(clock.timer);
+  clock.timer = undefined;
+  scheduleTick(clock);
+  for (const listener of [...clock.levelListeners]) {
+    if (!clock.levelListeners.has(listener)) continue;
+    try {
+      listener(level);
+    } catch {
+      // Level changes must reach other surfaces even when one owner fails.
+    }
+  }
+}
+
+/** No initial notification and no timer; the disposer is idempotent. */
+export function subscribeAnimationLevel(
+  listener: AnimationLevelListener,
+): () => void {
+  const clock = animationClock();
+  const subscription: AnimationLevelListener = (level) => listener(level);
+  clock.levelListeners.add(subscription);
+  return () => {
+    clock.levelListeners.delete(subscription);
+  };
+}
+
 /**
- * Join the process-wide 100 ms wall-clock cadence. Target the next boundary
- * plus 1 ms to avoid early timers repeating floor(now / interval), but cap each
- * delay at 100 ms to keep scheduled provider-refresh deferral within one interval.
- * A boundary-aligned subscription therefore ticks on subsequent boundaries;
- * otherwise ticks land just after them, advancing the frame in the normal case.
- * Listeners share one timestamp per tick; there is no immediate callback.
- * The timer runs only while subscribed; the returned unsubscribe is idempotent.
+ * Join the process-wide, period-boundary-aligned cadence (100/200/500 ms).
+ * All listeners share one timestamp and a counter increasing by one per tick,
+ * including after cadence changes or idle gaps. No immediate callback.
+ * The unref'd timer exists only with subscribers and never at off.
  */
 export function subscribeAnimationClock(
   listener: AnimationListener,
 ): () => void {
   const clock = animationClock();
-  const subscription: AnimationListener = (now) => listener(now);
+  const subscription: AnimationListener = (now, tick) => listener(now, tick);
   clock.listeners.add(subscription);
   scheduleTick(clock);
   return () => {

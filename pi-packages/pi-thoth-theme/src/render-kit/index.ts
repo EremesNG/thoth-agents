@@ -12,7 +12,7 @@ import type {
   RenderToolFooterOptions,
   ThothRenderKit,
 } from '@thoth-agents/pi-core';
-import { getToolElapsedMs } from '@thoth-agents/pi-core';
+import { getAnimationLevel, getToolElapsedMs } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
 import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
@@ -178,7 +178,13 @@ export function toolFooter(
 ): string {
   syncElapsedTicker(options.context ?? {}, owner, options.status);
   const elapsedMs = getToolElapsedMs(options);
-  if (isRunning(options.status)) return runningFooter(theme, elapsedMs, mode);
+  if (isRunning(options.status))
+    return runningFooter(
+      theme,
+      elapsedMs,
+      mode,
+      options.context?.state?.animationFrame,
+    );
   const footerStatus = TOOL_FOOTER_STATUS[options.status];
   const glyph = footerStatus ? statusIcon(footerStatus, mode) : undefined;
   const summary =
@@ -248,12 +254,14 @@ export function createRenderKit(
       const frame = options.frame;
       const spinner = frames('spinnerFrames', mode);
       const workingGlyph =
-        frame !== undefined && Number.isFinite(frame)
-          ? spinner[
-              ((Math.floor(frame) % spinner.length) + spinner.length) %
-                spinner.length
-            ]
-          : workingFrame(elapsedMs, mode);
+        getAnimationLevel() === 'off'
+          ? statusIcon('running', mode)
+          : frame !== undefined && Number.isFinite(frame)
+            ? spinner[
+                ((Math.floor(frame) % spinner.length) + spinner.length) %
+                  spinner.length
+              ]
+            : workingFrame(context.state?.animationFrame, mode);
       const glyph = running
         ? theme.fg('accent', workingGlyph)
         : statusGlyph(theme, status, mode);
@@ -264,7 +272,7 @@ export function createRenderKit(
         elapsedMs,
         elapsed,
         text: running
-          ? ownedToolFooter(theme, { status, elapsedMs })
+          ? ownedToolFooter(theme, { status, elapsedMs, context })
           : [theme.fg(role, label), elapsed ? theme.fg('dim', elapsed) : '']
               .filter(Boolean)
               .join(theme.fg('dim', ` ${separator} `)),

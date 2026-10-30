@@ -7,6 +7,7 @@ import thothTheme from '../src/index.ts';
 import { loadConfig } from '../src/shared/config.ts';
 
 const defaults = {
+  animation: 'full',
   icons: 'nerd',
   statusLine: {
     enabled: true,
@@ -115,6 +116,7 @@ describe('loadConfig', () => {
       }),
     );
     expect(loadConfig(configPath)).toEqual({
+      animation: 'full',
       icons: 'ascii',
       statusLine: { ...defaults.statusLine, enabled: false },
       tools: { ...defaults.tools, enabled: false },
@@ -217,6 +219,7 @@ it('loads the extension without accessing Pi settings', () => {
   });
   const pi = {
     on,
+    registerCommand: vi.fn(),
     registerMarkdownTransformer: vi.fn(),
     get getSettings() {
       return settingsAccess();

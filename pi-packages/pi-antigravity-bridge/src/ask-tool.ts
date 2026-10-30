@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { detachRenderContext, formatDuration, getRenderKit, renderToolFooter, resolveIcon, resolveStatusGlyph } from "@thoth-agents/pi-core";
+import { detachRenderContext, formatDuration, getAnimationLevel, getRenderKit, renderToolFooter, resolveIcon, resolveStaticRunningGlyph, resolveStatusGlyph, subscribeAnimationSteps } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
@@ -40,7 +40,7 @@ import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
 const DEFAULT_TIMEOUT_MIN = 10;
 // Upstream aa1ee31: Node clamps timers above 2^31-1 ms to 1 ms.
 const MAX_TIMEOUT_MINUTES = Math.floor(2_147_483_647 / 60_000);
-const STATUS_INTERVAL_MS = 1000;
+const ANIMATION_INTENDED_MS = 200;
 const STATUS_TAIL_CHARS = 160;
 
 // renderCall / renderResult preview limits (match @thoth-agents/pi-claude-bridge).
@@ -540,10 +540,12 @@ export async function registerAskAntigravityTool(
 			if (isPartial) {
 				const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";
 				const renderText = () => {
-					const glyph = getRenderKit()?.indicator(theme, context, {
-						status: "running",
-						frame: Math.floor(Date.now() / 80),
-					}).glyph ?? "◉";
+					const glyph = getAnimationLevel() === "off"
+						? resolveStaticRunningGlyph()
+						: getRenderKit()?.indicator(theme, context, {
+							status: "running",
+							frame: d?.frame ?? 0,
+						}).glyph ?? "◉";
 					return theme.fg("mdLink", `${glyph} AskAntigravity `) + theme.fg("muted", status);
 				};
 				return renderToolCard(
@@ -792,17 +794,21 @@ export async function registerAskAntigravityTool(
 			// each other's window early. A refused config fail-opens to the status quo.
 			const restoreBridge = bridgeDiscovery === "legacy-global" ? acquireBridgeSuppression() : () => {};
 
-			const statusInterval = onUpdate
-				? setInterval(() => {
-						const elapsed = formatDuration(Math.floor((Date.now() - start) / 1000) * 1000);
-						const tail = out.slice(-STATUS_TAIL_CHARS);
-						const text = tail ? `(running ${elapsed})\n…${tail}` : `(running ${elapsed})`;
-						emitLifecycle(() => onUpdate({
-							content: [{ type: "text", text }],
-							details: { ...details, durationMs: Date.now() - start },
-						}));
-					}, STATUS_INTERVAL_MS)
-				: null;
+			const stopStatusUpdates = onUpdate
+				? subscribeAnimationSteps({
+						intendedMs: ANIMATION_INTENDED_MS,
+						onStep: ({ frame, now }) => {
+							const durationMs = now - start;
+							const elapsed = formatDuration(Math.floor(durationMs / 1000) * 1000);
+							const tail = out.slice(-STATUS_TAIL_CHARS);
+							const text = tail ? `(running ${elapsed})\n…${tail}` : `(running ${elapsed})`;
+							emitLifecycle(() => onUpdate({
+								content: [{ type: "text", text }],
+								details: { ...details, durationMs, frame },
+							}));
+						},
+					})
+				: undefined;
 
 			try {
 				// Bind the conversation id DURING the run (agy is alive then) so the
@@ -866,6 +872,7 @@ export async function registerAskAntigravityTool(
 					};
 
 					const cleanup = () => {
+						stopStatusUpdates?.();
 						if (watchdog) clearTimeout(watchdog);
 						if (signal) signal.removeEventListener("abort", onAbort);
 					};
@@ -908,8 +915,6 @@ export async function registerAskAntigravityTool(
 					});
 					onOwnedProcessSettled(proc, finish);
 				});
-
-				if (statusInterval) clearInterval(statusInterval);
 
 				// Let the during-run bind poll finish (it bails immediately once agy
 				// has exited, so this rarely blocks).
@@ -996,13 +1001,13 @@ export async function registerAskAntigravityTool(
 					: "";
 				return { content: [{ type: "text", text: text + footer }], details };
 			} catch (err) {
-				if (statusInterval) clearInterval(statusInterval);
 				details.durationMs = Date.now() - start;
 				const msg = err instanceof Error ? err.message : String(err);
 				emitLog("ask-fail", { error: msg, durationMs: details.durationMs }, "error");
 				return { content: [{ type: "text", text: `failed to run agy: ${msg}` }], details };
 			}
 			finally {
+				stopStatusUpdates?.();
 				// Belt and braces: cleanup() already restores on close/error; this
 				// covers paths that never reached the process (sync spawn throw).
 				restoreBridge();
@@ -1102,6 +1107,8 @@ interface AgyDetails {
 	// renderResult flips to the error glyph on it.
 	empty?: boolean;
 	durationMs: number;
+	/** Stepper-owned animation frame on partial updates only. */
+	frame?: number;
 	stderr: string;
 }
 

@@ -1,6 +1,7 @@
 import {
   registerRenderKit,
   renderToolFooter,
+  setAnimationLevel,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
@@ -23,6 +24,32 @@ function installTimedKit() {
   onTestFinished(() => withdrawRenderKit(token));
   return footer;
 }
+
+it.each([
+  ['full', '⠙'],
+  ['reduced', '⠙'],
+  ['minimal', '⠙'],
+  ['off', '◐'],
+] as const)('keeps the caller-stepped progress glyph at %s, or static at off', (level, glyph) => {
+  const token = registerRenderKit(createTestRenderKit(), {});
+  setAnimationLevel(level);
+  onTestFinished(() => {
+    withdrawRenderKit(token);
+    setAnimationLevel('full');
+  });
+  const lines = renderSubagentRunResult(
+    {
+      details: {
+        task: { agent: 'worker', status: 'running', mode: 'task' },
+        frame: 1,
+      },
+    },
+    { isPartial: true },
+    theme,
+  ).render(120);
+  expect(lines[0]).toBe(`╭─ ${glyph} subagent · worker · running`);
+  expect(lines[1]).toContain(`${glyph} agent: worker`);
+});
 
 it('delegates a running footer with its context and recomputes it after same-width invalidation', () => {
   vi.useFakeTimers();

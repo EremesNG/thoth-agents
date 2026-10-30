@@ -443,6 +443,16 @@ describe('subagent runner thread snapshots', () => {
           assistantMessageEvent: { type: 'text_delta', delta: 'stream me' },
         });
         subscriber?.({
+          type: 'message_end',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'thinking', thinking: 'secret-thought-sentinel' },
+              { type: 'text', text: 'stream me' },
+            ],
+          },
+        });
+        subscriber?.({
           type: 'tool_execution_start',
           toolCallId: 'tool-1',
           toolName: 'workspace_graph_status',
@@ -738,6 +748,7 @@ describe('subagent runner thread snapshots', () => {
             assistantMessageEvent: { type: 'toolcall_end' },
           });
         }
+        subscriber?.({ type: 'message_end', message: session.messages[0] });
         for (const call of calls) {
           subscriber?.({
             type: 'tool_execution_start',
@@ -894,7 +905,7 @@ describe('subagent runner thread snapshots', () => {
     expect(JSON.stringify(result.thread_snapshot)).toContain('# Agent Guide');
   });
 
-  it('persists streamed model thinking in sequence with tool rows in the final thread snapshot', async () => {
+  it('preserves completed model thinking in sequence with tool rows in the final thread snapshot', async () => {
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
       subscribe: vi.fn((callback: (event: unknown) => void) => {
@@ -909,6 +920,7 @@ describe('subagent runner thread snapshots', () => {
             delta: 'first reasoning before reading',
           },
         });
+        subscriber?.({ type: 'message_end', message: session.messages[0] });
         subscriber?.({
           type: 'tool_execution_start',
           toolCallId: 'read-1',
@@ -929,11 +941,13 @@ describe('subagent runner thread snapshots', () => {
             delta: 'second reasoning after reading',
           },
         });
+        subscriber?.({ type: 'message_end', message: session.messages[1] });
       }),
       messages: [
         {
           role: 'assistant',
           content: [
+            { type: 'thinking', thinking: 'first reasoning before reading' },
             {
               type: 'toolCall',
               id: 'read-1',
@@ -945,6 +959,7 @@ describe('subagent runner thread snapshots', () => {
         {
           role: 'assistant',
           content: [
+            { type: 'thinking', thinking: 'second reasoning after reading' },
             { type: 'text', text: 'final answer after sequential thinking' },
           ],
         },
@@ -964,15 +979,13 @@ describe('subagent runner thread snapshots', () => {
     expect(labels).toEqual([
       'attempt:1',
       'user:delegated_task',
-      'assistant:thinking:first reasoning before reading',
-      'assistant:toolCall:read',
+      'assistant:thinking:first reasoning before reading|toolCall:read',
       'tool:read',
-      'assistant:thinking:second reasoning after reading',
-      'assistant:text:final answer after sequential thinking',
+      'assistant:thinking:second reasoning after reading|text:final answer after sequential thinking',
     ]);
   });
 
-  it('preserves streamed model thinking in the final thread snapshot when final messages omit it', async () => {
+  it('preserves completed model thinking in the final thread snapshot when session messages omit it', async () => {
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
       subscribe: vi.fn((callback: (event: unknown) => void) => {
@@ -994,6 +1007,16 @@ describe('subagent runner thread snapshots', () => {
             delta: 'draft text that should not replace final',
           },
         });
+        subscriber?.({
+          type: 'message_end',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'thinking', thinking: 'thinking through the file plan' },
+              { type: 'text', text: 'final answer after thinking' },
+            ],
+          },
+        });
       }),
       messages: [
         {
@@ -1005,56 +1028,41 @@ describe('subagent runner thread snapshots', () => {
     };
 
     const { result, activities } = await runWithSession(session);
-
-    expect(
-      activities.find((activity) => activity.message === 'streaming thinking')
-        ?.thread_snapshot?.items,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'assistant',
-          message: expect.objectContaining({
-            content: [
-              expect.objectContaining({
-                type: 'thinking',
-                thinking: expect.stringContaining(
-                  'thinking through the file plan',
-                ),
-              }),
-            ],
-          }),
-        }),
-      ]),
+    const completedContent = [
+      expect.objectContaining({
+        type: 'thinking',
+        thinking: 'thinking through the file plan',
+      }),
+      expect.objectContaining({
+        type: 'text',
+        text: 'final answer after thinking',
+      }),
+    ];
+    const completion = activities.find(
+      (activity) => activity.message === 'assistant message completed',
+    );
+    expect(completion?.thread_snapshot?.items).toContainEqual(
+      expect.objectContaining({
+        type: 'assistant',
+        message: expect.objectContaining({ content: completedContent }),
+      }),
     );
     expect(result.result).toBe('final answer after thinking');
-    expect(result.thread_snapshot?.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'assistant',
-          message: expect.objectContaining({
-            content: [
-              expect.objectContaining({
-                type: 'thinking',
-                thinking: expect.stringContaining(
-                  'thinking through the file plan',
-                ),
-              }),
-            ],
-          }),
-        }),
-        expect.objectContaining({
-          type: 'assistant',
-          message: expect.objectContaining({
-            content: [
-              expect.objectContaining({
-                type: 'text',
-                text: 'final answer after thinking',
-              }),
-            ],
-          }),
-        }),
-      ]),
-    );
+    // HEAD retains event thinking as a standalone row, never as session fill-in.
+    expect(
+      result.thread_snapshot?.items
+        .filter((item) => item.type === 'assistant')
+        .map((item) => item.message.content),
+    ).toEqual([
+      [
+        {
+          type: 'thinking',
+          text: 'thinking through the file plan',
+          thinking: 'thinking through the file plan',
+        },
+      ],
+      [{ type: 'text', text: 'final answer after thinking' }],
+    ]);
     expect(JSON.stringify(result.thread_snapshot)).not.toContain(
       'draft text that should not replace final',
     );
@@ -1261,7 +1269,7 @@ describe('subagent runner thread snapshots', () => {
     ]);
   });
 
-  it('finalizes assistant text from session messages when available while preserving streamed activity snapshots', async () => {
+  it('finalizes assistant text from session messages while projecting only completed activity snapshots', async () => {
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
       subscribe: vi.fn((callback: (event: unknown) => void) => {
@@ -1273,6 +1281,7 @@ describe('subagent runner thread snapshots', () => {
           type: 'message_update',
           assistantMessageEvent: { type: 'text_delta', delta: 'draft text' },
         });
+        subscriber?.({ type: 'message_end', message: session.messages[0] });
       }),
       messages: [{ role: 'assistant', content: 'final from messages' }],
       dispose: vi.fn(async () => undefined),
@@ -1281,8 +1290,9 @@ describe('subagent runner thread snapshots', () => {
     const { result, activities } = await runWithSession(session);
 
     expect(
-      activities.find((activity) => activity.message === 'streaming response')
-        ?.thread_snapshot?.items,
+      activities.find(
+        (activity) => activity.message === 'assistant message completed',
+      )?.thread_snapshot?.items,
     ).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: 'assistant' })]),
     );

@@ -1,6 +1,8 @@
 import {
+  getAnimationLevel,
   getRenderKit,
   resolveIcon,
+  resolveStaticRunningGlyph,
   resolveStatusGlyph,
 } from '@thoth-agents/pi-core';
 import {
@@ -108,10 +110,12 @@ export const renderSubagentRunResult = iconAwareRenderer(
       isBg && isRunning
         ? isLaunched
           ? resolveStatusGlyph('completed', '⤓')
-          : (getRenderKit()?.indicator(theme, undefined, {
-              status: 'running',
-              frame: result?.details?.frame ?? 0,
-            }).glyph ?? '⤓')
+          : getAnimationLevel() === 'off'
+            ? resolveStaticRunningGlyph()
+            : (getRenderKit()?.indicator(theme, undefined, {
+                status: 'running',
+                frame: result?.details?.frame ?? 0,
+              }).glyph ?? '⤓')
         : statusGlyph(statusLabel, result?.details?.frame ?? 0),
     );
     const bgSuffix = isBg ? ' (background)' : '';
@@ -149,6 +153,7 @@ export const renderSubagentRunResult = iconAwareRenderer(
         theme,
         ...renderState,
         workingRow: 0,
+        animationFrame: result?.details?.frame,
         wrapped: true,
         onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
       });

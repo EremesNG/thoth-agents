@@ -2,6 +2,7 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import {
   registerRenderKit,
   registerWorkPanelProvider,
+  setAnimationLevel,
   WORK_PANEL_VERSION,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
@@ -27,6 +28,7 @@ import { SidebarPanels } from '../src/panels/sidebar.js';
 const releases: (() => void)[] = [];
 afterEach(() => {
   for (const off of releases.splice(0).reverse()) off();
+  setAnimationLevel('full');
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -91,6 +93,7 @@ it('shares one bounded plan per frame and never scans session entries on render'
   expect(rows).toHaveBeenCalledTimes(1);
   expect(entries).toHaveBeenCalledTimes(baseline);
   vi.advanceTimersByTime(100);
+  panel.stepAnimation(0);
   panel.hasAnimation(44);
   panel.sourceIds(44);
   const second = panel.render(44);
@@ -148,6 +151,7 @@ it('keeps static output cached across frames, and invalidates on kit replacement
   ).toEqual(['static']);
   for (let i = 0; i < 10; i++) {
     vi.advanceTimersByTime(100);
+    panel.stepAnimation(i);
     expect(panel.render(44)).toBe(first);
   }
   expect(rows).toHaveBeenCalledTimes(1);
@@ -294,6 +298,7 @@ it('builds once per revision input set across animation, source and render queri
     },
     () => {
       vi.advanceTimersByTime(100);
+      panel.stepAnimation(0);
     },
     () => panel.refreshSessionCost(),
     () => {
@@ -350,9 +355,22 @@ it('detects persistence after message_end even if rendered before the append', (
   expect(lines).toContain('$1.250');
   expect(lines).toMatch(/Context\s.*1%/);
 });
-it('refreshes re-exposed animated provider text before the first visible frame', () => {
+it.each(
+  (['full', 'off'] as const).flatMap((level) =>
+    [
+      { hidden: 'height', width: 44, height: 3 },
+      { hidden: 'width', width: 20, height: 20 },
+      { hidden: 'zero', width: 44, height: 0 },
+    ].map((size) => ({ level, ...size })),
+  ),
+)('refreshes re-exposed running provider text at $level after hiding by $hidden before the first visible frame', ({
+  level,
+  width,
+  height,
+}) => {
   vi.useFakeTimers();
   vi.setSystemTime(1000);
+  setAnimationLevel(level);
   const read = regressionProvider(() => [
     {
       id: 'active',
@@ -362,13 +380,47 @@ it('refreshes re-exposed animated provider text before the first visible frame',
   ]);
   const { panel } = sessionFixture();
   expect(panel.renderAt(44, 20).join('\n')).toContain('elapsed 1s');
-  panel.renderAt(44, 3);
+  const hide = () => panel.renderAt(width, height);
+  hide();
   vi.setSystemTime(10000);
-  panel.renderAt(44, 3);
+  hide();
   expect(read).toHaveBeenCalledTimes(1);
   expect(panel.renderAt(44, 20).join('\n')).toContain('elapsed 10s');
   expect(read).toHaveBeenCalledTimes(2);
 });
+it('caches by stepped frame and level, not wall-clock time, including static elapsed refreshes', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  const read = regressionProvider(() => [
+    {
+      id: 'active',
+      status: 'running',
+      statusGlyph: 'running',
+      primary: `elapsed ${Date.now() / 1000}s`,
+    },
+  ]);
+  const { panel } = sessionFixture();
+  const first = panel.render(44);
+  expect(first.join('\n')).toContain('⠋ elapsed 1s');
+  vi.setSystemTime(10000);
+  expect(panel.render(44)).toBe(first);
+  expect(read).toHaveBeenCalledTimes(1);
+  panel.stepAnimation(0);
+  expect(panel.render(44).join('\n')).toContain('⠋ elapsed 10s');
+  panel.stepAnimation(1);
+  const second = panel.render(44);
+  expect(second.join('\n')).toContain('⠙ elapsed 10s');
+  expect(panel.render(44)).toBe(second);
+  setAnimationLevel('off');
+  expect(panel.render(44).join('\n')).toContain('◐ elapsed 10s');
+  vi.setSystemTime(11000);
+  panel.stepAnimation(undefined);
+  expect(panel.render(44).join('\n')).toContain('◐ elapsed 11s');
+  setAnimationLevel('full');
+  expect(panel.render(44).join('\n')).toContain('⠙ elapsed 11s');
+  expect(read).toHaveBeenCalledTimes(4);
+});
+
 it.each([
   'pending',
   'running',

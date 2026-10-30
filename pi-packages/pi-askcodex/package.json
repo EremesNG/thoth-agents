@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-askcodex",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Delegate Pi tasks to the local Codex app-server harness.",
   "keywords": [
     "pi-package",

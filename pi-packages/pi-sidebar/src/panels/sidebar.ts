@@ -35,7 +35,7 @@ import {
   type PanelRole,
   renderChrome,
 } from './chrome.js';
-import { type CostTracker, formatUsd, renderCostRows } from './cost.js';
+import { type CostTracker, costSummary, renderCostRows } from './cost.js';
 import {
   activeLimit,
   clean,
@@ -187,6 +187,10 @@ interface PanelData {
   block(index: number): string[];
   /** Show `+N more` when blocks are cut by height. */
   more: boolean;
+  /** Block 0 is one unsplittable head; height never leaves a bare `+N more` without it. */
+  head?: boolean;
+  /** Fold line for the hidden block indices; defaults to `+N more` counting blocks. */
+  foldText?(hidden: readonly number[]): string;
   /** Block indices to hide first; absent means keep the fitting prefix. */
   dropOrder?: number[];
   footer?: string;
@@ -258,6 +262,7 @@ function fitBlocks(
   budget: number,
   more: boolean,
   dropOrder?: readonly number[],
+  head = false,
 ): { indices: number[]; overflow: boolean } {
   const indices = costs.map((_, index) => index);
   const total = costs.reduce((sum, cost) => sum + cost, 0);
@@ -284,8 +289,9 @@ function fitBlocks(
   if (total <= budget) return { indices, overflow: false };
   if (!more) return { indices: within(budget), overflow: false };
   const fitting = within(budget - 1);
-  if (fitting.length > 0 || within(budget).length === 0)
-    return { indices: fitting, overflow: true };
+  if (fitting.length > 0) return { indices: fitting, overflow: true };
+  // Without room for the head block there is nothing to count against.
+  if (within(budget).length === 0) return { indices: [], overflow: !head };
   // A lone row beats a bare count.
   return { indices: within(budget), overflow: false };
 }
@@ -437,17 +443,23 @@ export class SidebarPanels implements Component {
       } else if (preference.id === 'cost') {
         const tracker = options.cost?.();
         if (!tracker) continue;
-        const rows = renderCostRows(
-          tracker.ranked().slice(0, 5),
-          width,
-          options.theme,
+        const total = Math.max(options.subagentCost() || 0, tracker.total());
+        const view = renderCostRows(tracker, total, width, options.theme);
+        // The bar is meaningless without a legend entry to key it.
+        const blocks = view.entries.map((entry, index) =>
+          index === 0 ? [view.bar, entry] : [entry],
         );
         panels.push(
-          staticPanel('cost', 'Cost', rows, {
+          staticPanel('cost', 'Cost', blocks.flat(), {
+            costs: blocks.map((lines) => lines.length),
+            block: (index) => blocks[index],
             more: true,
-            empty: rows.length === 0,
-            summary: rows.length
-              ? formatUsd(options.subagentCost() || tracker.total())
+            head: true,
+            foldText: (hidden) =>
+              `+${hidden.reduce((sum, index) => sum + view.tasks[index], 0)} more`,
+            empty: blocks.length === 0,
+            summary: blocks.length
+              ? costSummary(total, tracker.active(), options.theme)
               : COST_COMMAND,
             footer: footerRow(COST_COMMAND, 'curves', width, options.theme),
             bareFooter: footerRow(COST_COMMAND, '', width, options.theme),
@@ -639,6 +651,7 @@ export class SidebarPanels implements Component {
           size - 2 - Number(footer),
           panel.more,
           panel.dropOrder,
+          panel.head,
         );
         const used =
           fit.indices.reduce((sum, index) => sum + panel.costs[index], 0) +
@@ -698,6 +711,7 @@ export class SidebarPanels implements Component {
         panel.height - 2 - (footer ? 1 : 0),
         panel.more,
         panel.dropOrder,
+        panel.head,
       );
       const snapshot = this.snapshots.get(panel.id);
       // Refresh newly exposed animation before rendering. Replan because fresh
@@ -717,7 +731,13 @@ export class SidebarPanels implements Component {
       }
       panel.rows = indices.flatMap((index) => panel.block(index));
       if (overflow) {
-        const more = `+${panel.costs.length - indices.length} more`;
+        const more = panel.foldText
+          ? panel.foldText(
+              panel.costs.flatMap((_, index) =>
+                indices.includes(index) ? [] : [index],
+              ),
+            )
+          : `+${panel.costs.length - indices.length} more`;
         const available = width - 4 - panelVisibleWidth(more) - 1;
         const command = [panel.footer, panel.bareFooter]
           .map((text) => text?.trimStart())

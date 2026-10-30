@@ -4,12 +4,17 @@ import { type ExtensionContext, Theme } from '@earendil-works/pi-coding-agent';
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
-  ASCII_MARKERS,
   curveSeries,
   openCostCurves,
   renderCurvePlot,
   renderCurvesView,
 } from '../src/curves.js';
+import {
+  ASCII_MARKERS,
+  paintSeries,
+  SERIES_PALETTE,
+  seriesMarker,
+} from '../src/panels/series.js';
 import {
   productionCostTasks,
   snapshot,
@@ -302,6 +307,7 @@ it('normalizes unordered absolute cumulative samples, preserving origin and fina
         start: 1791600000000,
         end: 1791600003000,
         cost: 4,
+        running: false,
         samples: [
           { at: 1791600002000, cost: 3 },
           { at: 1791600000000, cost: 1 },
@@ -376,6 +382,36 @@ const CELL =
 const colorsOf = (row: string) =>
   [...row.matchAll(CELL)].map((m) => ({ color: m[1] ?? m[2], glyph: m[3] }));
 
+it('starts the shared palette with warning, ends with error and keeps the other colors in order', () => {
+  expect(SERIES_PALETTE.slice(0, 4)).toEqual([
+    'warning',
+    'success',
+    'mdCode',
+    'mdLink',
+  ]);
+  expect(SERIES_PALETTE).toHaveLength(10);
+  expect(SERIES_PALETTE.at(-1)).toBe('error');
+  expect(SERIES_PALETTE.slice(4, -1).every((p) => typeof p === 'object')).toBe(
+    true,
+  );
+});
+
+it('paints rank N with the same palette color and marker in the shared helpers and the curves legend', () => {
+  const roles = ['warning', 'success', 'mdCode', 'mdLink'];
+  for (const [rank, role] of roles.entries())
+    expect(paintSeries(tagged, rank, seriesMarker(rank, false))).toBe(
+      `<${role}>●</>`,
+    );
+  expect(paintSeries(tagged, 9, 'x')).toBe('<error>x</>');
+  expect(seriesMarker(0, true)).toBe('1');
+  expect(seriesMarker(9, true)).toBe('0');
+  const legend = renderCurvesView(productionCostTasks(), 100, 40, tagged)
+    .filter((row) => /Production task/.test(strip(row)))
+    .map((row) => colorsOf(row).find((c) => c.glyph === '●')?.color);
+  expect(legend.slice(0, 4)).toEqual(roles);
+  expect(legend[9]).toBe('error');
+});
+
 it('uses ten distinct colors, and the legend color equals the line color', () => {
   const view = renderCurvesView(productionCostTasks(), 100, 40, tagged);
   const legend = view
@@ -436,8 +472,8 @@ it('resolves overlaps deterministically: end markers win, then the later series'
       .flatMap((row) => colorsOf(row.slice(row.indexOf('┤') + 1)))
       .map((c) => c.color),
   );
-  expect(owners).toEqual(new Set(['warning']));
-  expect(later.join()).toContain('<error>');
+  expect(owners).toEqual(new Set(['success']));
+  expect(later.join()).toContain('<warning>');
 });
 
 it('keeps ascii series distinguishable with distinct markers in plot and legend', () => {

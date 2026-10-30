@@ -197,3 +197,107 @@ it('keeps Cost content visible under metric-heavy Agent growth, measuring only r
     expect(rendered.at(-1)).toContain('╰');
   }
 });
+
+const costOnly = (data: ReturnType<typeof tracker>, extra = []) =>
+  sidebar([{ id: 'cost', visible: true }, ...extra], { cost: () => data });
+const threeTasks = () =>
+  tracker([
+    task('a', 3, { displayName: 'Alpha' }),
+    task('b', 2, { displayName: 'Beta' }),
+    task('c', 1, { displayName: 'Gamma' }),
+  ]);
+
+it('collapses Cost to its title with the total until the bar and its first entry fit together', () => {
+  const panel = costOnly(threeTasks());
+  for (const height of [1, 2, 3]) {
+    const lines = render(panel, height);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('COST');
+    expect(lines[0]).toContain('$6.00');
+    // No bar and no bare overflow count in the intermediate state.
+    expect(lines[0]).not.toMatch(/more|[█░]/);
+  }
+  const head = render(panel, 4);
+  expect(head).toHaveLength(4);
+  expect(head[1]).toMatch(/^│ █+▌█+▌█+ │$/);
+  expect(head[2]).toMatch(/^│ ● Alpha +50% \$3\.00 {2}│$/);
+  expect(head[3]).toMatch(/^╰/);
+});
+
+it('folds Cost entries from the bottom into a +N more line and drops the footer first', () => {
+  const panel = costOnly(threeTasks());
+  const folded = render(panel, 5);
+  expect(folded).toHaveLength(5);
+  expect(folded[2]).toContain('Alpha');
+  expect(folded[3]).toMatch(/^│ \+2 more +\/sidebar cost ▸ curves │$/);
+  const all = render(panel, 6);
+  expect(all.join('\n')).toContain('Gamma');
+  expect(all.join('\n')).not.toContain('more');
+  expect(all.join('\n')).not.toContain('/sidebar cost ▸ curves');
+  const full = render(panel, 7);
+  expect(full.at(-2)).toContain('/sidebar cost ▸ curves');
+});
+
+it('counts hidden tasks, including those inside a folded remainder entry, in the fold text', () => {
+  const many = tracker([
+    task('a', 4, { displayName: 'A' }),
+    task('b', 3, { displayName: 'B' }),
+    task('c', 2, { displayName: 'C' }),
+    task('d', 1, { displayName: 'D' }),
+    ...Array.from({ length: 19 }, (_, i) => task(`s${i}`, 0.01)),
+  ]);
+  const panel = costOnly(many);
+  // Heights 5-7 hide the remainder entry (19 tasks) and then whole tasks above it.
+  expect(render(panel, 5)[3]).toMatch(/\+22 more/);
+  expect(render(panel, 6)[4]).toMatch(/\+21 more/);
+  expect(render(panel, 7)[5]).toMatch(/\+20 more/);
+  const room = render(panel, 8);
+  expect(room.filter((line) => /^│ \+\d+ more +\S/.test(line))).toEqual([]);
+  expect(room.join('\n')).toContain('+19 more tasks');
+});
+
+it('never renders the Cost bar without its first entry, nor a bare count, at any height or width', () => {
+  const data = tracker(
+    Array.from({ length: 9 }, (_, i) =>
+      task(`t${i}`, 9 - i, { displayName: `Task ${i}` }),
+    ),
+  );
+  const orders = [
+    ['session', 'cost'],
+    ['cost', 'session'],
+  ];
+  for (const [width, order] of [24, 28, 36, 50].flatMap((w) =>
+    orders.map((o) => [w, o] as const),
+  )) {
+    const panel = sidebar(
+      order.map((id) => ({ id, visible: true })),
+      { cost: () => data },
+    );
+    for (let height = 0; height <= 40; height++) {
+      const lines = render(panel, height, width);
+      lines.forEach((line, index) => {
+        if (/^│ [█▌░]+ │$/.test(line))
+          expect(lines[index + 1]).toMatch(/^│ [●░] /);
+        if (/^│ \+\d+ more/.test(line))
+          expect(lines[index - 1]).toMatch(/^│ (?:[●░] |[█▌░]+ │)/);
+      });
+    }
+  }
+});
+
+it('keeps the fold text of other panels while Cost counts tasks', () => {
+  releases.push(source('subagents', 'Agents', agents(5), SUMMARY));
+  const panel = sidebar(
+    [
+      { id: 'subagents', visible: true },
+      { id: 'cost', visible: true },
+    ],
+    { cost: () => threeTasks() },
+  );
+  const text = render(panel, 10).join('\n');
+  expect(text).toMatch(/\+3 more +\/subagents ▸ detail/);
+  expect(text).toContain('● Alpha');
+  expect(render(panel, 14).join('\n')).toMatch(
+    /\+2 more +\/sidebar cost ▸ curves/,
+  );
+});

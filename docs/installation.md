@@ -254,7 +254,7 @@ metrics appear in aligned columns that wrap without dropping fields, with icons
 persist in `~/.pi/agent/thoth-sidebar.json`. `/sidebar settings` edits these
 preferences and the saved default width (Enter saves, Esc cancels); current
 mode and resize width stay session-only. `/sidebar cost` opens cumulative
-curves for the task-cost bars against elapsed time per task, from zero to the
+curves for the Cost panel tasks against elapsed time per task, from zero to the
 longest task duration, labeled by display name or a short task-summary name.
 Only displayed source panels absorb their Work sections; hiding/auto-collapse
 restores them. Private layout seams use guarded fallback. Regular mode supports

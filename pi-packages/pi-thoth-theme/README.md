@@ -172,6 +172,9 @@ can show animated `working… · N bg` while background tasks remain. Git branch
 working directory appear on the top border, using pi-core's root-exported
 `formatCwd` for home abbreviation
 (shared with the sidebar); model, thinking effort and context usage appear on the bottom.
+Context usage draws an eight-cell hairline bar (`━` full, `╾` half, dim `─` empty; ASCII
+keeps `[#=-]`) that stays in the success color up to 70%, turns warning above 70% and
+error above 90%, the same rule as the sidebar Session meter.
 Native scroll indicators are preserved. The status line always stays in its
 separate footer row below the box. Narrow widths use the native editor geometry.
 Disable `inputBox` to keep the native editor and the same footer.

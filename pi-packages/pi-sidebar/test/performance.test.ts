@@ -531,6 +531,7 @@ async function costFixture(
     total: vi.spyOn(data, 'total'),
     count: vi.spyOn(data, 'count'),
     active: vi.spyOn(data, 'active'),
+    remainderActive: vi.spyOn(data, 'remainderActive'),
   };
   const entries = vi.fn(() => []);
   const panel = new SidebarPanels({
@@ -578,26 +579,34 @@ it('renders Cost from cached tracker state only, with no reads while the revisio
   expect(entries.mock.calls.length).toBe(sessionReads);
 });
 
-it('replans Cost when only a running state changes, reading each cached value once', async () => {
+it('replans Cost once when only a hidden running state changes, reading cached values', async () => {
   const { data, panel, entries, readCount } = await costFixture();
-  data.update(stateOf(liveTask('a', 1, 'running')), 1000);
+  const tasks = Array.from({ length: 12 }, (_, i) =>
+    liveTask(`t${i}`, 12 - i, i === 0 || i === 10 ? 'running' : 'completed'),
+  );
+  data.update(stateOf(...tasks), 1000);
   const running = panel.render(50);
-  expect(running.join('\n')).toContain('↑');
+  expect(running.find((row) => row.includes('+8 more tasks'))).toContain('↑');
   const before = readCount();
+  const revision = data.revision;
   const sessionReads = entries.mock.calls.length;
-  // Same cost and name; only the task stopped running.
-  data.update(stateOf(liveTask('a', 1, 'completed')), 2000);
+  // Same costs and names; rank eleven stops while rank one keeps running.
+  tasks[10] = liveTask('t10', 2, 'completed');
+  data.update(stateOf(...tasks), 2000);
+  expect(data.revision).toBe(revision + 1);
   const idle = panel.render(50);
   expect(idle).not.toBe(running);
-  expect(idle.join('\n')).not.toContain('↑');
-  const after = readCount();
-  const [ranked, total, count, active] = after.map((n, i) => n - before[i]);
-  expect(ranked).toBeGreaterThanOrEqual(1);
-  expect([total, count, active].every((n) => n >= 1)).toBe(true);
-  // A cost change replans through cached state, never re-reading the session.
+  expect(idle[0]).toBe(running[0]);
+  expect(idle.find((row) => row.includes('+8 more tasks'))).not.toContain('↑');
+  // One plan reads each cached value once.
+  expect(readCount().map((n, i) => n - before[i])).toEqual([1, 1, 1, 1, 1]);
   expect(entries.mock.calls.length).toBe(sessionReads);
   const settled = readCount();
   for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(idle);
+  expect(readCount()).toEqual(settled);
+  data.update(stateOf(...tasks), 3000);
+  expect(data.revision).toBe(revision + 1);
+  expect(panel.render(50)).toBe(idle);
   expect(readCount()).toEqual(settled);
 });
 
@@ -624,6 +633,7 @@ it.each(
     .map(stripSgr)
     .filter((line) => new RegExp(`^│ [${LEGEND[bars]}] `).test(line));
   expect(legend).toHaveLength(5);
+  expect(legend.at(-1)).toMatch(/\+196 more tasks.*↑ │$/);
   expect(Math.max(...readCount())).toBeLessThanOrEqual(3);
 });
 
@@ -659,7 +669,8 @@ it('replans once when the bar style changes and rebuilds Cost and Context from c
   expect(lines('classic')).toHaveLength(2);
   expect(lines('thin')).toHaveLength(0);
   const replanned = readCount().map((n, i) => n - settled[i]);
-  expect(replanned.every((n) => n >= 1)).toBe(true);
+  expect(replanned.slice(0, 4).every((n) => n >= 1)).toBe(true);
+  expect(replanned[4]).toBe(0); // No remainder to read for these two tasks.
   expect(entries.mock.calls.length).toBe(sessionReads);
   const classicSettled = readCount();
   for (let i = 0; i < 20; i++) expect(panel.render(50)).toBe(classic);

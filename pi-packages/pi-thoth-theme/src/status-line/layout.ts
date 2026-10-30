@@ -130,9 +130,10 @@ function contextBar(
   isAscii: boolean,
   theme: ActiveThemeLike | undefined,
 ): { bar: string; pct: string } {
+  // Same rule as the sidebar Session meter: warning above 70, error above 90.
   let token = 'success';
-  if (percent >= 90) token = 'error';
-  else if (percent >= 70) token = 'warning';
+  if (percent > 90) token = 'error';
+  else if (percent > 70) token = 'warning';
   const halves = Math.min(
     16,
     Math.max(percent > 0 ? 1 : 0, Math.round((percent / 100) * 16)),
@@ -142,8 +143,8 @@ function contextBar(
   const dim = (text: string) => themeFg(theme, 'dim', text);
   const filled = isAscii
     ? '#'.repeat(full) + (half ? '=' : '')
-    : '◆'.repeat(full) + (half ? '⬖' : '');
-  const empty = (isAscii ? '-' : '◇').repeat(8 - full - half);
+    : '━'.repeat(full) + (half ? '╾' : '');
+  const empty = (isAscii ? '-' : '─').repeat(8 - full - half);
   const bar = isAscii
     ? `${dim('[')}${themeFg(theme, token, filled)}${dim(empty)}${dim(']')}`
     : `${themeFg(theme, token, filled)}${dim(empty)}`;

@@ -223,10 +223,12 @@ it('keeps pending groups visible outside the two-line columns layout', () => {
 
 it.each([
   ['69.9', 'dim'],
-  ['70.0', 'warning'],
+  ['70.0', 'dim'],
+  ['70.1', 'warning'],
   ['89.9', 'warning'],
-  ['90.0', 'error'],
-] as const)('colors running context %s%% as %s', (value, role) => {
+  ['90.0', 'warning'],
+  ['90.1', 'error'],
+] as const)('colors running context at %s percent as %s', (value, role) => {
   const row = metricRow('running', { context: { text: `ctx ${value}%` } });
   const line = renderWorkPanelRow(row, roleOptions(50, plan([row], 50, 2)))[1];
   expect(line).toContain(`<${role}>ctx ${value}%`);

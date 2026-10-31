@@ -1,4 +1,7 @@
-import { getAnimationLevel, type RenderKitTheme } from '@thoth-agents/pi-core';
+import {
+  isAnimationEffectEnabled,
+  type RenderKitTheme,
+} from '@thoth-agents/pi-core';
 import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
 import { frames, icon, statusIcon } from '../shared/icons.ts';
@@ -7,7 +10,8 @@ export function workingFrame(
   frame: unknown = 0,
   mode: IconMode = 'nerd',
 ): string {
-  if (getAnimationLevel() === 'off') return statusIcon('running', mode);
+  if (!isAnimationEffectEnabled('secondary'))
+    return statusIcon('running', mode);
   const step =
     typeof frame === 'number' && Number.isFinite(frame)
       ? Math.max(0, Math.floor(frame))

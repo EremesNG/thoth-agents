@@ -1,7 +1,11 @@
 import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
-import { type RenderKitTheme, setAnimationLevel } from '@thoth-agents/pi-core';
+import {
+  getRenderKit,
+  type RenderKitTheme,
+  setAnimationLevel,
+} from '@thoth-agents/pi-core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRenderKit } from '../src/render-kit/index.ts';
+import { createRenderKit, toolFooter } from '../src/render-kit/index.ts';
 
 const theme: RenderKitTheme = { fg: (_role, text) => text };
 const kit = createRenderKit({});
@@ -37,6 +41,33 @@ describe('theme render kit', () => {
       }
     }
   });
+  it.each([
+    'minimal',
+    'off',
+  ] as const)('drops supplied and retained secondary frames at %s, including theme footers without a registered kit', (level) => {
+    setAnimationLevel(level);
+    expect(getRenderKit()).toBeUndefined();
+    for (const mode of ['nerd', 'unicode', 'ascii'] as const) {
+      const local = createRenderKit({}, undefined, mode);
+      const glyph = mode === 'ascii' ? '*' : '◐';
+      const separator = mode === 'ascii' ? '|' : '·';
+      for (const status of ['running', 'in_progress'] as const) {
+        for (const frame of [undefined, 0, 1, 9, -1, Number.NaN]) {
+          const context = { state: { animationFrame: 2 } };
+          expect(
+            local.indicator(theme, context, { status, elapsedMs: 2250, frame }),
+          ).toMatchObject({
+            glyph,
+            text: `${glyph} ${separator} 2s`,
+          });
+          expect(
+            toolFooter(theme, { status, elapsedMs: 2250, context }, mode),
+          ).toBe(`${glyph} ${separator} 2s`);
+        }
+      }
+    }
+  });
+
   it('renders standard running and terminal tool footers with whole-second elapsed time', () => {
     expect(
       kit.toolFooter?.(styledTheme, {

@@ -143,13 +143,24 @@ directly. Changes are saved atomically, preserve other configuration fields, and
 apply immediately without a restart. Invalid arguments leave the setting unchanged.
 Malformed or non-object configuration files must be fixed before the command can
 save; they are never overwritten with defaults.
-Animated surfaces step through every frame in order on a shared 100/200/500 ms
-clock; the native working indicator uses 200/200/500 ms frame intervals instead.
-At `"off"`, running indicators use `◐` (`*` in ASCII mode), input borders and labels
-are static, and elapsed times in the root input label and tool cards continue
-updating every second. Input refreshes stop when root work ends; background-only
-input labels need no timer. Pi's separate retry, compaction and branch-summary
-loaders are not controlled here.
+Levels select which effects animate, never their speed:
+
+- `"full"`: everything, including input-border breathing and label shimmer.
+- `"reduced"`: spinners and the working indicator; no border breathing or shimmer.
+- `"minimal"`: only the working indicator (input glyph and native Pi loader).
+- `"off"`: nothing animates.
+
+Enabled effects step through every frame in order on a shared 100 ms clock at
+their full cadence. The native Pi working indicator uses 200 ms frame intervals
+at every animating level and a single static frame at `"off"`. When breathing and
+shimmer are disabled, the input border stays at its bright working peak and the
+label stays active gold without a highlight; at `"off"` the glyph also stays
+active gold, not dimmed. Tool footers and other secondary indicators use `◐`
+(`*` in ASCII mode) at `"minimal"` and `"off"`, even if a prior frame was retained.
+Elapsed times in the root input label and tool cards continue updating at least
+every second. At `"off"`, input refreshes stop when root work ends;
+background-only input labels need no timer. Pi's separate retry, compaction and
+branch-summary loaders are not controlled here.
 
 `icons` accepts `"nerd"` (default), `"unicode"` (native Render KIT glyphs,
 status symbols and animation frames, with Unicode substitutes for Nerd glyphs),

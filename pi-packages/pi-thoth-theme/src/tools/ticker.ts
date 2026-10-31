@@ -101,6 +101,7 @@ export function syncElapsedTicker(
     state.elapsedTicker === undefined
   ) {
     const stopSteps = subscribeAnimationSteps({
+      kind: 'secondary',
       intendedMs: 1000,
       onStep({ frame }) {
         // Frame zero is already visible before the stepper's first callback.

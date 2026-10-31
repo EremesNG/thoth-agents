@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { detachRenderContext, formatDuration, getAnimationLevel, getRenderKit, renderToolFooter, resolveIcon, resolveStaticRunningGlyph, resolveStatusGlyph, subscribeAnimationSteps } from "@thoth-agents/pi-core";
+import { detachRenderContext, formatDuration, getRenderKit, isAnimationEffectEnabled, renderToolFooter, resolveIcon, resolveStaticRunningGlyph, resolveStatusGlyph, subscribeAnimationSteps } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
@@ -540,7 +540,7 @@ export async function registerAskAntigravityTool(
 			if (isPartial) {
 				const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";
 				const renderText = () => {
-					const glyph = getAnimationLevel() === "off"
+					const glyph = !isAnimationEffectEnabled("secondary")
 						? resolveStaticRunningGlyph()
 						: getRenderKit()?.indicator(theme, context, {
 							status: "running",
@@ -796,6 +796,7 @@ export async function registerAskAntigravityTool(
 
 			const stopStatusUpdates = onUpdate
 				? subscribeAnimationSteps({
+						kind: "secondary",
 						intendedMs: ANIMATION_INTENDED_MS,
 						onStep: ({ frame, now }) => {
 							const durationMs = now - start;

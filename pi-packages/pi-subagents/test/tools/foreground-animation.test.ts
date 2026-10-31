@@ -174,9 +174,11 @@ describe.each([
   });
 
   it.each([
-    '◐',
-    '*',
-  ])('switches a supplied frame to static %s immediately and refreshes elapsed every second at off', async (glyph) => {
+    ['minimal', '◐'],
+    ['minimal', '*'],
+    ['off', '◐'],
+    ['off', '*'],
+  ] as const)('switches a supplied frame to %s static %s and refreshes elapsed every second', async (level, glyph) => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const kit = createTestRenderKit();
@@ -184,10 +186,11 @@ describe.each([
     kit.toolFooter = (theme, options) =>
       renderToolFooter(undefined, theme, options);
     const token = registerRenderKit(kit, {});
+    setAnimationLevel(level);
     const run = await startForeground(name);
-    const render = () =>
+    const render = (update = run.latest()) =>
       run.tool
-        .renderResult(run.latest(), { isPartial: true }, theme, {
+        .renderResult(update, { isPartial: true }, theme, {
           executionStarted: true,
           isPartial: true,
           state: { startedAt: 0 },
@@ -195,9 +198,14 @@ describe.each([
         .render(240)
         .join('\n');
     try {
+      expect(run.latest().details.frame).toBeUndefined();
+      expect(render()).toContain(`${glyph} agent:`);
+      setAnimationLevel('reduced');
       await vi.advanceTimersByTimeAsync(400);
       expect(run.latest().details.frame).toBe(2);
-      setAnimationLevel('off');
+      const retained = run.latest();
+      setAnimationLevel(level);
+      expect(render(retained)).toContain(`${glyph} agent:`);
       expect(run.latest().details.frame).toBeUndefined();
       expect(run.latest().content[0].text).toMatch(
         glyph === '*' ? /^\*/ : /^◐/,
@@ -212,8 +220,10 @@ describe.each([
       await vi.advanceTimersByTimeAsync(1000);
       expect(run.onUpdate).toHaveBeenCalledTimes(count + 2);
       expect(render()).toContain('running · 2s');
-      setAnimationLevel('minimal');
-      await vi.advanceTimersByTimeAsync(101);
+      setAnimationLevel('reduced');
+      await vi.advanceTimersByTimeAsync(199);
+      expect(run.latest().details.frame).toBe(2);
+      await vi.advanceTimersByTimeAsync(1);
       expect(run.latest().details.frame).toBe(3);
     } finally {
       run.finish();
@@ -229,7 +239,6 @@ describe.each([
     ['default', 200],
     ['full', 200],
     ['reduced', 200],
-    ['minimal', 500],
   ] as const)('shows every braille frame in order at %s, independent of lifecycle emissions', async (level, period) => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

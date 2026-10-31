@@ -1,4 +1,5 @@
 export type {
+  AnimationEffectKind,
   AnimationLevel,
   AnimationLevelListener,
   AnimationListener,
@@ -6,6 +7,7 @@ export type {
 export {
   getAnimationLevel,
   getAnimationPeriodMs,
+  isAnimationEffectEnabled,
   setAnimationLevel,
   subscribeAnimationClock,
   subscribeAnimationLevel,

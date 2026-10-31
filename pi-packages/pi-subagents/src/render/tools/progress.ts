@@ -1,5 +1,5 @@
 import {
-  getAnimationLevel,
+  isAnimationEffectEnabled,
   resolveFrames,
   resolveIcon,
   resolveStaticRunningGlyph,
@@ -12,7 +12,8 @@ const RUNNING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 
 export function statusGlyph(status: string, frame = 0, ui = true): string {
   if (status === 'running') {
-    if (getAnimationLevel() === 'off') return resolveStaticRunningGlyph();
+    if (!isAnimationEffectEnabled('secondary'))
+      return resolveStaticRunningGlyph();
     const frames = ui
       ? resolveFrames('spinnerFrames', RUNNING_FRAMES)
       : RUNNING_FRAMES;

@@ -14,7 +14,9 @@ import {
   type TUI,
   visibleWidth,
 } from '@earendil-works/pi-tui';
+import { setAnimationLevel } from '@thoth-agents/pi-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { IconMode } from '../shared/config.ts';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
 import { decorateEditor, type InputBoxDeps } from './decorate.ts';
 import { createWorkingState } from './state.ts';
@@ -25,6 +27,7 @@ const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
   setCapabilities(capabilities);
+  setAnimationLevel('full');
   vi.useRealTimers();
 });
 
@@ -56,6 +59,7 @@ async function loadThothTheme(mode?: TerminalColorMode) {
 function themedEditor(
   theme: ActiveThemeLike,
   getStatusSnapshot?: InputBoxDeps['getStatusSnapshot'],
+  iconMode?: IconMode,
 ) {
   const plain = (text: string) => text;
   const tui = { terminal: { rows: 20 }, requestRender: () => {} };
@@ -76,6 +80,7 @@ function themedEditor(
     theme,
     working,
     getStatusSnapshot,
+    iconMode,
   });
   if (!decoration) throw new Error('Editor was not decorated');
   cleanups.push(() => decoration.dispose());
@@ -103,6 +108,66 @@ const ansi = {
 };
 
 describe('input box with the real Pi Thoth theme', () => {
+  it.each([
+    'truecolor',
+    '256color',
+  ] as const)('keeps disabled ambient effects in active colours for every level and icon mode in %s', async (mode) => {
+    const theme = await loadThothTheme(mode);
+    setCapabilities({ ...capabilities, trueColor: mode === 'truecolor' });
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { bright, gold, dim } = ansi[mode];
+    for (const level of ['reduced', 'minimal', 'off'] as const) {
+      setAnimationLevel(level);
+      for (const icons of ['nerd', 'unicode', 'ascii'] as const) {
+        const { editor, working } = themedEditor(
+          theme as ActiveThemeLike,
+          undefined,
+          icons,
+        );
+        editor.setText('content');
+        working.setPendingBackground(1);
+        const staticGlyph = icons === 'ascii' ? '*' : '◐';
+        const firstGlyph = icons === 'ascii' ? '.' : '△';
+        const glyph = level === 'off' ? staticGlyph : firstGlyph;
+        const label = icons === 'ascii' ? 'working...' : 'working…';
+        const first = editor.render(48);
+        expect(first[0]).toContain(
+          `${gold}${glyph}\x1b[39m ${gold}${label}\x1b[39m`,
+        );
+        expect(first[0].startsWith(bright)).toBe(true);
+        expect(first[1].startsWith(`${bright}│\x1b[39m`)).toBe(true);
+        expect(first[2].startsWith(bright)).toBe(true);
+        expect(first.join('\n')).not.toContain(dim);
+        expect(first.join('\n')).not.toContain('\x1b[1m');
+        vi.advanceTimersByTime(200);
+        const next = editor.render(48);
+        expect(next.slice(1)).toEqual(first.slice(1));
+        if (level === 'off') {
+          expect(next).toEqual(first);
+          // Native root labels also replace retained frames and stay active.
+          Object.assign(editor, {
+            workingStatusIndicator: {
+              kind: 'working',
+              renderInBorder: () => `${icons === 'ascii' ? 'O' : '▲'} working`,
+            },
+          });
+          working.start();
+          const native = editor.render(48);
+          expect(native[0]).toContain(
+            `${gold}${glyph}\x1b[39m ${gold}working\x1b[39m`,
+          );
+          expect(native.join('\n')).not.toContain(dim);
+        } else {
+          expect(next[0]).toContain(
+            `${gold}${icons === 'ascii' ? 'o' : '◭'}\x1b[39m ${gold}${label}\x1b[39m`,
+          );
+        }
+        working.dispose();
+      }
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it.each([
     'truecolor',
     '256color',

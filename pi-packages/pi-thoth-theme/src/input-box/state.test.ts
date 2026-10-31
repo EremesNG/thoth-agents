@@ -16,27 +16,24 @@ afterEach(() => {
 });
 
 describe('input-box working status', () => {
-  it.each([
-    ['full', 200, 100, 24],
-    ['reduced', 200, 200, 12],
-    ['minimal', 500, 500, 5],
-  ] as const)('steps every working glyph in order at %s and gives breathing/shimmer an evenly spaced cycle', (level, glyphMs, tickMs, cycleSteps) => {
+  it('steps every working glyph at 200 ms and keeps the full breathing/shimmer cycle at 24 evenly spaced steps', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    setAnimationLevel(level);
+    setAnimationLevel('full');
+    const cycleSteps = 24;
     const state = createWorkingState(() => {});
     try {
       state.setPendingBackground(1);
       const glyphs: string[] = [];
       for (let step = 0; step < 8; step++) {
         glyphs.push(stripTerminalSequences(state.status(undefined, 40))[0]);
-        vi.advanceTimersByTime(glyphMs);
+        vi.advanceTimersByTime(200);
       }
       expect(glyphs).toEqual(['△', '◭', '▲', '◮', '△', '◭', '▲', '◮']);
       const phases: number[] = [];
       for (let step = 0; step <= cycleSteps; step++) {
         phases.push(state.breathingFrame().phase);
-        vi.advanceTimersByTime(tickMs);
+        vi.advanceTimersByTime(100);
       }
       expect(phases[cycleSteps]).toBe(phases[0]);
       expect(new Set(phases.slice(0, cycleSteps)).size).toBe(cycleSteps);
@@ -53,6 +50,37 @@ describe('input-box working status', () => {
     } finally {
       state.dispose();
     }
+  });
+
+  it.each([
+    'reduced',
+    'minimal',
+  ] as const)('animates only the primary glyph at 200 ms with static active colours at %s', (level) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    setAnimationLevel(level);
+    const render = vi.fn();
+    const state = createWorkingState(render);
+    try {
+      state.setPendingBackground(1);
+      const first = state.breathingFrame();
+      const glyphs: string[] = [];
+      render.mockClear();
+      for (let step = 0; step < 8; step++) {
+        glyphs.push(stripTerminalSequences(state.status(undefined, 40))[0]);
+        expect(state.breathingFrame()).toMatchObject({
+          phase: first.phase,
+          foreground: first.foreground,
+        });
+        vi.advanceTimersByTime(200);
+      }
+      expect(glyphs).toEqual(['△', '◭', '▲', '◮', '△', '◭', '▲', '◮']);
+      expect(render).toHaveBeenCalledTimes(8);
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      state.dispose();
+    }
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('refreshes quiet root elapsed every second at off without animating, then stops when root work ends', () => {
@@ -103,6 +131,44 @@ describe('input-box working status', () => {
     } finally {
       state.dispose();
     }
+  });
+
+  it('switches full→reduced→minimal→full live without advancing disabled ambient effects', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const render = vi.fn();
+    const state = createWorkingState(render);
+    const glyph = () => stripTerminalSequences(state.status(undefined, 40))[0];
+    try {
+      state.setPendingBackground(1);
+      vi.advanceTimersByTime(100);
+      expect(state.breathingFrame().phase).toBe(1 / 24);
+      setAnimationLevel('reduced');
+      expect(glyph()).toBe('△');
+      expect(state.breathingFrame().phase).toBe(0);
+      vi.advanceTimersByTime(200);
+      expect(glyph()).toBe('◭');
+      setAnimationLevel('minimal');
+      const frozen = state.breathingFrame().foreground;
+      vi.advanceTimersByTime(200);
+      expect(glyph()).toBe('▲');
+      expect(state.breathingFrame()).toMatchObject({
+        phase: 0,
+        foreground: frozen,
+      });
+      setAnimationLevel('full');
+      expect(state.breathingFrame().phase).toBe(1 / 24);
+      render.mockClear();
+      vi.advanceTimersByTime(100);
+      expect(state.breathingFrame().phase).toBe(2 / 24);
+      expect(render).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(100);
+      expect(glyph()).toBe('◮');
+      expect(render).toHaveBeenCalledTimes(2);
+    } finally {
+      state.dispose();
+    }
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('switches off→full→off while working with one refresh and resumes at the next glyph', () => {

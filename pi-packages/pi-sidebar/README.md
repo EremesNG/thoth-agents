@@ -184,11 +184,15 @@ rendered height. Below 24 columns the sidebar shows only
 `widen: /sidebar resize`. Rendering is event-driven and cached: no session
 traversal per render. Cost reads only what the tracker cached when a snapshot
 arrived (ranking, total, task count and running flags, including any running
-task below the top four even beyond the ten-entry ranking). The shared 100 ms
-cadence runs only for visible animated work rows, not finished history; plan
-keys include retained rows, source summaries, workspace, cost revision (which
-also changes when a task starts or stops running, including in the remainder),
-the bar style and animation frame, so saving a new style replans once.
+task below the top four even beyond the ten-entry ranking). Visible running rows
+are secondary indicators: they animate at the shared 100 ms cadence at `full`
+and `reduced`. At `minimal` and `off` they show the mode-aware static running
+glyph, refresh elapsed time every second without subscribing to the animation
+clock, and refresh changed provider data immediately. Hidden rows and finished
+history need no periodic refresh. Plan keys include retained rows, source
+summaries, workspace, cost revision (which also changes when a task starts or
+stops running, including in the remainder), the bar style, secondary animation
+enablement and animation frame, so saving a new style replans once.
 
 ## Preferences
 

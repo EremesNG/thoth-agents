@@ -1,4 +1,4 @@
-import { getAnimationLevel } from './animation-clock.js';
+import { isAnimationEffectEnabled } from './animation-clock.js';
 import {
   getRenderKit,
   type RenderKitTheme,
@@ -1667,7 +1667,7 @@ export function renderWorkPanelRow(
   );
   const entry = { row };
   const status = workPanelRenderStatus(row);
-  const staticAnimation = getAnimationLevel() === 'off';
+  const staticAnimation = !isAnimationEffectEnabled('secondary');
   const frame = options.animationFrame ?? 0;
   const indicator =
     !row.summary && !staticAnimation

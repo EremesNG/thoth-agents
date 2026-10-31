@@ -27,8 +27,7 @@ afterEach(() => {
 describe('work panel shared animation', () => {
   it.each([
     ['full', 100],
-    ['reduced', 200],
-    ['minimal', 500],
+    ['reduced', 100],
   ] as const)('renders every braille frame in order at %s, not from wall-clock time', async (level, period) => {
     vi.setSystemTime(0);
     setAnimationLevel(level);
@@ -74,10 +73,92 @@ describe('work panel shared animation', () => {
   });
 
   it.each([
-    'native',
-    'themed',
-    'ascii',
-  ] as const)('at off renders static %s rows immediately, change-gates provider updates and refreshes data every second', async (mode) => {
+    ['native', 'minimal'],
+    ['themed', 'minimal'],
+    ['ascii', 'minimal'],
+    ['native', 'off'],
+    ['themed', 'off'],
+    ['ascii', 'off'],
+  ] as const)('ignores supplied and default animation frames for %s rows when secondary is disabled at %s', async (mode, level) => {
+    const indicator = vi.fn(() => ({
+      glyph: 'animated',
+      elapsed: '',
+      text: 'animated',
+    }));
+    if (mode !== 'native') {
+      const kit = createTestRenderKit();
+      const token = registerRenderKit(
+        {
+          ...kit,
+          indicator,
+          statusGlyph: () => (mode === 'ascii' ? '*' : '◐'),
+        },
+        {},
+      );
+      cleanups.push(() => withdrawRenderKit(token));
+    }
+    setAnimationLevel(level);
+    const { renderWorkPanelRow } = await import('../src/panel.js');
+    for (const status of ['running', 'in_progress'] as const) {
+      for (const animationFrame of [undefined, 0, 7]) {
+        const lines = renderWorkPanelRow(
+          { id: 'task', primary: 'Task', status, statusGlyph: status },
+          {
+            width: 80,
+            now: Date.now(),
+            theme: { fg: (_role, text) => text },
+            clip: (text) => text,
+            animationFrame,
+          },
+        );
+        expect(lines.join(' ')).toContain(
+          `${mode === 'ascii' ? '*' : '◐'} Task`,
+        );
+      }
+    }
+    expect(indicator).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('drops a retained host frame at minimal and off, then resumes it at reduced', async () => {
+    vi.setSystemTime(0);
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        listRows: () => [
+          {
+            id: 'task',
+            primary: 'Task',
+            status: 'running',
+            statusGlyph: 'running',
+          },
+        ],
+      }),
+      await ensureWorkPanel(session.ctx),
+    );
+    vi.advanceTimersByTime(300);
+    expect(session.render()).toContain('  ⠸ Task');
+    setAnimationLevel('minimal');
+    expect(session.render()).toContain('  ◐ Task');
+    vi.advanceTimersByTime(2000);
+    expect(session.render()).toContain('  ◐ Task');
+    setAnimationLevel('reduced');
+    expect(session.render()).toContain('  ⠸ Task');
+    vi.advanceTimersByTime(100);
+    expect(session.render()).toContain('  ⠼ Task');
+    setAnimationLevel('off');
+    expect(session.render()).toContain('  ◐ Task');
+  });
+
+  it.each([
+    ['native', 'minimal'],
+    ['themed', 'minimal'],
+    ['ascii', 'minimal'],
+    ['native', 'off'],
+    ['themed', 'off'],
+    ['ascii', 'off'],
+  ] as const)('renders static %s rows at %s immediately, change-gates provider updates and refreshes data every second', async (mode, level) => {
     if (mode !== 'native') {
       const kit = createTestRenderKit();
       const token = registerRenderKit(
@@ -86,7 +167,7 @@ describe('work panel shared animation', () => {
       );
       cleanups.push(() => withdrawRenderKit(token));
     }
-    setAnimationLevel('off');
+    setAnimationLevel(level);
     const session = uiSession();
     let primary = 'first';
     let notify = () => {};
@@ -116,17 +197,20 @@ describe('work panel shared animation', () => {
     vi.advanceTimersByTime(2000);
     expect(session.tui.requestRender).toHaveBeenCalledTimes(3);
     expect(vi.getTimerCount()).toBe(1);
-    setAnimationLevel('minimal');
+    setAnimationLevel('reduced');
     expect(session.tui.requestRender).toHaveBeenCalledTimes(4);
     expect(vi.getTimerCount()).toBe(1);
-    vi.advanceTimersByTime(459);
+    vi.advanceTimersByTime(59);
     expect(session.render().join(' ')).toMatch(/⠙ latest/);
-    setAnimationLevel('off');
+    setAnimationLevel(level);
     expect(session.render().join(' ')).toContain(`${glyph} latest`);
     expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('flushes a deferred provider update immediately when animation is turned off', async () => {
+  it.each([
+    'minimal',
+    'off',
+  ] as const)('flushes a deferred provider update immediately when secondary animation is disabled at %s', async (level) => {
     const session = uiSession();
     let primary = 'first';
     let notify = () => {};
@@ -145,15 +229,18 @@ describe('work panel shared animation', () => {
     primary = 'latest';
     notify();
     expect(session.tui.requestRender).not.toHaveBeenCalled();
-    setAnimationLevel('off');
+    setAnimationLevel(level);
     expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
     expect(session.render()).toContain('  ◐ latest');
     expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('at off refreshes render-time elapsed data every second, keeps the glyph static and stops when running rows end', async () => {
+  it.each([
+    'minimal',
+    'off',
+  ] as const)('at %s refreshes render-time elapsed data every second, keeps the glyph static and stops when running rows end', async (level) => {
     vi.setSystemTime(0);
-    setAnimationLevel('off');
+    setAnimationLevel(level);
     const session = uiSession();
     let running = true;
     cleanups.push(
@@ -192,8 +279,11 @@ describe('work panel shared animation', () => {
     expect(rendered).toHaveLength(3);
   });
 
-  it('at off stops the data refresh immediately when a provider reports completion', async () => {
-    setAnimationLevel('off');
+  it.each([
+    'minimal',
+    'off',
+  ] as const)('at %s stops the data refresh immediately when a provider reports completion', async (level) => {
+    setAnimationLevel(level);
     const session = uiSession();
     let status = 'running';
     let notify = () => {};

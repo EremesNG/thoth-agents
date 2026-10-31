@@ -13,7 +13,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
 import * as ownedProcess from "../src/owned-process.js";
 
-const clockKey = Symbol.for("thoth.pi-core.animation-clock.v2");
+const clockKey = Symbol.for("thoth.pi-core.animation-clock.v3");
 const shared = globalThis as typeof globalThis & Record<symbol, unknown>;
 const tokens: RenderKitToken[] = [];
 const executions: Promise<unknown>[] = [];
@@ -96,7 +96,6 @@ test.each([
 	["default", 200],
 	["full", 200],
 	["reduced", 200],
-	["minimal", 500],
 ] as const)("%s emits every frame in order with refreshed elapsed time and status", async (level, stepMs) => {
 	if (level !== "default") setAnimationLevel(level);
 	expect(getAnimationLevel()).toBe(level === "default" ? "full" : level);
@@ -123,15 +122,16 @@ test.each([
 });
 
 test.each([
-	["unicode", "◐"], ["ascii", "*"], ["native", "◐"],
-] as const)("off uses the %s static glyph and refreshes status only every second", async (mode, glyph) => {
+	["minimal", "unicode", "◐"], ["minimal", "ascii", "*"], ["minimal", "native", "◐"],
+	["off", "unicode", "◐"], ["off", "ascii", "*"], ["off", "native", "◐"],
+] as const)("%s uses the %s static glyph and refreshes status only every second", async (level, mode, glyph) => {
 	if (mode === "native") withdrawRenderKit(tokens.pop()!);
 	if (mode === "ascii") {
 		const kit = createTestRenderKit();
 		kit.statusGlyph = () => "*";
 		tokens.push(registerRenderKit(kit, {}));
 	}
-	setAnimationLevel("off");
+	setAnimationLevel(level);
 	const intervals = vi.spyOn(globalThis, "setInterval");
 	const run = await beginRun();
 	expect(vi.getTimerCount()).toBe(2); // watchdog plus static data refresh, no animation clock
@@ -142,7 +142,7 @@ test.each([
 	vi.advanceTimersByTime(1);
 	expect(run.updates).toHaveLength(1);
 	expect(run.updates[0].content[0]).toMatchObject({ text: "(running 1s)\n…first" });
-	expect(run.updates[0].details).toMatchObject({ durationMs: 1000 });
+	expect(run.updates[0].details).toMatchObject({ durationMs: 1000, frame: undefined });
 	expect(run.render()).toContain(`${glyph} AskAntigravity`);
 	run.child.stdout.emit("data", " second");
 	vi.advanceTimersByTime(1000);
@@ -152,29 +152,34 @@ test.each([
 	expect(run.render()).toContain(`${glyph} AskAntigravity`);
 });
 
-test("level changes repaint static immediately and preserve the next animated frame", async () => {
+test.each(["minimal", "off"] as const)("%s ↔ reduced repaints retained frames statically and preserves the next animated frame", async level => {
+	setAnimationLevel("reduced");
 	const run = await beginRun();
 	vi.advanceTimersByTime(200);
 	expect(run.render()).toContain("⠋ AskAntigravity");
-	setAnimationLevel("minimal");
-	vi.advanceTimersByTime(500);
-	expect(run.updates).toHaveLength(2);
-	expect(run.render()).toContain("⠙ AskAntigravity");
-	setAnimationLevel("reduced");
-	vi.advanceTimersByTime(200);
-	expect(run.updates).toHaveLength(3);
-	expect(run.render()).toContain("⠹ AskAntigravity");
-	setAnimationLevel("off");
+	setAnimationLevel(level);
 	expect(run.render()).toContain("◐ AskAntigravity");
 	vi.advanceTimersByTime(999);
-	expect(run.updates).toHaveLength(3);
+	expect(run.updates).toHaveLength(1);
 	vi.advanceTimersByTime(1);
-	expect(run.updates).toHaveLength(4);
+	expect(run.updates).toHaveLength(2);
+	expect(run.updates[1].details).toMatchObject({ durationMs: 1200, frame: undefined });
+	expect(run.render()).toContain("◐ AskAntigravity (running 1s)");
+	setAnimationLevel("reduced");
+	vi.advanceTimersByTime(199);
+	expect(run.updates).toHaveLength(2);
+	vi.advanceTimersByTime(1);
+	expect(run.updates).toHaveLength(3);
+	expect(run.render()).toContain("⠙ AskAntigravity");
+	setAnimationLevel(level);
 	expect(run.render()).toContain("◐ AskAntigravity");
-	setAnimationLevel("full");
+	vi.advanceTimersByTime(1000);
+	expect(run.updates).toHaveLength(4);
+	expect(run.render()).toContain("◐ AskAntigravity (running 2s)");
+	setAnimationLevel("reduced");
 	vi.advanceTimersByTime(200);
 	expect(run.updates).toHaveLength(5);
-	expect(run.render()).toContain("⠸ AskAntigravity");
+	expect(run.render()).toContain("⠹ AskAntigravity");
 });
 
 test.each(["full", "off"] as const)("%s disposes heartbeat and level subscriptions on every exit path", async level => {

@@ -4,8 +4,8 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { TUI } from '@earendil-works/pi-tui';
 import {
-  getAnimationLevel,
   hasBlockingOverlay,
+  isAnimationEffectEnabled,
   isWorkPanelRootEditorInputActive,
   listProviderLimits,
   listWorkPanelSources,
@@ -238,6 +238,7 @@ export class SidebarSession {
       this.panels.pauseAnimation();
     } else if (active && !this.animationRelease) {
       this.animationRelease = subscribeAnimationSteps({
+        kind: 'secondary',
         intendedMs: 100,
         onStep: (step) => {
           // Retain the displayed frame when pausing replaces the subscription.
@@ -251,9 +252,10 @@ export class SidebarSession {
   }
   private providerChanged(): void {
     // Invalidate now, but coalesce animated provider changes into the next step.
-    // Idle sidebars and off-mode data changes remain event-driven.
+    // Idle sidebars and disabled secondary indicators remain event-driven.
     this.panels.invalidate();
-    if (!this.animationRelease || getAnimationLevel() === 'off') this.refresh();
+    if (!this.animationRelease || !isAnimationEffectEnabled('secondary'))
+      this.refresh();
   }
   private output(): SidebarOutput {
     const displayed = this.adapter.isDisplayed();

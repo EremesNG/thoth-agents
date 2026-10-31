@@ -455,6 +455,41 @@ release workflow (`.github/workflows/release.yml`) builds the workspace first,
 then publishes Pi packages with recursive `pnpm publish --ignore-scripts` through
 npm trusted publishing, before publishing the root package.
 
+## Shared animation
+
+`AnimationLevel` keeps the values `full` (default), `reduced`, `minimal` and
+`off`. Levels select effects, not speed:
+
+| Level | Enabled `AnimationEffectKind` values |
+| --- | --- |
+| `full` | `ambient`, `secondary`, `primary` |
+| `reduced` | `secondary`, `primary` |
+| `minimal` | `primary` |
+| `off` | none |
+
+`isAnimationEffectEnabled(kind, level?)` reads this mapping, defaulting to the
+current shared level. `setAnimationLevel(level)` applies changes live;
+`subscribeAnimationLevel(listener)` observes them without starting a timer.
+
+`subscribeAnimationSteps({ kind, intendedMs, onStep })` requires an effect kind.
+Enabled effects emit consecutive frames starting at 0 every
+`max(1, round(intendedMs / 100))` shared ticks. Disabled effects have no clock
+subscription and emit `{ frame: undefined, static: true, now }` every second
+from an unref'd data-refresh timer. There is no immediate callback; level changes
+reset the tick wait and preserve the next frame. Renderers must use the predicate
+to ignore supplied or retained animation frames when their kind is disabled.
+
+The low-level `subscribeAnimationClock(listener)` shares one unref'd, aligned
+100 ms timer at every non-`off` level and stops after its last subscriber leaves.
+Callers using it directly must gate their effect subscriptions themselves.
+`getAnimationPeriodMs(level?)` returns 100, or `undefined` at `off`;
+`getAnimationCycleSteps(cycleMs, level?)` gives clock steps per cycle, not effect
+enablement. Reading these helpers never starts a timer. The v3 clock registry
+is separate from, and never reads or mutates, legacy v1/v2 clocks.
+
+Work-panel rows are `secondary`: they animate at `full`/`reduced`, and use the
+mode-aware static running glyph with second-level refreshes at `minimal`/`off`.
+
 ## Panel primitives and list editor
 
 The `./panel` entry also exports `WORK_PANEL_ANIMATION_INTERVAL_MS` (100 ms),

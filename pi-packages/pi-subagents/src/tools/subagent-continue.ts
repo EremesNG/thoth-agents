@@ -1,5 +1,5 @@
 import {
-  getAnimationLevel,
+  isAnimationEffectEnabled,
   subscribeAnimationLevel,
   subscribeAnimationSteps,
 } from '@thoth-agents/pi-core';
@@ -115,6 +115,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
           }
           if (heartbeat !== undefined) return;
           const removeSteps = subscribeAnimationSteps({
+            kind: 'secondary',
             intendedMs: 200,
             onStep(step) {
               syncHeartbeat();
@@ -132,8 +133,9 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
         };
         const emit = () => {
           if (!active || isBackground || _signal?.aborted) return;
-          const currentFrame =
-            getAnimationLevel() === 'off' ? undefined : frame;
+          const currentFrame = isAnimationEffectEnabled('secondary')
+            ? frame
+            : undefined;
           try {
             onUpdate?.({
               content: [

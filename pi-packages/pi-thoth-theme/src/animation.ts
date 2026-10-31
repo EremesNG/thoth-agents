@@ -11,6 +11,16 @@ import {
 } from './shared/config.ts';
 import { frames, statusIcon } from './shared/icons.ts';
 
+const EFFECT_DESCRIPTIONS = {
+  full: 'everything',
+  reduced: 'spinners and working indicator; no border breathing/shimmer',
+  minimal: 'only the working indicator',
+  off: 'nothing',
+};
+const ARGUMENT_HELP = ANIMATION_LEVELS.map(
+  (level) => `${level}: ${EFFECT_DESCRIPTIONS[level]}`,
+).join('; ');
+
 export function registerAnimation(pi: ExtensionAPI, config: ThemeConfig): void {
   setAnimationLevel(config.animation ?? 'full');
 
@@ -27,7 +37,7 @@ export function registerAnimation(pi: ExtensionAPI, config: ThemeConfig): void {
         level === 'off'
           ? [statusIcon('running', config.icons)]
           : [...frames('workingFrames', config.icons)],
-      intervalMs: level === 'minimal' || level === 'off' ? 500 : 200,
+      intervalMs: level === 'off' ? 500 : 200,
     });
   }
 
@@ -37,19 +47,20 @@ export function registerAnimation(pi: ExtensionAPI, config: ThemeConfig): void {
   });
 
   pi.registerCommand('thoth-animation', {
-    description: 'Set animation intensity: full, reduced, minimal, off',
+    description: `Set animation effects — ${ARGUMENT_HELP}`,
     async handler(args, ctx) {
       let choice: unknown = args.trim();
       if (!choice) {
         if (!ctx.hasUI) {
           ctx.ui.notify(
-            'Specify an animation level: full, reduced, minimal, off',
+            `Specify an animation level: full, reduced, minimal, off. ${ARGUMENT_HELP}`,
             'error',
           );
           return;
         }
-        const options = ANIMATION_LEVELS.map((level) =>
-          level === getAnimationLevel() ? `${level} (current)` : level,
+        const options = ANIMATION_LEVELS.map(
+          (level) =>
+            `${level}${level === getAnimationLevel() ? ' (current)' : ''} — ${EFFECT_DESCRIPTIONS[level]}`,
         );
         const selected = await ctx.ui.select('Thoth animation', options);
         if (selected === undefined) return;
@@ -57,7 +68,7 @@ export function registerAnimation(pi: ExtensionAPI, config: ThemeConfig): void {
       }
       if (!isAnimationLevel(choice)) {
         ctx.ui.notify(
-          'Invalid animation level. Choose full, reduced, minimal, off',
+          `Invalid animation level. Choose full, reduced, minimal, off. ${ARGUMENT_HELP}`,
           'error',
         );
         return;

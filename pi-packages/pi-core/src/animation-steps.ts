@@ -1,6 +1,8 @@
 import {
+  type AnimationEffectKind,
   type AnimationLevel,
   getAnimationPeriodMs,
+  isAnimationEffectEnabled,
   subscribeAnimationClock,
   subscribeAnimationLevel,
 } from './animation-clock.js';
@@ -12,11 +14,12 @@ export interface AnimationStep {
 }
 
 export interface AnimationStepsOptions {
+  kind: AnimationEffectKind;
   intendedMs: number;
   onStep(step: AnimationStep): void;
 }
 
-/** Evenly spaced continuous-effect steps; undefined means static at off. */
+/** Clock steps per cycle; check effect enablement separately. Undefined at off. */
 export function getAnimationCycleSteps(
   cycleMs: number,
   level?: AnimationLevel,
@@ -29,12 +32,13 @@ export function getAnimationCycleSteps(
 
 /**
  * No immediate callback. Animated frames start at 0 and advance by exactly one
- * every max(1, round(intendedMs / periodMs)) ticks, never from wall-clock time.
+ * every max(1, round(intendedMs / 100)) ticks, never from wall-clock time.
  * Level changes immediately reset the tick wait and switch scheduling, preserving
- * the next frame. At off only an unref'd 1000 ms static data-refresh timer runs.
+ * the next frame. A disabled kind uses only an unref'd 1000 ms static refresh.
  * Subscribe to level changes separately when a surface must also repaint at once.
  */
 export function subscribeAnimationSteps({
+  kind,
   intendedMs,
   onStep,
 }: AnimationStepsOptions): () => void {
@@ -51,15 +55,14 @@ export function subscribeAnimationSteps({
 
   function schedule(): void {
     stop();
-    const period = getAnimationPeriodMs();
-    if (period === undefined) {
+    if (!isAnimationEffectEnabled(kind)) {
       refreshTimer = setInterval(() => {
         onStep({ frame: undefined, static: true, now: Date.now() });
       }, 1000);
       refreshTimer.unref?.();
       return;
     }
-    const ticksPerStep = Math.max(1, Math.round(intendedMs / period));
+    const ticksPerStep = Math.max(1, Math.round(intendedMs / 100));
     let ticks = 0;
     removeClock = subscribeAnimationClock((now) => {
       if (++ticks < ticksPerStep) return;

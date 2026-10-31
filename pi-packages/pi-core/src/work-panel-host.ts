@@ -1,7 +1,7 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
 import {
-  getAnimationLevel,
+  isAnimationEffectEnabled,
   subscribeAnimationLevel,
 } from './animation-clock.js';
 import { subscribeAnimationSteps } from './animation-steps.js';
@@ -403,6 +403,7 @@ export function createWorkPanelHost(
     }
     if (animating) {
       removeAnimation ??= subscribeAnimationSteps({
+        kind: 'secondary',
         intendedMs: WORK_PANEL_ANIMATION_INTERVAL_MS,
         onStep(step) {
           if (!step.static) animationFrame++;
@@ -488,7 +489,7 @@ export function createWorkPanelHost(
     },
     refresh() {
       if (disposed) return;
-      if (removeAnimation && getAnimationLevel() !== 'off')
+      if (removeAnimation && isAnimationEffectEnabled('secondary'))
         providerDirty = true;
       else refreshNow(true);
     },

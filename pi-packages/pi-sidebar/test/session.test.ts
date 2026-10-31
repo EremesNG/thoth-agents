@@ -824,33 +824,24 @@ it('reuses one plan through sync, render and unconsumed keystrokes without seria
 });
 
 it.each(
-  (
-    [
-      ['full', 100],
-      ['reduced', 200],
-      ['minimal', 500],
-      ['off', 1000],
-    ] as const
-  ).flatMap(([level, period]) =>
-    [false, true].flatMap((animated) =>
+  (['full', 'reduced', 'minimal', 'off'] as const).flatMap((level) =>
+    [false, true].flatMap((running) =>
       ['provider', 'registry', 'limits', 'usage', 'state'].map((event) => ({
         level,
-        period,
-        animated,
+        running,
         event,
       })),
     ),
   ),
-)('refreshes $event immediately when idle/off and on the next $level step when animated ($animated)', ({
+)('refreshes $event immediately when idle/secondary-disabled and on the next $level step otherwise (running $running)', ({
   level,
-  period,
-  animated,
+  running,
   event,
 }) => {
   const app = setup();
   vi.setSystemTime(1000);
   setAnimationLevel(level);
-  const changed = source({ on() {} }, animated ? 'running' : 'pending');
+  const changed = source({ on() {} }, running ? 'running' : 'pending');
   app.handlers.get('session_start')?.({}, app.ctx);
   const render = vi.spyOn(app.tui, 'requestRender');
   render.mockClear();
@@ -891,10 +882,10 @@ it.each(
       data: stateSnapshot(1),
     });
   }
-  if (animated && level !== 'off') {
+  if (running && (level === 'full' || level === 'reduced')) {
     expect(render).not.toHaveBeenCalled();
     expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds);
-    vi.advanceTimersByTime(period);
+    vi.advanceTimersByTime(100);
   }
   expect(render).toHaveBeenCalledTimes(1);
   expect(
@@ -903,7 +894,7 @@ it.each(
 });
 
 it.each(
-  (['full', 'off'] as const).flatMap((level) =>
+  (['full', 'reduced', 'minimal', 'off'] as const).flatMap((level) =>
     ['idle', 'hidden', 'clipped'].map((state) => ({ level, state })),
   ),
 )('leaves no animation or elapsed-refresh subscription for $state rows at $level', ({
@@ -966,19 +957,11 @@ it('shares the aligned clock and defers animated provider bursts until its next 
 });
 
 it.each(
-  (
-    [
-      [undefined, 100],
-      ['full', 100],
-      ['reduced', 200],
-      ['minimal', 500],
-    ] as const
-  ).flatMap(([level, period]) =>
-    [false, true].map((themed) => ({ level, period, themed })),
+  ([undefined, 'full', 'reduced'] as const).flatMap((level) =>
+    [false, true].map((themed) => ({ level, themed })),
   ),
-)('shows every consecutive sidebar frame at $level (unset defaults to full), themed $themed', ({
+)('shows every consecutive sidebar frame at full speed at $level (unset defaults to full), themed $themed', ({
   level,
-  period,
   themed,
 }) => {
   const app = setup();
@@ -995,7 +978,10 @@ it.each(
   const frame = () => app.screen().match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u)?.[0] ?? 'missing';
   const frames = [frame()];
   for (let step = 0; step < 10; step++) {
-    vi.advanceTimersByTime(period);
+    vi.advanceTimersByTime(99);
+    app.tui.renderNow(true);
+    expect(frame()).toBe(frames.at(-1));
+    vi.advanceTimersByTime(1);
     app.tui.renderNow(true);
     expect(frame()).not.toBe(frames.at(-1));
     frames.push(frame());
@@ -1015,13 +1001,17 @@ it.each(
   ]);
 });
 
-it.each([
-  '◐',
-  '*',
-])('at off shows %s, refreshes provider changes immediately and elapsed every second only while running', (glyph) => {
+it.each(
+  (['minimal', 'off'] as const).flatMap((level) =>
+    ['◐', '*'].map((glyph) => ({ level, glyph })),
+  ),
+)('at $level shows $glyph, refreshes provider changes immediately and elapsed every second only while running', ({
+  level,
+  glyph,
+}) => {
   const app = setup();
   vi.setSystemTime(1000);
-  setAnimationLevel('off');
+  setAnimationLevel(level);
   const render = vi
     .spyOn(app.tui, 'requestRender')
     .mockImplementation(() => {});
@@ -1070,6 +1060,13 @@ it.each([
   app.tui.start();
   expect(screen()).toContain(`${glyph} First elapsed 0s`);
   expect(screen()).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u);
+  if (level === 'minimal') {
+    const timers = vi.getTimerCount();
+    const off = subscribeAnimationClock(() => {});
+    cleanup.push(off);
+    expect(vi.getTimerCount()).toBe(timers + 1);
+    off();
+  }
   render.mockClear();
   primary = 'Updated';
   changed();
@@ -1097,10 +1094,13 @@ it.each([
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it('refreshes running text when the sidebar is re-shown without a step at off', () => {
+it.each([
+  'minimal',
+  'off',
+] as const)('refreshes running text when the sidebar is re-shown without a step at %s', (level) => {
   const app = setup();
   vi.setSystemTime(1000);
-  setAnimationLevel('off');
+  setAnimationLevel(level);
   cleanup.push(
     registerWorkPanelProvider({ on() {} } as any, {
       version: WORK_PANEL_VERSION,
@@ -1131,7 +1131,7 @@ it('refreshes running text when the sidebar is re-shown without a step at off', 
   expect(app.screen()).toContain('elapsed 10s');
 });
 
-it('repaints immediately on every level change and preserves consecutive frames across off and pause/resume', () => {
+it('repaints immediately and preserves consecutive frames across minimal↔reduced, off and pause/resume', () => {
   const app = setup();
   vi.setSystemTime(1000);
   const token = registerRenderKit(createTestRenderKit(), {});
@@ -1157,20 +1157,32 @@ it('repaints immediately on every level change and preserves consecutive frames 
   render.mockClear();
   setAnimationLevel('minimal');
   expect(render).toHaveBeenCalledTimes(1);
-  expect(screen()).toContain('⠹ Task one');
+  expect(screen()).toContain('◐ Task one');
   vi.advanceTimersByTime(500);
+  expect(screen()).toContain('◐ Task one');
+  render.mockClear();
+  setAnimationLevel('reduced');
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('⠹ Task one');
+  vi.advanceTimersByTime(100);
   expect(screen()).toContain('⠸ Task one');
+  render.mockClear();
+  setAnimationLevel('minimal');
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(screen()).toContain('◐ Task one');
+  vi.advanceTimersByTime(1000);
+  expect(screen()).toContain('◐ Task one');
   render.mockClear();
   setAnimationLevel('reduced');
   expect(render).toHaveBeenCalledTimes(1);
   expect(screen()).toContain('⠸ Task one');
-  vi.advanceTimersByTime(200);
+  vi.advanceTimersByTime(100);
   expect(screen()).toContain('⠼ Task one');
   app.commands.get('sidebar').handler('off', app.ctx);
   vi.advanceTimersByTime(1000);
   app.commands.get('sidebar').handler('on', app.ctx);
   expect(screen()).toContain('⠼ Task one');
-  vi.advanceTimersByTime(200);
+  vi.advanceTimersByTime(100);
   expect(screen()).toContain('⠴ Task one');
   app.shutdown();
   render.mockClear();

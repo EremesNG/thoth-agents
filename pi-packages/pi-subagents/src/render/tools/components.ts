@@ -1,7 +1,7 @@
 import { Box } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
-  getAnimationLevel,
+  isAnimationEffectEnabled,
   type RenderIndicatorContext,
   type RenderStatus,
   renderToolFooter,
@@ -118,7 +118,7 @@ export function boxedComponent(
           ? 'failed'
           : 'completed');
     const indicator =
-      status === 'running' && getAnimationLevel() === 'off'
+      status === 'running' && !isAnimationEffectEnabled('secondary')
         ? { glyph: resolveStaticRunningGlyph() }
         : kit?.indicator(theme, options?.context, {
             status,

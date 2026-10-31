@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const key = Symbol.for('thoth.pi-core.animation-clock.v2');
+const key = Symbol.for('thoth.pi-core.animation-clock.v3');
+const v2Key = Symbol.for('thoth.pi-core.animation-clock.v2');
 const legacyKey = Symbol.for('thoth.pi-core.animation-clock.v1');
 const shared = globalThis as typeof globalThis & Record<symbol, unknown>;
 const cleanups: Array<() => void> = [];
@@ -14,6 +15,7 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   delete shared[key];
   delete shared[legacyKey];
+  delete shared[v2Key];
   expect(vi.getTimerCount()).toBe(0);
   vi.useRealTimers();
 });
@@ -33,13 +35,13 @@ describe('shared animation clock', () => {
     expect(first.getAnimationLevel()).toBe('reduced');
     second.setAnimationLevel('reduced');
     expect(levels.mock.calls).toEqual([['reduced']]);
-    vi.advanceTimersByTime(159);
-    expect(ticks.mock.calls).toEqual([[1201, 1]]);
+    vi.advanceTimersByTime(59);
+    expect(ticks.mock.calls).toEqual([[1101, 1]]);
     first.setAnimationLevel('minimal');
-    vi.advanceTimersByTime(299);
+    vi.advanceTimersByTime(99);
     expect(ticks).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
-    expect(ticks).toHaveBeenLastCalledWith(1501, 2);
+    expect(ticks).toHaveBeenLastCalledWith(1201, 2);
     second.setAnimationLevel('off');
     expect(first.getAnimationPeriodMs()).toBeUndefined();
     expect(vi.getTimerCount()).toBe(0);
@@ -47,7 +49,7 @@ describe('shared animation clock', () => {
     expect(ticks).toHaveBeenCalledTimes(2);
     second.setAnimationLevel('full');
     vi.advanceTimersByTime(100);
-    expect(ticks).toHaveBeenLastCalledWith(2601, 3);
+    expect(ticks).toHaveBeenLastCalledWith(2301, 3);
     expect(levels.mock.calls).toEqual([
       ['reduced'],
       ['minimal'],
@@ -73,10 +75,10 @@ describe('shared animation clock', () => {
 
   it.each([
     'legacy first',
-    'v2 first',
+    'v3 first',
   ])('leaves a live v1 clock untouched (%s)', async (order) => {
     const ticksV1 = vi.fn();
-    const ticksV2 = vi.fn();
+    const ticksV3 = vi.fn();
     const legacy = async () => {
       const { subscribeAnimationClock } = await import(
         './fixtures/animation-clock-v1.js'
@@ -87,22 +89,22 @@ describe('shared animation clock', () => {
     };
     const modern = async () => {
       const clock = await import('../src/index.js');
-      const off = clock.subscribeAnimationClock(ticksV2);
+      const off = clock.subscribeAnimationClock(ticksV3);
       cleanups.push(off);
       return { clock, off };
     };
-    const [offV1, { clock, off: offV2 }] =
+    const [offV1, { clock, off: offV3 }] =
       order === 'legacy first'
         ? [await legacy(), await modern()]
         : await (async () => {
-            const v2 = await modern();
-            return [await legacy(), v2] as const;
+            const v3 = await modern();
+            return [await legacy(), v3] as const;
           })();
     const legacyRecord = shared[legacyKey];
     expect(vi.getTimerCount()).toBe(2);
     vi.advanceTimersByTime(59);
     expect(ticksV1.mock.calls).toEqual([[1101]]);
-    expect(ticksV2.mock.calls).toEqual([[1101, 1]]);
+    expect(ticksV3.mock.calls).toEqual([[1101, 1]]);
     clock.setAnimationLevel('minimal');
     vi.advanceTimersByTime(400);
     expect(ticksV1.mock.calls).toEqual([
@@ -112,32 +114,82 @@ describe('shared animation clock', () => {
       [1401],
       [1501],
     ]);
-    expect(ticksV2.mock.calls).toEqual([
+    expect(ticksV3.mock.calls).toEqual([
       [1101, 1],
-      [1501, 2],
+      [1201, 2],
+      [1301, 3],
+      [1401, 4],
+      [1501, 5],
     ]);
     clock.setAnimationLevel('off');
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(200);
     expect(ticksV1).toHaveBeenLastCalledWith(1701);
-    expect(ticksV2).toHaveBeenCalledTimes(2);
+    expect(ticksV3).toHaveBeenCalledTimes(5);
     expect(shared[legacyKey]).toBe(legacyRecord);
     offV1();
     expect(vi.getTimerCount()).toBe(0);
     clock.setAnimationLevel('reduced');
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(100);
-    expect(ticksV2).toHaveBeenLastCalledWith(1801, 3);
-    offV2();
+    expect(ticksV3).toHaveBeenLastCalledWith(1801, 6);
+    offV3();
     expect(vi.getTimerCount()).toBe(0);
     expect(ticksV1).toHaveBeenCalledTimes(7);
   });
 
-  it('does not read a legacy registry even when its accessor throws', async () => {
+  it.each([
+    'v2 first',
+    'v3 first',
+  ])('leaves a live reduced v2 clock untouched (%s)', async (order) => {
+    const legacy = await import('./fixtures/animation-clock-v2.js');
+    const ticksV2 = vi.fn();
+    const ticksV3 = vi.fn();
+    const startV2 = () => {
+      legacy.setAnimationLevel('reduced');
+      cleanups.push(legacy.subscribeAnimationClock(ticksV2));
+    };
+    if (order === 'v2 first') startV2();
+    const clock = await import('../src/index.js');
+    cleanups.push(clock.subscribeAnimationClock(ticksV3));
+    if (order === 'v3 first') startV2();
+    const record = shared[v2Key];
+    const snapshot = { ...(record as object) };
+    clock.setAnimationLevel('minimal');
+    expect(shared[v2Key]).toBe(record);
+    expect(record).toEqual(snapshot);
+    expect(legacy.getAnimationLevel()).toBe('reduced');
+    expect(legacy.getAnimationPeriodMs()).toBe(200);
+    vi.advanceTimersByTime(559);
+    expect(ticksV2.mock.calls).toEqual([
+      [1201, 1],
+      [1401, 2],
+      [1601, 3],
+    ]);
+    expect(ticksV3.mock.calls).toEqual([
+      [1101, 1],
+      [1201, 2],
+      [1301, 3],
+      [1401, 4],
+      [1501, 5],
+      [1601, 6],
+    ]);
+    clock.setAnimationLevel('off');
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(200);
+    expect(ticksV2).toHaveBeenLastCalledWith(1801, 4);
+    expect(ticksV3).toHaveBeenCalledTimes(6);
+    expect(shared[v2Key]).toBe(record);
+  });
+
+  it.each([
+    legacyKey,
+    v2Key,
+  ])('does not read a legacy registry even when its accessor throws (%s)', async (key) => {
     const legacyRead = vi.fn(() => {
       throw new Error('legacy registry must not be read');
     });
-    Object.defineProperty(shared, legacyKey, {
+    Object.defineProperty(shared, key, {
       configurable: true,
       get: legacyRead,
     });
@@ -165,8 +217,8 @@ describe('shared animation clock', () => {
 
   it.each([
     ['full', 100, 1101],
-    ['reduced', 200, 1201],
-    ['minimal', 500, 1501],
+    ['reduced', 100, 1101],
+    ['minimal', 100, 1101],
   ] as const)('ticks at %s boundaries with consecutive counters', async (level, period, firstAt) => {
     const clock = await import('../src/animation-clock.js');
     expect(clock.getAnimationLevel()).toBe('full');
@@ -239,6 +291,7 @@ describe('shared animation clock', () => {
     null,
     { version: 1, listeners: new Set(), timer: undefined },
     ...[
+      { version: 2 },
       { level: 'invalid' },
       { tick: -1 },
       { tick: 1.5 },
@@ -247,7 +300,7 @@ describe('shared animation clock', () => {
       { levelListeners: new Set([42]) },
       { timer: {} },
     ].map((override) => ({
-      version: 2,
+      version: 3,
       level: 'full',
       tick: 0,
       listeners: new Set(),
@@ -256,7 +309,7 @@ describe('shared animation clock', () => {
       ...override,
     })),
     Object.freeze({
-      version: 2,
+      version: 3,
       level: 'full',
       tick: 0,
       listeners: new Set(),

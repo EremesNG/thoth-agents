@@ -120,7 +120,6 @@ describe('Live tool elapsed through the real SDK', () => {
   it.each([
     'full',
     'reduced',
-    'minimal',
   ] as const)('steps every footer frame in order at %s, independent of elapsed time', (level) => {
     setAnimationLevel(level);
     const { component } = createSession().createBashComponent();
@@ -136,6 +135,41 @@ describe('Live tool elapsed through the real SDK', () => {
     vi.setSystemTime(new Date('2026-01-02T00:00:00Z'));
     component.invalidate();
     expect(renderText(component)).toContain('△ · 24h 00m');
+  });
+
+  it('switches minimal↔reduced live, retaining frame order while static elapsed keeps refreshing', () => {
+    setAnimationLevel('minimal');
+    const { component, requestRender } = createSession().createBashComponent();
+    const scheduleClock = vi.spyOn(globalThis, 'setTimeout');
+    component.markExecutionStarted();
+    expect(renderText(component)).toContain('◐ · 0s');
+    expect(scheduleClock).not.toHaveBeenCalled();
+    scheduleClock.mockRestore();
+    requestRender.mockClear();
+    vi.advanceTimersByTime(3000);
+    expect(requestRender).toHaveBeenCalledTimes(3);
+    expect(renderText(component)).toContain('◐ · 3s');
+
+    setAnimationLevel('reduced');
+    expect(renderText(component)).toContain('△ · 3s');
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledOnce();
+    expect(renderText(component)).toContain('◭ · 4s');
+
+    setAnimationLevel('minimal');
+    expect(renderText(component)).toContain('◐ · 4s');
+    requestRender.mockClear();
+    vi.advanceTimersByTime(2000);
+    expect(requestRender).toHaveBeenCalledTimes(2);
+    expect(renderText(component)).toContain('◐ · 6s');
+
+    setAnimationLevel('reduced');
+    expect(renderText(component)).toContain('◭ · 6s');
+    vi.advanceTimersByTime(1000);
+    expect(renderText(component)).toContain('▲ · 7s');
+    component.updateResult(partialResult, false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('immediately repaints at off and keeps refreshing elapsed without advancing the static footer', () => {

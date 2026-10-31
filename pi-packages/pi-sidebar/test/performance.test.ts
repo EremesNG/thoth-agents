@@ -358,7 +358,7 @@ it('detects persistence after message_end even if rendered before the append', (
   expect(lines).toMatch(/Context\s.*1%/);
 });
 it.each(
-  (['full', 'off'] as const).flatMap((level) =>
+  (['full', 'reduced', 'minimal', 'off'] as const).flatMap((level) =>
     [
       { hidden: 'height', width: 44, height: 3 },
       { hidden: 'width', width: 20, height: 20 },
@@ -390,7 +390,38 @@ it.each(
   expect(panel.renderAt(44, 20).join('\n')).toContain('elapsed 10s');
   expect(read).toHaveBeenCalledTimes(2);
 });
-it('caches by stepped frame and level, not wall-clock time, including static elapsed refreshes', () => {
+it('keys plans by secondary enablement and keeps static rows live without changing full output', () => {
+  regressionProvider(() => [
+    {
+      id: 'active',
+      status: 'running',
+      statusGlyph: 'running',
+      primary: 'active task',
+    },
+  ]);
+  const { panel } = sessionFixture();
+  panel.stepAnimation(2);
+  const full = panel.render(44);
+  expect(full.join('\n')).toContain('⠹ active task');
+  setAnimationLevel('reduced');
+  expect(panel.render(44)).toBe(full);
+  const builds = vi.mocked(createWorkPanelColumnPlan).mock.calls.length;
+  setAnimationLevel('minimal');
+  const minimal = panel.render(44);
+  expect(minimal.join('\n')).toContain('◐ active task');
+  expect(panel.hasAnimation(44)).toBe(true); // Demand still refreshes elapsed text.
+  expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds + 1);
+  setAnimationLevel('off');
+  expect(panel.render(44)).toBe(minimal);
+  expect(createWorkPanelColumnPlan).toHaveBeenCalledTimes(builds + 1);
+  setAnimationLevel('full');
+  expect(panel.render(44)).toEqual(full);
+});
+
+it.each([
+  'minimal',
+  'off',
+] as const)('caches by stepped frame and secondary enablement, not wall-clock time, including %s elapsed refreshes', (level) => {
   vi.useFakeTimers();
   vi.setSystemTime(1000);
   const read = regressionProvider(() => [
@@ -413,13 +444,16 @@ it('caches by stepped frame and level, not wall-clock time, including static ela
   const second = panel.render(44);
   expect(second.join('\n')).toContain('⠙ elapsed 10s');
   expect(panel.render(44)).toBe(second);
-  setAnimationLevel('off');
+  setAnimationLevel(level);
   expect(panel.render(44).join('\n')).toContain('◐ elapsed 10s');
   vi.setSystemTime(11000);
   panel.stepAnimation(undefined);
   expect(panel.render(44).join('\n')).toContain('◐ elapsed 11s');
+  setAnimationLevel('reduced');
+  const resumed = panel.render(44);
+  expect(resumed.join('\n')).toContain('⠙ elapsed 11s');
   setAnimationLevel('full');
-  expect(panel.render(44).join('\n')).toContain('⠙ elapsed 11s');
+  expect(panel.render(44)).toBe(resumed);
   expect(read).toHaveBeenCalledTimes(4);
 });
 

@@ -40,7 +40,7 @@ afterEach(() => {
   rmSync(agentDir, { recursive: true, force: true });
 });
 
-function loadTheme(config: Partial<ThemeConfig> = {}) {
+function loadTheme(config: Partial<ThemeConfig> = {}, hasUI = true) {
   writeFileSync(join(agentDir, 'pi-thoth-theme.json'), JSON.stringify(config));
   const subscriptions: Array<{
     event: string;
@@ -78,7 +78,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
     setWorkingMessage: vi.fn<ExtensionContext['ui']['setWorkingMessage']>(),
   };
   const ctx = {
-    hasUI: true,
+    hasUI,
     ui,
     get getSettings() {
       return settingsAccess();
@@ -95,6 +95,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}) {
       if (!command) throw new Error('thoth-animation was not registered');
       await command.handler(args, ctx as Parameters<typeof command.handler>[1]);
     },
+    registerCommand,
     registerTool,
     registerToolRenderer,
     registerMarkdownTransformer,
@@ -118,7 +119,7 @@ describe('animation control', () => {
   it.each([
     ['full', 200, ['△', '◭', '▲', '◮']],
     ['reduced', 200, ['△', '◭', '▲', '◮']],
-    ['minimal', 500, ['△', '◭', '▲', '◮']],
+    ['minimal', 200, ['△', '◭', '▲', '◮']],
     ['off', 500, ['◐']],
   ] as const)('applies %s at extension load and session start with the native indicator', async (animation, intervalMs, frames) => {
     const session = loadTheme({ animation });
@@ -135,13 +136,13 @@ describe('animation control', () => {
   it('marks the current level in the selector, saves its choice and applies without restart', async () => {
     const session = loadTheme({ animation: 'reduced' });
     await session.start();
-    session.ui.select.mockResolvedValue('minimal');
+    session.ui.select.mockResolvedValue('minimal — only the working indicator');
     await session.animation('');
     expect(session.ui.select).toHaveBeenCalledWith('Thoth animation', [
-      'full',
-      'reduced (current)',
-      'minimal',
-      'off',
+      'full — everything',
+      'reduced (current) — spinners and working indicator; no border breathing/shimmer',
+      'minimal — only the working indicator',
+      'off — nothing',
     ]);
     expect(getAnimationLevel()).toBe('minimal');
     expect(
@@ -150,8 +151,38 @@ describe('animation control', () => {
     ).toBe('minimal');
     expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
       frames: ['△', '◭', '▲', '◮'],
-      intervalMs: 500,
+      intervalMs: 200,
     });
+  });
+
+  it('describes effect levels in command and argument help without changing the full default', async () => {
+    const session = loadTheme({}, false);
+    expect(getAnimationLevel()).toBe('full');
+    const command = session.registerCommand.mock.calls.find(
+      ([name]) => name === 'thoth-animation',
+    )?.[1];
+    expect(command?.description).toContain('full: everything');
+    expect(command?.description).toContain(
+      'reduced: spinners and working indicator; no border breathing/shimmer',
+    );
+    expect(command?.description).toContain(
+      'minimal: only the working indicator',
+    );
+    expect(command?.description).toContain('off: nothing');
+    await session.animation('');
+    await session.animation('slow');
+    for (const [message, type] of session.ui.notify.mock.calls) {
+      expect(type).toBe('error');
+      expect(message).toContain('full: everything');
+      expect(message).toContain(
+        'reduced: spinners and working indicator; no border breathing/shimmer',
+      );
+      expect(message).toContain('minimal: only the working indicator');
+      expect(message).toContain('off: nothing');
+    }
+    expect(session.ui.notify).toHaveBeenCalledTimes(2);
+    expect(session.ui.select).not.toHaveBeenCalled();
+    expect(getAnimationLevel()).toBe('full');
   });
 
   it('applies a direct argument immediately and uses a mode-aware static native glyph', async () => {
@@ -186,7 +217,9 @@ describe('animation control', () => {
 
   it('saves a selection of the current marked level', async () => {
     const session = loadTheme({ animation: 'reduced' });
-    session.ui.select.mockResolvedValue('reduced (current)');
+    session.ui.select.mockResolvedValue(
+      'reduced (current) — spinners and working indicator; no border breathing/shimmer',
+    );
     await session.animation('');
     expect(getAnimationLevel()).toBe('reduced');
     expect(session.ui.notify).toHaveBeenLastCalledWith(

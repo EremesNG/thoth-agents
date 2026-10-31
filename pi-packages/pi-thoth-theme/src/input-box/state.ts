@@ -4,9 +4,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import {
-  getAnimationLevel,
-  getAnimationPeriodMs,
-  subscribeAnimationClock,
+  isAnimationEffectEnabled,
   subscribeAnimationLevel,
   subscribeAnimationSteps,
 } from '@thoth-agents/pi-core';
@@ -22,14 +20,13 @@ import {
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
   let pendingBackground = 0;
-  let offRefresh: (() => void) | undefined;
+  let offGlyph: (() => void) | undefined;
+  let offAmbient: (() => void) | undefined;
   let disposed = false;
   let effectStep = 0;
   let glyphStep = 0;
-  let glyphTicks = 0;
 
   const offLevel = subscribeAnimationLevel(() => {
-    glyphTicks = 0;
     stop();
     syncAnimation();
   });
@@ -40,9 +37,9 @@ export function createWorkingState(requestRender: () => void) {
 
   function workingGlyph(mode: IconMode): string {
     const glyphs = frames('workingFrames', mode);
-    return getAnimationLevel() === 'off'
-      ? statusIcon('running', mode)
-      : glyphs[glyphStep % glyphs.length];
+    return isAnimationEffectEnabled('primary')
+      ? glyphs[glyphStep % glyphs.length]
+      : statusIcon('running', mode);
   }
 
   function workingLabel(
@@ -61,40 +58,45 @@ export function createWorkingState(requestRender: () => void) {
         plain.startsWith(glyph) && /^\s|^$/u.test(plain.slice(glyph.length)),
     );
     const label =
-      original === undefined || getAnimationLevel() !== 'off'
+      original === undefined || isAnimationEffectEnabled('primary')
         ? native
         : workingGlyph(mode) + plain.slice(original.length);
     return renderWorkingIndicator(label, frame, styleMuted, glyphs);
   }
 
   function stop() {
-    offRefresh?.();
-    offRefresh = undefined;
+    offGlyph?.();
+    offGlyph = undefined;
+    offAmbient?.();
+    offAmbient = undefined;
   }
 
   function syncAnimation() {
-    const staticMode = getAnimationLevel() === 'off';
-    if (startedAt === undefined && (pendingBackground === 0 || staticMode)) {
+    const primary = isAnimationEffectEnabled('primary');
+    const ambient = isAnimationEffectEnabled('ambient');
+    if (startedAt === undefined && (pendingBackground === 0 || !primary)) {
       stop();
-    } else if (offRefresh === undefined && staticMode) {
+    } else {
       // Root work still displays elapsed text; background-only labels do not.
-      offRefresh = subscribeAnimationSteps({
-        intendedMs: 1000,
-        onStep: () => requestRender(),
+      offGlyph ??= subscribeAnimationSteps({
+        kind: 'primary',
+        intendedMs: 200,
+        onStep({ static: staticMode }) {
+          if (!staticMode) glyphStep++;
+          // Ambient renders after the glyph update on their shared clock tick.
+          if (!isAnimationEffectEnabled('ambient')) requestRender();
+        },
       });
-    } else if (offRefresh === undefined) {
-      const ticksPerGlyph = Math.max(
-        1,
-        Math.round(200 / (getAnimationPeriodMs() ?? 100)),
-      );
-      offRefresh = subscribeAnimationClock(() => {
-        effectStep++;
-        if (++glyphTicks >= ticksPerGlyph) {
-          glyphTicks = 0;
-          glyphStep++;
-        }
-        requestRender();
-      });
+      if (ambient) {
+        offAmbient ??= subscribeAnimationSteps({
+          kind: 'ambient',
+          intendedMs: 100,
+          onStep() {
+            effectStep++;
+            requestRender();
+          },
+        });
+      }
     }
     requestRender();
   }

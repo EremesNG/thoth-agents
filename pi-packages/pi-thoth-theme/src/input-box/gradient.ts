@@ -7,7 +7,10 @@ import {
   styleText,
   type TerminalColorMode,
 } from '@earendil-works/pi-tui';
-import { getAnimationCycleSteps } from '@thoth-agents/pi-core';
+import {
+  getAnimationCycleSteps,
+  isAnimationEffectEnabled,
+} from '@thoth-agents/pi-core';
 import { frames } from '../shared/icons.ts';
 
 const GOLD = parseColor('#D4AF37');
@@ -29,6 +32,14 @@ export function createBreathingFrame(
   mode = getTerminalColorMode(),
   now = Date.now(),
 ): BreathingFrame {
+  if (!isAnimationEffectEnabled('ambient')) {
+    return {
+      now,
+      phase: 0,
+      foreground: foregroundAnsi(BRIGHT_GOLD, mode),
+      mode,
+    };
+  }
   const steps = getAnimationCycleSteps(BREATHING_CYCLE_MS);
   const phase =
     steps === undefined ? 0 : (((step % steps) + steps) % steps) / steps;
@@ -65,11 +76,18 @@ export function renderWorkingIndicator(
     glyph === undefined
       ? ''
       : (/^\s*/u.exec(plain.slice(glyph.length))?.[0] ?? '');
+  const text = plain.slice(
+    glyph === undefined ? 0 : glyph.length + spacing.length,
+  );
+  if (!isAnimationEffectEnabled('ambient')) {
+    const active = foregroundAnsi(GOLD, frame.mode);
+    const prefix =
+      glyph === undefined ? '' : `${active}${glyph}\x1b[39m${spacing}`;
+    return `${prefix}${active}${text}\x1b[39m`;
+  }
   const prefix =
     glyph === undefined ? '' : `${frame.foreground}${glyph}[39m${spacing}`;
-  const letters = Array.from(
-    plain.slice(glyph === undefined ? 0 : glyph.length + spacing.length),
-  );
+  const letters = Array.from(text);
   const head =
     frame.phase * (letters.length + SHIMMER_BAND_CELLS * 2) -
     SHIMMER_BAND_CELLS;

@@ -29,7 +29,7 @@ const theme = {
 } as Theme;
 const cleanups: Array<() => Promise<void>> = [];
 const registrations: ReturnType<typeof registerRenderKit>[] = [];
-const clockKey = Symbol.for('thoth.pi-core.animation-clock.v2');
+const clockKey = Symbol.for('thoth.pi-core.animation-clock.v3');
 
 function turn(status: TurnStatus): Turn {
   return {
@@ -157,7 +157,6 @@ it.each([
   [undefined, 200],
   ['full', 200],
   ['reduced', 200],
-  ['minimal', 500],
 ] as const)('renders every consecutive frame at %s (one step per %i ms)', async (level, periodMs) => {
   if (level !== undefined) setAnimationLevel(level);
   else expect(getAnimationLevel()).toBe('full');
@@ -185,10 +184,12 @@ it.each([
 });
 
 it.each([
-  '◐',
-  '*',
-])('at off shows %s and refreshes elapsed time and status only every second', async (glyph) => {
-  setAnimationLevel('off');
+  ['minimal', '◐'],
+  ['minimal', '*'],
+  ['off', '◐'],
+  ['off', '*'],
+] as const)('at %s shows %s and refreshes elapsed time and status only every second', async (level, glyph) => {
+  setAnimationLevel(level);
   const harness = createHarness(glyph);
   await vi.advanceTimersByTimeAsync(999);
   expect(harness.update).not.toHaveBeenCalled();
@@ -196,7 +197,7 @@ it.each([
   expect(harness.update).toHaveBeenCalledTimes(1);
   expect(harness.update.mock.calls[0][0]).toMatchObject({
     content: [{ type: 'text', text: '1s · initializing' }],
-    details: { status: 'inProgress', elapsedMs: 1000 },
+    details: { status: 'inProgress', elapsedMs: 1000, frame: undefined },
   });
   expect(harness.renderUpdate(0)).toContain(`${glyph} AskCodex 1s`);
   harness.notifications.get('item/started')?.({
@@ -221,8 +222,11 @@ it.each([
   expect(harness.renderUpdate(1)).toContain(`${glyph} AskCodex 2s`);
 });
 
-it('renders the native static running glyph without a render kit', async () => {
-  setAnimationLevel('off');
+it.each([
+  'minimal',
+  'off',
+] as const)('renders the native static running glyph at %s without a render kit', async (level) => {
+  setAnimationLevel(level);
   const harness = createHarness();
   const token = registrations.pop();
   if (token) withdrawRenderKit(token);
@@ -230,11 +234,15 @@ it('renders the native static running glyph without a render kit', async () => {
   expect(harness.renderUpdate(0)).toContain('◐ AskCodex 1s');
 });
 
-it('switches cadence and resumes the next frame after off without wall-clock skips', async () => {
+it.each([
+  'minimal',
+  'off',
+] as const)('switches %s ↔ reduced without retaining or skipping animated frames', async (level) => {
+  setAnimationLevel('reduced');
   const harness = createHarness();
   await vi.advanceTimersByTimeAsync(200);
   expect(harness.renderUpdate(0)).toContain('⠋ AskCodex');
-  setAnimationLevel('off');
+  setAnimationLevel(level);
   // Existing partial results also render statically as soon as the level changes.
   expect(harness.renderUpdate(0)).toContain('◐ AskCodex');
   await vi.advanceTimersByTimeAsync(999);
@@ -242,14 +250,25 @@ it('switches cadence and resumes the next frame after off without wall-clock ski
   await vi.advanceTimersByTimeAsync(1);
   expect(harness.update).toHaveBeenCalledTimes(2);
   expect(harness.renderUpdate(1)).toContain('◐ AskCodex 1.2s');
-  setAnimationLevel('minimal');
-  await vi.advanceTimersByTimeAsync(500);
+  expect(harness.update.mock.calls[1][0].details).toHaveProperty(
+    'frame',
+    undefined,
+  );
+  setAnimationLevel('reduced');
+  await vi.advanceTimersByTimeAsync(199);
+  expect(harness.update).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
   expect(harness.update).toHaveBeenCalledTimes(3);
   expect(harness.renderUpdate(2)).toContain('⠙ AskCodex');
+  setAnimationLevel(level);
+  expect(harness.renderUpdate(2)).toContain('◐ AskCodex');
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(harness.update).toHaveBeenCalledTimes(4);
+  expect(harness.renderUpdate(3)).toContain('◐ AskCodex 2.4s');
   setAnimationLevel('reduced');
   await vi.advanceTimersByTimeAsync(200);
-  expect(harness.update).toHaveBeenCalledTimes(4);
-  expect(harness.renderUpdate(3)).toContain('⠹ AskCodex');
+  expect(harness.update).toHaveBeenCalledTimes(5);
+  expect(harness.renderUpdate(4)).toContain('⠹ AskCodex');
 });
 
 it.each([

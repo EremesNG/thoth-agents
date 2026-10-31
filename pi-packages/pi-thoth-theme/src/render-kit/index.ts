@@ -12,7 +12,10 @@ import type {
   RenderToolFooterOptions,
   ThothRenderKit,
 } from '@thoth-agents/pi-core';
-import { getAnimationLevel, getToolElapsedMs } from '@thoth-agents/pi-core';
+import {
+  getToolElapsedMs,
+  isAnimationEffectEnabled,
+} from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
 import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
@@ -253,15 +256,14 @@ export function createRenderKit(
             );
       const frame = options.frame;
       const spinner = frames('spinnerFrames', mode);
-      const workingGlyph =
-        getAnimationLevel() === 'off'
-          ? statusIcon('running', mode)
-          : frame !== undefined && Number.isFinite(frame)
-            ? spinner[
-                ((Math.floor(frame) % spinner.length) + spinner.length) %
-                  spinner.length
-              ]
-            : workingFrame(context.state?.animationFrame, mode);
+      const workingGlyph = !isAnimationEffectEnabled('secondary')
+        ? statusIcon('running', mode)
+        : frame !== undefined && Number.isFinite(frame)
+          ? spinner[
+              ((Math.floor(frame) % spinner.length) + spinner.length) %
+                spinner.length
+            ]
+          : workingFrame(context.state?.animationFrame, mode);
       const glyph = running
         ? theme.fg('accent', workingGlyph)
         : statusGlyph(theme, status, mode);

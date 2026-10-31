@@ -4,14 +4,46 @@ import {
   stripTerminalSequences,
   visibleWidth,
 } from '@earendil-works/pi-tui';
-import { describe, expect, it } from 'vitest';
+import { setAnimationLevel } from '@thoth-agents/pi-core';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   colorBreathingBorder,
   createBreathingFrame,
   renderWorkingIndicator,
 } from './gradient.ts';
 
+afterEach(() => setAnimationLevel('full'));
+
 describe('input-box breathing animation', () => {
+  it.each([
+    'reduced',
+    'minimal',
+    'off',
+  ] as const)('keeps the border at its peak and the glyph and label in active gold without shimmer at %s', (level) => {
+    setAnimationLevel(level);
+    for (const [mode, borderColor, activeColor] of [
+      ['truecolor', '\x1b[38;2;242;201;76m', '\x1b[38;2;212;175;55m'],
+      ['256color', '\x1b[38;5;221m', '\x1b[38;5;179m'],
+    ] as const) {
+      for (const step of [0, 6, 12, 24, 97]) {
+        const frame = createBreathingFrame(step, mode);
+        expect(colorBreathingBorder('╭──╮', frame)).toBe(
+          `${borderColor}╭──╮\x1b[39m`,
+        );
+        for (const glyph of ['△', '◐', '*']) {
+          const label = renderWorkingIndicator(
+            `${glyph} working…`,
+            frame,
+            (text) => `<muted>${text}</muted>`,
+            [glyph],
+          );
+          expect(label).toBe(
+            `${activeColor}${glyph}\x1b[39m ${activeColor}working…\x1b[39m`,
+          );
+        }
+      }
+    }
+  });
   it('breathes uniformly from dim sand through gold to bright gold over 2.4 seconds with light glyphs', () => {
     const border = '╭──╮││╰──╯';
     const render = (now: number) =>

@@ -3,9 +3,9 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
 import {
   computeSessionCost,
-  getAnimationLevel,
   getRenderKit,
   getWorkPanelSourceRows,
+  isAnimationEffectEnabled,
   listWorkPanelSources,
   type ProviderLimitEntry,
   type RenderKitTheme,
@@ -363,7 +363,7 @@ export class SidebarPanels implements Component {
     this.revision++;
     this.cachedLines = undefined;
   }
-  /** A step refreshes visible live data even when off keeps the same frame. */
+  /** A step refreshes visible live data even when secondary animation is disabled. */
   stepAnimation(frame: number | undefined): void {
     if (frame !== undefined) this.animationFrame = frame;
     if (this.animated) {
@@ -621,7 +621,7 @@ export class SidebarPanels implements Component {
       kit,
       icons,
       options.home,
-      getAnimationLevel(),
+      isAnimationEffectEnabled('secondary'),
       this.animated ? frame : 0,
     ];
     const cachedKey = this.cachedKey;
@@ -776,6 +776,7 @@ export class SidebarPanels implements Component {
       .filter((panel) => panel.source && panel.height >= 1)
       .map((panel) => panel.id);
   }
+  /** Live rows need steps even when secondary animation is disabled, for elapsed text. */
   hasAnimation(width = DEFAULT_SIDEBAR_WIDTH): boolean {
     this.plan(this.options.height(), width);
     return this.animated;

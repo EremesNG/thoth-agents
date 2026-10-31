@@ -1,6 +1,6 @@
 import {
-  getAnimationLevel,
   getRenderKit,
+  isAnimationEffectEnabled,
   resolveIcon,
   resolveStaticRunningGlyph,
   resolveStatusGlyph,
@@ -110,7 +110,7 @@ export const renderSubagentRunResult = iconAwareRenderer(
       isBg && isRunning
         ? isLaunched
           ? resolveStatusGlyph('completed', '⤓')
-          : getAnimationLevel() === 'off'
+          : !isAnimationEffectEnabled('secondary')
             ? resolveStaticRunningGlyph()
             : (getRenderKit()?.indicator(theme, undefined, {
                 status: 'running',

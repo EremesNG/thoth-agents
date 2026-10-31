@@ -21,13 +21,15 @@ const task: SubagentTask = {
 
 describe('progress text', () => {
   it.each([
-    '◐',
-    '*',
-  ])('uses the static running glyph %s at off even with a supplied frame', (glyph) => {
+    ['minimal', '◐'],
+    ['minimal', '*'],
+    ['off', '◐'],
+    ['off', '*'],
+  ] as const)('uses the %s static running glyph %s even with a supplied frame', (level, glyph) => {
     const kit = createTestRenderKit();
     kit.statusGlyph = () => glyph;
     const token = registerRenderKit(kit, {});
-    setAnimationLevel('off');
+    setAnimationLevel(level);
     onTestFinished(() => {
       withdrawRenderKit(token);
       setAnimationLevel('full');

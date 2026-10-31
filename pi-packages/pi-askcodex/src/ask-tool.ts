@@ -9,9 +9,9 @@ import {
 import {
   detachRenderContext,
   formatDuration,
-  getAnimationLevel,
   getQuestionService,
   getRenderKit,
+  isAnimationEffectEnabled,
   renderToolFooter,
   resolveStaticRunningGlyph,
   subscribeAnimationSteps,
@@ -171,7 +171,7 @@ export function registerAskCodexTool(
         .join('\n');
       const text = () => {
         const glyph =
-          isPartial && getAnimationLevel() === 'off'
+          isPartial && !isAnimationEffectEnabled('secondary')
             ? resolveStaticRunningGlyph()
             : (getRenderKit()?.indicator(theme, context, {
                 status,
@@ -337,6 +337,7 @@ export function registerAskCodexTool(
           details.errors.push(n.error.message);
         });
         stopAnimation = subscribeAnimationSteps({
+          kind: 'secondary',
           intendedMs: 200,
           onStep({ frame, now }) {
             details.elapsedMs = now - started;

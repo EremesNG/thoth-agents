@@ -28,9 +28,9 @@ function installTimedKit() {
 it.each([
   ['full', '⠙'],
   ['reduced', '⠙'],
-  ['minimal', '⠙'],
+  ['minimal', '◐'],
   ['off', '◐'],
-] as const)('keeps the caller-stepped progress glyph at %s, or static at off', (level, glyph) => {
+] as const)('keeps the caller-stepped progress glyph at %s, or static when secondary is disabled', (level, glyph) => {
   const token = registerRenderKit(createTestRenderKit(), {});
   setAnimationLevel(level);
   onTestFinished(() => {
@@ -49,6 +49,15 @@ it.each([
   ).render(120);
   expect(lines[0]).toBe(`╭─ ${glyph} subagent · worker · running`);
   expect(lines[1]).toContain(`${glyph} agent: worker`);
+  const retained = boxedComponent(['⠙ agent: worker'], {
+    title: '⠙ Running',
+    status: 'running',
+    workingRow: 0,
+    animationFrame: 1,
+    theme,
+  }).render(120);
+  expect(retained[0]).toBe(`╭─ ${glyph} Running`);
+  expect(retained[1]).toContain(`${glyph} agent: worker`);
 });
 
 it('delegates a running footer with its context and recomputes it after same-width invalidation', () => {

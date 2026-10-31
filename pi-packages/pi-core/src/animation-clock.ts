@@ -1,9 +1,10 @@
 export type AnimationLevel = 'full' | 'reduced' | 'minimal' | 'off';
+export type AnimationEffectKind = 'ambient' | 'secondary' | 'primary';
 export type AnimationListener = (now: number, tick: number) => void;
 export type AnimationLevelListener = (level: AnimationLevel) => void;
 
 interface AnimationClock {
-  version: 2;
+  version: 3;
   level: AnimationLevel;
   tick: number;
   listeners: Set<AnimationListener>;
@@ -11,14 +12,14 @@ interface AnimationClock {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-// Never inspect or mutate v1: its scheduling closure belongs to legacy copies.
-const registryKey = Symbol.for('thoth.pi-core.animation-clock.v2');
+// Never inspect or mutate v1/v2: their scheduling closures belong to legacy copies.
+const registryKey = Symbol.for('thoth.pi-core.animation-clock.v3');
 const shared = globalThis as typeof globalThis & { [registryKey]?: unknown };
 const localClock = createClock();
 
 function createClock(): AnimationClock {
   return {
-    version: 2,
+    version: 3,
     level: 'full',
     tick: 0,
     listeners: new Set(),
@@ -41,7 +42,7 @@ function animationClock(): AnimationClock {
     if (shared[registryKey] === undefined) shared[registryKey] = createClock();
     const clock = shared[registryKey] as AnimationClock | null;
     if (
-      clock?.version === 2 &&
+      clock?.version === 3 &&
       isAnimationLevel(clock.level) &&
       Number.isSafeInteger(clock.tick) &&
       clock.tick >= 0 &&
@@ -67,20 +68,28 @@ function animationClock(): AnimationClock {
   return localClock;
 }
 
-/** Undefined at off; reading the cadence never starts a timer. */
+/** Levels filter effects, never their speed; reading this never starts a timer. */
+export function isAnimationEffectEnabled(
+  kind: AnimationEffectKind,
+  level: AnimationLevel = getAnimationLevel(),
+): boolean {
+  switch (level) {
+    case 'full':
+      return true;
+    case 'reduced':
+      return kind !== 'ambient';
+    case 'minimal':
+      return kind === 'primary';
+    case 'off':
+      return false;
+  }
+}
+
+/** Fixed 100 ms cadence unless off; reading it never starts a timer. */
 export function getAnimationPeriodMs(
   level: AnimationLevel = getAnimationLevel(),
 ): number | undefined {
-  switch (level) {
-    case 'full':
-      return 100;
-    case 'reduced':
-      return 200;
-    case 'minimal':
-      return 500;
-    case 'off':
-      return undefined;
-  }
+  return level === 'off' ? undefined : 100;
 }
 
 function scheduleTick(clock: AnimationClock): void {
@@ -145,7 +154,7 @@ export function subscribeAnimationLevel(
 }
 
 /**
- * Join the process-wide, period-boundary-aligned cadence (100/200/500 ms).
+ * Join the process-wide, boundary-aligned 100 ms cadence.
  * All listeners share one timestamp and a counter increasing by one per tick,
  * including after cadence changes or idle gaps. No immediate callback.
  * The unref'd timer exists only with subscribers and never at off.

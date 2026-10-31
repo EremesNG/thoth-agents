@@ -489,9 +489,12 @@ of at most five entries (display names or short task-summary names, share and
 amount). The bar follows the bar style: `thin` draws `━` segments with a `╸`
 half-cell cap and a dim `─` remainder track (remainder marker `○`), `classic`
 draws `█` with a `▌` cap and a muted `░` remainder, and ASCII mode ignores the
-style. With more than five tasks, or untracked cost of at least half a cent,
-the legend shows the top four plus a `+N more tasks`/`other` remainder
-entry. Running tasks carry an accent `↑` in a reserved column, the remainder
+style. With more than five tracked tasks, the legend shows the top four plus
+a `+N more tasks` remainder entry. Untracked cost of at least half a cent also
+folds the legend into top-four plus `+N more tasks`/`other`, but only when the
+latest snapshot has no live task (including tasks without cost yet). While any
+task is live, up to five tracked tasks stand alone without an `other` row.
+Running tasks carry an accent `↑` in a reserved column, the remainder
 entry carries it while any task it groups runs, and the header total shows it
 while any task runs, read from the latest live snapshot. Colors
 follow rank from a series palette shared with the curves view (warning first,

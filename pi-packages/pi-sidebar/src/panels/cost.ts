@@ -53,6 +53,7 @@ export class CostTracker {
   private readonly tasks = new Map<string, CostTask>();
   private top: CostTask[] = [];
   private sum = 0;
+  private live = false;
   private anyRunning = false;
   private hiddenRunning = false;
 
@@ -66,7 +67,9 @@ export class CostTracker {
         .filter((task) => !SETTLED.has(task.status))
         .map((task) => task.id),
     );
-    let changed = false;
+    const live = running.size > 0;
+    let changed = this.live !== live;
+    this.live = live;
     for (const task of merged.values()) {
       const cost = task.usage?.cost;
       if (cost === undefined || !(cost > 0)) continue;
@@ -152,6 +155,11 @@ export class CostTracker {
     return this.tasks.size;
   }
 
+  /** Whether the latest snapshot has a live task, even without tracked cost. */
+  hasLiveTasks(): boolean {
+    return this.live;
+  }
+
   /** Whether any tracked task is running. */
   active(): boolean {
     return this.anyRunning;
@@ -169,7 +177,7 @@ export function formatUsd(value: number): string {
 
 /** Legend entries: five tasks, or four plus a remainder (see `legendEntries`). */
 const LEGEND_ENTRIES = 5;
-/** Untracked cost below half a cent is rounding noise, not a remainder. */
+/** At rest, untracked cost below half a cent is rounding noise, not a remainder. */
 const UNTRACKED_MIN = 0.005;
 const SHARE_WIDTH = 4;
 /** Narrowest inner width that keeps the share column beside a 14-cell label. */
@@ -193,12 +201,13 @@ interface LegendEntry {
   rank?: number;
 }
 
-/** The top tasks, or the top four and a remainder when some cost is not shown. */
+/** Fold overflow into a remainder; untracked cost triggers folding only at rest. */
 function legendEntries(tracker: CostTracker, total: number): LegendEntry[] {
   const ranked = tracker.ranked();
   const count = tracker.count();
   const collapse =
-    count > LEGEND_ENTRIES || total - tracker.total() >= UNTRACKED_MIN;
+    count > LEGEND_ENTRIES ||
+    (!tracker.hasLiveTasks() && total - tracker.total() >= UNTRACKED_MIN);
   const shown = ranked.slice(0, collapse ? LEGEND_ENTRIES - 1 : LEGEND_ENTRIES);
   const entries = shown.map((task, rank) => ({
     label: task.label,
@@ -306,7 +315,7 @@ export function renderCostRows(
   const ascii = isAsciiMode();
   const bars = barGlyphs(style);
   const inner = Math.max(0, width - 4);
-  // Normalizing by the shown sum keeps the bar full when a half cent is untracked.
+  // Normalizing by the shown sum keeps the bar full when untracked cost is omitted.
   const cells = allocate(
     entries.map((entry) => entry.cost),
     inner,

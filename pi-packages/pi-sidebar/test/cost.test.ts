@@ -436,6 +436,101 @@ it.each(
 
 it.each(
   STYLES,
+)('keeps five task entries despite untracked cost while a task is live (%s)', (bars) => {
+  const data = tracker(
+    Array.from({ length: 5 }, (_, i) =>
+      task(`t${i}`, 1, {
+        displayName: `T${i}`,
+        status: i === 4 ? 'running' : 'completed',
+      }),
+    ),
+  );
+  const baseline = renderCostRows(data, 5, 50, theme, bars);
+  for (const total of [5.01, 6, 5]) {
+    const view = renderCostRows(data, total, 50, theme, bars);
+    expect(view.tasks).toEqual([1, 1, 1, 1, 1]);
+    expect(view.entries[4]).toContain('T4');
+    expect(view.entries[4]).toContain('↑');
+    expect(view.entries.join('\n')).not.toMatch(/more task|other/);
+    expect(view.bar).toBe(baseline.bar);
+    expect(panelVisibleWidth(view.bar)).toBe(46);
+  }
+  expect(cost(data, 50, 40, 6, bars)[0]).toContain('$6.00↑');
+  expect(renderCostRows(data, 6, 50, theme, bars).entries[4]).toContain('17%');
+});
+
+it.each([
+  'queued',
+  'running',
+  'stopping',
+] as const)('keeps five settled tasks unfolded when a %s task has no cost yet', (status) => {
+  const data = tracker([
+    ...Array.from({ length: 5 }, (_, i) => task(`t${i}`, 1)),
+    task('new', 0, { status, usage: undefined }),
+  ]);
+  const view = renderCostRows(data, 5.01, 50, theme, 'thin');
+  expect(view.tasks).toEqual([1, 1, 1, 1, 1]);
+  expect(view.entries.join('\n')).not.toMatch(/more task|other/);
+  expect(data.active()).toBe(false);
+});
+
+it('still folds more than five tracked tasks while a task is live', () => {
+  const data = tracker(
+    Array.from({ length: 6 }, (_, i) =>
+      task(`t${i}`, 1, { status: i === 5 ? 'running' : 'completed' }),
+    ),
+  );
+  const view = renderCostRows(data, 6.01, 50, theme, 'thin');
+  expect(view.tasks).toEqual([1, 1, 1, 1, 2]);
+  expect(view.entries[4]).toContain('+2 more tasks');
+  expect(view.entries[4]).toContain('↑');
+});
+
+it.each([
+  1, 4,
+])('shows other for untracked cost only at rest with %i tracked tasks', (count) => {
+  const tasks = Array.from({ length: count }, (_, i) => task(`t${i}`, 1));
+  const data = tracker([
+    ...tasks,
+    task('new', 0, { status: 'running', usage: undefined }),
+  ]);
+  const live = renderCostRows(data, count + 0.01, 50, theme, 'thin');
+  expect(live.entries).toHaveLength(count);
+  expect(live.entries.join('\n')).not.toContain('other');
+  data.update(snapshot(tasks), 2000);
+  const idle = renderCostRows(data, count + 0.01, 50, theme, 'thin');
+  expect(idle.entries).toHaveLength(count + 1);
+  expect(idle.entries.at(-1)).toContain('other');
+});
+
+it('bumps revision and refreshes the legend when only snapshot liveness changes', () => {
+  const tasks = Array.from({ length: 5 }, (_, i) => task(`t${i}`, 1));
+  const data = tracker(tasks);
+  const panel = sidebar([{ id: 'cost', visible: true }], {
+    cost: () => data,
+    subagentCost: () => 5.01,
+  });
+  const render = () => panel.renderAt(50, 40).map(strip).join('\n');
+  const revision = data.revision;
+  expect(render()).toContain('+1 more task');
+  const next = snapshot([
+    ...tasks,
+    task('new', 0, { status: 'running', usage: undefined }),
+  ]);
+  data.update(next, 2000);
+  expect(data.revision).toBe(revision + 1);
+  expect(data.total()).toBe(5);
+  expect(data.active()).toBe(false);
+  expect(render()).not.toContain('more task');
+  data.update(next, 3000);
+  expect(data.revision).toBe(revision + 1);
+  data.update(snapshot(tasks), 4000);
+  expect(data.revision).toBe(revision + 2);
+  expect(render()).toContain('+1 more task');
+});
+
+it.each(
+  STYLES,
 )('folds the tasks beyond the top four into a remainder entry with the leftover share and amount (%s)', (bars) => {
   const rows = cost(longTail(), 50, 40, 9.64, bars);
   expect(rows.slice(2, 7)).toEqual([
@@ -755,9 +850,15 @@ it.each(
   expect(rows.filter((row) => row.includes('↑'))).toHaveLength(2);
 });
 
-it.each(STYLES)('never marks an untracked-only other entry (%s)', (bars) => {
-  const rows = cost(live(), 50, 40, 1, bars);
-  expect(rows[0]).toContain('↑');
+it.each(
+  STYLES,
+)('never marks an untracked-only other entry at rest (%s)', (bars) => {
+  const data = tracker([
+    task('a', 0.12, { displayName: 'Alpha' }),
+    task('b', 0.11, { displayName: 'Beta' }),
+  ]);
+  const rows = cost(data, 50, 40, 1, bars);
+  expect(rows.join('\n')).not.toContain('↑');
   expect(rows.find((row) => row.includes('other'))).toMatch(/\$0\.77 {2}│$/);
 });
 
@@ -771,16 +872,21 @@ it('keeps the height-pressure fold line unmarked while the header reports a hidd
 
 it.each(
   STYLES,
-)('marks a running fifth task when untracked cost creates the remainder (%s)', (bars) => {
+)('keeps a running fifth task marked without a remainder despite untracked cost (%s)', (bars) => {
   const data = tracker(
     Array.from({ length: 5 }, (_, i) =>
-      task(`t${i}`, 5 - i, { status: i === 4 ? 'running' : 'completed' }),
+      task(`t${i}`, 5 - i, {
+        displayName: `T${i}`,
+        status: i === 4 ? 'running' : 'completed',
+      }),
     ),
   );
   const shown = cost(data, 50, 40, 15, bars);
   expect(shown.join('\n')).not.toContain('more task');
-  const collapsed = cost(data, 50, 40, 16, bars);
-  expect(collapsed.find((row) => row.includes('+1 more task'))).toMatch(/↑ │$/);
+  const skewed = cost(data, 50, 40, 16, bars);
+  expect(skewed.join('\n')).not.toMatch(/more task|other/);
+  expect(skewed[6]).toMatch(/^│ ● T4 +6% \$1\.00↑ │$/);
+  expect(skewed.filter((row) => row.includes('↑'))).toHaveLength(2);
 });
 
 it('uses a caret as the running arrow in ascii mode', () => {

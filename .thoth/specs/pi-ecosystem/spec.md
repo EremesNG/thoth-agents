@@ -615,3 +615,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 - **GIVEN** a repository whose `.pi/claude-bridge.json` sets a provider and whose Claude Code project settings set options
 - **WHEN** a Pi session in that repository runs a turn through the bridge
 - **THEN** the bridge keeps the user-level provider configuration and Claude Code ignores the repository's settings
+
+### Requirement: Claude bridge shows progress updates as text
+
+`@thoth-agents/pi-claude-bridge` MUST present a Claude progress update between tool calls (a signed reasoning block whose signature identifies it as a progress update) as visible assistant text instead of reasoning, without first showing it as reasoning, whenever it can classify the block before displaying it, MUST replay that text to Claude Code as the original signed block, and MUST keep its session-sync digests and recording coverage identical to those of the recorded Claude Code content so that showing it as text never by itself causes a fork or rewrite; it MUST leave a block as reasoning when its signature cannot be decoded or when the block grows beyond the streaming hold limit before it closes.
+
+#### Scenario: Claude bridge shows progress updates as text
+
+- **GIVEN** a Claude turn that writes a short progress update between two tool calls
+- **WHEN** the bridge streams the turn into Pi and the session then continues with a new prompt
+- **THEN** Pi shows the update as assistant text with no reasoning block for it, and the next turn continues from the recorded Claude Code records without a fork or rewrite caused by that update

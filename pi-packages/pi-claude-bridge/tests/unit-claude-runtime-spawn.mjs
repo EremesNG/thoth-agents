@@ -75,7 +75,8 @@ for (const path of ["provider", "summary", "AskClaude", "quota"]) {
 			const onStderr = options.stderr;
 			options.stderr = (data) => { receivedStderr += data; onStderr?.(data); };
 			if (path !== "provider") {
-				assert.equal(options.spawnClaudeCodeProcess, undefined, "auxiliary calls use the SDK launcher");
+				if (path === "AskClaude") assert.equal(typeof options.spawnClaudeCodeProcess, "function", "AskClaude observes actual child close");
+				else assert.equal(options.spawnClaudeCodeProcess, undefined, "summary/quota use the SDK launcher");
 				return query({ prompt, options: {
 					...options,
 					cwd: dir,

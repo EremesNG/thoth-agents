@@ -18,9 +18,11 @@ Maintain an entry in the `## UNRELEASED` section at the top of `CHANGELOG.md` fo
 - **Tag: summary** — detail
 ```
 
-Do not add changelog entries for docs-only changes. Combine multiple UNRELEASED entries about the same feature into one.
+Do not add changelog entries for docs-only changes, or for small changes (especially test-only ones) unless they relate to an issue. Combine multiple UNRELEASED entries about the same feature into one.
 
-Tags: `Add`, `Fix`, `Refactor`, `Tests`, `Bump`, `Deprecate`, `Remove`.
+Keep entries short: one sentence of detail is usually enough. Only a big change warrants a few sentences. Leave implementation details and file lists to the commit log and docs.
+
+Tags: `Add`, `Fix`, `Refactor`, `Tests`, `Bump`, `Deprecate`, `Remove`, `Debug`.
 
 ## Release
 
@@ -36,3 +38,5 @@ This workspace copy builds to `dist` with `pnpm run build` (see `files` in `pack
 ## Tests
 
 `pnpm run test:unit` is hermetic and safe offline. Never run `test` or `test:usage` without explicit live-service authorization: they access local Pi/Claude auth state and call the service.
+
+Cover inputs the model chooses (tool names, message shapes), not just our own branches. A test of a copy of the code is not coverage.

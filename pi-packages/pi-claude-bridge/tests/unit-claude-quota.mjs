@@ -247,6 +247,7 @@ it('handles stream and spawn errors without leaving a process or input open', as
 });
 
 it('registers on-demand /claude quota in the session cwd and permits usage traffic only in its child', async (t) => {
+  const parentTraffic = process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
   const { globalConfigPath } = await import('../src/config.js');
   const configPath = globalConfigPath();
   const previous = existsSync(configPath)
@@ -314,7 +315,7 @@ it('registers on-demand /claude quota in the session cwd and permits usage traff
   __test.setAuxiliaryQuery(({ options }) => {
     calls++;
     quotaOptions = options;
-    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, parentTraffic, 'activation never changes the parent traffic flag');
     assert.equal(
       options.cwd,
       cwd,
@@ -328,12 +329,13 @@ it('registers on-demand /claude quota in the session cwd and permits usage traff
     assert.equal(options.env.DISABLE_AUTO_COMPACT, '1');
     assert.equal(options.env.ENABLE_CLAUDEAI_MCP_SERVERS, '0');
     assert.deepEqual(options.tools, []);
+    assert.deepEqual(options.settingSources, ['user'], 'quota never loads repository settings');
     return sdk.query;
   });
   __test.setQuery(({ options }) => {
     ordinaryOptions = options;
     const query = (async function* () {
-      yield { type: 'system', subtype: 'init', session_id: 'ordinary-query' };
+      yield { type: 'system', subtype: 'init', session_id: options.sessionId ?? options.resume };
       yield { type: 'result', subtype: 'success', is_error: false, result: 'OK' };
     })();
     query.close = () => {};
@@ -357,7 +359,7 @@ it('registers on-demand /claude quota in the session cwd and permits usage traff
     ).result();
     assert.equal(result.stopReason, 'stop', result.errorMessage);
     assert.equal(ordinaryOptions.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
-    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+    assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, parentTraffic, 'activation never changes the parent traffic flag');
     assert.equal(
       Object.hasOwn(quotaOptions.env, 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'),
       false,

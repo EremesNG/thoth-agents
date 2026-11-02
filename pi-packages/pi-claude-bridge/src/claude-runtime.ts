@@ -63,7 +63,7 @@ function preferMuslBinary(): boolean {
 	return report != null && report.header?.glibcVersionRuntime === undefined;
 }
 
-// Mirrors the SDK 0.3.309 native resolver (not publicly exported). Resolve from
+// Mirrors the SDK 0.3.308 native resolver (not publicly exported). Resolve from
 // the SDK entry, not the bridge, so optional packages match the installed SDK.
 export function resolveSdkClaudeExecutable({ platform = process.platform, arch = process.arch, preferMusl, resolve = resolveSdkPackage, exists = nodeFs.existsSync }: {
 	platform?: string; arch?: string; preferMusl?: boolean;

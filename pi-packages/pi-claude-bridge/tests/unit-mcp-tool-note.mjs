@@ -30,7 +30,7 @@ beforeEach(() => {
 		calls.push(options);
 		const gen = (async function* () {
 			await prompt[Symbol.asyncIterator]().next();
-			yield { type: "system", subtype: "init", session_id: randomUUID() };
+			yield { type: "system", subtype: "init", session_id: options.sessionId ?? options.resume };
 			yield { type: "result", subtype: "success", is_error: false, result: "OK" };
 		})();
 		gen.interrupt = async () => {};

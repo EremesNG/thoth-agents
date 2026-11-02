@@ -7,6 +7,7 @@ import { createPiToolsPanelAdapter } from './cli/pi-tool-config';
 import { renderPiRootInstructions } from './harness/adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
 import {
+  PiContextGateVerdicts,
   withPiContextGateVerdicts,
   withPiToolGateVerdicts,
 } from './pi-gate-verdict';
@@ -18,6 +19,10 @@ type PiHandler = (
   event: Record<string, unknown>,
   context?: {
     cwd?: string;
+    sessionManager?: {
+      getEntries?(): Iterable<unknown>;
+      getBranch?(): Iterable<unknown>;
+    };
     isIdle?(): boolean;
     ui?: { notify(message: string, type?: 'info' | 'warning' | 'error'): void };
   },
@@ -29,6 +34,7 @@ export interface PiExtensionApi {
       | 'input'
       | 'before_agent_start'
       | 'session_start'
+      | 'session_tree'
       | 'tool_result'
       | 'context',
     handler: PiHandler,
@@ -41,6 +47,7 @@ export interface PiExtensionApi {
     },
   ): void;
   getCommands?(): Array<{ name: string; source?: string }>;
+  appendEntry?(customType: string, data: unknown): void;
 }
 export interface PiExtensionOptions {
   packageRoot?: string;
@@ -120,12 +127,37 @@ export default function thothAgentsPiExtension(
     adapter: createPiToolsPanelAdapter(globalPiRoot(options)),
   };
   let toolsOwnershipWarned = false;
+  const frozenGateVerdicts = new PiContextGateVerdicts(
+    pi.appendEntry?.bind(pi),
+  );
+  const restoreGateVerdicts = (
+    ctx: Parameters<PiHandler>[1],
+    sourceSessionFile?: string,
+  ) => {
+    frozenGateVerdicts.useSession(ctx?.sessionManager);
+    // A verdict belongs to a completion, not the active branch. Tree navigation
+    // can put its persistence entry off-branch while retaining the completion.
+    frozenGateVerdicts.restore(
+      ctx?.sessionManager?.getEntries?.() ??
+        ctx?.sessionManager?.getBranch?.() ??
+        [],
+      sourceSessionFile,
+    );
+  };
   pi.on('tool_result', (event, ctx) =>
     withPiToolGateVerdicts(event, ctx?.cwd ?? process.cwd()),
   );
-  pi.on('context', (event, ctx) =>
-    withPiContextGateVerdicts(event, ctx?.cwd ?? process.cwd()),
-  );
+  pi.on('context', (event, ctx) => {
+    frozenGateVerdicts.useSession(ctx?.sessionManager);
+    return withPiContextGateVerdicts(
+      event,
+      ctx?.cwd ?? process.cwd(),
+      frozenGateVerdicts,
+      ctx?.sessionManager?.getBranch?.() ??
+        ctx?.sessionManager?.getEntries?.() ??
+        [],
+    );
+  });
   pi.on('input', (event, ctx) => {
     languageAnchorCandidate =
       (event.source === 'interactive' || event.source === 'rpc') &&
@@ -172,7 +204,13 @@ export default function thothAgentsPiExtension(
       ),
     };
   });
-  pi.on('session_start', (_event, ctx) => {
+  pi.on('session_start', (event, ctx) => {
+    restoreGateVerdicts(
+      ctx,
+      typeof event.previousSessionFile === 'string'
+        ? event.previousSessionFile
+        : undefined,
+    );
     if (!toolsOwnershipWarned && !hasToolsOwnership(pi) && ctx?.ui?.notify) {
       toolsOwnershipWarned = true;
       ctx.ui.notify(
@@ -193,4 +231,5 @@ export default function thothAgentsPiExtension(
       // A direct package install may be degraded; never reject a valid Pi session.
     }
   });
+  pi.on('session_tree', (_event, ctx) => restoreGateVerdicts(ctx));
 }

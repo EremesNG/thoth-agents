@@ -1,9 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { build } from 'esbuild';
 import { describe, expect, test, vi } from 'vitest';
 import piExtension, { type PiExtensionApi } from './pi';
@@ -19,6 +27,36 @@ function handlerFor(name: string): PiHandler {
   const handler = handlers.get(name);
   if (!handler) throw new Error(`Missing Pi handler: ${name}`);
   return handler;
+}
+
+function sessionHandlers(
+  root: string,
+  appendEntry: NonNullable<PiExtensionApi['appendEntry']>,
+): Map<string, PiHandler> {
+  const handlers = new Map<string, PiHandler>();
+  piExtension(
+    { on: (name, handler) => handlers.set(name, handler), appendEntry },
+    { packageRoot: root, piRoot: join(root, 'pi') },
+  );
+  return handlers;
+}
+
+function persistedHandlers(root: string, entries: unknown[]) {
+  return sessionHandlers(root, (customType, data) => {
+    // Session files contain JSON, not extension-owned object references.
+    entries.push(
+      JSON.parse(JSON.stringify({ type: 'custom', customType, data })),
+    );
+  });
+}
+
+function storedVerdicts(manager: SessionManager) {
+  return manager
+    .getEntries()
+    .filter(
+      (entry) =>
+        entry.type === 'custom' && entry.customType === 'thoth-pi-gate-verdict',
+    );
 }
 
 function gateResult(review: Record<string, unknown> = {}): string {
@@ -294,16 +332,11 @@ describe('Pi Oracle gate delivery verdicts', () => {
   });
 
   test.each([
-    { eventName: 'tool_result', cwdSource: 'session' },
-    { eventName: 'tool_result', cwdSource: 'process' },
-    { eventName: 'context', cwdSource: 'session' },
-    { eventName: 'context', cwdSource: 'process' },
-  ])('$eventName hashes the record in the $cwdSource cwd and reflects only prefix changes', async ({
-    eventName,
-    cwdSource,
-  }) => {
+    'session',
+    'process',
+  ])('tool_result hashes the record in the %s cwd and reflects only prefix changes', async (cwdSource) => {
     const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-'));
-    const handler = handlerFor(eventName);
+    const handler = handlerFor('tool_result');
     const cwdMock =
       cwdSource === 'process'
         ? vi.spyOn(process, 'cwd').mockReturnValue(root)
@@ -320,27 +353,11 @@ describe('Pi Oracle gate delivery verdicts', () => {
           reviewedRecordSha256: digest,
         }),
       };
-      const event =
-        eventName === 'tool_result'
-          ? toolEvent(details)
-          : {
-              messages: [
-                {
-                  role: 'custom',
-                  customType: 'subagent-completion',
-                  content: 'Automated completion',
-                  details,
-                },
-              ],
-            };
+      const event = toolEvent(details);
       const context = cwdSource === 'session' ? { cwd: root } : undefined;
       const deliveredVerdict = async () => {
         const result = (await handler(event, context)) as any;
-        return verdicts(
-          eventName === 'tool_result'
-            ? result.content
-            : result.messages[0].content,
-        )[0];
+        return verdicts(result.content)[0];
       };
       writeFileSync(record, `${prefix}## Authorization\r\nPENDING\r\n`);
       const first = await deliveredVerdict();
@@ -366,16 +383,553 @@ describe('Pi Oracle gate delivery verdicts', () => {
         recordDigest: 'mismatch',
       });
       const refreshed = (await handler(annotatedEvent, context)) as any;
-      expect(
-        verdicts(
-          eventName === 'tool_result'
-            ? refreshed.content
-            : refreshed.messages[0].content,
-        ).at(-1),
-      ).toMatchObject({ recordDigest: 'mismatch' });
+      expect(verdicts(refreshed.content).at(-1)).toMatchObject({
+        recordDigest: 'mismatch',
+      });
       expect(annotatedEvent).toEqual(annotatedOriginal);
     } finally {
       cwdMock?.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'string',
+    'blocks',
+  ])('freezes %s completion verdicts across record edits, archiving and deletion', async (format) => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-frozen-gate-'));
+    try {
+      const prefix =
+        '# Scoped record\n\n## Plan\nReview this implementation.\n\n';
+      const record = join(root, 'record.md');
+      const archived = join(root, 'archived.md');
+      writeFileSync(record, `${prefix}## Authorization\nPENDING\n`);
+      const message = {
+        role: 'custom',
+        customType: 'subagent-completion',
+        timestamp: 123,
+        content:
+          format === 'string'
+            ? 'Automated completion'
+            : [{ type: 'text', text: 'Automated completion' }],
+        details: {
+          task: { id: 'oracle-1', agent: 'thoth-oracle' },
+          full_result: gateResult({
+            reviewedRecord: 'record.md',
+            reviewedRecordSha256: createHash('sha256')
+              .update(prefix, 'utf8')
+              .digest('hex'),
+          }),
+        },
+      };
+      const event = { messages: [message] };
+      const handler = handlerFor('context');
+      const context = { cwd: root };
+      const first = (await handler(event, context)) as any;
+      expect(verdicts(first.messages[0].content)).toEqual([
+        expect.objectContaining({ valid: true, recordDigest: 'match' }),
+      ]);
+
+      writeFileSync(
+        record,
+        `Changed scope\n${prefix}## Authorization\nPENDING\n`,
+      );
+      expect(await handler(structuredClone(event), context)).toEqual(first);
+      expect(
+        await handler({ messages: first.messages }, context),
+      ).toBeUndefined();
+
+      renameSync(record, archived);
+      expect(await handler(structuredClone(event), context)).toEqual(first);
+      expect(
+        await handler({ messages: first.messages }, context),
+      ).toBeUndefined();
+
+      rmSync(archived);
+      expect(await handler(structuredClone(event), context)).toEqual(first);
+      expect(
+        await handler({ messages: first.messages }, context),
+      ).toBeUndefined();
+      expect(verdicts(first.messages[0].content)).toHaveLength(1);
+      expect(message.content).toEqual(
+        format === 'string'
+          ? 'Automated completion'
+          : [{ type: 'text', text: 'Automated completion' }],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'startup',
+    'reload',
+    'resume',
+    'fork',
+  ])('replays already-present frozen completion verdicts on %s in a new extension instance', async (reason) => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-replay-'));
+    const entries: unknown[] = [];
+    const context = {
+      cwd: root,
+      sessionManager: { getEntries: () => entries },
+    };
+    const activate = () => persistedHandlers(root, entries);
+    try {
+      const prefix =
+        '# Scoped record\n\n## Plan\nReview this implementation.\n\n';
+      const record = join(root, 'record.md');
+      writeFileSync(record, `${prefix}## Authorization\nPENDING\n`);
+      const event = {
+        messages: [
+          {
+            role: 'custom',
+            customType: 'subagent-completion',
+            timestamp: 123,
+            content: 'Automated completion',
+            details: {
+              task: { id: 'oracle-1', agent: 'thoth-oracle' },
+              full_result: gateResult({
+                reviewedRecord: 'record.md',
+                reviewedRecordSha256: createHash('sha256')
+                  .update(prefix, 'utf8')
+                  .digest('hex'),
+              }),
+            },
+          },
+        ],
+      };
+      const firstInstance = activate();
+      const first = (await firstInstance.get('context')?.(
+        event,
+        context,
+      )) as any;
+      expect(verdicts(first.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'match',
+      });
+      rmSync(record);
+
+      const restarted = activate();
+      await restarted.get('session_start')?.({ reason }, context);
+      expect(
+        await restarted.get('context')?.(structuredClone(event), context),
+      ).toEqual(first);
+      expect(
+        await restarted.get('context')?.({ messages: first.messages }, context),
+      ).toBeUndefined();
+      expect(entries).toHaveLength(1);
+
+      const originalSessionEntries = entries.splice(0);
+      await restarted.get('session_start')?.({ reason: 'new' }, context);
+      const newSession = (await restarted.get('context')?.(
+        event,
+        context,
+      )) as any;
+      expect(verdicts(newSession.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'unavailable',
+      });
+      entries.splice(0, entries.length, ...originalSessionEntries);
+      await restarted.get('session_start')?.({ reason: 'resume' }, context);
+      expect(await restarted.get('context')?.(event, context)).toEqual(first);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('persists a legacy completion first seen after restart and freezes an unavailable record verdict', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-legacy-'));
+    const entries: unknown[] = [];
+    const context = {
+      cwd: root,
+      sessionManager: { getEntries: () => entries },
+    };
+    const activate = () => persistedHandlers(root, entries);
+    try {
+      const prefix = '# Legacy record\n\n';
+      const event = {
+        messages: [
+          {
+            role: 'custom',
+            customType: 'subagent-completion',
+            content: 'Legacy completion without a timestamp',
+            details: {
+              task: { id: 'oracle-legacy', agent: 'thoth-oracle' },
+              full_result: gateResult({
+                reviewedRecord: 'record.md',
+                reviewedRecordSha256: createHash('sha256')
+                  .update(prefix, 'utf8')
+                  .digest('hex'),
+              }),
+            },
+          },
+        ],
+      };
+      const resumed = activate();
+      await resumed.get('session_start')?.({ reason: 'resume' }, context);
+      const first = (await resumed.get('context')?.(event, context)) as any;
+      expect(verdicts(first.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'unavailable',
+      });
+      writeFileSync(
+        join(root, 'record.md'),
+        `${prefix}## Authorization\nPENDING\n`,
+      );
+      expect(await resumed.get('context')?.(event, context)).toEqual(first);
+
+      const reloaded = activate();
+      await reloaded.get('session_start')?.({ reason: 'reload' }, context);
+      expect(await reloaded.get('context')?.(event, context)).toEqual(first);
+      expect(entries).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('uses native completion entry identity across live timestamps, replay and tree navigation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-native-'));
+    const sessionManager = SessionManager.inMemory(root);
+    const context = { cwd: root, sessionManager };
+    const activate = () =>
+      sessionHandlers(root, (customType, data) => {
+        sessionManager.appendCustomEntry(customType, data);
+      });
+    try {
+      const prefix = '# Native record\n\n';
+      const record = join(root, 'record.md');
+      writeFileSync(record, `${prefix}## Authorization\nPENDING\n`);
+      const message = {
+        role: 'custom',
+        customType: 'subagent-completion',
+        timestamp: 123,
+        content: 'Automated completion',
+        details: {
+          task: { id: 'oracle-1', agent: 'thoth-oracle' },
+          full_result: gateResult({
+            reviewedRecord: 'record.md',
+            reviewedRecordSha256: createHash('sha256')
+              .update(prefix, 'utf8')
+              .digest('hex'),
+          }),
+        },
+      };
+      const completionId = sessionManager.appendCustomMessageEntry(
+        message.customType,
+        message.content,
+        true,
+        message.details,
+      );
+      const firstInstance = activate();
+      const first = (await firstInstance.get('context')?.(
+        { messages: [message] },
+        context,
+      )) as any;
+      expect(verdicts(first.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'match',
+      });
+
+      // A continuation can reuse both a task id and an identical result. It is
+      // still a different completion with its own first-delivery disk snapshot.
+      writeFileSync(
+        record,
+        `Changed scope\n${prefix}## Authorization\nPENDING\n`,
+      );
+      sessionManager.appendCustomMessageEntry(
+        message.customType,
+        message.content,
+        true,
+        message.details,
+      );
+      const both = (await firstInstance.get('context')?.(
+        { messages: [message, structuredClone(message)] },
+        context,
+      )) as any;
+      expect(verdicts(both.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'match',
+      });
+      expect(verdicts(both.messages[1].content)[0]).toMatchObject({
+        recordDigest: 'mismatch',
+      });
+      const shortened = (await firstInstance.get('context')?.(
+        { messages: [structuredClone(message)] },
+        context,
+      )) as any;
+      expect(shortened.messages[0].content).toBe(both.messages[1].content);
+      rmSync(record);
+
+      const restarted = activate();
+      await restarted.get('session_start')?.({ reason: 'reload' }, context);
+      const replayed = sessionManager.buildSessionContext();
+      expect(replayed.messages[0]?.timestamp).not.toBe(message.timestamp);
+      const delivered = (await restarted.get('context')?.(
+        replayed,
+        context,
+      )) as any;
+      expect(delivered.messages.map((message: any) => message.content)).toEqual(
+        both.messages.map((message: any) => message.content),
+      );
+
+      // The frozen entry is now off-branch, but the same completion is visible.
+      sessionManager.branch(completionId);
+      await restarted.get('session_tree')?.({}, context);
+      const branched = (await restarted.get('context')?.(
+        sessionManager.buildSessionContext(),
+        context,
+      )) as any;
+      expect(branched.messages[0].content).toBe(first.messages[0].content);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves a legacy completion verdict through native fork truncation and restart of the fork', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-fork-'));
+    try {
+      const sessionDir = join(root, 'sessions');
+      const source = SessionManager.create(root, sessionDir);
+      // A retained user message makes both native session files durable.
+      source.appendMessage({
+        role: 'user',
+        content: 'Original task',
+        timestamp: 1,
+      });
+      const prefix = '# Legacy record before fork\n\n';
+      const record = join(root, 'record.md');
+      writeFileSync(record, `${prefix}## Authorization\nPENDING\n`);
+      const completionId = source.appendCustomMessageEntry(
+        'subagent-completion',
+        'Legacy Oracle completion',
+        true,
+        {
+          task: { id: 'oracle-legacy', agent: 'thoth-oracle' },
+          full_result: gateResult({
+            reviewedRecord: 'record.md',
+            reviewedRecordSha256: createHash('sha256')
+              .update(prefix, 'utf8')
+              .digest('hex'),
+          }),
+        },
+      );
+      const nextPromptId = source.appendMessage({
+        role: 'user',
+        content: 'Continue the task',
+        timestamp: 2,
+      });
+      const sourceHandlers = sessionHandlers(root, (customType, data) => {
+        source.appendCustomEntry(customType, data);
+      });
+      const first = (await sourceHandlers.get('context')?.(
+        source.buildSessionContext(),
+        { cwd: root, sessionManager: source },
+      )) as any;
+      const firstContent = first.messages.find(
+        (message: any) => message.customType === 'subagent-completion',
+      ).content;
+      expect(verdicts(firstContent)[0]).toMatchObject({
+        recordDigest: 'match',
+      });
+      expect(storedVerdicts(source)).toHaveLength(1);
+      rmSync(record);
+
+      const previousSessionFile = source.getSessionFile();
+      if (!previousSessionFile)
+        throw new Error('Expected a persisted source session');
+      const fork = SessionManager.open(previousSessionFile, sessionDir);
+      // This is the native runtime's fork-before-user-prompt truncation path.
+      const retainedLeaf = fork.getEntry(nextPromptId)?.parentId;
+      expect(retainedLeaf).toBe(completionId);
+      if (!retainedLeaf) throw new Error('Expected a retained completion');
+      const forkFile = fork.createBranchedSession(retainedLeaf);
+      if (!forkFile) throw new Error('Expected a persisted fork');
+      expect(storedVerdicts(fork)).toHaveLength(0);
+      const forkContext = { cwd: root, sessionManager: fork };
+      const forkHandlers = sessionHandlers(root, (customType, data) => {
+        fork.appendCustomEntry(customType, data);
+      });
+      await forkHandlers.get('session_start')?.(
+        { reason: 'fork', previousSessionFile },
+        forkContext,
+      );
+      const forkDelivery = (await forkHandlers.get('context')?.(
+        fork.buildSessionContext(),
+        forkContext,
+      )) as any;
+      expect(
+        forkDelivery.messages.find(
+          (message: any) => message.customType === 'subagent-completion',
+        ).content,
+      ).toBe(firstContent);
+      expect(storedVerdicts(fork)).toHaveLength(1);
+
+      // Restart must depend only on the fork's own persisted state.
+      rmSync(previousSessionFile);
+      const reopened = SessionManager.open(forkFile, sessionDir);
+      const restartContext = { cwd: root, sessionManager: reopened };
+      const restarted = sessionHandlers(root, (customType, data) => {
+        reopened.appendCustomEntry(customType, data);
+      });
+      await restarted.get('session_start')?.(
+        { reason: 'startup' },
+        restartContext,
+      );
+      const resumed = (await restarted.get('context')?.(
+        reopened.buildSessionContext(),
+        restartContext,
+      )) as any;
+      expect(
+        resumed.messages.find(
+          (message: any) => message.customType === 'subagent-completion',
+        ).content,
+      ).toBe(firstContent);
+      expect(storedVerdicts(reopened)).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves a legacy verdict across an in-memory native fork with fresh extension activation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-memory-fork-'));
+    try {
+      const manager = SessionManager.inMemory(root);
+      const context = { cwd: root, sessionManager: manager };
+      const activate = () =>
+        sessionHandlers(root, (customType, data) => {
+          manager.appendCustomEntry(customType, data);
+        });
+      const prefix = '# In-memory legacy record\n\n';
+      const record = join(root, 'record.md');
+      writeFileSync(record, `${prefix}## Authorization\nPENDING\n`);
+      const details = {
+        task: { id: 'oracle-memory', agent: 'thoth-oracle' },
+        full_result: gateResult({
+          reviewedRecord: 'record.md',
+          reviewedRecordSha256: createHash('sha256')
+            .update(prefix, 'utf8')
+            .digest('hex'),
+        }),
+      };
+      const completionId = manager.appendCustomMessageEntry(
+        'subagent-completion',
+        'Legacy Oracle completion',
+        true,
+        details,
+      );
+      const promptId = manager.appendMessage({
+        role: 'user',
+        content: 'Continue',
+        timestamp: 2,
+      });
+      const sourceHandlers = activate();
+      const first = (await sourceHandlers.get('context')?.(
+        manager.buildSessionContext(),
+        context,
+      )) as any;
+      const firstContent = first.messages[0].content;
+      expect(verdicts(firstContent)[0]).toMatchObject({
+        recordDigest: 'match',
+      });
+      const sourceSessionId = manager.getSessionId();
+      rmSync(record);
+
+      // AgentSessionRuntime.fork uses this same manager and native truncation
+      // path in memory, then recreates the runtime and activates fresh extensions.
+      const retainedLeaf = manager.getEntry(promptId)?.parentId;
+      expect(retainedLeaf).toBe(completionId);
+      if (!retainedLeaf) throw new Error('Expected the retained completion');
+      manager.createBranchedSession(retainedLeaf);
+      expect(manager.getSessionId()).not.toBe(sourceSessionId);
+      expect(manager.getSessionFile()).toBeUndefined();
+      expect(manager.getEntry(completionId)?.id).toBe(completionId);
+      expect(storedVerdicts(manager)).toHaveLength(0);
+      const forkHandlers = activate();
+      await forkHandlers.get('session_start')?.({ reason: 'fork' }, context);
+      const forked = (await forkHandlers.get('context')?.(
+        manager.buildSessionContext(),
+        context,
+      )) as any;
+      expect(forked.messages[0].content).toBe(firstContent);
+      expect(storedVerdicts(manager)).toHaveLength(1);
+      await forkHandlers.get('session_start')?.({ reason: 'reload' }, context);
+      expect(
+        await forkHandlers.get('context')?.(
+          manager.buildSessionContext(),
+          context,
+        ),
+      ).toEqual(forked);
+      expect(storedVerdicts(manager)).toHaveLength(1);
+
+      // Identical task/result data in a different native session is not a cache hit.
+      const unrelated = SessionManager.inMemory(root);
+      const unrelatedId = unrelated.appendCustomMessageEntry(
+        'subagent-completion',
+        'Legacy Oracle completion',
+        true,
+        structuredClone(details),
+      );
+      expect(unrelatedId).not.toBe(completionId);
+      const unrelatedContext = { cwd: root, sessionManager: unrelated };
+      const unrelatedHandlers = sessionHandlers(root, (customType, data) => {
+        unrelated.appendCustomEntry(customType, data);
+      });
+      await unrelatedHandlers.get('session_start')?.(
+        { reason: 'new' },
+        unrelatedContext,
+      );
+      const fresh = (await unrelatedHandlers.get('context')?.(
+        unrelated.buildSessionContext(),
+        unrelatedContext,
+      )) as any;
+      expect(verdicts(fresh.messages[0].content)[0]).toMatchObject({
+        recordDigest: 'unavailable',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'missing',
+    'corrupt',
+    'unreadable',
+  ])('ignores a %s previous session file and computes an unfrozen legacy completion normally', async (failure) => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-pi-gate-source-error-'));
+    try {
+      const sourcePath = join(root, 'source.jsonl');
+      if (failure === 'corrupt')
+        writeFileSync(sourcePath, 'not json\n{"partial":');
+      if (failure === 'unreadable') mkdirSync(sourcePath);
+      const manager = SessionManager.inMemory(root);
+      manager.appendCustomMessageEntry(
+        'subagent-completion',
+        'Legacy completion',
+        true,
+        {
+          task: {
+            id: 'oracle-no-source',
+            agent: 'thoth-oracle',
+            result: gateResult(),
+          },
+        },
+      );
+      const handlers = sessionHandlers(root, (customType, data) => {
+        manager.appendCustomEntry(customType, data);
+      });
+      const context = { cwd: root, sessionManager: manager };
+      await expect(
+        Promise.resolve().then(() =>
+          handlers.get('session_start')?.(
+            { reason: 'fork', previousSessionFile: sourcePath },
+            context,
+          ),
+        ),
+      ).resolves.toBeUndefined();
+      const delivered = (await handlers.get('context')?.(
+        manager.buildSessionContext(),
+        context,
+      )) as any;
+      expect(verdicts(delivered.messages[0].content)[0]).toMatchObject({
+        valid: true,
+        recordDigest: 'none',
+      });
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

@@ -40,7 +40,7 @@ export const DEFAULT_LABELS = {
   clear: 'clear',
   scrollPreview: 'preview',
   scrollPrompt: 'prompt',
-  scrollContext: 'context/prompt',
+  scrollContext: 'context',
   more: 'more',
   switchTab: 'switch',
   save: 'save',
@@ -88,7 +88,13 @@ export const questionSchema = Type.Object({
   id: Type.String(),
   header: Type.String(),
   prompt: Type.String(),
-  context: Type.Optional(Type.String()),
+  context: Type.Optional(
+    Type.String({
+      maxLength: 500,
+      description:
+        'Markdown summary, max 500 characters. Write longer proposals/tables/findings as visible text first.',
+    }),
+  ),
   type: Type.Optional(
     Type.Union([
       Type.Literal('single'),

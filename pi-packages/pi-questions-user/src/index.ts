@@ -33,7 +33,7 @@ export function createQuestionTool(
     description:
       'Ask the user a questionnaire with stable ids, single/multi choices, text or Yes/No confirmation. Required is advisory; recommendations are never preselected.',
     promptGuidelines: [
-      'Write proposals, tables and findings as normal visible response text BEFORE calling this tool, not reasoning/thinking (not shown as answer text). Keep `prompt` a concise, self-contained question in plain text. Assistant text in the same turn may be hidden while questions are open: use `context` only as a secondary fallback above the prompt, with a short markdown summary needed to answer, never the main place for long proposals or tables. Use option `preview` for per-option markdown details.',
+      'Write proposals, tables and findings as normal visible response text BEFORE calling this tool, not reasoning/thinking (not shown as answer text). Keep `prompt` a concise, self-contained question in plain text. Assistant text in the same turn may be hidden while questions are open: use `context` only as a secondary fallback above the prompt, with a short markdown summary of at most 500 characters needed to answer, never the main place for long proposals or tables. Use option `preview` for per-option markdown details.',
       "When the user does not write in English, pass `labels` with the fixed UI strings (yes, no, typeSomething, submit, backToEdit, cancel, review, skip, done, hints…) translated to the user's language; also write headers, prompts and option labels in that language. Option values and ids stay stable.",
     ],
     parameters: questionParameters,

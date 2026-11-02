@@ -1,3 +1,4 @@
+import { validateToolArguments } from '@earendil-works/pi-ai';
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { visibleWidth } from '@earendil-works/pi-tui';
 import type { RenderCardOptions } from '@thoth-agents/pi-core';
@@ -208,6 +209,53 @@ describe('question renderers', () => {
       'Validation failed:',
       '  - labels: must be object',
     ]);
+  });
+
+  it.each([
+    false,
+    true,
+  ])('renders the real context maxLength validation error at mobile width (kit: %s)', (kit) => {
+    if (kit) token = registerRenderKit(createTestRenderKit(), {});
+    const tool = createQuestionTool();
+    let message = '';
+    try {
+      validateToolArguments(tool, {
+        type: 'toolCall',
+        id: 'too-long',
+        name: tool.name,
+        arguments: {
+          questions: [
+            {
+              id: 'plan',
+              header: 'Plan',
+              prompt: 'Which?',
+              type: 'text',
+              context: 'x'.repeat(501),
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/questions.*context:.*500/);
+    const frame = tool
+      .renderResult?.(
+        {
+          content: [{ type: 'text', text: message }],
+          details: {} as never,
+        },
+        { expanded: true, isPartial: false },
+        theme,
+        context({ isError: true }),
+      )
+      ?.render(48);
+    expect(frame?.length).toBeGreaterThan(0);
+    for (const row of frame ?? []) {
+      expect(row).not.toContain('\n');
+      expect(visibleWidth(row)).toBeLessThanOrEqual(48);
+    }
+    expect(frame?.join(' ')).toContain('500');
   });
 
   it('truncates a long note when collapsed and wraps it with prompts when expanded', () => {

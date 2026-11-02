@@ -55,7 +55,7 @@ describe('Agents work-panel session lifecycle', () => {
     const session = workPanelSession(env.tmp, 'parent-a');
     try {
       await resumed.emit('session_start', session, { reason: 'resume' });
-      expect(session.render().join('\n')).toContain('125 done · 17 failed');
+      expect(session.render().join('\n')).toContain('✓125 ✗17');
     } finally {
       await resumed.emit('session_shutdown', session);
     }
@@ -99,7 +99,7 @@ describe('Agents work-panel session lifecycle', () => {
     const session = workPanelSession(env.tmp, 'parent-a');
     try {
       await host.emit('session_start', session, { reason: 'resume' });
-      expect(session.render().join('\n')).toContain('114 done · 4 failed');
+      expect(session.render().join('\n')).toContain('✓114 ✗4');
       expect(session.render().join('\n')).not.toContain('resumed task');
       expect(getWorkPanelSourceRows('subagents', { maxRows: 100 })).toEqual([]);
       const rows = getWorkPanelSourceRows('subagents', {
@@ -148,16 +148,16 @@ describe('Agents work-panel session lifecycle', () => {
     session.ctx.sessionManager.getSessionId = () => sessionId;
     try {
       await host.emit('session_start', session);
-      expect(session.render().join('\n')).toContain('2 done · 1 failed');
+      expect(session.render().join('\n')).toContain('✓2 ✗1');
       sessionId = 'parent-b';
       await host.emit('session_start', session, { reason: 'switch' });
-      expect(session.render().join('\n')).toContain('1 done · 2 failed');
+      expect(session.render().join('\n')).toContain('✓1 ✗2');
       sessionId = 'empty-session';
       await host.emit('session_start', session, { reason: 'switch' });
       expect(session.render().join('\n')).not.toContain('Agents');
       sessionId = 'parent-a';
       await host.emit('session_start', session, { reason: 'resume' });
-      expect(session.render().join('\n')).toContain('2 done · 1 failed');
+      expect(session.render().join('\n')).toContain('✓2 ✗1');
     } finally {
       await host.emit('session_shutdown', session);
     }

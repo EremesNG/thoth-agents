@@ -121,10 +121,7 @@ describe('prompt-retained work panel eligibility', () => {
     expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders + 1);
     vi.advanceTimersByTime(1);
     expect(session.tui.requestRender).toHaveBeenCalledTimes(initialRenders + 2);
-    expect(session.render()).toEqual([
-      '◆ Agents · 1 done · 1 failed',
-      '← interact',
-    ]);
+    expect(session.render()).toEqual(['◆ Agents · ✓1 ✗1', '← interact']);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -200,7 +197,7 @@ describe('prompt-retained work panel eligibility', () => {
         { budget: 5, hint: '← interact' },
       ),
     ).toEqual([
-      '◆ Agents · 5 items',
+      '◆ Agents · ◐1 ✓60 ✗2',
       '  ✓ done 2',
       '  ✓ done 3',
       '  +3 more',
@@ -298,10 +295,7 @@ describe('idle retained section summaries', () => {
       await ensureWorkPanel(session.ctx),
     );
     bridge.emit('session_start');
-    expect(session.render()).toEqual([
-      '◆ Background · 4 done · 1 failed',
-      '← interact',
-    ]);
+    expect(session.render()).toEqual(['◆ Background · ✓4 ✗1', '← interact']);
     expect(session.ui.setStatus).toHaveBeenLastCalledWith(
       'thoth-work-panel',
       '← work · 1',
@@ -309,7 +303,7 @@ describe('idle retained section summaries', () => {
     expect(session.key('\x1b[D')).toEqual({ consume: true });
     expect(session.key('\x1b[B')).toEqual({ consume: true });
     expect(session.render()).toEqual([
-      '› ◆ Background · 4 done · 1 failed',
+      '› ◆ Background · ✓4 ✗1',
       'Enter history · Esc back',
     ]);
     expect(session.key('\r')).toEqual({ consume: true });
@@ -336,7 +330,7 @@ describe('idle retained section summaries', () => {
       await ensureWorkPanel(session.ctx),
     );
     expect(session.render()).toEqual([
-      themed ? 'Agents · 55 done · 3 failed' : '◆ Agents · 55 done · 3 failed',
+      themed ? 'Agents · ✓55 ✗3' : '◆ Agents · ✓55 ✗3',
       '← interact',
     ]);
     expect(session.ui.setStatus).toHaveBeenLastCalledWith(
@@ -345,9 +339,7 @@ describe('idle retained section summaries', () => {
     );
     session.key('\x1b[D');
     expect(session.render()[0]).toBe(
-      themed
-        ? '› Agents · 55 done · 3 failed'
-        : '› ◆ Agents · 55 done · 3 failed',
+      themed ? '› Agents · ✓55 ✗3' : '› ◆ Agents · ✓55 ✗3',
     );
     expect(session.render().at(-1)).toBe('Enter history · Esc back');
     session.tui.terminal.rows = 4;
@@ -371,7 +363,7 @@ describe('idle retained section summaries', () => {
         { fg: (_role, text) => text },
         (text) => text,
       ),
-    ).toEqual(['◆ Agents · 4 done · 1 failed']);
+    ).toEqual(['◆ Agents · ✓4 ✗1']);
     expect(
       panelSections([{ ...source, showSection: () => false }], 2000, lifecycle),
     ).toEqual([]);
@@ -398,10 +390,7 @@ describe('idle retained section summaries', () => {
       }),
       await ensureWorkPanel(session.ctx),
     );
-    expect(session.render()).toEqual([
-      '◆ Agents · 1 done · 1 failed',
-      '← interact',
-    ]);
+    expect(session.render()).toEqual(['◆ Agents · ✓1 ✗1', '← interact']);
     bridge.emit('input', { source: 'interactive', text: 'first prompt' });
     vi.setSystemTime(2000);
     bridge.emit('before_agent_start', { prompt: 'first prompt' });
@@ -415,7 +404,7 @@ describe('idle retained section summaries', () => {
     ];
     notify();
     expect(session.render()).toEqual([
-      '◆ Agents · 3 items',
+      '◆ Agents · ◐1 ✓2 ✗2',
       '  ◐ live',
       '  ✓ new done',
       '  ✗ new failed',
@@ -431,7 +420,7 @@ describe('idle retained section summaries', () => {
     );
     notify();
     expect(session.render()).toEqual([
-      '◆ Agents · 3 items',
+      '◆ Agents · ✓3 ✗2',
       '  ✓ live',
       '  ✓ new done',
       '  ✗ new failed',
@@ -447,7 +436,7 @@ describe('idle retained section summaries', () => {
     items.push(row('next live', 'running'));
     notify();
     expect(session.render()).toEqual([
-      '◆ Agents · 1 items',
+      '◆ Agents · ◐1 ✓3 ✗2',
       '  ◐ next live',
       '← interact',
     ]);
@@ -469,7 +458,7 @@ describe('idle retained section summaries', () => {
       await ensureWorkPanel(session.ctx),
     );
     const unchanged = [
-      '◆ Todos · 4/5 done',
+      '◆ Todos · 4/5',
       '  ○ Open todo',
       '  +4 done',
       '← interact',
@@ -528,7 +517,7 @@ describe('collapsed section navigation', () => {
     items = [row('new live', 'running')];
     notify();
     expect(session.render()).toEqual([
-      '◆ Agents · 1 items',
+      '◆ Agents · ◐1',
       '  ◐ new live',
       '← interact',
     ]);
@@ -567,7 +556,7 @@ describe('collapsed section navigation', () => {
     session.key('\x1b[D');
     expect(
       session.render().filter((line: string) => line.startsWith('› ')),
-    ).toEqual(['› ◆ Agents · 1 done · 0 failed']);
+    ).toEqual(['› ◆ Agents · ✓1']);
     expect(session.render().at(-1)).toBe('↑↓ move · Enter history · Esc back');
     session.key('\x1b[B');
     expect(
@@ -612,10 +601,7 @@ describe('collapsed section navigation', () => {
       await ensureWorkPanel(session.ctx),
     );
     session.key('\x1b[D');
-    expect(session.render()).toEqual([
-      '› ◆ Agents · 1 done · 0 failed',
-      'Esc back',
-    ]);
+    expect(session.render()).toEqual(['› ◆ Agents · ✓1', 'Esc back']);
     expect(session.key('\r')).toBeUndefined();
     expect(session.key('x')).toBeUndefined();
     expect(session.ui.custom).not.toHaveBeenCalled();
@@ -666,10 +652,7 @@ describe('collapsed section navigation', () => {
       await ensureWorkPanel(session.ctx),
     );
     session.tui.terminal.rows = 6;
-    expect(session.render()).toEqual([
-      '◆ Agents · 1 done · 0 failed',
-      '← interact',
-    ]);
+    expect(session.render()).toEqual(['◆ Agents · ✓1', '← interact']);
     session.key('\x1b[D');
     session.key('\x1b[B');
     session.key('\x1b[B');
@@ -680,4 +663,72 @@ describe('collapsed section navigation', () => {
     ).toBe(true);
     expect(session.render().length).toBeLessThanOrEqual(3);
   });
+});
+
+it.each([
+  'cancelled',
+  'interrupted',
+  'numeric-only',
+] as const)('keeps cancelled-only %s history as one selectable summary after linger', async (status) => {
+  const session = uiSession();
+  const openHistory = vi.fn();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      retention: 'prompt',
+      openHistory,
+      summary:
+        status === 'numeric-only'
+          ? () => ({ completed: 0, failed: 0, cancelled: 1 })
+          : undefined,
+      listRows: () =>
+        status === 'numeric-only'
+          ? []
+          : [
+              {
+                id: 'cancelled',
+                primary: 'Cancelled work',
+                status,
+                state: 'failed',
+                endedAt: 0,
+              },
+            ],
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  expect(session.render()).toEqual(['◆ Agents · ■1', '← interact']);
+  session.key('\x1b[D');
+  expect(session.render()).toEqual([
+    '› ◆ Agents · ■1',
+    'Enter history · Esc back',
+  ]);
+  session.key('\r');
+  expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
+});
+
+it('hides resolved-only history rather than counting retention failures, and honors numeric zero overrides', () => {
+  for (const source of [
+    retained([
+      {
+        id: 'resolved',
+        primary: 'Resolved',
+        statusGlyph: 'resolved',
+        state: 'failed',
+        endedAt: 0,
+      },
+    ]),
+    {
+      ...retained([
+        {
+          id: 'cancelled',
+          primary: 'Cancelled',
+          status: 'cancelled',
+          state: 'failed',
+          endedAt: 0,
+        },
+      ]),
+      summary: () => ({ completed: 0, failed: 0, cancelled: 0 }),
+    },
+  ])
+    expect(panelSections([source], 100_000, lifecycle)).toEqual([]);
 });

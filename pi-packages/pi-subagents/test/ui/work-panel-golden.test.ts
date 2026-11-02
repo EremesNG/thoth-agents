@@ -44,7 +44,7 @@ const nativeGolden = [
   [
     100,
     [
-      '◆ Agents · 1 running',
+      '◆ Agents · ◐1',
       '  ⠋ worker · inspect · ⚠ 1 dropped · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
       '← interact',
     ],
@@ -52,7 +52,7 @@ const nativeGolden = [
   [
     80,
     [
-      '◆ Agents · 1 running',
+      '◆ Agents · ◐1',
       '  ⠋ worker · inspect · ⚠ 1 dropped',
       '    tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
       '← interact',
@@ -61,7 +61,7 @@ const nativeGolden = [
   [
     40,
     [
-      '◆ Agents · 1 running',
+      '◆ Agents · ◐1',
       '  ⠋ worker · inspect · ⚠ 1 dropped',
       '    tools 5 · ↑20k ↓10k',
       '    ctx 62.0% · 75 tok/s',
@@ -72,7 +72,7 @@ const nativeGolden = [
   [
     24,
     [
-      '◆ Agents · 1 running',
+      '◆ Agents · ◐1',
       '  ⠋ worker · ⚠ 1 dropped',
       '    tools 5',
       '    ↑20k ↓10k',
@@ -104,7 +104,7 @@ const themedGolden = [
   [
     100,
     [
-      'Agents · 1 running',
+      'Agents · ◐1',
       '  └─ ⠋ worker · inspect · ⚠ 1 dropped · * 5 · ↑20k ↓10k · ctx 62.0% · tok/s 75 · ◷ 12s',
       '← interact',
     ],
@@ -112,7 +112,7 @@ const themedGolden = [
   [
     80,
     [
-      'Agents · 1 running',
+      'Agents · ◐1',
       '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
       '       * 5 · ↑20k ↓10k · ctx 62.0% · tok/s 75 · ◷ 12s',
       '← interact',
@@ -121,7 +121,7 @@ const themedGolden = [
   [
     40,
     [
-      'Agents · 1 running',
+      'Agents · ◐1',
       '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
       '       * 5 · ↑20k ↓10k',
       '       ctx 62.0% · tok/s 75',
@@ -132,7 +132,7 @@ const themedGolden = [
   [
     24,
     [
-      'Agents · 1 running',
+      'Agents · ◐1',
       '  └─ ⠋ wo… · ⚠ 1 dropped',
       '       * 5',
       '       ↑20k ↓10k',
@@ -145,7 +145,7 @@ const themedGolden = [
   [
     12,
     [
-      'Agents · 1 r',
+      'Agents · ◐1',
       '  └─ ⠋ ⚠ 1 d',
       '       * 5',
       '       ↑20k',
@@ -234,38 +234,38 @@ describe('subagents v2 render parity', () => {
     const golden = [
       [
         'queued',
-        'Agents · 0 running · 1 queued',
+        'Agents · ○1',
         '○ worker · inspect · ⚠ 1 dropped · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
       [
         'stopping',
-        'Agents · 0 running · 1 stopping',
+        'Agents · ◐1',
         '■ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 12s',
       ],
       [
         'completed',
-        'Agents · 0 running · 1 completed',
+        'Agents · ✓1',
         '✓ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
       [
         'failed',
-        'Agents · 0 running · 1 failed',
+        'Agents · ✗1',
         '✗ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
       [
         'failed',
-        'Agents · 0 running · 1 failed',
+        'Agents · ✗1',
         '◷ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
         true,
       ],
       [
         'cancelled',
-        'Agents · 0 running · 1 cancelled',
+        'Agents · ■1',
         '■ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
       [
         'interrupted',
-        'Agents · 0 running · 1 interrupted',
+        'Agents · ■1',
         '■ worker · inspect · tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · elapsed 9s',
       ],
     ] as const;

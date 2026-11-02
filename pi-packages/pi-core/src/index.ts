@@ -201,6 +201,11 @@ export {
   subscribeWorkPanelRegistry,
   WORK_PANEL_VERSION,
 } from './work-panel.js';
+export type {
+  CompactWorkCountSegment,
+  CompactWorkCountsOptions,
+} from './work-panel-counts.js';
+export { formatCompactWorkCounts } from './work-panel-counts.js';
 export type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 export {
   bindWorkPanelLifecycle,

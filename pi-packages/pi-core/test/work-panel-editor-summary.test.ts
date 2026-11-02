@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'node:util';
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, expect, it, vi } from 'vitest';
+import { createRenderKit } from '../../pi-thoth-theme/src/render-kit/index.js';
 import {
   ensureWorkPanel,
   type RenderStatus,
@@ -81,6 +82,41 @@ it('summarizes visible sections in priority order with compact counts and no hin
   expect(stripVTControlCharacters(narrow[0])).toBe(
     'Agents ◐2 ✓34 ✗1 · Todos ○1 ✓53 · Background ✓4',
   );
+});
+
+it.each([
+  { mode: 'native', counts: '◐1 ○2 ✓12' },
+  { mode: 'unicode', counts: '◐1 ○2 ✓12' },
+  { mode: 'nerd', counts: '◐1 \u{f051f}2 \uf00c12' },
+  { mode: 'ascii', counts: '*1 ~2 +12' },
+] as const)('keeps Agents and Background queued glyphs in headings and editor summaries in $mode mode', async ({
+  mode,
+  counts,
+}) => {
+  const session = uiSession();
+  if (mode !== 'native') {
+    const token = registerRenderKit(createRenderKit({}, undefined, mode), {});
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  for (const [id, label] of [
+    ['agents', 'Agents'],
+    ['background', 'Background'],
+  ]) {
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(id, label),
+        summary: () => ({ running: 1, queued: 2, completed: 12 }),
+      }),
+    );
+  }
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  const full: string[] = session.render(120);
+  for (const label of ['Agents', 'Background'])
+    expect(full.find((line) => line.includes(`${label} `))).toContain(counts);
+  occupy(session);
+  expect(session.render(120)).toEqual([
+    `Agents ${counts} ${mode === 'ascii' ? '|' : '·'} Background ${counts}`,
+  ]);
 });
 
 it('uses the shared standard for real-provider numeric headings and summary counts', async () => {

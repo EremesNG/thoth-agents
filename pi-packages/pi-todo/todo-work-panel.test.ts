@@ -9,6 +9,7 @@ import {
 } from '@thoth-agents/pi-core';
 import {
   panelVisibleWidth,
+  registerEditorSlot,
   renderWorkPanelRow,
   truncatePanelText,
 } from '@thoth-agents/pi-core/panel';
@@ -57,6 +58,66 @@ function thothTheme(mode: 'truecolor' | '256color') {
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+});
+
+it.each(
+  (
+    [
+      { mode: 'native', counts: '◐1 ○2 ✓12', pending: '○' },
+      { mode: 'unicode', counts: '◐1 ○2 ✓12', pending: '○' },
+      { mode: 'nerd', counts: '◐1 \uf10c2 \uf00c12', pending: '\uf10c' },
+      { mode: 'ascii', counts: '*1 -2 +12', pending: '-' },
+    ] as const
+  ).flatMap((icons) =>
+    [false, true].map((replaced) => ({ ...icons, replaced })),
+  ),
+)('uses the pending row glyph in Todos counts ($mode, editor replaced: $replaced)', async ({
+  mode,
+  counts,
+  pending,
+  replaced,
+}) => {
+  const session = uiSession();
+  setActiveRenderSession('pending-counts');
+  cleanups.push(() => evictSession('pending-counts'));
+  replaceState('pending-counts', {
+    tasks: [
+      { id: 1, subject: 'Active', status: 'in_progress' },
+      { id: 2, subject: 'Waiting', status: 'pending' },
+      { id: 3, subject: 'Next', status: 'pending' },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: index + 4,
+        subject: `Finished ${index + 1}`,
+        status: 'completed' as const,
+      })),
+    ],
+    nextId: 16,
+  });
+  if (mode !== 'native') {
+    const token = registerRenderKit(createRenderKit({}, undefined, mode), {});
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, createTodoWorkPanelProvider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  if (replaced) {
+    const slot = registerEditorSlot(session.ctx, {
+      key: 'question',
+      replacement: () => ({ render: () => ['Question'], invalidate() {} }),
+    });
+    if (!slot) throw new Error('Editor slot unavailable');
+    cleanups.push(() => slot.dispose());
+    expect(session.render(120)).toEqual([`Todos ${counts}`]);
+  } else {
+    const rendered: string[] = session.render(120);
+    expect(rendered[0]).toContain(
+      `Todos ${mode === 'ascii' ? '|' : '·'} ${counts}`,
+    );
+    expect(rendered.find((line) => line.includes('Waiting'))).toContain(
+      `${pending} Waiting`,
+    );
+  }
 });
 
 it.each([
@@ -618,7 +679,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
   const token = registerRenderKit(kit, {});
   cleanups.push(() => withdrawRenderKit(token));
   expect(session.render()).toEqual([
-    'Todos separator +1 +1',
+    'Todos separator +1 -1',
     '  ├─ * active',
     '  └─ - waiting',
     'arrowLeft interact',

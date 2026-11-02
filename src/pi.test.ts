@@ -64,6 +64,7 @@ describe('native Pi extension', () => {
       'input',
       'before_agent_start',
       'session_start',
+      'session_tree',
     ]);
     expect(registerCommand).not.toHaveBeenCalledWith(
       'thoth-agents:models',
@@ -445,6 +446,7 @@ describe('native Pi extension', () => {
       'input',
       'before_agent_start',
       'session_start',
+      'session_tree',
     ]);
     const injectRoot = handlers.get('before_agent_start');
     const first = (await injectRoot?.({ systemPrompt: 'host prompt' })) as {
@@ -518,6 +520,7 @@ describe('native Pi extension', () => {
         'input',
         'before_agent_start',
         'session_start',
+        'session_tree',
       ]);
       expect(registerCommand).not.toHaveBeenCalled();
       expect(

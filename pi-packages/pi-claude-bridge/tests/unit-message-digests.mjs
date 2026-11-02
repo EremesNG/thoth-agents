@@ -3,7 +3,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { digestMessage, digestMessages } from "../src/message-digests.js";
+
+const narrationSignatures = readFileSync(new URL("./fixtures/sdk-streams/narration.jsonl", import.meta.url), "utf8")
+	.trim().split("\n").map(JSON.parse).filter((message) => message.type === "assistant")
+	.flatMap((message) => message.message.content).filter((block) => block.type === "thinking").map((block) => block.signature);
 
 const user = (content, extra = {}) => ({ role: "user", content, timestamp: 1, ...extra });
 const assistant = (content, extra = {}) => ({
@@ -60,6 +65,36 @@ describe("pi message digests", () => {
 		const foreign = assistant(content, { provider: "openrouter" });
 		assert.notEqual(digestMessage(own), digestMessage(foreign));
 		assert.equal(digestMessage(foreign), digestMessage(assistant([{ type: "text", text: "" }])));
+	});
+
+	it("hashes narration text exactly as the bridge-owned signed thinking it replays as", () => {
+		const text = "Progress 🛠️\nChecking the next file.";
+		const signature = narrationSignatures[0];
+		const narrated = assistant([{ type: "text", text, textSignature: signature }], { provider: "claude-bridge" });
+		const thinking = assistant([{ type: "thinking", thinking: text, thinkingSignature: signature }], { provider: "claude-bridge" });
+		assert.equal(digestMessage(narrated), digestMessage(thinking));
+	});
+
+	it("includes a narration textSignature in conversion-visible content", () => {
+		const narrated = (signature) => assistant([{ type: "text", text: "Progress", textSignature: signature }], { provider: "claude-bridge" });
+		assert.notEqual(narrationSignatures[0], narrationSignatures[1]);
+		assert.notEqual(digestMessage(narrated(narrationSignatures[0])), digestMessage(narrated(narrationSignatures[1])));
+	});
+
+	it("preserves pre-narration text digests unless the shared replay rule applies", () => {
+		// Captured before narration-aware hashing: ordinary text recordings must stay valid.
+		const original = "9453fff2ef52c52fcff75ce7b89042373875159c6c04bd753db55f4ce7be80d8";
+		for (const [provider, textSignature] of [
+			["claude-bridge", undefined],
+			["claude-bridge", ""],
+			["claude-bridge", "not a narration signature"],
+			["claude-bridge", Buffer.from([0x12, 0x0c, 0x0a, 0x0a, 0x42, 0x08, ...Buffer.from("thinking")]).toString("base64")],
+			["openrouter", narrationSignatures[0]],
+		]) {
+			assert.equal(digestMessage(assistant([{ type: "text", text: "answer", textSignature }], { provider })), original);
+		}
+		assert.equal(digestMessage(assistant([{ type: "text", text: "   ", textSignature: narrationSignatures[0] }], { provider: "claude-bridge" })),
+			"d5f68389aa4da90bf00697c8a0ec39674b72f84674f3547b13a75c22bffd7a09", "blank narration stays ordinary text");
 	});
 
 	it("distinguishes omitted assistants from conversion placeholders", () => {

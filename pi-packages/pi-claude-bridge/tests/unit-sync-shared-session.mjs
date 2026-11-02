@@ -4,9 +4,11 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, unlinkSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession, openSession } from "cc-session-io";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { QueryContext } from "../src/query-state.js";
 import { stateFor } from "./lib/session-state.mjs";
 import { compareHistory, copyRecording, importHistory, LiveRecording, validateRecording } from "../src/session-sync.js";
-import { digestMessages } from "../src/message-digests.js";
+import { digestMessage, digestMessages } from "../src/message-digests.js";
 
 const { __test } = await import("../src/index.js");
 const user = (content) => ({ role: "user", content, timestamp: 1 });
@@ -15,6 +17,11 @@ const say = (text) => assistant([{ type: "text", text }]);
 const calls = (...ids) => assistant(ids.map((id) => ({ type: "toolCall", id, name: "read", arguments: { path: id } })));
 const prefix = (recorded, count) => Object.fromEntries(Object.entries(recorded).map(([key, values]) => [key, values.slice(0, count)]));
 const result = (id) => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text: `result-${id}` }], isError: false, timestamp: 1 });
+const narrationSdk = readFileSync(new URL("./fixtures/sdk-streams/narration.jsonl", import.meta.url), "utf8")
+	.trim().split("\n").map(JSON.parse).find((message) => message.type === "assistant" && message.message.content[0]?.type === "thinking");
+const signedNarration = narrationSdk.message.content[0];
+const narration = () => assistant([{ type: "text", text: signedNarration.thinking, textSignature: signedNarration.signature }]);
+const replayedNarration = () => assistant([{ type: "thinking", thinking: signedNarration.thinking, thinkingSignature: signedNarration.signature }]);
 let root, cwd, oldClaudeDir;
 beforeEach(() => {
 	root = mkdtempSync(join(tmpdir(), "session-sync-"));
@@ -110,6 +117,78 @@ describe("digest session decisions", () => {
 		assert.equal(openSession({ sessionId: synced.sessionId, projectPath: cwd }).attachments.length, 1);
 		assert.deepEqual(notices, []);
 		assert.ok(existsSync(original.jsonlPath));
+	});
+});
+
+describe("narration session reuse and imports", () => {
+	it("plain-reuses the next turn after emitted narration with no fork, prefix rewrite, or history write", async () => {
+		const session = createSession({ projectPath: cwd, model: "sonnet" });
+		const prompt = user("continue");
+		const promptId = session.addUserMessage(prompt.content);
+		const answerId = session.addAssistantMessage([signedNarration]);
+		session.addAttachment({ type: "sentinel", value: "native records must survive" });
+		session.save();
+		const before = readFileSync(session.jsonlPath);
+		const model = { api: "claude-bridge", provider: "claude-bridge", id: "sonnet", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+		const c = new QueryContext();
+		c.recording.users([prompt], 0, promptId, true);
+		c.resetTurnState(model);
+		const stream = c.currentPiStream = createAssistantMessageEventStream();
+		const completed = { ...narrationSdk, uuid: answerId };
+		await __test.consumeQuery((async function* () { yield completed; })(), new Map(), model, () => false, c);
+		__test.finalizeCurrentStream(c);
+		const output = await stream.result();
+		assert.deepEqual(output.content, narration().content);
+		const state = { ...c.recording.recorded, ccSessionId: session.sessionId, cwd, model: "sonnet", dirtyTail: c.recording.hasGaps };
+		__test.setSharedSession("pi", state);
+		const synced = sync([prompt, output, user("next")]);
+		assert.equal(synced.created, false, "narration must not force a prefix rewrite");
+		assert.equal(synced.sessionId, session.sessionId);
+		assert.equal(synced.targetSessionId, session.sessionId);
+		assert.equal(synced.retained, true);
+		assert.equal(synced.forkAt, undefined);
+		assert.deepEqual(synced.recorded.uuids, [promptId, answerId]);
+		assert.deepEqual(synced.recorded.cuttable, [true, true]);
+		assert.deepEqual(readFileSync(session.jsonlPath), before, "plain reuse never writes history");
+	});
+
+	for (const retainedPrefix of [false, true]) it(`imports a narration suffix as signed thinking on ${retainedPrefix ? "recorded-prefix suffix" : "full-history write"}`, () => {
+		const head = [user("retained"), say("old answer")];
+		const prior = retainedPrefix ? seed([...head, user("replaced"), say("replaced answer")]) : null;
+		const before = prior && readFileSync(prior.session.jsonlPath);
+		const history = [...head, user("continue"), narration()];
+		const synced = sync([...history, user("next")]);
+		const written = openSession({ sessionId: synced.targetSessionId, projectPath: cwd });
+		const record = written.records.find((record) => Array.isArray(record.message?.content)
+			&& record.message.content.some((block) => block.type === "thinking"));
+		assert.equal(synced.retained, retainedPrefix);
+		assert.equal(synced.created, true);
+		assert.deepEqual(record.message.content, [signedNarration], "replay keeps both the original thinking text and signature");
+		assert.equal(synced.recorded.digests[3], digestMessage(replayedNarration()), "import coverage hashes the conversion-visible signed block");
+		assert.equal(synced.recorded.uuids[3], record.uuid);
+		assert.equal(synced.recorded.cuttable[3], true);
+		if (prior) {
+			assert.deepEqual(synced.recorded.uuids.slice(0, 2), prior.state.uuids.slice(0, 2));
+			assert.deepEqual(readFileSync(prior.session.jsonlPath), before, "prefix import preserves the source transcript");
+		}
+	});
+
+	it("detects lost textSignature at the narration message after a simulated model switch (expected rebuild, not reuse)", () => {
+		const history = [user("warm"), say("answer"), user("continue"), narration(), say("finished")];
+		const { session, state } = seed(history);
+		// pi-ai transformMessages strips textSignature when the provider/API/model changes.
+		// That deliberately changes replay from signed thinking to ordinary text.
+		const stripped = history.map((message) => message === history[3]
+			? { ...message, content: message.content.map(({ textSignature, ...block }) => block) } : message);
+		assert.deepEqual(compareHistory(digestMessages(stripped), state), { commonPrefix: 3, cutCount: 3, equal: false });
+		const synced = sync([...stripped, user("next")], "opus");
+		assert.notEqual(synced.targetSessionId, session.sessionId);
+		assert.equal(synced.created, true);
+		assert.equal(synced.retained, false);
+		const written = openSession({ sessionId: synced.targetSessionId, projectPath: cwd });
+		const blocks = written.records.flatMap((record) => Array.isArray(record.message?.content) ? record.message.content : []);
+		assert.ok(blocks.some((block) => block.type === "text" && block.text === signedNarration.thinking));
+		assert.equal(blocks.some((block) => block.type === "thinking"), false, "a stripped signature is not invented on replay");
 	});
 });
 

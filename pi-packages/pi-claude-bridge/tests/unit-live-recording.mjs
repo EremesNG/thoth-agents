@@ -1,11 +1,15 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { QueryContext } from "../src/query-state.js";
 import { compareHistory, LiveRecording } from "../src/session-sync.js";
 import { digestMessage, digestMessages } from "../src/message-digests.js";
+const previousDebug = process.env.CLAUDE_BRIDGE_DEBUG;
+process.env.CLAUDE_BRIDGE_DEBUG = "1";
 const { __test } = await import("../src/index.js");
+if (previousDebug === undefined) delete process.env.CLAUDE_BRIDGE_DEBUG;
+else process.env.CLAUDE_BRIDGE_DEBUG = previousDebug;
 const model = { api: "claude-bridge", provider: "claude-bridge", id: "claude-haiku-4-5", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const user = (content) => ({ role: "user", content, timestamp: 1 });
 const result = (id) => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text: id }], timestamp: 1 });
@@ -34,6 +38,81 @@ it("pins three independently streamed result records and the last completed assi
 	assert.deepEqual(c.recording.recorded.uuids.slice(2), echoes.map((m) => m.uuid));
 	assert.deepEqual(c.recording.recorded.cuttable, [true, false, false, false, true]);
 	assert.deepEqual(c.recording.recorded.digests, digestMessages([prompt, assistant, ...results]));
+});
+
+const narrationFixture = readFileSync(new URL("./fixtures/sdk-streams/narration.jsonl", import.meta.url), "utf8").trim().split("\n").map(JSON.parse);
+const narratedSdk = narrationFixture.find((message) => message.type === "assistant" && message.message.content[0]?.type === "thinking");
+const narrationStart = narrationFixture.findIndex((message) => message.event?.type === "message_start" && message.event.message.id === narratedSdk.message.id);
+const narrationStop = narrationFixture.findIndex((message, index) => index > narrationStart && message.event?.type === "message_stop");
+const narrationCycle = narrationFixture.slice(narrationStart, narrationStop + 1);
+const debugLog = () => existsSync(process.env.CLAUDE_BRIDGE_DEBUG_PATH) ? readFileSync(process.env.CLAUDE_BRIDGE_DEBUG_PATH, "utf8") : "";
+
+for (const released of [false, true]) it(`${released ? "released over-800-character thinking" : "held then reclassified narration"} with a tool call completes SDK recording coverage without a gap`, async () => {
+	const cycle = structuredClone(narrationCycle);
+	const firstDelta = cycle.findIndex((message) => message.event?.delta?.type === "thinking_delta");
+	if (released) {
+		// Keep the real signature, but force live release before it arrives.
+		const extra = "x".repeat(801);
+		cycle[firstDelta].event.delta.thinking = extra + cycle[firstDelta].event.delta.thinking;
+		cycle.find((message) => message.type === "assistant").message.content[0].thinking = extra + narratedSdk.message.content[0].thinking;
+	}
+	const completed = cycle.filter((message) => message.type === "assistant");
+	const c = new QueryContext();
+	const prompt = user("continue reading deploy logs");
+	c.recording.users([prompt], 0, "prompt", true);
+	c.resetTurnState(model);
+	const stream = c.currentPiStream = createAssistantMessageEventStream();
+	const events = [];
+	const collecting = (async () => { for await (const event of stream) events.push(event); })();
+	const logStart = debugLog().length;
+	await consume(c, cycle.slice(0, firstDelta + 1));
+	assert.equal(c.turnOutput.provider, "claude-bridge", "the SDK recording template must be bridge-owned");
+	if (released) assert.equal(c.turnOutput.content[0].type, "thinking");
+	else assert.deepEqual(c.turnOutput.content, [], "held narration is private until stop");
+	await consume(c, cycle.slice(firstDelta + 1));
+	await collecting;
+	const output = await stream.result();
+	const original = completed[0].message.content[0];
+	assert.deepEqual(output.content[0], released
+		? { type: "thinking", thinking: original.thinking, thinkingSignature: original.signature }
+		: { type: "text", text: original.thinking, textSignature: original.signature });
+	assert.equal(output.content[1].type, "toolCall");
+	assert.equal(events.some((event) => event.type === "thinking_start"), released);
+	assert.deepEqual(c.recording.recorded.digests, digestMessages([prompt, output]));
+	assert.deepEqual(c.recording.recorded.uuids, ["prompt", completed.at(-1).uuid], "all SDK blocks cover the emitted assistant at the last UUID");
+	assert.deepEqual(c.recording.recorded.cuttable, [true, false], "the tool call still needs a result");
+	assert.equal(c.recording.hasGaps, false);
+	assert.equal(c.recording.hasProgress, true);
+	assert.doesNotMatch(debugLog().slice(logStart), /recording gap:/, "the digest mismatch gap path was not taken");
+});
+
+it("fallback-emitted narration completes signed-thinking recording coverage with no streaming length cap or gap", async () => {
+	const c = new QueryContext();
+	const prompt = user("fallback prompt");
+	c.recording.users([prompt], 0, "prompt", true);
+	c.resetTurnState(model);
+	const stream = c.currentPiStream = createAssistantMessageEventStream();
+	const original = narratedSdk.message.content[0];
+	const thinking = original.thinking.repeat(4);
+	assert.ok(thinking.length > 800);
+	const completed = {
+		...narratedSdk, uuid: "fallback-narration", message: { ...narratedSdk.message, id: "fallback-api", content: [
+			{ type: "thinking", thinking, signature: original.signature }, { type: "text", text: "Done." },
+		] },
+	};
+	const logStart = debugLog().length;
+	await consume(c, [completed]);
+	__test.finalizeCurrentStream(c);
+	const output = await stream.result();
+	assert.deepEqual(output.content, [
+		{ type: "text", text: thinking, textSignature: original.signature }, { type: "text", text: "Done." },
+	]);
+	assert.deepEqual(c.recording.recorded.digests, digestMessages([prompt, output]));
+	assert.deepEqual(c.recording.recorded.uuids, ["prompt", completed.uuid]);
+	assert.deepEqual(c.recording.recorded.cuttable, [true, true]);
+	assert.equal(c.recording.hasGaps, false);
+	assert.equal(c.recording.hasProgress, true);
+	assert.doesNotMatch(debugLog().slice(logStart), /recording gap:/, "the digest mismatch gap path was not taken");
 });
 
 it("late completed assistant echoes cover an already emitted tool step without mutating its message", async () => {

@@ -4,9 +4,19 @@
 import type { Message as PiMessage } from "@earendil-works/pi-ai";
 import type { Message as SessionMessage } from "cc-session-io";
 import { pascalCase } from "change-case";
+import { isNarrationBlock } from "./narration.js";
 import { MCP_TOOL_PREFIX } from "./skills.js";
 
 export const PROVIDER_ID = "claude-bridge";
+
+/** Shared replay/digest rule: only bridge-owned, nonblank narration text is signed thinking. */
+export function isNarrationReplayBlock(
+	message: { provider?: string },
+	block: { type: string; text?: string; textSignature?: string },
+): boolean {
+	return message.provider === PROVIDER_ID && block.type === "text"
+		&& isNarrationBlock({ thinking: block.text, signature: block.textSignature });
+}
 
 // Pi tool names under Claude Code's builtin names. Only ever correct on the
 // AskClaude path, where CC runs its own tools — see mapPiToolNameToSdk.
@@ -130,7 +140,13 @@ export function convertPiMessages(
 			const blocks = [];
 			for (const block of content) {
 				if (block.type === "text" && block.text) {
-					blocks.push({ type: "text", text: block.text });
+					// Port of upstream PR #212: keep the original text/signature on replay;
+					// the API requires its signed thinking blocks returned verbatim.
+					if (isNarrationReplayBlock(msg, block)) {
+						blocks.push({ type: "thinking", thinking: block.text, signature: block.textSignature });
+					} else {
+						blocks.push({ type: "text", text: block.text });
+					}
 				} else if (block.type === "thinking") {
 					// Only replay thinking Claude Code itself produced. A signature minted
 					// by any other provider — including pi's own Anthropic provider — is

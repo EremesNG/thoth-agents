@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText } from "./convert.js";
+import { NARRATION_HOLD_CHARS, isNarrationBlock } from "./narration.js";
 import { QueryProcess } from "./query-process.js";
 import { readTranscript, resolveRecordingCut, savePrefixSession } from "./session-transcript.js";
 import { debugLogPath, diagLogPath } from "./log-paths.js";
@@ -1253,10 +1254,19 @@ function parsePartialJson(input: string, fallback: Record<string, unknown>): Rec
 // Completed SDK echoes are recorded even while no UI stream is attached.
 // Each fresh query owns a separate context, including during discard/exit.
 
+/** Port of upstream PR #212, with a private hold: pi shares output.content on redraw,
+ * so even an unannounced block must stay outside it until classified or released.
+ * SDK content blocks arrive sequentially; only one thinking block can be open.
+ * Keying by stream, and checking output identity, isolates aborts and turn resets. */
+type HeldThinkingBlock = { type: "thinking"; thinking: string; thinkingSignature: string; index?: number };
+const heldThinking = new WeakMap<object, { output: AssistantMessage; block: HeldThinkingBlock }>();
 const completedStreams = new WeakSet<object>();
 
 function markStreamComplete(stream: AssistantMessageEventStream | null): void {
-	if (stream) completedStreams.add(stream as object);
+	if (stream) {
+		heldThinking.delete(stream);
+		completedStreams.add(stream as object);
+	}
 }
 
 function claimCurrentPiStream(stream: AssistantMessageEventStream, label: string, c: QueryContext, options: SimpleStreamOptions | undefined): void {
@@ -1358,6 +1368,39 @@ function finalizeCurrentStream(c: QueryContext, stopReason?: string): void {
 	c.currentPiStream = null;
 }
 
+function heldThinkingBlock(c: QueryContext): HeldThinkingBlock | undefined {
+	if (!c.currentPiStream) return undefined;
+	const held = heldThinking.get(c.currentPiStream);
+	if (held?.output === c.turnOutput) return held.block;
+	heldThinking.delete(c.currentPiStream);
+	return undefined;
+}
+
+/** Insert a held block only when pi is allowed to see it, sending the complete buffer. */
+function releaseHeldThinking(c: QueryContext, block: HeldThinkingBlock): number {
+	heldThinking.delete(c.currentPiStream!);
+	const index = c.turnBlocks.push(block) - 1;
+	c.currentPiStream!.push({ type: "thinking_start", contentIndex: index, partial: c.turnOutput! });
+	if (block.thinking) c.currentPiStream!.push({ type: "thinking_delta", contentIndex: index, delta: block.thinking, partial: c.turnOutput! });
+	return index;
+}
+
+/** Classification happens before emission/finalization, never by rewriting pi's history. */
+function settleHeldThinking(c: QueryContext, block: HeldThinkingBlock): void {
+	delete block.index;
+	if (isNarrationBlock({ thinking: block.thinking, signature: block.thinkingSignature })) {
+		heldThinking.delete(c.currentPiStream!);
+		const text = block.thinking;
+		const index = c.turnBlocks.push({ type: "text", text, textSignature: block.thinkingSignature }) - 1;
+		c.currentPiStream!.push({ type: "text_start", contentIndex: index, partial: c.turnOutput! });
+		c.currentPiStream!.push({ type: "text_delta", contentIndex: index, delta: text, partial: c.turnOutput! });
+		c.currentPiStream!.push({ type: "text_end", contentIndex: index, content: text, partial: c.turnOutput! });
+	} else {
+		const index = releaseHeldThinking(c, block);
+		c.currentPiStream!.push({ type: "thinking_end", contentIndex: index, content: block.thinking, partial: c.turnOutput! });
+	}
+}
+
 /** Maps Anthropic stream events to pi stream events (text, thinking, toolcall).
  *  On message_stop with tool_use: ends currentPiStream so pi can execute the tool. */
 function processStreamEvent(
@@ -1389,8 +1432,10 @@ function processStreamEvent(
 			c.turnBlocks.push({ type: "text", text: "", index: event.index });
 			c.currentPiStream!.push({ type: "text_start", contentIndex: c.turnBlocks.length - 1, partial: c.turnOutput });
 		} else if (event.content_block?.type === "thinking") {
-			c.turnBlocks.push({ type: "thinking", thinking: "", thinkingSignature: "", index: event.index });
-			c.currentPiStream!.push({ type: "thinking_start", contentIndex: c.turnBlocks.length - 1, partial: c.turnOutput });
+			heldThinking.set(c.currentPiStream, {
+				output: c.turnOutput,
+				block: { type: "thinking", thinking: "", thinkingSignature: "", index: event.index },
+			});
 		} else if (event.content_block?.type === "tool_use") {
 			const piName = piToolNameFor(event.content_block.name, customToolNameToPi);
 			if (!piName) {
@@ -1412,15 +1457,20 @@ function processStreamEvent(
 	}
 
 	if (event?.type === "content_block_delta") {
+		const held = heldThinkingBlock(c);
 		const index = c.turnBlocks.findIndex((b: any) => b.index === event.index);
-		const block = c.turnBlocks[index];
+		const block = held?.index === event.index ? held : c.turnBlocks[index];
 		if (!block) return;
 		if (event.delta?.type === "text_delta" && block.type === "text") {
 			block.text += event.delta.text;
 			c.currentPiStream!.push({ type: "text_delta", contentIndex: index, delta: event.delta.text, partial: c.turnOutput });
 		} else if (event.delta?.type === "thinking_delta" && block.type === "thinking") {
 			block.thinking += event.delta.thinking;
-			c.currentPiStream!.push({ type: "thinking_delta", contentIndex: index, delta: event.delta.thinking, partial: c.turnOutput });
+			if (block !== held) {
+				c.currentPiStream!.push({ type: "thinking_delta", contentIndex: index, delta: event.delta.thinking, partial: c.turnOutput });
+			} else if (block.thinking.length > NARRATION_HOLD_CHARS) {
+				releaseHeldThinking(c, block);
+			}
 		} else if (event.delta?.type === "input_json_delta" && block.type === "toolCall") {
 			block.partialJson += event.delta.partial_json;
 			block.arguments = parsePartialJson(block.partialJson, block.arguments);
@@ -1434,6 +1484,11 @@ function processStreamEvent(
 	}
 
 	if (event?.type === "content_block_stop") {
+		const held = heldThinkingBlock(c);
+		if (held?.index === event.index) {
+			settleHeldThinking(c, held);
+			return;
+		}
 		const index = c.turnBlocks.findIndex((b: any) => b.index === event.index);
 		const block = c.turnBlocks[index];
 		if (!block) return;
@@ -1500,6 +1555,7 @@ function processStreamEvent(
  *  finished tool call left the resume is more of this same turn, and a turn ended
  *  here would leave the real call with no stream to arrive on. */
 function dropUnfinishedStreamBlocks(c: QueryContext, why: string): void {
+	if (c.currentPiStream) heldThinking.delete(c.currentPiStream);
 	const dropped: string[] = [];
 	for (let i = c.turnBlocks.length - 1; i >= c.turnStreamBlockStart; i--) {
 		// `index` is deleted at content_block_stop, so it marks a block that never closed.
@@ -1522,6 +1578,7 @@ function dropUnfinishedStreamBlocks(c: QueryContext, why: string): void {
  *  pi-agent-core's experimental harness frame encoder keys blocks by contentIndex and
  *  rejects a repeated start, so it would need a change there to drive this provider. */
 function dropAbandonedStreamBlocks(c: QueryContext, why: string): void {
+	if (c.currentPiStream) heldThinking.delete(c.currentPiStream);
 	const dropped = c.turnBlocks.splice(c.turnStreamBlockStart);
 	c.turnAssistantIds = c.turnAssistantIds.filter((id) => id !== c.turnStreamMessageId);
 	debug(`dropAbandonedStreamBlocks: ${why}; dropped ${dropped.length} blocks from ${c.turnStreamMessageId} types=${dropped.map((b: any) => b.type).join(",")}`);
@@ -1584,13 +1641,16 @@ function processAssistantMessage(message: SDKMessage, model: Model<any>, customT
 	}
 	debug(`processAssistantMessage fallback: ${assistantMsg.content.length} blocks, types=${assistantMsg.content.map((b: any) => b.type).join(",")}`);
 	for (const block of assistantMsg.content) {
-		if (block.type === "text" && block.text) {
+		// Completed narration has no hold/length limit; keep every fallback block.
+		const narration = block.type === "thinking" && isNarrationBlock(block);
+		if ((block.type === "text" && block.text) || narration) {
+			const text: string = narration ? block.thinking : block.text;
 			ensureTurnStarted(c);
-			c.turnBlocks.push({ type: "text", text: block.text });
+			c.turnBlocks.push(narration ? { type: "text", text, textSignature: block.signature } : { type: "text", text });
 			const idx = c.turnBlocks.length - 1;
 			c.currentPiStream?.push({ type: "text_start", contentIndex: idx, partial: c.turnOutput });
-			c.currentPiStream?.push({ type: "text_delta", contentIndex: idx, delta: block.text, partial: c.turnOutput });
-			c.currentPiStream?.push({ type: "text_end", contentIndex: idx, content: block.text, partial: c.turnOutput });
+			c.currentPiStream?.push({ type: "text_delta", contentIndex: idx, delta: text, partial: c.turnOutput });
+			c.currentPiStream?.push({ type: "text_end", contentIndex: idx, content: text, partial: c.turnOutput });
 		} else if (block.type === "thinking") {
 			ensureTurnStarted(c);
 			c.turnBlocks.push({ type: "thinking", thinking: block.thinking ?? "", thinkingSignature: block.signature ?? "" });

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { recordSdkTurn } from "./lib/recorded-sdk-turn.mjs";
 import { AppendInstructions } from "../src/append-instructions.js";
 import { segment } from "../src/append-blocks.js";
 import { buildSystemPrompt, buildSystemPromptSections } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
@@ -35,7 +36,7 @@ const submitInput = (sessionId, prompt = "test prompt") => ({
 });
 const signal = new AbortController().signal;
 
-async function turn(append, { piSessionId = "parent", script = {}, promptOptions, tools = [] } = {}) {
+async function turn(append, { piSessionId = "parent", script = {}, promptOptions, tools = [], model = provider.models[0] } = {}) {
 	const systemPromptOptions = { appendSystemPrompt: append, ...promptOptions };
 	const systemPrompt = promptOptions
 		? buildSystemPrompt({ cwd: "/append-sections", selectedTools: [], ...systemPromptOptions })
@@ -47,7 +48,7 @@ async function turn(append, { piSessionId = "parent", script = {}, promptOptions
 	histories.set(piSessionId, messages);
 	nextScript = script;
 	const result = await provider
-		.streamSimple(provider.models[0], { systemPrompt, messages, tools }, { sessionId: piSessionId })
+		.streamSimple(model, { systemPrompt, messages, tools }, { sessionId: piSessionId })
 		.result();
 	messages.push(result);
 	// .result() resolves before the bridge's finally removes the query context.
@@ -64,7 +65,7 @@ beforeEach(() => {
 	const recordedConversations = new Map();
 	__test.setQuery(({ prompt, options }) => {
 		const script = nextScript;
-		const sessionId = script.sessionId ?? options.resume ?? randomUUID();
+		const sessionId = options.sessionId ?? options.resume;
 		const call = { options, sessionId, outputs: [], submitted: [] };
 		calls.push(call);
 		if (script.registrationError && options.hooks) throw new Error("UserPromptSubmit hook registration failed");
@@ -73,6 +74,8 @@ beforeEach(() => {
 			assert.equal(initial.done, false);
 			call.submitted.push(structuredClone(initial.value));
 			yield { type: "system", subtype: "init", session_id: sessionId };
+			const rewrite = () => handlers.get("session_compact")({}, { sessionManager: { getSessionId: () => "parent" } });
+			if (script.rewriteBeforeHooks) rewrite();
 			const hooks = options.hooks?.UserPromptSubmit?.flatMap((matcher) => matcher.hooks) ?? [];
 			call.hook = hooks[0];
 			if (hooks.length && !script.skip) {
@@ -84,12 +87,15 @@ beforeEach(() => {
 							},
 						}
 					: { signal: hookSignal };
-				for (const hook of hooks.slice(0, script.deliverParts ?? hooks.length))
+				for (const hook of (script.reverseParts ? [...hooks].reverse() : hooks).slice(0, script.deliverParts ?? hooks.length))
 					call.outputs.push(await hook(submitInput(sessionId), undefined, hookOptions));
 				if (script.steer)
 					for (const hook of hooks)
 						call.outputs.push(await hook(submitInput(sessionId, "steering prompt"), undefined, { signal }));
 			}
+			const recorded = recordSdkTurn(options, initial.value, "OK", script.omitContextRecord ? [] : call.outputs.flatMap((output) => output.hookSpecificOutput?.additionalContext ?? []));
+			yield recorded.replay;
+			if (script.rewriteBeforeResult) rewrite();
 			if (script.captureRequest) {
 				const recorded = (options.resume && recordedConversations.get(options.resume)) ?? {
 					system: options.systemPrompt.append,
@@ -112,6 +118,7 @@ beforeEach(() => {
 					session_id: sessionId,
 					compact_metadata: { trigger: "manual", pre_tokens: 100 },
 				};
+			yield recorded.assistant;
 			yield { type: "result", subtype: "success", is_error: false, result: "OK" };
 		})();
 		gen.interrupt = async () => {};
@@ -146,7 +153,11 @@ function fakeClaudeProcess(
 	let acceptedInput = false;
 	let callbackIds = [];
 	let delivered = 0;
+	let initial;
+	const returnedContexts = [];
 	const complete = () => {
+		const recorded = recordSdkTurn(options, initial, "OK", returnedContexts);
+		send(recorded.assistant);
 		send({ type: "result", subtype: "success", is_error: false, result: "OK" });
 	};
 	const stdin = new Writable({
@@ -181,7 +192,9 @@ function fakeClaudeProcess(
 					// A hook-bearing process accepts input but then rejects initialization;
 					// a hookless process completes the turn normally.
 					if (!options.hooks || acceptHooks) {
+						initial = message;
 						send({ type: "system", subtype: "init", session_id: sessionId });
+						send({ ...message, type: "user", isReplay: true, parent_tool_use_id: null, session_id: sessionId });
 						if (!callbackIds.length) complete();
 						for (const [index, callbackId] of callbackIds.entries())
 							send({
@@ -192,7 +205,9 @@ function fakeClaudeProcess(
 					}
 				} else if (message.type === "control_response" && message.response.request_id.startsWith("part-")) {
 					assert.equal(message.response.subtype, "success");
-					outputs[Number(message.response.request_id.slice(5))] = message.response.response;
+					const index = Number(message.response.request_id.slice(5));
+					outputs[index] = message.response.response;
+					returnedContexts[index] = message.response.response.hookSpecificOutput.additionalContext;
 					if (++delivered === callbackIds.length) complete();
 				}
 			}
@@ -221,7 +236,7 @@ function fakeClaudeProcess(
 function useEagerSdk({ hideInitializationResult = false, ...transport } = {}) {
 	const submitted = [];
 	__test.setQuery(({ prompt, options }) => {
-		const sessionId = options.resume ?? randomUUID();
+		const sessionId = options.sessionId ?? options.resume;
 		calls.push({ options, sessionId, outputs: [] });
 		const query = sdkQuery({
 			prompt,
@@ -308,6 +323,127 @@ describe("multipart appended instructions", () => {
 		assert.ok(deliveredPayload(complete.outputs).includes(projectedAppend("A")));
 		assert.equal((await turn(projectedAppend("A"))).options.hooks, undefined);
 	});
+});
+
+describe("append state follows recorded cuts", () => {
+	for (const restart of [false, true]) {
+		for (const rewrite of [false, true]) {
+			it(`retains a refresh kept by ${rewrite ? "prefix rewrite" : "fork"}${restart ? " after restart" : ""}`, async () => {
+				await turn(projectedAppend("A"));
+				await turn(projectedAppend("B"));
+				await turn(projectedAppend("C"));
+				histories.set("parent", histories.get("parent").slice(0, 4));
+				if (rewrite) histories.get("parent").push(
+					{ role: "user", content: "replacement tail", timestamp: 0 },
+					{ role: "assistant", content: [{ type: "text", text: "replacement answer" }], timestamp: 0 },
+				);
+				if (restart) __test.forgetSessionMemory();
+				const next = await turn(projectedAppend("B"));
+				assert.equal(Boolean(next.options.forkSession), !rewrite);
+				assert.equal(context(next), undefined, "B is still carried by the kept records, unlike C");
+				assert.equal(next.options.hooks, undefined);
+			});
+
+			it(`re-delivers a refresh cut out by ${rewrite ? "prefix rewrite" : "fork"}${restart ? " after restart" : ""}`, async () => {
+				await turn(projectedAppend("A"));
+				await turn(projectedAppend("B"));
+				histories.set("parent", histories.get("parent").slice(0, 2));
+				if (rewrite) histories.get("parent").push(
+					{ role: "user", content: "replacement tail", timestamp: 0 },
+					{ role: "assistant", content: [{ type: "text", text: "replacement answer" }], timestamp: 0 },
+				);
+				if (restart) __test.forgetSessionMemory();
+				const next = await turn(projectedAppend("B"));
+				assert.equal(Boolean(next.options.forkSession), !rewrite);
+				assert.ok(context(next)?.includes(taskBlock("B")), "the next request must deliver the dropped refresh again");
+				assert.equal((await turn(projectedAppend("B"))).options.hooks, undefined);
+			});
+		}
+		for (const evidence of ["missing", "invalid", "inconsistent", "untracked"]) {
+			it(`fully refreshes ${evidence} retained evidence${restart ? " after restart" : ""}`, async () => {
+				await turn(projectedAppend("A"));
+				await turn(projectedAppend("B"));
+				const state = __test.getSharedSession("parent");
+				const appendState = evidence === "untracked" ? { base: projectedAppend("A"), refreshes: [] }
+					: evidence === "invalid" ? { base: 123, refreshes: [] }
+					: evidence === "inconsistent" ? { base: projectedAppend("A"), refreshes: [{ positions: ["not-in-the-transcript"], value: projectedAppend("B") }] } : undefined;
+				state.appendState = appendState;
+				const hash = createHash("sha256").update("parent", "utf16le").digest("hex");
+				const path = join(process.env.PI_CODING_AGENT_DIR, "claude-bridge", "sessions", `s-${hash}.json`);
+				const stored = JSON.parse(readFileSync(path, "utf8"));
+				stored.appendState = appendState;
+				writeFileSync(path, JSON.stringify(stored));
+				if (restart) __test.forgetSessionMemory();
+				const next = await turn(projectedAppend("B"));
+				assert.match(deliveredPayload(next.outputs), /full current appended instructions/);
+				assert.ok(deliveredPayload(next.outputs).includes(projectedAppend("B")));
+				assert.equal((await turn(projectedAppend("B"))).options.hooks, undefined);
+			});
+		}
+
+		it(`keeps delivered evidence when Pi marks an in-flight recording stale${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			await turn(projectedAppend("B"), { script: { rewriteBeforeResult: true } });
+			if (restart) __test.forgetSessionMemory();
+			assert.equal((await turn(projectedAppend("B"))).options.hooks, undefined);
+		});
+
+		it(`rejects callbacks after Pi marks their query stale${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			const stale = await turn(projectedAppend("B"), { script: { rewriteBeforeHooks: true } });
+			assert.deepEqual(stale.outputs, [{}]);
+			if (restart) __test.forgetSessionMemory();
+			assert.ok(deliveredPayload((await turn(projectedAppend("B"))).outputs).includes(taskBlock("B")));
+		});
+
+		it(`uses the resolved record cut, not the carrying turn's Pi slot${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			await turn(projectedAppend("B"));
+			// Retain B's user slot but replace its assistant. resolveCut keeps
+			// the hook attachment after that user even though its turn is cut.
+			histories.set("parent", [...histories.get("parent").slice(0, 3),
+				{ role: "assistant", content: [{ type: "text", text: "rewritten assistant" }], timestamp: 0 }]);
+			if (restart) __test.forgetSessionMemory();
+			assert.equal((await turn(projectedAppend("B"))).options.hooks, undefined);
+		});
+
+		it(`does not mistake hook returns for recorded delivery${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			await turn(projectedAppend("B"), { script: { omitContextRecord: true } });
+			if (restart) __test.forgetSessionMemory();
+			assert.match(deliveredPayload((await turn(projectedAppend("B"))).outputs), /full current appended instructions/);
+		});
+
+		it(`persists completed out-of-order multipart context${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			const append = projectedAppend("B".repeat(25_000));
+			await turn(append, { script: { reverseParts: true } });
+			if (restart) __test.forgetSessionMemory();
+			assert.equal((await turn(append)).options.hooks, undefined);
+		});
+
+		it(`preserves partial-delivery uncertainty${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			await turn(projectedAppend("B".repeat(25_000)), { script: { deliverParts: 1 } });
+			if (restart) __test.forgetSessionMemory();
+			assert.match(deliveredPayload((await turn(projectedAppend("A"))).outputs), /full current appended instructions/);
+		});
+
+		it(`starts a new system-prompt epoch on model change${restart ? " after restart" : ""}`, async () => {
+			await turn(projectedAppend("A"));
+			await turn(projectedAppend("B"));
+			if (restart) __test.forgetSessionMemory();
+			const model = provider.models[1];
+			const rebuilt = await turn(projectedAppend("C"), { model });
+			assert.equal(rebuilt.options.hooks, undefined);
+			assert.equal(rebuilt.options.systemPrompt.append, projectedAppend("C"));
+			assert.equal(rebuilt.options.forkSession, undefined);
+			if (restart) __test.forgetSessionMemory();
+			const changed = await turn(projectedAppend("A"), { model });
+			assert.ok(context(changed)?.includes(taskBlock("A")), "new epoch C survives restart and changes via context");
+			assert.doesNotMatch(context(changed), /Static project guidance|full current appended instructions/);
+		});
+	}
 });
 
 describe("appended instructions on resumed queries", () => {
@@ -562,18 +698,17 @@ describe("appended instructions on resumed queries", () => {
 		},
 	);
 
-	it("starts a new epoch when a new CC session id is captured", async () => {
+	it("starts a new epoch for an independently launched CC session", async () => {
 		await turn("Value=A");
-		const replacementId = randomUUID();
-		const replacement = await turn("Value=B", { script: { sessionId: replacementId } });
-		assert.deepEqual(replacement.outputs, [{}], "a hook for the old session cannot change the new epoch");
-		const next = await turn("Value=B");
-		assert.equal(next.options.resume, replacementId);
+		const replacement = await turn("Value=B", { piSessionId: "replacement" });
+		assert.equal(replacement.options.hooks, undefined);
+		const next = await turn("Value=B", { piSessionId: "replacement" });
+		assert.equal(next.options.resume, replacement.sessionId);
 		assert.equal(next.options.hooks, undefined);
-		assert.match(context(await turn("Value=A")), /Value=A/);
+		assert.match(context(await turn("Value=A", { piSessionId: "replacement" })), /Value=A/);
 	});
 
-	it("starts a fresh epoch on transcript rebuild even with the same CC UUID", async () => {
+	it("starts a fresh epoch when Pi history must be imported into a new CC session", async () => {
 		const first = await turn("Value=A");
 		histories
 			.get("parent")
@@ -581,14 +716,15 @@ describe("appended instructions on resumed queries", () => {
 				{ role: "user", content: "other provider's turn", timestamp: 0 },
 				{ role: "assistant", content: [{ type: "text", text: "other answer" }], timestamp: 0 },
 			);
+		histories.get("parent")[0] = { role: "user", content: "rewritten first prompt", timestamp: 0 };
 		const rebuilt = await turn("Value=B");
-		assert.equal(rebuilt.options.resume, first.sessionId, "this is an in-place rebuild, not a new UUID");
+		assert.notEqual(rebuilt.options.resume, first.sessionId, "imports always mint a new UUID");
 		assert.equal(rebuilt.options.hooks, undefined, "the rebuilt epoch records B in its first system prompt");
 		assert.equal((await turn("Value=B")).options.hooks, undefined);
 		assert.match(context(await turn("Value=A")), /Value=A/);
 	});
 
-	it("resets only the compacting Pi session's epoch", async () => {
+	it("refreshes the compacting Pi session's retained epoch without resetting the parent", async () => {
 		const parent = await turn("Value=A");
 		await turn("Child=A", { piSessionId: "child" });
 		handlers.get("session_compact")(
@@ -602,7 +738,7 @@ describe("appended instructions on resumed queries", () => {
 		);
 		const compacted = await turn("Value=C");
 		assert.equal(compacted.options.resume, parent.sessionId);
-		assert.equal(compacted.options.hooks, undefined);
+		assert.match(context(compacted), /Value=C/, "retained records still carry the old system prompt after Pi compaction");
 		assert.equal((await turn("Value=C")).options.hooks, undefined);
 		assert.match(context(await turn("Value=B")), /Value=B/);
 	});
@@ -614,7 +750,7 @@ describe("appended instructions on resumed queries", () => {
 		assert.match(context(await turn("Value=A")), /Value=A/);
 	});
 
-	it("keeps child and shorter-context ephemeral queries from changing the parent's effective append", async () => {
+	it("keeps child append state isolated and rebuilds a shorter same-session history", async () => {
 		await turn("Value=A");
 		const parent = await turn("Value=B");
 		await turn("Child=A", { piSessionId: "child" });
@@ -626,17 +762,17 @@ describe("appended instructions on resumed queries", () => {
 		assert.equal(ephemeral.options.hooks, undefined);
 		histories.set("parent", parentHistory);
 		const continued = await turn("Value=B");
-		assert.equal(continued.options.resume, parent.sessionId);
-		assert.equal(continued.options.hooks, undefined);
+		assert.notEqual(continued.options.resume, parent.sessionId, "shorter same-session history replaces its recording");
+		assert.match(context(continued), /Value=B/, "a retained C prefix must be refreshed back to B");
 		assert.match(context(await turn("Value=A")), /Value=A/);
 	});
 
-	it("does not let an undelivered callback from an old epoch commit after an in-place rebuild", async () => {
+	it("does not let an undelivered callback from an old epoch commit after the source epoch is invalidated", async () => {
 		await turn("Value=A");
 		const pending = await turn("Value=B", { script: { skip: true } });
 		__test.markRebuildForSession("parent", "test rebuild");
 		const rebuilt = await turn("Value=C");
-		assert.equal(rebuilt.options.hooks, undefined);
+		assert.match(context(rebuilt), /Value=C/, "a retained prefix refreshes instead of assuming a fresh epoch");
 		assert.deepEqual(await pending.hook(submitInput(pending.sessionId), undefined, { signal }), {});
 		assert.equal((await turn("Value=C")).options.hooks, undefined);
 	});

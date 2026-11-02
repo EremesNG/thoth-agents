@@ -6,14 +6,22 @@
 //
 // Extracted from index.ts so tests can import without activating the extension.
 
-import type { AssistantMessage, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { McpResult } from "./extract-tool-results.js";
 import type { PromptStream } from "./prompt-stream.js";
+import { LiveRecording } from "./session-sync.js";
 import type { RateLimitInfo } from "./rate-limit.js";
 
 export interface PendingToolCall {
 	toolName: string;
 	resolve: (result: McpResult) => void;
+}
+
+export interface AssistantStep {
+	content: AssistantMessage["content"];
+	uuid?: string;
+	seen: Set<string>;
+	emitted?: { digest: string; index: number; template: AssistantMessage; ids: string[] };
 }
 
 export class QueryContext {
@@ -24,9 +32,17 @@ export class QueryContext {
 	currentOnResponse: SimpleStreamOptions["onResponse"] | undefined;
 	/** Coalesced usage waiting for the next open stream; pi-core receives every event separately. */
 	heldRateLimit: RateLimitInfo | undefined;
-	latestCursor = 0;
-	/** Latest model-visible Pi history, including delivered tool results, before the final assistant. */
-	checkpointMessages: Context["messages"] = [];
+	recording = new LiveRecording();
+	/** Complete SDK blocks, keyed by API message id, survive resetTurnState and
+	 * late echoes after the tool-call stream has ended. */
+	assistantSteps = new Map<string, AssistantStep>();
+	lastAssistantMessageId: string | undefined;
+	turnAssistantIds: string[] = [];
+	/** Synchronous progress capture before killing/discarding this query. */
+	commitRecording: ((dirty: boolean) => void) | null = null;
+	stopProcess: (() => void) | null = null;
+	discarded = false;
+	sawResult = false;
 	pendingToolCalls = new Map<string, PendingToolCall>();
 	pendingResults = new Map<string, McpResult>();
 	/** Pi names whose advertised Claude schema nests a root union under input.
@@ -38,6 +54,8 @@ export class QueryContext {
 	turnToolCallIds: string[] = [];
 	/** Streaming-input handle for the active query — how steers reach CC mid-turn. */
 	promptStream: PromptStream | null = null;
+	/** Steers written or awaiting a write, not yet replayed as incorporated into a turn. */
+	pendingSteerUuids = new Set<string>();
 	/** Binds a later run's abort signal to this query. Set by the run that opened it;
 	 *  a run that continues it from a tool result (e.g. after pi terminated a tool
 	 *  batch and ended the opening run) has no other way to stop it. */
@@ -55,6 +73,9 @@ export class QueryContext {
 	 *  supply an id.
 	 */
 	piSessionId: string | null = null;
+	/** The SDK query's id in the cache trace (src/cache-trace.ts); undefined when
+	 *  tracing is off. Routes a continuation's records to the query it feeds. */
+	traceQueryId: string | undefined;
 	/** pi rewrote the history this query was built from (session_compact,
 	 *  session_tree in its own pi session). Set by markRebuildForSession, consumed
 	 *  by the tool-result delivery that discards the query. Not session-wide state:
@@ -62,13 +83,11 @@ export class QueryContext {
 	 *  the way a module flag does.
 	 */
 	historyStale = false;
-	/** A steer never reached CC. A first query has no session mirror yet, so
-	 *  completion must carry this into the mirror it creates. */
-	missedSteer = false;
 
 	// Per-turn (reset together)
 	turnOutput: AssistantMessage | null = null;
 	turnStarted = false;
+	turnEmissionRecorded = false;
 	turnSawStreamEvent = false;
 	turnSawToolCall = false;
 	/** API message id from the last message_start, and whether its message_stop has
@@ -78,6 +97,9 @@ export class QueryContext {
 	turnStreamOpen = false;
 	/** turnBlocks length at that message_start: where an abandoned attempt's blocks begin. */
 	turnStreamBlockStart = 0;
+	/** API message id of the non-streaming fallback being delivered from `assistant`
+	 *  messages. The SDK hands it over one block per message, all under this id. */
+	turnFallbackMessageId: string | undefined;
 
 	get turnBlocks(): Array<any> {
 		if (!this.turnOutput) throw new Error("turnBlocks accessed before resetTurnState");
@@ -103,24 +125,18 @@ export class QueryContext {
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 			stopReason: "stop", timestamp: Date.now(),
 		};
+		this.lastAssistantMessageId = undefined;
+		this.turnAssistantIds = [];
 		this.turnStarted = false;
+		this.turnEmissionRecorded = false;
 		this.turnSawStreamEvent = false;
 		this.turnSawToolCall = false;
 		this.turnStreamMessageId = undefined;
 		this.turnStreamOpen = false;
 		this.turnStreamBlockStart = 0;
+		this.turnFallbackMessageId = undefined;
 		// turnToolCallIds is NOT reset — it persists across tool-result delivery
 		// callbacks within the same assistant message so results can be routed to
 		// this query while its handlers are still pending.
 	}
-}
-
-let _ctx = new QueryContext();
-
-export function ctx(): QueryContext { return _ctx; }
-
-// Test-only: replace the module-level context so test files start clean.
-// Not called from production.
-export function resetCtx(): void {
-	_ctx = new QueryContext();
 }

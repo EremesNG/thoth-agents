@@ -4,7 +4,7 @@
 
 Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Originally based on [claude-agent-sdk-pi](https://github.com/prateekmedia/claude-agent-sdk-pi) by Prateek Sunal.
 
-This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced through upstream `df964a9` (0.9.3 plus unreleased fixes), from the previous `9dafd03` base imported in `9fdcfdb`; the local package version is independent.
+This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced through upstream `0b41f78` (0.9.3 plus unreleased fixes), from the previous `df964a9` base; the local package version is independent.
 
 1. **Provider** — Use Opus/Sonnet/Haiku as models in pi, with all tool calls flowing through pi's TUI
 2. **AskClaude tool** — Delegate tasks or questions to Claude Code when using another provider
@@ -19,51 +19,66 @@ This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](htt
 
 ## Install
 
-```
-pi install npm:@thoth-agents/pi-claude-bridge
-```
+1. Install the extension:
+   ```
+   pi install npm:@thoth-agents/pi-claude-bridge
+   ```
+2. Log in to Claude Code with your Claude subscription: run `claude` and type `/login`. The bridge uses Claude Code's login, not pi's `/login`.
+3. In pi, pick a `claude-bridge/...` model with `/model`, not an `anthropic/...` model.
 
 Install this bridge manually; the Thoth installer does not manage it.
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
-dependencies are pinned to `1.4.0` in the root workspace lockfile.
+Requires Pi `>=0.99.0` and Node `>=22.19.0`; use Pi `>=1.2.0` for all models.
+Development Pi SDK/TUI dependencies are pinned to `1.4.0` in the root workspace lockfile.
 
 ## Provider
 
 Use `/model` to select any Claude model in pi-ai's catalog, e.g. `claude-bridge/claude-fable-5-1`, `claude-bridge/claude-opus-5`, or `claude-bridge/claude-haiku-4-5`.
 
-Behind the scenes, pi's tools are bridged to Claude Code but everything works like normal in pi. Bash commands get Claude Code's 120-second default timeout since pi's bash has none. Skills are forwarded to Claude Code's system prompt, and steering mid-turn reaches Claude at the next tool boundary.
+Behind the scenes, pi's tools are bridged to Claude Code but everything works like normal in pi. Bash commands get Claude Code's 120-second default timeout at execution when no timeout is provided; the default is not saved in pi's history. Skills are forwarded to Claude Code's system prompt, and steering mid-turn reaches Claude at the next tool boundary.
 
-**Orca terminals:** When `ORCA_PANE_KEY` or `ORCA_TERMINAL_HANDLE` is non-empty, native `claude` / `claude.exe` launches (provider, summaries, AskClaude and quota) use a neutral `cc-bridge-runtime` sibling with the original extension. This prevents Orca from mistaking the bridge child for the foreground agent. The bridge reuses an alias only when its bigint file identity matches the current executable; otherwise it replaces it atomically with a hardlink. It never copies the executable. If hardlinking or replacement fails, it launches the original unchanged. Resolution is cached until the Pi process restarts. Auxiliary calls keep the SDK's built-in launcher, setting only `pathToClaudeCodeExecutable` to the alias of the configured or SDK-default native binary; native stderr draining, callbacks and failure diagnostics are preserved. If default binary resolution fails, SDK options stay unchanged. Outside Orca, other executables (including Node/Bun), and bare/relative commands are unchanged; the bridge does not guess cwd/PATH resolution.
+**Orca terminals:** When `ORCA_PANE_KEY` or `ORCA_TERMINAL_HANDLE` is non-empty, native `claude` / `claude.exe` launches (provider, summaries, AskClaude and quota) use a neutral `cc-bridge-runtime` sibling with the original extension. This prevents Orca from mistaking the bridge child for the foreground agent. The bridge reuses an alias only when its bigint file identity matches the current executable; otherwise it replaces it atomically with a hardlink. It never copies the executable. If hardlinking or replacement fails, it launches the original unchanged. Resolution is cached until the Pi process restarts. Summary and quota calls keep the SDK's built-in launcher, setting only `pathToClaudeCodeExecutable` to the alias of the configured or SDK-default native binary; native stderr draining, callbacks and failure diagnostics are preserved. The provider and AskClaude spawn through the bridge's exit-observing `QueryProcess`, which waits for the child to close before it records or forks session state. AskClaude resolves its alias separately and keeps a bounded stderr tail for failure diagnostics. If default binary resolution fails, SDK options stay unchanged. Outside Orca, other executables (including Node/Bun), and bare/relative commands are unchanged; the bridge does not guess cwd/PATH resolution.
 
 **Dynamic appended instructions:** On a resumed provider query, only added or changed projected append blocks (extension instructions, context files, or skills), plus removed block keys, are sent through query-scoped `UserPromptSubmit` hook context. The delimited update supersedes the same-keyed earlier blocks; unlisted blocks remain in effect. This includes restoration to a previous value and removal of all appended instructions. Unchanged content adds nothing. Blocks are line-start XML-like elements keyed by tag and optional `path`/`name`, comment regions (`<!-- name:start -->`…`<!-- name:end -->`), and ordinal free-text runs. The `project_context` wrapper and its immediate children are keyed independently, so changing one `project_instructions` file does not resend the others. Duplicate keys, unbalanced boundaries, or reordered retained blocks trigger a full replacement instead of a potentially misleading delta.
 
-Claude Code 2.1.286 persists each hook `additionalContext` value **over 10,000 JavaScript string-length units** to a file and shows only a 2,000-character preview (exactly 10,000 stays inline; there is no limit override). The bridge caps each **framed value at 9,000 `.length` units**, splitting larger updates among several callbacks labeled `Part i/n`. Each callback is one-shot, including during steering. Effective state advances only after **all** parts return context. Skipped/failed delivery retries; partial delivery marks the baseline uncertain, forcing a full current replacement on the next query—even if it equals the old effective append. Only complete delivery clears uncertainty. New CC sessions, transcript rebuilds (even with the same UUID), and compaction start new recording epochs; child and ephemeral sessions remain isolated. If hook registration fails, the query proceeds without refresh. Refresh applies between provider queries, not between tool turns or to AskClaude's separate native-tool prompt.
+Claude Code 2.1.286 persists each hook `additionalContext` value **over 10,000 JavaScript string-length units** to a file and shows only a 2,000-character preview (exactly 10,000 stays inline; there is no limit override). The bridge caps each **framed value at 9,000 `.length` units**, splitting larger updates among several callbacks labeled `Part i/n`. Each callback is one-shot, including during steering. Effective state advances only after **all** parts return context. Skipped/failed delivery retries; partial delivery marks the baseline uncertain, forcing a full current replacement on the next query—even if it equals the old effective append. Only complete delivery clears uncertainty. Sessions written from Pi history start new recording epochs; resumes and forks from retained Claude Code records keep the recorded base and only the refreshes those records carry (see [Resume across Pi restarts](#resume-across-pi-restarts)). Child and ephemeral sessions remain isolated. If hook registration fails, the query proceeds without refresh. Refresh applies between provider queries, not between tool turns or to AskClaude's separate native-tool prompt.
 
-**Cache preservation:** Within a running process, `systemPrompt` still passes the current append with the `claude_code` preset and does not opt out of recording. A validated restart checkpoint supplies the original recorded append instead. SDK 0.3.286 `sdk.d.ts:2356–2382` documents that resumed queries use the recorded prompt verbatim. Installed CLI 2.1.286 embedded-source inspection at offsets **216482599** and **212825463** shows hook context becoming new **trailing meta-user reminders**, not rewritten earlier messages. Thus refresh leaves the recorded tools/system/history prefix byte-identical and adds only new-turn tail context within an active recording epoch. Offline regressions consume SDK user input and snapshot request content under a simulated CC recording boundary; they are not live cache-hit telemetry.
+**Cache preservation:** Within a running process, `systemPrompt` still passes the current append with the `claude_code` preset and does not opt out of recording. A resumed or forked recording keeps its original recorded append instead. SDK 0.3.286 `sdk.d.ts:2356–2382` documents that resumed queries use the recorded prompt verbatim. Installed CLI 2.1.286 embedded-source inspection at offsets **216482599** and **212825463** shows hook context becoming new **trailing meta-user reminders**, not rewritten earlier messages. Thus refresh leaves the recorded tools/system/history prefix byte-identical and adds only new-turn tail context within an active recording epoch. Offline regressions consume SDK user input and snapshot request content under a simulated CC recording boundary; they are not live cache-hit telemetry.
 
 ### Resume across Pi restarts
 
-Persisted Pi sessions can resume the same Claude Code conversation after a restart,
-`/resume`, or `/reload`, preserving its recorded system append and appended-instruction
-epoch instead of importing history again. This preserves the cached prefix when the
-provider cache is still warm; it does not extend the cache TTL.
+Before each fresh query, the bridge compares per-message content digests of Pi's
+history with its last recording. Matching history continues from the recorded Claude
+Code records, including after a restart, `/resume`, or `/reload`, without re-importing
+that history. Edits, rewinds and interruptions can retain records up to the last valid
+cut before the first difference, then fork or write that prefix plus only the differing
+remainder to a new Claude Code session id. Existing Claude Code transcripts are never
+rewritten or deleted. Retaining the prefix can preserve a warm prompt cache, but does
+not extend its TTL.
 
-The bridge stores one atomic JSON sidecar per Pi session under
-`<Pi agent dir>/claude-bridge/session-checkpoints/<SHA-256 of Pi session id>.json`
-(normally `~/.pi/agent`, honoring `PI_CODING_AGENT_DIR`). Sidecars contain session
-identifiers, history/transcript hashes and the recorded/effective appended instructions;
-treat them as private session state. Checkpoints older than seven days are pruned
-opportunistically. `--no-session` sessions do not use checkpoints.
+The bridge atomically saves per-Pi-session state under
+`~/.pi/agent/claude-bridge/sessions/` (honoring `PI_CODING_AGENT_DIR`) after the
+Claude Code child exits. It records session pointers, cwd, model, content digests,
+record IDs/cut positions and appended-instruction state; treat it as private session
+state. Reuse is not restricted to clean completions: recorded progress after an
+interruption can still be retained. Concurrent use of one Pi session by multiple
+bridge processes is unsupported.
 
-A checkpoint is published only after clean completion and confirmed Claude Code
-subprocess exit. Restore requires the same Pi session, cwd and Claude config directory,
-an exact model-visible Pi history digest including the final assistant, and an unchanged
-Claude Code transcript (full-file SHA-256). Missing, malformed, unknown-version or
-mismatching checkpoints fall back to the existing history rebuild. Starting a query,
-aborts/errors, compaction, tree navigation and rebuild/rotation flags invalidate the
-checkpoint. Debug logging reports restore decisions/reasons without checkpoint content.
-Concurrent use of one Pi session by multiple processes is not supported.
+When no usable recording exists — no saved state, an unrecognized format, a changed
+model or working directory, a missing transcript or no valid cut — the bridge writes
+Pi's history into a new Claude Code session. After upgrading from the old checkpoint
+format, each continuing session needs this one-time history rebuild, which can cost
+prompt cache. Old `claude-bridge/session-checkpoints` files are ignored and left in
+place: they are not read, migrated or deleted.
+
+Appended-instruction state follows the records retained, including across Pi restarts.
+A resume keeps the latest recorded effective value; a fork or recorded-prefix rewrite
+keeps the original system append and only refreshes carried by retained records.
+A refresh cut away is delivered again when needed; a retained refresh is not resent
+when the current instructions match it. Missing, invalid or inconsistent append evidence
+on retained records triggers delivery of the full current appended instructions. Writing a session
+from Pi history starts a new epoch with the current appended instructions in its system
+prompt and no prior refreshes.
 
 **Tool schemas:** Plain object schemas pass through unchanged. Object-only root `anyOf`/`oneOf` unions (including roots already declaring `type: "object"`, object `allOf` variants and local `$ref` variants) are advertised under a required `input` property, preserving variants and root metadata/definitions. The bridge unwraps that envelope before passing arguments to Pi and re-wraps Pi history for Claude; an ordinary tool's own `input` field is untouched. Other non-object schemas are omitted rather than failing the request, with one warning per tool per session: a UI notification, or stderr in headless children, also recorded in `claude-bridge-diag.log` in pi's agent dir. Pi still validates calls against the original schema.
 
@@ -79,7 +94,8 @@ Claude SDK rate-limit events are reported synchronously to the process-wide
 `@thoth-agents/pi-core` provider-limits registry as `claude-bridge` observations.
 Each report carries the producing query's Pi session id (including child sessions,
 AskClaude and summaries), utilization as a 0..1 fraction and reset time in Unix
-milliseconds. Existing warning notifications are unchanged.
+milliseconds. Rate-limit warnings identify when requests beyond the plan limit are
+being billed to Extra Usage.
 
 Run `/claude quota` to show current plan usage: 5-hour and weekly windows,
 Opus/Sonnet and model-specific windows when available, plus extra usage.
@@ -146,7 +162,7 @@ keep native Pi rendering; there is no dependency on `@thoth-agents/pi-thoth-them
 
 ## Configuration
 
-Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config directory, usually `.pi/claude-bridge.json` (project; merged over global).
+Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config directory, usually `.pi/claude-bridge.json` (project; merged over global except for `provider`). A project file cannot set `provider` options, including the Claude Code executable path or metered-billing opt-ins; put them in the global file. Claude Code loads only user settings (`~/.claude/settings.json`), not project or local settings.
 
 ```json
 {
@@ -202,6 +218,25 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 
 This only changes Pi's context meter and auto-compaction threshold (`contextWindow - reserveTokens`); the Claude model actually served (200K or `[1m]`) still follows `provider.plan`, `provider.longContextExtraUsage`, and `provider.forceTwoHundredK`. Do not set a window larger than the served model's real capacity.
 
+**Claude Code's environment:** Claude Code inherits pi's environment. For variables only bridge requests should get (a proxy, a gateway, Bedrock settings), add an `env` object to a `claude-bridge` credential in `~/.pi/agent/auth.json`; its values override pi's, and an empty value removes the variable. Extensions calling a bridge model can pass `env` per request the same way. `CLAUDE_CONFIG_DIR`, `HOME` and `USERPROFILE` can't be set there (the turn fails), since the bridge reads Claude Code's session files through pi's own values. The bridge sets its non-essential-traffic flag only in the Claude Code child and strips inherited Claude Code session markers, leaving pi's own environment unchanged.
+
+This example sends bridge requests through a proxy and keeps an exported gateway (issue #107) away from Claude Code, so it uses your Claude login:
+
+```json
+{
+  "claude-bridge": {
+    "type": "api_key",
+    "key": "not-used",
+    "env": {
+      "HTTPS_PROXY": "http://127.0.0.1:8080",
+      "ANTHROPIC_BASE_URL": "",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_AUTH_TOKEN": ""
+    }
+  }
+}
+```
+
 ## Tests
 
 Install from the thoth-agents repository root with `pnpm install` (this package is a pnpm workspace member). `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit` runs offline tests. `pnpm --filter @thoth-agents/pi-claude-bridge run test` adds integration tests that hit APIs; set `CLAUDE_BRIDGE_TESTING_ALT_MODEL` in `.env.test` for the alt-provider smoke test.
@@ -238,7 +273,7 @@ To add instructions, use `message`, `context`, or a system-message edit that kee
 
 ### Hooks written for Claude Code
 
-`~/.claude/settings.json` hooks fire inside bridge turns, so a hook injecting Claude-specific guidance duplicates what pi's extensions already provide. pi sets `PI_CODING_AGENT=true` for child processes, including the Claude Code child; a hook can skip itself on that:
+`~/.claude/settings.json` hooks fire inside bridge turns, so a hook injecting Claude-specific guidance duplicates what pi's extensions already provide. A project's `.claude/settings.json` and `.claude/settings.local.json` are not loaded, so that repo's hooks, `apiKeyHelper` and `env` do not run. pi sets `PI_CODING_AGENT=true` for child processes, including the Claude Code child; a hook can skip itself on that:
 
 ```sh
 [ -n "$PI_CODING_AGENT" ] && exit 0
@@ -268,10 +303,10 @@ Requires the following in `~/.pi/agent/subagents.json`:
 
 ## Known issues
 
-**A session rebuild re-sends the whole conversation.** The bridge rewrites Claude Code's session from pi's history whenever the two diverge — after an abort, `/compact`, tree navigation, an API error, or on returning to a session when checkpoint restoration is unavailable or rejected — and the next request usually misses the prompt cache for everything past the system prompt. Valid checkpoints restore without rebuilding. Abort-heavy sessions cost noticeably more.
+**Edits far back in history can still cost cache.** The unchanged prefix is retained, but Anthropic's cache lookup has a limited lookback. A long rewritten suffix can prevent reuse of an earlier cache entry. With no usable recording, writing Pi history into a new session can also miss the prompt cache.
 
-**Files Claude Code edits are not carried across a rebuild.** The edit itself survives in the history as a tool call and result — what's lost is the post-edit file snapshot. `@file` expansions *are* carried.
+**File snapshots in rewritten history can be lost.** Native records before the matching point keep their attachments. A rewritten suffix carries `@file` expansions, but not snapshots Claude Code recorded after editing files; the tool calls and results remain in pi's history.
 
 **System prompt recording is account-dependent.** The bridge keeps Claude Code's default recording and refreshes changed projected appends through new-turn hook context, not by replacing the recorded prompt. Prefix preservation depends on active recording; where CC has not enabled it, changing the append can still change the rendered system prompt. Arbitrary replacement prompts outside Pi's structured capture are not supported.
 
-**Exported Anthropic environment variables override the Claude Code child (issue #107).** An exported `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` redirects Claude Code to that gateway and every turn fails with its auth error. Unset them for the pi process.
+**Exported Anthropic environment variables override the Claude Code child (issue #107).** An exported `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` redirects Claude Code to that gateway and every turn fails with its auth error. Unset them for the pi process, or blank them in a `claude-bridge` credential's `env` (see [Configuration](#configuration)).

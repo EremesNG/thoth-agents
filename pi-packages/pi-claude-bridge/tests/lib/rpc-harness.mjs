@@ -53,9 +53,11 @@ try {
  * @param {string} opts.sessionDir - Opt in to persisted sessions in this directory
  * @param {string} opts.sessionFile - Opt in to creating/resuming this persisted session file
  * @param {string} opts.piCli - Optional Pi CLI JS entrypoint to launch with Node (e.g. on Windows)
+ * @param {boolean} opts.persistSession - Keep pi's session on disk (default: false, `--no-session`)
+ * @param {string} opts.bridgeDir - Bridge checkout to load (default: this one)
  */
 export function createRpcHarness(opts) {
-	const { name, args = [], env = {}, cwd = DIR, defaultTimeout = 30_000, sessionDir, sessionFile, piCli } = opts;
+	const { name, args = [], env = {}, cwd = DIR, defaultTimeout = 30_000, sessionDir, sessionFile, piCli, persistSession = false, bridgeDir = DIR } = opts;
 
 	const LOGDIR = process.env.CLAUDE_BRIDGE_TEST_LOG_DIR ?? `${DIR}/.test-output`;
 	mkdirSync(LOGDIR, { recursive: true });
@@ -82,8 +84,8 @@ export function createRpcHarness(opts) {
 		rpcLog = createWriteStream(RPC_LOG, { flags: "a" });
 		const sessionArgs = sessionDir || sessionFile
 			? [...(sessionDir ? ["--session-dir", sessionDir] : []), ...(sessionFile ? ["--session", sessionFile] : [])]
-			: ["--no-session"];
-		const spawnArgs = [...sessionArgs, "-ne", "-e", DIR, "--mode", "rpc", ...args];
+			: persistSession ? [] : ["--no-session"];
+		const spawnArgs = [...sessionArgs, "-ne", "-e", bridgeDir, "--mode", "rpc", ...args];
 		pi = spawn(piCli ? process.execPath : "pi", piCli ? [piCli, ...spawnArgs] : spawnArgs, {
 			cwd,
 			stdio: ["pipe", "pipe", "pipe"],

@@ -94,7 +94,8 @@ for (const insideOrca of [false, true]) {
 			else await quota.handler("quota", ctx);
 
 			assert.ok(output?.includes(diagnostic), `expected the SDK's built-in diagnostic, got: ${output}`);
-			assert.equal(receivedOptions.spawnClaudeCodeProcess, undefined, "auxiliary calls retain the SDK launcher");
+			if (path === "AskClaude") assert.equal(typeof receivedOptions.spawnClaudeCodeProcess, "function", "AskClaude observes actual child close");
+			else assert.equal(receivedOptions.spawnClaudeCodeProcess, undefined, "summary/quota retain the SDK launcher");
 			const expectedPath = insideOrca ? join(dir, "cc-bridge-runtime.exe") : executable;
 			assert.equal(fs.readFileSync(launchedPath, "utf8"), expectedPath);
 			assert.equal(receivedOptions.pathToClaudeCodeExecutable, expectedPath);

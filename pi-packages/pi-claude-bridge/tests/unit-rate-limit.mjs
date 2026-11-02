@@ -147,9 +147,9 @@ describe("delivery to the provider call that owns the stream", () => {
 		const registry = [];
 		t.after(subscribeProviderLimits((entry) => registry.push(entry)));
 		const toolDelivered = gate(), usageConsumed = gate();
-		__test.setQuery(() => {
+		__test.setQuery(({ options }) => {
 			const gen = (async function* () {
-				yield { type: "system", subtype: "init", session_id: "cc-rate-limit" };
+				yield { type: "system", subtype: "init", session_id: options.sessionId ?? options.resume };
 				yield* toolUse("toolu_1");
 				// Claude Code reports usage after message_stop, once the tool call has ended the stream.
 				yield usage(0.05);
@@ -198,8 +198,9 @@ describe("delivery to the provider call that owns the stream", () => {
 				yield { type: "result", subtype: "success", is_error: false, result: "done" };
 			},
 		];
-		__test.setQuery(() => {
-			const gen = queries.shift()();
+		__test.setQuery(({ options }) => {
+			const script = queries.shift()();
+			const gen = (async function* () { for await (const step of script) yield step.type === "system" ? { ...step, session_id: options.sessionId ?? options.resume } : step; })();
 			gen.interrupt = async () => {};
 			gen.close = () => closed.open();
 			return gen;

@@ -4,7 +4,7 @@ export type {
   EditorSlotContribution,
   EditorSlotHandle,
 } from './editor-slot.js';
-export { registerEditorSlot } from './editor-slot.js';
+export { isEditorReplaced, registerEditorSlot } from './editor-slot.js';
 
 export { PanelDiscardConfirmation } from './panel-discard.js';
 export type {

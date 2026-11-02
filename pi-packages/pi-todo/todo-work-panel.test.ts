@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { Theme } from '@earendil-works/pi-coding-agent';
 import {
   ensureWorkPanel,
   registerRenderKit,
@@ -5,9 +7,15 @@ import {
   TODO_STATE_CHANNEL,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
+import {
+  panelVisibleWidth,
+  renderWorkPanelRow,
+  truncatePanelText,
+} from '@thoth-agents/pi-core/panel';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
 import { uiSession } from '../pi-core/test/work-panel-fixture.js';
+import { createRenderKit } from '../pi-thoth-theme/src/render-kit/index.js';
 import {
   clearActiveRenderSession,
   commitState,
@@ -18,6 +26,33 @@ import {
 import { createMockCtx, createMockPi } from './test/helpers.js';
 import { registerTodoTool } from './todo.js';
 import { createTodoWorkPanelProvider } from './todo-work-panel.js';
+
+function thothTheme(mode: 'truecolor' | '256color') {
+  const json = JSON.parse(
+    readFileSync(
+      new URL('../pi-thoth-theme/themes/thoth.json', import.meta.url),
+      'utf-8',
+    ),
+  ) as {
+    vars: Record<string, string | number>;
+    colors: Record<string, string | number>;
+  };
+  const entries = Object.entries(json.colors).map(
+    ([key, value]) => [key, json.vars[value] ?? value] as const,
+  );
+  const part = (background: boolean) =>
+    Object.fromEntries(
+      entries.filter(([key]) => key.endsWith('Bg') === background),
+    );
+  // Keep intensity markers observable even when the test runner disables Chalk colors.
+  return Object.assign(
+    new Theme(part(false) as never, part(true) as never, mode),
+    {
+      bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+      strikethrough: (text: string) => `\u001b[9m${text}\u001b[29m`,
+    },
+  );
+}
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -84,11 +119,65 @@ it.each([
       ];
   expect(session.render(100)).toEqual(golden);
   expect(session.render(40)).toEqual(golden);
-  expect(styles).toContainEqual(['text', 'Review']);
+  expect(styles).toContainEqual(['muted', 'Review']);
   expect(styles).toContainEqual(['accent', 'Build']);
   expect(styles).toContainEqual(['text', ' (Building)']);
   expect(styles).toContainEqual(['dim', 'Explore']);
   expect(styles).toContainEqual(['success', '✓']);
+});
+
+it.each([
+  false,
+  true,
+])('renders muted, non-bold pending subjects and accented active subjects (render kit: %s)', (themed) => {
+  if (themed) {
+    const token = registerRenderKit(
+      createRenderKit({}, undefined, 'unicode'),
+      {},
+    );
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      { id: 1, subject: 'plan: Review', status: 'pending' },
+      {
+        id: 2,
+        subject: 'plan: Build',
+        status: 'in_progress',
+        activeForm: 'Building',
+      },
+      { id: 3, subject: 'Ungrouped pending', status: 'pending' },
+    ],
+    nextId: 4,
+  });
+  for (const [mode, pendingSgr] of [
+    ['truecolor', '38;2;168;154;120'],
+    ['256color', '38;5;138'],
+  ] as const) {
+    const theme = thothTheme(mode);
+    const lines = createTodoWorkPanelProvider()
+      .listRows(0)
+      .flatMap((row) =>
+        renderWorkPanelRow(row, {
+          width: 100,
+          now: 0,
+          theme,
+          clip: truncatePanelText,
+          measure: panelVisibleWidth,
+        }),
+      );
+    for (const subject of ['Review', 'Ungrouped pending']) {
+      const line = lines.find((line) => line.includes(subject));
+      expect(line).toContain(`\u001b[${pendingSgr}m${subject}\u001b[39m`);
+      expect(line).not.toContain(theme.fg('text', subject));
+      expect(line).toContain(`\u001b[${pendingSgr}m○\u001b[39m`);
+      expect(line).not.toContain('\u001b[1m');
+    }
+    const active = lines.find((line) => line.includes('Build'));
+    expect(active).toContain(theme.fg('accent', 'Build'));
+    expect(active).toContain(theme.fg('text', ' (Building)'));
+  }
 });
 
 it.each([
@@ -492,8 +581,8 @@ it('publishes distinct todo glyphs and semantic subject and active-form hierarch
   });
   expect(rows[1]).toMatchObject({
     statusGlyph: 'pending',
-    statusGlyphRole: 'secondary',
-    segments: [{ text: 'Archive', role: 'secondary' }],
+    statusGlyphRole: 'muted',
+    segments: [{ text: 'Archive', role: 'muted' }],
   });
 });
 it('todo semantic overrides let the host use the registered kit and restore native glyphs on withdrawal without changing row data', async () => {

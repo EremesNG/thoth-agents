@@ -51,7 +51,7 @@ function taskRow(
         ? 'accent'
         : blocked
           ? 'dim'
-          : 'secondary';
+          : 'muted';
   const segments: WorkPanelSegment[] = [
     { text: subject + blockedText, role: subjectRole },
   ];

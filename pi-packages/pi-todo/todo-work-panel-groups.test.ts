@@ -54,7 +54,7 @@ it('publishes ordered nested groups, distinct styles, collapsed represented coun
       { text: ' (Working)', role: 'secondary' },
     ],
   });
-  expect(rows[2].segments).toEqual([{ text: 'Waiting', role: 'secondary' }]);
+  expect(rows[2].segments).toEqual([{ text: 'Waiting', role: 'muted' }]);
   expect(rows[3].segments).toEqual([{ text: 'Finished', role: 'completed' }]);
   expect(rows[4].segments).toEqual([{ text: 'Blocked ⊘ #2', role: 'dim' }]);
   expect(rows[5]).toMatchObject({

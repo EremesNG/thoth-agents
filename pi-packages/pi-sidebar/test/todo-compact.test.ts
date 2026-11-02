@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { Theme } from '@earendil-works/pi-coding-agent';
 import {
   registerRenderKit,
   registerWorkPanelProvider,
@@ -6,6 +8,7 @@ import {
 } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it } from 'vitest';
+import { createRenderKit } from '../../pi-thoth-theme/src/render-kit/index.js';
 import registerTodo from '../../pi-todo/index.js';
 import {
   evictSession,
@@ -15,6 +18,33 @@ import {
 import { createMockCtx, createMockPi } from '../../pi-todo/test/helpers.js';
 import { createTodoWorkPanelProvider } from '../../pi-todo/todo-work-panel.js';
 import { sidebar, source, strip } from './fixture.js';
+
+function thothTheme(mode: 'truecolor' | '256color') {
+  const json = JSON.parse(
+    readFileSync(
+      new URL('../../pi-thoth-theme/themes/thoth.json', import.meta.url),
+      'utf-8',
+    ),
+  ) as {
+    vars: Record<string, string | number>;
+    colors: Record<string, string | number>;
+  };
+  const entries = Object.entries(json.colors).map(
+    ([key, value]) => [key, json.vars[value] ?? value] as const,
+  );
+  const part = (background: boolean) =>
+    Object.fromEntries(
+      entries.filter(([key]) => key.endsWith('Bg') === background),
+    );
+  // Keep intensity markers observable even when the test runner disables Chalk colors.
+  return Object.assign(
+    new Theme(part(false) as never, part(true) as never, mode),
+    {
+      bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+      strikethrough: (text: string) => `\u001b[9m${text}\u001b[29m`,
+    },
+  );
+}
 
 const cleanup: Array<() => void> = [];
 afterEach(() => {
@@ -104,6 +134,74 @@ it.each([
   if (themed) expect(lines[4]).toContain('    └─');
   expect(lines.join('\n')).toContain('old (8)');
   expect(lines.join('\n')).not.toContain('+');
+});
+
+it.each([
+  false,
+  true,
+])('distinguishes muted pending subjects from active, blocked and completed at both widths (kit: %s)', (themed) => {
+  if (themed) {
+    const token = registerRenderKit(
+      createRenderKit({}, undefined, 'unicode'),
+      {},
+    );
+    cleanup.push(() => withdrawRenderKit(token));
+  }
+  setActiveRenderSession('sidebar-styles');
+  cleanup.push(() => evictSession('sidebar-styles'));
+  replaceState('sidebar-styles', {
+    tasks: [
+      { id: 1, subject: 'plan: Review', status: 'pending' },
+      {
+        id: 2,
+        subject: 'plan: Build',
+        status: 'in_progress',
+        activeForm: 'Building',
+      },
+      { id: 3, subject: 'Waiting', status: 'pending' },
+      { id: 4, subject: 'Blocked', status: 'pending', blockedBy: [2] },
+      { id: 5, subject: 'Finished', status: 'completed' },
+    ],
+    nextId: 6,
+  });
+  cleanup.push(
+    registerWorkPanelProvider(
+      { on() {} } as never,
+      createTodoWorkPanelProvider(),
+    ),
+  );
+  for (const [mode, pendingSgr] of [
+    ['truecolor', '38;2;168;154;120'],
+    ['256color', '38;5;138'],
+  ] as const) {
+    const theme = thothTheme(mode);
+    const panel = sidebar([{ id: 'todos', visible: true }], { theme });
+    for (const width of [32, 60]) {
+      const lines = panel.renderAt(width, 20);
+      for (const subject of ['Review', 'Waiting']) {
+        const line = lines.find((line) => line.includes(subject));
+        expect(line).toContain(`\u001b[${pendingSgr}m${subject}\u001b[39m`);
+        expect(line).not.toContain(theme.fg('text', subject));
+        expect(line).toContain(`\u001b[${pendingSgr}m○\u001b[39m`);
+        expect(line).not.toContain('\u001b[1m');
+      }
+      expect(lines.find((line) => line.includes('Build'))).toContain(
+        theme.fg('accent', 'Build'),
+      );
+      expect(lines.find((line) => line.includes('Build'))).toContain(
+        'Building',
+      );
+      expect(lines.find((line) => line.includes('Blocked'))).toContain(
+        theme.fg('dim', 'Blocked ⊘ #2'),
+      );
+      expect(lines.find((line) => line.includes('Finished'))).toContain(
+        theme.strikethrough(theme.fg('dim', 'Finished')),
+      );
+      expect(lines.find((line) => line.includes('plan'))).toContain(
+        '\u001b[1m',
+      );
+    }
+  }
 });
 
 it('retains headings, hides completed first then the newest pending and counts represented tasks', () => {

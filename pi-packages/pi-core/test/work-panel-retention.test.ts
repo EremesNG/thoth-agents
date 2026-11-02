@@ -448,7 +448,7 @@ describe('idle retained section summaries', () => {
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
         ...provider('todos', 'Todos', 20),
-        summary: () => ({ completed: 4, total: 5 }),
+        summary: () => ({ running: 0, queued: 1, completed: 4, total: 5 }),
         listRows: () => [
           { id: 'one', primary: 'Open todo', status: 'pending' },
           { id: 'done', primary: '+4 done', summary: true },
@@ -458,7 +458,7 @@ describe('idle retained section summaries', () => {
       await ensureWorkPanel(session.ctx),
     );
     const unchanged = [
-      '◆ Todos · 4/5',
+      '◆ Todos · ○1 ✓4',
       '  ○ Open todo',
       '  +4 done',
       '← interact',

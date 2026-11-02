@@ -143,7 +143,12 @@ describe('registerTodoTool — execute persists state changes', () => {
     ).rejects.toBe(error);
 
     expect(getTodos('test-session')).toEqual([
-      { id: 1, subject: 'Committed', status: 'pending' },
+      {
+        id: 1,
+        subject: 'Committed',
+        status: 'pending',
+        createdAt: expect.any(Number),
+      },
     ]);
     expect(getNextId('test-session')).toBe(2);
     expect(onSnapshot).toHaveBeenCalledExactlyOnceWith(
@@ -152,7 +157,13 @@ describe('registerTodoTool — execute persists state changes', () => {
         source: '@thoth-agents/pi-todo',
         data: {
           tasks: [
-            { id: 1, subject: 'Committed', status: 'pending', blockedBy: [] },
+            {
+              id: 1,
+              subject: 'Committed',
+              status: 'pending',
+              blockedBy: [],
+              createdAt: expect.any(Number),
+            },
           ],
           nextId: 2,
           counts: { pending: 1, in_progress: 0, completed: 0, deleted: 0 },
@@ -167,7 +178,12 @@ describe('registerTodoTool — execute persists state changes', () => {
     const appendEntry = pi.appendEntry;
     vi.spyOn(pi, 'appendEntry').mockImplementation((customType, data) => {
       expect(getTodos('test-session')).toEqual([
-        { id: 1, subject: 'Ordered', status: 'pending' },
+        {
+          id: 1,
+          subject: 'Ordered',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
       ]);
       order.push('append');
       appendEntry(customType, data);

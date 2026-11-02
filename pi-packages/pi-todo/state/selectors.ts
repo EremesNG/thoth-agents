@@ -33,16 +33,32 @@ export interface TodoCounts {
   completed: number;
 }
 export function selectTodoCounts(state: TaskState): TodoCounts {
-  const groups = selectTasksByStatus(state);
+  const counts = selectTodoStatusCounts(state);
   return {
-    total:
-      groups.pending.length +
-      groups.inProgress.length +
-      groups.completed.length,
-    pending: groups.pending.length,
-    inProgress: groups.inProgress.length,
-    completed: groups.completed.length,
+    total: counts.pending + counts.in_progress + counts.completed,
+    pending: counts.pending,
+    inProgress: counts.in_progress,
+    completed: counts.completed,
   };
+}
+
+export interface TodoStatusCounts {
+  in_progress: number;
+  pending: number;
+  completed: number;
+}
+
+function countTasks(tasks: readonly Task[]): TodoStatusCounts {
+  const counts: TodoStatusCounts = { in_progress: 0, pending: 0, completed: 0 };
+  for (const task of tasks) {
+    if (task.status !== 'deleted') counts[task.status]++;
+  }
+  return counts;
+}
+
+/** Heading counts include archived tasks, but never deleted tombstones. */
+export function selectTodoStatusCounts(state: TaskState): TodoStatusCounts {
+  return countTasks(state.tasks);
 }
 
 /**
@@ -68,48 +84,168 @@ export function selectTaskSubjectById(
   return state.tasks.find((t) => t.id === id)?.subject;
 }
 
-/**
- * Overlay layout decision. Encapsulates the "drop completed first, then
- * truncate non-completed tail" rule. `budget` is the body-slot count (caller passes
- * `getMaxWidgetLines() - 1` to reserve the heading row); on overflow the
- * selector reserves one more slot internally for the summary row. Returns
- * the visible task slice plus the overflow summary parts.
- */
-export interface OverlayLayout {
-  visible: readonly Task[];
-  hiddenCompleted: number;
-  truncatedTail: number;
+export interface ResolvedTaskGroup {
+  key: string;
+  label: string;
+  displaySubject: string;
 }
-export function selectOverlayLayout(
+
+/** The first token before the first literal `: `, not an arbitrary colon. */
+function inferredGroup(subject: string): string | undefined {
+  const delimiter = subject.indexOf(': ');
+  if (delimiter < 0) return undefined;
+  return subject.slice(0, delimiter).trim().split(/\s+/)[0] || undefined;
+}
+
+function displaySubject(subject: string, label: string): string {
+  const text = subject.trimStart();
+  if (!text.startsWith(label)) return subject;
+  const rest = text.slice(label.length);
+  if (rest.startsWith(': ')) return rest.slice(2).trimStart();
+  if (/^\s/.test(rest)) return rest.trimStart();
+  return subject;
+}
+
+/**
+ * Resolve groups across all non-deleted tasks, including archived history.
+ * Explicit labels win; a fallback label needs at least two resolved members.
+ * Equal explicit/inferred labels share a group. Ungrouped ids are absent.
+ */
+export function selectTaskGroups(
   state: TaskState,
-  budget: number,
-): OverlayLayout {
-  const all = selectVisibleTasks(state);
-  if (all.length <= budget) {
-    return { visible: all, hiddenCompleted: 0, truncatedTail: 0 };
+): ReadonlyMap<number, ResolvedTaskGroup> {
+  const candidates = selectVisibleTasks(state).map((task) => ({
+    task,
+    explicit: task.group?.trim(),
+    label: task.group?.trim() || inferredGroup(task.subject),
+  }));
+  const counts = new Map<string, number>();
+  for (const { label } of candidates) {
+    if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
   }
-  const innerBudget = budget - 1;
-  const nonCompleted = all.filter((t) => t.status !== 'completed');
-  const totalCompleted = all.length - nonCompleted.length;
-  if (nonCompleted.length <= innerBudget) {
-    const kept = new Set<Task>(nonCompleted);
-    for (const t of all) {
-      if (kept.size >= innerBudget) break;
-      if (t.status === 'completed') kept.add(t);
-    }
-    const visible = all.filter((t) => kept.has(t));
-    const shownCompleted = visible.filter(
-      (t) => t.status === 'completed',
-    ).length;
-    return {
-      visible,
-      hiddenCompleted: totalCompleted - shownCompleted,
-      truncatedTail: 0,
+  const groups = new Map<number, ResolvedTaskGroup>();
+  for (const { task, explicit, label } of candidates) {
+    if (!label || (!explicit && (counts.get(label) ?? 0) < 2)) continue;
+    groups.set(task.id, {
+      key: label,
+      label,
+      displaySubject: displaySubject(task.subject, label),
+    });
+  }
+  return groups;
+}
+
+export interface CompactTodoTask {
+  kind: 'task';
+  task: Task;
+  displaySubject: string;
+  blocked: boolean;
+  counts: TodoStatusCounts;
+  fullyCompleted: boolean;
+}
+
+export interface CompactTodoGroup {
+  kind: 'group';
+  key: string;
+  label: string;
+  members: readonly CompactTodoTask[];
+  counts: TodoStatusCounts;
+  fullyCompleted: boolean;
+}
+
+export type CompactTodoEntry = CompactTodoTask | CompactTodoGroup;
+
+function taskRank(entry: CompactTodoTask): number {
+  if (entry.task.status === 'in_progress') return 0;
+  if (entry.task.status === 'pending') return entry.blocked ? 2 : 1;
+  return 3;
+}
+
+function compareTasks(a: CompactTodoTask, b: CompactTodoTask): number {
+  return (
+    taskRank(a) - taskRank(b) ||
+    (a.task.status === 'completed'
+      ? (b.task.completedAt ?? -Infinity) - (a.task.completedAt ?? -Infinity)
+      : 0) ||
+    a.task.id - b.task.id
+  );
+}
+
+/**
+ * Unbounded compact layout; renderers own height/retention. Archived tasks are
+ * excluded before counts/collapse. Groups stay contiguous and rank by their
+ * most active member. Completed entries use their newest completion, with
+ * missing legacy timestamps oldest; other ties use the lowest represented id.
+ */
+export function selectCompactLayout(
+  state: TaskState,
+): readonly CompactTodoEntry[] {
+  const groups = selectTaskGroups(state);
+  const unresolved = new Set(
+    state.tasks
+      .filter(
+        (task) => task.status === 'pending' || task.status === 'in_progress',
+      )
+      .map((task) => task.id),
+  );
+  const entries: CompactTodoEntry[] = [];
+  const grouped = new Map<string, CompactTodoGroup>();
+  for (const task of selectVisibleTasks(state)) {
+    if (task.archivedAt !== undefined) continue;
+    const group = groups.get(task.id);
+    const member: CompactTodoTask = {
+      kind: 'task',
+      task,
+      displaySubject: group?.displaySubject ?? task.subject,
+      blocked:
+        task.status === 'pending' &&
+        !!task.blockedBy?.some((id) => unresolved.has(id)),
+      counts: countTasks([task]),
+      fullyCompleted: task.status === 'completed',
     };
+    if (!group) {
+      entries.push(member);
+      continue;
+    }
+    let entry = grouped.get(group.key);
+    if (!entry) {
+      entry = {
+        kind: 'group',
+        key: group.key,
+        label: group.label,
+        members: [],
+        counts: countTasks([]),
+        fullyCompleted: false,
+      };
+      grouped.set(group.key, entry);
+      entries.push(entry);
+    }
+    entry.members = [...entry.members, member];
   }
-  const visible = nonCompleted.slice(0, innerBudget);
-  const truncatedTail = nonCompleted.length - innerBudget;
-  return { visible, hiddenCompleted: totalCompleted, truncatedTail };
+  const ordered = entries.map((entry) => {
+    const members =
+      entry.kind === 'group' ? [...entry.members].sort(compareTasks) : [entry];
+    if (entry.kind === 'group') {
+      entry.members = members;
+      entry.counts = countTasks(members.map((member) => member.task));
+      entry.fullyCompleted = entry.counts.completed === members.length;
+    }
+    return {
+      entry,
+      rank: taskRank(members[0]),
+      lowestId: Math.min(...members.map((member) => member.task.id)),
+      completedAt: Math.max(
+        ...members.map((member) => member.task.completedAt ?? -Infinity),
+      ),
+    };
+  });
+  ordered.sort(
+    (a, b) =>
+      a.rank - b.rank ||
+      (a.rank === 3 ? b.completedAt - a.completedAt : 0) ||
+      a.lowestId - b.lowestId,
+  );
+  return ordered.map(({ entry }) => entry);
 }
 
 /**

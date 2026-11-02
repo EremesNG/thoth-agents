@@ -58,7 +58,7 @@ it('shows discovered summaries in each work panel header', () => {
   const heading = (title: string) =>
     text.find((line) => line.includes(title)) ?? '';
   expect(heading('AGENTS')).toMatch(/◐1 ✓4 ✗2 ─╮$/);
-  expect(heading('TODOS')).toMatch(/2\/5 ─╮$/);
+  expect(heading('TODOS')).toMatch(/✓2 ─╮$/);
   expect(heading('BACKGROUND')).toMatch(/◐1 ✓3 ─╮$/);
 });
 
@@ -613,17 +613,21 @@ it.each([
   const panel = sidebar([{ id, visible: true }]);
   const first = panel.renderAt(44, 40);
   const text = lines(first).join(String.fromCharCode(10));
-  expect(text).not.toContain('failure item');
+  if (id === 'todos') expect(text).toContain('failure item');
+  else expect(text).not.toContain('failure item');
   expect(text).toContain('newest item');
   expect(text).toContain('middle item');
   expect(text).toContain('older item');
   expect(text).not.toContain('more');
-  const order = ['older item', 'middle item', 'newest item'];
+  const order =
+    id === 'todos'
+      ? ['older item', 'newest item', 'middle item']
+      : ['older item', 'middle item', 'newest item'];
   // Todos keep launch order (oldest first); Agents and Background list recent completions first.
   if (id !== 'todos') order.reverse();
   expect(text.indexOf(order[0])).toBeLessThan(text.indexOf(order[1]));
   expect(text.indexOf(order[1])).toBeLessThan(text.indexOf(order[2]));
-  expect(lines(first)[0]).toContain(id === 'todos' ? '3/4' : '✓3 ✗1');
+  expect(lines(first)[0]).toContain('✓3 ✗1');
   expect(panel.hasAnimation(44)).toBe(false);
   vi.setSystemTime(200_000);
   expect(panel.renderAt(44, 40)).toBe(first);

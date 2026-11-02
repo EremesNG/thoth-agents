@@ -306,8 +306,19 @@ it('replays a batch snapshot and its following error without interpreting refs o
     replayFromBranch(createMockCtx({ branch: buildBranch([success, error]) })),
   ).toEqual({
     tasks: [
-      { id: 1, subject: 'Root', status: 'in_progress' },
-      { id: 2, subject: 'Child', status: 'pending', blockedBy: [1] },
+      {
+        id: 1,
+        subject: 'Root',
+        status: 'in_progress',
+        createdAt: expect.any(Number),
+      },
+      {
+        id: 2,
+        subject: 'Child',
+        status: 'pending',
+        blockedBy: [1],
+        createdAt: expect.any(Number),
+      },
     ],
     nextId: 3,
   });

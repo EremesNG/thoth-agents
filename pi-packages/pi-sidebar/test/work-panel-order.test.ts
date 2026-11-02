@@ -111,7 +111,7 @@ it('keeps Background W,X,Y,Z completions as Z,Y,X without W', () => {
   expect(order('background-tasks', rows).names).toEqual(['Z', 'Y', 'X']);
 });
 
-it('keeps Todos in launch order, oldest first, with the last three finished', () => {
+it('keeps the complete Todos provider set in provider order', () => {
   const rows = [
     item('t1', 1, { endedAt: 90 }),
     item('t2', 2, { endedAt: 80 }),
@@ -119,7 +119,7 @@ it('keeps Todos in launch order, oldest first, with the last three finished', ()
     item('t4', 4, { endedAt: 60 }),
     item('t5', 5),
   ];
-  expect(order('todos', rows).names).toEqual(['t2', 't3', 't4', 't5']);
+  expect(order('todos', rows).names).toEqual(['t1', 't2', 't3', 't4', 't5']);
 });
 
 it.each([

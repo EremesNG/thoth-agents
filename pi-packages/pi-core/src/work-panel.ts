@@ -97,6 +97,19 @@ export type WorkPanelStatusGlyph = RenderStatus | 'taskInProgress';
 
 export interface WorkPanelRow {
   id: string;
+  /**
+   * Opt-in task layout. Headings stay in provider order with their nested members;
+   * counts describe represented tasks (zero for a heading, N for a collapsed group).
+   * Hosts retain running work, then lowest task ids, and count hidden tasks, not rows.
+   * Sources without this data retain their existing rendering and retention behavior.
+   */
+  compact?: {
+    group?: { key: string; label: string };
+    heading?: boolean;
+    depth: number;
+    taskId?: number;
+    counts: { running: number; queued: number; completed: number };
+  };
   primary: string;
   /**
    * Flat legacy presentation. When a row also has `identity`/`metrics`, those are used only by

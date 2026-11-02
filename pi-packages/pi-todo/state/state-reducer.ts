@@ -19,6 +19,7 @@ import { detectCycle } from './task-graph.js';
  * `op.kind === "error"` without a side-channel boolean.
  */
 export type Op =
+  | { kind: 'archive'; count: number }
   | { kind: 'batch'; results: BatchResult[] }
   | { kind: 'create'; taskId: number }
   | {
@@ -41,6 +42,7 @@ export function changesState(op: Op): boolean {
     op.kind === 'create' ||
     op.kind === 'delete' ||
     op.kind === 'clear' ||
+    (op.kind === 'archive' && op.count > 0) ||
     (op.kind === 'update' && op.changed)
   );
 }
@@ -85,6 +87,7 @@ function sameRecord(
 function taskChanged(before: Task, after: Task): boolean {
   return (
     before.subject !== after.subject ||
+    before.group !== after.group ||
     before.status !== after.status ||
     before.description !== after.description ||
     before.activeForm !== after.activeForm ||
@@ -95,7 +98,7 @@ function taskChanged(before: Task, after: Task): boolean {
 }
 
 /**
- * Pure reducer: (state, action, params) → (state, op). The response envelope (`tool/response-envelope.ts`) owns
+ * Reducer: (state, action, params, now) → (state, op). The response envelope (`tool/response-envelope.ts`) owns
  * formatting, the store (`state/store.ts`) owns commit.
  *
  * Validation is in-line: structural guards (`subject required`, `id required`,
@@ -105,10 +108,24 @@ function taskChanged(before: Task, after: Task): boolean {
  */
 export function applyTaskMutation(
   state: TaskState,
-  action: TaskAction,
+  action: TaskAction | 'archive',
   params: TaskMutationParams,
+  now = Date.now(),
 ): ApplyResult {
   switch (action) {
+    case 'archive': {
+      let count = 0;
+      const tasks = state.tasks.map((task) => {
+        if (task.status !== 'completed' || task.archivedAt !== undefined)
+          return task;
+        count++;
+        return { ...task, archivedAt: now };
+      });
+      return {
+        state: count > 0 ? { ...state, tasks } : state,
+        op: { kind: 'archive', count },
+      };
+    }
     case 'batch': {
       if (!params.ops?.length)
         return errorResult(state, 'batch requires non-empty ops');
@@ -149,7 +166,12 @@ export function applyTaskMutation(
           }
           resolved[field] = field === 'id' ? ids[0] : ids;
         }
-        const result = applyTaskMutation(working, operation.action, resolved);
+        const result = applyTaskMutation(
+          working,
+          operation.action,
+          resolved,
+          now,
+        );
         if (result.op.kind === 'error') {
           return fail(result.op.message);
         }
@@ -199,7 +221,10 @@ export function applyTaskMutation(
         id: state.nextId,
         subject: params.subject,
         status: params.status ?? 'pending',
+        createdAt: now,
+        ...(params.status === 'completed' ? { completedAt: now } : {}),
       };
+      if (params.group?.trim()) newTask.group = params.group.trim();
       if (params.description) newTask.description = params.description;
       if (params.activeForm) newTask.activeForm = params.activeForm;
       if (params.blockedBy?.length) newTask.blockedBy = [...params.blockedBy];
@@ -222,6 +247,7 @@ export function applyTaskMutation(
 
       const hasMutation =
         params.subject !== undefined ||
+        params.group !== undefined ||
         params.description !== undefined ||
         params.activeForm !== undefined ||
         params.status !== undefined ||
@@ -232,7 +258,7 @@ export function applyTaskMutation(
       if (!hasMutation)
         return errorResult(
           state,
-          'update requires at least one mutable field: subject, description, activeForm, status, owner, metadata, addBlockedBy, or removeBlockedBy',
+          'update requires at least one mutable field: subject, group, description, activeForm, status, owner, metadata, addBlockedBy, or removeBlockedBy',
         );
 
       let newStatus = current.status;
@@ -281,7 +307,14 @@ export function applyTaskMutation(
       }
 
       const updated: Task = { ...current, status: newStatus };
+      if (newStatus === 'completed' && current.status !== 'completed')
+        updated.completedAt = now;
+      // Completion is historical: retain it when tombstoned (the only legal exit).
       if (params.subject !== undefined) updated.subject = params.subject;
+      if (params.group !== undefined) {
+        if (params.group.trim()) updated.group = params.group.trim();
+        else delete updated.group;
+      }
       if (params.description !== undefined)
         updated.description = params.description;
       if (params.activeForm !== undefined)

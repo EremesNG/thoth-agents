@@ -97,11 +97,13 @@ const ACTIVE_FIRST_SOURCES: ReadonlySet<string> = new Set([
 
 /**
  * Agents and Background: active rows in launch order (oldest on top), then the three most
- * recently finished rows, most recent first. Other sources keep launch order, oldest first,
+ * recently finished rows, most recent first. Todos keep the full provider set/order.
+ * Other sources keep launch order, oldest first,
  * where missing timestamps count as later launches for the last-three cap.
  */
 function retainedRows(rows: WorkPanelRow[], sourceId: string): WorkPanelRow[] {
   const listed = rows.filter((row) => !row.summary);
+  if (sourceId === 'todos') return listed;
   if (ACTIVE_FIRST_SOURCES.has(sourceId))
     return [
       ...listed.filter((row) => !isFinished(row)).sort(byLaunch),
@@ -126,7 +128,7 @@ export const WIDEN_HINT = 'widen: /sidebar resize';
 /** Cells the header needs besides the summary: borders, icon and spacing. */
 const HEADER_CHROME = 10;
 
-/** Static status counts for agents/background tasks, `done/total` for todos. */
+/** Shared semantic status counts for work sources, including Todos. */
 function sourceSummary(
   source: WorkPanelSource,
   theme: RenderKitTheme,
@@ -166,7 +168,7 @@ interface PanelData {
   role?: PanelRole;
   /** Lines per block; blocks are the unit that `+N more` counts. */
   costs: number[];
-  block(index: number): string[];
+  block(index: number, nextIndex?: number): string[];
   /** Show `+N more` when blocks are cut by height. */
   more: boolean;
   /** Block 0 is one unsplittable head; height never leaves a bare `+N more` without it. */
@@ -175,6 +177,8 @@ interface PanelData {
   foldText?(hidden: readonly number[]): string;
   /** Block indices to hide first; absent means keep the fitting prefix. */
   dropOrder?: number[];
+  /** Task-aware opt-in: headings and represented counts share the height plan. */
+  fit?(budget: number): BlockFit;
   footer?: string;
   bareFooter?: string;
   /** Title-only line regardless of height. */
@@ -235,6 +239,88 @@ function footerRow(
   return (
     ' '.repeat(Math.max(0, width - 4 - panelVisibleWidth(text))) +
     panelFg(theme, 'muted', text)
+  );
+}
+
+interface BlockFit {
+  indices: number[];
+  overflow: boolean;
+  fold?: string;
+}
+
+/** Task retention is independent of grouping; reattach headings only to visible members. */
+function fitTodoBlocks(
+  items: readonly WorkPanelRow[],
+  costs: readonly number[],
+  budget: number,
+): BlockFit {
+  const tasks = items.flatMap((row, index) =>
+    row.compact?.heading ? [] : [index],
+  );
+  const chosen = new Set(tasks);
+  const dropOrder = [...tasks].sort((a, b) => {
+    const rank = (index: number) =>
+      isFinished(items[index])
+        ? 0
+        : ['in_progress', 'running'].includes(items[index].status ?? '')
+          ? 2
+          : 1;
+    return (
+      rank(a) - rank(b) ||
+      (rank(a) === 0
+        ? b - a
+        : (items[b].compact?.taskId ?? Number(items[b].id)) -
+          (items[a].compact?.taskId ?? Number(items[a].id)))
+    );
+  });
+  const selection = (): BlockFit => {
+    const groups = new Set(
+      [...chosen]
+        .filter((index) => items[index].compact?.depth)
+        .map((index) => items[index].compact?.group?.key),
+    );
+    const indices = items.flatMap((row, index) =>
+      chosen.has(index) ||
+      (row.compact?.heading && groups.has(row.compact.group?.key))
+        ? [index]
+        : [],
+    );
+    let pending = 0;
+    let done = 0;
+    for (const index of tasks) {
+      if (chosen.has(index)) continue;
+      const row = items[index];
+      done += row.compact?.counts.completed ?? Number(isFinished(row));
+      pending += row.compact
+        ? row.compact.counts.running + row.compact.counts.queued
+        : Number(!isFinished(row));
+    }
+    const fold = [
+      pending ? `+${pending} pending` : '',
+      done ? `+${done} done` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return { indices, overflow: !!fold, fold: fold || undefined };
+  };
+  let result = selection();
+  for (const index of dropOrder) {
+    if (
+      result.indices.reduce((sum, index) => sum + costs[index], 0) +
+        Number(result.overflow) <=
+      budget
+    )
+      break;
+    chosen.delete(index);
+    result = selection();
+  }
+  return result;
+}
+
+function fitPanelBlocks(panel: PanelData, budget: number): BlockFit {
+  return (
+    panel.fit?.(budget) ??
+    fitBlocks(panel.costs, budget, panel.more, panel.dropOrder, panel.head)
   );
 }
 
@@ -491,6 +577,9 @@ export class SidebarPanels implements Component {
       ),
     };
     const command = DETAIL_COMMANDS[source.id];
+    const costs = items.map((row) =>
+      workPanelRowLineCount(row, inner, panelVisibleWidth, metricOptions),
+    );
     return {
       id: source.id,
       title: clean(source.label),
@@ -501,10 +590,12 @@ export class SidebarPanels implements Component {
               .filter(Boolean)
               .join(' ')
           : sourceSummary(source, options.theme, inner + 4),
-      costs: items.map((row) =>
-        workPanelRowLineCount(row, inner, panelVisibleWidth, metricOptions),
-      ),
-      block: (index) =>
+      costs,
+      fit:
+        source.id === 'todos'
+          ? (budget) => fitTodoBlocks(items, costs, budget)
+          : undefined,
+      block: (index, nextIndex) =>
         renderWorkPanelRow(items[index], {
           width: inner,
           now,
@@ -512,7 +603,11 @@ export class SidebarPanels implements Component {
           theme: options.theme,
           clip: truncatePanelText,
           measure: panelVisibleWidth,
-          last: index === items.length - 1,
+          last: items[index].compact?.depth
+            ? nextIndex === undefined ||
+              items[nextIndex].compact?.group?.key !==
+                items[index].compact?.group?.key
+            : index === items.length - 1,
           ...metricOptions,
         }),
       more: true,
@@ -630,13 +725,7 @@ export class SidebarPanels implements Component {
       const fitting = [1];
       for (let size = 3; size <= Math.min(full, budget); size++) {
         const footer = Boolean(panel.footer && size >= total + 3);
-        const fit = fitBlocks(
-          panel.costs,
-          size - 2 - Number(footer),
-          panel.more,
-          panel.dropOrder,
-          panel.head,
-        );
+        const fit = fitPanelBlocks(panel, size - 2 - Number(footer));
         const used =
           fit.indices.reduce((sum, index) => sum + panel.costs[index], 0) +
           Number(fit.overflow) +
@@ -690,12 +779,9 @@ export class SidebarPanels implements Component {
       const total = panel.costs.reduce((sum, cost) => sum + cost, 0);
       // Footers go before rows.
       const footer = panel.footer && panel.height >= total + 3;
-      const { indices, overflow } = fitBlocks(
-        panel.costs,
+      const { indices, overflow, fold } = fitPanelBlocks(
+        panel,
         panel.height - 2 - (footer ? 1 : 0),
-        panel.more,
-        panel.dropOrder,
-        panel.head,
       );
       const snapshot = this.snapshots.get(panel.id);
       // Refresh newly exposed animation before rendering. Replan because fresh
@@ -713,15 +799,19 @@ export class SidebarPanels implements Component {
         this.cachedKey = undefined;
         return this.plan(height, width);
       }
-      panel.rows = indices.flatMap((index) => panel.block(index));
+      panel.rows = indices.flatMap((index, position) =>
+        panel.block(index, indices[position + 1]),
+      );
       if (overflow) {
-        const more = panel.foldText
-          ? panel.foldText(
-              panel.costs.flatMap((_, index) =>
-                indices.includes(index) ? [] : [index],
-              ),
-            )
-          : `+${panel.costs.length - indices.length} more`;
+        const more =
+          fold ??
+          (panel.foldText
+            ? panel.foldText(
+                panel.costs.flatMap((_, index) =>
+                  indices.includes(index) ? [] : [index],
+                ),
+              )
+            : `+${panel.costs.length - indices.length} more`);
         const available = width - 4 - panelVisibleWidth(more) - 1;
         const command = [panel.footer, panel.bareFooter]
           .map((text) => text?.trimStart())

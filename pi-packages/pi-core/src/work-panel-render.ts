@@ -295,6 +295,9 @@ function compactSummaryCounts(
       case 'stopping':
         fallback.running++;
         break;
+      case 'pending':
+        if (section.provider.id === 'todos') fallback.queued++;
+        break;
       case 'queued':
         fallback.queued++;
         break;
@@ -331,6 +334,24 @@ function overflowCounts(
   chosen: PanelRow[],
 ) {
   const hidden = items.filter((entry) => !chosen.includes(entry));
+  if (items.some(({ row }) => row.compact)) {
+    const preferred = hidden.reduce(
+      (sum, { row }) => sum + (row.compact?.counts.completed ?? 0),
+      0,
+    );
+    const other = hidden.reduce(
+      (sum, { row }) =>
+        sum +
+        (row.compact?.counts.queued ?? 0) +
+        (row.compact?.counts.running ?? 0),
+      0,
+    );
+    return {
+      preferred,
+      other,
+      lines: Number(preferred > 0) + Number(other > 0),
+    };
+  }
   const preferred = provider.droppedSummary
     ? hidden.filter(({ row }) => row.dropFirst).length
     : 0;
@@ -350,6 +371,7 @@ function overflowRows(
   selectedKey?: string,
 ): PanelRow[] {
   const { preferred, other } = overflowCounts(provider, items, chosen);
+  const compact = items.some(({ row }) => row.compact);
   let rows: WorkPanelRow[] = [
     ...(preferred
       ? [
@@ -357,7 +379,10 @@ function overflowRows(
             id: 'overflow-drop-first',
             primary:
               safely(
-                () => singleLine(provider.droppedSummary?.(preferred) ?? ''),
+                () =>
+                  compact
+                    ? `+${preferred} done`
+                    : singleLine(provider.droppedSummary?.(preferred) ?? ''),
                 '',
               ) || `+${preferred} more`,
             summary: true,
@@ -365,9 +390,16 @@ function overflowRows(
         ]
       : []),
     ...(other
-      ? [{ id: 'overflow-more', primary: `+${other} more`, summary: true }]
+      ? [
+          {
+            id: 'overflow-more',
+            primary: `+${other} ${compact ? 'pending' : 'more'}`,
+            summary: true,
+          },
+        ]
       : []),
   ];
+  if (compact) rows.reverse();
   if (combine && rows.length > 1) {
     rows = [
       {
@@ -1486,6 +1518,39 @@ interface PanelPlan {
   hideOverflow: boolean;
 }
 
+/** Attach only headings whose members survived; never charge them as tasks. */
+function withCompactHeadings(
+  section: PanelSection,
+  chosen: PanelRow[],
+): PanelRow[] {
+  const keys = new Set(
+    chosen
+      .filter(({ row }) => row.compact?.depth)
+      .map(({ row }) => row.compact?.group?.key),
+  );
+  return section.rows.filter(
+    (entry) =>
+      chosen.includes(entry) ||
+      (entry.row.compact?.heading && keys.has(entry.row.compact.group?.key)),
+  );
+}
+
+function compactPriority(a: PanelRow, b: PanelRow): number {
+  const rank = (entry: PanelRow) =>
+    entry.row.compact?.counts.running
+      ? 0
+      : entry.row.compact?.counts.queued
+        ? 1
+        : 2;
+  return (
+    rank(a) - rank(b) ||
+    (rank(a) === 1
+      ? (a.row.compact?.taskId ?? Infinity) -
+        (b.row.compact?.taskId ?? Infinity)
+      : 0)
+  );
+}
+
 function overflowLineCount(plan: PanelPlan, chosen = plan.chosen): number {
   if (plan.hideOverflow) return 0;
   const { lines } = overflowCounts(plan.section.provider, plan.items, chosen);
@@ -1532,32 +1597,45 @@ function planPanelSections(
   const plans = visible.map((section) => {
     const items = section.collapsed
       ? []
-      : section.rows.filter(({ row }) => !row.summary);
+      : section.rows.filter(({ row }) => !row.summary && !row.compact?.heading);
     const summaries = section.rows.filter(
       (entry) => entry.row.summary && !entry.sectionHeading,
     );
-    const selectedIndex = items.findIndex(({ key }) => key === selectedKey);
+    const selectedGroup = section.rows.find(
+      (entry) => entry.key === selectedKey && entry.row.compact?.heading,
+    )?.row.compact?.group?.key;
+    const selectedIndex = items.findIndex(
+      ({ key, row }) =>
+        key === selectedKey ||
+        (selectedGroup !== undefined &&
+          row.compact?.group?.key === selectedGroup),
+    );
+    const ordered = items.some(({ row }) => row.compact)
+      ? [...items].sort(compactPriority)
+      : items;
     const initial =
       selectedIndex >= 0
         ? items[selectedIndex]
-        : (items.find(({ row }) => !row.dropFirst) ?? items[0]);
+        : (ordered.find(({ row }) => !row.dropFirst) ?? ordered[0]);
     return {
       section,
       items,
       summaries,
       chosen: initial ? [initial] : [],
       selectedIndex,
-      combineOverflow: false,
+      combineOverflow: items.some(({ row }) => row.compact),
       hideOverflow: false,
     };
   });
+  const chosenCost = (plan: PanelPlan, chosen = plan.chosen) =>
+    withCompactHeadings(plan.section, chosen).reduce(
+      (sum, entry) => sum + blockCost(entry),
+      0,
+    );
   const cost = (plan: (typeof plans)[number]) =>
     plan.section.collapsed
       ? 1
-      : 1 +
-        plan.chosen.reduce((sum, entry) => sum + blockCost(entry), 0) +
-        plan.summaries.length +
-        overflowLineCount(plan);
+      : 1 + chosenCost(plan) + plan.summaries.length + overflowLineCount(plan);
   const totalCost = () => plans.reduce((sum, plan) => sum + cost(plan), 0);
   // Whole metric blocks and the selected section take precedence over lower sections.
   while (plans.length > 1 && totalCost() > remaining) {
@@ -1606,6 +1684,8 @@ function planPanelSections(
             ...plan.items.slice(start),
             ...plan.items.slice(0, start),
           ];
+          if (plan.items.some(({ row }) => row.compact))
+            candidates.sort(compactPriority);
           const next = candidates.find(
             (entry) =>
               Boolean(entry.row.dropFirst) === dropFirst &&
@@ -1613,7 +1693,8 @@ function planPanelSections(
           );
           if (!next) continue;
           const delta =
-            blockCost(next) +
+            chosenCost(plan, [...plan.chosen, next]) -
+            chosenCost(plan) +
             overflowLineCount(plan, [...plan.chosen, next]) -
             overflowLineCount(plan);
           if (totalCost() + delta > remaining) continue;
@@ -1770,12 +1851,17 @@ export function renderWorkPanelRow(
           : (indicator?.glyph ?? native)
         : resolveStatusGlyph(status, native);
   const content = contentFor(entry);
+  const depth = Math.max(0, Math.floor(row.compact?.depth ?? 0));
   const body = content.segments
-    ? styleSegments(content.segments, Math.max(0, width - (kit ? 7 : 4)))
+    ? styleSegments(
+        content.segments,
+        Math.max(0, width - (kit ? 7 : 4) - depth * 2),
+      )
     : singleLine(content.text);
-  const styledGlyph = row.summary
-    ? ''
-    : `${fg(segmentRoles[glyphRole(row, status)], glyph)} `;
+  const styledGlyph =
+    row.summary || row.compact?.heading
+      ? ''
+      : `${fg(segmentRoles[glyphRole(row, status)], glyph)} `;
   return [
     kit
       ? kit.treeRow(
@@ -1783,12 +1869,12 @@ export function renderWorkPanelRow(
           {
             text: `${styledGlyph}${body}`,
             selected: options.selected === true,
-            depth: 0,
+            depth,
             last: options.last === true,
           },
           width,
         )
-      : `${options.selected === true ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
+      : `${options.selected === true ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${'  '.repeat(depth)}${styledGlyph}${body}`,
     ...keptExtraRows(content, options.metricLayout === 'grid').map(
       (extra, index) =>
         content.extraSegments?.[index]
@@ -1862,7 +1948,7 @@ export function renderPanel(
   const lines: string[] = [];
   for (const plan of plans) {
     const { provider, rows } = plan.section;
-    const chosen = [...plan.chosen].sort(
+    const chosen = withCompactHeadings(plan.section, plan.chosen).sort(
       (a, b) => rows.indexOf(a) - rows.indexOf(b),
     );
     const entries = [...chosen, ...plan.summaries];
@@ -1876,8 +1962,11 @@ export function renderPanel(
         animationFrame: options.animationFrame,
         selected:
           isSelectablePanelRow(entry) && options.selectedKey === entry.key,
-        last:
-          index === entries.length - 1 && chosen.length === plan.items.length,
+        last: entry.row.compact?.depth
+          ? entries[index + 1]?.row.compact?.group?.key !==
+            entry.row.compact.group?.key
+          : index === entries.length - 1 &&
+            plan.chosen.length === plan.items.length,
       });
     });
     const title = sectionTitle(provider);

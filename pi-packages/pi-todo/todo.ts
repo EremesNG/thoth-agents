@@ -11,6 +11,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { resolveIcon } from '@thoth-agents/pi-core';
 import { publishTodoState } from './state/publish.js';
 import {
+  selectTaskGroups,
   selectTasksByStatus,
   selectTodoCounts,
   selectVisibleTasks,
@@ -25,6 +26,7 @@ import {
   ERR_REQUIRES_INTERACTIVE,
   MSG_NO_TODOS,
   STATE_ENTRY_TYPE,
+  type Task,
   type TaskMutationParams,
   TOOL_LABEL,
   TOOL_NAME,
@@ -154,7 +156,20 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
         return;
       }
       const groups = selectTasksByStatus(state);
+      const taskGroups = selectTaskGroups(state);
       const counts = selectTodoCounts(state);
+      const formatTask = (task: Task) => {
+        const group = taskGroups.get(task.id);
+        return formatCommandTaskLine(
+          group
+            ? {
+                ...task,
+                subject: `${group.label} ${resolveIcon('separator', '·')} ${group.displaySubject}`,
+              }
+            : task,
+          taskGlyph(task.status),
+        );
+      };
 
       const header: string[] = [];
       if (counts.completed > 0)
@@ -169,20 +184,17 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
       const lines: string[] = [
         header.join(` ${resolveIcon('separator', '·')} `),
       ];
-      if (groups.pending.length > 0) {
-        lines.push(SECTION_PENDING);
-        for (const task of groups.pending)
-          lines.push(formatCommandTaskLine(task, taskGlyph('pending')));
-      }
       if (groups.inProgress.length > 0) {
         lines.push(SECTION_IN_PROGRESS);
-        for (const task of groups.inProgress)
-          lines.push(formatCommandTaskLine(task, taskGlyph('in_progress')));
+        for (const task of groups.inProgress) lines.push(formatTask(task));
+      }
+      if (groups.pending.length > 0) {
+        lines.push(SECTION_PENDING);
+        for (const task of groups.pending) lines.push(formatTask(task));
       }
       if (groups.completed.length > 0) {
         lines.push(SECTION_COMPLETED);
-        for (const task of groups.completed)
-          lines.push(formatCommandTaskLine(task, taskGlyph('completed')));
+        for (const task of groups.completed) lines.push(formatTask(task));
       }
 
       ctx.ui.notify(lines.join('\n'), 'info');

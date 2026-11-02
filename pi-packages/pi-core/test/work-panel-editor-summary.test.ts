@@ -55,7 +55,7 @@ it('summarizes visible sections in priority order with compact counts and no hin
     },
     {
       ...provider('todos', 'Todos', 20),
-      summary: () => ({ completed: 53, total: 54 }),
+      summary: () => ({ running: 0, queued: 1, completed: 53, total: 54 }),
       listRows: () => [
         { id: 'pending', primary: 'Pending', status: 'pending' },
       ],
@@ -70,16 +70,16 @@ it('summarizes visible sections in priority order with compact counts and no hin
   occupy(session);
 
   expect(session.render(120)).toEqual([
-    'Agents ◐2 ✓34 ✗1 · Todos 53/54 · Background ✓4',
+    'Agents ◐2 ✓34 ✗1 · Todos ○1 ✓53 · Background ✓4',
   ]);
   const narrow = session.render(48);
   expect(narrow).toHaveLength(1);
-  expect(visibleWidth(narrow[0])).toBe(46);
+  expect(visibleWidth(narrow[0])).toBe(47);
   for (const label of ['Agents', 'Todos', 'Background'])
     expect(narrow[0]).toContain(label);
   expect(narrow[0]).not.toContain('...');
   expect(stripVTControlCharacters(narrow[0])).toBe(
-    'Agents ◐2 ✓34 ✗1 · Todos 53/54 · Background ✓4',
+    'Agents ◐2 ✓34 ✗1 · Todos ○1 ✓53 · Background ✓4',
   );
 });
 
@@ -149,17 +149,17 @@ it('uses the shared standard for real-provider numeric headings and summary coun
     }),
     registerWorkPanelProvider(session.ctx, {
       ...provider('todos', 'Todos', 20),
-      summary: () => ({ completed: 12, total: 15 }),
+      summary: () => ({ running: 1, queued: 2, completed: 12, total: 15 }),
     }),
     await ensureWorkPanel(session.ctx),
   );
   const full = session.render(160);
   expect(full).toContain('◆ Agents · ◐1 ○2 ✓30 ✗1 ■1');
-  expect(full).toContain('◆ Todos · 12/15');
+  expect(full).toContain('◆ Todos · ◐1 ○2 ✓12');
   expect(full).toContain('◆ Background · ◐1 ✓2');
   const slot = occupy(session);
   expect(session.render(160)).toEqual([
-    'Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos 12/15 · Background ◐1 ✓2',
+    'Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos ◐1 ○2 ✓12 · Background ◐1 ✓2',
   ]);
   slot.dispose();
   expect(session.render(160)).toEqual(full);
@@ -782,7 +782,7 @@ it('excludes only absorbed sources from a mixed summary', async () => {
     await ensureWorkPanel(session.ctx),
   );
   occupy(session);
-  expect(session.render()).toEqual(['Todos']);
+  expect(session.render()).toEqual(['Todos ◐1']);
 });
 
 it.each([
@@ -820,12 +820,12 @@ it('omits queued on narrow summaries and truncates the joined standard counts wi
     }),
     registerWorkPanelProvider(session.ctx, {
       ...provider('todos', 'Todos', 20),
-      summary: () => ({ completed: 12, total: 15 }),
+      summary: () => ({ running: 1, queued: 2, completed: 12, total: 15 }),
     }),
     await ensureWorkPanel(session.ctx),
   );
   occupy(session);
-  expect(session.render(35)).toEqual(['Agents ◐1 ✓30 ✗1 ■1 · Todos 12/15']);
+  expect(session.render(35)).toEqual(['Agents ◐1 ✓30 ✗1 ■1 · Todos ◐1 ✓12']);
   expect(stripVTControlCharacters(session.render(28)[0])).toBe(
     'Agents ◐1 ✓30 ✗1 ■1 · Tod...',
   );

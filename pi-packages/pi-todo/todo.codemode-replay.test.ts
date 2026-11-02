@@ -76,9 +76,24 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
     ).toBe(false);
     expect(await replay()).toEqual({
       tasks: [
-        { id: 1, subject: 'Task A', status: 'in_progress' },
-        { id: 2, subject: 'Task B', status: 'pending' },
-        { id: 3, subject: 'Task C', status: 'pending' },
+        {
+          id: 1,
+          subject: 'Task A',
+          status: 'in_progress',
+          createdAt: expect.any(Number),
+        },
+        {
+          id: 2,
+          subject: 'Task B',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
+        {
+          id: 3,
+          subject: 'Task C',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
       ],
       nextId: 4,
     });
@@ -105,7 +120,13 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
       sessionManager.appendCompaction('summary', null, 100);
     expect(await replay(event)).toEqual({
       tasks: [
-        { id: 1, subject: 'Completion persistence test', status: 'completed' },
+        {
+          id: 1,
+          subject: 'Completion persistence test',
+          status: 'completed',
+          createdAt: expect.any(Number),
+          completedAt: expect.any(Number),
+        },
       ],
       nextId: 2,
     });
@@ -150,9 +171,25 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
     appendResult('codemode');
     expect(await replay()).toEqual({
       tasks: [
-        { id: 1, subject: 'Root', status: 'in_progress' },
-        { id: 2, subject: 'Resolved child', status: 'pending', blockedBy: [1] },
-        { id: 3, subject: 'Discard', status: 'deleted' },
+        {
+          id: 1,
+          subject: 'Root',
+          status: 'in_progress',
+          createdAt: expect.any(Number),
+        },
+        {
+          id: 2,
+          subject: 'Resolved child',
+          status: 'pending',
+          blockedBy: [1],
+          createdAt: expect.any(Number),
+        },
+        {
+          id: 3,
+          subject: 'Discard',
+          status: 'deleted',
+          createdAt: expect.any(Number),
+        },
       ],
       nextId: 4,
     });
@@ -170,7 +207,14 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
       'message',
     ]);
     const expected = {
-      tasks: [{ id: 1, subject: 'Direct task', status: 'pending' }],
+      tasks: [
+        {
+          id: 1,
+          subject: 'Direct task',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
+      ],
       nextId: 2,
     };
     expect(await replay()).toEqual(expected);
@@ -185,7 +229,14 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
     await call({ action: 'update', id: 1, subject: 'Abandoned sibling' });
     sessionManager.branch(fork);
     const expected = {
-      tasks: [{ id: 1, subject: 'Ancestor', status: 'pending' }],
+      tasks: [
+        {
+          id: 1,
+          subject: 'Ancestor',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
+      ],
       nextId: 2,
     };
     expect(replayFromBranch(ctx)).toEqual(expected);
@@ -193,8 +244,18 @@ describe('nested todo calls survive replay on real Pi session branches', () => {
     await call({ action: 'create', subject: 'Selected sibling' });
     expect(await replay()).toEqual({
       tasks: [
-        { id: 1, subject: 'Ancestor', status: 'pending' },
-        { id: 2, subject: 'Selected sibling', status: 'pending' },
+        {
+          id: 1,
+          subject: 'Ancestor',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
+        {
+          id: 2,
+          subject: 'Selected sibling',
+          status: 'pending',
+          createdAt: expect.any(Number),
+        },
       ],
       nextId: 3,
     });

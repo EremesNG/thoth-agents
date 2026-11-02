@@ -136,7 +136,7 @@ describe('work panel rendering', () => {
     const agents = { ...provider(), summary: () => ({ running: 2 }) };
     const todos = {
       ...provider('todos', 'todos', 20),
-      summary: () => ({ completed: 1, total: 4 }),
+      summary: () => ({ running: 1, queued: 2, completed: 1, total: 4 }),
     };
     const background = {
       ...provider('background', 'background', 30),
@@ -148,7 +148,7 @@ describe('work panel rendering', () => {
     expect(session.render()).toEqual([
       '◆ Agents · ◐2',
       '  ◐ Agents item',
-      '◆ Todos · 1/4',
+      '◆ Todos · ◐1 ○2 ✓1',
       '  ◐ todos item',
       '◆ Background · ◐3 ✗2',
       '  ◐ background item',
@@ -193,7 +193,7 @@ describe('work panel input', () => {
     );
     session.key(keys.left);
     expect(session.render()[0]).toBe(
-      themed ? '› Todos · 2 items' : '› ◆ Todos · 2 items',
+      themed ? '› Todos · ○1' : '› ◆ Todos · ○1',
     );
     expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
     expect(session.key('x')).toBeUndefined();
@@ -646,7 +646,7 @@ describe('work panel compact budget', () => {
       await ensureWorkPanel(session.ctx),
     );
     expect(session.render()).toEqual([
-      '◆ Todos · 15 items',
+      '◆ Todos · ○10 ✓5',
       '  ○ Open 0',
       '  +5 done · +9 more',
       '← interact',

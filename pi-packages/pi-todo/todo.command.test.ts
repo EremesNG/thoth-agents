@@ -1,5 +1,7 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import { bindWorkPanelLifecycle } from '@thoth-agents/pi-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getState, replaceState } from './state/store.js';
 import { createMockCtx, createMockPi, createMockUI } from './test/helpers.js';
 import {
   __resetState,
@@ -17,7 +19,7 @@ function setup() {
   if (!tool) throw new Error('tool not registered');
   const cmd = captured.commands.get('todos');
   if (!cmd) throw new Error('command not registered');
-  return { tool, cmd };
+  return { tool, cmd, pi, captured };
 }
 
 async function seed(
@@ -75,6 +77,52 @@ describe('/todos command — guard branches', () => {
     );
   });
 
+  it('hides a fully completed list after its epoch, then restores archived history alongside new work', async () => {
+    const { cmd, pi, captured } = setup();
+    const ctx = createMockCtx();
+    const dispose = bindWorkPanelLifecycle(pi, ctx);
+    const archived = {
+      id: 1,
+      subject: 'Design',
+      status: 'completed' as const,
+      archivedAt: 100,
+      group: 'release',
+    };
+    replaceState('test-session', { tasks: [archived], nextId: 2 });
+    try {
+      await cmd.handler('', ctx as never);
+      expect(ctx.ui.notify).toHaveBeenLastCalledWith(
+        expect.stringContaining('✓ #1 release · Design'),
+        'info',
+      );
+      for (const handler of captured.events.get('input') ?? [])
+        await handler(
+          { source: 'interactive', text: 'next job' } as never,
+          ctx as never,
+        );
+      for (const handler of captured.events.get('before_agent_start') ?? [])
+        await handler({ prompt: 'next job' } as never, ctx as never);
+      await cmd.handler('', ctx as never);
+      expect(ctx.ui.notify).toHaveBeenLastCalledWith(
+        expect.stringContaining('No todos'),
+        'info',
+      );
+      expect(getState('test-session').tasks).toEqual([archived]);
+
+      replaceState('test-session', {
+        tasks: [archived, { id: 2, subject: 'Build', status: 'pending' }],
+        nextId: 3,
+      });
+      await cmd.handler('', ctx as never);
+      expect(ctx.ui.notify).toHaveBeenLastCalledWith(
+        expect.stringContaining('✓ #1 release · Design'),
+        'info',
+      );
+    } finally {
+      dispose();
+    }
+  });
+
   it('treats all-deleted tasks as empty (info notify, not group render)', async () => {
     const { tool, cmd } = setup();
     await seed(tool, [
@@ -99,6 +147,67 @@ describe('/todos command — grouped output', () => {
     expect(level).toBe('info');
     return text as string;
   }
+
+  it('lists archived tasks under Completed with explicit and inferred groups in status order', async () => {
+    const { cmd } = setup();
+    const state = {
+      tasks: [
+        {
+          id: 1,
+          subject: 'Design',
+          status: 'completed' as const,
+          archivedAt: 100,
+          group: 'release',
+        },
+        {
+          id: 2,
+          subject: 'pi-1.4 AC-1: Build',
+          status: 'in_progress' as const,
+          activeForm: 'Building',
+        },
+        { id: 3, subject: 'pi-1.4: Ship', status: 'pending' as const },
+        { id: 4, subject: 'solo: Announce', status: 'pending' as const },
+        { id: 5, subject: 'Deleted', status: 'deleted' as const },
+      ],
+      nextId: 6,
+    };
+    replaceState('test-session', state);
+    const ctx = createMockCtx();
+    await cmd.handler('', ctx as never);
+    const out = grabOutput(ctx);
+    expect(out).toContain('✓ #1 release · Design');
+    expect(out).toContain('◇ #2 pi-1.4 · AC-1: Build (Building)');
+    expect(out).toContain('○ #3 pi-1.4 · Ship');
+    expect(out).toContain('○ #4 solo: Announce');
+    expect(out).not.toContain('Deleted');
+    expect(out).toContain('1/4 completed · 1 in progress · 2 pending');
+    expect(out.indexOf('── In Progress')).toBeLessThan(
+      out.indexOf('── Pending'),
+    );
+    expect(out.indexOf('── Pending')).toBeLessThan(out.indexOf('── Completed'));
+    expect(getState('test-session')).toEqual(state);
+  });
+
+  it('sanitizes group labels in text output', async () => {
+    const { cmd } = setup();
+    replaceState('test-session', {
+      tasks: [
+        {
+          id: 1,
+          subject: 'Design',
+          status: 'pending',
+          group: 'release\u001b]52;c;group-secret\u0007',
+        },
+      ],
+      nextId: 2,
+    });
+    const ctx = createMockCtx();
+    await cmd.handler('', ctx as never);
+    const out = grabOutput(ctx);
+    expect(out).toContain('○ #1 release · Design');
+    expect(out).not.toContain('group-secret');
+    expect(out).not.toContain('\u001b');
+  });
 
   it("renders 'Pending' group with ○ glyph and task id", async () => {
     const { tool, cmd } = setup();

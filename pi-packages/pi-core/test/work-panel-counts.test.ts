@@ -42,14 +42,18 @@ it('exports the sidebar count order and whole-count semantic roles without a wor
   ]);
 });
 
-it('renders Todos as a plain fraction, including zero, and otherwise keeps summary text', () => {
-  expect(format({ kind: 'todos', summary: { completed: 0, total: 15 } })).toBe(
-    '0/15',
-  );
-  expect(format({ kind: 'todos', summary: { completed: 12, total: 15 } })).toBe(
-    '12/15',
-  );
-  expect(format({ kind: 'todos', summary: { completed: 1 } })).toBeUndefined();
+it('renders Todos through the shared glyph counts and otherwise keeps summary text', () => {
+  const summary = { running: 1, queued: 2, completed: 12, total: 15 };
+  expect(format({ kind: 'todos', summary })).toEqual([
+    { text: '◐1', role: 'accent' },
+    { text: '○2', role: 'dim' },
+    { text: '✓12', role: 'success' },
+  ]);
+  expect(format({ kind: 'todos', summary, width: 35 })).toEqual([
+    { text: '◐1', role: 'accent' },
+    { text: '✓12', role: 'success' },
+  ]);
+  expect(format({ kind: 'todos', summary: { completed: 0 } })).toEqual([]);
   expect(
     format({ kind: 'other', summary: { text: 'Custom summary', running: 1 } }),
   ).toBe('Custom summary');

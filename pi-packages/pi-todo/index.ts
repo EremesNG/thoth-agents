@@ -9,11 +9,13 @@ import {
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
 } from '@thoth-agents/pi-core';
-import { TodoStatePublisher } from './state/publish.js';
+import { publishTodoState, TodoStatePublisher } from './state/publish.js';
 import { reinjectOpenTasks } from './state/reinjection.js';
 import { replayFromBranch } from './state/replay.js';
+import { applyTaskMutation, changesState } from './state/state-reducer.js';
 import {
   clearActiveRenderSession,
+  commitState,
   evictSession,
   getActiveRenderSession,
   getState,
@@ -22,8 +24,12 @@ import {
   sid,
 } from './state/store.js';
 import { registerTodosCommand, registerTodoTool } from './todo.js';
-import { forgetCompletedList } from './todo-visibility.js';
+import {
+  forgetCompletedList,
+  onPromptEpochChanged,
+} from './todo-visibility.js';
 import { createTodoWorkPanelProvider } from './todo-work-panel.js';
+import { STATE_ENTRY_TYPE } from './tool/types.js';
 
 // Pi invalidates ctx proxies after session replacement. Only this known race
 // is ignored; genuine branch replay errors must still propagate.
@@ -44,7 +50,7 @@ export default function (pi: ExtensionAPI) {
   const statePublisher = new TodoStatePublisher(pi.events);
   let unregisterProvider: (() => void) | undefined;
   let releaseWorkPanel: (() => void) | undefined;
-  let releaseLifecycle: (() => void) | undefined;
+  const lifecycleBindings = new Map<string, () => void>();
   let lifecycleGeneration = 0;
 
   registerTodoTool(pi);
@@ -73,6 +79,28 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     statePublisher.replayed(id);
+    lifecycleBindings.get(id)?.();
+    // Track epochs without installing UI, including for headless sessions.
+    const releaseLifecycle = bindWorkPanelLifecycle(pi, ctx);
+    const stopEpochs = onPromptEpochChanged(pi, ctx, () => {
+      const result = applyTaskMutation(getState(id), 'archive', {});
+      if (!changesState(result.op)) return;
+      commitState(id, result.state);
+      try {
+        pi.appendEntry(STATE_ENTRY_TYPE, {
+          action: 'archive',
+          params: {},
+          tasks: result.state.tasks,
+          nextId: result.state.nextId,
+        });
+      } finally {
+        publishTodoState(pi.events, id);
+      }
+    });
+    lifecycleBindings.set(id, () => {
+      stopEpochs();
+      releaseLifecycle();
+    });
     if (!ctx.hasUI) return;
     publication ??= publishToolDefinitions(definitions);
     // The first UI session owns the foreground. A child with a distinct sid
@@ -80,9 +108,6 @@ export default function (pi: ExtensionAPI) {
     if (getActiveRenderSession() === '') setActiveRenderSession(id);
     if (id !== getActiveRenderSession()) return;
     const generation = ++lifecycleGeneration;
-    // Bind before the host so the prompt epoch is tracked even when Todos is the only provider.
-    releaseLifecycle?.();
-    releaseLifecycle = bindWorkPanelLifecycle(pi, ctx);
     forgetCompletedList(id);
     unregisterProvider ??= registerWorkPanelProvider(
       ctx,
@@ -115,6 +140,13 @@ export default function (pi: ExtensionAPI) {
       if (!isStaleCtxError(e)) throw e;
       s = '';
     }
+    if (s === '') {
+      for (const release of lifecycleBindings.values()) release();
+      lifecycleBindings.clear();
+    } else {
+      lifecycleBindings.get(s)?.();
+      lifecycleBindings.delete(s);
+    }
     evictSession(s);
     forgetCompletedList(s);
     if (s === '') statePublisher.dispose();
@@ -122,8 +154,6 @@ export default function (pi: ExtensionAPI) {
     if (s === '' || s === getActiveRenderSession()) {
       lifecycleGeneration++;
       try {
-        releaseLifecycle?.();
-        releaseLifecycle = undefined;
         releaseWorkPanel?.();
       } finally {
         releaseWorkPanel = undefined;

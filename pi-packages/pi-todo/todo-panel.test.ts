@@ -64,6 +64,57 @@ it('shows the completed header, grouped sections and the selected description', 
   expect(text).toContain('~Design~');
 });
 
+it('shows group labels on every grouped row and in archived task details', () => {
+  const list: Task[] = [
+    {
+      id: 1,
+      subject: 'pi-1.4 AC-1: Design',
+      status: 'completed',
+      archivedAt: 100,
+      description: 'Archived design.',
+    },
+    { id: 2, subject: 'Build', status: 'in_progress', group: 'release' },
+    { id: 3, subject: 'pi-1.4: Ship', status: 'pending' },
+    { id: 4, subject: 'solo: Announce', status: 'pending' },
+  ];
+  for (const width of [60, 120]) {
+    const { panel, lines } = open(list, '1', width);
+    const text = lines().join('\n');
+    expect(text).toContain('pi-1.4 · ~AC-1: Design~');
+    expect(text).toContain('pi-1.4 · Ship');
+    expect(text).toContain('release · Build');
+    expect(text).toContain('solo: Announce');
+    expect(text).not.toContain('pi-1.4 AC-1: Design');
+    expect(text).toContain('Group: pi-1.4');
+    expect(text).toContain('Archived design.');
+    expect(text).toContain('1/4 completed');
+    expect(panel.getRenderDebugState().selectedId).toBe('1');
+    expect(panel.getRenderDebugState().widthViolationCount).toBe(0);
+  }
+});
+
+it('refreshes inferred groups when the current list changes', () => {
+  let list: Task[] = [
+    { id: 1, subject: 'pi-1.4: Design', status: 'completed', archivedAt: 100 },
+    { id: 2, subject: 'Build', status: 'pending' },
+  ];
+  const panel = new TodoPanel(() => list, {
+    theme,
+    onClose: vi.fn(),
+    initialSelectedId: '1',
+    refreshMs: 0,
+    maxLines: 40,
+  });
+  cleanups.push(() => panel.dispose());
+  expect(panel.render(120).join('\n')).toContain('~pi-1.4: Design~');
+  list = [list[0], { ...list[1], subject: 'pi-1.4: Build' }];
+  const text = panel.render(120).join('\n');
+  expect(text).toContain('pi-1.4 · ~Design~');
+  expect(text).toContain('pi-1.4 · Build');
+  expect(text).toContain('Group: pi-1.4');
+  expect(panel.getRenderDebugState().selectedId).toBe('1');
+});
+
 it('shows the selected description on open and after selection in a 120x24 panel with twenty tasks', () => {
   const list: Task[] = Array.from({ length: 20 }, (_, index) => ({
     id: index + 1,
@@ -108,11 +159,12 @@ it('keeps terminal-unsafe model text out of the panel', () => {
       id: 1,
       subject: 'Safe\u001b[31m title',
       status: 'pending',
+      group: 'release\u001b]52;c;group-secret\u0007',
       description: 'Line\u001b]52;c;secret\u0007 one',
     },
   ];
   const text = open(unsafe, '1').lines().join('\n');
-  expect(text).toContain('Safe title');
+  expect(text).toContain('release · Safe title');
   expect(text).toContain('Line one');
   expect(text).not.toContain('secret');
 });

@@ -107,7 +107,7 @@ it.each([
   expect(session.render()[0]).toBe(`◆ Agents · ${expected}`);
 });
 
-it('uses a plain todo fraction and keeps queued separate from running in semantic fallback', async () => {
+it('uses shared todo glyph counts and keeps queued separate from running in semantic fallback', async () => {
   const session = uiSession();
   cleanups.push(
     registerWorkPanelProvider(session.ctx, {
@@ -120,12 +120,12 @@ it('uses a plain todo fraction and keeps queued separate from running in semanti
     }),
     registerWorkPanelProvider(session.ctx, {
       ...provider('todos', 'Todos', 20),
-      summary: () => ({ completed: 12, total: 15 }),
+      summary: () => ({ running: 1, queued: 2, completed: 12, total: 15 }),
     }),
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render(120)).toContain('◆ Agents · ◐2 ○1');
-  expect(session.render(120)).toContain('◆ Todos · 12/15');
+  expect(session.render(120)).toContain('◆ Todos · ◐1 ○2 ✓12');
   expect(session.render(35)[0]).toBe('◆ Agents · ◐2');
 });
 

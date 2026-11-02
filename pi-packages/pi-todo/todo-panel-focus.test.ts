@@ -15,6 +15,52 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('opens archived task details alongside live work through the current-list loader', async () => {
+  vi.useFakeTimers();
+  const { ctx: sdkCtx, tui } = ownedOverlaySession();
+  cleanups.push(() => tui.stop());
+  const sdkCustom = sdkCtx.ui.custom;
+  const custom: typeof sdkCustom = (factory, options) =>
+    sdkCustom(
+      (tui, _theme, _keys, done) =>
+        factory(tui, makeTheme(), { matches: () => false } as never, done),
+      options,
+    );
+  const ctx = createMockCtx({
+    mode: 'tui',
+    sessionId: 'archived-overlay',
+    ui: { ...sdkCtx.ui, custom } as never,
+  });
+  replaceState('archived-overlay', {
+    tasks: [
+      {
+        id: 1,
+        subject: 'pi-1.4: Design',
+        status: 'completed',
+        archivedAt: 100,
+        description: 'Archived design description',
+      },
+      { id: 2, subject: 'pi-1.4: Build', status: 'pending' },
+    ],
+    nextId: 3,
+  });
+  cleanups.push(() => evictSession('archived-overlay'));
+  const opening = showTodoPanel(ctx, '1');
+  await Promise.resolve();
+  const history = tui.getFocusedComponent() as TodoPanel;
+  cleanups.push(() => history.handleInput('q'));
+  const text = history.render(120).join('\n');
+  expect(history.getRenderDebugState().selectedId).toBe('1');
+  expect(text).toContain('Archived design description');
+  expect(text).toContain('Group: pi-1.4');
+  expect(text).toContain('pi-1.4 · Design');
+  expect(text).toContain('pi-1.4 · Build');
+  expect(text).toContain('── Completed 1');
+  expect(text).toContain('1/2 completed');
+  history.handleInput('q');
+  await opening;
+});
+
 it.each([
   ['same editor', 'history first'],
   ['same editor', 'question first'],

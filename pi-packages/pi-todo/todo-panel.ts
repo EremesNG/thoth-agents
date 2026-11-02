@@ -11,7 +11,11 @@ import {
   type HistoryPanelLine,
   type HistoryPanelOptions,
 } from '@thoth-agents/pi-core/history-panel';
-import { selectTodoCounts } from './state/selectors.js';
+import {
+  type ResolvedTaskGroup,
+  selectTaskGroups,
+  selectTodoCounts,
+} from './state/selectors.js';
 import { listCurrentTasks } from './todo-visibility.js';
 import { sanitizeTerminalText } from './tool/sanitize.js';
 import type { Task, TaskStatus } from './tool/types.js';
@@ -19,6 +23,7 @@ import { taskGlyph } from './view/task-glyphs.js';
 
 type PanelStatus = Exclude<TaskStatus, 'deleted'>;
 type PanelTheme = NonNullable<HistoryPanelOptions['theme']>;
+type PanelTask = Task & { resolvedGroup?: ResolvedTaskGroup };
 
 const GROUPS: readonly { status: PanelStatus; label: string }[] = [
   { status: 'in_progress', label: 'In progress' },
@@ -42,7 +47,7 @@ export function describeTaskCounts(tasks: readonly Task[]): string {
 }
 
 /** Overlay with the full current task list; the selected task's description on the right. */
-export class TodoPanel extends HistoryPanel<Task> {
+export class TodoPanel extends HistoryPanel<PanelTask> {
   constructor(
     tasks: () => readonly Task[],
     options: Omit<HistoryPanelOptions, 'title'>,
@@ -53,8 +58,23 @@ export class TodoPanel extends HistoryPanel<Task> {
       return getRenderKit()?.fg(theme, role, text) ?? theme.fg(role, text);
     };
     const strike = (text: string) => theme?.strikethrough?.(text) ?? text;
-    const ordered = () => groupTasks(tasks());
-    const subject = (task: Task) => sanitizeTerminalText(task.subject);
+    const ordered = (): PanelTask[] => {
+      const current = tasks();
+      const groups = selectTaskGroups({ tasks: [...current], nextId: 0 });
+      return groupTasks(current).map((task) => ({
+        ...task,
+        resolvedGroup: groups.get(task.id),
+      }));
+    };
+    const subject = (task: PanelTask) =>
+      sanitizeTerminalText(task.resolvedGroup?.displaySubject ?? task.subject);
+    const groupPrefix = (task: PanelTask) =>
+      task.resolvedGroup
+        ? fg(
+            'dim',
+            `${sanitizeTerminalText(task.resolvedGroup.label)} ${resolveIcon('separator')} `,
+          )
+        : '';
     const marker = (selected: boolean) =>
       selected ? resolveIcon('selection') : ' ';
     const toned = (task: Task, text: string) =>
@@ -66,9 +86,9 @@ export class TodoPanel extends HistoryPanel<Task> {
       {
         items: ordered,
         id: (task) => String(task.id),
-        // The shell tones the whole label by selection; only strikethrough is added.
+        // The shell tones the label by selection; group prefixes stay dim.
         renderItemLabel: (task, context) =>
-          `${marker(context.selected)} ${taskGlyph(task.status)} ${task.status === 'completed' ? strike(subject(task)) : subject(task)}`,
+          `${marker(context.selected)} ${taskGlyph(task.status)} ${groupPrefix(task)}${task.status === 'completed' ? strike(subject(task)) : subject(task)}`,
         renderHeader: () => {
           const summary = fg('success', describeTaskCounts(ordered()));
           return { wideRows: [summary], narrowRows: [summary] };
@@ -77,12 +97,15 @@ export class TodoPanel extends HistoryPanel<Task> {
           const all = ordered();
           const label = GROUPS.find((g) => g.status === task.status)?.label;
           const lines: (string | HistoryPanelLine)[] = [
-            `${taskGlyph(task.status)} ${toned(task, theme?.bold?.(subject(task)) ?? subject(task))}`,
+            `${taskGlyph(task.status)} ${groupPrefix(task)}${toned(task, theme?.bold?.(subject(task)) ?? subject(task))}`,
             fg(
               'dim',
               [
                 label,
                 `#${task.id}`,
+                task.resolvedGroup
+                  ? `Group: ${sanitizeTerminalText(task.resolvedGroup.label)}`
+                  : undefined,
                 task.blockedBy?.length
                   ? `blocked by ${task.blockedBy.map((id) => `#${id}`).join(',')}`
                   : undefined,
@@ -115,7 +138,7 @@ export class TodoPanel extends HistoryPanel<Task> {
             lines.push('', heading(group.label, String(members.length)));
             for (const member of members) {
               const selected = member.id === task.id;
-              const text = `${marker(selected)} ${taskGlyph(member.status)} ${fg('dim', `#${member.id}`)} ${toned(member, subject(member))}`;
+              const text = `${marker(selected)} ${taskGlyph(member.status)} ${fg('dim', `#${member.id}`)} ${groupPrefix(member)}${toned(member, subject(member))}`;
               lines.push({
                 text: selected ? fg('accent', text) : text,
                 itemId: String(member.id),

@@ -79,7 +79,7 @@ describe('applyTaskMutation — update', () => {
     expect(result.op).toEqual({
       kind: 'error',
       message:
-        'update requires at least one mutable field: subject, description, activeForm, status, owner, metadata, addBlockedBy, or removeBlockedBy',
+        'update requires at least one mutable field: subject, group, description, activeForm, status, owner, metadata, addBlockedBy, or removeBlockedBy',
     });
   });
 

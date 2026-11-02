@@ -43,12 +43,17 @@ export type TaskAction =
 export interface Task {
   id: number;
   subject: string;
+  group?: string;
   description?: string;
   activeForm?: string;
   status: TaskStatus;
   blockedBy?: number[];
   owner?: string;
   metadata?: Record<string, unknown>;
+  /** Unix milliseconds; optional for snapshots created by older versions. */
+  createdAt?: number;
+  completedAt?: number;
+  archivedAt?: number;
 }
 
 /**
@@ -76,6 +81,7 @@ export interface BatchResult {
 
 interface TaskFields {
   subject?: string;
+  group?: string;
   description?: string;
   activeForm?: string;
   status?: TaskStatus;
@@ -124,6 +130,7 @@ const SingleParamsSchema = Type.Object({
   subject: Type.Optional(
     Type.String({ description: 'Task subject line (required for create)' }),
   ),
+  group: Type.Optional(Type.String({ description: 'Group label' })),
   description: Type.Optional(
     Type.String({ description: 'Long-form task description' }),
   ),
@@ -190,6 +197,7 @@ function withoutDescription<T extends TSchema>(schema: T): T {
 
 const BatchOpSchema = Type.Object({
   subject: withoutDescription(SingleParamsSchema.properties.subject),
+  group: withoutDescription(SingleParamsSchema.properties.group),
   description: withoutDescription(SingleParamsSchema.properties.description),
   activeForm: withoutDescription(SingleParamsSchema.properties.activeForm),
   status: withoutDescription(SingleParamsSchema.properties.status),

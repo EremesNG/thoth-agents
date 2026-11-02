@@ -29,10 +29,6 @@ export function formatCompactWorkCounts({
   | undefined {
   if (!summary) return undefined;
   const { running, queued, completed, failed, cancelled, total } = summary;
-  if (kind === 'todos')
-    return completed !== undefined && total !== undefined
-      ? `${completed}/${total}`
-      : undefined;
   if (
     kind === 'other' ||
     [running, queued, completed, failed, cancelled, total].every(

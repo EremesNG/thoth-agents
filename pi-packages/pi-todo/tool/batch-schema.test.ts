@@ -7,6 +7,7 @@ it('documents shared batch fields only at the top level without changing their t
   const batch = topLevel.ops.items;
   for (const field of [
     'subject',
+    'group',
     'description',
     'activeForm',
     'status',
@@ -51,10 +52,11 @@ it('Pi host validates batch unions without coercing numeric-looking string refs'
   const args: JsonObject = {
     action: 'batch',
     ops: [
-      { action: 'create', subject: 'Root', ref: '123' },
+      { action: 'create', subject: 'Root', group: 'pi-1.4', ref: '123' },
       { action: 'create', subject: 'Child', blockedBy: ['123', 7] },
       {
         action: 'update',
+        group: 'narration',
         id: '123',
         addBlockedBy: ['007', 8],
         removeBlockedBy: ['123', 9],

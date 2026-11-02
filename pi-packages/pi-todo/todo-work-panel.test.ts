@@ -27,7 +27,7 @@ afterEach(() => {
 it.each([
   false,
   true,
-])('matches the v1 native and themed golden task rows with host-owned completion styling (render kit: %s)', async (themed) => {
+])('renders active-first native and themed task rows with host-owned completion styling (render kit: %s)', async (themed) => {
   const session = uiSession();
   const styles: Array<[string, string]> = [];
   session.ui.theme.fg = (role, text) => {
@@ -67,25 +67,25 @@ it.each([
     await ensureWorkPanel(session.ctx),
   );
 
-  // Captured from the unchanged provider through the HEAD v1 renderer before migration.
   const golden = themed
     ? [
-        'Todos · 1/3',
-        '  ├─ ○ Review',
+        'Todos · ◐1 ○1 ✓1',
         '  ├─ ◇ Build (Building)',
+        '  ├─ ○ Review',
         '  └─ ✓ \u001b[9mExplore\u001b[29m',
         '← interact',
       ]
     : [
-        '◆ Todos · 1/3',
-        '  ○ Review',
+        '◆ Todos · ◐1 ○1 ✓1',
         '  ◇ Build (Building)',
+        '  ○ Review',
         '  ✓ \u001b[9mExplore\u001b[29m',
         '← interact',
       ];
   expect(session.render(100)).toEqual(golden);
   expect(session.render(40)).toEqual(golden);
-  expect(styles).toContainEqual(['toolTitle', 'Review']);
+  expect(styles).toContainEqual(['text', 'Review']);
+  expect(styles).toContainEqual(['accent', 'Build']);
   expect(styles).toContainEqual(['text', ' (Building)']);
   expect(styles).toContainEqual(['dim', 'Explore']);
   expect(styles).toContainEqual(['success', '✓']);
@@ -114,10 +114,15 @@ it.each([
   cleanups.push(await ensureWorkPanel(session.ctx));
 
   const lines: string[] = session.render();
-  expect(lines[0]).toContain('Todos · 7/7');
+  expect(lines[0]).toContain('Todos · ✓7');
   expect(lines.some((line) => line.includes('Finished 1'))).toBe(true);
   expect(provider.visibleCount()).toBe(7);
-  expect(provider.summary()).toEqual({ completed: 7, total: 7 });
+  expect(provider.summary()).toEqual({
+    running: 0,
+    queued: 0,
+    completed: 7,
+    total: 7,
+  });
 });
 it('keeps a finished task list shown with completed rows marked as the last open task completes', async () => {
   const session = uiSession();
@@ -134,7 +139,7 @@ it('keeps a finished task list shown with completed rows marked as the last open
   );
   cleanups.push(await ensureWorkPanel(session.ctx));
   expect(session.render()).toEqual([
-    '◆ Todos · 1/2',
+    '◆ Todos · ◐1 ✓1',
     '  ◇ Last open task',
     '  ✓ Already finished',
     '← interact',
@@ -148,7 +153,7 @@ it('keeps a finished task list shown with completed rows marked as the last open
     nextId: 3,
   });
   expect(session.render()).toEqual([
-    '◆ Todos · 2/2',
+    '◆ Todos · ✓2',
     '  ✓ Last open task',
     '  ✓ Already finished',
     '← interact',
@@ -179,13 +184,15 @@ it('opens the panel from the heading, a row and the dropped-done summary, and dr
   cleanups.push(await ensureWorkPanel(session.ctx));
 
   const lines: string[] = session.render();
-  expect(lines[0]).toBe('◆ Todos · 14/16');
+  expect(lines[0]).toBe('◆ Todos · ◐1 ○1 ✓14');
   expect(lines.some((line) => line.includes('Open one'))).toBe(true);
   expect(lines.some((line) => line.includes('Open two'))).toBe(true);
   const dropped = lines.find((line) => /\+\d+ done/.test(line));
   expect(dropped).toBeDefined();
   const hidden = Number(/\+(\d+) done/.exec(dropped ?? '')?.[1]);
-  expect(lines.filter((line) => line.includes('✓')).length + hidden).toBe(14);
+  expect(
+    lines.slice(1).filter((line) => line.includes('✓')).length + hidden,
+  ).toBe(14);
 
   session.key('\x1b[D');
   session.key('\r');
@@ -222,13 +229,13 @@ it('keeps exact completed counts selectable in a three-line widget and stays bou
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render()).toEqual([
-    '◆ Todos · 10/11',
-    '  +10 done · +1 more',
+    '◆ Todos · ○1 ✓10',
+    '  +1 pending · +10 done',
     '← interact',
   ]);
   session.key('\x1b[D');
   for (let index = 0; index < 12; index++) session.key('\x1b[B');
-  expect(session.render()).toContain('› +10 done · +1 more');
+  expect(session.render()).toContain('› +1 pending · +10 done');
   session.key('\r');
   expect(openHistory).toHaveBeenCalledExactlyOnceWith(session.ctx);
   for (const height of [0, 2, 4]) {
@@ -263,22 +270,27 @@ it('lists every visible task in order as plain data with completed rows marked a
     selectableSummary: true,
   });
   expect(provider.droppedSummary(4)).toBe('+4 done');
-  expect(provider.summary()).toEqual({ completed: 1, total: 3 });
+  expect(provider.summary()).toEqual({
+    running: 1,
+    queued: 1,
+    completed: 1,
+    total: 3,
+  });
   const rows = provider.listRows(0);
-  expect(rows.map((row) => row.id)).toEqual(['1', '2', '3']);
+  expect(rows.map((row) => row.id)).toEqual(['3', '1', '2']);
   expect(rows.map((row) => row.dropFirst)).toEqual([
     undefined,
-    true,
     undefined,
+    true,
   ]);
-  expect(rows[1]).toMatchObject({
+  expect(rows[2]).toMatchObject({
     statusGlyph: 'completed',
     statusGlyphRole: 'success',
     segments: [{ text: 'Finished task', role: 'completed' }],
   });
   expect(structuredClone(rows)).toEqual(rows);
   expect(JSON.parse(JSON.stringify(rows))).toEqual(rows);
-  expect(rows[2].primary).toBe('Implement feature (Implementing feature)');
+  expect(rows[0].primary).toBe('Implement feature (Implementing feature)');
   expect(provider.visibleCount()).toBe(3);
 });
 it('has no generic detail card and no close action; rows open the panel instead', () => {
@@ -413,7 +425,12 @@ it.each([
   replaceState('foreground', { tasks, nextId: 2 });
   const provider = createTodoWorkPanelProvider();
   expect(provider.listRows(0)).toEqual([]);
-  expect(provider.summary()).toEqual({ completed: 0, total: 0 });
+  expect(provider.summary()).toEqual({
+    running: 0,
+    queued: 0,
+    completed: 0,
+    total: 0,
+  });
   expect(provider.visibleCount()).toBe(0);
 });
 
@@ -431,7 +448,12 @@ it('shows completed-only lists and excludes pending active forms', () => {
     'Finished one',
     'Finished two',
   ]);
-  expect(provider.summary()).toEqual({ completed: 2, total: 2 });
+  expect(provider.summary()).toEqual({
+    running: 0,
+    queued: 0,
+    completed: 2,
+    total: 2,
+  });
   replaceState('foreground', {
     tasks: [
       {
@@ -464,14 +486,14 @@ it('publishes distinct todo glyphs and semantic subject and active-form hierarch
     statusGlyph: 'taskInProgress',
     statusGlyphRole: 'accent',
     segments: [
-      { text: 'Verify', role: 'primary' },
+      { text: 'Verify', role: 'accent' },
       { text: ' (Verifying)', role: 'secondary' },
     ],
   });
   expect(rows[1]).toMatchObject({
     statusGlyph: 'pending',
     statusGlyphRole: 'secondary',
-    segments: [{ text: 'Archive', role: 'primary' }],
+    segments: [{ text: 'Archive', role: 'secondary' }],
   });
 });
 it('todo semantic overrides let the host use the registered kit and restore native glyphs on withdrawal without changing row data', async () => {
@@ -496,7 +518,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render()).toEqual([
-    '◆ Todos · 0/2',
+    '◆ Todos · ◐1 ○1',
     '  ◇ active',
     '  ○ waiting',
     '← interact',
@@ -507,7 +529,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
   const token = registerRenderKit(kit, {});
   cleanups.push(() => withdrawRenderKit(token));
   expect(session.render()).toEqual([
-    'Todos separator 0/2',
+    'Todos separator +1 +1',
     '  ├─ * active',
     '  └─ - waiting',
     'arrowLeft interact',
@@ -515,7 +537,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
   expect(provider.listRows(0)).toEqual(rows);
   withdrawRenderKit(token);
   expect(session.render()).toEqual([
-    '◆ Todos · 0/2',
+    '◆ Todos · ◐1 ○1',
     '  ◇ active',
     '  ○ waiting',
     '← interact',

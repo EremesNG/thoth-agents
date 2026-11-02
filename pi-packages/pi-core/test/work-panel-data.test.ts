@@ -144,7 +144,7 @@ describe('data-only work panel rendering', () => {
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
         ...provider('todos', 'Todos', 20),
-        summary: () => ({ completed: 1, total: 3 }),
+        summary: () => ({ running: 1, queued: 1, completed: 1, total: 3 }),
         listRows: () => [
           {
             id: 'pending',
@@ -194,7 +194,7 @@ describe('data-only work panel rendering', () => {
     expect(session.render()).toEqual(
       themed
         ? [
-            'Todos · 1/3',
+            'Todos · ◐1 ○1 ✓1',
             '  ├─ ○ Review',
             '  ├─ ◇ Build (Building)',
             '  └─ ✓ ~Explore~',
@@ -203,7 +203,7 @@ describe('data-only work panel rendering', () => {
             '← interact',
           ]
         : [
-            '◆ Todos · 1/3',
+            '◆ Todos · ◐1 ○1 ✓1',
             '  ○ Review',
             '  ◇ Build (Building)',
             '  ✓ ~Explore~',

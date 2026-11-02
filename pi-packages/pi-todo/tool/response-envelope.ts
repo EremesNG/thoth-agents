@@ -74,6 +74,8 @@ export function formatBatchLine(result: BatchResult): string {
  */
 export function formatContent(op: Op, state: TaskState): string {
   switch (op.kind) {
+    case 'archive':
+      return `Archived ${op.count} tasks`;
     case 'batch':
       return [
         `Batch: ${formatBatchCounts(op.results)}`,

@@ -20,11 +20,13 @@ describe('atomic batch', () => {
       id: 1,
       subject: 'Task 0',
       status: 'in_progress',
+      createdAt: expect.any(Number),
     });
     expect(result.state.tasks[9]).toEqual({
       id: 10,
       subject: 'Task 9',
       status: 'pending',
+      createdAt: expect.any(Number),
     });
     expect(result.op).toMatchObject({
       kind: 'batch',
@@ -73,15 +75,27 @@ describe('batch refs and rollback', () => {
       ],
     });
     expect(result.state.tasks).toEqual([
-      { id: 1, subject: 'Root', status: 'deleted' },
+      {
+        id: 1,
+        subject: 'Root',
+        status: 'deleted',
+        createdAt: expect.any(Number),
+      },
       {
         id: 2,
         subject: 'Child',
         status: 'in_progress',
         blockedBy: [3],
         owner: 'worker',
+        createdAt: expect.any(Number),
       },
-      { id: 3, subject: 'Done', status: 'completed' },
+      {
+        id: 3,
+        subject: 'Done',
+        status: 'completed',
+        createdAt: expect.any(Number),
+        completedAt: expect.any(Number),
+      },
     ]);
     expect(result.state.tasks.every((task) => !('ref' in task))).toBe(true);
     const next = applyTaskMutation(result.state, 'batch', {
@@ -284,7 +298,12 @@ it('treats a numeric-looking string as a ref rather than an existing numeric id'
   });
   expect(result.state.tasks).toEqual([
     { id: 1, subject: 'Existing', status: 'pending' },
-    { id: 2, subject: 'New', status: 'in_progress' },
+    {
+      id: 2,
+      subject: 'New',
+      status: 'in_progress',
+      createdAt: expect.any(Number),
+    },
   ]);
 });
 

@@ -266,7 +266,6 @@ it('hides a fully completed list after the next recognized prompt, keeping task 
     current,
   );
   expect(provider.listRows(0).map((row) => row.primary)).toEqual([
-    'Only task',
     'Fresh task',
   ]);
 });

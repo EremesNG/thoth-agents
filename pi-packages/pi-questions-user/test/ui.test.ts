@@ -233,7 +233,7 @@ describe('questionnaire UI', () => {
         ],
       });
       const height = host.component.render(width).length;
-      expect(height).toBe(26);
+      expect(height).toBe(12);
       host.send('n');
       const frame = host.component.render(width);
       expect(frame).toHaveLength(height);
@@ -275,8 +275,8 @@ describe('questionnaire UI', () => {
       });
       for (const header of ['[○ First Details]', '[○ Second Details]']) {
         const frame = host.component.render(width);
-        expect(frame).toHaveLength(26);
-        expect(physicalRows(frame)).toHaveLength(26);
+        expect(frame).toHaveLength(17);
+        expect(physicalRows(frame)).toHaveLength(17);
         expect(frame[0]).toContain('Planning Details');
         expect(frame[1]).toContain(header);
         expectRows(frame, width);
@@ -302,6 +302,7 @@ describe('questionnaire UI', () => {
       });
       const check = () => expectRows(host.component.render(width), width);
       check();
+      if (width < 100) host.send('p');
       host.send(KEY.down);
       check();
       expect(host.text(width)).toContain('Preview extra · ★ Recommended extra');
@@ -388,7 +389,7 @@ describe('questionnaire UI', () => {
         },
       ],
     });
-    host.send(KEY.down);
+    host.send('p', KEY.down);
     const out = host.text();
     expect(out).toContain('› 2. ○ ★ Better (Recommended)');
     expect(out).toMatch(/Preview · ★ Recommended \d+-\d+\/\d+/);
@@ -464,7 +465,9 @@ describe('questionnaire UI', () => {
     expect(host.text()).not.toContain('Note:');
     host.send('n', 'n', 'o', 't', 'e', KEY.enter);
     expect(host.session.state.answers[key].optionNotes?.[key]).toBe('note');
-    expect(host.text()).toContain('note');
+    expect(host.text()).toContain('▸ Preview · p');
+    host.send('p', KEY.shiftDown);
+    expect(host.text()).toContain('Note: note');
     host.send('n');
     expect(host.text()).toContain('note');
     host.send('!', KEY.esc);
@@ -511,7 +514,7 @@ describe('questionnaire UI', () => {
     expect(host.session.onStateChange).not.toHaveBeenCalled();
   });
 
-  it('shows the full Work Panel proposal and wrapped choices when they fit', () => {
+  it('bounds the Work Panel context while keeping its prompt and wrapped choices visible', () => {
     const prompt =
       'Ambos widgets son secciones del Work Panel compartido de pi-core. Propuesta: mientras el agente trabaja, cada sección muestra lo en ejecución + los fallidos y hasta 3 completados del turno. En reposo (sin nada en ejecución), cada sección queda en 1 línea: `▲ Agents · 4 done · 1 failed` / `▲ Background · 2 done`. Navegación: `←` enfoca el panel (como hoy), `↑/↓` se mueve entre las líneas de sección, `Enter` abre el historial de esa sección, `→/Esc` sale. Los fallidos del turno pasan al resumen al enviar tu siguiente prompt. ¿De acuerdo?';
     const host = setup({
@@ -519,7 +522,8 @@ describe('questionnaire UI', () => {
         {
           id: 'panel',
           header: 'Work Panel',
-          prompt,
+          context: prompt,
+          prompt: '¿De acuerdo?',
           type: 'single',
           options: [
             { value: 'yes', label: 'Así como está propuesto' },
@@ -534,9 +538,10 @@ describe('questionnaire UI', () => {
     });
     const out = host.component.render(78);
     expect(out.length).toBeGreaterThanOrEqual(16);
-    expect(out.length).toBeLessThanOrEqual(26);
+    expect(out.length).toBeLessThanOrEqual(18);
     const body = out.map((line) => line.slice(2, -2).trim()).join(' ');
-    expect(body).toContain(prompt);
+    expect(body).toContain('¿De acuerdo?');
+    expect(body).toMatch(/↓ [0-9]+ more/);
     expect(body).toContain(
       'Enter expande la sección en el sitio (filas) y un segundo Enter abre el historial completo',
     );
@@ -626,6 +631,8 @@ describe('questionnaire UI', () => {
         createState(questionnaire),
         ansiTheme,
       );
+      host.component.render(width);
+      if (width < 100) host.send('p');
       const frame = host.component.render(width).map(foregroundCells);
       const text = frame.map((cells) => cells.map(({ char }) => char).join(''));
       const first = text.findIndex((line) => line.includes('alpha'));
@@ -676,35 +683,41 @@ describe('questionnaire UI', () => {
       ],
     });
     const spare = setup(questionnaire(2));
-    expect(spare.component.render(80)).toHaveLength(26);
-    expect(spare.text()).toContain('Preview 1-13/79');
-    expect(spare.text()).toContain('line 6');
+    spare.send('p');
+    expect(spare.component.render(80)).toHaveLength(18);
+    expect(spare.text()).toContain('Preview 1-8/79');
+    expect(spare.text()).toContain('line 3');
     const crowded = setup(questionnaire(30));
-    expect(crowded.component.render(80)).toHaveLength(26);
+    crowded.send('p');
+    expect(crowded.component.render(80)).toHaveLength(18);
     expect(crowded.text()).toContain('Preview 1-2/79');
     expect(crowded.text()).toContain('line 0');
     expect(crowded.text()).not.toContain('line 1');
   });
 
   it('gives the preview rows left over between whole wrapped options in a scrolling window', () => {
-    const host = setup({
-      questions: [
-        {
-          id: 'a',
-          header: 'Whole items',
-          prompt: 'Pick',
-          type: 'single',
-          options: Array.from({ length: 30 }, (_, i) => ({
-            value: `v${i}`,
-            label: `Choice ${i}\nContinuation ${i}`,
-            preview: lines(40),
-          })),
-        },
-      ],
-    });
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Whole items',
+            prompt: 'Pick',
+            type: 'single',
+            options: Array.from({ length: 30 }, (_, i) => ({
+              value: `v${i}`,
+              label: `Choice ${i}\nContinuation ${i}`,
+              preview: lines(40),
+            })),
+          },
+        ],
+      },
+      43,
+    );
+    host.send('p');
     expect(host.text()).toContain('Preview 1-3/79');
     expect(host.text()).toContain('Continuation 0');
-    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.component.render(80)).toHaveLength(19);
   });
 
   it('returns unused prompt and list rows on shorter tabs to the preview without changing height', () => {
@@ -734,11 +747,12 @@ describe('questionnaire UI', () => {
         },
       ],
     });
-    expect(host.component.render(80)).toHaveLength(26);
+    host.send('p');
+    expect(host.component.render(80)).toHaveLength(18);
     expect(host.text()).toContain('Preview 1-2/79');
     host.send(KEY.tab);
-    expect(host.component.render(80)).toHaveLength(26);
-    expect(host.text()).toContain('Preview 1-12/79');
+    expect(host.component.render(80)).toHaveLength(18);
+    expect(host.text()).toContain('Preview 1-5/79');
   });
 
   it.each([
@@ -771,84 +785,96 @@ describe('questionnaire UI', () => {
   });
 
   it('scrolls the option list before capping a prompt that fits with the minimum preview', () => {
-    const host = setup({
-      questions: [
-        {
-          id: 'a',
-          header: 'Priority',
-          type: 'single',
-          prompt: Array.from({ length: 13 }, (_, i) => `Prompt-row-${i}`).join(
-            '\n',
-          ),
-          options: options(30),
-        },
-      ],
-    });
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Priority',
+            type: 'single',
+            prompt: Array.from({ length: 3 }, (_, i) => `Prompt-row-${i}`).join(
+              '\n',
+            ),
+            options: options(30),
+          },
+        ],
+      },
+      58,
+    );
+    host.send('p');
     const out = host.component.render(80);
     expect(out).toHaveLength(26);
-    expect(out.join('\n')).toContain('Prompt-row-12');
+    expect(out.join('\n')).toContain('Prompt-row-2');
     expect(out.join('\n')).toContain('1/31');
     expect(out.join('\n')).toContain('Preview 1-2/3');
-    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+    expect(out.join('\n')).not.toContain('Alt+↑↓');
   });
 
-  it('shows all fourteen prompt rows above a one-row preview at 80×40', () => {
-    const promptRows = Array.from({ length: 14 }, (_, i) => `Prompt-row-${i}`);
-    const host = setup({
-      questions: [
-        {
-          id: 'a',
-          header: 'Priority',
-          type: 'single',
-          prompt: promptRows.join('\n'),
-          options: options(30).map((option) => ({
-            ...option,
-            preview: 'One preview row',
-          })),
-        },
-      ],
-    });
+  it('shows all three prompt rows above a one-row preview at 80×58', () => {
+    const promptRows = Array.from({ length: 3 }, (_, i) => `Prompt-row-${i}`);
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Priority',
+            type: 'single',
+            prompt: promptRows.join('\n'),
+            options: options(30).map((option) => ({
+              ...option,
+              preview: 'One preview row',
+            })),
+          },
+        ],
+      },
+      58,
+    );
+    host.send('p');
     const out = host.component.render(80);
     expect(out).toHaveLength(26);
     const body = out.map((line) => line.slice(2, -2).trim()).join('\n');
     expect(body).toContain(promptRows.join('\n'));
-    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+    expect(out.join('\n')).not.toContain('Alt+↑↓');
     expect(out.join('\n')).toContain('› 1. ○   Option 1');
     expect(out.join('\n')).toContain('1/31');
     expect(out.join('\n')).toContain('One preview row');
     host.send(KEY.down);
     expect(host.component.render(80)).toHaveLength(26);
-    expect(host.text()).toContain('Prompt-row-13');
+    expect(host.text()).toContain('Prompt-row-2');
     expect(host.text()).toContain('› 2. ○ ★ Option 2');
   });
 
-  it('shows all sixteen prompt rows beside a complete selected option at 140×40', () => {
-    const promptRows = Array.from({ length: 16 }, (_, i) => `Prompt-row-${i}`);
-    const host = setup({
-      questions: [
-        {
-          id: 'a',
-          header: 'Priority',
-          type: 'single',
-          prompt: promptRows.join('\n'),
-          options: options(30).map((option) => ({
-            ...option,
-            preview: 'One preview row',
-          })),
-        },
-      ],
-    });
+  it('shows all three prompt rows beside a complete selected option at 140×58', () => {
+    const promptRows = Array.from({ length: 3 }, (_, i) => `Prompt-row-${i}`);
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Priority',
+            type: 'single',
+            prompt: promptRows.join('\n'),
+            options: options(30).map((option) => ({
+              ...option,
+              preview: 'One preview row',
+            })),
+          },
+        ],
+      },
+      58,
+    );
+    host.send('p');
     const out = host.component.render(140);
     expect(out).toHaveLength(26);
     const body = out.map((line) => line.slice(2, -2).trim()).join('\n');
     expect(body).toContain(promptRows.join('\n'));
-    expect(out.join('\n')).not.toContain('Alt+↑↓ prompt');
+    expect(out.join('\n')).not.toContain('Alt+↑↓');
     expect(out.join('\n')).toContain('› 1. ○   Option 1');
     expect(out.join('\n')).toContain('1/31');
     expect(out.join('\n')).toContain('One preview row');
     host.send(KEY.down);
     expect(host.component.render(140)).toHaveLength(26);
-    expect(host.text(140)).toContain('Prompt-row-15');
+    expect(host.text(140)).toContain('Prompt-row-2');
     expect(host.text(140)).toContain('› 2. ○ ★ Option 2');
   });
 
@@ -856,35 +882,40 @@ describe('questionnaire UI', () => {
     80, 140,
   ])('shows a fitting active prompt despite a six-row label on another tab at %i columns', (width) => {
     const promptRows = Array.from(
-      { length: 13 },
+      { length: 3 },
       (_, i) => `Active-prompt-${i}`,
     );
     const labelRows = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
-    const host = setup({
-      questions: [
-        {
-          id: 'a',
-          header: 'Prompt',
-          type: 'single',
-          prompt: promptRows.join('\n'),
-          options: options(30),
-        },
-        {
-          id: 'b',
-          header: 'Label',
-          type: 'single',
-          prompt: 'Pick',
-          options: [
-            {
-              value: 'long',
-              label: labelRows.join('\n'),
-              preview: lines(40),
-            },
-            { value: 'short', label: 'Short' },
-          ],
-        },
-      ],
-    });
+    const host = setup(
+      {
+        questions: [
+          {
+            id: 'a',
+            header: 'Prompt',
+            type: 'single',
+            prompt: promptRows.join('\n'),
+            options: options(30),
+          },
+          {
+            id: 'b',
+            header: 'Label',
+            type: 'single',
+            prompt: 'Pick',
+            options: [
+              {
+                value: 'long',
+                label: labelRows.join('\n'),
+                preview: lines(40),
+              },
+              { value: 'short', label: 'Short' },
+            ],
+          },
+        ],
+      },
+      58,
+    );
+    host.component.render(width);
+    if (width < 100) host.send('p');
     const height = host.component.render(width).length;
     expect(height).toBe(26);
     for (const keys of [[], [KEY.down], ['n'], [KEY.esc, KEY.up]]) {
@@ -893,7 +924,7 @@ describe('questionnaire UI', () => {
       expect(frame).toHaveLength(height);
       const body = frame.map((line) => line.slice(2, -2).trim()).join('\n');
       expect(body).toContain(promptRows.join('\n'));
-      expect(frame.join('\n')).not.toContain('Alt+↑↓ prompt');
+      expect(frame.join('\n')).not.toContain('Alt+↑↓');
     }
     host.send(KEY.tab);
     const labelFrame = host.component.render(width);
@@ -903,13 +934,13 @@ describe('questionnaire UI', () => {
       host.send(...keys);
       expect(host.component.render(width)).toHaveLength(height);
     }
-    expect(host.text(width)).toContain('Active-prompt-12');
-    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).toContain('Active-prompt-2');
+    expect(host.text(width)).not.toContain('Alt+↑↓');
   });
 
   it.each([
     16, 21,
-  ])('reveals every wrapped prompt tail when scrolling at 80×%i', (rows) => {
+  ])('keeps a fitting three-row prompt pinned despite Alt+arrows at 80×%i', (rows) => {
     const host = setup(
       {
         questions: [
@@ -927,7 +958,7 @@ describe('questionnaire UI', () => {
       rows,
     );
     const height = host.component.render(80).length;
-    expect(host.text()).toContain('Alt+↑↓ prompt');
+    expect(host.text()).not.toContain('Alt+↑↓');
     const frames: string[] = [];
     for (let i = 0; i < 12; i++) {
       const frame = host.component.render(80);
@@ -941,7 +972,7 @@ describe('questionnaire UI', () => {
     }
   });
 
-  it('scrolls capped prompts with Alt+arrows, shows an indicator and resets on tab switch', () => {
+  it('scrolls capped context with Alt+arrows, shows an indicator and resets on tab switch', () => {
     const prompt = Array.from({ length: 50 }, (_, i) => `Prompt-row-${i}`).join(
       '\n',
     );
@@ -950,7 +981,8 @@ describe('questionnaire UI', () => {
         {
           id: 'a',
           header: 'Long',
-          prompt,
+          prompt: 'Pick a plan',
+          context: prompt,
           type: 'single',
           options: options(3),
         },
@@ -963,11 +995,11 @@ describe('questionnaire UI', () => {
         },
       ],
     });
-    expect(host.component.render(80)).toHaveLength(26);
+    expect(host.component.render(80)).toHaveLength(18);
     expect(host.text()).toContain('Prompt-row-0');
     expect(host.text()).not.toContain('Prompt-row-49');
     expect(host.text()).toMatch(/↓ \d+ more/);
-    expect(host.text()).toContain('Alt+↑↓ prompt');
+    expect(host.text()).toContain('Alt+↑↓');
     host.send(KEY.altDown);
     expect(host.text()).not.toContain('Prompt-row-0');
     expect(host.text()).toContain('↑ 1 more');
@@ -980,17 +1012,18 @@ describe('questionnaire UI', () => {
     host.send('n', KEY.altDown);
     expect(host.text()).not.toContain('Prompt-row-0');
     expect(host.text()).toContain('Note for');
-    expect(setup(two).text()).not.toContain('Alt+↑↓ prompt');
+    expect(setup(two).text()).not.toContain('Alt+↑↓ context');
   });
 
   it.each([
     80, 140,
-  ])('shows prompt scroll help only for the active overflowing prompt without changing height at %i columns', (width) => {
+  ])('shows context scroll help only for the active overflowing context without changing height at %i columns', (width) => {
     const host = setup({
       questions: [
         {
           ...two.questions[0],
-          prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+          prompt: 'Pick a plan',
+          context: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
             '\n',
           ),
         },
@@ -998,27 +1031,31 @@ describe('questionnaire UI', () => {
       ],
     });
     const height = host.component.render(width).length;
-    expect(host.text(width)).toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).toContain(
+      width < 100 ? 'Alt+↑↓' : 'Alt+↑↓ context',
+    );
     host.send(KEY.tab);
     expect(host.text(width)).toContain('Short prompt');
-    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).not.toContain('Alt+↑↓ context');
     expect(host.component.render(width)).toHaveLength(height);
     host.send('N');
-    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).not.toContain('Alt+↑↓ context');
     expect(host.component.render(width)).toHaveLength(height);
     host.send(KEY.esc, KEY.tab);
     expect(host.text(width)).toContain('Review your answers');
-    expect(host.text(width)).not.toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).not.toContain('Alt+↑↓ context');
     expect(host.component.render(width)).toHaveLength(height);
     host.send(KEY.tab);
-    expect(host.text(width)).toContain('Alt+↑↓ prompt');
+    expect(host.text(width)).toContain(
+      width < 100 ? 'Alt+↑↓' : 'Alt+↑↓ context',
+    );
     expect(host.component.render(width)).toHaveLength(height);
   });
 
   it.each([
     false,
     true,
-  ])('preserves native editor Alt+arrows unless the active prompt overflows (%s)', (overflow) => {
+  ])('preserves native editor Alt+arrows unless the active context overflows (%s)', (overflow) => {
     const keybindings = getKeybindings();
     const previous = keybindings.getUserBindings();
     keybindings.setUserBindings({
@@ -1038,11 +1075,12 @@ describe('questionnaire UI', () => {
           {
             id: 'b',
             header: 'Text',
-            prompt: overflow
+            prompt: 'Short prompt',
+            context: overflow
               ? Array.from({ length: 50 }, (_, i) => `Edit-prompt-${i}`).join(
                   '\n',
                 )
-              : 'Short prompt',
+              : undefined,
             type: 'text',
           },
         ],
@@ -1104,7 +1142,6 @@ describe('questionnaire UI', () => {
     } else host.send(mode === 'optionNote' ? 'n' : 'N', 'draft', KEY.left);
     const before = host.component.render(80);
     const state = host.session.state;
-    expect(before.join('\n')).toContain('Ctrl+] collapse');
     host.requestRender.mockClear();
     host.send(KEY.collapse);
     const collapsed = host.component.render(80);
@@ -1156,7 +1193,8 @@ describe('questionnaire UI', () => {
             id: 'a',
             header: 'Tiny',
             type: 'single',
-            prompt: Array.from(
+            prompt: 'Pick',
+            context: Array.from(
               { length: 50 },
               (_, i) => `Prompt-row-${i}`,
             ).join('\n'),
@@ -1170,7 +1208,7 @@ describe('questionnaire UI', () => {
     const out = host.component.render(80);
     expect(out.length).toBeLessThanOrEqual(12);
     expect(out.join('\n')).toContain('› 1. ○   Option 1');
-    expect(out.find((line) => line.includes('Prompt-row-0'))).toContain('↓');
+    expect(out.join('\n')).toMatch(/↓ \d+ more/);
     host.send(KEY.down);
     expect(host.text()).toContain('› 2. ○ ★ Option 2');
   });
@@ -1193,7 +1231,7 @@ describe('questionnaire UI', () => {
       },
       16,
     );
-    expect(host.component.render(80)).toHaveLength(12);
+    expect(host.component.render(80)).toHaveLength(11);
     host.send(KEY.down);
     const out = host.component.render(80);
     const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
@@ -1201,10 +1239,10 @@ describe('questionnaire UI', () => {
     expect(
       out.slice(first, first + 3).map((line) => line.slice(2, -2).trim()),
     ).toEqual(['› 2. ○ HEAD', 'MIDDLE', 'TAIL']);
-    expect(out).toHaveLength(12);
+    expect(out).toHaveLength(11);
     host.send(KEY.up, KEY.down);
     expect(host.text()).toContain('TAIL');
-    expect(host.component.render(80)).toHaveLength(12);
+    expect(host.component.render(80)).toHaveLength(11);
   });
 
   it('keeps all four selected label rows visible at 80×21 without growing the frame', () => {
@@ -1225,7 +1263,7 @@ describe('questionnaire UI', () => {
       },
       21,
     );
-    expect(host.component.render(80)).toHaveLength(13);
+    expect(host.component.render(80)).toHaveLength(12);
     host.send(KEY.down);
     const out = host.component.render(80);
     const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
@@ -1233,13 +1271,13 @@ describe('questionnaire UI', () => {
     expect(
       out.slice(first, first + 4).map((line) => line.slice(2, -2).trim()),
     ).toEqual(['› 2. ○ HEAD', 'MIDDLE-ONE', 'MIDDLE-TWO', 'TAIL']);
-    expect(out).toHaveLength(13);
+    expect(out).toHaveLength(12);
     host.send(KEY.up, KEY.down);
     expect(host.text()).toContain('TAIL');
-    expect(host.component.render(80)).toHaveLength(13);
+    expect(host.component.render(80)).toHaveLength(12);
   });
 
-  it('marks the last visible label row when the selected label cannot fit even with a one-row prompt', () => {
+  it('marks the last visible label row when the selected label cannot fit below the pinned prompt', () => {
     const host = setup(
       {
         questions: [
@@ -1252,7 +1290,8 @@ describe('questionnaire UI', () => {
               { value: 'short', label: 'Short' },
               {
                 value: 'long',
-                label: 'HEAD\nMIDDLE-ONE\nMIDDLE-TWO\nMIDDLE-THREE\nTAIL',
+                label:
+                  'HEAD\nMIDDLE-ONE\nMIDDLE-TWO\nMIDDLE-THREE\nMIDDLE-FOUR\nMIDDLE-FIVE\nTAIL',
               },
             ],
           },
@@ -1267,9 +1306,15 @@ describe('questionnaire UI', () => {
     const first = out.findIndex((line) => line.includes('› 2. ○ HEAD'));
     expect(first).toBeGreaterThanOrEqual(0);
     expect(
-      out.slice(first, first + 3).map((line) => line.slice(2, -2).trim()),
-    ).toEqual(['› 2. ○ HEAD', 'MIDDLE-ONE', 'MIDDLE-TWO…']);
-    expect(out.find((line) => line.includes('Prompt-first'))).toContain('↓');
+      out.slice(first, first + 5).map((line) => line.slice(2, -2).trim()),
+    ).toEqual([
+      '› 2. ○ HEAD',
+      'MIDDLE-ONE',
+      'MIDDLE-TWO',
+      'MIDDLE-THREE',
+      'MIDDLE-FOUR…',
+    ]);
+    expect(out.join('\n')).toContain('Prompt-first');
     expect(out.join('\n')).not.toContain('TAIL');
     expect(out).toHaveLength(height);
     expect(out.length).toBeLessThanOrEqual(12);
@@ -1277,7 +1322,7 @@ describe('questionnaire UI', () => {
     expect(host.text()).toContain('Prompt-last');
     expect(host.component.render(80)).toHaveLength(height);
     host.send(KEY.up, KEY.down);
-    expect(host.text()).toContain('MIDDLE-TWO…');
+    expect(host.text()).toContain('MIDDLE-FOUR…');
     expect(host.component.render(80)).toHaveLength(height);
   });
 
@@ -1352,8 +1397,43 @@ describe('questionnaire UI', () => {
     expect(out).toContain('30/31');
   });
 
+  it('starts narrow previews collapsed, toggles with p, and preserves that choice across tabs but not instances', () => {
+    const questionnaire: Questionnaire = {
+      questions: two.questions.map((question) => ({
+        ...question,
+        options: [
+          { value: 'details', label: 'Details', preview: lines(20) },
+          { value: 'plain', label: 'Plain' },
+        ],
+      })),
+    };
+    const host = setup(questionnaire, 100);
+    const collapsed = host.component.render(80);
+    expect(collapsed).toHaveLength(15);
+    expect(collapsed.join('\n')).toContain('▸ Preview · p');
+    expect(collapsed.join('\n')).not.toContain('line 0');
+    host.send('p');
+    const expanded = host.component.render(80);
+    expect(expanded).toHaveLength(45);
+    expect(expanded.join('\n')).toContain('line 0');
+    host.send(KEY.tab);
+    expect(host.component.render(80)).toHaveLength(45);
+    expect(host.text()).toContain('line 0');
+    host.send('p');
+    expect(host.component.render(80)).toHaveLength(collapsed.length);
+    host.send(KEY.down);
+    expect(host.text()).not.toContain('▸ Preview');
+    expect(host.component.render(80)).toHaveLength(collapsed.length);
+    expect(setup(questionnaire, 100).text()).toContain('▸ Preview · p');
+    const wide = host.component.render(140);
+    host.send('p');
+    expect(host.component.render(140)).toEqual(wide);
+    expect(host.text(140)).toContain('Preview');
+  });
+
   it('places the preview below at 80 columns and beside at 140', () => {
-    const { component } = setup(two);
+    const { component, send } = setup(two);
+    send('p');
     const narrow = component.render(80);
     const optionRow = narrow.findIndex((l) => l.includes('Option 1'));
     const previewRow = narrow.findIndex((l) => l.includes('Preview one'));
@@ -1390,6 +1470,7 @@ describe('questionnaire UI', () => {
       ],
     };
     const { send, text } = setup(q);
+    send('p');
     expect(text()).not.toContain('line 39');
     send(KEY.pageDown);
     expect(text()).not.toContain('line 0\n');
@@ -1418,6 +1499,8 @@ describe('questionnaire UI', () => {
     for (const key of [KEY.shiftDown, ']']) {
       const { send, component } = setup(q, 24);
       const joined = () => component.render(width).join('\n');
+      component.render(width);
+      if (width < 100) send('p');
       const before = component.render(width);
       expect(joined()).toMatch(/↓ \d+ more/);
       expect(joined()).not.toContain('line 7');
@@ -1464,7 +1547,7 @@ describe('questionnaire UI', () => {
     { mode: 'optionNote', width: 140 },
     { mode: 'questionNote', width: 80 },
     { mode: 'questionNote', width: 140 },
-  ])('keeps the $mode draft and native borders visible under a 50-line prompt at $width×40 without changing height', ({
+  ])('keeps the $mode draft and native borders visible under a 50-line context at $width×40 without changing height', ({
     mode,
     width,
   }) => {
@@ -1473,7 +1556,8 @@ describe('questionnaire UI', () => {
         {
           id: 'draft',
           header: 'Draft',
-          prompt: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
+          prompt: 'Pick',
+          context: Array.from({ length: 50 }, (_, i) => `Prompt-${i}`).join(
             '\n',
           ),
           ...(mode === 'text'
@@ -1499,7 +1583,7 @@ describe('questionnaire UI', () => {
       expect(border.slice(2, -2).trim()).toMatch(/^─+$/);
     }
     expect(frame).toHaveLength(height);
-    expect(frame.join('\n')).toContain('Alt+↑↓ prompt');
+    expect(frame.join('\n')).toContain('Alt+↑↓ context');
     host.send(KEY.esc, KEY.tab);
     expect(host.component.render(width)).toHaveLength(height);
     host.send(KEY.shiftTab, ...(mode === 'text' ? [KEY.enter] : openKeys));
@@ -1547,7 +1631,7 @@ describe('questionnaire UI', () => {
     expect(frame).toHaveLength(height);
     expect(frame.every((line) => visibleWidth(line) <= width)).toBe(true);
     if (rows === 16) {
-      expect(frame.find((line) => line.includes('Prompt-0'))).toContain('↓');
+      expect(frame.join('\n')).toMatch(/↓ \d+ more/);
     }
     host.send(KEY.esc);
     expect(host.component.render(width)).toHaveLength(height);
@@ -1732,7 +1816,7 @@ describe('questionnaire UI', () => {
         const frame = setup(two)
           .component.render(width)
           .map(stripTerminalSequences);
-        const separator = frame.at(-4);
+        const separator = frame.at(-3);
         expect(separator).toMatch(/^├─+┤$/);
         expect(visibleWidth(separator ?? '')).toBe(width);
         expect(separator?.length).toBe(frame.at(-1)?.length);
@@ -1744,7 +1828,7 @@ describe('questionnaire UI', () => {
       expect(out[0]).toMatch(/^╭── Planning ─+╮$/);
       expect(out.filter((l) => l.startsWith('├'))).toHaveLength(2);
       expect(out.at(-1)).toMatch(/^╰─+╯$/);
-      expect(out.filter((l) => l.startsWith('│ ↑↓ move'))).toHaveLength(1);
+      expect(out.filter((l) => l.startsWith('│ Enter select'))).toHaveLength(1);
       for (const l of out) expect(visibleWidth(l)).toBe(80);
     });
 
@@ -1773,7 +1857,7 @@ describe('questionnaire UI', () => {
         }
         expect(heights.size).toBe(1);
         expect([...heights][0]).toBeGreaterThanOrEqual(16);
-        expect([...heights][0]).toBeLessThanOrEqual(26);
+        expect([...heights][0]).toBeLessThanOrEqual(18);
         if (kit) {
           withdrawRenderKit(kitToken as symbol);
           kitToken = undefined;
@@ -1781,15 +1865,65 @@ describe('questionnaire UI', () => {
       }
     });
 
-    it('uses at least the base height and grows for content up to 65% of the terminal', () => {
+    it.each([
+      'single',
+      'text',
+    ] as const)('fits a short %s question without a baseline or six-row content floor, reserving its editor', (type) => {
+      const host = setup(
+        {
+          title: 'Compact question',
+          questions: [
+            {
+              id: 'short',
+              header: 'Hidden single tab',
+              prompt: 'Pick',
+              type,
+              ...(type === 'single'
+                ? { options: [{ value: 'a', label: 'A' }] }
+                : {}),
+            },
+          ],
+        },
+        100,
+      );
+      const initial = host.component.render(200);
+      expect(initial).toHaveLength(10);
+      expect(initial[0]).toContain('Compact question');
+      expect(initial.join('\n')).not.toContain('Hidden single tab');
+      expect(initial.join('\n')).not.toContain('0/1 answered');
+      expect(initial.filter((line) => line.startsWith('├'))).toHaveLength(1);
+      if (type === 'single') host.send('n');
+      host.send('p', KEY.shiftEnter, 'more text');
+      const editing = host.component.render(200);
+      expect(editing).toHaveLength(10);
+      expect(editing.join('\n')).toContain(CURSOR_MARKER);
+      expect(editing.join('\n')).toContain('more text');
+      host.send(KEY.esc);
+      expect(host.component.render(200)).toHaveLength(10);
+    });
+
+    it('clips priority-ordered hints to one row and keeps the multi-question chrome', () => {
+      const host = setup(two);
+      const narrow = host.component.render(48);
+      expect(narrow[1]).toContain('First');
+      expect(narrow[2]).toContain('0/2 answered');
+      expect(narrow.at(-3)).toMatch(/^├─+┤$/);
+      expect(narrow.at(-2)).toContain('Enter select · ↑↓ move · Esc cancel');
+      const wide = host.component.render(500);
+      expect(wide.at(-2)).toContain('1-9 pick');
+      expect(wide.at(-2)).toContain('n/N note');
+      expect(wide.at(-2)).toContain('Ctrl+] collapse');
+      expect(wide.filter((line) => line.includes('Enter select'))).toHaveLength(
+        1,
+      );
+    });
+
+    it('caps content-heavy questionnaires at 45% of terminal rows', () => {
       const height = (rows: number) =>
-        setup(uneven, rows).component.render(80).length;
-      expect(height(40)).toBe(26);
-      expect(height(60)).toBeGreaterThanOrEqual(24);
-      expect(height(60)).toBeLessThanOrEqual(39);
-      expect(height(60)).toBeGreaterThan(height(30));
-      expect(height(100)).toBeGreaterThanOrEqual(40);
-      expect(height(100)).toBeLessThanOrEqual(65);
+        setup(uneven, rows).component.render(140).length;
+      expect(height(40)).toBe(18);
+      expect(height(60)).toBe(27);
+      expect(height(100)).toBe(45);
     });
   });
 
@@ -1854,7 +1988,7 @@ describe('questionnaire UI', () => {
       expect(host.component.render(80)).toEqual([
         ' Ask user · Ctrl+] desplegar',
       ]);
-      host.send(KEY.collapse, KEY.tab, KEY.down);
+      host.send(KEY.collapse, KEY.tab, KEY.down, 'p');
       expect(host.text()).toContain('Preview · ★ Recomendado');
       expect(host.text()).not.toContain('Option 2 ★');
     });
@@ -1902,7 +2036,12 @@ it('renders question context markdown and tables above the plain-text prompt', (
     },
     80,
   );
-  const text = stripTerminalSequences(host.text());
+  const frames = [host.text()];
+  for (let i = 0; i < 10; i++) {
+    host.send(KEY.altDown);
+    frames.push(host.text());
+  }
+  const text = stripTerminalSequences(frames.join('\n'));
   expect(text).toContain('Shared proposal');
   expect(text).not.toContain('## Shared proposal');
   expect(text).toContain('Safe');
@@ -1939,7 +2078,7 @@ it.each([
   expect(height).toBe(12);
   expect(host.text(width)).toContain('Context-row-0');
   expect(host.text(width)).toContain('Option 1');
-  expect(host.text(width)).toContain('Alt+↑↓ context/prompt');
+  expect(host.text(width)).toContain(width < 100 ? 'Alt+↑↓' : 'Alt+↑↓ context');
   expect(host.text(width)).toMatch(/↓ \d+ more/);
   const frames: string[] = [];
   for (let i = 0; i < 100; i++) {
@@ -1954,6 +2093,328 @@ it.each([
   expect(frames.join('\n')).toContain('Choose the plan?');
   host.send(KEY.down, KEY.enter);
   expect(host.results[0]?.details.answers.context.values).toEqual(['v2']);
+});
+
+it.each([
+  { rows: 57, width: 200, height: 24, promptRow: 7 },
+  { rows: 47, width: 48, height: 17, promptRow: 7 },
+])('pins the prompt and all three options below a long context at $width×$rows', ({
+  rows,
+  width,
+  height,
+  promptRow,
+}) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'plan',
+          header: 'Plan',
+          type: 'single',
+          context: lines(23, 'Context'),
+          prompt: 'Which plan?',
+          options: options(3).map((option) => ({
+            ...option,
+            preview: lines(6),
+          })),
+        },
+      ],
+    },
+    rows,
+  );
+  const frame = host.component.render(width).map(stripTerminalSequences);
+  expect(frame).toHaveLength(height);
+  expect(frame[promptRow]).toContain('Which plan?');
+  expect(frame[promptRow + 1]).toContain('Option 1');
+  for (const n of [1, 2, 3]) expect(frame.join('\n')).toContain(`Option ${n}`);
+  expect(frame.slice(1, promptRow).join('\n')).toMatch(/↓ \d+ more/);
+  host.send(KEY.altDown);
+  const scrolled = host.component.render(width).map(stripTerminalSequences);
+  expect(scrolled).toHaveLength(height);
+  expect(scrolled[promptRow]).toBe(frame[promptRow]);
+  expect(scrolled.join('\n')).not.toContain('Context 0');
+  if (width < 100) {
+    host.send('p');
+    const expanded = host.component.render(width).map(stripTerminalSequences);
+    expect(expanded).toHaveLength(21);
+    expect(expanded[7]).toContain('Which plan?');
+    for (const n of [1, 2, 3])
+      expect(expanded.join('\n')).toContain(`Option ${n}`);
+    expect(expanded.join('\n')).toContain('Preview 1-4/11');
+  }
+});
+
+it.each([
+  48, 200,
+])('keeps three context body rows and a counter while windowing 30 options at %i columns', (width) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'many',
+          header: 'Many',
+          type: 'single',
+          context: lines(23, 'Context'),
+          prompt: 'Pick a plan',
+          options: options(30),
+        },
+      ],
+    },
+    width === 48 ? 47 : 57,
+  );
+  const frame = host.component.render(width).map(stripTerminalSequences);
+  expect(frame[1]).toContain('Context 0');
+  expect(frame[3]).toContain('Context 1');
+  expect(frame[4]).toMatch(/↓ \d+ more/);
+  expect(frame[5]).toContain('Pick a plan');
+  expect(frame.join('\n')).toContain('1/31');
+  expect(frame.join('\n')).not.toContain('Option 30');
+  for (let i = 0; i < 29; i++) host.send(KEY.down);
+  expect(host.text(width)).toContain('Option 30');
+  expect(host.component.render(width)).toHaveLength(frame.length);
+});
+
+it.each([
+  { width: 200, rows: 57, height: 16 },
+  { width: 48, rows: 47, height: 17 },
+])('fits the 19-row context example at $width×$rows without padding to the cap', ({
+  width,
+  rows,
+  height,
+}) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'sample',
+          header: 'Sample',
+          type: 'single',
+          context: lines(10),
+          prompt: 'Pick',
+          options: options(3),
+        },
+      ],
+    },
+    rows,
+  );
+  const frame = host.component.render(width);
+  expect(frame).toHaveLength(height);
+  expect(frame[6]).toMatch(/↓ \d+ more/);
+  expect(frame[7]).toContain('Pick');
+  for (const n of [1, 2, 3]) expect(frame.join('\n')).toContain(`Option ${n}`);
+  if (width < 100) {
+    host.send('p');
+    expect(host.component.render(width)).toHaveLength(20);
+    expect(host.text(width)).toContain('Preview one');
+    host.send('p');
+    expect(host.component.render(width)).toHaveLength(height);
+  }
+});
+
+it('omits the compact preview row entirely when options have no preview content', () => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'plain',
+          header: 'Plain',
+          type: 'single',
+          prompt: 'Pick',
+          allowCustom: false,
+          options: options(5).map(({ value, label }) => ({ value, label })),
+        },
+      ],
+    },
+    100,
+  );
+  expect(host.component.render(48)).toHaveLength(11);
+  expect(host.text(48)).not.toContain('Preview');
+  expect(host.text(48)).not.toContain('No description');
+  host.send('n', 'note', KEY.esc);
+  expect(host.component.render(48)).toHaveLength(11);
+  expect(host.text(48)).toContain('▸ Preview · p');
+});
+
+it.each([
+  'text',
+  'custom',
+  'optionNote',
+  'questionNote',
+] as const)('types p normally in the %s editor without expanding previews or resizing', (mode) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'draft',
+          header: 'Draft',
+          prompt: 'Pick',
+          type: mode === 'text' ? 'text' : 'single',
+          ...(mode === 'text' ? {} : { options: options(1) }),
+        },
+      ],
+    },
+    100,
+  );
+  const height = host.component.render(48).length;
+  if (mode === 'custom') host.send(KEY.down, KEY.enter);
+  else if (mode !== 'text') host.send(mode === 'optionNote' ? 'n' : 'N');
+  host.send('p', KEY.shiftEnter, 'p');
+  expect(host.component.render(48)).toHaveLength(height);
+  host.send(KEY.esc);
+  const answer = host.session.state.answers.draft;
+  const value =
+    mode === 'optionNote'
+      ? answer.optionNotes?.v1
+      : mode === 'questionNote'
+        ? answer.note
+        : answer.customText;
+  expect(value).toBe('p\np');
+  expect(host.component.render(48)).toHaveLength(height);
+  if (mode === 'optionNote' || mode === 'questionNote') {
+    expect(host.text(48)).toContain('▸ Preview · p');
+    expect(host.text(48)).not.toContain('Preview one');
+  }
+});
+
+it('caps a pinned prompt at three rows with ellipsis and leaves Alt+arrows to the editor when there is no context', () => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'long',
+          header: 'Long',
+          type: 'single',
+          prompt: 'First\nSecond\nThird\nFourth',
+          options: options(3),
+        },
+      ],
+    },
+    100,
+  );
+  const frame = host.component.render(80);
+  expect(frame[1]).toContain('First');
+  expect(frame[3]).toContain('Third…');
+  expect(frame[4]).toContain('Option 1');
+  host.send(KEY.altDown);
+  expect(host.component.render(80)).toEqual(frame);
+});
+
+it.each([
+  { rows: 47, width: 48, words: 80, height: 21, labelRows: 11 },
+  { rows: 57, width: 200, words: 220, height: 25, labelRows: 15 },
+])('reserves readable context before an oversized selected label at $width×$rows', ({
+  rows,
+  width,
+  words,
+  height,
+  labelRows,
+}) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'long-label',
+          header: 'Plan',
+          type: 'single',
+          allowCustom: false,
+          context: Array.from(
+            { length: 20 },
+            (_, i) => `Context-${String(i).padStart(2, '0')}`,
+          ).join('\n'),
+          prompt: 'Which plan?',
+          options: [
+            { value: 'short', label: 'Short' },
+            {
+              value: 'long',
+              label: `Selected choice ${'detail '.repeat(words)}`,
+            },
+          ],
+        },
+      ],
+    },
+    rows,
+  );
+  expect(host.component.render(width)).toHaveLength(height);
+  host.send(KEY.down);
+  const frame = host.component.render(width).map(stripTerminalSequences);
+  expect(frame).toHaveLength(height);
+  for (const [index, text] of [
+    'Context-00',
+    'Context-01',
+    'Context-02',
+  ].entries()) {
+    expect(frame[index + 1]).toContain(text);
+  }
+  expect(frame[4]).toContain('↓ 17 more');
+  expect(frame[5]).toContain('Which plan?');
+  expect(frame[6]).toContain('› 2. ○ Selected choice');
+  expect(frame[5 + labelRows].split('│')[1]).toContain('…');
+  host.send(KEY.altDown);
+  const scrolled = host.component.render(width).map(stripTerminalSequences);
+  expect(scrolled).toHaveLength(height);
+  expect(scrolled.join('\n')).not.toContain('Context-00');
+  expect(scrolled[3]).toContain('Context-03');
+  expect(scrolled[4]).toContain('↑ 1 more');
+  expect(scrolled[5]).toBe(frame[5]);
+});
+
+it.each([
+  { rows: 10, contextRows: 1 },
+  { rows: 11, contextRows: 4 },
+])('degrades the context floor only below the capacity for its floor and one selected-label row ($rows rows)', ({
+  rows,
+  contextRows,
+}) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'tiny',
+          header: 'Tiny',
+          type: 'single',
+          context: lines(20),
+          prompt: 'Pinned',
+          options: [
+            {
+              value: 'long',
+              label: Array.from({ length: 10 }, (_, i) => `Label-${i}`).join(
+                '\n',
+              ),
+            },
+          ],
+        },
+      ],
+    },
+    rows,
+  );
+  const frame = host.component.render(80);
+  expect(frame[contextRows]).toMatch(/↓ \d+ more/);
+  if (contextRows > 1) expect(frame[1]).toContain('line 0');
+  expect(frame[contextRows + 1]).toContain('Pinned');
+  expect(frame[contextRows + 2]).toContain('Label-0');
+  expect(frame).toHaveLength(rows);
+});
+
+it.each([
+  0, 1, 4, 8, 11,
+])('never exceeds an extremely small terminal of %i rows', (rows) => {
+  const host = setup(
+    {
+      questions: [
+        {
+          id: 'tiny',
+          header: 'Tiny',
+          type: 'text',
+          prompt: 'Pinned',
+          context: lines(20),
+        },
+      ],
+    },
+    rows,
+  );
+  expect(host.component.render(80).length).toBeLessThanOrEqual(rows);
+  host.send('p', KEY.shiftEnter, 'draft');
+  expect(host.component.render(80).length).toBeLessThanOrEqual(rows);
 });
 
 it('disables the custom-answer row and keyboard activation when allowCustom is false', () => {

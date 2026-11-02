@@ -1,3 +1,4 @@
+import { validateToolArguments } from '@earendil-works/pi-ai';
 import { expect, it } from 'vitest';
 import { createQuestionTool } from '../src/index.js';
 import { questionParameters } from '../src/schema.js';
@@ -225,7 +226,8 @@ it('accepts an unbounded questionnaire and defaults omitted types to single', ()
     },
   });
   const schema = JSON.stringify(questionParameters);
-  expect(schema).not.toMatch(/maxItems|maxLength/);
+  expect(schema).not.toMatch(/maxItems/);
+  expect(schema.match(/maxLength/g)).toHaveLength(1);
 });
 
 it('accepts partial labels and carries them into the questionnaire', () => {
@@ -279,6 +281,27 @@ it('advertises self-contained prompts and optional markdown context and previews
   expect(guidelines).toContain('secondary fallback');
   expect(guidelines).toContain('`prompt` a concise, self-contained question');
   expect(guidelines).toContain('`preview` for per-option markdown details');
+});
+
+it('accepts 500 context characters and rejects 501 through Pi argument validation, without limiting the internal service validator', () => {
+  const tool = createQuestionTool();
+  const validate = (length: number) =>
+    validateToolArguments(tool, {
+      type: 'toolCall',
+      id: 'context-limit',
+      name: tool.name,
+      arguments: { questions: [{ ...choice, context: 'x'.repeat(length) }] },
+    });
+  expect(() => validate(500)).not.toThrow();
+  expect(() => validate(501)).toThrow(/questions.*context:.*500/);
+  expect(
+    validateQuestions({ questions: [{ ...choice, context: 'x'.repeat(501) }] })
+      .valid,
+  ).toBe(true);
+  expect(tool.promptGuidelines?.join(' ')).toContain('500 characters');
+  expect(
+    questionParameters.properties.questions.items.properties.context,
+  ).toMatchObject({ description: expect.stringContaining('500') });
 });
 
 it('preserves markdown context, omits blank context and rejects non-string context', () => {

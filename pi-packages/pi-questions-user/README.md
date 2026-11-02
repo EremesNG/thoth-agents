@@ -56,7 +56,8 @@ select/input fallback remains available.
 `title`, `labels`, per-question `context`, `type`, `required`, option `description`,
 `preview`, and `recommended` are optional.
 Type defaults to `single`; types are `single`, `multi`, `text`, `confirm`. There
-are no declared maximum counts or string lengths. At least one question is
+are no declared maximum counts or string lengths except tool `context` (500
+characters). At least one question is
 required. IDs and option values must be unique (values within each question),
 non-blank strings; headers, prompts and labels must be non-blank. Single/multi
 need options. Text/confirm accept no options (an empty array is also allowed).
@@ -71,14 +72,22 @@ before calling the tool**, not inside reasoning/thinking. Keep `prompt` a concis
 self-contained plain-text question. Reasoning/thinking is not shown as answer text.
 Assistant prose in the same turn may not be visible while the question is open,
 so `context` is a **secondary fallback**: include only a short markdown summary
-needed to answer, never the main place for long proposals or tables. Use option
-`preview` for per-option markdown details.
+needed to answer, at most **500 characters**. Longer proposals, tables and findings
+must be visible response text before the tool call, not `context`. Use option
+`preview` for per-option markdown details. Oversized context fails Pi's tool
+argument validation so the model can retry with a shorter summary. The internal
+question-service API does not impose this character limit.
 `context` must be a string; blank context is treated as absent.
 
-The native questionnaire renders context above the prompt with the same markdown
-renderer as previews, including tables. Context and prompt share the existing
-bounded reading viewport and Alt+arrow scroll controls, with hidden-row indicators;
-options/editors retain their reserved space. The sequential RPC fallback includes
+The native questionnaire renders context above the pinned plain-text prompt with
+the same markdown renderer as previews, including tables. Only context scrolls
+with Alt+arrows. Its viewport is at most six rows, including an overflow-counter
+row when needed. Options get their full height when they fit; context uses the
+remaining space, keeping up to three body rows plus its counter by windowing the
+options when necessary. In tiny terminals, context can shrink to just its counter;
+selected labels and native editor borders/cursor retain priority. The prompt stays
+directly above the options, limited to three rows with a trailing ellipsis when
+longer; Alt+arrows never scroll the prompt. The sequential RPC fallback includes
 context before the prompt as source text in dialog titles. Review stays compact
 and shows answer summaries rather than repeating context.
 
@@ -94,7 +103,8 @@ language. Keys: `askUser`, `yes`, `no`, `typeSomething`, `yourAnswer`, `submit`,
 `noDescription`, `typeOwn`, `noTextYet`, `note`, `noteForQuestion`, `noteFor`,
 `cancelled`, `cancelledKept`, `error`, `answered`, and the key-hint verbs `move`,
 `pick`, `select`, `toggle`, `next`, `optionNote`, `questionNote`, `clear`,
-`scrollPreview`, `scrollPrompt`, `scrollContext` (default `context/prompt`), `more`,
+`scrollPreview`, `scrollPrompt` (retained label key), `scrollContext` (default
+`context`), `more`,
 `switchTab`, `save`, `newline`, `keepDraft`, `collapse`, `expand`. The native
 questionnaire, the sequential RPC fallback, synthesized confirm options and the
 transcript result card all use them. When supplied, `labels` is echoed in
@@ -180,26 +190,34 @@ Exported types:
 `createQuestionTool(uiHook?: QuestionUIHook)` in `src/index.ts` defaults to the
 native TUI questionnaire via `src/custom-ui.ts#getQuestionUIFactory`. It provides
 question tabs, windowed option lists, free-text and note editors, previews beside
-the options on wide terminals (below on narrow ones), and a review tab for multiple
-questions. A single question may submit directly.
+the options on wide terminals (expandable below on narrow ones), and a review tab
+for multiple questions. A single question may submit directly.
 
 The questionnaire is drawn in the thoth frame: a rounded border with the title,
-a tabs row, dividers around the question/option/preview area and a two-row hint
-footer. The frame comes from the pi-core render kit resolved at render time and
-falls back to the same glyphs drawn natively when no kit is registered (the theme
-package is never a dependency). Expanded height stays stable across options, tabs
-and editors for a given questionnaire and terminal size. Its baseline is
-`max(12, floor(rows * 0.4))`; content can grow it up to `floor(rows * 0.65)` (never
-below that baseline). Need is measured across all questions: frame chrome, full
-rendered context and wrapped prompts, wrapped option labels and previews. The
-reading area takes priority, then labels with hanging indents; spare rows go to the preview. At the cap, the narrow
-preview shrinks to a minimum of up to two body rows of actual content, then lists
-scroll by whole options, and finally overflowing prompts scroll with a visible indicator. In tiny terminals
-that cannot fit those minimums, preview rows shrink further to preserve the height
-cap and selected option. Wide terminals (100+ columns) wrap labels within the
-list column beside the scrolling preview. Active editors reserve their native
-borders and at least the cursor line before the prompt; tall drafts clip around
-the cursor. In tiny terminals the editor label yields to that minimum.
+dividers and a **one-row, horizontally clipped** hint footer. Single-question
+panels omit both tabs and answered progress; multiple questions keep them. The
+frame comes from the pi-core render kit resolved at render time and falls back
+to native glyphs when no kit is registered (the theme package is never a dependency).
+
+Height is `min(need, max(12, floor(terminalRows * 0.45)), terminalRows)`: no
+baseline or six-row content padding. Need is measured across all questions,
+including bounded context, pinned prompts, wrapped option labels, previews and
+an editor reservation (label, native borders and cursor row). Height stays stable
+across cursor moves, tabs, answers and typing for a given terminal size and preview
+expansion state. Reserved rows may be unused on shorter tabs or while an editor
+is closed; there is no additional fill to a terminal-height baseline. Tall drafts
+clip around the cursor; the editor label yields to its borders/cursor in tiny
+terminals. Options wrap with hanging indents and window by whole items when needed.
+
+Wide terminals (100+ columns) keep the scrolling preview beside the list. At
+narrower widths, previews start **collapsed** for each questionnaire. A selected
+option with preview/description content or an option note shows one compact
+`▸ Preview · p` row; otherwise no preview row is shown. Press `p` outside an editor
+to expand/collapse the preview below the list. Expansion may grow the panel up to
+the cap; collapsing restores its smaller height. The choice persists across tabs
+and resizing for that questionnaire only. Expanded previews prefer up to two body
+rows of actual content when space is tight; previews yield to selected labels in
+tiny terminals. Typing `p` in any text/note editor inserts text normally.
 The expanded questionnaire replaces the editor through pi-core's shared editor
 slot; it is not an overlay and does not cover the chat. Native scrollback works in
 inline mode; fullscreen `PageUp`/`PageDown` continue scrolling the transcript.
@@ -258,15 +276,18 @@ Questionnaire navigation/action bindings are fixed and **not user-rebindable**:
   (toggles for multi) and also activates review rows/actions.
 - `n`: edit the focused option's note; `N`: edit the question note.
 - `x` / `Delete`: clear picks/custom text, retaining notes.
-- `Shift+Up` / `Shift+Down`: scroll the focused option's preview by a line;
+- `p`: expand/collapse the preview below the options at widths below 100 columns,
+  outside text/note editors. Wide right-hand previews are unaffected.
+- `Shift+Up` / `Shift+Down`: scroll the visible option preview by a line;
   `[` / `]` (and `PageUp` / `PageDown`) scroll by half a page. A header shows
   the visible range and `↑ N more` / `↓ N more`. Fullscreen Pi consumes
   `PageUp`/`PageDown`, `Home`/`End`, `Ctrl+Up`/`Down` and the mouse wheel for the
   transcript before the questionnaire sees them, so `Shift+arrows` and `[`/`]`
   are the keys that always work.
-- `Alt+Up` / `Alt+Down`: scroll overflowing context/prompt by a line; its indicator
-  shows hidden rows. The hint appears only when the reading viewport overflows;
-  switching tabs resets prompt scroll.
+- `Alt+Up` / `Alt+Down`: scroll overflowing context only, one row at a time; its
+  indicator shows hidden rows. Switching tabs resets context scroll. The prompt
+  remains pinned. The hint is included only for overflowing context, as far as the
+  single clipped footer row allows.
 - `Ctrl+]`: collapse/expand while a question is open, from the editor, questionnaire
   or a history/detail overlay. This terminal-input binding shadows the editor's
   `jumpForward` binding only while the question is open. Kitty repeats/releases

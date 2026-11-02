@@ -701,7 +701,9 @@ is consumed. Any panel focus is released without dismissing overlays or detail
 cards; those cards still close when another UI actually takes focus. Collapsing,
 answering, cancelling or disposing the replacement restores the full panel on
 the next render. The read-only `isEditorReplaced(tui)` query from `./panel` shares
-occupancy across bundled copies; legacy registries without it keep the full panel.
+occupancy across bundled copies. When initializing a compatible registry, a new
+copy adds the query if absent, including after `/reload`; legacy owners without
+the query and incompatible records still keep the full panel.
 Provider contract v2, retention, linger and sidebar absorption are unchanged.
 
 The panel's bottom-left hint row appears only when a selectable row exists across

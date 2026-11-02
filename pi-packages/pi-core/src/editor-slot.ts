@@ -57,9 +57,6 @@ function registry(initialize = true): Registry | undefined {
         version: 1,
         sessions: new WeakMap(),
         tuis: new WeakMap(),
-        isEditorReplaced(this: Registry, tui: TUI) {
-          return this.tuis.get(tui)?.isEditorReplaced?.() === true;
-        },
       };
     }
     const value = shared[registryKey] as Registry | null;
@@ -67,8 +64,19 @@ function registry(initialize = true): Registry | undefined {
       value?.version === 1 &&
       value.sessions instanceof WeakMap &&
       value.tuis instanceof WeakMap
-    )
+    ) {
+      // /reload retains older compatible records: add only the query, never owners.
+      if (
+        initialize &&
+        !('isEditorReplaced' in value) &&
+        Object.isExtensible(value)
+      ) {
+        value.isEditorReplaced = function (this: Registry, tui: TUI) {
+          return this.tuis.get(tui)?.isEditorReplaced?.() === true;
+        };
+      }
       return value;
+    }
   } catch {
     // A foreign record/accessor must not break extension activation.
   }

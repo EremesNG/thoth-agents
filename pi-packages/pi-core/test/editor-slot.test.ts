@@ -185,7 +185,96 @@ it.each([
   expect(isEditorReplaced(slot.tui)).toBe(false);
 });
 
-it('does not add a query to a legacy registry even when registering a replacement', () => {
+it('adds occupancy queries to a compatible legacy registry when a reloaded copy registers a replacement', async () => {
+  const record = {
+    version: 1,
+    sessions: new WeakMap(),
+    tuis: new WeakMap(),
+  };
+  useRegistryRecord(record);
+  const session = uiSession();
+  vi.resetModules();
+  const { isEditorReplaced: queryCopy, registerEditorSlot: registerCopy } =
+    await import('../src/panel.js');
+  expect(queryCopy).not.toBe(isEditorReplaced);
+  expect(queryCopy(session.tui as unknown as TUI)).toBe(false);
+  expect(record).not.toHaveProperty('isEditorReplaced');
+  let expanded = true;
+  const question = { render: () => ['Question'], invalidate() {} };
+  const slot = registerCopy(session.ctx, {
+    key: 'question',
+    replacement: () => (expanded ? question : undefined),
+  });
+  cleanups.push(() => slot?.dispose());
+  if (!slot) throw new Error('Editor slot unavailable');
+  expect(Reflect.get(globalThis, registryKey)).toBe(record);
+  expect(isEditorReplaced(slot.tui)).toBe(true);
+  expect(queryCopy(slot.tui)).toBe(true);
+  expanded = false;
+  slot.refresh();
+  expect(isEditorReplaced(slot.tui)).toBe(false);
+  expect(queryCopy(slot.tui)).toBe(false);
+  expanded = true;
+  slot.refresh();
+  expect(queryCopy(slot.tui)).toBe(true);
+  slot.dispose();
+  expect(isEditorReplaced(slot.tui)).toBe(false);
+  expect(queryCopy(slot.tui)).toBe(false);
+});
+
+it.each([
+  { name: 'query function', query: () => false },
+  { name: 'non-callable member', query: true },
+  { name: 'undefined member', query: undefined },
+])('preserves an existing $name when registering a replacement', async ({
+  query,
+}) => {
+  const record = {
+    version: 1,
+    sessions: new WeakMap(),
+    tuis: new WeakMap(),
+    isEditorReplaced: query,
+  };
+  useRegistryRecord(record);
+  const session = uiSession();
+  vi.resetModules();
+  const { registerEditorSlot: registerCopy } = await import('../src/panel.js');
+  const slot = registerCopy(session.ctx, {
+    key: 'question',
+    replacement: () => ({ render: () => ['Question'], invalidate() {} }),
+  });
+  cleanups.push(() => slot?.dispose());
+  if (!slot) throw new Error('Editor slot unavailable');
+  expect(session.tui.getFocusedComponent().render(80)).toEqual(['Question']);
+  expect(isEditorReplaced(slot.tui)).toBe(false);
+  expect(record.isEditorReplaced).toBe(query);
+});
+
+it.each([
+  { name: 'incompatible version', override: { version: 2 } },
+  { name: 'incompatible sessions', override: { sessions: new Map() } },
+  { name: 'incompatible tuis', override: { tuis: new Map() } },
+])('does not add a query or owner to $name records during registration', ({
+  override,
+}) => {
+  const record = {
+    version: 1,
+    sessions: new WeakMap(),
+    tuis: new WeakMap(),
+    ...override,
+  };
+  useRegistryRecord(record);
+  const session = uiSession();
+  expect(registerEditorSlot(session.ctx, { key: 'question' })).toBeUndefined();
+  expect(isEditorReplaced(session.tui as unknown as TUI)).toBe(false);
+  expect(Reflect.get(globalThis, registryKey)).toBe(record);
+  expect(record).not.toHaveProperty('isEditorReplaced');
+  expect(record.sessions.has(session.ctx.sessionManager)).toBe(false);
+  expect(record.tuis.has(session.tui)).toBe(false);
+  expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
+});
+
+it('keeps a frozen legacy registry usable without adding a query', () => {
   const record = Object.freeze({
     version: 1,
     sessions: new WeakMap(),
@@ -205,28 +294,25 @@ it('does not add a query to a legacy registry even when registering a replacemen
   expect(record).not.toHaveProperty('isEditorReplaced');
 });
 
-it('does not upgrade or replace a legacy owner in a current registry', () => {
-  useRegistryRecord(undefined);
+it('does not upgrade or replace a legacy owner when adding the registry query', () => {
   const session = uiSession();
-  const slot = registerEditorSlot(session.ctx, { key: 'seed' });
-  if (!slot) throw new Error('Editor slot unavailable');
-  cleanups.push(() => slot.dispose());
-  slot.dispose();
-  const record = Reflect.get(globalThis, registryKey) as {
-    sessions: WeakMap<object, unknown>;
-    tuis: WeakMap<TUI, unknown>;
-  };
   const owner = Object.freeze({
     register: vi.fn(),
     focusTarget: () => undefined,
   });
-  record.sessions.set(session.ctx.sessionManager, owner);
-  record.tuis.set(slot.tui, owner);
+  const record = {
+    version: 1,
+    sessions: new WeakMap([[session.ctx.sessionManager, owner]]),
+    tuis: new WeakMap([[session.tui, owner]]),
+  };
+  useRegistryRecord(record);
   const contribution = { key: 'new' };
   registerEditorSlot(session.ctx, contribution);
-  expect(isEditorReplaced(slot.tui)).toBe(false);
+  expect(record).toHaveProperty('isEditorReplaced', expect.any(Function));
+  expect(isEditorReplaced(session.tui as unknown as TUI)).toBe(false);
   expect(owner.register).toHaveBeenCalledExactlyOnceWith(contribution);
-  expect(record.tuis.get(slot.tui)).toBe(owner);
+  expect(record.sessions.get(session.ctx.sessionManager)).toBe(owner);
+  expect(record.tuis.get(session.tui)).toBe(owner);
   expect(owner).not.toHaveProperty('isEditorReplaced');
 });
 

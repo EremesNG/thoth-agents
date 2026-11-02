@@ -15,7 +15,20 @@ import { registerEditorSlot } from '../src/panel.js';
 import { createTestRenderKit } from '../src/testing.js';
 import { provider, uiSession } from './work-panel-fixture.js';
 
+const registryKey = Symbol.for('thoth.pi-core.editor-slot');
 const cleanups: Array<() => void> = [];
+function useRegistryRecord(value: unknown) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, registryKey);
+  Object.defineProperty(globalThis, registryKey, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+  cleanups.push(() => {
+    if (previous) Object.defineProperty(globalThis, registryKey, previous);
+    else Reflect.deleteProperty(globalThis, registryKey);
+  });
+}
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
@@ -668,29 +681,90 @@ it.each([
   expect(session.render()).toEqual(['Agents']);
 });
 
-it('keeps the full panel when a legacy editor-slot registry lacks the occupancy query', async () => {
-  const key = Symbol.for('thoth.pi-core.editor-slot');
-  const previous = Object.getOwnPropertyDescriptor(globalThis, key);
+it('summarizes replacements registered by a reloaded copy with a compatible legacy registry', async () => {
   const legacy = { version: 1, sessions: new WeakMap(), tuis: new WeakMap() };
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    writable: true,
-    value: legacy,
-  });
-  cleanups.push(() => {
-    if (previous) Object.defineProperty(globalThis, key, previous);
-    else Reflect.deleteProperty(globalThis, key);
-  });
+  useRegistryRecord(legacy);
   const session = uiSession();
   cleanups.push(
     registerWorkPanelProvider(session.ctx, provider()),
     await ensureWorkPanel(session.ctx),
   );
   const full = session.render();
-  occupy(session).refresh();
+  expect(full.at(-1)).toBe('← interact');
+  vi.resetModules();
+  const { registerEditorSlot: registerCopy } = await import('../src/panel.js');
+  let expanded = true;
+  const slot = registerCopy(session.ctx, {
+    key: 'question',
+    replacement: () => (expanded ? replacement : undefined),
+  });
+  if (!slot) throw new Error('Missing editor slot');
+  cleanups.push(() => slot.dispose());
+  expect(session.render()).toEqual(['Agents ◐1']);
+  expect(Reflect.get(globalThis, registryKey)).toBe(legacy);
+  expect(Reflect.has(legacy, 'isEditorReplaced')).toBe(true);
+  expanded = false;
+  slot.refresh();
+  expect(session.render()).toEqual(full);
+  expanded = true;
+  slot.refresh();
+  expect(session.render()).toEqual(['Agents ◐1']);
+  slot.dispose();
+  expect(session.render()).toEqual(full);
+});
+
+it('keeps the full panel for a legacy owner even when the registry has an occupancy query', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  const full = session.render();
+  const slot = occupy(session);
+  expect(session.render()).toEqual(['Agents ◐1']);
+  const record = Reflect.get(globalThis, registryKey) as {
+    sessions: WeakMap<object, object>;
+    tuis: WeakMap<object, object>;
+  };
+  const owner = record.tuis.get(slot.tui);
+  if (!owner) throw new Error('Missing editor-slot owner');
+  const legacyOwner = { ...owner };
+  Reflect.deleteProperty(legacyOwner, 'isEditorReplaced');
+  Object.freeze(legacyOwner);
+  record.sessions.set(session.ctx.sessionManager, legacyOwner);
+  record.tuis.set(slot.tui, legacyOwner);
+  const extra = registerEditorSlot(session.ctx, { key: 'extra' });
+  cleanups.push(() => extra?.dispose());
+  expect(session.tui.getFocusedComponent().render(80)).toEqual(['Question']);
   expect(session.render()).toEqual(full);
   expect(full.at(-1)).toBe('← interact');
-  expect(Reflect.has(legacy, 'isEditorReplaced')).toBe(false);
+  expect(record.tuis.get(slot.tui)).toBe(legacyOwner);
+  expect(legacyOwner).not.toHaveProperty('isEditorReplaced');
+});
+
+it.each([
+  {
+    name: 'incompatible',
+    record: { version: 2, sessions: new WeakMap(), tuis: new WeakMap() },
+  },
+  { name: 'foreign', record: { isEditorReplaced: () => true } },
+])('keeps the full panel for an $name editor-slot record without modifying it', async ({
+  record,
+}) => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  const full = session.render();
+  occupy(session);
+  expect(session.render()).toEqual(['Agents ◐1']);
+  const descriptors = Object.getOwnPropertyDescriptors(record);
+  useRegistryRecord(record);
+  expect(session.render()).toEqual(full);
+  expect(full.at(-1)).toBe('← interact');
+  expect(Reflect.get(globalThis, registryKey)).toBe(record);
+  expect(Object.getOwnPropertyDescriptors(record)).toEqual(descriptors);
 });
 
 it('excludes only absorbed sources from a mixed summary', async () => {

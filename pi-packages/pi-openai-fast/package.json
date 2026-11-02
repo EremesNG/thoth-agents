@@ -39,12 +39,12 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.99.0",
-    "@earendil-works/pi-coding-agent": ">=0.99.0"
+    "@earendil-works/pi-ai": ">=1.5.0",
+    "@earendil-works/pi-coding-agent": ">=1.5.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/node": "^22.10.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.9"

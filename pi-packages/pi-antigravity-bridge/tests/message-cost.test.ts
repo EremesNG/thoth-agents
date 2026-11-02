@@ -40,6 +40,7 @@ test("normalized Gemini Flash usage reports catalog API-equivalent cost", () => 
 		cacheRead: 0.075,
 		cacheWrite: 0,
 		total: 4.575,
+		totalFromProvider: false,
 	});
 	expect(usage.totalTokens).toBe(3_000_000);
 });

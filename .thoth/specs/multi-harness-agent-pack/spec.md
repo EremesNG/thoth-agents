@@ -287,7 +287,7 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST run in background for both subagent_run and subagent_continue, task mode MUST occur only when the invocation explicitly passes `mode: "task"`, and agent definitions, subagent configuration and previous attempts MUST NOT select the execution mode. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi `>=0.99.0` through the `1.4.0` development pin with its registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
+Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST run in background for both subagent_run and subagent_continue, task mode MUST occur only when the invocation explicitly passes `mode: "task"`, and agent definitions, subagent configuration and previous attempts MUST NOT select the execution mode. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi `>=1.5.0` through the `1.5.0` development pin with its registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
 
 #### Scenario: Native lifecycle translation
 
@@ -513,13 +513,13 @@ The Pi root extension MUST add one non-displayed custom anchor message to each a
 
 ### Requirement: Uniform Pi SDK compatibility floor
 
-The root thoth-agents package and every Pi package under pi-packages MUST declare each Pi SDK peer dependency (`@earendil-works/*`) with the same minimum `>=0.99.0`, MUST develop and test against one shared Pi SDK development version (currently `1.4.0`), and MUST declare an `engines.node` floor of Node 22.19 (`>=22.19` or `>=22.19.0`); features that need a newer Pi API MUST detect it at runtime and degrade without failing on the minimum.
+The root thoth-agents package and every Pi package under pi-packages MUST declare each Pi SDK peer dependency (`@earendil-works/*`) with the same minimum `>=1.5.0`, MUST develop and test against one shared Pi SDK development version (currently `1.5.0`), and MUST declare an `engines.node` floor of Node 22.19 (`>=22.19` or `>=22.19.0`); features that need a newer Pi API MUST detect it at runtime and degrade without failing on the minimum.
 
 #### Scenario: Uniform Pi SDK compatibility floor
 
 - **GIVEN** the repository manifests and root lockfile
 - **WHEN** Pi SDK dependencies are inspected
-- **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer
+- **THEN** every Pi peer range is `>=1.5.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer
 
 ### Requirement: Pi lean children discover a filtered skill catalog
 

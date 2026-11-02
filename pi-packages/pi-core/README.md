@@ -7,8 +7,8 @@ render contracts use type-only Pi imports; the opt-in Work panel host lazily loa
 the optional SDK/TUI peers. Event helpers accept the minimal structural
 `pi.events` interface.
 
-Requires Node >=22.19.0. Supports the event bus in Pi >=0.99.0; development and
-tests use SDK 1.4.0.
+Requires Node >=22.19.0. Supports the event bus in Pi >=1.5.0; development and
+tests use SDK 1.5.0.
 
 ## API
 

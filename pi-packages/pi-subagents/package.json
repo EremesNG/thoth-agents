@@ -48,7 +48,7 @@
     "build": "node ../../scripts/build-pi-extensions.mjs pi-subagents"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.99.0",
+    "@earendil-works/pi-coding-agent": ">=1.5.0",
     "typebox": "*"
   },
   "peerDependenciesMeta": {
@@ -60,10 +60,10 @@
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "1.4.0",
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@earendil-works/pi-tui": "1.4.0",
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
     "@types/node": "24.10.1",
     "typebox": "1.1.38",
     "typescript": "5.9.3",

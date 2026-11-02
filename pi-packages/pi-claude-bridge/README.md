@@ -28,8 +28,8 @@ This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](htt
 
 Install this bridge manually; the Thoth installer does not manage it.
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`; use Pi `>=1.2.0` for all models.
-Development Pi SDK/TUI dependencies are pinned to `1.4.0` in the root workspace lockfile.
+Requires Pi `>=1.5.0` and Node `>=22.19.0`.
+Development Pi SDK/TUI dependencies are pinned to `1.5.0` in the root workspace lockfile.
 
 ## Provider
 

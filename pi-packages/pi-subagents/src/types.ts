@@ -446,7 +446,7 @@ export type SendMessageResult =
         | 'queue_count_limit'
         | 'queue_bytes_limit'
         | 'enqueue_failed';
-      required_pi_version?: '>=0.99.0';
+      required_pi_version?: '>=1.5.0';
       detected_pi_version?: string | 'unknown';
       message: string;
     };

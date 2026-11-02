@@ -1505,9 +1505,9 @@ export class SubagentManager {
         status: 'rejected',
         task_id: input.task_id,
         reason: 'unsupported_runtime',
-        required_pi_version: '>=0.99.0',
+        required_pi_version: '>=1.5.0',
         detected_pi_version: liveState.bridge.detected_pi_version,
-        message: `Live background messaging requires Pi runtime >=0.99.0; detected ${liveState.bridge.detected_pi_version}.`,
+        message: `Live background messaging requires Pi runtime >=1.5.0; detected ${liveState.bridge.detected_pi_version}.`,
       };
     }
     const message = sanitizeInteractionTransportText(input.message ?? '');

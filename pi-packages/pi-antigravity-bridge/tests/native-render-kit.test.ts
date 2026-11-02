@@ -1,3 +1,4 @@
+import { keyHint, keyText } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import type {
 	EntryRenderer,
@@ -88,7 +89,7 @@ test.each([
 			status: status as NativeDisplayEvent["status"],
 			command: "run",
 		}),
-		{ expanded: false },
+		{ expanded: false, keyText, keyHint },
 		theme,
 	);
 	assert.ok(component);
@@ -126,7 +127,7 @@ test.each([
 		output: "done",
 	};
 	const create = () => {
-		const component = render(entry(data), { expanded }, theme);
+		const component = render(entry(data), { expanded, keyText, keyHint }, theme);
 		assert.ok(component);
 		return component;
 	};
@@ -191,7 +192,7 @@ test("agy-native-event switches KIT sections and unchanged native Text on the sa
 			diff: " context\n-before\n+after",
 			output: "patch failed",
 		}),
-		{ expanded: true },
+		{ expanded: true, keyText, keyHint },
 		theme,
 	);
 	assert.ok(component);
@@ -261,7 +262,7 @@ test.each([
 	detail,
 }) => {
 	const render = await nativeRenderer();
-	const component = render(entry(data), { expanded: false }, theme);
+	const component = render(entry(data), { expanded: false, keyText, keyHint }, theme);
 	assert.ok(component);
 	const expected = `«success:✓» «toolTitle:${data.name}»${detail ? ` «muted:${detail}»` : ""}`;
 	expect(component.render(240)).toEqual(new Text(expected, 0, 0).render(240));
@@ -283,7 +284,7 @@ test("successful expanded diff entries omit redundant output in both paths", asy
 			diff: "+change",
 			output: "redundant output",
 		}),
-		{ expanded: true },
+		{ expanded: true, keyText, keyHint },
 		theme,
 	);
 	assert.ok(component);

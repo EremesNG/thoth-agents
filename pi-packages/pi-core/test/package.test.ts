@@ -8,9 +8,9 @@ function manifest(relativePath: string) {
 }
 
 const sdkVersions = {
-  '@earendil-works/pi-coding-agent': '1.4.0',
-  '@earendil-works/pi-tui': '1.4.0',
-  '@earendil-works/pi-ai': '1.4.0',
+  '@earendil-works/pi-coding-agent': '1.5.0',
+  '@earendil-works/pi-tui': '1.5.0',
+  '@earendil-works/pi-ai': '1.5.0',
 };
 
 describe('Pi ecosystem package manifests', () => {
@@ -28,7 +28,7 @@ describe('Pi ecosystem package manifests', () => {
         type: 'module',
         license: 'MIT',
         engines: { node: '>=22.19.0' },
-        peerDependencies: { '@earendil-works/pi-coding-agent': '>=0.99.0' },
+        peerDependencies: { '@earendil-works/pi-coding-agent': '>=1.5.0' },
         devDependencies: {
           ...sdkVersions,
           typescript: '^5.8.0',
@@ -73,7 +73,7 @@ describe('Pi ecosystem package manifests', () => {
       '@earendil-works/pi-coding-agent': { optional: true },
       '@earendil-works/pi-tui': { optional: true },
     });
-    expect(core.peerDependencies['@earendil-works/pi-tui']).toBe('>=0.99.0');
+    expect(core.peerDependencies['@earendil-works/pi-tui']).toBe('>=1.5.0');
     for (const name of [
       'pi-thoth-theme',
       'pi-background-tasks',
@@ -90,9 +90,9 @@ describe('Pi ecosystem package manifests', () => {
     expect(todo.dependencies).toBeUndefined();
     expect(todo.devDependencies['@thoth-agents/pi-core']).toBe('workspace:^');
     expect(todo.peerDependencies).toEqual({
-      '@earendil-works/pi-coding-agent': '>=0.99.0',
-      '@earendil-works/pi-tui': '>=0.99.0',
-      '@earendil-works/pi-ai': '>=0.99.0',
+      '@earendil-works/pi-coding-agent': '>=1.5.0',
+      '@earendil-works/pi-tui': '>=1.5.0',
+      '@earendil-works/pi-ai': '>=1.5.0',
       typebox: '*',
     });
     expect(todo.devDependencies.typebox).toBe('^1.3.4');

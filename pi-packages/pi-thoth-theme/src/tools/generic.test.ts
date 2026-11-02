@@ -8,6 +8,8 @@ import {
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
 import {
+  getCapabilities,
+  setCapabilities,
   stripTerminalSequences,
   type TUI,
   visibleWidth,
@@ -241,21 +243,45 @@ describe('generic tool frame', () => {
     );
   });
 
-  it('preserves image content for the native image pass', () => {
-    setup();
-    const { component } = make();
-    const image: ImageContent = {
-      type: 'image',
-      data: 'AAAA',
-      mimeType: 'image/png',
-    };
-    component.updateResult({
-      content: [text('shot'), image],
-      details: {},
-      isError: false,
-    });
-    expect(plain(component).join('\n')).toContain('shot');
-    expect(plain(component).at(-1)).toMatch(/^╰/);
+  it.each([
+    null,
+    'kitty',
+  ] as const)('preserves image content for the native image pass (protocol=%s)', (images) => {
+    const capabilities = getCapabilities();
+    setCapabilities({ ...capabilities, images });
+    try {
+      setup();
+      const { component } = make();
+      const image: ImageContent = {
+        type: 'image',
+        data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4AQEFAPr/AP8AAP8FAAH/+lyI0QAAAABJRU5ErkJggg==',
+        mimeType: 'image/png',
+      };
+      const result = {
+        content: [text('shot'), image],
+        details: {},
+        isError: false,
+      };
+      const before = JSON.stringify(result);
+      component.updateResult(result);
+      const lines = component.render(80);
+      const card = lines.map(stripTerminalSequences).filter(Boolean);
+      expect(card.join('\n')).toContain('shot');
+      // Native images follow the self-rendered card, with their own spacer.
+      expect(card.at(-1)).toMatch(/^╰/);
+      if (images === 'kitty') {
+        const imageLine = lines.findIndex((line) => line.includes('\x1b_G'));
+        expect(imageLine).toBeGreaterThan(
+          lines.findIndex((line) =>
+            stripTerminalSequences(line).startsWith('╰'),
+          ),
+        );
+        expect(lines[imageLine]).toContain(image.data);
+      }
+      expect(JSON.stringify(result)).toBe(before);
+    } finally {
+      setCapabilities(capabilities);
+    }
   });
 
   it('summarizes args compactly', () => {

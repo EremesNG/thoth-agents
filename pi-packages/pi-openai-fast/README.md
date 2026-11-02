@@ -18,7 +18,7 @@ Install manually; the Thoth installer does not manage this extension.
 pi install npm:@thoth-agents/pi-openai-fast
 ```
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`.
+Requires Pi `>=1.5.0` and Node `>=22.19.0`.
 
 ## How it works
 

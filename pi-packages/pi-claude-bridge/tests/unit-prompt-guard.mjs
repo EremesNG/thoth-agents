@@ -87,6 +87,22 @@ describe("prompt guard", () => {
 		assert.equal(projectPromptCapture(found, { skillReadTool: "none" }), custom);
 	});
 
+	it("rejects pi's rendered preamble without the documentation trigger pair", async () => {
+		const { buildSystemPromptSections } = await import(pathToFileURL(PI_SYSTEM_PROMPT).href);
+		const { preamble } = buildSystemPromptSections({ cwd: "/tmp" });
+		assert.ok(preamble);
+		for (const trigger of ["docs/custom-provider.md", "docs/packages.md"]) {
+			assert.ok(!preamble.includes(trigger), "the preamble guard must work independently of the doc-path guard");
+		}
+		const captures = new PromptCaptures();
+		captures.record("leaking rendered preamble", capture({ custom: preamble }), "before_agent_start");
+
+		assert.throws(
+			() => projectPromptCapture(captures.resolve("leaking rendered preamble"), { skillReadTool: "none" }),
+			/pi's preamble .* in the custom prompt, at offset 0/,
+		);
+	});
+
 	it("pins the guard's marker in pi's own rendered system prompt", async () => {
 		assert.ok(
 			existsSync(PI_SYSTEM_PROMPT),

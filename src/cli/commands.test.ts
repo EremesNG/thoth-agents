@@ -796,7 +796,7 @@ describe('explicit operation commands', () => {
             if (command === 'node')
               return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
             if (args[0] === '--version')
-              return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+              return { exitCode: 0, stdout: '1.5.0', stderr: '' };
             return {
               exitCode: 0,
               stdout: `User packages:\n  npm:thoth-agents@0.3.12\n    ${packageRoot}`,
@@ -841,7 +841,7 @@ describe('explicit operation commands', () => {
             if (command === 'node')
               return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
             if (args[0] === '--version')
-              return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+              return { exitCode: 0, stdout: '1.5.0', stderr: '' };
             return {
               exitCode: 0,
               stdout: 'User packages:\n  npm:@juicesharp/rpiv-todo@2.12.0',

@@ -81,6 +81,7 @@ export function ownedOverlaySession(options: { introspection?: boolean } = {}) {
     defaultEditor: editor,
     editorContainer,
     keybindings: {},
+    extensionDialogs: [],
   }) as SdkMode;
   const completions = vi.fn();
   const custom: Custom = (factory, options) =>

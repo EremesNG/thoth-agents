@@ -43,8 +43,8 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.99.0",
-    "@earendil-works/pi-tui": ">=0.99.0"
+    "@earendil-works/pi-coding-agent": ">=1.5.0",
+    "@earendil-works/pi-tui": ">=1.5.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
@@ -58,9 +58,9 @@
     "@types/node": "^22.10.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.9",
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@earendil-works/pi-tui": "1.4.0",
-    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
     "@rolldown/binding-wasm32-wasi": "^1.2.4"
   }
 }

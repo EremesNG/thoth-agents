@@ -34,7 +34,8 @@ import {
 } from 'vitest';
 import { sdkSubagentRunner } from '../../pi-subagents/src/runner/sdk-runner.js';
 
-const themePackage = fileURLToPath(new URL('..', import.meta.url));
+const themePath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
+let themePackage: string;
 const producerPath = fileURLToPath(
   new URL('./fixtures/render-kit-producer.ts', import.meta.url),
 );
@@ -55,6 +56,20 @@ beforeEach(async () => {
   // Bound trusted project skill discovery to this fixture, not temp ancestors.
   mkdirSync(join(cwd, '.git'));
   mkdirSync(agentDir);
+  themePackage = join(root, 'theme');
+  mkdirSync(themePackage);
+  writeFileSync(
+    join(themePackage, 'package.json'),
+    JSON.stringify({
+      name: '@thoth-agents/pi-thoth-theme',
+      pi: { extensions: ['./index.ts'] },
+    }),
+  );
+  writeFileSync(
+    join(themePackage, 'index.ts'),
+    `export { default } from ${JSON.stringify(themePath)};
+`,
+  );
   producerPackage = join(root, 'producer');
   mkdirSync(producerPackage);
   writeFileSync(
@@ -166,14 +181,14 @@ function toolComponent(session: AgentSession, name = 'kit_probe') {
 const text = (component: ToolExecutionComponent) =>
   component.render(64).map(stripTerminalSequences).join('\n');
 
-describe('render kit through Pi SDK 1.4.0', () => {
+describe('render kit through Pi SDK 1.5.0', () => {
   it.each([
     'theme first',
     'producer first',
   ])('discovers at render time with %s and leaves package-owned self shells untouched', async (order) => {
-    expect(VERSION).toBe('1.4.0');
+    expect(VERSION).toBe('1.5.0');
     const session = await loadSession(order);
-    const themeExtension = join(themePackage, 'dist', 'index.ts');
+    const themeExtension = join(themePackage, 'index.ts');
     const producerExtension = join(producerPackage, 'index.ts');
     expect(session.extensionRunner.getExtensionPaths()).toEqual(
       order === 'theme first'

@@ -119,14 +119,16 @@ export interface TaskMutationParams extends TaskFields {
 // ---------------------------------------------------------------------------
 
 const SingleParamsSchema = Type.Object({
-  action: StringEnum([
-    'create',
-    'update',
-    'list',
-    'get',
-    'delete',
-    'clear',
-  ] as const),
+  action: Type.Unsafe<Exclude<TaskAction, 'batch'>>({
+    ...StringEnum([
+      'create',
+      'update',
+      'list',
+      'get',
+      'delete',
+      'clear',
+    ] as const),
+  }),
   subject: Type.Optional(
     Type.String({ description: 'Task subject line (required for create)' }),
   ),
@@ -141,9 +143,14 @@ const SingleParamsSchema = Type.Object({
     }),
   ),
   status: Type.Optional(
-    StringEnum(['pending', 'in_progress', 'completed', 'deleted'] as const, {
-      description:
-        'Create status: pending (default), in_progress or completed; create rejects deleted. Multiple tasks may be in_progress. On list, filters by status.',
+    Type.Unsafe<TaskStatus>({
+      ...StringEnum(
+        ['pending', 'in_progress', 'completed', 'deleted'] as const,
+        {
+          description:
+            'Create status: pending (default), in_progress or completed; create rejects deleted. Multiple tasks may be in_progress. On list, filters by status.',
+        },
+      ),
     }),
   ),
   blockedBy: Type.Optional(
@@ -203,7 +210,9 @@ const BatchOpSchema = Type.Object({
   status: withoutDescription(SingleParamsSchema.properties.status),
   owner: withoutDescription(SingleParamsSchema.properties.owner),
   metadata: withoutDescription(SingleParamsSchema.properties.metadata),
-  action: StringEnum(['create', 'update', 'delete'] as const),
+  action: Type.Unsafe<BatchOp['action']>({
+    ...StringEnum(['create', 'update', 'delete'] as const),
+  }),
   ref: Type.Optional(Type.String()),
   id: Type.Optional(batchId),
   blockedBy: Type.Optional(Type.Array(batchId)),
@@ -213,15 +222,17 @@ const BatchOpSchema = Type.Object({
 
 export const TodoParamsSchema = Type.Object({
   ...SingleParamsSchema.properties,
-  action: StringEnum([
-    'create',
-    'update',
-    'list',
-    'get',
-    'delete',
-    'clear',
-    'batch',
-  ] as const),
+  action: Type.Unsafe<TaskAction>({
+    ...StringEnum([
+      'create',
+      'update',
+      'list',
+      'get',
+      'delete',
+      'clear',
+      'batch',
+    ] as const),
+  }),
   ops: Type.Optional(
     Type.Array(BatchOpSchema, {
       description:

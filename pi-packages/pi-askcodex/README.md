@@ -10,7 +10,7 @@ Codex runs its own tool loop with its sandbox, configured MCP servers, skills, p
 pi install npm:@thoth-agents/pi-askcodex
 ```
 
-Requires Pi `>=0.99.0`, Node `>=22.19.0`, and Codex Desktop installed with a working Codex login. Install this package manually; the Thoth installer does not manage it. `AskCodex` is enabled by default; set `enabled: false` to disable registration.
+Requires Pi `>=1.5.0`, Node `>=22.19.0`, and Codex Desktop installed with a working Codex login. Install this package manually; the Thoth installer does not manage it. `AskCodex` is enabled by default; set `enabled: false` to disable registration.
 
 - Prefer the **Desktop-bundled `codex.exe`**, not a standalone CLI install.
 - **Native-app Computer Use requires Codex Desktop running**.

@@ -30,7 +30,7 @@ function run(command: string, args: string[], cwd: string): string {
   });
 }
 
-it('loads the packed todo bundle without a runtime core dependency through Pi SDK 1.4.0 offline', async () => {
+it('loads the packed todo bundle without a runtime core dependency through Pi SDK 1.5.0 offline', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-todo-packed-'));
   let loader: DefaultResourceLoader | undefined;
   try {
@@ -100,7 +100,7 @@ it('loads the packed todo bundle without a runtime core dependency through Pi SD
         'utf8',
       ),
     );
-    expect(sdkManifest.version).toBe('1.4.0');
+    expect(sdkManifest.version).toBe('1.5.0');
     expect(manifest.pi.extensions).toEqual(['./dist/index.ts']);
     expect(manifest.dependencies?.['@thoth-agents/pi-core']).toBeUndefined();
     expect(manifest.devDependencies['@thoth-agents/pi-core']).toBe(

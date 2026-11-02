@@ -42,7 +42,7 @@ describe('pi package manifest', () => {
 
   it('does not bundle pi core runtime packages', () => {
     expect(packageJson.peerDependencies).toMatchObject({
-      '@earendil-works/pi-coding-agent': '>=0.99.0',
+      '@earendil-works/pi-coding-agent': '>=1.5.0',
       typebox: '*',
     });
     expect(packageJson.peerDependenciesMeta).toMatchObject({
@@ -54,10 +54,10 @@ describe('pi package manifest', () => {
 
   it('pins one development Pi SDK generation and Node minimum', () => {
     expect(packageJson.devDependencies).toMatchObject({
-      '@earendil-works/pi-agent-core': '1.4.0',
-      '@earendil-works/pi-ai': '1.4.0',
-      '@earendil-works/pi-coding-agent': '1.4.0',
-      '@earendil-works/pi-tui': '1.4.0',
+      '@earendil-works/pi-agent-core': '1.5.0',
+      '@earendil-works/pi-ai': '1.5.0',
+      '@earendil-works/pi-coding-agent': '1.5.0',
+      '@earendil-works/pi-tui': '1.5.0',
     });
     expect(packageJson.engines.node).toBe('>=22.19.0');
   });

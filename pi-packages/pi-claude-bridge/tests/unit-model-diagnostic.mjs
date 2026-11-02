@@ -23,6 +23,6 @@ it("names the minimum Pi version when the Anthropic catalog is empty", async (t)
 	t.mock.method(console, "error", (message) => errors.push(message));
 	activate({ on: () => {}, registerProvider: () => {}, registerTool: () => {} });
 	assert.deepEqual(errors, [
-		"claude-bridge: no models available from pi-ai's anthropic catalog — update @earendil-works/pi-ai (requires >=0.99.0)",
+		"claude-bridge: no models available from pi-ai's anthropic catalog — update @earendil-works/pi-ai (requires >=1.5.0)",
 	]);
 });

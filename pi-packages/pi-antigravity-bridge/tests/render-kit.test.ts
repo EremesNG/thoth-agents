@@ -1,3 +1,4 @@
+import { keyHint, keyText } from '@earendil-works/pi-coding-agent';
 import type {
 	ExtensionAPI,
 	Theme,
@@ -43,6 +44,8 @@ function context(
 	overrides: Partial<ToolRenderContext> = {},
 ): ToolRenderContext {
 	return {
+		keyText,
+		keyHint,
 		args: {},
 		toolCallId: "render-test",
 		invalidate() {},

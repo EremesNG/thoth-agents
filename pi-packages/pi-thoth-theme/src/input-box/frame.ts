@@ -171,9 +171,13 @@ export function renderPlaceholder(
   text: string,
 ): string {
   if (text !== '') return line;
-  const cursor = '\x1b[7m \x1b[0m';
+  // Pi 1.4 defers fake-cursor styling until TUI composition; older editors
+  // emit inverse video directly. Keep either cursor cell byte-identical.
+  const cursor = ['\x1b_pi:fc\x07 \x1b_pi:/fc\x07', '\x1b[7m \x1b[0m'].find(
+    (cell) => line.includes(cell),
+  );
+  if (!cursor) return line;
   const cursorStart = line.indexOf(cursor);
-  if (cursorStart < 0) return line;
   const prefix = line.slice(0, cursorStart + cursor.length);
   const available = Math.max(0, width - visibleWidth(prefix));
   const placeholder = truncateToWidth('type or / for commands', available, '');

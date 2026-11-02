@@ -3,9 +3,12 @@ import {
   Editor,
   foregroundAnsi,
   getTerminalColorMode,
+  renderFakeCursor,
   rgbColor,
   stripTerminalSequences,
+  type Terminal,
   type TUI,
+  TuiMainScreen,
   type TuiMouseEvent,
   visibleWidth,
 } from '@earendil-works/pi-tui';
@@ -18,6 +21,7 @@ import {
 } from './decorate.ts';
 import { createWorkingState } from './state.ts';
 
+const emptyCursor = `${CURSOR_MARKER}${renderFakeCursor(' ')}`;
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -227,6 +231,53 @@ describe('input-box mouse geometry', () => {
 });
 
 describe('input-box editor composition', () => {
+  it.each([
+    false,
+    true,
+  ])('renders through Pi with hardware cursor=%s without leaking markers or moving the boxed cursor', (hardwareCursor) => {
+    for (const { width, padding, text, column } of [
+      { width: 40, padding: 0, text: '', column: 2 },
+      { width: 40, padding: 2, text: '界', column: 6 },
+      { width: 16, padding: 2, text: 'abcdefghij', column: 14 },
+    ]) {
+      const { editor, decorate } = setup();
+      editor.setPaddingX(padding);
+      editor.setText(text);
+      decorate();
+      const terminal = {
+        columns: width,
+        rows: 20,
+        write: vi.fn(),
+        hideCursor: vi.fn(),
+        showCursor: vi.fn(),
+        stop: vi.fn(),
+      };
+      const tui = new TuiMainScreen(
+        terminal as unknown as Terminal,
+        hardwareCursor,
+      );
+      try {
+        tui.addChild(editor);
+        tui.setFocus(editor);
+        expect(editor.render(width).map(visibleWidth)).toEqual([
+          width,
+          width,
+          width,
+        ]);
+        tui.renderNow();
+        const output = terminal.write.mock.calls
+          .map(([chunk]) => chunk)
+          .join('');
+        expect(output).not.toContain('pi:');
+        expect(output).toContain(`\x1b[${column}G`);
+        expect(output.includes('\x1b[7m')).toBe(!hardwareCursor);
+        if (text === '') expect(output).toContain('type or / for commands');
+      } finally {
+        tui.stop({ preserveScreen: true });
+      }
+    }
+  });
+
   it('reads the optional status provider live on every render and stops after disposal', () => {
     const { editor, deps, decorate } = setup();
     let modelName = 'First model';
@@ -417,9 +468,7 @@ describe('input-box editor composition', () => {
     );
     expect(animated.map(visibleWidth)).toEqual(idle.map(visibleWidth));
     expect(animated[0]).toContain('\x1b[33m▲ ready\x1b[0m');
-    expect(animated[1]).toContain(
-      `界 ─ │ ╭ ╮ ╰ ╯${CURSOR_MARKER}\x1b[7m \x1b[0m`,
-    );
+    expect(animated[1]).toContain(`界 ─ │ ╭ ╮ ╰ ╯${emptyCursor}`);
     expect(editor.render(10)).toEqual(nativeNarrow);
     vi.advanceTimersByTime(1000);
     expect(editor.render(40)).not.toEqual(animated);
@@ -567,12 +616,12 @@ describe('input-box editor composition', () => {
     expect(editor.render(16)[1]).toContain('│abcdefghij');
     editor.setPaddingX(2);
     const padded = editor.render(16);
-    expect(padded[1]).toBe(`│  abcdefghij${CURSOR_MARKER}\x1b[7m \x1b[0m │`);
+    expect(padded[1]).toBe(`│  abcdefghij${emptyCursor} │`);
     expect(padded.map(visibleWidth)).toEqual([16, 16, 16]);
     expect(padded.join('\n')).not.toContain('type or / for commands');
     editor.setText('');
     expect(editor.render(40)[1]).toContain(
-      `│  ${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
+      `│  ${emptyCursor}type or / for commands`,
     );
   });
 
@@ -614,7 +663,7 @@ describe('input-box editor composition', () => {
     proxy.focused = true;
     const lines = proxy.render(40);
     expect(lines[0]).toMatch(/^╭─ ▲ ready /);
-    expect(lines[1]).toContain(`│abc${CURSOR_MARKER}\x1b[7m \x1b[0m`);
+    expect(lines[1]).toContain(`│abc${emptyCursor}`);
     expect(lines[2]).toMatch(/^╰─+╯$/);
     expect(lines.map(visibleWidth)).toEqual([40, 40, 40]);
     expect(renderInterceptions).toBe(1);

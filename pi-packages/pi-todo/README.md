@@ -129,5 +129,5 @@ pnpm --filter @thoth-agents/pi-todo run test:real-sdk
 
 The packed real-SDK test packs both workspace packages, installs their tarballs
 with npm into an OS temporary directory, and loads the installed extension with
-Pi 1.0.2. It uses the locally installed SDK peers and npm's offline mode: no model
+Pi 1.4.0. It uses the locally installed SDK peers and npm's offline mode: no model
 credentials, provider calls, or registry access are required.

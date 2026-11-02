@@ -43,6 +43,7 @@ export class MockTerminal implements Terminal {
   clearFromCursor() {}
   clearScreen() {}
   setTitle() {}
+  setProgramStatus() {}
   setProgress() {}
 }
 

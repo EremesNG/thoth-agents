@@ -230,7 +230,7 @@ it('safely skips focus repair when runtime introspection is unavailable', async 
   expect(tui.getFocusedComponent()).toBe(editor);
 });
 
-it('hides a late delivered handle and repairs its detached preFocus without completing twice', async () => {
+it('repairs detached preFocus when a late handle arrives after SDK completion already hid the overlay', async () => {
   const { ctx, tui, editorContainer, completions } = session();
   const custom = ctx.ui.custom;
   let deliverHandle: () => void = () => {};
@@ -254,7 +254,8 @@ it('hides a late delivered handle and repairs its detached preFocus without comp
   tui.setFocus(component);
   close();
   await result;
-  expect(tui.hasOverlay()).toBe(true);
+  // Pi >=1.3 retains its own handle even when consumer delivery is delayed.
+  expect(tui.hasOverlay()).toBe(false);
   deliverHandle();
   close();
   expect(completions).toHaveBeenCalledTimes(1);

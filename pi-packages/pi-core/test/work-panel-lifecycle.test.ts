@@ -89,6 +89,49 @@ describe('work panel observed-text prompt epochs', () => {
     expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
   });
 
+  it.each([
+    'interactive',
+    'rpc',
+  ])('advances for a Pi 1.4.0 user event matching idle %s input', (source) => {
+    const session = lifecycleSession();
+    cleanups.push(bindWorkPanelLifecycle(session.pi, session.ctx));
+    session.input('inspect this', source);
+    const event = {
+      messageType: 'user',
+      prompt: 'inspect this',
+      systemPrompt: 'host prompt',
+      systemPromptOptions: { appendSystemPrompt: '' },
+    };
+    session.emit('before_agent_start', event);
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
+    session.emit('before_agent_start', event);
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
+  });
+
+  it('ignores a Pi 1.4.0 custom event without consuming a matching input candidate', () => {
+    const session = lifecycleSession();
+    cleanups.push(bindWorkPanelLifecycle(session.pi, session.ctx));
+    session.input('inspect this');
+    session.emit('before_agent_start', {
+      messageType: 'custom',
+      message: {
+        role: 'custom',
+        customType: 'notification',
+        content: 'inspect this',
+        display: false,
+        timestamp: 1000,
+      },
+      systemPrompt: 'host prompt',
+      systemPromptOptions: { appendSystemPrompt: '' },
+    });
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(0);
+    session.emit('before_agent_start', {
+      messageType: 'user',
+      prompt: 'inspect this',
+    });
+    expect(getWorkPanelLifecycle(session.ctx).epoch).toBe(1);
+  });
+
   it('uses the text observed after earlier handlers, but not later transforms or prompt expansion', () => {
     const session = lifecycleSession();
     cleanups.push(bindWorkPanelLifecycle(session.pi, session.ctx));

@@ -232,6 +232,8 @@ function toolContext(isPartial: boolean, isError: boolean) {
     expanded: false,
     showImages: false,
     isError,
+    durationMs: undefined,
+    outputPad: 0,
     invalidate: () => {},
   };
 }

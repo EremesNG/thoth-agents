@@ -64,6 +64,7 @@ test("replay wrapper hides its request declaration without disabling default act
 		assert.deepEqual(wrapper.prepareLoadout({
 			declared: [], callable: [], registered: [],
 			getExposure: () => "direct", getNamespace: () => undefined,
+			getPromptGuidelines: () => [],
 		}), { hiddenDeclarations: ["antigravity"] });
 	});
 });

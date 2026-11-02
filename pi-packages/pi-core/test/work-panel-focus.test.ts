@@ -39,6 +39,7 @@ function liveSession() {
     clearScreen() {},
     setTitle() {},
     setProgress() {},
+    setProgramStatus() {},
   };
   const tui = new TuiMainScreen(terminal);
   const session = uiSession(tui);

@@ -109,6 +109,61 @@ describe('native Pi extension', () => {
     expect(await start?.(startEvent)).toBeUndefined();
     expect(systemPromptOptions.appendSystemPrompt).toBe(firstAppend);
   });
+  test('anchors a Pi 1.4.0 user event with a matching prompt', async () => {
+    const handlers = capturePiHandlers();
+    const text = 'Revisa este cambio';
+    await handlers.get('input')?.(
+      { source: 'interactive', text },
+      { isIdle: () => true },
+    );
+    const event = {
+      type: 'before_agent_start',
+      messageType: 'user',
+      prompt: text,
+      systemPrompt: 'host prompt',
+      systemPromptOptions: { appendSystemPrompt: '' },
+    };
+
+    expect(await handlers.get('before_agent_start')?.(event)).toEqual({
+      message: LANGUAGE_ANCHOR_MESSAGE,
+    });
+    expect(event.systemPromptOptions.appendSystemPrompt).toContain(
+      PI_ROOT_START,
+    );
+  });
+  test('does not anchor a Pi 1.4.0 custom event without a prompt and consumes the pending candidate', async () => {
+    const handlers = capturePiHandlers();
+    const text = 'Revisa este cambio';
+    await handlers.get('input')?.(
+      { source: 'interactive', text },
+      { isIdle: () => true },
+    );
+    const systemPromptOptions = { appendSystemPrompt: '' };
+    const event = {
+      type: 'before_agent_start',
+      messageType: 'custom',
+      message: {
+        role: 'custom',
+        customType: 'notification',
+        content: text,
+        display: false,
+        timestamp: 1000,
+      },
+      systemPrompt: 'host prompt',
+      systemPromptOptions,
+    };
+
+    expect(await handlers.get('before_agent_start')?.(event)).toBeUndefined();
+    expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_START);
+    expect(event.systemPrompt).toBe('host prompt');
+    expect(
+      await handlers.get('before_agent_start')?.({
+        messageType: 'user',
+        prompt: text,
+        systemPromptOptions,
+      }),
+    ).toBeUndefined();
+  });
   test.each([
     {
       reason: 'extension-sourced',

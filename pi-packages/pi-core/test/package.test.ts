@@ -8,9 +8,9 @@ function manifest(relativePath: string) {
 }
 
 const sdkVersions = {
-  '@earendil-works/pi-coding-agent': '1.0.2',
-  '@earendil-works/pi-tui': '1.0.2',
-  '@earendil-works/pi-ai': '1.0.2',
+  '@earendil-works/pi-coding-agent': '1.4.0',
+  '@earendil-works/pi-tui': '1.4.0',
+  '@earendil-works/pi-ai': '1.4.0',
 };
 
 describe('Pi ecosystem package manifests', () => {

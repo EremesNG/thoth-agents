@@ -93,12 +93,15 @@ describe('input-box frame', () => {
     expect(visibleWidth(scrolled)).toBe(24);
   });
 
-  it('inserts a dim placeholder after the empty cursor without moving it or widening the row', () => {
+  it.each([
+    ['inverse-video', '\x1b[7m \x1b[0m'],
+    ['deferred fake-cursor', '\x1b_pi:fc\x07 \x1b_pi:/fc\x07'],
+  ])('inserts a dim placeholder after the empty %s cursor without moving it or widening the row', (_name, cursorCell) => {
     const dimTheme = {
       fg: (token: string, text: string) =>
         token === 'dim' ? `\x1b[2m${text}\x1b[0m` : text,
     };
-    const cursor = `${CURSOR_MARKER}\x1b[7m \x1b[0m`;
+    const cursor = `${CURSOR_MARKER}${cursorCell}`;
     const line = `  ${cursor}${' '.repeat(27)}`;
     const rendered = renderPlaceholder(line, 30, dimTheme, '');
 
@@ -111,8 +114,8 @@ describe('input-box frame', () => {
     const narrow = renderPlaceholder(line, 8, dimTheme, '');
     expect(narrow).toContain(`  ${cursor}\x1b[2mtype `);
     expect(visibleWidth(narrow)).toBe(8);
-    const unfocused = renderPlaceholder('\x1b[7m \x1b[0m   ', 4, dimTheme, '');
-    expect(unfocused).toContain('\x1b[7m \x1b[0m\x1b[2mtyp');
+    const unfocused = renderPlaceholder(`${cursorCell}   `, 4, dimTheme, '');
+    expect(unfocused).toContain(`${cursorCell}\x1b[2mtyp`);
     expect(visibleWidth(unfocused)).toBe(4);
     expect(renderPlaceholder('no cursor', 30, dimTheme, '')).toBe('no cursor');
   });

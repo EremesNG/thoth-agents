@@ -54,6 +54,7 @@ export function ownedOverlaySession(options: { introspection?: boolean } = {}) {
     clearScreen() {},
     setTitle() {},
     setProgress() {},
+    setProgramStatus() {},
   };
   const tui = new TuiMainScreen(terminal);
   const editor = inputComponent('Editor');

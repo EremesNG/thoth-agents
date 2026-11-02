@@ -1,6 +1,6 @@
 # @thoth-agents/pi-sidebar
 
-A read-only right sidebar for Pi fullscreen and regular modes (SDK 1.0.2 tested).
+A read-only right sidebar for Pi fullscreen and regular modes (SDK 1.4.0 tested).
 Requires Node >=22.19.0. It never replaces the editor or footer and has no row
 navigation or actions. Unsupported private renderer seams disable the sidebar
 with one warning instead of breaking Pi.
@@ -19,8 +19,8 @@ TUI sessions mount the sidebar; RPC/headless sessions do not. Fullscreen uses a
 right layout column; regular mode reserves transcript/editor width and draws a
 non-capturing sidebar over the live viewport. Neither mode owns the footer.
 The package declares only `@earendil-works/pi-tui >=0.99.0` as a peer;
-`@earendil-works/pi-coding-agent` is a development dependency pinned to `1.0.2`.
-Its private layout seams are tested on Pi 1.0.2 and feature-detected, not
+`@earendil-works/pi-coding-agent` is a development dependency pinned to `1.4.0`.
+Its private layout seams are tested on Pi 1.4.0 and feature-detected, not
 guaranteed on every version.
 
 ## Controls

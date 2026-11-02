@@ -5,7 +5,11 @@ import {
   subscribeAnimationLevel,
 } from './animation-clock.js';
 import { subscribeAnimationSteps } from './animation-steps.js';
-import { type EditorSlotHandle, registerEditorSlot } from './editor-slot.js';
+import {
+  type EditorSlotHandle,
+  isEditorReplaced,
+  registerEditorSlot,
+} from './editor-slot.js';
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
@@ -89,6 +93,10 @@ export function createWorkPanelHost(
   let statusCue: string | undefined;
   let panelWidth: number | undefined;
   let panelTui: TUI | undefined;
+  const editorOccupied = () => {
+    const liveTui = panelTui ?? tui;
+    return liveTui ? isEditorReplaced(liveTui) : false;
+  };
   const panelBudget = () =>
     Math.min(
       12,
@@ -100,7 +108,7 @@ export function createWorkPanelHost(
 
   function refreshStatusCue(count: number, force = false): void {
     const next =
-      count > 0 && !focused && !suspended
+      count > 0 && !focused && !suspended && !editorOccupied()
         ? `${resolveIcon('arrowLeft', '←')} work ${resolveIcon('separator', '·')} ${count}`
         : undefined;
     if (!force && next === statusCue) return;
@@ -337,7 +345,11 @@ export function createWorkPanelHost(
   }
 
   function handleInput(data: string): { consume: true } | undefined {
-    if (!rootEditorInputActive() || ctx.ui.getEditorText?.() !== '') {
+    if (
+      editorOccupied() ||
+      !rootEditorInputActive() ||
+      ctx.ui.getEditorText?.() !== ''
+    ) {
       if (focused) {
         releaseFocus();
         refreshNow();
@@ -535,8 +547,18 @@ export function createWorkPanelHost(
           requestRender = () => widgetTui.requestRender();
           let renderedLines: string[] | undefined;
           let renderedStatusCue: string | undefined;
+          let occupied = false;
+          let renderedOccupied: boolean | undefined;
           const render = (width: number) => {
             panelWidth = width;
+            occupied = editorOccupied();
+            if (occupied) {
+              releaseFocus();
+              refreshStatusCue(0);
+              return renderPanel(sections(), width, Date.now(), theme, clip, {
+                summary: true,
+              });
+            }
             refreshStatusCue(rows().length);
             const entry = selected();
             const label = panelCloseLabel(entry);
@@ -568,18 +590,21 @@ export function createWorkPanelHost(
           requestProviderRender = () => {
             const lines = render(panelWidth ?? widgetTui.terminal.columns);
             const changed =
+              renderedOccupied !== occupied ||
               renderedStatusCue !== statusCue ||
               renderedLines?.length !== lines.length ||
               lines.some((line, index) => line !== renderedLines?.[index]);
             // Remember requested output too, coalescing notifications before Pi renders.
             renderedLines = lines;
             renderedStatusCue = statusCue;
+            renderedOccupied = occupied;
             if (changed) requestRender?.();
           };
           return {
             render(width) {
               renderedLines = render(width);
               renderedStatusCue = statusCue;
+              renderedOccupied = occupied;
               return renderedLines;
             },
             invalidate() {},

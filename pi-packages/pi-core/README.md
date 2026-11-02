@@ -683,6 +683,27 @@ may be omitted to preserve the selected item's metrics. There are no blank
 separator rows. Render-kit discovery happens on every render, with unframed
 native output when absent.
 
+While an editor-slot replacement is active (for example, an expanded question),
+these sections become one read-only summary row in priority order, excluding
+absorbed or empty sections. Each label shows non-zero running, queued, actionable
+failure, cancelled and done counts, in that order, as render-kit status glyphs
+immediately followed by numbers, without words. A supplied total becomes done/total
+(for example, `Agents ◐1 ○2 ✗1 ■1 ✓30/35 · Todos ✓53/54 · Background ✓1`).
+Counts use semantic theme roles; sections are joined with ` · ` and the row is
+cell-width clipped with an ellipsis, so longer summaries may hide later labels.
+Numeric provider counters are authoritative; missing counters fall back to semantic
+row statuses, never retention states. Timed-out work counts as failed, cancelled
+and interrupted work as cancelled, and expected exits as done; resolved failures
+count as neither failed nor done, matching the Background provider. Normal-mode
+headings and retention remain unchanged.
+There is no row if no section is visible, no hint or focus cue, and no panel key
+is consumed. Any panel focus is released without dismissing overlays or detail
+cards; those cards still close when another UI actually takes focus. Collapsing,
+answering, cancelling or disposing the replacement restores the full panel on
+the next render. The read-only `isEditorReplaced(tui)` query from `./panel` shares
+occupancy across bundled copies; legacy registries without it keep the full panel.
+Provider contract v2, retention, linger and sidebar absorption are unchanged.
+
 The panel's bottom-left hint row appears only when a selectable row exists across
 its shown sections: dim `← interact` when unfocused and selection-aware controls
 when focused. The footer shows `← work · N`, counting only selectable rows.

@@ -40,6 +40,8 @@ export interface PanelSection {
   rows: PanelRow[];
   collapsed?: boolean;
   counts?: { done: number; failed: number };
+  /** Pre-retention items for semantic summary counts, never for visible rows. */
+  summaryRows?: readonly WorkPanelRow[];
 }
 
 /** Provider-level actions opt in; ordinary items and collapsed histories are selectable. */
@@ -113,6 +115,7 @@ export function panelSections(
           provider,
           collapsed: true,
           counts,
+          summaryRows: items,
           rows: [
             {
               provider,
@@ -127,6 +130,7 @@ export function panelSections(
       sections.push({
         provider,
         counts,
+        summaryRows: items,
         rows: eligible.map((row) => ({
           provider,
           row,
@@ -242,6 +246,94 @@ function summarySegments(
   return parts.length
     ? parts
     : [{ text: `${rows.length} items`, role: 'meta' }];
+}
+
+function sectionTitle(provider: WorkPanelProvider): string {
+  return singleLine(provider.label).replace(/\b\p{L}/gu, (letter) =>
+    letter.toUpperCase(),
+  );
+}
+
+/** Presentation counts are independent of the deliberately coarser retention state. */
+function compactSummaryCounts(section: PanelSection) {
+  const summary = safely(() => section.provider.summary?.(), undefined);
+  const counts = typeof summary === 'object' ? summary : undefined;
+  const items =
+    section.summaryRows ??
+    section.rows
+      .filter((entry) => !entry.parent && !entry.row.summary)
+      .map(({ row }) => row);
+  const fallback = {
+    running: 0,
+    queued: 0,
+    failed: 0,
+    cancelled: 0,
+    completed: 0,
+  };
+  for (const row of items) {
+    const semantic = workPanelRenderStatus(row);
+    const status =
+      semantic === 'unknown' && row.status === 'timed_out'
+        ? 'timedOut'
+        : semantic;
+    switch (status) {
+      case 'running':
+      case 'in_progress':
+      case 'stopping':
+        fallback.running++;
+        break;
+      case 'queued':
+        fallback.queued++;
+        break;
+      case 'failed':
+      case 'timedOut':
+        fallback.failed++;
+        break;
+      case 'cancelled':
+      case 'interrupted':
+        fallback.cancelled++;
+        break;
+      case 'completed':
+      case 'expectedExit':
+        fallback.completed++;
+        break;
+      case 'resolved':
+        // Match the background provider: neither actionable failure nor completion.
+        break;
+    }
+  }
+  return {
+    running: counts?.running ?? fallback.running,
+    queued: counts?.queued ?? fallback.queued,
+    failed: counts?.failed ?? fallback.failed,
+    cancelled: counts?.cancelled ?? fallback.cancelled,
+    completed: counts?.completed ?? fallback.completed,
+    total: counts?.total,
+  };
+}
+
+function compactSummarySegments(section: PanelSection): WorkPanelSegment[] {
+  const counts = compactSummaryCounts(section);
+  const categories = [
+    ['running', counts.running, 'accent', 'meta'],
+    ['queued', counts.queued, 'meta', 'meta'],
+    ['failed', counts.failed, 'error', 'error'],
+    ['cancelled', counts.cancelled, 'muted', 'muted'],
+    ['completed', counts.completed, 'success', 'meta'],
+  ] as const;
+  const parts: WorkPanelSegment[] = [];
+  for (const [status, count, role, numberRole] of categories) {
+    if (!(count > 0)) continue;
+    if (parts.length) parts.push({ text: ' ', role: 'meta' });
+    const number =
+      status === 'completed' && counts.total !== undefined
+        ? `${count}/${counts.total}`
+        : `${count}`;
+    const glyph = resolveStatusGlyph(status);
+    if (role === numberRole) parts.push({ text: `${glyph}${number}`, role });
+    else parts.push({ text: glyph, role }, { text: number, role: numberRole });
+  }
+  return parts;
 }
 
 function overflowCounts(
@@ -1726,6 +1818,7 @@ export function renderPanel(
   options: {
     selectedKey?: string;
     hint?: string;
+    summary?: boolean;
     budget?: number;
     animationFrame?: number;
     measure?: (text: string) => number;
@@ -1738,6 +1831,21 @@ export function renderPanel(
     kit ? kit.fg(theme, role, text) : theme.fg(role, text);
   const measure = options.measure ?? defaultMeasure;
   const styleSegments = segmentStyler(theme, clip, measure);
+  if (options.summary) {
+    if (!sections.length) return [];
+    return [
+      clip(
+        sections
+          .map((section) => {
+            const title = fg('toolTitle', sectionTitle(section.provider));
+            const counter = styleSegments(compactSummarySegments(section));
+            return counter ? `${title} ${counter}` : title;
+          })
+          .join(fg('dim', ` ${resolveIcon('separator', '·')} `)),
+        width,
+      ),
+    ];
+  }
   const hint = sections.some((section) =>
     section.rows.some(isSelectablePanelRow),
   )
@@ -1775,9 +1883,7 @@ export function renderPanel(
           index === entries.length - 1 && chosen.length === plan.items.length,
       });
     });
-    const title = singleLine(provider.label).replace(/\b\p{L}/gu, (letter) =>
-      letter.toUpperCase(),
-    );
+    const title = sectionTitle(provider);
     const counter = styleSegments(
       plan.section.collapsed
         ? [

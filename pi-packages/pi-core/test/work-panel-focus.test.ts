@@ -9,6 +9,7 @@ import {
   isWorkPanelRootEditorInputActive,
   registerWorkPanelProvider,
 } from '../src/index.js';
+import { registerEditorSlot } from '../src/panel.js';
 import { provider, uiSession } from './work-panel-fixture.js';
 
 const cleanups: Array<() => void> = [];
@@ -128,6 +129,44 @@ it.each([
   expect(session.render().some((line: string) => line.startsWith('› '))).toBe(
     false,
   );
+});
+
+it('preserves the detail card during summary rendering, then yields to real replacement focus', async () => {
+  const session = liveSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.input('\x1b[D');
+  session.input('\r');
+  await Promise.resolve();
+  const card = session.customComponent;
+  const openingRows = card.render(100);
+  const question: Component = {
+    render: () => ['Question'],
+    invalidate() {},
+    handleInput: vi.fn(),
+  };
+  const slot = registerEditorSlot(session.ctx, {
+    key: 'question',
+    replacement: () => question,
+  });
+  if (!slot) throw new Error('Missing editor slot');
+  cleanups.push(() => slot.dispose());
+  slot.refresh();
+  expect(session.render()).toEqual(['Agents ◐1']);
+  expect(card.render(100)).toEqual(openingRows);
+  expect(session.liveTui.hasOverlay()).toBe(true);
+  expect(session.liveTui.getFocusedComponent()).toBe(card);
+
+  slot.acquireFocus();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(card.render(100)).toEqual([]);
+  expect(session.liveTui.hasOverlay()).toBe(false);
+  expect(isWorkPanelRootEditorInputActive(session.ctx)).toBe(false);
+  session.input('\r');
+  expect(question.handleInput).toHaveBeenCalledExactlyOnceWith('\r');
 });
 
 it.each([

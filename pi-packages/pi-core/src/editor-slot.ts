@@ -39,22 +39,29 @@ interface Owner {
   supportsDecorativeOverlays?: true;
   register(contribution: EditorSlotContribution): EditorSlotHandle;
   focusTarget(): Component | undefined;
+  isEditorReplaced?(): boolean;
 }
 interface Registry {
   version: 1;
   sessions: WeakMap<object, Owner>;
   tuis: WeakMap<TUI, Owner>;
+  isEditorReplaced?(tui: TUI): boolean;
 }
 // Unversioned arbitration key: incompatible owners are never overwritten.
 const registryKey = Symbol.for('thoth.pi-core.editor-slot');
 const shared = globalThis as typeof globalThis & { [registryKey]?: unknown };
-function registry(): Registry | undefined {
+function registry(initialize = true): Registry | undefined {
   try {
-    shared[registryKey] ??= {
-      version: 1,
-      sessions: new WeakMap(),
-      tuis: new WeakMap(),
-    };
+    if (initialize) {
+      shared[registryKey] ??= {
+        version: 1,
+        sessions: new WeakMap(),
+        tuis: new WeakMap(),
+        isEditorReplaced(this: Registry, tui: TUI) {
+          return this.tuis.get(tui)?.isEditorReplaced?.() === true;
+        },
+      };
+    }
     const value = shared[registryKey] as Registry | null;
     if (
       value?.version === 1 &&
@@ -74,6 +81,16 @@ export function editorSlotSupportsDecorativeOverlays(tui: TUI): boolean {
   if (!state) return false;
   const owner = state.tuis.get(tui);
   return !owner || owner.supportsDecorativeOverlays === true;
+}
+
+/** Read-only replacement occupancy; legacy or incompatible owners yield false. */
+export function isEditorReplaced(tui: TUI): boolean {
+  try {
+    return registry(false)?.isEditorReplaced?.(tui) === true;
+  } catch {
+    // Incompatible bundled queries retain the no-occupancy fallback.
+    return false;
+  }
 }
 
 /** Used by owned-overlay close repair, including independently bundled copies. */
@@ -158,6 +175,7 @@ export function registerEditorSlot(
   const owner: Owner = {
     supportsDecorativeOverlays: true,
     focusTarget: () => (active() ? mounted : undefined),
+    isEditorReplaced: () => active() && replacement() !== undefined,
     register(entry) {
       if (contributions.has(entry.key))
         throw new Error(

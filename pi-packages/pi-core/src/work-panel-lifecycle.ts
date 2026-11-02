@@ -118,7 +118,7 @@ export function bindWorkPanelLifecycle(
       current.candidates = current.candidates.slice(-CANDIDATE_LIMIT);
     }),
     pi.on('before_agent_start', (event, eventCtx) => {
-      if (!active(eventCtx)) return;
+      if (!active(eventCtx) || !('prompt' in event)) return;
       const index = current.candidates.indexOf(event.prompt);
       if (index < 0) return;
       current.candidates.splice(index, 1);

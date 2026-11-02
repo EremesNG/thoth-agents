@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { renderFakeCursor } from '@earendil-works/pi-tui';
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModalSession } from '../../src/model-profiles/command.js';
@@ -469,7 +470,7 @@ describe('named model profile panel', () => {
       press(KEYS.right, KEYS.right, KEYS.right, 'r'); // solo
       press(KEYS.left, KEYS.left);
       expect(modal.render(110).join('\n')).toContain(
-        'name: so\u001b[7ml\u001b[27mo',
+        `name: so${renderFakeCursor('l')}o`,
       );
       press('X', KEYS.right, BACKSPACE, '\u001b[3~', 'ab');
       expect(text()).toContain('name: soXab');
@@ -488,7 +489,7 @@ describe('named model profile panel', () => {
       press(key, 'ac', '\u001b[H', KEYS.left, KEYS.right);
       press('\u001b[200~b\u001b[201~');
       expect(modal.render(110).join('\n')).toContain(
-        'name: ab\u001b[7mc\u001b[27m',
+        `name: ab${renderFakeCursor('c')}`,
       );
       press('\u001b[F', KEYS.right, BACKSPACE, 'd');
       press('\u0001', '\u001b[3~', 'A', '\u0005', 'e');
@@ -544,7 +545,7 @@ describe('named model profile panel', () => {
       const { modal, press } = open(env());
       press('n', 'abcdefghijklmnop界🙂', KEYS.left, BACKSPACE);
       const raw = modal.render(24).join('\n');
-      expect(raw).toContain('\u001b[7m🙂\u001b[27m');
+      expect(raw).toContain(renderFakeCursor('🙂'));
       expect(
         modal.render(24).every((line) => panelVisibleWidth(line) <= 24),
       ).toBe(true);

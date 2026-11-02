@@ -124,6 +124,7 @@ it('renders tool definitions through the native TUI with execution context and o
     clearFromCursor() {},
     clearScreen() {},
     setTitle() {},
+    setProgramStatus() {},
     setProgress() {},
   });
   const toolDefinition = {

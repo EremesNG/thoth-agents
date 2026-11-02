@@ -3,7 +3,7 @@
 Modular Thoth styling for Pi, with a gold-on-black Egyptian dark theme.
 
 Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
-dependencies are pinned to `1.0.2` in the root workspace lockfile.
+dependencies are pinned to `1.4.0` in the root workspace lockfile.
 
 ## Install
 

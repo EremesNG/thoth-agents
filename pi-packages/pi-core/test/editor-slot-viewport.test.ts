@@ -30,6 +30,7 @@ it('fullscreen PgUp/PgDn reach the SDK transcript viewport while the question oc
     clearScreen() {},
     setTitle() {},
     setProgress() {},
+    setProgramStatus() {},
   };
   const tui = new TuiAltScreen(terminal);
   const editorContainer = new Container();

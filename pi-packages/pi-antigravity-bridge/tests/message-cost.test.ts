@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeContext, type Usage } from "@earendil-works/pi-ai";
+import { calculateCost, normalizeContext, type Usage } from "@earendil-works/pi-ai";
+import { getModels } from "@earendil-works/pi-ai/compat";
 import { beforeAll, expect, test } from "vitest";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { AcpDriver } from "../src/acp/driver.js";
@@ -43,29 +44,41 @@ test("normalized Gemini Flash usage reports catalog API-equivalent cost", () => 
 	expect(usage.totalTokens).toBe(3_000_000);
 });
 
-// USD/M verified via installed pi-ai 1.0.2 compat getModels("google"/"anthropic").
+// Check each normalized id against SDK pricing for its catalog equivalent,
+// including input-token tiers, rather than a frozen price snapshot.
 // Single-tier discovery preserves the qualified id, so price those variants too.
 test.each([
-	["gemini-3-8-flash", 0.75, 3.75, 0.075, 0],
-	["gemini-3-8-flash-low", 0.75, 3.75, 0.075, 0],
-	["gemini-3-8-flash-medium", 0.75, 3.75, 0.075, 0],
-	["gemini-3-8-flash-high", 0.75, 3.75, 0.075, 0],
-	["claude-sonnet-5-5", 2, 10, 0.2, 2.5],
-	["claude-sonnet-5-5-low", 2, 10, 0.2, 2.5],
-	["claude-sonnet-5-5-medium", 2, 10, 0.2, 2.5],
-	["claude-sonnet-5-5-high", 2, 10, 0.2, 2.5],
-	["claude-opus-5-5", 4, 20, 0.2, 5],
-	["claude-opus-5-5-low", 4, 20, 0.2, 5],
-	["claude-opus-5-5-medium", 4, 20, 0.2, 5],
-	["claude-opus-5-5-high", 4, 20, 0.2, 5],
-	["gemini-3-7-flash", 0.75, 3.75, 0.075, 0],
-	["gemini-3-1-pro", 2, 12, 0.2, 0],
-	["claude-sonnet-4-6", 3, 15, 0.3, 3.75],
-	["gpt-oss-120b", 0.15, 0.6, 0.075, 0],
-	["gpt-oss-120b-low", 0.15, 0.6, 0.075, 0],
-	["gpt-oss-120b-medium", 0.15, 0.6, 0.075, 0],
-	["gpt-oss-120b-high", 0.15, 0.6, 0.075, 0],
-] as const)("%s has explicit catalog prices, including cache-write usage", (id, input, output, cacheRead, cacheWrite) => {
+	["gemini-3-8-flash", "google", "gemini-3.8-flash"],
+	["gemini-3-8-flash-low", "google", "gemini-3.8-flash"],
+	["gemini-3-8-flash-medium", "google", "gemini-3.8-flash"],
+	["gemini-3-8-flash-high", "google", "gemini-3.8-flash"],
+	["claude-sonnet-5-5", "anthropic", "claude-sonnet-5-5"],
+	["claude-sonnet-5-5-low", "anthropic", "claude-sonnet-5-5"],
+	["claude-sonnet-5-5-medium", "anthropic", "claude-sonnet-5-5"],
+	["claude-sonnet-5-5-high", "anthropic", "claude-sonnet-5-5"],
+	["claude-opus-5-5", "anthropic", "claude-opus-5-5"],
+	["claude-opus-5-5-low", "anthropic", "claude-opus-5-5"],
+	["claude-opus-5-5-medium", "anthropic", "claude-opus-5-5"],
+	["claude-opus-5-5-high", "anthropic", "claude-opus-5-5"],
+	["gemini-3-7-flash", "google", "gemini-3.7-flash"],
+	["gemini-3-1-pro", "google", "gemini-3.1-pro-preview"],
+	["claude-sonnet-4-6", "anthropic", "claude-sonnet-4-6"],
+	["gpt-oss-120b", "groq", "openai/gpt-oss-120b"],
+	["gpt-oss-120b-low", "groq", "openai/gpt-oss-120b"],
+	["gpt-oss-120b-medium", "groq", "openai/gpt-oss-120b"],
+	["gpt-oss-120b-high", "groq", "openai/gpt-oss-120b"],
+] as const)("%s has explicit catalog prices, including cache-write usage", (id, provider, catalogId) => {
+	const catalogModel = getModels(provider).find((model) => model.id === catalogId);
+	expect(catalogModel).toBeDefined();
+	const expectedUsage = {
+		...emptyUsage(),
+		input: 1_000_000,
+		output: 1_000_000,
+		cacheRead: 1_000_000,
+		cacheWrite: 1_000_000,
+		totalTokens: 4_000_000,
+	};
+	calculateCost(catalogModel!, expectedUsage);
 	const usage = emptyUsage();
 	toPiUsage(
 		{
@@ -77,15 +90,8 @@ test.each([
 		usage,
 		id,
 	);
-	expect(usage.cost).toEqual({
-		input,
-		output,
-		cacheRead,
-		cacheWrite,
-		total: input + output + cacheRead + cacheWrite,
-	});
+	expect(usage).toEqual(expectedUsage);
 	expect(usage.cost.total).toBeGreaterThan(0);
-	expect(usage.totalTokens).toBe(4_000_000);
 });
 
 test("Gemini Argon stays zero-cost and warns once without a verified catalog equivalent", () => {

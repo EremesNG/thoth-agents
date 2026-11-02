@@ -336,19 +336,19 @@ describe('Thoth theme JSON', () => {
     expect(theme.colors.toolDiffContext).toBe('sand');
   });
 
-  it('validates cleanly with Pi coding agent validateThemeJson if available', async () => {
+  it('validates cleanly with the installed Pi coding agent schema', async () => {
     const candidateValidatorPaths = [
       resolve(
         __dirname,
-        '../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-json.js',
+        '../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.js',
       ),
       resolve(
         __dirname,
-        '../../pi-subagents/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-json.js',
+        '../../pi-subagents/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.js',
       ),
       resolve(
         __dirname,
-        '../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-json.js',
+        '../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.js',
       ),
     ];
 

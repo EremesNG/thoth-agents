@@ -26,7 +26,7 @@ pi install npm:@thoth-agents/pi-claude-bridge
 Install this bridge manually; the Thoth installer does not manage it.
 
 Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
-dependencies are pinned to `1.0.2` in the root workspace lockfile.
+dependencies are pinned to `1.4.0` in the root workspace lockfile.
 
 ## Provider
 

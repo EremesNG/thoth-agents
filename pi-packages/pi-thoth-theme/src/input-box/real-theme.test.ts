@@ -8,6 +8,7 @@ import {
   Editor,
   getCapabilities,
   getTerminalColorMode,
+  renderFakeCursor,
   setCapabilities,
   stripTerminalSequences,
   type TerminalColorMode,
@@ -21,6 +22,7 @@ import type { ActiveThemeLike } from '../status-line/layout.ts';
 import { decorateEditor, type InputBoxDeps } from './decorate.ts';
 import { createWorkingState } from './state.ts';
 
+const emptyCursor = `${CURSOR_MARKER}${renderFakeCursor(' ')}`;
 const capabilities = getCapabilities();
 const detectedMode = getTerminalColorMode();
 const cleanups: Array<() => void> = [];
@@ -171,12 +173,18 @@ describe('input box with the real Pi Thoth theme', () => {
   it.each([
     'truecolor',
     '256color',
-  ] as const)('keeps the pre-impact idle render byte-identical in %s', async (mode) => {
+  ] as const)('keeps idle colors and layout in %s', async (mode) => {
     const theme = await loadThothTheme(mode);
     setCapabilities({ ...capabilities, trueColor: mode === 'truecolor' });
     const { editor } = themedEditor(theme as ActiveThemeLike);
     editor.setText('content');
-    expect(editor.render(40)).toMatchSnapshot();
+    const lines = editor.render(40);
+    expect(lines[1]).toContain(emptyCursor);
+    expect(lines.map(visibleWidth)).toEqual([40, 40, 40]);
+    // Snapshot theme colors/layout, not the SDK's cursor escape encoding.
+    expect(
+      lines.map((line) => line.replace(emptyCursor, '<cursor>')),
+    ).toMatchSnapshot();
   });
 
   it.each(
@@ -204,7 +212,7 @@ describe('input box with the real Pi Thoth theme', () => {
     );
     expect(idle[1].startsWith(`${muted}│\x1b[39m`)).toBe(true);
     expect(idle[1].endsWith(`${muted}│\x1b[39m`)).toBe(true);
-    expect(idle[1]).toContain(`${CURSOR_MARKER}\x1b[7m \x1b[0m`);
+    expect(idle[1]).toContain(emptyCursor);
     expect(idle[2]).toBe(`${muted}╰${'─'.repeat(38)}╯\x1b[39m`);
     expect(idle.map(visibleWidth)).toEqual([40, 40, 40]);
     working.start();

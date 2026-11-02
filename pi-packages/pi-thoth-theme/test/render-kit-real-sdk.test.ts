@@ -166,12 +166,12 @@ function toolComponent(session: AgentSession, name = 'kit_probe') {
 const text = (component: ToolExecutionComponent) =>
   component.render(64).map(stripTerminalSequences).join('\n');
 
-describe('render kit through Pi SDK 1.0.2', () => {
+describe('render kit through Pi SDK 1.4.0', () => {
   it.each([
     'theme first',
     'producer first',
   ])('discovers at render time with %s and leaves package-owned self shells untouched', async (order) => {
-    expect(VERSION).toBe('1.0.2');
+    expect(VERSION).toBe('1.4.0');
     const session = await loadSession(order);
     const themeExtension = join(themePackage, 'dist', 'index.ts');
     const producerExtension = join(producerPackage, 'index.ts');

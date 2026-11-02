@@ -55,6 +55,8 @@ function context(
 		expanded: false,
 		showImages: false,
 		isError: false,
+		durationMs: undefined,
+		outputPad: 0,
 		...overrides,
 	};
 }

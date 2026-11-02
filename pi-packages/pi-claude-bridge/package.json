@@ -45,9 +45,9 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
-    "@earendil-works/pi-ai": "1.0.2",
-    "@earendil-works/pi-coding-agent": "1.0.2",
-    "@earendil-works/pi-tui": "1.0.2",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
     "@types/node": "^24.13.2",
     "tsx": "^4.22.4",
     "typebox": "^1.3.7",

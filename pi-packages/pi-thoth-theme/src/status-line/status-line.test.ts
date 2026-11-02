@@ -8,6 +8,7 @@ import {
 import {
   type Component,
   CURSOR_MARKER,
+  renderFakeCursor,
   stripTerminalSequences,
   type TUI,
   visibleWidth,
@@ -1461,7 +1462,7 @@ describe('registerStatusLine', () => {
       const box = editor.render(120);
       expect(box[0]).toMatch(/^╭─ ▲ ready /);
       expect(box[1]).toContain(
-        `${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
+        `${CURSOR_MARKER}${renderFakeCursor(' ')}type or / for commands`,
       );
       expect(box[2]).toMatch(
         /^╰─ \u{f06a9} Test Model · \u{f09d1} low ─+ \uf2db ━━────── 25% 50K\/200K ─╯$/u,

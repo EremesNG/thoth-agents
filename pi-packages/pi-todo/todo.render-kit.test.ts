@@ -46,6 +46,8 @@ function context(overrides: Partial<RenderContext> = {}): RenderContext {
     isError: false,
     expanded: false,
     showImages: false,
+    durationMs: undefined,
+    outputPad: 0,
     ...overrides,
   };
 }

@@ -101,7 +101,7 @@
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
   The root package and all eleven `pi-packages/*` members declare Pi SDK peers
-  `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
+  `>=0.99.0`, pin development SDK/TUI dependencies to `1.4.0`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
@@ -441,7 +441,7 @@ replaces the editor/footer. Fullscreen reads the private layout root after shape
 checks, wraps it in an HStack and restores it only while owned. Regular mode
 patches the concrete main-screen render width through Pi's forwarding proxy and
 mounts a top-right, full-height non-capturing overlay. Unsupported seams disable
-the mount with one diagnostic. Pi 1.0.2 is tested; regular mode covers the live
+the mount with one diagnostic. Pi 1.4.0 is tested; regular mode covers the live
 viewport, not historical terminal scrollback.
 
 `/sidebar` toggles; `auto|manual|on|off` controls session policy/enabled state.

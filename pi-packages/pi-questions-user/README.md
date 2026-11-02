@@ -1,7 +1,7 @@
 # @thoth-agents/pi-questions-user
 
 First-party `ask_user_question` for Pi. MIT; Node >=22.19.0, Pi peers >=0.99.0;
-development SDK/TUI 1.0.2. The tool is registered with `exposure: 'model-only'`.
+development SDK/TUI 1.4.0. The tool is registered with `exposure: 'model-only'`.
 
 ## Install
 
@@ -288,4 +288,4 @@ pnpm exec biome ci pi-packages/pi-questions-user
 ```
 
 Tests use Vitest's terminating offline Node runner, fake native UI boundaries,
-and real SDK/TUI 1.0.2 focus and open-tool-row invalidation regressions.
+and real SDK/TUI 1.4.0 focus and open-tool-row invalidation regressions.

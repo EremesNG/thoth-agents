@@ -1,5 +1,6 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, expect, it } from 'vitest';
+import { createRenderKit } from '../../pi-thoth-theme/src/render-kit/index.js';
 import {
   formatCompactWorkCounts,
   registerRenderKit,
@@ -89,6 +90,33 @@ it('omits nonpositive counts and queued below 36 columns, then drops cancelled b
   expect(format({ summary: { running: 1 }, room: 0 })).toEqual([
     { text: '◐1', role: 'accent' },
   ]);
+});
+
+it.each([
+  { mode: 'native', pending: '○', queued: '○' },
+  { mode: 'unicode', pending: '○', queued: '○' },
+  { mode: 'nerd', pending: '\uf10c', queued: '\u{f051f}' },
+  { mode: 'ascii', pending: '-', queued: '~' },
+] as const)('opts Todos into the pending row glyph without changing queued work in $mode mode', ({
+  mode,
+  pending,
+  queued,
+}) => {
+  if (mode !== 'native') {
+    const token = registerRenderKit(createRenderKit({}, undefined, mode), {});
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  const summary = { queued: 2 };
+  expect(format({ kind: 'todos', summary, queuedGlyph: 'pending' })).toEqual([
+    { text: `${pending}2`, role: 'dim' },
+  ]);
+  expect(format({ summary })).toEqual([{ text: `${queued}2`, role: 'dim' }]);
+  expect(
+    format({ kind: 'todos', summary, queuedGlyph: 'pending', width: 35 }),
+  ).toEqual([]);
+  expect(
+    format({ kind: 'todos', summary, queuedGlyph: 'pending', room: 0 }),
+  ).toEqual([]);
 });
 
 it.each([

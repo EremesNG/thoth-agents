@@ -247,6 +247,7 @@ function sectionSummarySegments(
   }
   const formatted = formatCompactWorkCounts({
     kind: section.provider.id === 'todos' ? 'todos' : 'work',
+    queuedGlyph: section.provider.id === 'todos' ? 'pending' : undefined,
     summary: compactSummaryCounts(section, summary),
     width,
     room,

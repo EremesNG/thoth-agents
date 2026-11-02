@@ -12,6 +12,7 @@ import {
 } from '@thoth-agents/pi-core/panel';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
+import { createRenderKit } from '../../pi-thoth-theme/src/render-kit/index.js';
 import {
   agentRow,
   FULL_METRICS,
@@ -60,6 +61,70 @@ it('shows discovered summaries in each work panel header', () => {
   expect(heading('AGENTS')).toMatch(/◐1 ✓4 ✗2 ─╮$/);
   expect(heading('TODOS')).toMatch(/✓2 ─╮$/);
   expect(heading('BACKGROUND')).toMatch(/◐1 ✓3 ─╮$/);
+});
+
+it.each([
+  {
+    mode: 'native',
+    todoCounts: '◐1 ○2 ✓12',
+    workCounts: '◐1 ○2 ✓12',
+    pending: '○',
+  },
+  {
+    mode: 'unicode',
+    todoCounts: '◐1 ○2 ✓12',
+    workCounts: '◐1 ○2 ✓12',
+    pending: '○',
+  },
+  {
+    mode: 'nerd',
+    todoCounts: '◐1 \uf10c2 \uf00c12',
+    workCounts: '◐1 \u{f051f}2 \uf00c12',
+    pending: '\uf10c',
+  },
+  {
+    mode: 'ascii',
+    todoCounts: '*1 -2 +12',
+    workCounts: '*1 ~2 +12',
+    pending: '-',
+  },
+] as const)('uses pending row glyphs only in the Todos header in $mode mode', ({
+  mode,
+  todoCounts,
+  workCounts,
+  pending,
+}) => {
+  if (mode !== 'native') {
+    const token = registerRenderKit(createRenderKit({}, undefined, mode), {});
+    releases.push(() => withdrawRenderKit(token));
+  }
+  const summary = {
+    running: 1,
+    queued: 2,
+    completed: 12,
+    failed: 0,
+    total: 15,
+  };
+  releases.push(
+    source('subagents', 'Agents', [agentRow('a', 'Agent')], summary),
+    source('todos', 'Todos', [agentRow('t', 'Waiting', 'pending')], summary),
+    source('background-tasks', 'Background', [agentRow('b', 'Build')], summary),
+  );
+  const rendered = lines(
+    sidebar([
+      { id: 'subagents', visible: true },
+      { id: 'todos', visible: true },
+      { id: 'background-tasks', visible: true },
+    ]).renderAt(50, 40),
+  );
+  const heading = (title: string) =>
+    rendered.find((line) => line.includes(title));
+  expect(heading('TODOS')).toContain(todoCounts);
+  expect(heading('AGENTS')).toContain(workCounts);
+  expect(heading('BACKGROUND')).toContain(workCounts);
+  expect(rendered.find((line) => line.includes('Waiting'))).toContain(
+    `${pending} Waiting`,
+  );
 });
 
 it('omits the header summary when the provider has none', () => {

@@ -148,6 +148,7 @@ function sourceSummary(
         : 'other';
   const formatted = formatCompactWorkCounts({
     kind,
+    queuedGlyph: source.id === 'todos' ? 'pending' : undefined,
     summary: {
       ...summary,
       text: summary.text ? clean(summary.text) : undefined,

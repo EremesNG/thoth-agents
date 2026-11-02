@@ -1,4 +1,4 @@
-import { resolveStatusGlyph } from './render-kit.js';
+import { type RenderStatus, resolveStatusGlyph } from './render-kit.js';
 import type { WorkPanelSummary } from './work-panel.js';
 
 export interface CompactWorkCountSegment {
@@ -9,6 +9,8 @@ export interface CompactWorkCountSegment {
 export interface CompactWorkCountsOptions {
   kind: 'todos' | 'work' | 'other';
   summary?: WorkPanelSummary;
+  /** Override only the queued count's glyph, preserving its role and drop priority. */
+  queuedGlyph?: RenderStatus;
   /** Full available width; queued counts require at least 36 columns. */
   width: number;
   /** Cells left for counts after the caller's heading chrome and label. */
@@ -20,6 +22,7 @@ export interface CompactWorkCountsOptions {
 export function formatCompactWorkCounts({
   kind,
   summary,
+  queuedGlyph = 'queued',
   width,
   room,
   measure,
@@ -48,7 +51,7 @@ export function formatCompactWorkCounts({
     .map(({ status, role, count }) => ({
       status,
       role,
-      text: `${resolveStatusGlyph(status)}${count}`,
+      text: `${resolveStatusGlyph(status === 'queued' ? queuedGlyph : status)}${count}`,
     }));
   // Preserve running, completed and failed even when those alone exceed the room.
   for (const status of ['cancelled', 'queued']) {

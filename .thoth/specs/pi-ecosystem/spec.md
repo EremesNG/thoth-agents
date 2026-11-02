@@ -58,7 +58,7 @@ A pi-subagents stall failure MUST report time since the last session event, the 
 
 ### Requirement: Claude bridge keeps appended instructions current
 
-`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver through Claude Code's conversation-context channel the appended system instructions that changed since the latest ones the model has been given (including a return to the recorded value or an empty value) as the added, changed and removed top-level blocks labeled as superseding the same blocks of earlier versions, falling back to the full current appended instructions when blocks cannot be identified unambiguously, MUST keep every delivered context value within Claude Code's inline limit by splitting larger updates, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt.
+`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver through Claude Code's conversation-context channel the appended system instructions that changed since the latest ones the model has been given (including a return to the recorded value or an empty value) as the added, changed and removed top-level blocks labeled as superseding the same blocks of earlier versions, falling back to the full current appended instructions when blocks cannot be identified unambiguously, MUST keep every delivered context value within Claude Code's inline limit by splitting larger updates, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt; a Claude Code session forked or rewritten from recorded records keeps the recorded system prompt and MUST treat as already given only that system prompt and the instruction updates carried by the records it keeps, so updates delivered after the cut are delivered again, MUST deliver the full current appended instructions when it cannot establish which updates the kept records carry, MUST preserve this state across Pi restarts, and a session written from Pi's history MUST start a new epoch whose recorded system prompt carries the current appended instructions.
 
 #### Scenario: Claude bridge keeps appended instructions current
 
@@ -428,13 +428,13 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 ### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
 
-`@thoth-agents/pi-claude-bridge` MUST, when a persisted Pi session continues in a new Pi process or after its in-memory bridge state was cleared, resume the Claude Code session of the last cleanly completed bridge turn with that session's recorded system prompt and append epoch instead of rebuilding it, but only when it can prove the same Pi session, the same Pi history prefix and an unchanged Claude Code transcript; otherwise it MUST rebuild as before, and it MUST NOT reuse a checkpoint left by an aborted, failed, compacted, rewritten or in-flight turn.
+`@thoth-agents/pi-claude-bridge` MUST persist, per Pi session, the Claude Code session it last recorded together with per-message content digests of the Pi history that session received, and when that Pi session continues, including in a new Pi process or after its in-memory bridge state was cleared, MUST compare the current Pi history with that recording by those digests: on a match it MUST continue from the recorded Claude Code records, and on a difference it MUST keep the recorded records up to the last valid cut before the first difference in a new Claude Code session and add only the differing remainder, never rewriting or deleting an existing Claude Code transcript in place; it MUST write Pi's history to a new Claude Code session when no usable recording exists (none persisted, an unrecognized format, a different model or working directory, a missing transcript or no valid cut), and MUST NOT read or delete state left in the previous checkpoint format.
 
 #### Scenario: Claude bridge resumes Claude Code sessions across Pi processes
 
-- **GIVEN** a persisted Pi session whose last turn completed through the bridge and whose Claude Code transcript is unchanged
+- **GIVEN** a persisted Pi session whose earlier turns ran through the bridge and whose recording was saved after the Claude Code process exited
 - **WHEN** Pi restarts and the session continues with a new prompt
-- **THEN** the bridge resumes the same Claude Code session id with the same recorded system prompt without re-importing history, so the request reuses the cached conversation prefix
+- **THEN** the bridge continues from the recorded Claude Code records in a session that keeps them without re-importing that history, and the original transcript file is left unchanged
 
 ### Requirement: Subagent history retention
 
@@ -605,3 +605,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 - **GIVEN** a context usage of 85% and a wide editor border in Unicode mode
 - **WHEN** the border renders
 - **THEN** the context shows `━━━━━━━─` followed by `85%` in the warning role, and in ASCII mode it shows the existing bracketed `#`/`=`/`-` bar
+
+### Requirement: Claude bridge ignores repository-controlled settings
+
+`@thoth-agents/pi-claude-bridge` MUST NOT let repository-controlled files choose its provider or Claude Code settings: a project `.pi/claude-bridge.json` MUST NOT set the provider configuration, and the Claude Code processes it starts MUST load only the user's own Claude Code settings, not project or local settings.
+
+#### Scenario: Claude bridge ignores repository-controlled settings
+
+- **GIVEN** a repository whose `.pi/claude-bridge.json` sets a provider and whose Claude Code project settings set options
+- **WHEN** a Pi session in that repository runs a turn through the bridge
+- **THEN** the bridge keeps the user-level provider configuration and Claude Code ignores the repository's settings

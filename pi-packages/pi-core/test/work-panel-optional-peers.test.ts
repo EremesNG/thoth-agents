@@ -15,7 +15,7 @@ it('keeps the public entry importable and uses native output without optional ru
   const release = await ensureWorkPanel(session.ctx);
   try {
     expect(session.render()).toEqual([
-      '◆ Agents · 1 items',
+      '◆ Agents · ◐1',
       '  ◐ Agents item',
       '← interact',
     ]);

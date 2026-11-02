@@ -8,6 +8,7 @@ import {
   registerUIPreferences,
   registerWorkPanelProvider,
   type WorkPanelProvider,
+  type WorkPanelSummary,
   withdrawRenderKit,
   withdrawUIPreferences,
 } from '../src/index.js';
@@ -69,20 +70,20 @@ it('summarizes visible sections in priority order with compact counts and no hin
   occupy(session);
 
   expect(session.render(120)).toEqual([
-    'Agents ◐2 ✗1 ✓34 · Todos ✓53/54 · Background ✓4',
+    'Agents ◐2 ✓34 ✗1 · Todos 53/54 · Background ✓4',
   ]);
   const narrow = session.render(48);
   expect(narrow).toHaveLength(1);
-  expect(visibleWidth(narrow[0])).toBe(47);
+  expect(visibleWidth(narrow[0])).toBe(46);
   for (const label of ['Agents', 'Todos', 'Background'])
     expect(narrow[0]).toContain(label);
   expect(narrow[0]).not.toContain('...');
   expect(stripVTControlCharacters(narrow[0])).toBe(
-    'Agents ◐2 ✗1 ✓34 · Todos ✓53/54 · Background ✓4',
+    'Agents ◐2 ✓34 ✗1 · Todos 53/54 · Background ✓4',
   );
 });
 
-it('uses real-provider numeric taxonomy counts without changing normal headings', async () => {
+it('uses the shared standard for real-provider numeric headings and summary counts', async () => {
   const session = uiSession();
   cleanups.push(
     registerWorkPanelProvider(session.ctx, {
@@ -124,7 +125,7 @@ it('uses real-provider numeric taxonomy counts without changing normal headings'
     registerWorkPanelProvider(session.ctx, {
       ...provider('background', 'Background', 30),
       retention: 'prompt',
-      summary: () => ({ running: 0, failed: 0, cancelled: 0, completed: 1 }),
+      summary: () => ({ running: 1, failed: 0, cancelled: 0, completed: 2 }),
       listRows: () => [
         {
           id: 'expected',
@@ -146,12 +147,19 @@ it('uses real-provider numeric taxonomy counts without changing normal headings'
         },
       ],
     }),
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      summary: () => ({ completed: 12, total: 15 }),
+    }),
     await ensureWorkPanel(session.ctx),
   );
   const full = session.render(160);
+  expect(full).toContain('◆ Agents · ◐1 ○2 ✓30 ✗1 ■1');
+  expect(full).toContain('◆ Todos · 12/15');
+  expect(full).toContain('◆ Background · ◐1 ✓2');
   const slot = occupy(session);
   expect(session.render(160)).toEqual([
-    'Agents ◐1 ○2 ✗1 ■1 ✓30/35 · Background ✓1',
+    'Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos 12/15 · Background ◐1 ✓2',
   ]);
   slot.dispose();
   expect(session.render(160)).toEqual(full);
@@ -167,7 +175,6 @@ it.each([
       ...provider(),
       retention,
       selectableHeading: true,
-      summary: () => ({ segments: [{ text: 'custom wording', role: 'meta' }] }),
       parentRow: () => ({ id: 'parent', primary: 'Parent', status: 'running' }),
       listRows: () => [
         { id: 'queued', primary: 'Queued', status: 'queued', state: 'running' },
@@ -209,7 +216,6 @@ it.each([
     registerWorkPanelProvider(session.ctx, {
       ...provider('background', 'Background', 30),
       retention,
-      summary: () => 'Custom background wording',
       listRows: () => [
         {
           id: 'expected',
@@ -241,7 +247,7 @@ it.each([
   const full = session.render(160);
   const slot = occupy(session);
   expect(session.render(160)).toEqual([
-    'Agents ◐3 ○1 ✗4 ■2 ✓1 · Background ✓2',
+    'Agents ◐3 ○1 ✓1 ✗4 ■2 · Background ✓2',
   ]);
   slot.dispose();
   expect(session.render(160)).toEqual(full);
@@ -271,7 +277,7 @@ it('reports only queued and cancelled counters when provider done and failure co
   expect(session.render()).toEqual(['Agents ○2 ■1']);
 });
 
-it('keeps semantic fallback counts after retention collapses without rewriting the history heading', async () => {
+it('keeps semantic fallback counts in both headings after retention collapses', async () => {
   const session = uiSession();
   cleanups.push(
     registerWorkPanelProvider(session.ctx, {
@@ -298,7 +304,7 @@ it('keeps semantic fallback counts after retention collapses without rewriting t
     }),
     await ensureWorkPanel(session.ctx),
   );
-  const full = ['◆ Background · 0 done · 2 failed', '← interact'];
+  const full = ['◆ Background · ✓1', '← interact'];
   expect(session.render()).toEqual(full);
   const slot = occupy(session);
   expect(session.render()).toEqual(['Background ✓1']);
@@ -325,7 +331,7 @@ it('keeps session counts after retained rows collapse and isolates a failing sum
     await ensureWorkPanel(session.ctx),
   );
   occupy(session);
-  expect(session.render()).toEqual(['Agents ✗1 ✓34 · Background ✓1']);
+  expect(session.render()).toEqual(['Agents ✓34 ✗1 · Background ✓1']);
 });
 
 it.each(
@@ -339,7 +345,7 @@ it.each(
         cancelled: '■',
         completed: '✓',
       },
-      expected: 'Agents ◐1 ○1 ✗1 ■1 ✓1',
+      expected: 'Agents ◐1 ○1 ✓1 ✗1 ■1',
     },
     {
       mode: 'Nerd',
@@ -350,7 +356,7 @@ it.each(
         cancelled: '\u{f05e}',
         completed: '\u{f00c}',
       },
-      expected: 'Agents ◐1 \u{f051f}1 \u{f00d}1 \u{f05e}1 \u{f00c}1',
+      expected: 'Agents ◐1 \u{f051f}1 \u{f00c}1 \u{f00d}1 \u{f05e}1',
     },
     {
       mode: 'ASCII',
@@ -361,7 +367,7 @@ it.each(
         cancelled: '#',
         completed: '+',
       },
-      expected: 'Agents *1 ~1 x1 #1 +1',
+      expected: 'Agents *1 ~1 +1 x1 #1',
     },
   ].flatMap((example) =>
     ['numeric', 'fallback'].map((path) => ({ ...example, path })),
@@ -426,12 +432,11 @@ it.each(
   expect(session.render()).toEqual([expected]);
   for (const [role, text] of [
     ['toolTitle', 'Agents'],
-    ['accent', glyphs.running],
+    ['accent', `${glyphs.running}1`],
     ['dim', `${glyphs.queued}1`],
     ['error', `${glyphs.failed}1`],
     ['muted', `${glyphs.cancelled}1`],
-    ['success', glyphs.completed],
-    ['dim', '1'],
+    ['success', `${glyphs.completed}1`],
   ])
     expect(kit.fg).toHaveBeenCalledWith(session.ui.theme, role, text);
 });
@@ -777,5 +782,52 @@ it('excludes only absorbed sources from a mixed summary', async () => {
     await ensureWorkPanel(session.ctx),
   );
   occupy(session);
-  expect(session.render()).toEqual(['Todos ◐1']);
+  expect(session.render()).toEqual(['Todos']);
+});
+
+it.each([
+  ['string', (): string => 'Custom text', 'Custom text'],
+  ['text', (): WorkPanelSummary => ({ text: 'Custom text' }), 'Custom text'],
+  [
+    'segments',
+    (): WorkPanelSummary => ({
+      segments: [{ text: 'Custom segments', role: 'warning' as const }],
+    }),
+    'Custom segments',
+  ],
+] as const)('preserves nonnumeric provider %s while the editor is replaced', async (_kind, summary, expected) => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, { ...provider(), summary }),
+    await ensureWorkPanel(session.ctx),
+  );
+  occupy(session);
+  expect(session.render()).toEqual([`Agents ${expected}`]);
+});
+
+it('omits queued on narrow summaries and truncates the joined standard counts with an ellipsis', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      summary: () => ({
+        running: 1,
+        queued: 2,
+        completed: 30,
+        failed: 1,
+        cancelled: 1,
+      }),
+    }),
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      summary: () => ({ completed: 12, total: 15 }),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  occupy(session);
+  expect(session.render(35)).toEqual(['Agents ◐1 ✓30 ✗1 ■1 · Todos 12/15']);
+  expect(stripVTControlCharacters(session.render(28)[0])).toBe(
+    'Agents ◐1 ✓30 ✗1 ■1 · Tod...',
+  );
+  expect(visibleWidth(session.render(28)[0])).toBe(28);
 });

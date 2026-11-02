@@ -120,8 +120,8 @@ describe('work panel rendering', () => {
     for (const key of [...Object.values(keys), 'x'])
       expect(session.key(key)).toBeUndefined();
     const expected = themed
-      ? ['Archive · 7/7 done', '  └─ +7 done']
-      : ['◆ Archive · 7/7 done', '  +7 done'];
+      ? ['Archive · ✓7', '  └─ +7 done']
+      : ['◆ Archive · ✓7', '  +7 done'];
     expect(session.render()).toEqual(expected);
     session.tui.terminal.rows = 4;
     expect(session.render()).toEqual(expected);
@@ -146,11 +146,11 @@ describe('work panel rendering', () => {
       cleanups.push(registerWorkPanelProvider(session.ctx, item));
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      '◆ Agents · 2 running',
+      '◆ Agents · ◐2',
       '  ◐ Agents item',
-      '◆ Todos · 1/4 done',
+      '◆ Todos · 1/4',
       '  ◐ todos item',
-      '◆ Background · 3 running · 2 failed',
+      '◆ Background · ◐3 ✗2',
       '  ◐ background item',
       '← interact',
     ]);
@@ -352,7 +352,7 @@ describe('work panel input', () => {
     cleanups.push(await ensureWorkPanel(session.ctx));
 
     expect(session.render()).toEqual([
-      '◆ Background · 1 items',
+      '◆ Background · ✗1',
       '  ✗ Failed task',
       '← interact',
     ]);
@@ -362,7 +362,7 @@ describe('work panel input', () => {
     );
     expect(session.key(keys.left)).toEqual({ consume: true });
     expect(session.render()).toEqual([
-      '◆ Background · 1 items',
+      '◆ Background · ✗1',
       '› ✗ Failed task',
       '↑↓ move · Enter open · x dismiss · Esc back',
     ]);
@@ -778,12 +778,12 @@ describe('work panel compact budget', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render(80)).toEqual([
-      '◆ Agents · 4 items',
+      '◆ Agents · ◐4',
       ...Array(4).fill('  ⠋ Agent · task · 4 tools · 2k tok · 20%'),
       '← interact',
     ]);
     expect(session.render(24)).toEqual([
-      '◆ Agents · 4 items',
+      '◆ Agents · ◐4',
       ...Array(4).fill(['  ⠋ Agent · task', '    4 tools · 2k · 20%']).flat(),
       '← interact',
     ]);
@@ -798,12 +798,12 @@ describe('work panel render kit', () => {
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
         ...provider(),
-        summary: () => '1 running',
+        summary: () => ({ running: 1 }),
       }),
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      '◆ Agents · 1 running',
+      '◆ Agents · ◐1',
       '  ◐ Agents item',
       '← interact',
     ]);
@@ -818,7 +818,7 @@ describe('work panel render kit', () => {
     const token = registerRenderKit(themed, {});
     cleanups.push(() => withdrawRenderKit(token));
     expect(session.render()).toEqual([
-      'Agents · 1 running',
+      'Agents · ◐1',
       '  └─ ⠋ Agents item',
       '← interact',
     ]);
@@ -1018,7 +1018,7 @@ describe('work panel ownership edges', () => {
     cleanups.push(broken, registerWorkPanelProvider(session.ctx, provider()));
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      '◆ Agents · 1 items',
+      '◆ Agents · ◐1',
       '  ◐ Agents item',
       '← interact',
     ]);
@@ -1287,7 +1287,7 @@ describe('work panel semantic hierarchy', () => {
         ['text', ' · inspect'],
         ['dim', ' · tools 5'],
         ['warning', ' · ⚠ 2 dropped'],
-        ['error', '2 failed'],
+        ['error', '✗2'],
       ]),
     );
   });
@@ -1308,7 +1308,7 @@ it('reserves the last row for a bottom-left dim entry hint and only advertises a
     }),
   );
   cleanups.push(await ensureWorkPanel(session.ctx));
-  expect(session.render(80)[0]).toBe('◆ Agents · 1 items');
+  expect(session.render(80)[0]).toBe('◆ Agents · ◐1');
   for (const width of [80, 24, 10])
     expect(session.render(width).at(-1)).toBe('← interact');
   expect(roles).toContainEqual(['dim', '← interact']);
@@ -1582,7 +1582,7 @@ it('resolves work-panel statuses, separators and navigation on mounted kit chang
   const token = registerRenderKit(kit, {});
   cleanups.push(() => withdrawRenderKit(token));
   expect(session.render().join('\n')).toContain('+ worker | inspect | 1s');
-  expect(session.render()[0]).toBe('Agents | 1 running | 1 failed');
+  expect(session.render()[0]).toBe('Agents | +1 +1 +1');
   expect(session.render().at(-1)).toBe('< interact');
   expect(session.ui.setStatus).toHaveBeenLastCalledWith(
     'thoth-work-panel',

@@ -608,7 +608,8 @@ getWorkPanelLifecycle(ctx: ExtensionContext): WorkPanelLifecycleState;
 Agents/Todos/Background. Lists retain provider ordering and empty sections hide.
 `visibleCount()` is advisory; the host derives interaction cues and the footer
 count from selectable rows in shown sections, excluding summaries and expired rows.
-`summary()` returns counter text or `{ text?, running?, failed?, completed?, total? }`.
+`summary()` returns counter text or
+`{ text?, segments?, running?, queued?, completed?, failed?, cancelled?, total? }`.
 Return an empty close label for items with no close action.
 
 The process-wide `Symbol.for('thoth.pi-core.work-panel')` registry shares providers
@@ -683,19 +684,33 @@ may be omitted to preserve the selected item's metrics. There are no blank
 separator rows. Render-kit discovery happens on every render, with unframed
 native output when absent.
 
+Normal-mode section headings, sidebar headers and the editor-replaced summary
+share `formatCompactWorkCounts` from the root export. Work counts are positive-only
+status glyphs immediately followed by numbers, ordered running, queued, completed,
+failed, cancelled: `◐1 ○2 ✓30 ✗1 ■1`. Each whole count uses its semantic theme role:
+accent, dim, success, error, muted. Todos uses plain `completed/total` (`12/15`),
+without a glyph; other work sources never show a total denominator. Queued is
+omitted below 36 columns of available width. When counts exceed their room,
+cancelled is dropped first, then queued; remaining counts may still need clipping.
+The formatter accepts `{ kind: 'todos' | 'work' | 'other', summary, width, room,
+measure }` and returns count segments (join with one unstyled space), plain text
+or undefined. The caller supplies cell measurement and decides heading chrome
+and available room. Nonnumeric provider text/segments remain unchanged.
+
+Numeric provider counters are authoritative; missing counters fall back to semantic
+row statuses before retention, never retention states. Timed-out work counts as
+failed, cancelled and interrupted work as cancelled, and expected exits as completed;
+resolved failures count as neither failed nor completed, matching Background.
+Headings keep their existing glyph, label and separator chrome.
+
 While an editor-slot replacement is active (for example, an expanded question),
 these sections become one read-only summary row in priority order, excluding
-absorbed or empty sections. Each label shows non-zero running, queued, actionable
-failure, cancelled and done counts, in that order, as render-kit status glyphs
-immediately followed by numbers, without words. A supplied total becomes done/total
-(for example, `Agents ◐1 ○2 ✗1 ■1 ✓30/35 · Todos ✓53/54 · Background ✓1`).
-Counts use semantic theme roles; sections are joined with ` · ` and the row is
-cell-width clipped with an ellipsis, so longer summaries may hide later labels.
-Numeric provider counters are authoritative; missing counters fall back to semantic
-row statuses, never retention states. Timed-out work counts as failed, cancelled
-and interrupted work as cancelled, and expected exits as done; resolved failures
-count as neither failed nor done, matching the Background provider. Normal-mode
-headings and retention remain unchanged.
+absorbed or empty sections. Each label is followed by the shared counts, for example
+`Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos 12/15 · Background ◐1 ✓2`.
+Sections are joined with ` · ` and the row is cell-width clipped with an ellipsis,
+so longer summaries may hide later labels. A task list lacking a complete fraction
+keeps its normal `N items` heading fallback and shows only its label in summary mode;
+no total is invented.
 There is no row if no section is visible, no hint or focus cue, and no panel key
 is consumed. Any panel focus is released without dismissing overlays or detail
 cards; those cards still close when another UI actually takes focus. Collapsing,
@@ -827,10 +842,11 @@ opted-in rows. Budget overflow counts only eligible rows, never older history or
 completions excluded by the hard cap. This filters the panel, not provider storage.
 
 When idle with no running items, each opted-in section becomes one selectable
-heading: e.g. `▲ Agents · 4 done · 1 failed`. Session counts come from numeric
-`summary().completed`/`summary().failed` when supplied, otherwise from all listed
-items; provide totals explicitly when dismissed items are omitted from `listRows`.
-Even an empty opted-in section has a summary unless `showSection` suppresses it.
+heading: e.g. `◆ Agents · ✓4 ✗1`. It stays visible while any completed, failed or
+cancelled count is nonzero, including cancelled-only history (`◆ Agents · ■1`);
+resolved-only history is hidden. Counts follow the shared semantic rules above;
+provide session counts explicitly when dismissed items are omitted from `listRows`.
+An empty opted-in section can still show those counts unless `showSection` suppresses it.
 Summary lines share the single cursor with item rows: left focuses, up/down move,
 Enter invokes `openHistory(ctx)`, Esc/right release. They have no close action;
 the hint advertises history only when an opener exists. Like `open`, asynchronous

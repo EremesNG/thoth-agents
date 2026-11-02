@@ -378,7 +378,7 @@ The pi-sidebar Agents and Background panels MUST list active rows first in launc
 
 ### Requirement: Work-panel terminal status taxonomy
 
-First-party work-panel providers MUST render cancelled and interrupted work as a muted cancelled status that is not counted as a failure, MUST render timed-out work with a distinct timed-out status glyph counted as a failure, MUST render a background task whose non-zero exit code was declared expected as a non-error expected-exit status counted as done, and MUST render a failed background task whose failure incidents are all recovered or superseded as a muted resolved status not counted as a failure; header summaries MUST count only actionable failures as failed and MUST report queued and cancelled counts separately, and the new statuses MUST resolve through the render kit with Unicode, Nerd and ASCII glyphs.
+First-party work-panel providers MUST render cancelled and interrupted work as a muted cancelled status that is not counted as a failure, MUST render timed-out work with a distinct timed-out status glyph counted as a failure, MUST render a background task whose non-zero exit code was declared expected as a non-error expected-exit status counted as done, and MUST render a failed background task whose failure incidents are all recovered or superseded as a muted resolved status not counted as a failure; header summaries MUST count only actionable failures as failed and MUST report queued and cancelled counts separately, except that the shared compact work counts formatter MAY omit zero counts and MAY drop the queued and cancelled counts under its width rules, and the new statuses MUST resolve through the render kit with Unicode, Nerd and ASCII glyphs.
 
 #### Scenario: Work-panel terminal status taxonomy
 
@@ -628,10 +628,20 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 ### Requirement: Work panel summary while the editor is replaced
 
-`@thoth-agents/pi-core` MUST expose a read-only editor-occupancy query resolved through the shared editor-slot registry that is true exactly while an editor-slot replacement is rendered and false when the registry record lacks it or is incompatible; while it is true the work panel MUST render exactly one non-selectable row summarizing its visible sections in priority order as each label with its non-zero running, queued, actionable-failure, cancelled and done (or done/total) counts under the work-panel terminal-status taxonomy, each as a status glyph and number, MUST show no hint row, MUST render no row when no section would render, MUST NOT be focusable or consume keys and MUST leave focus mode if it was focused without closing overlays; once no replacement is rendered the next render MUST restore the full panel.
+`@thoth-agents/pi-core` MUST expose a read-only editor-occupancy query resolved through the shared editor-slot registry that is true exactly while an editor-slot replacement is rendered and false when the registry record lacks it or is incompatible; while it is true the work panel MUST render exactly one non-selectable row summarizing its visible sections in priority order as each label followed by its counts rendered by the shared compact work counts formatter, MUST show no hint row, MUST render no row when no section would render, MUST NOT be focusable or consume keys and MUST leave focus mode if it was focused without closing overlays; once no replacement is rendered the next render MUST restore the full panel.
 
 #### Scenario: Work panel summary while the editor is replaced
 
 - **GIVEN** a 47-row, 48-column terminal with the sidebar hidden, subagents with 34 finished tasks, a task list at 53 of 54 done and 4 finished background tasks
 - **WHEN** the root agent opens an `ask_user_question` panel, the user collapses it with Ctrl+], expands it again and answers
 - **THEN** the work panel shows one summary line while the panel is expanded, the full Agents, Todos and Background sections with their hint row while it is collapsed and after the answer, and the question keeps keyboard input while expanded
+
+### Requirement: Shared compact work counts
+
+`@thoth-agents/pi-core` MUST provide one compact count formatter used by the sidebar panel headers, the work-panel section headings and the editor-replaced work-panel summary line: the task-list source MUST render `completed/total` without a glyph; work sources with numeric counts MUST render only positive counts as a status glyph immediately followed by its number, in the order running, queued, completed, failed, cancelled, colored with the accent, dim, success, error and muted roles; the queued count MUST be omitted below 36 columns of available width, and when the counts exceed the available room the cancelled and then the queued count MUST be dropped before any other; a source without numeric counts MUST render its summary text; work-panel headings MUST take counts from provider numeric summaries and otherwise classify rows by semantic status rather than retention state, and a collapsed prompt-retention section MUST stay visible while any of its completed, failed or cancelled counts is non-zero.
+
+#### Scenario: Shared compact work counts
+
+- **GIVEN** subagents with 1 running, 2 queued, 30 completed, 1 failed and 1 cancelled, a task list at 12 of 15 done and background tasks with 1 running and 2 completed on a wide terminal with the sidebar hidden
+- **WHEN** the work panel renders normally and then while an `ask_user_question` panel is expanded
+- **THEN** the Agents heading shows `◐1 ○2 ✓30 ✗1 ■1`, the Todos heading shows `12/15`, the Background heading shows `◐1 ✓2`, and the summary line reads `Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos 12/15 · Background ◐1 ✓2`

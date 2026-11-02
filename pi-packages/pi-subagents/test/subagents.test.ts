@@ -184,9 +184,7 @@ describe('subagents smoke', () => {
     managerInstance.listSessionTasks.mockImplementation(() => tasks);
     try {
       await handlers.get('session_start')?.({}, ctx);
-      expect(fixture.render().join(' ')).toContain(
-        'Agents · 1 done · 1 failed',
-      );
+      expect(fixture.render().join(' ')).toContain('Agents · ✓1 ✗1');
       fixture.key('\u001b[D');
       expect(fixture.render()).toHaveLength(2);
       expect(fixture.render().join(' ')).toContain('Enter history');
@@ -253,9 +251,7 @@ describe('subagents smoke', () => {
         ctx,
       );
       expect(fixture.render()).toHaveLength(2);
-      expect(fixture.render().join(' ')).toContain(
-        'Agents · 8 done · 1 failed',
-      );
+      expect(fixture.render().join(' ')).toContain('Agents · ✓8 ✗1');
       expect(fixture.render().join(' ')).not.toContain('current-failed');
     } finally {
       fixture.key('q');
@@ -299,9 +295,7 @@ describe('subagents smoke', () => {
       expect(fixture.render().join(' ')).toContain('worker');
       fixture.key('x');
       expect(fixture.render().join(' ')).not.toContain('worker');
-      expect(fixture.render().join(' ')).toContain(
-        'Agents · 1 done · 0 failed',
-      );
+      expect(fixture.render().join(' ')).toContain('Agents · ✓1');
       expect(fixture.render().at(-1)).toContain('Enter history');
       expect(managerInstance.cancel).not.toHaveBeenCalled();
       expect(task.status).toBe('completed');
@@ -630,9 +624,7 @@ describe('subagents smoke', () => {
       vi.advanceTimersByTime(7999);
       expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
       vi.advanceTimersByTime(1);
-      expect(fixture.render().join(' ')).toContain(
-        'Agents · 1 done · 0 failed',
-      );
+      expect(fixture.render().join(' ')).toContain('Agents · ✓1');
       expect(fixture.render().join(' ')).not.toContain('worker');
       expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests + 1);
       expect(vi.getTimerCount()).toBe(0);
@@ -816,9 +808,7 @@ describe('subagents smoke', () => {
     });
     try {
       await handlers.get('session_start')?.({}, fixture.ctx);
-      expect(fixture.render().join(' ')).toContain(
-        'Agents · 1 running · 1 queued',
-      );
+      expect(fixture.render().join(' ')).toContain('Agents · ◐1 ○1');
       expect(managerInstance.listActiveSessionTasks).toHaveBeenCalledWith(
         env.tmp,
         'work-session',

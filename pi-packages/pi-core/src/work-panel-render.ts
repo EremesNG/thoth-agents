@@ -16,8 +16,8 @@ import type {
   WorkPanelRowContent,
   WorkPanelSegment,
   WorkPanelSegmentRole,
-  WorkPanelSummary,
 } from './work-panel.js';
+import { formatCompactWorkCounts } from './work-panel-counts.js';
 import type { WorkPanelLifecycleState } from './work-panel-lifecycle.js';
 
 export const WORK_PANEL_ANIMATION_INTERVAL_MS = 100;
@@ -39,7 +39,7 @@ export interface PanelSection {
   provider: WorkPanelProvider;
   rows: PanelRow[];
   collapsed?: boolean;
-  counts?: { done: number; failed: number };
+  counts?: { done: number; failed: number; cancelled: number };
   /** Pre-retention items for semantic summary counts, never for visible rows. */
   summaryRows?: readonly WorkPanelRow[];
 }
@@ -84,16 +84,15 @@ export function panelSections(
       continue;
     if (provider.retention === 'prompt') {
       const items = rows.filter((row) => !row.summary);
-      const summary = safely(() => provider.summary?.(), undefined);
+      const semanticCounts = compactSummaryCounts({
+        provider,
+        rows: [],
+        summaryRows: items,
+      });
       const counts = {
-        done:
-          typeof summary === 'object' && summary.completed !== undefined
-            ? summary.completed
-            : items.filter((row) => itemState(row) === 'done').length,
-        failed:
-          typeof summary === 'object' && summary.failed !== undefined
-            ? summary.failed
-            : items.filter((row) => itemState(row) === 'failed').length,
+        done: semanticCounts.completed,
+        failed: semanticCounts.failed,
+        cancelled: semanticCounts.cancelled,
       };
       const done = new Set(
         items
@@ -110,7 +109,7 @@ export function panelSections(
           done.has(row),
       );
       if (!eligible.length) {
-        if (!counts.done && !counts.failed) continue;
+        if (!counts.done && !counts.failed && !counts.cancelled) continue;
         sections.push({
           provider,
           collapsed: true,
@@ -222,30 +221,42 @@ function itemState(row: WorkPanelRow): WorkPanelItemState | undefined {
   return undefined;
 }
 
-function summarySegments(
-  summary: WorkPanelSummary | string | undefined,
-  rows: PanelRow[],
-): readonly WorkPanelSegment[] {
+function sectionSummarySegments(
+  section: PanelSection,
+  width: number,
+  room: number,
+  measure: Measure,
+): readonly WorkPanelSegment[] | undefined {
+  const summary = safely(() => section.provider.summary?.(), undefined);
   if (typeof summary === 'string')
     return [{ text: singleLine(summary), role: 'meta' }];
-  if (summary?.segments) return summary.segments;
-  if (summary?.text !== undefined)
-    return [{ text: singleLine(summary.text), role: 'meta' }];
-  if (summary?.total !== undefined && summary.completed !== undefined)
-    return [
-      { text: `${summary.completed}/${summary.total} done`, role: 'meta' },
-    ];
-  const parts: WorkPanelSegment[] = [];
-  if (summary?.running !== undefined)
-    parts.push({ text: `${summary.running} running`, role: 'meta' });
-  if (summary?.failed) {
-    if (parts.length)
-      parts.push({ text: ` ${resolveIcon('separator', '·')} `, role: 'meta' });
-    parts.push({ text: `${summary.failed} failed`, role: 'error' });
+  const numeric =
+    summary &&
+    [
+      summary.running,
+      summary.queued,
+      summary.completed,
+      summary.failed,
+      summary.cancelled,
+      summary.total,
+    ].some((count) => count !== undefined);
+  if (!numeric) {
+    if (summary?.segments) return summary.segments;
+    if (summary?.text !== undefined)
+      return [{ text: singleLine(summary.text), role: 'meta' }];
   }
-  return parts.length
-    ? parts
-    : [{ text: `${rows.length} items`, role: 'meta' }];
+  const formatted = formatCompactWorkCounts({
+    kind: section.provider.id === 'todos' ? 'todos' : 'work',
+    summary: compactSummaryCounts(section, summary),
+    width,
+    room,
+    measure,
+  });
+  if (typeof formatted === 'string') return [{ text: formatted, role: 'meta' }];
+  if (formatted === undefined) return undefined;
+  return formatted.flatMap((part, index) =>
+    index ? [{ text: ' ', role: 'meta' as const }, part] : [part],
+  );
 }
 
 function sectionTitle(provider: WorkPanelProvider): string {
@@ -255,8 +266,10 @@ function sectionTitle(provider: WorkPanelProvider): string {
 }
 
 /** Presentation counts are independent of the deliberately coarser retention state. */
-function compactSummaryCounts(section: PanelSection) {
-  const summary = safely(() => section.provider.summary?.(), undefined);
+function compactSummaryCounts(
+  section: PanelSection,
+  summary = safely(() => section.provider.summary?.(), undefined),
+) {
   const counts = typeof summary === 'object' ? summary : undefined;
   const items =
     section.summaryRows ??
@@ -310,30 +323,6 @@ function compactSummaryCounts(section: PanelSection) {
     completed: counts?.completed ?? fallback.completed,
     total: counts?.total,
   };
-}
-
-function compactSummarySegments(section: PanelSection): WorkPanelSegment[] {
-  const counts = compactSummaryCounts(section);
-  const categories = [
-    ['running', counts.running, 'accent', 'meta'],
-    ['queued', counts.queued, 'meta', 'meta'],
-    ['failed', counts.failed, 'error', 'error'],
-    ['cancelled', counts.cancelled, 'muted', 'muted'],
-    ['completed', counts.completed, 'success', 'meta'],
-  ] as const;
-  const parts: WorkPanelSegment[] = [];
-  for (const [status, count, role, numberRole] of categories) {
-    if (!(count > 0)) continue;
-    if (parts.length) parts.push({ text: ' ', role: 'meta' });
-    const number =
-      status === 'completed' && counts.total !== undefined
-        ? `${count}/${counts.total}`
-        : `${count}`;
-    const glyph = resolveStatusGlyph(status);
-    if (role === numberRole) parts.push({ text: `${glyph}${number}`, role });
-    else parts.push({ text: glyph, role }, { text: number, role: numberRole });
-  }
-  return parts;
 }
 
 function overflowCounts(
@@ -1837,8 +1826,16 @@ export function renderPanel(
       clip(
         sections
           .map((section) => {
-            const title = fg('toolTitle', sectionTitle(section.provider));
-            const counter = styleSegments(compactSummarySegments(section));
+            const label = sectionTitle(section.provider);
+            const title = fg('toolTitle', label);
+            const counter = styleSegments(
+              sectionSummarySegments(
+                section,
+                width,
+                width - measure(label) - 1,
+                measure,
+              ) ?? [],
+            );
             return counter ? `${title} ${counter}` : title;
           })
           .join(fg('dim', ` ${resolveIcon('separator', '·')} `)),
@@ -1884,33 +1881,35 @@ export function renderPanel(
       });
     });
     const title = sectionTitle(provider);
-    const counter = styleSegments(
-      plan.section.collapsed
-        ? [
-            { text: `${plan.section.counts?.done ?? 0} done`, role: 'meta' },
-            { text: ` ${resolveIcon('separator', '·')} `, role: 'meta' },
-            {
-              text: `${plan.section.counts?.failed ?? 0} failed`,
-              role: (plan.section.counts?.failed ?? 0) > 0 ? 'error' : 'meta',
-            },
-          ]
-        : summarySegments(
-            safely(() => provider.summary?.(), undefined),
-            rows.filter((entry) => !entry.sectionHeading),
-          ),
-    );
     const selectedSummary = rows.some(
       (entry) =>
         (plan.section.collapsed || entry.sectionHeading) &&
         entry.key === options.selectedKey,
     );
+    const separator = resolveIcon('separator', '·');
+    const chromeWidth =
+      measure(`◆  ${separator} `) +
+      (selectedSummary ? measure(`${resolveIcon('selection', '›')} `) : 0);
+    const counter = styleSegments(
+      sectionSummarySegments(
+        plan.section,
+        width,
+        width - measure(title) - chromeWidth,
+        measure,
+      ) ?? [
+        {
+          text: `${rows.filter((entry) => !entry.sectionHeading).length} items`,
+          role: 'meta',
+        },
+      ],
+    );
     const heading = kit
       ? kit.widgetHeading(
           theme,
-          { title, suffix: `${resolveIcon('separator', '·')} ${counter}` },
+          { title, suffix: `${separator} ${counter}` },
           Math.max(0, width - (selectedSummary ? 2 : 0)),
         )
-      : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', `${resolveIcon('separator', '·')} `)}${counter}`;
+      : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', `${separator} `)}${counter}`;
     const sectionLines = [
       selectedSummary
         ? `${fg('accent', `${resolveIcon('selection', '›')} `)}${heading}`

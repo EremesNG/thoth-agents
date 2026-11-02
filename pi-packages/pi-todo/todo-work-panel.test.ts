@@ -70,14 +70,14 @@ it.each([
   // Captured from the unchanged provider through the HEAD v1 renderer before migration.
   const golden = themed
     ? [
-        'Todos · 1/3 done',
+        'Todos · 1/3',
         '  ├─ ○ Review',
         '  ├─ ◇ Build (Building)',
         '  └─ ✓ \u001b[9mExplore\u001b[29m',
         '← interact',
       ]
     : [
-        '◆ Todos · 1/3 done',
+        '◆ Todos · 1/3',
         '  ○ Review',
         '  ◇ Build (Building)',
         '  ✓ \u001b[9mExplore\u001b[29m',
@@ -114,7 +114,7 @@ it.each([
   cleanups.push(await ensureWorkPanel(session.ctx));
 
   const lines: string[] = session.render();
-  expect(lines[0]).toContain('Todos · 7/7 done');
+  expect(lines[0]).toContain('Todos · 7/7');
   expect(lines.some((line) => line.includes('Finished 1'))).toBe(true);
   expect(provider.visibleCount()).toBe(7);
   expect(provider.summary()).toEqual({ completed: 7, total: 7 });
@@ -134,7 +134,7 @@ it('keeps a finished task list shown with completed rows marked as the last open
   );
   cleanups.push(await ensureWorkPanel(session.ctx));
   expect(session.render()).toEqual([
-    '◆ Todos · 1/2 done',
+    '◆ Todos · 1/2',
     '  ◇ Last open task',
     '  ✓ Already finished',
     '← interact',
@@ -148,7 +148,7 @@ it('keeps a finished task list shown with completed rows marked as the last open
     nextId: 3,
   });
   expect(session.render()).toEqual([
-    '◆ Todos · 2/2 done',
+    '◆ Todos · 2/2',
     '  ✓ Last open task',
     '  ✓ Already finished',
     '← interact',
@@ -179,7 +179,7 @@ it('opens the panel from the heading, a row and the dropped-done summary, and dr
   cleanups.push(await ensureWorkPanel(session.ctx));
 
   const lines: string[] = session.render();
-  expect(lines[0]).toBe('◆ Todos · 14/16 done');
+  expect(lines[0]).toBe('◆ Todos · 14/16');
   expect(lines.some((line) => line.includes('Open one'))).toBe(true);
   expect(lines.some((line) => line.includes('Open two'))).toBe(true);
   const dropped = lines.find((line) => /\+\d+ done/.test(line));
@@ -222,7 +222,7 @@ it('keeps exact completed counts selectable in a three-line widget and stays bou
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render()).toEqual([
-    '◆ Todos · 10/11 done',
+    '◆ Todos · 10/11',
     '  +10 done · +1 more',
     '← interact',
   ]);
@@ -496,7 +496,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
     await ensureWorkPanel(session.ctx),
   );
   expect(session.render()).toEqual([
-    '◆ Todos · 0/2 done',
+    '◆ Todos · 0/2',
     '  ◇ active',
     '  ○ waiting',
     '← interact',
@@ -507,7 +507,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
   const token = registerRenderKit(kit, {});
   cleanups.push(() => withdrawRenderKit(token));
   expect(session.render()).toEqual([
-    'Todos separator 0/2 done',
+    'Todos separator 0/2',
     '  ├─ * active',
     '  └─ - waiting',
     'arrowLeft interact',
@@ -515,7 +515,7 @@ it('todo semantic overrides let the host use the registered kit and restore nati
   expect(provider.listRows(0)).toEqual(rows);
   withdrawRenderKit(token);
   expect(session.render()).toEqual([
-    '◆ Todos · 0/2 done',
+    '◆ Todos · 0/2',
     '  ◇ active',
     '  ○ waiting',
     '← interact',

@@ -81,7 +81,7 @@ describe('data-only work panel rendering', () => {
       await ensureWorkPanel(session.ctx),
     );
     expect(session.render(100)).toEqual([
-      themed ? 'Agents · 1 items' : '◆ Agents · 1 items',
+      themed ? 'Agents · ◐1' : '◆ Agents · ◐1',
       ...(themed
         ? [
             '  └─ ⠋ worker · inspect · ⚠ 1 dropped',
@@ -93,7 +93,7 @@ describe('data-only work panel rendering', () => {
       '← interact',
     ]);
     expect(session.render(40)).toEqual([
-      themed ? 'Agents · 1 items' : '◆ Agents · 1 items',
+      themed ? 'Agents · ◐1' : '◆ Agents · ◐1',
       `${themed ? '  └─ ' : '  '}⠋ worker · inspect · ⚠ 1 dropped`,
       `${themed ? '       ' : '    '}tools 5 · ↑20k ↓10k`,
       `${themed ? '       ' : '    '}ctx 62.0% · 75 tok/s`,
@@ -143,7 +143,7 @@ describe('data-only work panel rendering', () => {
     }
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
-        ...provider('golden-todos', 'Todos', 20),
+        ...provider('todos', 'Todos', 20),
         summary: () => ({ completed: 1, total: 3 }),
         listRows: () => [
           {
@@ -194,20 +194,20 @@ describe('data-only work panel rendering', () => {
     expect(session.render()).toEqual(
       themed
         ? [
-            'Todos · 1/3 done',
+            'Todos · 1/3',
             '  ├─ ○ Review',
             '  ├─ ◇ Build (Building)',
             '  └─ ✓ ~Explore~',
-            'Background · 0 running · 1 failed',
+            'Background · ✗1',
             '  └─ ✗ compile · exit 1 · 3s',
             '← interact',
           ]
         : [
-            '◆ Todos · 1/3 done',
+            '◆ Todos · 1/3',
             '  ○ Review',
             '  ◇ Build (Building)',
             '  ✓ ~Explore~',
-            '◆ Background · 0 running · 1 failed',
+            '◆ Background · ✗1',
             '  ✗ compile · exit 1 · 3s',
             '← interact',
           ],

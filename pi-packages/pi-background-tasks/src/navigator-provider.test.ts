@@ -146,7 +146,7 @@ describe("Background Work panel provider", () => {
       expect(host.panel.render(100)).toEqual(
         themed
         ? [
-            'Background · 1 running · 2 failed',
+            'Background · ◐1 ✓1 ✗2 ■1',
             '  ├─ ⠋ running · process running · 1s',
             '  ├─ ✓ succeeded · completed · 2s',
             '  ├─ ✗ failed · failed, inspect log · 3s',
@@ -155,7 +155,7 @@ describe("Background Work panel provider", () => {
             '← interact',
           ]
         : [
-            '◆ Background · 1 running · 2 failed',
+            '◆ Background · ◐1 ✓1 ✗2 ■1',
             '  ⠋ running · process running · 1s',
             '  ✓ succeeded · completed · 2s',
             '  ✗ failed · failed, inspect log · 3s',
@@ -213,7 +213,7 @@ describe("Background Work panel provider", () => {
       clock.mockReturnValue(done.endedAt! + 9999);
       expect(host.panel.render().join('\n')).toContain(done.id);
       clock.mockReturnValue(done.endedAt! + 10_000);
-      expect(host.panel.render()[0]).toContain('Background · 1 done · 0 failed');
+      expect(host.panel.render()[0]).toContain('Background · ✓1');
       expect(host.panel.render()).toHaveLength(2);
       expect(host.panel.render().at(-1)).toContain('Enter history');
       expect(host.panel.render().at(-1)).not.toContain('x ');
@@ -242,7 +242,7 @@ describe("Background Work panel provider", () => {
     const metas = [task(host, "bg_panel_running", "running"), task(host, "bg_panel_failed", "failed")];
     try {
       const lines = host.panel.render();
-      expect(lines[0]).toContain("Background · 1 running · 1 failed");
+      expect(lines[0]).toContain("Background · ◐1 ✗1");
       expect(lines).toHaveLength(4);
       expect(lines.at(-1)).toBe('← interact');
       expect(lines.join("\n")).toContain("bg_panel_running");
@@ -252,7 +252,7 @@ describe("Background Work panel provider", () => {
       expect(host.widgets.has("background-work-list")).toBe(false);
       expect(lines.join("\n")).not.toContain("work navigator");
       writeMeta({ ...metas[0]!, status: "succeeded", endedAt: Date.now() });
-      expect(host.panel.render()[0]).toContain("Background · 0 running · 1 failed");
+      expect(host.panel.render()[0]).toContain("Background · ✓1 ✗1");
       expect(host.panel.render().join('\n')).toContain('bg_panel_running');
       expect(host.panel.render()).toHaveLength(4);
       expect(host.statuses.get("thoth-work-panel")).toBe("← work · 2");
@@ -333,7 +333,7 @@ describe("Background Work panel provider", () => {
       await host.emit("session_start");
       expect(host.panel.listenerCount()).toBe(1);
       const lines = host.panel.render();
-      expect(lines[0]).toContain("Background · 0 running · 1 failed");
+      expect(lines[0]).toContain("Background · ✗1");
       expect(lines.join('\n')).toContain(next.id);
       expect(getBackgroundTasksNavigator(host.pi).provider.listRows(Date.now()).map(row => row.id)).toEqual([next.id]);
       expect(lines.join("\n")).not.toContain(old.id);
@@ -385,7 +385,7 @@ it('shows provider status and timing instead of commands with semantic name, sta
     expect(styled).toContainEqual(['toolTitle', 'watch tests']);
     expect(styled.some(([role, value]) => role === 'text' && value.includes('every 20s'))).toBe(true);
     expect(styled.some(([role, value]) => role === 'dim' && value.includes('1s'))).toBe(true);
-    expect(styled).toContainEqual(['error', '1 failed']);
+    expect(styled).toContainEqual(['error', '✗1']);
   } finally {
     await host.emit('session_shutdown', 'reload');
     for (const meta of [watch, failed]) rmSync(taskDir(meta.id), { recursive: true, force: true });

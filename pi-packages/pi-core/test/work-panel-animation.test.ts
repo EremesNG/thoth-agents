@@ -670,7 +670,7 @@ describe('work panel shared animation', () => {
     vi.advanceTimersByTime(1);
     expect(frames).toHaveLength(2);
     expect(frames[1].at).toBe(11100);
-    expect(frames[1].lines.join(' ')).toContain('Agents · 1 done · 0 failed');
+    expect(frames[1].lines.join(' ')).toContain('Agents · ✓1');
     expect(frames[1].lines.join(' ')).not.toContain('Task');
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(1000);

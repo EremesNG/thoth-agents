@@ -3,6 +3,7 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
 import {
   computeSessionCost,
+  formatCompactWorkCounts,
   getRenderKit,
   getWorkPanelSourceRows,
   isAnimationEffectEnabled,
@@ -10,7 +11,6 @@ import {
   type ProviderLimitEntry,
   type RenderKitTheme,
   resolveIcon,
-  resolveStatusGlyph,
   type WorkPanelRow,
   type WorkPanelSource,
 } from '@thoth-agents/pi-core';
@@ -123,8 +123,6 @@ const COST_COMMAND = '/sidebar cost';
 const MIN_PANEL_WIDTH = 24;
 export const WIDEN_HINT = 'widen: /sidebar resize';
 
-/** Narrowest panel that still shows the queued count. */
-const QUEUED_MIN_WIDTH = 36;
 /** Cells the header needs besides the summary: borders, icon and spacing. */
 const HEADER_CHROME = 10;
 
@@ -136,46 +134,29 @@ function sourceSummary(
 ): string | undefined {
   const summary = source.summary;
   if (!summary) return undefined;
-  const { running, queued, cancelled, completed, failed, total } = summary;
-  if (source.id === 'todos') {
-    return completed !== undefined && total !== undefined
-      ? `${completed}/${total}`
-      : undefined;
-  }
-  if (
-    source.id in DETAIL_COMMANDS &&
-    running !== undefined &&
-    completed !== undefined &&
-    failed !== undefined
-  ) {
-    const parts = [
-      { status: 'running', role: 'accent', count: running },
-      {
-        status: 'queued',
-        role: 'dim',
-        count: width >= QUEUED_MIN_WIDTH ? (queued ?? 0) : 0,
-      },
-      { status: 'completed', role: 'success', count: completed },
-      { status: 'failed', role: 'error', count: failed },
-      { status: 'cancelled', role: 'muted', count: cancelled ?? 0 },
-    ] as const;
-    const shown = parts.filter((part) => part.count > 0);
-    const text = (items: typeof shown) =>
-      items.map((part) => `${resolveStatusGlyph(part.status)}${part.count}`);
-    const room = width - HEADER_CHROME - panelVisibleWidth(clean(source.label));
-    // Drop ■ then ○ before the header summary would vanish entirely.
-    const kept = [...shown];
-    for (const status of ['cancelled', 'queued'])
-      if (panelVisibleWidth(text(kept).join(' ')) > room)
-        kept.splice(
-          kept.findIndex((part) => part.status === status),
-          kept.some((part) => part.status === status) ? 1 : 0,
-        );
-    return kept
-      .map((part, index) => panelFg(theme, part.role, text(kept)[index]))
-      .join(' ');
-  }
-  return summary.text ? clean(summary.text) : undefined;
+  const { running, completed, failed } = summary;
+  const kind =
+    source.id === 'todos'
+      ? 'todos'
+      : source.id in DETAIL_COMMANDS &&
+          running !== undefined &&
+          completed !== undefined &&
+          failed !== undefined
+        ? 'work'
+        : 'other';
+  const formatted = formatCompactWorkCounts({
+    kind,
+    summary: {
+      ...summary,
+      text: summary.text ? clean(summary.text) : undefined,
+    },
+    width,
+    room: width - HEADER_CHROME - panelVisibleWidth(clean(source.label)),
+    measure: panelVisibleWidth,
+  });
+  return typeof formatted === 'string' || formatted === undefined
+    ? formatted
+    : formatted.map((part) => panelFg(theme, part.role, part.text)).join(' ');
 }
 
 interface PanelData {

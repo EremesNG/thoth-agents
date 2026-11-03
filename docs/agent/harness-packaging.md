@@ -722,15 +722,38 @@ A Pi publish failure blocks the root publish.
 
 ```
 pnpm release:pi pi-subagents patch   # dir or name; patch|minor|major
+# Promote CHANGELOG.md Unreleased notes into [x.y.z] - YYYY-MM-DD first.
 git commit -am "chore(pi-subagents): release x.y.z"
 pnpm release:patch                   # or release:minor / release:major
 ```
 
-`release:pi` runs `npm version --no-git-tag-version`. The root release needs a
-clean tree, and a Pi-only fix still bumps the root, since Pi packages ship only
-from a root tag. In 0.x, a caret range does not cross a minor: a pi-core bump
-0.1 → 0.2 falls outside consumers' published `^0.1.0` until the consumers are
-bumped and republished.
+`release:pi` runs `npm version --no-git-tag-version`; it does not write changelog
+entries. Manually promote the package's `## [Unreleased]` notes into a dated
+`## [x.y.z] - YYYY-MM-DD` section matching the new `package.json` version, then
+leave a fresh Unreleased section above it. Keep releases newest first and use
+concise Added/Changed/Fixed bullets. Commit the changelog with the version bump.
+
+Every `pi-packages/*` package publishes its local `CHANGELOG.md`. Its latest
+release must equal `package.json#version`; no version heading may exceed it.
+Pi stores the manifest version as last-seen after displaying newer changelog
+entries, so a higher upstream heading causes repeated Extension Updates notices.
+Forks keep imported history in `UPSTREAM-CHANGELOG.md`, publish it alongside
+`LICENSE`, and link it from their local changelog. The preserved Antigravity,
+Claude, and subagents files contain mixed local notes too; local changes are
+also summarized under their actual local releases. AskCodex's history is local,
+not upstream. New upstream ports belong under the local Unreleased section,
+not upstream-version headings in `CHANGELOG.md`.
+
+Reconstructed dates/boundaries use manifest release/bump commits, with the nine
+initial 0.1.0 releases taken from their per-package tags (2026-10-07), not source
+creation dates. Commits after each package's last release remain Unreleased.
+Run `pnpm exec vitest run src/harness/pi-package-changelogs.test.ts` to check
+version alignment before release.
+
+The root release needs a clean tree, and a Pi-only fix still bumps the root,
+since Pi packages ship only from a root tag. In 0.x, a caret range does not
+cross a minor: a pi-core bump 0.1 → 0.2 falls outside consumers' published
+`^0.1.0` until the consumers are bumped and republished.
 
 PRs get a non-blocking "Pi version bump" warning (`scripts/check-pi-version-bumps.mjs`)
 when a Pi package changed without a version bump; when skipped it emits a

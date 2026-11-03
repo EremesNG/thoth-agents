@@ -380,6 +380,15 @@ re-expansion and focus after each history/detail overlay closes. Rerun a failing
 Windows timing check once and report both outcomes; automated checks do not
 replace the live check.
 
+Pi changelog changes run `src/harness/pi-package-changelogs.test.ts`: it checks
+all package changelogs against the manifest version using Pi's version-heading
+syntax, rejecting future headings and requiring the latest local release.
+For changelog/files-allowlist changes, also run `src/harness/release-pi.test.ts`,
+`src/harness/generate-release-notes.test.ts`, the build and built-extension
+bundle tests; inspect pack contents when adding published history files.
+The manual changelog promotion convention is in
+[harness packaging](harness-packaging.md#bumping).
+
 Release/packaging tooling tests (for example publish-marketplace,
 generate-release-notes, setup-codex-local, and packed real-SDK tests) are required
 locally only when the change touches their inputs:

@@ -40,6 +40,7 @@
     "src/windows-job/launcher.ps1",
     "!src/**/*.test.ts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "peerDependencies": {

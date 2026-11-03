@@ -28,7 +28,8 @@
     "skills",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "UPSTREAM-CHANGELOG.md"
   ],
   "pi": {
     "extensions": [

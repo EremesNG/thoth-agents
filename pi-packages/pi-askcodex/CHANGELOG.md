@@ -1,40 +1,57 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this Thoth package are documented here in Keep a Changelog style.
 
 ## [Unreleased]
 
+### Changed
+
+- Require Pi 1.5.0 or newer.
+- Animation levels select enabled effects without slowing animations that remain enabled.
+
+## [2.1.0] - 2026-10-29
+
+### Added
+
+- Shared selectable animation intensity for AskCodex progress cards.
+
+## [2.0.2] - 2026-10-23
+
+### Changed
+
+- Shorten model-facing tool definitions without changing parameters.
+
+## [2.0.1] - 2026-10-21
+
 ### Fixed
 
-- Release previous AskCodex call/result cards instead of retaining a growing chain through Pi's render context.
+- Detach previous render components so AskCodex cards no longer retain a growing component chain.
 
-### Removed
+## [2.0.0] - 2026-10-20
 
-- `AskCodex` no longer accepts the `effort` alias (use `thinking`) or boolean `webSearch` values (use `live`, `cached` or `disabled`); its description and guidelines no longer repeat parameter documentation.
+### Changed
+
+- Remove the `effort` alias; use `thinking`.
+- Remove boolean `webSearch` values; use `live`, `cached`, or `disabled`. Condense tool guidance.
 
 ## [1.0.2] - 2026-10-18
 
 ### Fixed
 
-- Recover the bundled Windows job launcher on the next AskCodex call after a slow or failed helper start or helper death, instead of staying unavailable for the rest of the session.
-- Run AskCodex's Windows job launcher helper separately from other Thoth extensions, so another extension's helper failure or recovery never affects AskCodex app-server processes.
+- Recover the bundled Windows job launcher on the next call after slow startup, startup failure, or helper death.
+- Isolate the launcher from other extensions so their failures cannot affect AskCodex processes.
 
 ## [1.0.1] - 2026-10-18
 
 ### Fixed
 
-- Contain Windows app-server processes and descendants in a Job Object, avoiding unrelated processes regardless of PID reuse or stale parent links. If the job launcher is unavailable, warn and terminate only the app-server leader through its own process handle.
+- Contain Windows app-server processes and descendants in a Job Object, avoiding unrelated processes regardless of PID reuse. If containment is unavailable, warn and terminate only the owned app-server leader.
 
 ## [1.0.0] - 2026-10-18
 
-First published release.
-
 ### Added
 
-- Initial `AskCodex` delegation tool using the local Codex app-server over stdio; no model provider or CLI/SDK fallback.
-- Desktop-bundled binary discovery, explicit config/environment overrides, and PATH fallback warnings.
-- Read-only and workspace-write sandbox modes, thread continuation, optional web search and Pi context export, live progress, token usage, cancellation, and timeouts.
-- Exact app-identifier allowlisting with session-scoped approval, Pi UI prompts for other approvals, and decline without UI; no persistent approvals.
-- Whole-identifier, case-insensitive `*` and `?` wildcard patterns in `allowedApps` for session-only Computer Use app-access approvals, including packaged-app ids. `*` allows any app even without UI; other approval policies are unchanged.
-- Approval prompts rendered through the Thoth question UI when pi-questions-user provides the shared service, with command/cwd/reason or app-name/identifier previews, no recommended option, and no free-text answer; native select fallback when no compatible provider or dock is available.
-- Delegation and approval developer instructions that defer Computer Use methods to Codex's own bundled `computer-use` skill, offline fake-server tests, and configuration, safety, and troubleshooting documentation.
+- Initial AskCodex delegation tool using the local Codex app-server over stdio, with Desktop binary discovery, explicit overrides, and PATH fallback warnings.
+- Read-only and workspace-write sandboxes, thread continuation, web search, Pi context export, live progress, usage, cancellation, and timeouts.
+- Exact or wildcard app-identifier allowlisting for session-only Computer Use approvals; UI prompts for other approvals and decline without UI.
+- Thoth question-service approval prompts with native select fallback, literal command/app previews, and delegation instructions that defer Computer Use methods to Codex's bundled skill.

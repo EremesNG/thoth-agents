@@ -1,21 +1,85 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this Thoth package are documented here in Keep a Changelog style.
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- Release previous question tool components instead of retaining them through Pi's render context.
+- Require Pi 1.5.0 or newer and use injected expand-key hints that honor remapped or unbound actions.
+- Size question panels to content, capped at 45% of terminal height without a baseline height floor; omit tabs/progress for single questions and clip hints to one row.
+- Keep prompts pinned above options, prioritize option space over context, and bound context scrolling with Alt+arrows.
+- Start narrow previews collapsed and toggle them with `p` outside editors, preserving the choice across tabs; wide previews remain visible.
+- Limit tool `context` to 500 characters. Show longer proposals in response text before asking; internal question-service requests remain unrestricted.
 
-### Added
-
-- Dock-backed provider for pi-core's shared question service, registered only in UI sessions and withdrawn on shutdown. Other Thoth packages can disable free-text answers per question; abort disposes the dock and returns cancellation, while an unavailable dock lets callers choose a fallback. The `ask_user_question` tool's schema and behavior are unchanged.
+## [0.5.3] - 2026-10-23
 
 ### Changed
 
-- Question panels use content-sized height capped at 45% of terminal rows, without a baseline or six-row content floor. Single questions omit tabs/progress; priority-ordered hints occupy one clipped row. Editor reservations keep height stable while navigating, answering and typing.
-- Narrow previews start collapsed; `p` outside editors toggles the preview below the options, retaining that choice across tabs. Wide right-hand previews remain visible.
-- Prompts stay pinned above the options (up to three rows, then ellipsis). Options get space before context; context alone scrolls with Alt+arrows in a viewport capped at six rows including its overflow counter, with a three-body-row preference when space permits.
-- Tool `context` is limited to 500 characters by Pi argument validation. Longer proposals, tables and findings must be visible response text before the tool call. Internal question-service requests retain unrestricted context.
-- `ask_user_question` label properties no longer carry per-key default descriptions; one shared `labels` description covers them. Keys, defaults, validation and rendering are unchanged.
+- Shorten model-facing tool definitions without changing parameters.
+
+## [0.5.2] - 2026-10-21
+
+### Fixed
+
+- Detach previous render components so question cards no longer retain a growing component chain.
+
+## [0.5.1] - 2026-10-20
+
+### Changed
+
+- Replace per-key label descriptions with one shared description; keys, defaults, validation, and rendering are unchanged.
+
+## [0.5.0] - 2026-10-18
+
+### Added
+
+- UI-only dock provider for pi-core's shared question service, with per-question free-text policy, abort cancellation, shutdown withdrawal, and truthful unavailable results for caller fallback.
+
+### Fixed
+
+- Wrap plain failure text and render SDK error results even when their details are empty.
+
+## [0.4.0] - 2026-10-16
+
+### Added
+
+- Visible context-text priority and a context fallback field for question panels.
+
+## [0.3.1] - 2026-10-13
+
+### Changed
+
+- Expose `ask_user_question` as model-only so codemode scripts cannot invoke it.
+
+## [0.3.0] - 2026-10-10
+
+### Added
+
+- Questions docked in the shared editor slot with state-preserving Ctrl+] collapse and expansion.
+
+### Fixed
+
+- Preserve selection color on wrapped recommended options and render structured answers only once.
+
+## [0.2.0] - 2026-10-08
+
+### Changed
+
+- Publish the extension as a built bundle.
+
+### Fixed
+
+- Keep question input focused over history/detail panel overlays.
+
+## [0.1.0] - 2026-10-07
+
+### Added
+
+- First published root-owned `ask_user_question` extension with stable ids, single/multi/text/confirm questions, recommended options, previews, notes, localizable labels, and structured per-id answers.
+- Framed questionnaire with adaptive height, tabs, windowed options, review screen, and Render KIT result cards.
+- Sequential select/input fallback and truthful `no_ui` results without custom UI.
+
+### Fixed
+
+- Use preview-scroll keys that fullscreen Pi does not consume.

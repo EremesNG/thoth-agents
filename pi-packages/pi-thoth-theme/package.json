@@ -39,6 +39,7 @@
     "dist",
     "themes/**",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "peerDependencies": {

@@ -37,6 +37,7 @@
     "dist",
     "README.md",
     "CHANGELOG.md",
+    "UPSTREAM-CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

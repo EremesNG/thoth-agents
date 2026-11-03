@@ -118,7 +118,7 @@ Install manually with pi's package manager; the Thoth installer does not manage 
 pi install npm:@thoth-agents/pi-antigravity-bridge
 ```
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`. ACP-only installations are supported; the **`agy` CLI** must be installed and authenticated for stream-json turns, AskAntigravity delegations, web delegates, and `/agy quota`. If you need the CLI, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns once per instance on first Antigravity use (toast in the TUI, stderr headless) pointing at the install guide; sessions that never use Antigravity do not run this check.
+Requires Pi `>=1.5.0` and Node `>=22.19.0`. ACP-only installations are supported; the **`agy` CLI** must be installed and authenticated for stream-json turns, AskAntigravity delegations, web delegates, and `/agy quota`. If you need the CLI, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns once per instance on first Antigravity use (toast in the TUI, stderr headless) pointing at the install guide; sessions that never use Antigravity do not run this check.
 
 ## Usage
 

@@ -6,6 +6,7 @@ import type {
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
@@ -166,7 +167,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         const safeWidth = Math.max(0, width);
         const footer = toolFooter(theme, footerOptions, config.icons);
         if (!options?.expanded) {
-          const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ${semanticIcon('separator', config.icons)} ctrl+o to expand`;
+          const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}${expandHintSuffix(context, semanticIcon('separator', config.icons))}`;
           return [
             ...renderFrameRow(
               theme,

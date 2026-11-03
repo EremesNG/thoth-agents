@@ -84,7 +84,7 @@ exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-cha
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines[39m                                                                                                  [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;
@@ -100,7 +100,7 @@ exports[`narrow expansion hints in ascii mode > card(collapse) preserves pre-cha
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m... 120 more lines | ctrl+o to expand[39m                                                                               [33m │[39m",
+  "[33m│ [39m[33m... 120 more lines[39m                                                                                                  [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;
@@ -394,7 +394,7 @@ exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-chan
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines[39m                                                                                                    [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;
@@ -410,7 +410,7 @@ exports[`narrow expansion hints in nerd mode > card(collapse) preserves pre-chan
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines[39m                                                                                                    [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;
@@ -704,7 +704,7 @@ exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-c
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines[39m                                                                                                    [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;
@@ -720,7 +720,7 @@ exports[`narrow expansion hints in unicode mode > card(collapse) preserves pre-c
   "[33m│ [39mline 6                                                                                                              [33m │[39m",
   "[33m│ [39mline 7                                                                                                              [33m │[39m",
   "[33m│ [39mline 8                                                                                                              [33m │[39m",
-  "[33m│ [39m[33m… 120 more lines · ctrl+o to expand[39m                                                                                 [33m │[39m",
+  "[33m│ [39m[33m… 120 more lines[39m                                                                                                    [33m │[39m",
   "[33m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m",
 ]
 `;

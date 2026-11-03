@@ -2,7 +2,7 @@
 
 Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated persisted Pi SDK sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
 
-Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.4.0`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Launches and continuations run in background by default; only explicit invocation `mode: "task"` waits. Model/tool commands and opt-in continuation availability are unchanged.
+Requires Pi `>=1.5.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.5.0`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Launches and continuations run in background by default; only explicit invocation `mode: "task"` waits. Model/tool commands and opt-in continuation availability are unchanged.
 
 ## What it provides
 
@@ -683,15 +683,15 @@ Rejected ownership/runtime examples:
 {
   "status": "rejected",
   "reason": "unsupported_runtime",
-  "required_pi_version": ">=0.99.0",
-  "detected_pi_version": "0.98.0",
-  "message": "Live background messaging requires Pi runtime >=0.99.0; detected 0.98.0."
+  "required_pi_version": ">=1.5.0",
+  "detected_pi_version": "1.4.9",
+  "message": "Live background messaging requires Pi runtime >=1.5.0; detected 1.4.9."
 }
 ```
 
 Live-message requirements, visibility, and lifecycle:
 
-- Live steering requires Pi runtime `>=0.99.0` and an available nested SDK `session.steer(...)` bridge. Compatibility is detected from the Pi SDK version already loaded by the runner; known old or unknown runtimes fail closed.
+- Live steering requires Pi runtime `>=1.5.0` and an available nested SDK `session.steer(...)` bridge. Compatibility is detected from the Pi SDK version already loaded by the runner; known old or unknown runtimes fail closed.
 - Ownership is exact: only the parent Pi session that launched the currently running background attempt can send to it. Continuations rebind ownership to the parent session that starts that attempt.
 - A same-parent message may be accepted before the nested steering bridge is ready. It remains in a bounded pending queue and is forwarded exactly once when readiness is established.
 - `status: "queued"` proves queue acceptance, not model consumption. The owning `/subagents` task detail timeline renders each message chronologically as queued and then consumed when the SDK confirms consumption, including FIFO handling of identical message text.
@@ -941,7 +941,7 @@ Subagent definitions are intentionally user/project configuration, not hard-code
 
 ## Development
 
-This package is a member of the thoth-agents pnpm workspace; the root `pnpm-lock.yaml` pins the development Pi SDK and TUI to `1.4.0`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `pnpm install --frozen-lockfile` from the repository root before final validation.
+This package is a member of the thoth-agents pnpm workspace; the root `pnpm-lock.yaml` pins the development Pi SDK and TUI to `1.5.0`. Run focused native SDK and renderer checks with the same version. Restore the locked tree with `pnpm install --frozen-lockfile` from the repository root before final validation.
 
 Install dependencies once, from the repository root:
 

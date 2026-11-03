@@ -81,7 +81,7 @@ export function createTestRenderKit(
       if (options.expanded || rows.length <= budget) return [...rows];
       return [
         ...rows.slice(0, budget),
-        `… ${rows.length - budget} more lines · ${options.expandHint ?? 'ctrl+o to expand'}`,
+        `… ${rows.length - budget} more lines${options.expandHint ? ` · ${options.expandHint}` : ''}`,
       ];
     },
     cachedComponent(render) {

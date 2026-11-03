@@ -1,6 +1,6 @@
 # @thoth-agents/pi-background-tasks
 
-Local shell/process jobs for Pi: spawn commands, poll watches, inspect logs and status, stop work, and receive completion callbacks without blocking the foreground turn. The standalone tools are: `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop`, and `bg_task_clear`. The Work panel remains available in interactive sessions. Requires Node `>=22.19.0` and Pi SDK/TUI `>=0.99.0`.
+Local shell/process jobs for Pi: spawn commands, poll watches, inspect logs and status, stop work, and receive completion callbacks without blocking the foreground turn. The standalone tools are: `bg_task_spawn`, `bg_task_watch`, `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop`, and `bg_task_clear`. The Work panel remains available in interactive sessions. Requires Node `>=22.19.0` and Pi SDK/TUI `>=1.5.0`.
 
 ## Provenance
 

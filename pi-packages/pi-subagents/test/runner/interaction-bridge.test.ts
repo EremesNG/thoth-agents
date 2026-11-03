@@ -1355,30 +1355,23 @@ describe('subagent runner interaction-required bridge', () => {
     });
   });
 
-  it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {
+  it.each([
+    ['1.4.0', false],
+    ['1.4.9', false],
+    ['1.5.0', true],
+    ['1.6.0', true],
+    [undefined, false],
+  ])('detects Pi %s runtime support as %s from the loaded SDK version export', async (version, supported) => {
     const { detectPiRuntimeSupport } = await import(
       '../../src/runner/pi-sdk-module.js'
     );
 
-    expect(detectPiRuntimeSupport('0.99.0')).toEqual({
-      supported: true,
-      detected_pi_version: '0.99.0',
-      required_pi_version: '>=0.99.0',
-    });
-    expect(detectPiRuntimeSupport('0.99.1')).toEqual({
-      supported: true,
-      detected_pi_version: '0.99.1',
-      required_pi_version: '>=0.99.0',
-    });
-    expect(detectPiRuntimeSupport('0.98.1')).toEqual({
-      supported: false,
-      detected_pi_version: '0.98.1',
-      required_pi_version: '>=0.99.0',
-    });
-    expect(detectPiRuntimeSupport(undefined)).toEqual({
-      supported: false,
-      detected_pi_version: 'unknown',
-      required_pi_version: '>=0.99.0',
+    const runtime = detectPiRuntimeSupport(version);
+    expect(runtime.supported).toBe(supported);
+    expect(runtime).toEqual({
+      supported,
+      detected_pi_version: version ?? 'unknown',
+      required_pi_version: '>=1.5.0',
     });
   });
 
@@ -1397,7 +1390,7 @@ describe('subagent runner interaction-required bridge', () => {
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       ...emptyFullResourceSdk,
       ModelRuntime: ModelRuntimeFixture,
-      VERSION: '0.99.1',
+      VERSION: '1.5.0',
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1434,7 +1427,7 @@ describe('subagent runner interaction-required bridge', () => {
       expect(bridges).toHaveLength(1);
       expect(bridges[0]).toMatchObject({
         supported: true,
-        detected_pi_version: '0.99.1',
+        detected_pi_version: '1.5.0',
       });
       await expect(bridges[0].steer('steer this nested session')).resolves.toBe(
         'queued',

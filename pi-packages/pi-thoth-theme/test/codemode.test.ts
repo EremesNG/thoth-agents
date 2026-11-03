@@ -1,4 +1,5 @@
 import type { Theme, ToolRenderers } from '@earendil-works/pi-coding-agent';
+import { keyHint, keyText } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import { createToolRendererResolver } from '../src/tools/index.ts';
 
@@ -10,6 +11,8 @@ function renderContext(
   overrides: Partial<ToolRenderContext> = {},
 ): ToolRenderContext {
   return {
+    keyText,
+    keyHint,
     args: {},
     toolCallId: 'codemode-1',
     invalidate: () => {},

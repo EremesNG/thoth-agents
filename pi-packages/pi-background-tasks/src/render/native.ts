@@ -1,8 +1,4 @@
-import {
-  keyText,
-  type Theme,
-  type ThemeColor,
-} from '@earendil-works/pi-coding-agent';
+import type { KeybindingHints, Theme, ThemeColor } from '@earendil-works/pi-coding-agent';
 import {
   Box,
   truncateToWidth,
@@ -25,39 +21,26 @@ export function themed(theme: unknown, role: ThemeColor, text: string): string {
   return renderTheme(theme).fg(role, text);
 }
 
-export function resolveExpandHint(context?: unknown): string {
-  const keys = (
-    context as
-      | { keybindings?: { getKeys?: (id: string) => unknown } }
-      | undefined
-  )?.keybindings?.getKeys?.('app.tools.expand');
-  const key = Array.isArray(keys)
-    ? keys.find((value) => typeof value === 'string' && value.trim())
-    : keys;
-  if (typeof key === 'string' && key.trim()) return `${key.trim()} to expand`;
-  try {
-    const text = keyText('app.tools.expand');
-    if (text.trim()) return `${text.trim()} to expand`;
-  } catch {
-    /* keybindings are not initialized outside the TUI */
-  }
-  return 'ctrl+o to expand';
+export function resolveExpandHint(context?: Partial<KeybindingHints>): string {
+  const key = context?.keyText?.('app.tools.expand') ?? '';
+  return key ? `${key} to expand` : '';
 }
 
 export function collapseNative(
   rows: string[],
   expanded: boolean,
   theme: unknown,
-  context?: unknown,
+  context?: Partial<KeybindingHints>,
 ): string[] {
   if (expanded || rows.length <= COLLAPSED_LINES) return rows;
   const hidden = rows.length - COLLAPSED_LINES;
+  const hint = resolveExpandHint(context);
   return [
     ...rows.slice(0, COLLAPSED_LINES),
     themed(
       theme,
       'dim',
-      `${resolveIcon('ellipsis', '…')} ${hidden} more line${hidden === 1 ? '' : 's'} (${resolveExpandHint(context)})`,
+      `${resolveIcon('ellipsis', '…')} ${hidden} more line${hidden === 1 ? '' : 's'}${hint ? ` (${hint})` : ''}`,
     ),
   ];
 }

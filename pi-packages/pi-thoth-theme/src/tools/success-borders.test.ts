@@ -3,6 +3,7 @@ import type {
   Theme,
   ToolRenderers,
 } from '@earendil-works/pi-coding-agent';
+import { keyHint, keyText } from '@earendil-works/pi-coding-agent';
 import { stripTerminalSequences } from '@earendil-works/pi-tui';
 import type { RenderCardOptions } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
@@ -221,6 +222,8 @@ const lifecycleCases = [
 
 function toolContext(isPartial: boolean, isError: boolean) {
   return {
+    keyText,
+    keyHint,
     args,
     toolCallId: 'call-1',
     state: {},

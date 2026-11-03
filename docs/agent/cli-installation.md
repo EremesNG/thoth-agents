@@ -59,7 +59,7 @@ execution does not.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.
-- Pi setup requires Pi `>=0.99.0` and Node.js `>=22.19.0`, rejecting older
+- Pi setup requires Pi `>=1.5.0` and Node.js `>=22.19.0`, rejecting older
   hosts before changing Pi state. It rejects unowned/conflicting first-party
   state, then installs either `npm:thoth-agents@<executing-version> --no-approve`
   or an explicit normalized absolute `--local-package-root` with `--agent=pi`,
@@ -148,7 +148,7 @@ execution does not.
   paths relative to `.pi` (including absolute paths, home paths, and file URLs),
   and Git checkouts under `.pi/git/<host>/<repository>` regardless of ref.
   Git normalization is ported from the SDK's `parseGitUrl` using the same exact
-  `hosted-git-info` version, with differential tests against SDK 1.4.0's parser
+  `hosted-git-info` version, with differential tests against SDK 1.5.0's parser
   and install-path resolver. A defense-in-depth scan of `.pi/git` and `.pi/npm`
   also identifies installed incumbent manifests even without a mapped settings
   source. It reads linked package manifests without recursively walking links
@@ -182,7 +182,7 @@ execution does not.
 
 - parser/help/runtime: `parser.test.ts`, `commands.test.ts`, `index.test.ts`
 - install/config: install, path, and operation tests; `pi-git-source.test.ts`
-  compares Git install paths with the pinned Pi SDK 1.4.0
+  compares Git install paths with the pinned Pi SDK 1.5.0
 - external skill command construction: `skills.test.ts`
 - provider command/result contract: `thoth-mem-install.test.ts`
 - TUI: `src/cli/tui/**/*.test.tsx`

@@ -1,10 +1,8 @@
+const keyHints = { keyText: () => 'ctrl+o' };
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  resetExpandKeybindingProviderForTests,
-  setExpandKeybindingProviderForTests,
-} from '../../src/render/tools/expansion-hint.js';
 import { statusGlyph } from '../../src/render/tools/progress.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import type { SubagentTask } from '../../src/types.js';
@@ -83,7 +81,12 @@ describe('tool render helpers', () => {
       const render = (task: any) =>
         env.stripAnsi(
           tools[name]
-            .renderResult(result(task), { expanded, isPartial: false }, theme)
+            .renderResult(
+              result(task),
+              { expanded, isPartial: false },
+              theme,
+              keyHints,
+            )
             .render(160)
             .join('\n'),
         );
@@ -141,7 +144,7 @@ describe('tool render helpers', () => {
     const render = (name: string) =>
       env.stripAnsi(
         registered[name]
-          .renderResult(result, { expanded: false }, theme)
+          .renderResult(result, { expanded: false }, theme, keyHints)
           .render(180)
           .join('\n'),
       );
@@ -203,6 +206,7 @@ describe('tool render helpers', () => {
         result,
         { isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(200)
       .join('\n');
@@ -249,6 +253,7 @@ describe('tool render helpers', () => {
         dummyResult,
         { expanded: true, isPartial: false },
         { fg: dim, bold: (text: string) => text },
+        keyHints,
       )
       .render(200)
       .join('\n');
@@ -307,6 +312,7 @@ describe('tool render helpers', () => {
             fg: (_name: string, text: string) => text,
             bold: (text: string) => text,
           },
+          keyHints,
         )
         .render(200)
         .join('\n');
@@ -334,6 +340,7 @@ describe('tool render helpers', () => {
             fg: (_name: string, text: string) => text,
             bold: (text: string) => text,
           },
+          keyHints,
         )
         .render(200)
         .join('\n');
@@ -381,6 +388,7 @@ describe('tool render helpers', () => {
           dummyResult,
           { expanded: true, isPartial: false },
           { fg: dim, bold: (text: string) => text },
+          keyHints,
         )
         .render(200)
         .join('\n');
@@ -423,7 +431,12 @@ describe('tool render helpers', () => {
       },
     };
     const rendered = runTool
-      .renderResult(dummyResult, { expanded: true, isPartial: false }, theme)
+      .renderResult(
+        dummyResult,
+        { expanded: true, isPartial: false },
+        theme,
+        keyHints,
+      )
       .render(80)
       .join('\n');
     const plain = env.stripAnsi(rendered);
@@ -516,6 +529,7 @@ describe('tool render helpers', () => {
             },
             { isPartial: true },
             { fg, bold },
+            keyHints,
           )
           .render(200);
         expect(lines[1]).toContain('subagent · analyst · running');
@@ -602,6 +616,7 @@ describe('tool render helpers', () => {
             fg: (_name: string, text: string) => text,
             bold: (text: string) => text,
           },
+          keyHints,
         )
         .render(200);
       const rendered = lines.join('\n');
@@ -665,6 +680,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(30);
     const plain = rendered.map(env.stripAnsi);
@@ -730,6 +746,7 @@ describe('tool render helpers', () => {
         },
         { expanded: false, isPartial: false },
         theme,
+        keyHints,
       )
       .render(200)
       .join('\n');
@@ -773,6 +790,7 @@ describe('tool render helpers', () => {
         },
         { isPartial: true },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(200)
       .join('\n');
@@ -831,7 +849,7 @@ describe('tool render helpers', () => {
 
     // 1. Collapsed by default (options without expanded, or expanded: false)
     const collapsedLines = runTool
-      .renderResult(dummyResult, { isPartial: false }, theme)
+      .renderResult(dummyResult, { isPartial: false }, theme, keyHints)
       .render(60);
     const plainCollapsed = collapsedLines.map(env.stripAnsi);
     const collapsedPlain = plainCollapsed.join('\n');
@@ -854,7 +872,7 @@ describe('tool render helpers', () => {
     );
 
     const unwrappedLines = runTool
-      .renderResult(dummyResult, { isPartial: false }, theme)
+      .renderResult(dummyResult, { isPartial: false }, theme, keyHints)
       .render(120);
     const unwrappedPlain = env.stripAnsi(unwrappedLines.join('\n'));
     expect(unwrappedLines).toHaveLength(5);
@@ -866,7 +884,12 @@ describe('tool render helpers', () => {
 
     // 2. Expanded on demand (expanded: true)
     const expandedLines = runTool
-      .renderResult(dummyResult, { expanded: true, isPartial: false }, theme)
+      .renderResult(
+        dummyResult,
+        { expanded: true, isPartial: false },
+        theme,
+        keyHints,
+      )
       .render(60);
     const plainExpanded = expandedLines.map(env.stripAnsi);
     const expandedPlain = plainExpanded.join('\n');
@@ -885,7 +908,12 @@ describe('tool render helpers', () => {
 
     const wideExpanded = env.stripAnsi(
       runTool
-        .renderResult(dummyResult, { expanded: true, isPartial: false }, theme)
+        .renderResult(
+          dummyResult,
+          { expanded: true, isPartial: false },
+          theme,
+          keyHints,
+        )
         .render(500)
         .join('\n'),
     );
@@ -926,7 +954,12 @@ describe('tool render helpers', () => {
 
     // Collapsed failed result: padding, title, metadata, error line, hint, padding.
     const collapsedLines = runTool
-      .renderResult(failedResult, { expanded: false, isPartial: false }, theme)
+      .renderResult(
+        failedResult,
+        { expanded: false, isPartial: false },
+        theme,
+        keyHints,
+      )
       .render(80);
     const collapsedPlain = collapsedLines.map(env.stripAnsi).join('\n');
 
@@ -993,6 +1026,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(80);
     expectNativeShell(resultLines, 80);
@@ -1053,6 +1087,7 @@ describe('tool render helpers', () => {
             { details: { tasks: [task] } },
             { isPartial },
             { fg: (_name: string, text: string) => text },
+            keyHints,
           )
           .render(240)
           .join('\n');
@@ -1119,6 +1154,7 @@ describe('tool render helpers', () => {
           },
           { isPartial, expanded: true },
           { fg: (_name: string, text: string) => text },
+          keyHints,
         )
         .render(200)
         .join('\n');
@@ -1171,6 +1207,7 @@ describe('tool render helpers', () => {
             },
             { expanded: true },
             { fg: (_name: string, text: string) => text },
+            keyHints,
           )
           .render(200)
           .join('\n');
@@ -1211,6 +1248,7 @@ describe('tool render helpers', () => {
           { details: { task } },
           { isPartial },
           { fg: (_name: string, text: string) => text },
+          keyHints,
         )
         .render(200)
         .join('\n');
@@ -1299,6 +1337,7 @@ describe('tool render helpers', () => {
               partial,
               { isPartial: true },
               { fg: (_name: string, text: string) => text },
+              keyHints,
             )
             .render(200)
             .join('\n'),
@@ -1357,6 +1396,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(80);
     expectNativeShell(lines, 80);
@@ -1402,6 +1442,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(80);
     expect(lines[1]).toContain(glyph);
@@ -1461,6 +1502,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(80);
     expectNativeShell(lines, 80);
@@ -1531,6 +1573,7 @@ describe('tool render helpers', () => {
           fg: (_name: string, text: string) => text,
           bold: (text: string) => text,
         },
+        keyHints,
       )
       .render(120);
     expectNativeShell(resultLines, 120);
@@ -1592,6 +1635,7 @@ describe('tool render helpers', () => {
           withNameResult,
           { expanded: false },
           { fg: (_name: string, text: string) => text },
+          keyHints,
         )
         .render(120)
         .join('\n'),
@@ -1620,6 +1664,7 @@ describe('tool render helpers', () => {
           withoutNameResult,
           { expanded: false },
           { fg: (_name: string, text: string) => text },
+          keyHints,
         )
         .render(120)
         .join('\n'),
@@ -1867,7 +1912,12 @@ describe('tool render helpers', () => {
 
       // Collapsed
       const collapsedLines = tool
-        .renderResult(result, { expanded: false, isPartial: false }, theme)
+        .renderResult(
+          result,
+          { expanded: false, isPartial: false },
+          theme,
+          keyHints,
+        )
         .render(80);
       expectNativeShell(collapsedLines, 80);
       expect(
@@ -1885,7 +1935,12 @@ describe('tool render helpers', () => {
       );
       // Expanded
       const expandedLines = tool
-        .renderResult(result, { expanded: true, isPartial: false }, theme)
+        .renderResult(
+          result,
+          { expanded: true, isPartial: false },
+          theme,
+          keyHints,
+        )
         .render(80);
       expectNativeShell(expandedLines, 80);
       expect(expandedLines[1], `${name} expanded status/brand icon`).toContain(
@@ -1900,7 +1955,12 @@ describe('tool render helpers', () => {
       );
       // Narrow width safety
       const narrowLines = tool
-        .renderResult(result, { expanded: false, isPartial: false }, theme)
+        .renderResult(
+          result,
+          { expanded: false, isPartial: false },
+          theme,
+          keyHints,
+        )
         .render(35);
       expect(
         narrowLines.every((l: string) => [...env.stripAnsi(l)].length <= 35),
@@ -1933,7 +1993,9 @@ describe('tool render helpers', () => {
       },
     };
     for (const expanded of [false, true]) {
-      const lines = tool.renderResult(result, { expanded }, theme).render(100);
+      const lines = tool
+        .renderResult(result, { expanded }, theme, keyHints)
+        .render(100);
       expectNativeShell(lines, 100);
       const text = env.stripAnsi(lines.join('\n'));
       expect(text).toContain('subagent extend');
@@ -1952,7 +2014,7 @@ describe('tool render helpers', () => {
         isError: true,
       };
       const failedLines = tool
-        .renderResult(failure, { expanded }, theme)
+        .renderResult(failure, { expanded }, theme, keyHints)
         .render(100);
       expectNativeShell(failedLines, 100);
       const failedText = env.stripAnsi(failedLines.join('\n'));
@@ -1962,7 +2024,9 @@ describe('tool render helpers', () => {
       );
       expect(failedText).not.toContain('undefined');
       for (const value of [result, failure]) {
-        const narrow = tool.renderResult(value, { expanded }, theme).render(35);
+        const narrow = tool
+          .renderResult(value, { expanded }, theme, keyHints)
+          .render(35);
         expect(
           narrow.every((line: string) => [...env.stripAnsi(line)].length <= 35),
         ).toBe(true);
@@ -1970,7 +2034,7 @@ describe('tool render helpers', () => {
     }
   });
 
-  it('dynamically adapts expansion hints when app.tools.expand keybinding changes and falls back to ctrl+o', () => {
+  it('uses injected expansion keys and omits unbound instructions across tools', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -2016,43 +2080,30 @@ describe('tool render helpers', () => {
       },
     };
 
-    try {
-      // 1. Configure custom keybinding 'ctrl+e'
-      setExpandKeybindingProviderForTests((kb) =>
-        kb === 'app.tools.expand' ? 'ctrl+e' : undefined,
-      );
-
+    for (const key of ['ctrl+e', '']) {
       for (const [name, result] of Object.entries(toolResults)) {
-        const tool = registered[name];
-        const collapsedText = tool
-          .renderResult(result, { expanded: false }, theme)
+        const collapsedText = registered[name]
+          .renderResult(result, { expanded: false }, theme, {
+            keyText: () => key,
+          })
           .render(100)
           .join('\n');
-        expect(
-          collapsedText,
-          `${name} should use custom keybinding ctrl+e`,
-        ).toContain('ctrl+e to expand');
-        expect(
-          collapsedText,
-          `${name} should NOT contain hardcoded ctrl+o`,
-        ).not.toContain('ctrl+o to expand');
+        if (key) expect(collapsedText, name).toContain('ctrl+e to expand');
+        else expect(collapsedText, name).not.toContain('to expand');
+        expect(collapsedText, name).not.toContain('ctrl+o to expand');
       }
-
-      // 2. Reset provider -> should fall back to 'ctrl+o'
-      resetExpandKeybindingProviderForTests();
-
-      for (const [name, result] of Object.entries(toolResults)) {
-        const tool = registered[name];
-        const collapsedText = tool
-          .renderResult(result, { expanded: false }, theme)
-          .render(100)
-          .join('\n');
-        expect(collapsedText, `${name} should fall back to ctrl+o`).toContain(
-          'ctrl+o to expand',
-        );
-      }
-    } finally {
-      resetExpandKeybindingProviderForTests();
+      const expandedList = registered.subagent_list_tasks
+        .renderResult(
+          toolResults.subagent_list_tasks,
+          { expanded: true },
+          theme,
+          { keyText: () => key },
+        )
+        .render(120)
+        .join('\n');
+      if (key)
+        expect(expandedList).toContain('preview: collapsed · ctrl+e to expand');
+      else expect(expandedList).not.toContain('to expand');
     }
   });
 
@@ -2080,7 +2131,7 @@ describe('tool render helpers', () => {
       content: [{ type: 'text', text: 'Subagent task not found' }],
     };
     const statusErrorLines = registered.subagent_status
-      .renderResult(statusErrorResult, { expanded: false }, theme)
+      .renderResult(statusErrorResult, { expanded: false }, theme, keyHints)
       .render(80);
     expect(statusErrorLines[1]).toContain('subagent status · failed');
     expect(statusErrorLines[2]).toContain('Subagent task not found');
@@ -2095,7 +2146,12 @@ describe('tool render helpers', () => {
       effort: 'low',
     };
     const statusBgLines = registered.subagent_status
-      .renderResult({ details: { task: bgTask } }, { expanded: false }, theme)
+      .renderResult(
+        { details: { task: bgTask } },
+        { expanded: false },
+        theme,
+        keyHints,
+      )
       .render(80);
     expect(statusBgLines[1]).toContain(
       'subagent status · analyst · running (background)',
@@ -2111,14 +2167,14 @@ describe('tool render helpers', () => {
       },
     };
     const sendRejectedLines = registered.subagent_send_message
-      .renderResult(rejectedResult, { expanded: false }, theme)
+      .renderResult(rejectedResult, { expanded: false }, theme, keyHints)
       .render(80);
     expect(sendRejectedLines[1]).toContain('subagent send message · rejected');
     expect(sendRejectedLines[2]).toContain('status: rejected');
     expect(sendRejectedLines[2]).toContain('task_id: t_1');
 
     const sendRejectedExpanded = registered.subagent_send_message
-      .renderResult(rejectedResult, { expanded: true }, theme)
+      .renderResult(rejectedResult, { expanded: true }, theme, keyHints)
       .render(80)
       .join('\n');
     expect(sendRejectedExpanded).toContain('reason: unsupported_runtime');
@@ -2134,7 +2190,7 @@ describe('tool render helpers', () => {
       },
     };
     const sendQueuedExpanded = registered.subagent_send_message
-      .renderResult(queuedResult, { expanded: true }, theme)
+      .renderResult(queuedResult, { expanded: true }, theme, keyHints)
       .render(80)
       .join('\n');
     expect(sendQueuedExpanded).toContain('subagent send message · queued');
@@ -2179,6 +2235,7 @@ describe('tool render helpers', () => {
         taskResult,
         { expanded: false, isPartial: false },
         { fg: (_n: string, t: string) => t },
+        keyHints,
       );
       expect(typeof component.handleMouse).toBe('function');
 
@@ -2195,6 +2252,7 @@ describe('tool render helpers', () => {
         taskResult,
         { expanded: false, isPartial: true },
         { fg: (_n: string, t: string) => t },
+        keyHints,
       );
       expect(typeof partialComponent.handleMouse).toBe('function');
       const partialMouseResult = partialComponent.handleMouse({

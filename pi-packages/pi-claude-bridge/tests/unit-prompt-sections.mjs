@@ -62,7 +62,7 @@ describe("Pi prompt sections", () => {
 		assert.equal(projected.split("PARENT POLICY").length - 1, 1);
 		assert.ok(projected.endsWith("<child_policy>\nCHILD POLICY\n</child_policy>"));
 		assert.match(projected, /CHILD TASK/);
-		assert.doesNotMatch(projected, /operating inside pi/);
+		assert.doesNotMatch(projected, /running inside pi/);
 
 		const wrapperSection = buildSystemPromptSections({ ...base, sections: { wrapper_policy: "WRAPPER POLICY" } }).wrapper_policy;
 		const derivedKey = `PREFIX\n\n${child.key}\n\n${wrapperSection}`;
@@ -91,7 +91,7 @@ describe("Pi prompt sections", () => {
 
 	it("guards extension and built-in section parts, including inherited and derived captures", () => {
 		for (const name of ["recovery", "addendum", "project_context", "skills", "tools", "rules", "docs", "cwd"]) {
-			for (const content of ["You are an expert coding assistant operating inside pi", "docs/custom-provider.md and docs/packages.md"]) {
+			for (const content of ["You are a coding assistant running inside pi", "docs/custom-provider.md and docs/packages.md"]) {
 				const captures = new PromptCaptures();
 				const parent = record(captures, { sections: { [name]: content } });
 				assert.throws(() => project(parent.capture), /refusing to send this prompt/, name);

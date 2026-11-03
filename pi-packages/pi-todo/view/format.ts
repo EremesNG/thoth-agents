@@ -1,4 +1,4 @@
-import type { Theme } from '@earendil-works/pi-coding-agent';
+import type { KeybindingHints, Theme } from '@earendil-works/pi-coding-agent';
 import {
   Box,
   type Component,
@@ -187,7 +187,6 @@ function renderNative(
   return part === 'start' ? [padding, ...rows] : [...rows, padding];
 }
 
-const EXPAND_HINT = 'ctrl+o to expand';
 const GLYPH_FALLBACK: Record<TaskStatus, string> = {
   pending: '○',
   in_progress: '◐',
@@ -471,9 +470,12 @@ export function renderTodoResult(
   result: ResultLike,
   theme: Theme,
   options: { isPartial?: boolean; expanded?: boolean } = {},
-  context?: RenderIndicatorContext & { expanded?: boolean },
+  context?: RenderIndicatorContext &
+    Partial<KeybindingHints> & { expanded?: boolean },
 ): Component {
   context = detachRenderContext(context);
+  const expandKey = context?.keyText?.('app.tools.expand') ?? '';
+  const expandHint = expandKey ? `${expandKey} to expand` : '';
   const details = result.details as TaskDetails | undefined;
   if (context?.state) {
     context.state[HAS_RESULT] = true;
@@ -513,11 +515,13 @@ export function renderTodoResult(
             return kit.collapse(theme, lines, {
               expanded,
               budget: 1,
-              expandHint: EXPAND_HINT,
+              expandHint,
             });
           }
           if (expanded || view.rows.length === 0) return lines;
-          return [lines[0], clip(theme.fg('muted', EXPAND_HINT))];
+          return expandHint
+            ? [lines[0], clip(theme.fg('muted', expandHint))]
+            : [lines[0]];
         };
         if (kit) {
           return kit.card(

@@ -321,7 +321,12 @@ describe('standard tool footer per mode', () => {
   ] as const)('collapses with the %s ellipsis and separator', (mode, hint) => {
     const kit = createRenderKit({}, undefined, mode);
     expect(
-      kit.collapse(theme, ['a', 'b', 'c', 'd'], { budget: 1 }).at(-1),
+      kit
+        .collapse(theme, ['a', 'b', 'c', 'd'], {
+          budget: 1,
+          expandHint: 'ctrl+o to expand',
+        })
+        .at(-1),
     ).toBe(hint);
   });
 

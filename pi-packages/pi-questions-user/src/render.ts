@@ -368,6 +368,7 @@ export function createQuestionRenderers(
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       context = detachRenderContext(context);
+      const expandKey = context?.keyText?.('app.tools.expand') ?? '';
       const state = renderState(context);
       state.hasResult = true;
       state.collapsed = false;
@@ -403,6 +404,7 @@ export function createQuestionRenderers(
                 kit.collapse(theme, rows(bodyWidth).rows, {
                   expanded,
                   budget: COLLAPSED_ROWS,
+                  expandHint: expandKey ? `${expandKey} to expand` : '',
                 }),
               status,
               context,

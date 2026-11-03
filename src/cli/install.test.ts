@@ -162,7 +162,7 @@ describe('install', () => {
           if (command === 'node')
             return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
           if (args[0] === '--version')
-            return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+            return { exitCode: 0, stdout: '1.5.0', stderr: '' };
           if (args[0] === 'list')
             return {
               exitCode: 0,

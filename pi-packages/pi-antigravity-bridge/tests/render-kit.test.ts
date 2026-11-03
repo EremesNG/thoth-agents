@@ -1,3 +1,4 @@
+import { keyHint } from '@earendil-works/pi-coding-agent';
 import type {
 	ExtensionAPI,
 	Theme,
@@ -43,6 +44,8 @@ function context(
 	overrides: Partial<ToolRenderContext> = {},
 ): ToolRenderContext {
 	return {
+		keyText: (action) => action === "app.tools.expand" ? "ctrl+o" : "",
+		keyHint,
 		args: {},
 		toolCallId: "render-test",
 		invalidate() {},
@@ -532,6 +535,43 @@ test("AskAntigravity preserves result tags and expanded versus preview content w
 		}
 		if (token) withdrawRenderKit(token);
 	}
+});
+
+test.each(["native", "KIT"])("AskAntigravity uses the host's custom expand binding in %s output", async (shell) => {
+	initTheme("dark", false);
+	const tool = await askTool();
+	if (shell === "KIT") registerKit();
+	const component = tool.renderResult(
+		{
+			content: [{ type: "text", text: "one\ntwo\nthree\nfour\nfive\nsix\nseven" }],
+			details: { exitCode: 0 },
+		},
+		{ expanded: false, isPartial: false },
+		theme,
+		context({
+			isPartial: false,
+			keyText: (action) => action === "app.tools.expand" ? "ctrl+e" : "",
+		}),
+	);
+	expect(component.render(160).join("\n")).toContain("… (ctrl+e to expand)");
+});
+
+test.each(["native", "KIT"])("AskAntigravity omits the instruction when expand is unbound in %s output", async (shell) => {
+	const tool = await askTool();
+	if (shell === "KIT") registerKit();
+	const component = tool.renderResult(
+		{
+			content: [{ type: "text", text: "one\ntwo\nthree\nfour\nfive\nsix\nseven" }],
+			details: { exitCode: 0 },
+		},
+		{ expanded: false, isPartial: false },
+		theme,
+		context({ isPartial: false, keyText: () => "" }),
+	);
+	const text = component.render(160).join("\n");
+	expect(text).toContain("…");
+	expect(text).not.toContain("to expand");
+	expect(text).not.toContain("(");
 });
 
 test.each([

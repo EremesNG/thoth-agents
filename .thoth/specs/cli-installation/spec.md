@@ -478,13 +478,13 @@ Complete Pi installation and applied Update MUST install and individually verify
 
 ### Requirement: Pi minimum version floor
 
-The Pi installer MUST reject a detected Pi older than `0.99.0` with a diagnostic naming the `>=0.99.0` requirement before changing any Pi state, and MUST accept Pi `0.99.0` and newer. This floor supersedes every Pi version named in a retained canonical scenario precondition of any capability (including Pi `0.86.1` in `cli-installation`, `external-required-skills`, `multi-harness-agent-pack` and `project-tooling`): such a precondition MUST be read as a supported Pi `>=0.99.0`, and the scenario's other assertions remain in force.
+The Pi installer MUST reject a detected Pi older than `1.5.0` with a diagnostic naming the `>=1.5.0` requirement before changing any Pi state, and MUST accept Pi `1.5.0` and newer. This floor supersedes every Pi version named in a retained canonical scenario precondition of any capability (including Pi `0.86.1` and `0.99.0` in `cli-installation`, `external-required-skills`, `multi-harness-agent-pack` and `project-tooling`): such a precondition MUST be read as a supported Pi `>=1.5.0`, and the scenario's other assertions remain in force.
 
 #### Scenario: Pi minimum version floor
 
-- **GIVEN** a Pi installation reporting version 0.98.x
+- **GIVEN** a Pi installation reporting version 1.4.x
 - **WHEN** the user runs the Pi install
-- **THEN** it fails with the `Pi >=0.99.0` diagnostic without changing Pi state, while a Pi reporting 0.99.0 or 1.0.2 proceeds
+- **THEN** it fails with the `Pi >=1.5.0` diagnostic without changing Pi state, while a Pi reporting 1.5.0 or 1.6.0 proceeds
 
 ### Requirement: Install the first-party Pi task-list extension
 

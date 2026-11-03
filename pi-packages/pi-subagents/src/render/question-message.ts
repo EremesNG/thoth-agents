@@ -4,6 +4,7 @@ import { themeDim, themeFg, themeTitle } from '../ui/theme.js';
 import { SUBAGENT_NOTIFICATION_MARKER } from './completion-message.js';
 import { iconAwareRenderer } from './icon-aware-component.js';
 import { boxedComponent } from './tools/components.js';
+import { resolveExpandHint } from './tools/expansion-hint.js';
 import { formatTaskLabel } from './tools/formatting.js';
 
 export function sendSubagentQuestionMessage(
@@ -52,6 +53,7 @@ export const renderSubagentQuestionMessage = iconAwareRenderer(
     theme: any,
   ) {
     const details = message.details ?? {};
+    const expandHint = resolveExpandHint('to expand', options);
     const label = formatTaskLabel(
       details.task ?? { agent: details.agent },
       true,
@@ -73,7 +75,7 @@ export const renderSubagentQuestionMessage = iconAwareRenderer(
             theme,
             `subagent: ${details.agent ?? 'subagent'} ${resolveIcon('separator', '·')} awaiting orchestrator reply`,
           ),
-          themeDim(theme, 'ctrl+o to expand'),
+          ...(expandHint ? [themeDim(theme, expandHint)] : []),
         ];
     return boxedComponent(lines, {
       title: themeFg(

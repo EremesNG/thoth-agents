@@ -2,7 +2,7 @@
 
 Session-owned task lists for Pi. Registers the `todo` tool, `/todos` command,
 and a Todos section in pi-core's shared Work panel. Requires Node >=22.19 and
-Pi >=0.99.0.
+Pi >=1.5.0.
 
 ## Install
 
@@ -63,7 +63,7 @@ Open-task reinjection uses the append-only approach demonstrated by
   is never substituted for the requested session.
 - Before each agent start, appends a compact block of this session's pending
   and in-progress tasks. Runtime detection checks mutable
-  `systemPromptOptions.appendSystemPrompt` (present in both Pi 0.99.0 and 1.0.2).
+  `systemPromptOptions.appendSystemPrompt`.
   Unsupported hosts degrade without throwing. This never returns a replacement
   system prompt, preserving Pi/Claude bridge prompt sections. Repeated hooks
   replace the extension's own block instead of duplicating it.
@@ -129,5 +129,5 @@ pnpm --filter @thoth-agents/pi-todo run test:real-sdk
 
 The packed real-SDK test packs both workspace packages, installs their tarballs
 with npm into an OS temporary directory, and loads the installed extension with
-Pi 1.4.0. It uses the locally installed SDK peers and npm's offline mode: no model
+Pi 1.5.0. It uses the locally installed SDK peers and npm's offline mode: no model
 credentials, provider calls, or registry access are required.

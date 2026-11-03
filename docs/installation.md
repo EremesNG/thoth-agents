@@ -171,7 +171,7 @@ defaults; thoth-agents never edits that cache.
 
 ## Pi
 
-Pi requires `@earendil-works/pi-coding-agent` `>=0.99.0` and Node.js
+Pi requires `@earendil-works/pi-coding-agent` `>=1.5.0` and Node.js
 `>=22.19.0`. The installer rejects older Pi versions before changing Pi state.
 Preview the complete global setup before applying it:
 

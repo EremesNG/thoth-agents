@@ -6,6 +6,8 @@ import {
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_status tool', () => {
@@ -172,7 +174,7 @@ describe('subagent_status tool', () => {
     const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
 
     const collapsed = statusTool
-      .renderResult(result, { expanded: false }, theme)
+      .renderResult(result, { expanded: false }, theme, keyHints)
       .render(80);
     expect(collapsed[0]).toBe(' '.repeat(80));
     expect(collapsed.at(-1)).toBe(' '.repeat(80));
@@ -185,7 +187,7 @@ describe('subagent_status tool', () => {
     expect(collapsed.join('\n')).not.toContain('analysis completed cleanly');
 
     const expanded = statusTool
-      .renderResult(result, { expanded: true }, theme)
+      .renderResult(result, { expanded: true }, theme, keyHints)
       .render(80);
     expect(expanded[0]).toBe(' '.repeat(80));
     expect(expanded.at(-1)).toBe(' '.repeat(80));

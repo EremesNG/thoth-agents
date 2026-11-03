@@ -1,3 +1,4 @@
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
@@ -22,7 +23,7 @@ interface LogDisplayDetails {
   foldedLineCount: number;
 }
 
-interface RenderContext extends RenderIndicatorContext {
+interface RenderContext extends RenderIndicatorContext, Partial<KeybindingHints> {
   args?: Record<string, unknown>;
 }
 
@@ -170,9 +171,9 @@ export function renderBackgroundTaskLogDisplay(
               ? themed(
                   theme,
                   'dim',
-                  `Folded ${details.foldedLineCount} display lines (${hint}).`,
+                  `Folded ${details.foldedLineCount} display lines${hint ? ` (${hint})` : ''}.`,
                 )
-              : themed(theme, 'dim', `Compact log (${hint} for full display).`);
+              : themed(theme, 'dim', `Compact log${hint ? ` (${hint} for full display)` : ''}.`);
           rows = expanded
             ? [
                 meta,

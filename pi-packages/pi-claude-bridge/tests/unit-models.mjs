@@ -67,6 +67,7 @@ describe("MODELS projection", () => {
 		// Expected prices come from the source catalog, not the bridge projection.
 		// Rates are USD per million tokens; this sample costs $0.0125 at current Haiku prices.
 		const expectedCost = {
+			totalFromProvider: false,
 			input: catalogModel.cost.input / 1_000_000 * 2_000,
 			output: catalogModel.cost.output / 1_000_000 * 1_000,
 			cacheRead: catalogModel.cost.cacheRead / 1_000_000 * 5_000,

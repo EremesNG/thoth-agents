@@ -1,3 +1,4 @@
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
@@ -31,10 +32,11 @@ const FAILED_STATUS =
 /** Completion/failure cards with an unframed native summary when KIT is absent. */
 export function renderBackgroundMessage(
   message: MessageLike,
-  options: { expanded?: boolean } = {},
+  options: { expanded?: boolean } & Partial<KeybindingHints> = {},
   theme?: unknown,
 ): Component {
   const expanded = options.expanded === true;
+  const expandHint = resolveExpandHint(options);
   const details = readDetails(message.details);
   const fullLines = contentText(message.content).split(/\r?\n/);
   if (fullLines[0] === AUTOMATED_NOTIFICATION_MARKER) fullLines.shift();
@@ -71,12 +73,11 @@ export function renderBackgroundMessage(
             rows.push(themed(theme, 'dim', `+${extra} more not shown`));
           const room = COLLAPSED_LINES - 1;
           if (kit) {
-            const expandHint = resolveExpandHint();
             lines = kit.collapse(t, rows, {
               budget: room,
               expandHint,
             });
-            if (rows.length <= room)
+            if (rows.length <= room && expandHint)
               lines.push(themed(theme, 'dim', `(${expandHint})`));
           } else {
             lines =
@@ -86,7 +87,7 @@ export function renderBackgroundMessage(
                     themed(theme, 'dim', `+${rows.length - room + 1} more`),
                   ]
                 : rows;
-            lines.push(themed(theme, 'dim', `(${resolveExpandHint()})`));
+            if (expandHint) lines.push(themed(theme, 'dim', `(${expandHint})`));
           }
         }
         const label = [title.name, title.summary].filter(Boolean).join(' ');

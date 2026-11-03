@@ -3,6 +3,8 @@ import {
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
 import {
+  KeybindingsManager,
+  setKeybindings,
   stripTerminalSequences,
   type TUI,
   visibleWidth,
@@ -14,7 +16,17 @@ import { createMockCtx, createMockPi } from './test/helpers.js';
 import { registerTodoTool, setActiveRenderSession } from './todo.js';
 
 let token: ReturnType<typeof registerRenderKit> | undefined;
-beforeAll(() => initTheme('dark', false));
+beforeAll(() => {
+  initTheme('dark', false);
+  setKeybindings(
+    new KeybindingsManager({
+      'app.tools.expand': {
+        defaultKeys: 'ctrl+o',
+        description: 'Expand tool output',
+      },
+    }),
+  );
+});
 afterEach(() => {
   if (token) withdrawRenderKit(token);
   token = undefined;

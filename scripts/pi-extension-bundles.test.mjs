@@ -21,7 +21,10 @@ const workspace = fileURLToPath(new URL('..', import.meta.url));
 const packages = {
   'pi-subagents': { tool: 'subagent_run' },
   'pi-todo': { tool: 'todo', command: 'todos' },
-  'pi-questions-user': { tool: 'ask_user_question' },
+  'pi-questions-user': {
+    tool: 'ask_user_question',
+    assets: ['CHANGELOG.md'],
+  },
   'pi-background-tasks': {
     command: 'bg',
     assets: ['dist/windows-job-helper.ps1', 'dist/windows-job-helper.cs'],
@@ -35,7 +38,10 @@ const packages = {
     tool: 'AskCodex',
     assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
   },
-  'pi-claude-bridge': { provider: 'claude-bridge' },
+  'pi-claude-bridge': {
+    provider: 'claude-bridge',
+    assets: ['CHANGELOG.md'],
+  },
   'pi-openai-fast': { event: 'before_provider_request' },
   'pi-thoth-theme': { event: 'session_start' },
   'pi-sidebar': { command: 'sidebar', event: 'session_start' },

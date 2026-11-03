@@ -135,7 +135,7 @@ describe('openai fast extension', () => {
   it.each([
     'gpt-5-codex',
     'gpt-5.5-codex',
-  ])('returns priority-priced %s usage without changing the original assistant message', async (id) => {
+  ])('returns priority-priced %s usage with absent provenance without changing the original assistant message', async (id) => {
     const base = pricedModel('openai-codex-2', id, 'openai-codex-responses');
     const h = setup([base]);
     await h.start();
@@ -157,7 +157,48 @@ describe('openai fast extension', () => {
     expect(replacement).not.toBe(message);
     expect(replacement.usage).not.toBe(message.usage);
     expect(replacement.usage.cost).not.toBe(message.usage.cost);
+    expect(replacement.usage.cost).not.toHaveProperty('totalFromProvider');
     expect(message).toEqual(original);
+  });
+
+  it('preserves catalog-estimate provenance when applying priority pricing', async () => {
+    const base = pricedModel(
+      'openai-codex',
+      'gpt-5-codex',
+      'openai-codex-responses',
+    );
+    const h = await prioritizedRequest(base);
+    const message = assistantMessage(base);
+    message.usage.cost.totalFromProvider = false;
+    const original = structuredClone(message);
+    const replacement = h.end(message)?.message as AssistantMessage;
+    expect(replacement.usage.cost).toEqual({
+      input: 2,
+      output: 4,
+      cacheRead: 6,
+      cacheWrite: 8,
+      total: 20,
+      totalFromProvider: false,
+    });
+    expect(message).toEqual(original);
+  });
+
+  it.each([
+    10, 7,
+  ])('leaves provider-billed cost untouched (total %s)', async (total) => {
+    const base = pricedModel(
+      'openai-codex',
+      'gpt-5-codex',
+      'openai-codex-responses',
+    );
+    const h = await prioritizedRequest(base);
+    const message = assistantMessage(base);
+    message.usage.cost.total = total;
+    message.usage.cost.totalFromProvider = true;
+    const original = structuredClone(message);
+    expect(h.end(message)).toBeUndefined();
+    expect(message).toEqual(original);
+    expect(h.end(assistantMessage(base))).toBeUndefined();
   });
 
   it('uses the Codex priority multiplier of 2.5 for exactly gpt-5.5', async () => {

@@ -1,3 +1,5 @@
+const keyHints = { keyText: () => 'ctrl+o' };
+
 import { describe, expect, it } from 'vitest';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
@@ -84,7 +86,7 @@ describe('subagent_list_tasks tool', () => {
     });
 
     expect(result.content[0].text).toContain('Listed 1 subagent task');
-    expect(result.content[0].text).toContain('ctrl+o to expand');
+    expect(result.content[0].text).not.toContain('to expand');
     expect(result.content[0].text).not.toContain('preview:');
     expect(result.content[0].text).not.toContain('to=functions.memory_get');
     expect(result.details.tasks[0].result).toBeUndefined();
@@ -94,6 +96,7 @@ describe('subagent_list_tasks tool', () => {
         result,
         { expanded: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(120)
       .join('\n');
@@ -110,6 +113,7 @@ describe('subagent_list_tasks tool', () => {
         result,
         { expanded: true },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(160)
       .join('\n');

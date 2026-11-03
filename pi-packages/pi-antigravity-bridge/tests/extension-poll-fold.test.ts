@@ -1,3 +1,4 @@
+import { keyHint, keyText } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { EntryRenderer, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
@@ -83,7 +84,7 @@ async function session(discovery = "private") {
 	};
 	const render = (index: number, expanded = false) => {
 		const entry = entries[index];
-		const component = renderers.get(entry.name)?.({ data: entry.data } as any, { expanded }, theme);
+		const component = renderers.get(entry.name)?.({ data: entry.data } as any, { expanded, keyText, keyHint }, theme);
 		assert.ok(component, `${entry.name} needs a registered renderer`);
 		return component;
 	};

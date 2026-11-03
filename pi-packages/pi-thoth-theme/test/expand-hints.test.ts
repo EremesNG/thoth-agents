@@ -61,7 +61,11 @@ const factories = {
   'grep-raw-unframed': (cfg: ThemeConfig) => createCustomGrepTool('.', cfg),
 };
 
-function component(name: keyof typeof factories, mode: IconMode) {
+function component(
+  name: keyof typeof factories,
+  mode: IconMode,
+  key = 'ctrl+o',
+) {
   const renderer: ToolRenderers = factories[name](config(mode));
   let output = result();
   if (name === 'edit')
@@ -82,16 +86,31 @@ function component(name: keyof typeof factories, mode: IconMode) {
     { expanded: false, isPartial: false },
     theme,
     {
+      keyText: () => key,
+      keyHint: (_action: string, description: string) =>
+        key ? `${key} ${description}` : description,
       args: { content: text },
       ...(name.endsWith('unframed') ? {} : { state: {} }),
       executionStarted: true,
       isError: false,
       // Unframed transcript contexts intentionally omit the SDK's frame identity.
-    } as Parameters<NonNullable<ToolRenderers['renderResult']>>[3],
+    } as unknown as Parameters<NonNullable<ToolRenderers['renderResult']>>[3],
   );
 }
 
 const names = Object.keys(factories) as (keyof typeof factories)[];
+const configuredBindings = [
+  'alt+|',
+  'ctrl+o/alt+o',
+  'ctrl+\\',
+  'shift+tab',
+  '|',
+  '\\',
+  '/',
+  'ctrl+]',
+  'alt+-',
+  'ctrl+|/alt+o',
+];
 
 describe.each([
   'nerd',
@@ -117,6 +136,44 @@ describe.each([
 
   it.each(
     names,
+  )('%s uses the injected binding and omits unbound instructions', (name) => {
+    const custom = component(name, mode, 'ctrl+e');
+    expect(stripTerminalSequences(custom.render(120).join('\n'))).toContain(
+      'ctrl+e to expand',
+    );
+    expect(stripTerminalSequences(custom.render(20).join('\n'))).toContain(
+      'ctrl+e',
+    );
+    const unbound = component(name, mode, '');
+    expect(
+      stripTerminalSequences(unbound.render(120).join('\n')),
+    ).not.toContain('to expand');
+    expect(
+      stripTerminalSequences(unbound.render(120).join('\n')),
+    ).not.toContain('ctrl+o');
+    for (const width of [0, 1, 4, 9, 20, 120]) {
+      expect(
+        unbound.render(width).every((row) => visibleWidth(row) <= width),
+      ).toBe(true);
+    }
+  });
+
+  it.each(
+    configuredBindings,
+  )('bash preserves %s when the preceding text must be truncated', (key) => {
+    const rendered = component('bash', mode, key);
+    expect(stripTerminalSequences(rendered.render(120).join('\n'))).toContain(
+      `${key} to expand`,
+    );
+    const narrow = rendered.render(20).map(stripTerminalSequences);
+    expect(
+      narrow.some((row) => row.endsWith(`${icon('separator', mode)} ${key} │`)),
+    ).toBe(true);
+    expect(narrow.every((row) => visibleWidth(row) <= 20)).toBe(true);
+  });
+
+  it.each(
+    names,
   )('%s preserves the pre-change wide output byte for byte', (name) => {
     const rendered = component(name, mode);
     const wide = rendered.render(120);
@@ -132,14 +189,19 @@ describe.each([
   });
 
   it.each([
-    undefined,
-    'Alt+X to expand',
-  ])('card(collapse) keeps the %s hint in full and split frames', (expandHint) => {
+    'ctrl+o',
+    'Alt+X',
+    ...configuredBindings,
+  ])('card(collapse) keeps the %s key in full and split frames', (key) => {
     const kit = createRenderKit({}, undefined, mode);
-    const body = kit.collapse(theme, lines, { expandHint });
+    const body = kit.collapse(theme, lines, {
+      expandHint: `${key} to expand`,
+    });
     for (const part of ['full', 'end'] as const) {
+      expect(
+        stripTerminalSequences(kit.card(theme, { body, part }, 120).join('\n')),
+      ).toContain(`${key} to expand`);
       const narrow = kit.card(theme, { body, part }, 20);
-      const key = expandHint ? 'Alt+X' : 'ctrl+o';
       expect(
         narrow
           .map(stripTerminalSequences)

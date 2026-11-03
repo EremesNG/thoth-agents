@@ -6,6 +6,7 @@ import type {
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
@@ -222,7 +223,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
           bodyLines.push(
             theme.fg(
               'dim',
-              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
+              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
             ),
           );
         }

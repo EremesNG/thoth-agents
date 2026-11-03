@@ -98,7 +98,7 @@ describe("resumed structured prompt capture", () => {
 		assert.equal(occurrences(projected, APPEND), 1);
 		assert.equal(occurrences(projected, CONTEXT), 1);
 		assert.equal(occurrences(projected, SKILL_PATH), 1);
-		assert.doesNotMatch(projected, /operating inside pi|docs\/packages\.md|docs\/custom-provider\.md/);
+		assert.doesNotMatch(projected, /running inside pi|docs\/packages\.md|docs\/custom-provider\.md/);
 	});
 
 	it("refuses same-length changed section content rather than reusing a resumed capture", () => {

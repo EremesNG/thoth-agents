@@ -1,4 +1,5 @@
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
+import { keyHint, keyText } from '@earendil-works/pi-coding-agent';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -34,6 +35,8 @@ type RenderContext = Parameters<NonNullable<ToolDefinition['renderCall']>>[2];
 
 function context(overrides: Partial<RenderContext> = {}): RenderContext {
   return {
+    keyText,
+    keyHint,
     args: { action: 'create', subject: 'write tests' },
     toolCallId: 'tc',
     state: {},

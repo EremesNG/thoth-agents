@@ -7,6 +7,8 @@ import {
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_result tool', () => {
@@ -135,6 +137,7 @@ describe('subagent_result tool', () => {
         result,
         { expanded: false, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(80)
       .join('\n');
@@ -148,6 +151,7 @@ describe('subagent_result tool', () => {
         result,
         { expanded: true, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(120)
       .join('\n');

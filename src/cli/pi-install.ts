@@ -47,7 +47,7 @@ import {
 import { type PiPathOptions, type PiPaths, resolvePiPaths } from './pi-paths';
 import { syncPiSpecialists } from './pi-resources';
 
-export const PI_MINIMUM_VERSION = '0.99.0';
+export const PI_MINIMUM_VERSION = '1.5.0';
 export const PI_NODE_MINIMUM = '22.19.0';
 export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export interface PiSetupPackageSpec extends PiExternalPackageSpec {

@@ -5,6 +5,8 @@ import { renderSubagentCompletionMessage } from '../../src/render/completion-mes
 import { renderSubagentQuestionMessage } from '../../src/render/question-message.js';
 import { boxedComponent } from '../../src/render/tools/components.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const theme = {
   fg: (_role: string, text: string) => text,
   bg: (_role: string, text: string) => text,
@@ -53,7 +55,7 @@ const renderers = [
             },
           },
         },
-        { expanded: true },
+        { ...keyHints, expanded: true },
         theme,
       ),
     expected: [
@@ -80,7 +82,7 @@ const renderers = [
             },
           },
         },
-        { expanded: false },
+        { ...keyHints, expanded: false },
         theme,
       ),
     expected: [
@@ -105,7 +107,7 @@ const renderers = [
             },
           },
         },
-        { expanded: true },
+        { ...keyHints, expanded: true },
         theme,
       ),
     expected: [
@@ -129,7 +131,7 @@ const renderers = [
             question: 'Which scope?\nRuntime only?',
           },
         },
-        { expanded },
+        { ...keyHints, expanded },
         theme,
       ),
     expected: [

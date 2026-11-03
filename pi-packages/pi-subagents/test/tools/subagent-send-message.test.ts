@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_send_message tool', () => {
@@ -25,7 +27,7 @@ describe('subagent_send_message tool', () => {
       async ({ registerLiveBridge, signal }) => {
         registerLiveBridge?.({
           supported: true,
-          detected_pi_version: '0.99.1',
+          detected_pi_version: '1.5.0',
           steer: (message) =>
             message === 'extension input'
               ? handled
@@ -107,7 +109,7 @@ describe('subagent_send_message tool', () => {
     expect(readme).toContain('pending_message_count');
     expect(readme).toContain('undelivered_message_count');
     expect(readme).toContain('unsupported_runtime');
-    expect(readme).toContain('>=0.99.0');
+    expect(readme).toContain('>=1.5.0');
   });
 
   it('accepts immediate same-parent messages from sessionManager context before bridge readiness', async () => {
@@ -124,7 +126,7 @@ describe('subagent_send_message tool', () => {
       setTimeout(() => {
         registerLiveBridge?.({
           supported: true,
-          detected_pi_version: '0.82.1',
+          detected_pi_version: '1.5.0',
           steer: supportedSteer,
         });
       }, 25);
@@ -238,7 +240,7 @@ describe('subagent_send_message tool', () => {
       backgroundTaskId,
       {
         supported: true,
-        detected_pi_version: '0.82.1',
+        detected_pi_version: '1.5.0',
         steer: supportedSteer,
       },
       'parent-a',
@@ -248,7 +250,7 @@ describe('subagent_send_message tool', () => {
       legacyTaskId,
       {
         supported: false,
-        detected_pi_version: '0.81.0',
+        detected_pi_version: '1.4.9',
         steer: vi.fn(),
       },
       'parent-a',
@@ -300,10 +302,10 @@ describe('subagent_send_message tool', () => {
     expect(unsupported.details).toMatchObject({
       status: 'rejected',
       reason: 'unsupported_runtime',
-      required_pi_version: '>=0.99.0',
-      detected_pi_version: '0.81.0',
+      required_pi_version: '>=1.5.0',
+      detected_pi_version: '1.4.9',
     });
-    expect(unsupported.content[0].text).toContain('>=0.99.0');
+    expect(unsupported.content[0].text).toContain('>=1.5.0');
     expect(manager.getTask(legacyTaskId)?.pending_message_count ?? 0).toBe(0);
 
     for (let index = 0; index < 15; index += 1) {
@@ -394,7 +396,7 @@ describe('subagent_send_message tool', () => {
     const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
 
     const collapsed = sendTool
-      .renderResult(queuedResult, { expanded: false }, theme)
+      .renderResult(queuedResult, { expanded: false }, theme, keyHints)
       .render(80);
     expect(collapsed[0]).toBe(' '.repeat(80));
     expect(collapsed.at(-1)).toBe(' '.repeat(80));
@@ -404,7 +406,7 @@ describe('subagent_send_message tool', () => {
     expect(collapsed.join('\n')).toContain('ctrl+o to expand');
 
     const expanded = sendTool
-      .renderResult(queuedResult, { expanded: true }, theme)
+      .renderResult(queuedResult, { expanded: true }, theme, keyHints)
       .render(80);
     expect(expanded[0]).toBe(' '.repeat(80));
     expect(expanded.at(-1)).toBe(' '.repeat(80));

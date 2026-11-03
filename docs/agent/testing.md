@@ -104,7 +104,7 @@ subagent extensions. Parent skill discovery uses exactly the root package manife
 supporting assets from `THOTH_EVAL_SKILLS_DIR` into the temporary agent directory.
 Missing required skills produce named setup warnings; they are never installed
 or silently substituted. The source directory is read-only to the harness.
-SDK 1.4.0's `noSkills` still accepts explicit `additionalSkillPaths`, so unrelated
+SDK 1.5.0's `noSkills` still accepts explicit `additionalSkillPaths`, so unrelated
 operator skills remain excluded.
 
 Real subagent children use production resource loading. The harness writes only
@@ -372,7 +372,7 @@ do not replace it.
 For Pi question-dock/editor-slot changes, run full offline tests and typechecks
 for pi-core, pi-questions-user and pi-subagents (including `test/ui`), plus the
 repository checks, build and built-extension bundle tests above. Focus checks
-must include real SDK/TUI 1.4.0 coverage of overlay focus recapture, expanded and
+must include real SDK/TUI 1.5.0 coverage of overlay focus recapture, expanded and
 collapsed close repair, foreign-overlay preservation, editor submission,
 fullscreen transcript scrolling and open-tool-card invalidation. Follow with a
 live check of uncovered/scrollable chat, collapsed editor input, state-preserving
@@ -399,7 +399,7 @@ the change must still be fixed before closeout.
 
 ## Packed Pi verification
 
-When packed Pi verification is in scope, it requires Pi `>=0.99.0` and Node.js
+When packed Pi verification is in scope, it requires Pi `>=1.5.0` and Node.js
 `>=22.19.0`.
 Every real Pi observation must set `PI_CODING_AGENT_DIR` to a disposable
 directory and use `--no-extensions` plus the installed and observer extensions

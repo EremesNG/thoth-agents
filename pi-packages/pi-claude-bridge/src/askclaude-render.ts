@@ -1,8 +1,4 @@
-import {
-  keyHint,
-  type Theme,
-  type ToolDefinition,
-} from '@earendil-works/pi-coding-agent';
+import type { Theme, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import {
   Box,
   type Component,
@@ -164,6 +160,8 @@ export function createAskClaudeRenderers(
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       context = detachRenderContext(context);
+      const expandKey = context?.keyText?.('app.tools.expand') ?? '';
+      const expandHint = expandKey ? `${expandKey} to expand` : '';
       const details = result.details as
         | {
             prompt?: string;
@@ -194,7 +192,11 @@ export function createAskClaudeRenderers(
             wrapTextWithAnsi(body, bodyWidth).map((line) =>
               kit.fg(theme, isPartial ? 'muted' : 'toolOutput', line),
             ),
-            { expanded, budget: 8 },
+            {
+              expanded,
+              budget: 8,
+              expandHint,
+            },
           ),
           ...(isPartial && details?.actions
             ? [kit.fg(theme, 'muted', details.actions)]
@@ -270,8 +272,10 @@ export function createAskClaudeRenderers(
         } else {
           const preview = previewText(body);
           text += `\n${theme.fg('toolOutput', preview.text)}`;
-          if (preview.truncated)
-            text += `\n${theme.fg('dim', `${resolveIcon('ellipsis', '…')} (${keyHint('app.tools.expand', 'to expand')})`)}`;
+          if (preview.truncated) {
+            const hint = expandHint ? ` (${expandHint})` : '';
+            text += `\n${theme.fg('dim', `${resolveIcon('ellipsis', '…')}${hint}`)}`;
+          }
         }
         return text;
       };

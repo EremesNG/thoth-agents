@@ -54,9 +54,9 @@ export function buildAskClaudeParams(defaults: AskClaudeDefaults) {
 	const modeValues: readonly AskClaudeMode[] = defaults.allowFull ? ["read", "full", "none"] : ["read", "none"];
 	return Type.Object({
 		prompt: Type.String({ description: `The question or task for Claude Code. ${visibility} Don't research up front, let Claude explore.` }),
-		mode: Type.Optional(StringEnum(modeValues, { description: modeDescription(defaults) })),
+		mode: Type.Optional(Type.Unsafe<AskClaudeMode>({ ...StringEnum(modeValues, { description: modeDescription(defaults) }) })),
 		model: Type.Optional(Type.String({ description: 'Claude model (e.g. "opus", "sonnet", "haiku", or full ID). Defaults to "opus".' })),
-		thinking: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, { description: "Thinking effort level. Omit to use Claude Code's default." })),
+		thinking: Type.Optional(Type.Unsafe<"off" | "minimal" | "low" | "medium" | "high" | "xhigh">({ ...StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, { description: "Thinking effort level. Omit to use Claude Code's default." }) })),
 		isolated: Type.Optional(Type.Boolean({ description: `When true${trueDefault}, Claude sees only this prompt (clean session). When false${falseDefault}, Claude sees the recorded conversation history.` })),
 	});
 }

@@ -30,6 +30,8 @@ import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provid
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 const theme = {
   fg: (_role: string, text: string) => text,
@@ -91,7 +93,12 @@ describe('render kit discovery', () => {
   });
   it('switches a list result between one native SDK shell and the current KIT on the same component', () => {
     const tool = createSubagentListAgentsTool({} as any);
-    const component = tool.renderResult({ details: { agents: [] } }, {}, theme);
+    const component = tool.renderResult(
+      { details: { agents: [] } },
+      {},
+      theme,
+      keyHints,
+    );
     const native = component.render(80);
     const expected = new Box(1, 1, (text) => theme.bg('toolSuccessBg', text));
     expected.addChild({
@@ -167,7 +174,7 @@ describe('public subagent tool shells', () => {
         result,
         { isPartial, expanded },
         theme,
-        context,
+        { ...keyHints, ...context },
       );
       const native = [...call.render(120), ...component.render(120)];
       const marker = `\u001b]${role}\u0007`;
@@ -487,7 +494,11 @@ describe('message render kit discovery', () => {
       },
     };
     for (const expanded of [true, false]) {
-      const component = renderers[type](message, { expanded }, theme);
+      const component = renderers[type](
+        message,
+        { ...keyHints, expanded },
+        theme,
+      );
       const native = component.render(120);
       expect(native[0]).toContain('╭');
       expect(native.join('')).not.toContain('toolSuccessBg');

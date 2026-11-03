@@ -175,12 +175,16 @@ describe('shared test render kit', () => {
     expect(render).toHaveBeenCalledTimes(5);
   });
 
-  it('folds to a content budget and adds an expand hint only for hidden rows', () => {
+  it('folds to a content budget and adds only an explicit non-empty expand hint for hidden rows', () => {
     const kit = createTestRenderKit();
     const rows = ['a', 'b', 'c'];
     expect(kit.collapse(theme, rows, { budget: 1 })).toEqual([
       'a',
-      '… 2 more lines · ctrl+o to expand',
+      '… 2 more lines',
+    ]);
+    expect(kit.collapse(theme, rows, { budget: 1, expandHint: '' })).toEqual([
+      'a',
+      '… 2 more lines',
     ]);
     expect(
       kit.collapse(theme, rows, { budget: 0, expandHint: 'alt+e to expand' }),

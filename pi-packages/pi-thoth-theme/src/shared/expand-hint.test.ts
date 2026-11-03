@@ -104,7 +104,7 @@ describe('expansion hint fitting', () => {
           ellipsis,
         ),
       ),
-    ).toBe(`3 matches ${mode === 'ascii' ? '...' : 'in…'}${separator}ctrl+o`);
+    ).toBe(mode === 'ascii' ? '3 ma... files|ctrl+o' : '3 matches in…·ctrl+o');
   });
 
   it.each([

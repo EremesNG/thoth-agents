@@ -7,7 +7,7 @@ import { truncateToWidth } from '@earendil-works/pi-tui';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
-import { fitExpandHint } from '../shared/expand-hint.ts';
+import { expandHintSuffix, fitExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
@@ -207,7 +207,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
         }
 
         if (remaining > 0) {
-          const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remaining} more matches ${semanticIcon('separator', config.icons)} ctrl+o to expand`)}`;
+          const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remaining} more matches${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
           rawLines.push(more);
         }
 

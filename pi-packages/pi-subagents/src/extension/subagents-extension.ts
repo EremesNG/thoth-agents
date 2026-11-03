@@ -254,7 +254,6 @@ export default function subagentsExtension(pi: any): void {
       });
     },
     (taskId) => triggerTaskBackgroundHandoff(manager, taskId, 'attention'),
-    pi.events,
   );
   historyPruning.managers.add(manager);
   const releaseHistoryActivity = manager.onTaskUpdate(notifyHistoryActivity);

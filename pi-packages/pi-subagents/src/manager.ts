@@ -1,7 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import {
   type AtelierAttemptStatus,
   type AtelierMetadataRun,
@@ -604,16 +603,7 @@ export class SubagentManager {
       generation: number,
     ) => void,
     private onTimeoutBackgroundHandoff?: (taskId: string) => Promise<unknown>,
-    private events?: Pick<ExtensionAPI['events'], 'emit'>,
   ) {}
-
-  private emitEvent(name: string, payload: unknown): void {
-    try {
-      this.events?.emit(name, payload);
-    } catch {
-      // Status consumers must never interrupt task execution or cleanup.
-    }
-  }
 
   private atelierRun(
     taskId: string,
@@ -2035,7 +2025,6 @@ export class SubagentManager {
     this.record(cwd, task, 'queued');
     this.notifyTaskUpdate(id, onTaskUpdate, true);
 
-    let runnerInvoked = false;
     const run = async () => {
       let timedOut = false;
       let acquired = false;
@@ -2117,7 +2106,6 @@ export class SubagentManager {
                       runnerMetricHighwater[key];
             }
           };
-          runnerInvoked = true;
           const runnerPromise = this.runner({
             definition,
             task: taskText,
@@ -2507,35 +2495,12 @@ export class SubagentManager {
         this.controllers.delete(id);
       }
     };
-    const lifecycle = {
-      id,
-      runId: id,
-      agent: task.agent,
-      description: (task.display_name || task.task)
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 160),
-    };
     const settlement = run().finally(() => {
-      // Settlement includes runner/session teardown, including abort and timeout.
-      const status =
-        task.status === 'completed'
-          ? 'completed'
-          : task.status === 'cancelled' || task.status === 'interrupted'
-            ? 'aborted'
-            : 'failed';
-      this.emitEvent('task:subagent:lifecycle', { ...lifecycle, status });
-      if (runnerInvoked)
-        this.emitEvent('subagent:process-terminal', { runId: id });
       this.runnerSettlements.delete(id);
       retention.settled = true;
       this.releaseTask(task);
     });
     this.runnerSettlements.set(id, settlement);
-    this.emitEvent('task:subagent:lifecycle', {
-      ...lifecycle,
-      status: 'started',
-    });
     void settlement;
   }
 

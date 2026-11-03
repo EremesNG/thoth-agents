@@ -49,29 +49,19 @@ function controlledRunner() {
   return { runner, started, aborted, result };
 }
 
-function lifecycle(id: string, status: string, description = 'work') {
-  return [
-    'task:subagent:lifecycle',
-    { id, runId: id, agent: 'worker', description, status },
-  ];
-}
-
-function runnerExit(id: string) {
-  return ['subagent:process-terminal', { runId: id }];
-}
-
-async function fixture(runner: SubagentRunner, withEvents = true) {
+async function fixture(runner: SubagentRunner) {
   env.writeAgent('worker');
   const handlers = new Map<string, Array<(...args: any[]) => unknown>>();
   const events = createEventBus();
-  const emitted: Array<[string, { runId: string }]> = [];
+  const emitted: string[] = [];
+  // The theme bridge owns Orca signalling; pi-subagents must not emit these.
   for (const name of ['task:subagent:lifecycle', 'subagent:process-terminal'])
-    events.on(name, (payload) => {
-      emitted.push([name, payload as { runId: string }]);
+    events.on(name, () => {
+      emitted.push(name);
     });
   const ctx = { cwd: env.tmp, sessionId: 'parent', hasUI: false };
   subagentsExtension({
-    events: withEvents ? events : undefined,
+    events,
     sendMessage: vi.fn(),
     on(name: string, handler: (...args: any[]) => unknown) {
       handlers.set(name, [...(handlers.get(name) ?? []), handler]);
@@ -86,134 +76,88 @@ async function fixture(runner: SubagentRunner, withEvents = true) {
   const manager = captured.manager;
   if (!manager) throw new Error('Subagent tools did not register.');
   (manager as any).runner = runner;
-  return { manager, events, emitted, ctx, shutdown };
+  return { manager, emitted, ctx, shutdown };
 }
 
-describe('parent subagent lifecycle events', () => {
-  it.each([
-    'task',
-    'background',
-  ] as const)('publishes one start, completion and runner exit in %s mode', async (mode) => {
-    const host = await fixture(async () => ({ result: 'done' }));
-    const completed = deferred<void>();
-    const response = await host.manager.run(
-      {
-        agent: 'worker',
-        task: 'Review the lifecycle contract',
-        display_name: 'Review lifecycle',
-        mode,
-      },
-      host.ctx,
-      undefined,
-      (tasks) => {
-        if (tasks[0]?.status === 'completed') completed.resolve();
-      },
-    );
-    await completed.promise;
-    await host.manager.close();
-    const id = response.task_ids[0];
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started', 'Review lifecycle'),
-      lifecycle(id, 'completed', 'Review lifecycle'),
-      runnerExit(id),
-    ]);
-  });
-
-  it.each([
-    'task',
-    'background',
-  ] as const)('publishes %s runner failure with a bounded task description', async (mode) => {
-    const host = await fixture(async () => {
-      throw new Error('child crashed');
+describe('Orca lifecycle ownership', () => {
+  describe.each(['task', 'background'] as const)('%s mode', (mode) => {
+    it.each([
+      'completed',
+      'failed',
+    ] as const)('does not publish Orca events for a %s runner', async (status) => {
+      const host = await fixture(async () => {
+        if (status === 'failed') throw new Error('child crashed');
+        return { result: 'done' };
+      });
+      const settled = deferred<void>();
+      const response = await host.manager.run(
+        { agent: 'worker', task: 'work', mode },
+        host.ctx,
+        undefined,
+        (tasks) => {
+          if (tasks[0]?.status === status) settled.resolve();
+        },
+      );
+      await settled.promise;
+      await host.manager.close();
+      expect(host.manager.getTask(response.task_ids[0])?.status).toBe(status);
+      expect(host.emitted).toEqual([]);
     });
-    const failed = deferred<void>();
-    const response = await host.manager.run(
-      { agent: 'worker', task: `Review\n  ${'x'.repeat(200)}`, mode },
-      host.ctx,
-      undefined,
-      (tasks) => {
-        if (tasks[0]?.status === 'failed') failed.resolve();
-      },
-    );
-    await failed.promise;
-    await host.manager.close();
-    const id = response.task_ids[0];
-    expect(host.manager.getTask(id)?.status).toBe('failed');
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started', `Review ${'x'.repeat(153)}`),
-      lifecycle(id, 'failed', `Review ${'x'.repeat(153)}`),
-      runnerExit(id),
-    ]);
-  });
 
-  it.each([
-    'task',
-    'background',
-  ] as const)('publishes cancellation once, only after %s runner teardown', async (mode) => {
-    const child = controlledRunner();
-    const host = await fixture(child.runner);
-    const run = host.manager.run(
-      { agent: 'worker', task: 'work', mode },
-      host.ctx,
-    );
-    await child.started.promise;
-    const id = host.manager.listActiveSessionTasks()[0].id;
-    host.manager.cancel(id);
-    host.manager.cancel(id);
-    await child.aborted.promise;
-    expect(host.emitted).toEqual([lifecycle(id, 'started')]);
-    // A late runner failure must not override cancellation or emit twice.
-    child.result.reject(new Error('crash during abort cleanup'));
-    await host.manager.close();
-    await run;
-    host.manager.cancel(id);
-    expect(host.manager.getTask(id)?.status).toBe('cancelled');
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'aborted'),
-      runnerExit(id),
-    ]);
-  });
-
-  it.each([
-    'task',
-    'background',
-  ] as const)('publishes timeout failure once after %s runner teardown', async (mode) => {
-    vi.useFakeTimers();
-    const child = controlledRunner();
-    const host = await fixture(child.runner);
-    fs.writeFileSync(
-      path.join(env.tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ timeout_ms: 1000, timeout_warning_ms: 0 }),
-    );
-    const run = host.manager.run(
-      { agent: 'worker', task: 'work', mode },
-      host.ctx,
-    );
-    await child.started.promise;
-    const id = host.manager.listActiveSessionTasks()[0].id;
-    await vi.advanceTimersByTimeAsync(1000);
-    await child.aborted.promise;
-    expect(host.manager.getTask(id)?.status).toBe('stopping');
-    expect(host.emitted).toEqual([lifecycle(id, 'started')]);
-    // Cancellation/shutdown racing an expired deadline preserves its outcome.
-    host.manager.cancel(id);
-    child.result.resolve({ result: 'late result' });
-    await host.manager.close();
-    await vi.advanceTimersByTimeAsync(50);
-    await run;
-    expect(host.manager.getTask(id)).toMatchObject({
-      status: 'failed',
-      error_metadata: { category: 'total_timeout' },
+    it('does not publish Orca events during cancellation or runner teardown', async () => {
+      const child = controlledRunner();
+      const host = await fixture(child.runner);
+      const run = host.manager.run(
+        { agent: 'worker', task: 'work', mode },
+        host.ctx,
+      );
+      await child.started.promise;
+      const id = host.manager.listActiveSessionTasks()[0].id;
+      host.manager.cancel(id);
+      host.manager.cancel(id);
+      await child.aborted.promise;
+      expect(host.emitted).toEqual([]);
+      // A late runner failure must not override cancellation.
+      child.result.reject(new Error('crash during abort cleanup'));
+      await host.manager.close();
+      await run;
+      expect(host.manager.getTask(id)?.status).toBe('cancelled');
+      expect(host.emitted).toEqual([]);
     });
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'failed'),
-      runnerExit(id),
-    ]);
+
+    it('does not publish Orca events during timeout or runner teardown', async () => {
+      vi.useFakeTimers();
+      const child = controlledRunner();
+      const host = await fixture(child.runner);
+      fs.writeFileSync(
+        path.join(env.tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ timeout_ms: 1000, timeout_warning_ms: 0 }),
+      );
+      const run = host.manager.run(
+        { agent: 'worker', task: 'work', mode },
+        host.ctx,
+      );
+      await child.started.promise;
+      const id = host.manager.listActiveSessionTasks()[0].id;
+      await vi.advanceTimersByTimeAsync(1000);
+      await child.aborted.promise;
+      expect(host.manager.getTask(id)?.status).toBe('stopping');
+      expect(host.emitted).toEqual([]);
+      // Cancellation/shutdown racing an expired deadline preserves its outcome.
+      host.manager.cancel(id);
+      child.result.resolve({ result: 'late result' });
+      await host.manager.close();
+      await vi.advanceTimersByTimeAsync(50);
+      await run;
+      expect(host.manager.getTask(id)).toMatchObject({
+        status: 'failed',
+        error_metadata: { category: 'total_timeout' },
+      });
+      expect(host.emitted).toEqual([]);
+    });
   });
 
-  it('publishes an aborted terminal on extension shutdown/reload, even if shutdown repeats', async () => {
+  it('does not publish Orca events on extension shutdown/reload, even if shutdown repeats', async () => {
     const child = controlledRunner();
     const host = await fixture(child.runner);
     const response = await host.manager.run(
@@ -224,19 +168,15 @@ describe('parent subagent lifecycle events', () => {
     const id = response.task_ids[0];
     const shuttingDown = host.shutdown();
     await child.aborted.promise;
-    expect(host.emitted).toEqual([lifecycle(id, 'started')]);
+    expect(host.emitted).toEqual([]);
     child.result.resolve({ result: 'late result' });
     await shuttingDown;
     await host.shutdown();
     expect(host.manager.getTask(id)?.status).toBe('interrupted');
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'aborted'),
-      runnerExit(id),
-    ]);
+    expect(host.emitted).toEqual([]);
   });
 
-  it('pairs a pre-aborted launch without invoking the child', async () => {
+  it('does not invoke a pre-aborted child or publish Orca events', async () => {
     const runner = vi.fn<SubagentRunner>(async () => ({
       result: 'unexpected',
     }));
@@ -249,48 +189,54 @@ describe('parent subagent lifecycle events', () => {
       parent.signal,
     );
     await host.manager.close();
-    const id = response.task_ids[0];
     expect(runner).not.toHaveBeenCalled();
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'aborted'),
-    ]);
+    expect(host.manager.getTask(response.task_ids[0])?.status).toBe(
+      'cancelled',
+    );
+    expect(host.emitted).toEqual([]);
   });
 
-  it('finishes every queued start as aborted without invoking a cancelled child', async () => {
+  it('skips a cancelled queued child when capacity opens without shutting down', async () => {
     const child = controlledRunner();
-    const host = await fixture(child.runner);
+    const runner = vi
+      .fn<SubagentRunner>(async () => ({ result: 'next child completed' }))
+      .mockImplementationOnce(child.runner);
+    const host = await fixture(runner);
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ max_concurrency: 1 }),
     );
+    const nextCompleted = deferred<void>();
     const response = await host.manager.run(
-      { agents: ['worker', 'worker'], task: 'work', mode: 'background' },
+      {
+        agents: ['worker', 'worker', 'worker'],
+        task: 'work',
+        mode: 'background',
+      },
       host.ctx,
+      undefined,
+      (tasks) => {
+        if (tasks[2]?.status === 'completed') nextCompleted.resolve();
+      },
     );
     await child.started.promise;
-    const [runningId, queuedId] = response.task_ids;
-    expect(host.manager.getTask(queuedId)?.status).toBe('queued');
-    host.manager.cancel(queuedId);
-    host.manager.cancel(queuedId);
-    const closing = host.manager.close();
-    await child.aborted.promise;
-    child.result.resolve({ result: 'late result' });
-    await closing;
-    expect(child.runner).toHaveBeenCalledOnce();
-    expect(
-      host.emitted.filter(([, payload]) => payload.runId === runningId),
-    ).toEqual([
-      lifecycle(runningId, 'started'),
-      lifecycle(runningId, 'aborted'),
-      runnerExit(runningId),
+    const [runningId, cancelledId, nextId] = response.task_ids;
+    expect(host.manager.getTask(cancelledId)?.status).toBe('queued');
+    host.manager.cancel(cancelledId);
+    host.manager.cancel(cancelledId);
+    child.result.resolve({ result: 'first child completed' });
+    await nextCompleted.promise;
+    expect(runner.mock.calls.map(([input]) => input.taskId)).toEqual([
+      runningId,
+      nextId,
     ]);
-    expect(
-      host.emitted.filter(([, payload]) => payload.runId === queuedId),
-    ).toEqual([lifecycle(queuedId, 'started'), lifecycle(queuedId, 'aborted')]);
+    expect(host.manager.getTask(cancelledId)?.status).toBe('cancelled');
+    expect(host.manager.getTask(cancelledId)?.started_at).toBeUndefined();
+    await host.manager.close();
+    expect(host.emitted).toEqual([]);
   });
 
-  it('pairs each attempt when a continuation reuses the task id', async () => {
+  it('does not publish Orca events when a continuation reuses the task id', async () => {
     const nested = path.join(env.tmp, 'nested.jsonl');
     fs.writeFileSync(nested, '{}');
     const host = await fixture(async () => ({
@@ -312,57 +258,7 @@ describe('parent subagent lifecycle events', () => {
     );
     await host.manager.close();
     expect(continued.task_ids).toEqual([id]);
-    expect(host.emitted).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'completed'),
-      runnerExit(id),
-      lifecycle(id, 'started'),
-      lifecycle(id, 'completed'),
-      runnerExit(id),
-    ]);
-  });
-
-  it('still completes when the parent has no extension event bus', async () => {
-    const host = await fixture(async () => ({ result: 'done' }), false);
-    const response = await host.manager.run(
-      { agent: 'worker', task: 'work', mode: 'task' },
-      host.ctx,
-    );
-    await host.manager.close();
-    expect(response.results?.[0].status).toBe('completed');
+    expect(continued.results?.[0].status).toBe('completed');
     expect(host.emitted).toEqual([]);
-  });
-
-  it('attempts every event once without propagating event-bus failures', async () => {
-    const host = await fixture(async () => ({ result: 'done' }));
-    const emit = host.events.emit.bind(host.events);
-    const publish = vi
-      .spyOn(host.events, 'emit')
-      .mockImplementation((name, payload) => {
-        if (
-          name === 'task:subagent:lifecycle' ||
-          name === 'subagent:process-terminal'
-        )
-          throw new Error('status consumer unavailable');
-        emit(name, payload);
-      });
-    const response = await host.manager.run(
-      { agent: 'worker', task: 'work', mode: 'task' },
-      host.ctx,
-    );
-    await host.manager.close();
-    expect(response.results?.[0].status).toBe('completed');
-    const id = response.task_ids[0];
-    expect(
-      publish.mock.calls.filter(
-        ([name]) =>
-          name === 'task:subagent:lifecycle' ||
-          name === 'subagent:process-terminal',
-      ),
-    ).toEqual([
-      lifecycle(id, 'started'),
-      lifecycle(id, 'completed'),
-      runnerExit(id),
-    ]);
   });
 });

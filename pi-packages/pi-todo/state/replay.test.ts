@@ -48,6 +48,17 @@ describe('isTaskDetails — defensive type guard', () => {
     expect(isTaskDetails({ tasks: [], nextId: '1' })).toBe(false);
   });
 
+  it.each([
+    0,
+    -1,
+    Number.MIN_SAFE_INTEGER,
+    Number.MAX_SAFE_INTEGER,
+  ])('accepts safe integer boundaries without ordering constraints: %s', (id) => {
+    expect(
+      isTaskDetails({ tasks: [taskFixture(id, 'valid')], nextId: id }),
+    ).toBe(true);
+  });
+
   it('accepts well-formed snapshot envelopes', () => {
     expect(isTaskDetails({ tasks: [], nextId: 1 })).toBe(true);
     expect(
@@ -182,9 +193,120 @@ const stateEntry = (data: unknown) => ({
   customType: STATE_ENTRY_TYPE,
   data,
 });
-const todoResult = (details: TaskDetails) => ({
+const todoResult = (details: unknown) => ({
   type: 'message',
   message: makeTodoToolResult(details),
+});
+
+describe.each([
+  ['state entries', stateEntry],
+  ['legacy results', todoResult],
+] as const)('replayFromBranch — malformed snapshots in %s', (_source, entry) => {
+  const lastValid = { tasks: [taskFixture(1, 'last valid')], nextId: 2 };
+  const replayAfterValid = (corrupt: unknown) =>
+    replayFromBranch(
+      createMockCtx({
+        branch: [
+          entry(snapshot(lastValid.tasks, lastValid.nextId)),
+          entry(corrupt),
+        ],
+      }),
+    );
+
+  it.each([
+    ['null task', null],
+    ['array task', []],
+    [
+      'truncation marker',
+      '[output-policy: array truncated, dropped 3 item(s)]',
+    ],
+    ['missing id', { subject: 'bad', status: 'pending' }],
+    ['missing subject', { id: 1, status: 'pending' }],
+    ['non-string subject', { id: 1, subject: 7, status: 'pending' }],
+    ['missing status', { id: 1, subject: 'bad' }],
+    ['unknown status', { id: 1, subject: 'bad', status: 'done' }],
+  ])('skips the whole snapshot containing %s', (_reason, malformed) => {
+    const corrupt = {
+      tasks: [taskFixture(1, 'must not partially apply'), malformed],
+      nextId: 9,
+    };
+    expect(replayAfterValid(corrupt)).toEqual(lastValid);
+  });
+
+  it.each([
+    ['description', { description: 7 }],
+    ['activeForm', { activeForm: 7 }],
+    ['owner', { owner: {} }],
+    ['group', { group: 7 }],
+    ['blockedBy string', { blockedBy: '#2' }],
+    ['blockedBy non-number', { blockedBy: ['2'] }],
+    ['blockedBy fractional id', { blockedBy: [1.5] }],
+    ['blockedBy NaN', { blockedBy: [Number.NaN] }],
+    ['blockedBy infinite id', { blockedBy: [Number.POSITIVE_INFINITY] }],
+    ['blockedBy unsafe id', { blockedBy: [Number.MAX_SAFE_INTEGER + 1] }],
+    ['metadata string', { metadata: 'm' }],
+    ['metadata null', { metadata: null }],
+    ['metadata array', { metadata: [] }],
+    ['createdAt string', { createdAt: 'yesterday' }],
+    ['createdAt NaN', { createdAt: Number.NaN }],
+    ['completedAt string', { completedAt: 'today' }],
+    ['completedAt infinite', { completedAt: Number.POSITIVE_INFINITY }],
+    ['archivedAt string', { archivedAt: 'tomorrow' }],
+    ['archivedAt infinite', { archivedAt: Number.NEGATIVE_INFINITY }],
+  ])('skips a snapshot with malformed optional %s', (_field, extra) => {
+    const corrupt = {
+      tasks: [{ ...taskFixture(1, 'corrupt'), ...extra }],
+      nextId: 9,
+    };
+    expect(replayAfterValid(corrupt)).toEqual(lastValid);
+  });
+
+  it('restores a later valid snapshot with every local optional field and status', () => {
+    const tasks = [
+      taskFixture(1, 'pending'),
+      taskFixture(2, 'in progress', {
+        status: 'in_progress',
+        group: 'Implementation',
+        description: 'Details',
+        activeForm: 'Working',
+        blockedBy: [1],
+        owner: 'worker',
+        metadata: { key: 1, nested: { value: null } },
+        createdAt: 1_700_000_000_000,
+        completedAt: 1_700_000_001_000,
+        archivedAt: 1_700_000_002_000,
+      }),
+      taskFixture(3, 'completed', { status: 'completed' }),
+      taskFixture(4, 'deleted', { status: 'deleted' }),
+    ];
+    const ctx = createMockCtx({
+      branch: [
+        entry({ tasks: ['[output-policy: array truncated]'], nextId: 9 }),
+        entry(snapshot(tasks, 5)),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({ tasks, nextId: 5 });
+  });
+
+  describe.each([
+    'id',
+    'nextId',
+  ] as const)('%s must be a safe integer', (field) => {
+    it.each([
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MIN_SAFE_INTEGER - 1,
+    ])('skips a snapshot with %s', (value) => {
+      const corrupt = {
+        tasks: [taskFixture(field === 'id' ? value : 1, 'corrupt')],
+        nextId: field === 'nextId' ? value : 9,
+      };
+      expect(replayAfterValid(corrupt)).toEqual(lastValid);
+    });
+  });
 });
 
 describe('replayFromBranch — state entries', () => {
@@ -237,6 +359,37 @@ describe('replayFromBranch — state entries', () => {
     });
   });
 
+  it('falls back to a valid legacy result when a custom snapshot contains a malformed task', () => {
+    const ctx = createMockCtx({
+      branch: [
+        todoResult(snapshot([taskFixture(1, 'legacy')], 2)),
+        stateEntry({
+          tasks: [taskFixture(1, 'must not partially apply'), 'truncated'],
+          nextId: 9,
+        }),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({
+      tasks: [taskFixture(1, 'legacy')],
+      nextId: 2,
+    });
+  });
+
+  it('keeps an earlier authoritative snapshot despite malformed entries and a later valid legacy result', () => {
+    const ctx = createMockCtx({
+      branch: [
+        stateEntry(snapshot([taskFixture(1, 'authoritative')], 2)),
+        stateEntry({ tasks: [taskFixture(1, 'corrupt')], nextId: 1.5 }),
+        todoResult(snapshot([taskFixture(1, 'stale legacy')], 2)),
+        todoResult({ tasks: ['truncated'], nextId: 9 }),
+      ],
+    });
+    expect(replayFromBranch(ctx)).toEqual({
+      tasks: [taskFixture(1, 'authoritative')],
+      nextId: 2,
+    });
+  });
+
   it('restores a cleared list instead of resurrecting tasks', () => {
     const ctx = createMockCtx({
       branch: [
@@ -267,6 +420,8 @@ describe('replayFromBranch — state entries', () => {
     const ctx = createMockCtx({
       branch: [
         stateEntry(undefined),
+        stateEntry({ tasks: [null], nextId: 9 }),
+        todoResult({ tasks: [taskFixture(1, 'corrupt')], nextId: Number.NaN }),
         ...buildSessionEntries([makeTodoToolResult({})]),
       ],
     });

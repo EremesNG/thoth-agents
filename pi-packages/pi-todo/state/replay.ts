@@ -1,15 +1,57 @@
-import type { TaskDetails } from '../tool/types.js';
+import type { Task, TaskDetails, TaskStatus } from '../tool/types.js';
 import { EMPTY_STATE, type TaskState } from './state.js';
 
+const TASK_STATUSES: ReadonlySet<unknown> = new Set<TaskStatus>([
+  'pending',
+  'in_progress',
+  'completed',
+  'deleted',
+]);
+
+const optional = (value: unknown, valid: (v: unknown) => boolean): boolean =>
+  value === undefined || valid(value);
+const isString = (value: unknown): boolean => typeof value === 'string';
+
+function isTask(value: unknown): value is Task {
+  if (!value || typeof value !== 'object') return false;
+  const task = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(task.id) &&
+    typeof task.subject === 'string' &&
+    TASK_STATUSES.has(task.status) &&
+    optional(task.description, isString) &&
+    optional(task.activeForm, isString) &&
+    optional(task.owner, isString) &&
+    optional(task.group, isString) &&
+    optional(
+      task.blockedBy,
+      (ids) => Array.isArray(ids) && ids.every(Number.isSafeInteger),
+    ) &&
+    optional(
+      task.metadata,
+      (metadata) =>
+        typeof metadata === 'object' &&
+        metadata !== null &&
+        !Array.isArray(metadata),
+    ) &&
+    optional(task.createdAt, Number.isFinite) &&
+    optional(task.completedAt, Number.isFinite) &&
+    optional(task.archivedAt, Number.isFinite)
+  );
+}
+
 /**
- * Discriminator for `details` envelopes that match the persisted `TaskDetails`
- * shape. Defensive — branch entries from older or corrupt sessions are
- * skipped silently.
+ * Discriminator for persisted snapshots, down to every task. A malformed
+ * snapshot is skipped whole so replay keeps the last valid one.
  */
 export function isTaskDetails(value: unknown): value is TaskDetails {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return Array.isArray(v.tasks) && typeof v.nextId === 'number';
+  return (
+    Array.isArray(v.tasks) &&
+    v.tasks.every(isTask) &&
+    Number.isSafeInteger(v.nextId)
+  );
 }
 
 /** Clone tasks so replay never aliases the persisted snapshot's task objects. */

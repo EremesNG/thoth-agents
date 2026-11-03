@@ -15,6 +15,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 - Use Pi's injected expand-key hints, honoring remapped and unbound actions.
 - Include the local release history in the published package.
 
+### Fixed
+
+- Skip corrupted todo snapshots whole when restoring a session, validating every task, dependency id, and next id while retaining the last valid state.
+
 ## [0.4.5] - 2026-10-29
 
 ### Changed

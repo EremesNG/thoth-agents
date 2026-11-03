@@ -267,3 +267,86 @@ it('refreshes a cached Todos snapshot at a recognized prompt epoch archiving rev
   expect(next).not.toContain('+1 done');
   await dispatch('session_shutdown');
 });
+
+it('inherits group summaries and the two-entry completed cap, then merges all hidden task counts by height', () => {
+  setActiveRenderSession('sidebar-cap');
+  cleanup.push(() => evictSession('sidebar-cap'));
+  replaceState('sidebar-cap', {
+    tasks: [
+      { id: 1, subject: 'Live', group: 'active', status: 'in_progress' },
+      { id: 2, subject: 'Member one', group: 'active', status: 'completed' },
+      { id: 3, subject: 'Member two', group: 'active', status: 'completed' },
+      { id: 4, subject: 'Newest', status: 'completed', completedAt: 100 },
+      {
+        id: 5,
+        subject: 'Recent one',
+        group: 'recent',
+        status: 'completed',
+        completedAt: 90,
+      },
+      {
+        id: 6,
+        subject: 'Recent two',
+        group: 'recent',
+        status: 'completed',
+        completedAt: 80,
+      },
+      {
+        id: 7,
+        subject: 'Old one',
+        group: 'old',
+        status: 'completed',
+        completedAt: 60,
+      },
+      {
+        id: 8,
+        subject: 'Old two',
+        group: 'old',
+        status: 'completed',
+        completedAt: 50,
+      },
+      {
+        id: 9,
+        subject: 'Old three',
+        group: 'old',
+        status: 'completed',
+        completedAt: 40,
+      },
+      {
+        id: 10,
+        subject: 'Archived',
+        status: 'completed',
+        completedAt: 200,
+        archivedAt: 0,
+      },
+    ],
+    nextId: 11,
+  });
+  cleanup.push(
+    registerWorkPanelProvider(
+      { on() {} } as never,
+      createTodoWorkPanelProvider(),
+    ),
+  );
+  const panel = sidebar([{ id: 'todos', visible: true }]);
+  const full = panel.renderAt(60, 30).map(strip).join('\n');
+  expect(full).toContain('✓ 2 done');
+  expect(full).toContain('✓ Newest');
+  expect(full).toContain('✓ recent (2)');
+  expect(full).toContain('✓ +3 done');
+  expect(full).not.toMatch(/Member one|Member two|Old one|old \(3\)|Archived/);
+  for (const height of [30, 9, 8, 7, 6, 5]) {
+    const lines = panel.renderAt(60, height).map(strip);
+    expect(
+      lines.filter((line) => /\+\d+ done/.test(line)),
+      `height ${height}`,
+    ).toHaveLength(1);
+    const represented = lines.slice(1).reduce((sum, line) => {
+      const summary = /(\d+) done/.exec(line);
+      if (summary) return sum + Number(summary[1]);
+      if (line.includes('recent (2)')) return sum + 2;
+      return sum + Number(line.includes('✓ Newest'));
+    }, 0);
+    expect(represented, `height ${height}`).toBe(8);
+  }
+});

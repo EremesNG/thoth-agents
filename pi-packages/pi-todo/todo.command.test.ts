@@ -77,7 +77,7 @@ describe('/todos command — guard branches', () => {
     );
   });
 
-  it('hides a fully completed list after its epoch, then restores archived history alongside new work', async () => {
+  it('keeps completed-only archived history across epochs and alongside new work', async () => {
     const { cmd, pi, captured } = setup();
     const ctx = createMockCtx();
     const dispose = bindWorkPanelLifecycle(pi, ctx);
@@ -104,7 +104,7 @@ describe('/todos command — guard branches', () => {
         await handler({ prompt: 'next job' } as never, ctx as never);
       await cmd.handler('', ctx as never);
       expect(ctx.ui.notify).toHaveBeenLastCalledWith(
-        expect.stringContaining('No todos'),
+        expect.stringContaining('✓ #1 release · Design'),
         'info',
       );
       expect(getState('test-session').tasks).toEqual([archived]);

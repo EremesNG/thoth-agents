@@ -148,12 +148,25 @@ export interface CompactTodoGroup {
   kind: 'group';
   key: string;
   label: string;
+  /** Active groups omit completed members; counts retain their done summary total. */
   members: readonly CompactTodoTask[];
   counts: TodoStatusCounts;
   fullyCompleted: boolean;
 }
 
-export type CompactTodoEntry = CompactTodoTask | CompactTodoGroup;
+export interface CompactTodoCompletedSummary {
+  kind: 'completed-summary';
+  counts: TodoStatusCounts;
+  fullyCompleted: true;
+}
+
+export type CompactTodoEntry =
+  | CompactTodoTask
+  | CompactTodoGroup
+  | CompactTodoCompletedSummary;
+
+/** Compact history keeps only the newest top-level completed tasks/groups. */
+export const COMPACT_COMPLETED_ENTRY_CAP = 2;
 
 function taskRank(entry: CompactTodoTask): number {
   if (entry.task.status === 'in_progress') return 0;
@@ -176,6 +189,7 @@ function compareTasks(a: CompactTodoTask, b: CompactTodoTask): number {
  * excluded before counts/collapse. Groups stay contiguous and rank by their
  * most active member. Completed entries use their newest completion, with
  * missing legacy timestamps oldest; other ties use the lowest represented id.
+ * Active groups summarize completions; top-level completed history is capped.
  */
 export function selectCompactLayout(
   state: TaskState,
@@ -188,7 +202,7 @@ export function selectCompactLayout(
       )
       .map((task) => task.id),
   );
-  const entries: CompactTodoEntry[] = [];
+  const entries: Array<CompactTodoTask | CompactTodoGroup> = [];
   const grouped = new Map<string, CompactTodoGroup>();
   for (const task of selectVisibleTasks(state)) {
     if (task.archivedAt !== undefined) continue;
@@ -226,9 +240,11 @@ export function selectCompactLayout(
     const members =
       entry.kind === 'group' ? [...entry.members].sort(compareTasks) : [entry];
     if (entry.kind === 'group') {
-      entry.members = members;
       entry.counts = countTasks(members.map((member) => member.task));
       entry.fullyCompleted = entry.counts.completed === members.length;
+      entry.members = entry.fullyCompleted
+        ? members
+        : members.filter((member) => !member.fullyCompleted);
     }
     return {
       entry,
@@ -245,7 +261,27 @@ export function selectCompactLayout(
       (a.rank === 3 ? b.completedAt - a.completedAt : 0) ||
       a.lowestId - b.lowestId,
   );
-  return ordered.map(({ entry }) => entry);
+  let completedEntries = 0;
+  let hiddenCompleted = 0;
+  const layout: CompactTodoEntry[] = [];
+  for (const { entry } of ordered) {
+    if (
+      entry.fullyCompleted &&
+      ++completedEntries > COMPACT_COMPLETED_ENTRY_CAP
+    ) {
+      hiddenCompleted += entry.counts.completed;
+    } else {
+      layout.push(entry);
+    }
+  }
+  if (hiddenCompleted) {
+    layout.push({
+      kind: 'completed-summary',
+      counts: { in_progress: 0, pending: 0, completed: hiddenCompleted },
+      fullyCompleted: true,
+    });
+  }
+  return layout;
 }
 
 /**

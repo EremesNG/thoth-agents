@@ -131,3 +131,62 @@ it('hides completed tasks then latest-created pending across groups, retaining h
   expect(tight).toContain('+1 pending');
   expect(tight).toContain('+9 done');
 });
+
+it('merges an opted-in selected completed summary into height overflow and keeps its history action selected', async () => {
+  const session = uiSession();
+  let opened = 0;
+  cleanup.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos'),
+      selectableSummary: true,
+      openHistory: () => {
+        opened++;
+      },
+      listRows: () => [
+        {
+          id: 'live',
+          primary: 'Live',
+          status: 'in_progress',
+          compact: {
+            depth: 0,
+            counts: { running: 1, queued: 0, completed: 0 },
+          },
+        },
+        {
+          id: 'recent',
+          primary: 'Recent (3)',
+          status: 'completed',
+          dropFirst: true,
+          compact: {
+            depth: 0,
+            counts: { running: 0, queued: 0, completed: 3 },
+          },
+        },
+        {
+          id: 'cap',
+          primary: '+5 done',
+          status: 'completed',
+          dropFirst: true,
+          compact: {
+            completedSummary: true,
+            depth: 0,
+            counts: { running: 0, queued: 0, completed: 5 },
+          },
+        },
+      ],
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  expect(session.render().join('\n')).toContain('✓ +5 done');
+  session.key('\x1b[D');
+  session.key('\x1b[B');
+  session.key('\x1b[B');
+  session.tui.terminal.rows = 8;
+  const lines: string[] = session.render();
+  expect(lines.filter((line) => /\+\d+ done/.test(line))).toEqual([
+    '› +8 done',
+  ]);
+  expect(lines.join('\n')).toContain('Live');
+  session.key('\r');
+  expect(opened).toBe(1);
+});

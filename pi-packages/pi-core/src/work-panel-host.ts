@@ -161,7 +161,11 @@ export function createWorkPanelHost(
       : new Map<string, PanelRow[]>();
     const all = current
       .flatMap((section) => [
-        ...section.rows,
+        ...section.rows.filter(
+          ({ row }) =>
+            !row.compact?.completedSummary ||
+            !overflow.get(section.provider.id)?.length,
+        ),
         ...(overflow.get(section.provider.id) ?? []),
       ])
       .filter(isSelectablePanelRow);

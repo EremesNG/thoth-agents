@@ -106,6 +106,8 @@ export interface WorkPanelRow {
   compact?: {
     group?: { key: string; label: string };
     heading?: boolean;
+    /** Task-counted completed cap; merges into height overflow, sharing its history selection. */
+    completedSummary?: boolean;
     depth: number;
     taskId?: number;
     counts: { running: number; queued: number; completed: number };

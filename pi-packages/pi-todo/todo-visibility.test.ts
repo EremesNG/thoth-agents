@@ -9,9 +9,11 @@ import {
   TODO_STATE_CHANNEL,
 } from '@thoth-agents/pi-core';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ownedOverlaySession } from '../pi-core/test/owned-overlay-fixture.js';
 import registerTodo from './index.js';
 import { __resetState, getState } from './state/store.js';
-import { createMockCtx, createMockPi } from './test/helpers.js';
+import { createMockCtx, createMockPi, makeTheme } from './test/helpers.js';
+import { showTodoPanel, type TodoPanel } from './todo-panel.js';
 import { STATE_ENTRY_TYPE } from './tool/types.js';
 
 vi.mock('@thoth-agents/pi-core', async (importOriginal) => ({
@@ -247,6 +249,60 @@ it.each([
     expect(app.state().nextId).toBe(4);
     expect(app.captured.entries).toHaveLength(2);
   } finally {
+    await app.emit('session_shutdown');
+  }
+});
+
+it('keeps every completed task in /todos and the overlay after archival epochs, without the compact cap', async () => {
+  const app = await setup();
+  const { ctx: sdkCtx, tui } = ownedOverlaySession();
+  let history: TodoPanel | undefined;
+  let opening: Promise<void> | undefined;
+  try {
+    await app.call({ action: 'update', id: 2, status: 'completed' });
+    for (let id = 3; id <= 7; id++)
+      await app.call({
+        action: 'create',
+        subject: `Completed task ${id}`,
+        status: 'completed',
+      });
+    await app.prompt('archive all');
+    await app.prompt('another epoch');
+    expect(app.state().tasks).toHaveLength(7);
+    expect(
+      app.state().tasks.every((task) => task.archivedAt !== undefined),
+    ).toBe(true);
+    const command = app.captured.commands.get('todos');
+    if (!command) throw new Error('missing /todos command');
+    await command.handler('', app.ctx as never);
+    const notify = vi.mocked(app.ctx.ui.notify);
+    const text = notify.mock.calls.at(-1)?.[0] ?? '';
+    expect(text).toContain('7/7 completed');
+    for (const task of app.state().tasks) expect(text).toContain(task.subject);
+
+    const custom: typeof sdkCtx.ui.custom = (factory, options) =>
+      sdkCtx.ui.custom(
+        (tui, _theme, _keys, done) =>
+          factory(tui, makeTheme(), { matches: () => false } as never, done),
+        options,
+      );
+    const overlayCtx = {
+      ...app.ctx,
+      mode: 'tui' as const,
+      ui: { ...sdkCtx.ui, custom },
+    };
+    opening = showTodoPanel(overlayCtx, '7');
+    await Promise.resolve();
+    history = tui.getFocusedComponent() as TodoPanel;
+    const overlay = history.render(120).join('\n');
+    expect(history.getRenderDebugState().selectedId).toBe('7');
+    expect(overlay).toContain('7/7 completed');
+    for (const task of app.state().tasks)
+      expect(overlay).toContain(task.subject);
+  } finally {
+    history?.handleInput('q');
+    await opening;
+    tui.stop();
     await app.emit('session_shutdown');
   }
 });

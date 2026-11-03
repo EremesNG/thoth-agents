@@ -19,7 +19,6 @@ import {
 import { applyTaskMutation, changesState } from './state/state-reducer.js';
 import { commitState, getState, sid } from './state/store.js';
 import { canOpenTodoPanel, showTodoPanel } from './todo-panel.js';
-import { currentEpoch, isCompletedListHidden } from './todo-visibility.js';
 import { buildToolResult } from './tool/response-envelope.js';
 import {
   COMMAND_NAME,
@@ -144,9 +143,7 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
       }
       const id = sid(ctx);
       const state = getState(id);
-      const visible = isCompletedListHidden(id, state, currentEpoch(ctx))
-        ? []
-        : selectVisibleTasks(state);
+      const visible = selectVisibleTasks(state);
       if (visible.length === 0) {
         ctx.ui.notify(MSG_NO_TODOS, 'info');
         return;

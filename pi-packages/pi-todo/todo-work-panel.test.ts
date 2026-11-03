@@ -341,7 +341,8 @@ it('opens the panel from the heading, a row and the dropped-done summary, and dr
   expect(dropped).toBeDefined();
   const hidden = Number(/\+(\d+) done/.exec(dropped ?? '')?.[1]);
   expect(
-    lines.slice(1).filter((line) => line.includes('✓')).length + hidden,
+    lines.slice(1).filter((line) => line.includes('✓') && line !== dropped)
+      .length + hidden,
   ).toBe(14);
 
   session.key('\x1b[D');
@@ -693,4 +694,79 @@ it('todo semantic overrides let the host use the registered kit and restore nati
     '← interact',
   ]);
   expect(provider.listRows(0)).toEqual(rows);
+});
+
+it('merges the completed cap with height folding without duplicate done summaries or lost task counts', async () => {
+  const session = uiSession();
+  setActiveRenderSession('cap-height');
+  cleanups.push(() => evictSession('cap-height'));
+  replaceState('cap-height', {
+    tasks: [
+      { id: 1, subject: 'Live', group: 'active', status: 'in_progress' },
+      { id: 2, subject: 'Member one', group: 'active', status: 'completed' },
+      { id: 3, subject: 'Member two', group: 'active', status: 'completed' },
+      { id: 4, subject: 'Newest', status: 'completed', completedAt: 100 },
+      {
+        id: 5,
+        subject: 'Recent one',
+        group: 'recent',
+        status: 'completed',
+        completedAt: 90,
+      },
+      {
+        id: 6,
+        subject: 'Recent two',
+        group: 'recent',
+        status: 'completed',
+        completedAt: 80,
+      },
+      {
+        id: 7,
+        subject: 'Old one',
+        group: 'old',
+        status: 'completed',
+        completedAt: 60,
+      },
+      {
+        id: 8,
+        subject: 'Old two',
+        group: 'old',
+        status: 'completed',
+        completedAt: 50,
+      },
+      {
+        id: 9,
+        subject: 'Old three',
+        group: 'old',
+        status: 'completed',
+        completedAt: 40,
+      },
+      { id: 10, subject: 'Legacy', status: 'completed' },
+    ],
+    nextId: 11,
+  });
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, createTodoWorkPanelProvider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.tui.terminal.rows = 40;
+  expect(session.render().join('\n')).toContain('✓ +4 done');
+  // Select the cap summary, then shrink: navigation must not duplicate the overflow.
+  session.key('\x1b[D');
+  for (let index = 0; index < 12; index++) session.key('\x1b[B');
+  for (const height of [40, 16, 12, 10, 8, 6]) {
+    session.tui.terminal.rows = height;
+    const lines: string[] = session.render();
+    expect(
+      lines.filter((line) => /\+\d+ done/.test(line)),
+      `height ${height}`,
+    ).toHaveLength(1);
+    const represented = lines.slice(1).reduce((sum, line) => {
+      const summary = /(\d+) done/.exec(line);
+      if (summary) return sum + Number(summary[1]);
+      if (line.includes('recent (2)')) return sum + 2;
+      return sum + Number(line.includes('✓ Newest'));
+    }, 0);
+    expect(represented, `height ${height}`).toBe(9);
+  }
 });

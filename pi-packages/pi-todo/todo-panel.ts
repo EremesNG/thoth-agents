@@ -15,8 +15,9 @@ import {
   type ResolvedTaskGroup,
   selectTaskGroups,
   selectTodoCounts,
+  selectVisibleTasks,
 } from './state/selectors.js';
-import { listCurrentTasks } from './todo-visibility.js';
+import { getState, sid } from './state/store.js';
 import { sanitizeTerminalText } from './tool/sanitize.js';
 import type { Task, TaskStatus } from './tool/types.js';
 import { taskGlyph } from './view/task-glyphs.js';
@@ -181,7 +182,7 @@ export async function showTodoPanel(
           tui.terminal.write('\x1b[?1000h\x1b[?1006h');
           releaseMouse = () => tui.terminal.write('\x1b[?1006l\x1b[?1000l');
         }
-        panel = new TodoPanel(() => listCurrentTasks(ctx), {
+        panel = new TodoPanel(() => selectVisibleTasks(getState(sid(ctx))), {
           theme,
           onClose: close,
           initialSelectedId: selectedTaskId,

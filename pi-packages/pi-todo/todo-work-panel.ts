@@ -11,19 +11,9 @@ import {
   selectCompactLayout,
   selectTodoStatusCounts,
 } from './state/selectors.js';
-import {
-  getActiveRenderSession,
-  getRenderState,
-  onRenderStateChanged,
-} from './state/store.js';
+import { getRenderState, onRenderStateChanged } from './state/store.js';
 import { showTodoPanel } from './todo-panel.js';
-import { currentEpoch, isCompletedListHidden } from './todo-visibility.js';
 import { sanitizeTerminalText } from './tool/sanitize.js';
-
-export interface TodoWorkPanelOptions {
-  /** Session whose prompt epoch hides a fully completed list. */
-  ctx?: ExtensionContext;
-}
 
 const representedCounts = (counts: CompactTodoTask['counts']) => ({
   running: counts.in_progress,
@@ -73,19 +63,29 @@ function taskRow(
   };
 }
 
-/** The provider reads only the foreground session's local store, never the bus. */
-export function createTodoWorkPanelProvider(
-  options: TodoWorkPanelOptions = {},
-) {
-  let epoch = 0;
-  const hidden = () => {
-    if (options.ctx) epoch = currentEpoch(options.ctx, epoch);
-    return isCompletedListHidden(
-      getActiveRenderSession(),
-      getRenderState(),
-      epoch,
-    );
+function completedRow(
+  id: string,
+  primary: string,
+  completed: number,
+  compact: Omit<NonNullable<WorkPanelRow['compact']>, 'counts'> = { depth: 0 },
+): WorkPanelRow {
+  return {
+    id,
+    primary,
+    status: 'completed',
+    statusGlyph: 'completed',
+    statusGlyphRole: 'success',
+    dropFirst: true,
+    segments: [{ text: primary, role: 'completed' }],
+    compact: {
+      ...compact,
+      counts: { running: 0, queued: 0, completed },
+    },
   };
+}
+
+/** The provider reads only the foreground session's local store, never the bus. */
+export function createTodoWorkPanelProvider() {
   return {
     version: WORK_PANEL_VERSION,
     id: 'todos',
@@ -95,7 +95,6 @@ export function createTodoWorkPanelProvider(
     selectableSummary: true,
     droppedSummary: (count: number) => `+${count} done`,
     visibleCount() {
-      if (hidden()) return 0;
       return selectCompactLayout(getRenderState()).reduce(
         (sum, entry) =>
           sum +
@@ -119,33 +118,31 @@ export function createTodoWorkPanelProvider(
       };
     },
     listRows(_now: number): WorkPanelRow[] {
-      if (hidden()) return [];
       return selectCompactLayout(getRenderState()).flatMap(
         (entry): WorkPanelRow[] => {
           if (entry.kind === 'task') return [taskRow(entry)];
+          if (entry.kind === 'completed-summary')
+            return [
+              completedRow(
+                'completed-summary',
+                `+${entry.counts.completed} done`,
+                entry.counts.completed,
+                { depth: 0, completedSummary: true },
+              ),
+            ];
           const group = {
             key: entry.key,
             label: sanitizeTerminalText(entry.label),
           };
-          if (entry.fullyCompleted) {
-            const primary = `${group.label} (${entry.counts.completed})`;
+          if (entry.fullyCompleted)
             return [
-              {
-                id: `group:${entry.key}`,
-                primary,
-                status: 'completed',
-                statusGlyph: 'completed',
-                statusGlyphRole: 'success',
-                dropFirst: true,
-                segments: [{ text: primary, role: 'completed' }],
-                compact: {
-                  group,
-                  depth: 0,
-                  counts: representedCounts(entry.counts),
-                },
-              },
+              completedRow(
+                `group:${entry.key}`,
+                `${group.label} (${entry.counts.completed})`,
+                entry.counts.completed,
+                { group, depth: 0 },
+              ),
             ];
-          }
           return [
             {
               id: `group:${entry.key}`,
@@ -159,6 +156,16 @@ export function createTodoWorkPanelProvider(
               },
             },
             ...entry.members.map((member) => taskRow(member, group)),
+            ...(entry.counts.completed
+              ? [
+                  completedRow(
+                    `group-done:${entry.key}`,
+                    `${entry.counts.completed} done`,
+                    entry.counts.completed,
+                    { group, depth: 1 },
+                  ),
+                ]
+              : []),
           ];
         },
       );
@@ -171,10 +178,7 @@ export function createTodoWorkPanelProvider(
     armCloseLabel: (_row: WorkPanelRow) => '',
     close(_id: string) {},
     onVisibleChanged(notify: () => void) {
-      return onRenderStateChanged(() => {
-        hidden();
-        notify();
-      });
+      return onRenderStateChanged(notify);
     },
   } satisfies WorkPanelProvider;
 }

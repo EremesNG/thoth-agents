@@ -177,8 +177,12 @@ export function panelSections(
             : []),
           ...section.rows.map((entry) => ({
             ...entry,
+            key: entry.row.compact?.completedSummary
+              ? overflowKey(provider, 'overflow-drop-first')
+              : entry.key,
             sectionSummary:
-              entry.row.summary && provider.selectableSummary
+              (entry.row.summary || entry.row.compact?.completedSummary) &&
+              provider.selectableSummary
                 ? true
                 : undefined,
           })),
@@ -1607,9 +1611,10 @@ function planPanelSections(
     )?.row.compact?.group?.key;
     const selectedIndex = items.findIndex(
       ({ key, row }) =>
-        key === selectedKey ||
-        (selectedGroup !== undefined &&
-          row.compact?.group?.key === selectedGroup),
+        !row.compact?.completedSummary &&
+        (key === selectedKey ||
+          (selectedGroup !== undefined &&
+            row.compact?.group?.key === selectedGroup)),
     );
     const ordered = items.some(({ row }) => row.compact)
       ? [...items].sort(compactPriority)
@@ -1704,6 +1709,14 @@ function planPanelSections(
         }
       } while (added);
     }
+  }
+  // A cap is already a count of hidden tasks, not a task selection to preserve.
+  // When height hides anything else, count it once in the single overflow row.
+  for (const plan of plans) {
+    if (plan.chosen.length < plan.items.length)
+      plan.chosen = plan.chosen.filter(
+        ({ row }) => !row.compact?.completedSummary,
+      );
   }
   return plans;
 }

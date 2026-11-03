@@ -24,10 +24,7 @@ import {
   sid,
 } from './state/store.js';
 import { registerTodosCommand, registerTodoTool } from './todo.js';
-import {
-  forgetCompletedList,
-  onPromptEpochChanged,
-} from './todo-visibility.js';
+import { onPromptEpochChanged } from './todo-visibility.js';
 import { createTodoWorkPanelProvider } from './todo-work-panel.js';
 import { STATE_ENTRY_TYPE } from './tool/types.js';
 
@@ -108,10 +105,9 @@ export default function (pi: ExtensionAPI) {
     if (getActiveRenderSession() === '') setActiveRenderSession(id);
     if (id !== getActiveRenderSession()) return;
     const generation = ++lifecycleGeneration;
-    forgetCompletedList(id);
     unregisterProvider ??= registerWorkPanelProvider(
       ctx,
-      createTodoWorkPanelProvider({ ctx }),
+      createTodoWorkPanelProvider(),
     );
     const release = await ensureWorkPanel(ctx);
     if (generation !== lifecycleGeneration) {
@@ -148,7 +144,6 @@ export default function (pi: ExtensionAPI) {
       lifecycleBindings.delete(s);
     }
     evictSession(s);
-    forgetCompletedList(s);
     if (s === '') statePublisher.dispose();
     else statePublisher.evict(s);
     if (s === '' || s === getActiveRenderSession()) {

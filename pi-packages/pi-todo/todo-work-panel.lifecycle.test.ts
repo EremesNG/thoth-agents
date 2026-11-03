@@ -206,7 +206,7 @@ it('still clears foreground ownership and unsubscribes when host disposal throws
   expect(getState('foreground').tasks).toEqual([]);
 });
 
-it('hides a fully completed list after the next recognized prompt, keeping task state and reinjection untouched', async () => {
+it('archives a fully completed list after the next recognized prompt while /todos keeps its full history', async () => {
   const { current, tool, emit, captured } = setup();
   await emit('session_start');
   const { provider, changed } = panel.registrations[0];
@@ -253,9 +253,10 @@ it('hides a fully completed list after the next recognized prompt, keeping task 
   const notify = current.ui.notify as ReturnType<typeof vi.fn>;
   await captured.commands.get('todos')?.handler('', current);
   expect(notify).toHaveBeenLastCalledWith(
-    expect.stringContaining('No todos'),
+    expect.stringContaining('Only task'),
     'info',
   );
+  expect(getState('foreground').tasks[0].archivedAt).toBeTypeOf('number');
 
   // New work shows the list again; a later completion waits for its own prompt.
   await tool.execute(

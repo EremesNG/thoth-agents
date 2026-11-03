@@ -37,7 +37,11 @@ it('keeps groups contiguous, orders by activity, and represents tasks rather tha
   const layout = selectCompactLayout(input);
   expect(
     layout.map((entry) =>
-      entry.kind === 'group' ? entry.label : entry.task.id,
+      entry.kind === 'group'
+        ? entry.label
+        : entry.kind === 'task'
+          ? entry.task.id
+          : entry.kind,
     ),
   ).toEqual([2, 'mix', 5, 9]);
   expect(layout[1]).toMatchObject({
@@ -58,8 +62,6 @@ it('keeps groups contiguous, orders by activity, and represents tasks rather tha
     [4, 'running', false],
     [3, 'queued', false],
     [6, 'blocked', true],
-    [7, 'newer done', false],
-    [8, 'older done', false],
   ]);
   expect(layout[2]).toMatchObject({
     counts: { in_progress: 0, pending: 1, completed: 0 },
@@ -97,9 +99,17 @@ it('orders completed entries and members newest first, with legacy timestamps ol
   );
   expect(
     layout.map((entry) =>
-      entry.kind === 'group' ? entry.label : entry.task.id,
+      entry.kind === 'group'
+        ? entry.label
+        : entry.kind === 'task'
+          ? entry.task.id
+          : entry.kind,
     ),
-  ).toEqual([4, 'done', 5, 1]);
+  ).toEqual([4, 'done', 'completed-summary']);
+  expect(layout[2]).toMatchObject({
+    kind: 'completed-summary',
+    counts: { in_progress: 0, pending: 0, completed: 2 },
+  });
   expect(layout[1]).toMatchObject({
     kind: 'group',
     fullyCompleted: true,

@@ -4,6 +4,8 @@ import { registerSubagentTools } from '../../src/tools.js';
 import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 async function enableContinue() {
@@ -165,6 +167,7 @@ describe('subagent_continue tool', () => {
         result,
         { expanded: false, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(160)
       .join('\n');
@@ -179,6 +182,7 @@ describe('subagent_continue tool', () => {
         result,
         { expanded: true, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(160)
       .join('\n');
@@ -636,6 +640,7 @@ describe('subagent_continue tool', () => {
         activeUpdate,
         { expanded: false, isPartial: true },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(160)
       .join('\n');

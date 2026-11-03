@@ -431,6 +431,37 @@ describe('question renderers', () => {
     expect(make(true)).toContain('p\nApproach');
   });
 
+  it.each([
+    {
+      name: 'a custom binding',
+      key: 'ctrl+e',
+      expected: '… 2 more lines · ctrl+e to expand',
+    },
+    { name: 'an unbound action', key: '', expected: '… 2 more lines' },
+  ])('resolves the KIT expansion hint for $name', ({ key, expected }) => {
+    token = registerRenderKit(createTestRenderKit(), {});
+    const state = createState({
+      questions: Array.from({ length: 12 }, (_, index) => ({
+        id: `q${index}`,
+        header: `Q${index}`,
+        prompt: 'Answer?',
+        type: 'text',
+      })),
+    });
+    const result = createQuestionRenderers()
+      .renderResult?.(
+        buildResult(state),
+        { expanded: false, isPartial: false },
+        theme,
+        context({
+          keyText: (action: string) =>
+            action === 'app.tools.expand' ? key : 'wrong action',
+        }),
+      )
+      .render(100);
+    expect(result?.slice(10)).toEqual([expected, '╰─ ✓']);
+  });
+
   it('marks error results', () => {
     const renderers = createQuestionRenderers();
     const result = renderers.renderResult?.(

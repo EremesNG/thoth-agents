@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_cancel tool', () => {
@@ -72,6 +74,7 @@ describe('subagent_cancel tool', () => {
             fg: (_name: string, text: string) => text,
             bold: (text: string) => text,
           },
+          keyHints,
         )
         .render(120)
         .join('\n'),

@@ -346,7 +346,7 @@ describe('theme render kit', () => {
       'six',
       'seven',
       'eight',
-      '… 2 more lines · ctrl+o to expand',
+      '… 2 more lines',
     ]);
     expect(kit.collapse(theme, rows, { expanded: true })).toEqual(rows);
     expect(kit.collapse(theme, rows, { budget: Infinity })).toEqual(rows);
@@ -355,7 +355,7 @@ describe('theme render kit', () => {
     ).toEqual(['… 10 more lines · open details']);
     expect(kit.collapse(styledTheme, ['one', 'two'], { budget: 1 })).toEqual([
       'one',
-      '<dim>… 1 more lines · ctrl+o to expand</dim>',
+      '<dim>… 1 more lines</dim>',
     ]);
   });
 

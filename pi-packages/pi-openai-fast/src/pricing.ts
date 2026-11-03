@@ -14,6 +14,8 @@ export function withCodexPriorityPricing(
   message: AssistantMessage,
   base: Model<Api>,
 ): AssistantMessage | undefined {
+  // A provider-billed total is authoritative, even if it matches the catalog estimate.
+  if (message.usage.cost.totalFromProvider) return undefined;
   // calculateCost mutates usage.cost, so calculate the standard tier on a copy.
   const standardCost = calculateCost(base, {
     ...message.usage,
@@ -24,6 +26,7 @@ export function withCodexPriorityPricing(
   if (!isStandardCost) return undefined;
   const multiplier = codexPriorityMultiplier(message.model);
   const cost = {
+    ...message.usage.cost,
     input: message.usage.cost.input * multiplier,
     output: message.usage.cost.output * multiplier,
     cacheRead: message.usage.cost.cacheRead * multiplier,

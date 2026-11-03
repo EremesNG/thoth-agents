@@ -9,7 +9,9 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import {
   getCapabilities,
+  KeybindingsManager,
   setCapabilities,
+  setKeybindings,
   stripTerminalSequences,
   type TUI,
   visibleWidth,
@@ -75,7 +77,17 @@ const text = (t: string): TextContent => ({ type: 'text', text: t });
 const plain = (c: ToolExecutionComponent, w = 80) =>
   c.render(w).map(stripTerminalSequences);
 
-beforeAll(() => initTheme('dark', false));
+beforeAll(() => {
+  initTheme('dark', false);
+  setKeybindings(
+    new KeybindingsManager({
+      'app.tools.expand': {
+        defaultKeys: 'ctrl+o',
+        description: 'Expand tool output',
+      },
+    }),
+  );
+});
 afterEach(() => {
   vi.useRealTimers();
   while (disposers.length) disposers.pop()?.();

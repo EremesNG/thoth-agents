@@ -322,12 +322,9 @@ describe('registerTodoTool — renderResult', () => {
       await call(tool, { action: 'create', subject: 'b' });
     }
     const r = await call(tool, params);
-    const node = tool.renderResult?.(
-      r as never,
-      {} as never,
-      theme,
-      undefined as never,
-    );
+    const node = tool.renderResult?.(r as never, {} as never, theme, {
+      keyText: () => 'ctrl+o',
+    } as never);
     return node?.render(120).join('\n') ?? '';
   }
 
@@ -370,7 +367,7 @@ describe('registerTodoTool — renderResult', () => {
       { content: [], details: undefined } as never,
       {} as never,
       theme,
-      undefined as never,
+      { keyText: () => 'ctrl+o' } as never,
     );
     expect(node?.render(120).join(' ')).toContain('✓');
   });
@@ -401,7 +398,9 @@ describe('batch rendering', () => {
     ).toContain('batch · 4 ops');
     const result = await call(tool, args);
     const collapsed = tool
-      .renderResult?.(result as never, {} as never, theme, undefined as never)
+      .renderResult?.(result as never, {} as never, theme, {
+        keyText: () => 'ctrl+o',
+      } as never)
       ?.render(160)
       .join('\n');
     expect(collapsed).toContain('batch · 2 created, 1 updated, 1 deleted');

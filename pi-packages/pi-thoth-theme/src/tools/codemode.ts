@@ -11,6 +11,7 @@ import {
 } from '@thoth-agents/pi-core';
 import { createRenderKit } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { escapeControlCharacters, getResultText } from './box.ts';
 
 const COLLAPSED_CALLS = 8;
@@ -169,7 +170,10 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
                   if (calls.length === 0) {
                     return options.expanded
                       ? []
-                      : kit.collapse(theme, output, options);
+                      : kit.collapse(theme, output, {
+                          ...options,
+                          expandHint: resolveExpandHint(context),
+                        });
                   }
                   const rows = visibleCalls.map((call, i) => {
                     const duration =
@@ -189,7 +193,7 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
                     rows.push(
                       theme.fg(
                         'dim',
-                        `+${calls.length - COLLAPSED_CALLS} more · ctrl+o to expand`,
+                        `+${calls.length - COLLAPSED_CALLS} more${expandHintSuffix(context)}`,
                       ),
                     );
                   }

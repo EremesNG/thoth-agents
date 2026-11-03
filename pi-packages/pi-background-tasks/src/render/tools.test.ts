@@ -1,8 +1,9 @@
+import { KeybindingsManager } from '@earendil-works/pi-tui';
 import {
   initTheme,
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
-import { Text, visibleWidth } from '@earendil-works/pi-tui';
+import { Text, visibleWidth, setKeybindings } from '@earendil-works/pi-tui';
 import {
   type RenderKitToken,
   registerRenderKit,
@@ -120,6 +121,7 @@ function compose(
 
 beforeAll(() => {
   initTheme('dark');
+  setKeybindings(new KeybindingsManager({ 'app.tools.expand': { defaultKeys: 'ctrl+o', description: 'Expand tool output' } }));
   registerTools({
     on() {},
     registerTool(tool: any) {
@@ -195,8 +197,8 @@ it.each([
     fg: (_role: string, text: string) => text,
     bold: (text: string) => text,
   };
-  const getKeys = vi.fn(() => ['alt+o']);
-  const context = { state: {}, isPartial: false, keybindings: { getKeys } };
+  const keyText = vi.fn(() => 'alt+o');
+  const context = { state: {}, isPartial: false, keyText };
   const result = {
     content: [{ type: 'text', text: 'full log' }],
     details:
@@ -220,7 +222,7 @@ it.each([
       : renderBackgroundTaskLogDisplay(result, { expanded }, theme, context);
   const component = create();
   const native = component.render(100);
-  getKeys.mockClear();
+  keyText.mockClear();
   const kit = createTestRenderKit();
   const card = vi.spyOn(kit, 'card');
   token = registerRenderKit(kit, {});
@@ -245,7 +247,7 @@ it.each([
   );
   expect(component.render(100)).toBe(lines);
   expect(card).toHaveBeenCalledTimes(1);
-  expect(getKeys).toHaveBeenCalledTimes(slot === 'call' ? 0 : 1);
+  expect(keyText).toHaveBeenCalledTimes(slot === 'call' ? 0 : 1);
   component.render(40);
   expect(card).toHaveBeenCalledTimes(2);
   component.invalidate();
@@ -253,7 +255,7 @@ it.each([
   expect(card).toHaveBeenCalledTimes(3);
   expect(component.render(100)).toEqual(lines);
   expect(card).toHaveBeenCalledTimes(4);
-  expect(getKeys).toHaveBeenCalledTimes(slot === 'call' ? 0 : 4);
+  expect(keyText).toHaveBeenCalledTimes(slot === 'call' ? 0 : 4);
   expect(create().render(100)).toEqual(lines);
   expect(card).toHaveBeenCalledTimes(5);
 

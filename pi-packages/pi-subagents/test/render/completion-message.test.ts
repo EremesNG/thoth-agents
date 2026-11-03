@@ -6,6 +6,8 @@ import extension, {
 import { continuationAvailable } from '../../src/continuation-availability.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 const notificationMarker =
   '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]';
@@ -62,7 +64,7 @@ describe('completion message render', () => {
       const rendered = env.stripAnsi(
         renderer(
           message,
-          { expanded },
+          { ...keyHints, expanded },
           { fg: (_name: string, text: string) => text },
         )
           .render(200)
@@ -208,7 +210,7 @@ describe('completion message render', () => {
     const collapsed = env.stripAnsi(
       renderer(
         message,
-        { expanded: false },
+        { ...keyHints, expanded: false },
         { fg: (_name: string, text: string) => text },
       )
         .render(120)
@@ -222,7 +224,7 @@ describe('completion message render', () => {
     const expanded = env.stripAnsi(
       renderer(
         message,
-        { expanded: true },
+        { ...keyHints, expanded: true },
         { fg: (_name: string, text: string) => text },
       )
         .render(120)
@@ -254,7 +256,7 @@ describe('completion message render', () => {
 
     const lines = renderer(
       message,
-      { expanded: false },
+      { ...keyHints, expanded: false },
       {
         fg: (_name: string, text: string) => text,
         bg: (_name: string, text: string) => text,
@@ -355,7 +357,7 @@ describe('completion message render', () => {
       bg: (name: string, text: string) => `BG(${name}:${text})`,
     };
 
-    const rendered = renderer(message, { expanded: false }, theme)
+    const rendered = renderer(message, { ...keyHints, expanded: false }, theme)
       .render(90)
       .join('\n');
     expect(rendered).not.toContain('BG(');
@@ -395,7 +397,7 @@ describe('completion message render', () => {
     const rendered = env.stripAnsi(
       renderer(
         message,
-        { expanded: true },
+        { ...keyHints, expanded: true },
         { fg: (_name: string, text: string) => text },
       )
         .render(52)
@@ -512,7 +514,7 @@ describe('completion message render', () => {
     const renderedWithName = env.stripAnsi(
       renderer(
         msgWithName,
-        { expanded: false },
+        { ...keyHints, expanded: false },
         { fg: (_n: string, t: string) => t },
       )
         .render(120)
@@ -538,7 +540,7 @@ describe('completion message render', () => {
     const renderedEmpty = env.stripAnsi(
       renderer(
         msgEmptyResp,
-        { expanded: true },
+        { ...keyHints, expanded: true },
         { fg: (_n: string, t: string) => t },
       )
         .render(120)
@@ -563,7 +565,7 @@ describe('completion message render', () => {
     const renderedError = env.stripAnsi(
       renderer(
         msgError,
-        { expanded: true },
+        { ...keyHints, expanded: true },
         { fg: (_n: string, t: string) => t },
       )
         .render(120)
@@ -665,7 +667,11 @@ describe('completion message render', () => {
     };
 
     const rendered = env.stripAnsi(
-      renderer(msg, { expanded: true }, { fg: (_n: string, t: string) => t })
+      renderer(
+        msg,
+        { ...keyHints, expanded: true },
+        { fg: (_n: string, t: string) => t },
+      )
         .render(120)
         .join('\n'),
     );

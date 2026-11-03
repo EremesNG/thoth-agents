@@ -238,7 +238,7 @@ export function createRenderKit(
         ...rows.slice(0, budget),
         theme.fg(
           'dim',
-          `${ellipsis} ${rows.length - budget} more lines ${separator} ${options.expandHint ?? 'ctrl+o to expand'}`,
+          `${ellipsis} ${rows.length - budget} more lines${options.expandHint ? ` ${separator} ${options.expandHint}` : ''}`,
         ),
       ];
     },

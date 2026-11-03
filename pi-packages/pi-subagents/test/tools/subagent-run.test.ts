@@ -8,6 +8,8 @@ import { sendSubagentQuestionMessage } from '../../src/render/question-message.j
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_run tool', () => {
@@ -15,7 +17,7 @@ describe('subagent_run tool', () => {
     const fs = await import('node:fs');
     const readme = fs.readFileSync('README.md', 'utf8');
 
-    expect(readme).toContain('input.mode ?? \"background\"');
+    expect(readme).toContain('input.mode ?? "background"');
     expect(readme).toContain('agent: string;');
     expect(readme).not.toContain('agents?: string[];');
     expect(readme).not.toContain('Multiple agents can run from one request');
@@ -320,6 +322,7 @@ describe('subagent_run tool', () => {
             update,
             { isPartial: true },
             { fg: (_name: string, text: string) => text },
+            keyHints,
           )
           .render(240)
           .join('\n'),
@@ -953,6 +956,7 @@ describe('subagent_run tool', () => {
         result,
         { expanded: false, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(90)
       .join('\n');
@@ -969,6 +973,7 @@ describe('subagent_run tool', () => {
         result,
         { expanded: true, isPartial: false },
         { fg: (_name: string, text: string) => text },
+        keyHints,
       )
       .render(90)
       .join('\n');
@@ -1436,6 +1441,7 @@ describe('subagent_run tool', () => {
           result,
           { expanded: false },
           { fg: (_n: string, t: string) => t },
+          keyHints,
         )
         .render(120)
         .join('\n'),
@@ -1453,6 +1459,7 @@ describe('subagent_run tool', () => {
           result,
           { expanded: true },
           { fg: (_n: string, t: string) => t },
+          keyHints,
         )
         .render(120)
         .join('\n'),
@@ -1468,6 +1475,7 @@ describe('subagent_run tool', () => {
         result,
         { expanded: false },
         { fg: (_n: string, t: string) => t },
+        keyHints,
       )
       .render(120)
       .join('\n');

@@ -1,3 +1,4 @@
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import { resolveIcon } from '@thoth-agents/pi-core';
 import { truncateToWidth } from '../completion-message.js';
 import { toolSelectionWarning } from '../tool-selection-warning.js';
@@ -194,12 +195,16 @@ export function formatTask(task: SubagentTask): string {
   return lines.join('\n');
 }
 
-function formatTaskListItem(task: SubagentTask): string {
+function formatTaskListItem(
+  task: SubagentTask,
+  context?: Partial<KeybindingHints>,
+): string {
   const when = task.last_activity_at ?? task.started_at ?? task.created_at;
   const usage = formatUsage(task, true);
   const taskLabel = formatTaskLabel(task, true);
   const hasResp = hasAgentResponse(task);
   const hasPreview = Boolean(task.output_preview || hasResp);
+  const hint = resolveExpandHint('to expand', context);
   const lines = [
     `subagent: ${task.agent} ${resolveIcon('separator', '·')} task: ${taskLabel} ${resolveIcon('separator', '·')} status: ${task.status} ${resolveIcon('separator', '·')} attempt: ${task.attempt ?? 1}`,
     modelEffortLine(task, true),
@@ -207,7 +212,7 @@ function formatTaskListItem(task: SubagentTask): string {
     usage ? `usage: ${usage}` : undefined,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
     hasPreview
-      ? `preview: collapsed ${resolveIcon('separator', '·')} ${resolveExpandHint('to expand')}`
+      ? `preview: collapsed${hint ? ` ${resolveIcon('separator', '·')} ${hint}` : ''}`
       : undefined,
     task.error ? `error: ${clip(task.error, 240, true)}` : undefined,
   ].filter(Boolean) as string[];
@@ -229,10 +234,11 @@ export function formatTaskListSummary(
 ): string {
   if (!tasks.length) return 'Listed 0 subagent task(s).';
   const mostRecent = tasks[0]!;
+  const hint = resolveExpandHint('to expand', context);
   return [
     `Listed ${tasks.length} subagent task(s).`,
     `Most recent: ${formatTaskLabel(mostRecent)} · task_id: ${mostRecent.id} · model: ${mostRecent.model ?? 'default/current'} · effort: ${mostRecent.effort ?? 'default/current'} · status: ${mostRecent.status}`,
-    `List view: collapsed · ${resolveExpandHint('to expand', context)}`,
+    ...(hint ? [`List view: collapsed · ${hint}`] : []),
     ...tasks.flatMap((task) => {
       const updates = formatOrchestratorUpdates(task);
       return updates.length ? [`task_id: ${task.id}`, ...updates] : [];
@@ -247,7 +253,7 @@ export function formatTaskListRender(
 ): string {
   if (!tasks.length) return 'Listed 0 subagent task(s).';
   if (expanded)
-    return `Listed ${tasks.length} subagent task(s):\n\n${tasks.map(formatTaskListItem).join('\n\n')}`;
+    return `Listed ${tasks.length} subagent task(s):\n\n${tasks.map((task) => formatTaskListItem(task, context)).join('\n\n')}`;
   const mostRecent = tasks[0]!;
   const recentLabel = formatTaskLabel(mostRecent, true);
   return [

@@ -1,3 +1,4 @@
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import {
   stripTerminalSequences,
   truncateToWidth,
@@ -11,16 +12,14 @@ const SEPARATORS = new Set([
     icon('separator', mode),
   ),
 ]);
-const separatorPattern = [...SEPARATORS]
-  .join('')
-  .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const SGR = '(?:\\x1b\\[|\\x9b)[0-9;:]*m';
 const SGR_TAIL = new RegExp(`${SGR}$`);
 const SGR_ALL = new RegExp(SGR, 'g');
 // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional SGR escape matching
 const FULL_RESET = /^(?:\x1b\[|\x9b)0?m$/;
+// A pipe can be a configured key; only the non-key middle dot delimits tokens.
 const TRAILING_HINT = new RegExp(
-  `((?:${SGR}|[^\\s\\x1b\\x9b${separatorPattern}])+) to expand((?:${SGR}|\\s)*)$`,
+  `((?:${SGR}|[^\\s\\x1b\\x9b·])+) to expand((?:${SGR}|\\s)*)$`,
   'u',
 );
 
@@ -85,4 +84,18 @@ export function fitExpandHint(
   const room = max - visibleWidth(separator + key + after);
   if (room < 1) return row;
   return `${truncateToWidth(head, room, ellipsis)}${activeSgr(head)}${separator}${key}${after}`;
+}
+
+/** Keep the renderer's existing theme roles; unbound actions have no instruction. */
+export function resolveExpandHint(context?: Partial<KeybindingHints>): string {
+  const key = context?.keyText?.('app.tools.expand') ?? '';
+  return key ? `${key} to expand` : '';
+}
+
+export function expandHintSuffix(
+  context: Partial<KeybindingHints> | undefined,
+  separator = '·',
+): string {
+  const hint = resolveExpandHint(context);
+  return hint ? ` ${separator} ${hint}` : '';
 }

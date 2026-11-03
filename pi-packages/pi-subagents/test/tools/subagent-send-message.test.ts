@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_send_message tool', () => {
@@ -394,7 +396,7 @@ describe('subagent_send_message tool', () => {
     const theme = { fg: (_n: string, t: string) => t, bold: (t: string) => t };
 
     const collapsed = sendTool
-      .renderResult(queuedResult, { expanded: false }, theme)
+      .renderResult(queuedResult, { expanded: false }, theme, keyHints)
       .render(80);
     expect(collapsed[0]).toBe(' '.repeat(80));
     expect(collapsed.at(-1)).toBe(' '.repeat(80));
@@ -404,7 +406,7 @@ describe('subagent_send_message tool', () => {
     expect(collapsed.join('\n')).toContain('ctrl+o to expand');
 
     const expanded = sendTool
-      .renderResult(queuedResult, { expanded: true }, theme)
+      .renderResult(queuedResult, { expanded: true }, theme, keyHints)
       .render(80);
     expect(expanded[0]).toBe(' '.repeat(80));
     expect(expanded.at(-1)).toBe(' '.repeat(80));

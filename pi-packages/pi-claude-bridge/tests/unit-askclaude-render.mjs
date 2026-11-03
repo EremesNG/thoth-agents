@@ -63,6 +63,7 @@ const context = (overrides = {}) => ({
   expanded: false,
   showImages: false,
   isError: false,
+  keyText: (action) => (action === 'app.tools.expand' ? 'ctrl+o' : ''),
   ...overrides,
 });
 
@@ -403,6 +404,25 @@ describe('AskClaude rendering', () => {
     ]);
   });
 
+  for (const { name, key, expected } of [
+    { name: 'custom binding', key: 'ctrl+e', expected: '… 2 more lines · ctrl+e to expand' },
+    { name: 'unbound action', key: '', expected: '… 2 more lines' },
+  ]) {
+    it(`resolves the KIT expansion hint for a ${name}`, () => {
+      withKit();
+      const result = tool.renderResult(
+        { content: [{ type: 'text', text: Array(10).fill('row').join('\n') }] },
+        { expanded: false, isPartial: false },
+        theme,
+        context({
+          isPartial: false,
+          keyText: (action) => (action === 'app.tools.expand' ? key : 'wrong action'),
+        }),
+      );
+      assert.deepEqual(result.render(100).slice(8), [expected, '╰─ ✓']);
+    });
+  }
+
   it('applies the KIT collapse budget to wrapped rows at the available card width', () => {
     withKit();
     const result = tool.renderResult(
@@ -531,6 +551,33 @@ describe('AskClaude rendering', () => {
       assert.deepEqual(
         [...call.render(80), ...result.render(80)],
         ['╭─ ! AskClaude', '"Review"', 'Error: unavailable', '╰─ ✗'],
+      );
+    });
+  }
+
+  for (const { name, key, expected } of [
+    { name: 'a custom binding', key: 'ctrl+e', expected: '… (ctrl+e to expand)' },
+    { name: 'an unbound action', key: '', expected: '…' },
+  ]) {
+    it(`resolves the native expansion hint for ${name} without KIT`, () => {
+      const shared = context({
+        isPartial: false,
+        keyText: (action) => (action === 'app.tools.expand' ? key : 'wrong action'),
+      });
+      const call = tool.renderCall({ prompt: 'Review' }, theme, shared);
+      const result = tool.renderResult(
+        { content: [{ type: 'text', text: 'one\ntwo\nthree\nfour\nfive\nsix\nseven' }] },
+        { expanded: false, isPartial: false },
+        theme,
+        shared,
+      );
+      assert.deepEqual(
+        [...call.render(100), ...result.render(100)],
+        sdkBox(
+          `AskClaude "Review"\n✓ Claude Code\none\ntwo\nthree\nfour\nfive\nsix\n${expected}`,
+          'toolSuccessBg',
+          100,
+        ),
       );
     });
   }

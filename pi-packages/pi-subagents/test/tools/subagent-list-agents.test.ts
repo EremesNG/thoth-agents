@@ -6,6 +6,8 @@ import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agen
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 const env = installSubagentTestEnv();
 
 describe('subagent_list_agents tool', () => {
@@ -93,11 +95,11 @@ describe('subagent_list_agents tool', () => {
     );
 
     const collapsed = tool
-      .renderResult(result, { expanded: false }, theme)
+      .renderResult(result, { expanded: false }, theme, keyHints)
       .render(200)
       .join('\n');
     const expanded = tool
-      .renderResult(result, { expanded: true }, theme)
+      .renderResult(result, { expanded: true }, theme, keyHints)
       .render(200)
       .join('\n');
 

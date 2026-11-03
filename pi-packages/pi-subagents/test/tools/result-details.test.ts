@@ -186,7 +186,6 @@ describe('bounded subagent tool details', () => {
         : [
             'Listed 1 subagent task(s).',
             `Most recent: ${label} · task_id: subtask_long · model: default/current · effort: default/current · status: completed`,
-            'List view: collapsed · ctrl+o to expand',
           ];
     expect(response.content[0].text).toBe(expectedText.join('\n'));
     const details =
@@ -275,7 +274,6 @@ describe('bounded subagent tool details', () => {
         [
           'Listed 1 subagent task(s).',
           'Most recent: Bounded task · task_id: subtask_bounded · model: mock/model · effort: high · status: completed',
-          'List view: collapsed · ctrl+o to expand',
           'task_id: subtask_bounded',
           'pending question · request_id: question-1 · Which option?',
           'progress: checkpoint 2',

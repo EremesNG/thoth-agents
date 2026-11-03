@@ -7,6 +7,7 @@ import type {
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { IconMode, ThemeConfig } from '../shared/config.ts';
+import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
@@ -180,7 +181,7 @@ export function createGenericTool(
           body.push(
             theme.fg(
               'dim',
-              `${semanticIcon('ellipsis', config.icons)} ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
+              `${semanticIcon('ellipsis', config.icons)} ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
             ),
           );
         }

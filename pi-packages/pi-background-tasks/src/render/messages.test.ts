@@ -298,7 +298,7 @@ describe('background message renderer', () => {
     ]);
     const lines = renderBackgroundMessage(
       { content: packed.text, details: packed.details },
-      {},
+      { keyText: () => 'ctrl+o' },
       theme,
     ).render(160);
     const options = card.mock.calls[0][1];
@@ -372,7 +372,7 @@ describe('background message renderer', () => {
     };
     const component = renderBackgroundMessage(
       message,
-      { expanded },
+      { expanded, keyText: () => 'ctrl+o' },
       plainTheme,
     );
     const native = component.render(100);
@@ -399,7 +399,7 @@ describe('background message renderer', () => {
     expect(component.render(100)).toEqual(lines);
     expect(card).toHaveBeenCalledTimes(4);
     expect(
-      renderBackgroundMessage(message, { expanded }, plainTheme).render(100),
+      renderBackgroundMessage(message, { expanded, keyText: () => 'ctrl+o' }, plainTheme).render(100),
     ).toEqual(lines);
     expect(card).toHaveBeenCalledTimes(5);
 
@@ -442,7 +442,7 @@ describe('background message renderer', () => {
           });
     const component = renderBackgroundMessage(
       { content: packed.text, details: packed.details },
-      {},
+      { keyText: () => 'ctrl+o' },
       theme,
     );
     const native = component.render(120).map(strip).join('\n');
@@ -474,7 +474,7 @@ describe('background message renderer', () => {
   });
 
   it('renders a collapsed native summary with an expand hint', () => {
-    const lines = renderBackgroundMessage(message, { expanded: false }, theme)
+    const lines = renderBackgroundMessage(message, { expanded: false, keyText: () => 'ctrl+o' }, theme)
       .render(80)
       .map(strip);
     expect(lines[0]).toContain('2 completions · 1 failed');
@@ -483,7 +483,7 @@ describe('background message renderer', () => {
     expect(lines.join('\n')).toContain('to expand');
     expect(lines.join('\n')).not.toContain('Retrieve durable');
     expect(
-      renderBackgroundMessage(message, { expanded: false }, theme)
+      renderBackgroundMessage(message, { expanded: false, keyText: () => 'ctrl+o' }, theme)
         .render(80)
         .join(''),
     ).toContain('\x1b[31m');
@@ -496,7 +496,7 @@ describe('background message renderer', () => {
     );
     const text = renderBackgroundMessage(
       { content: packed.text, details: packed.details },
-      {},
+      { keyText: () => 'ctrl+o' },
       theme,
     )
       .render(160)
@@ -519,7 +519,7 @@ describe('background message renderer', () => {
     ]);
     const lines = renderBackgroundMessage(
       { content: packed.text, details: packed.details },
-      {},
+      { keyText: () => 'ctrl+o' },
       theme,
     )
       .render(160)

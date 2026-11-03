@@ -93,7 +93,7 @@ describe("background task log folded display", () => {
     expect(full).toContain("log-line-18");
     expect(result.details?.kind).toBe("background-task-log-display");
 
-    const compact = plain(tools.bg_task_log.renderResult(result, { expanded: false }, theme).render(80));
+    const compact = plain(tools.bg_task_log.renderResult(result, { expanded: false }, theme, { keyText: () => 'ctrl+o' }).render(80));
     expect(compact).toContain("19 lines");
     expect(compact).toContain("to expand");
     expect(compact).toContain("Folded");
@@ -117,7 +117,7 @@ describe("background task log folded display", () => {
     expect(textOf(result)).toContain("log-line-09");
     expect(textOf(result)).toContain("log-line-18");
     expect(textOf(result)).not.toContain("log-line-08");
-    const compact = plain(tools.bg_task_log.renderResult(result, { expanded: false }, theme).render(80));
+    const compact = plain(tools.bg_task_log.renderResult(result, { expanded: false }, theme, { keyText: () => 'ctrl+o' }).render(80));
     expect(compact).toContain("log-line-09");
   });
 

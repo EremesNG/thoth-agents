@@ -149,6 +149,7 @@ function expectGrepDataRows(
 describe('Built-in tool renderers', () => {
   const cwd = process.cwd();
   const baseContext = {
+    keyText: () => 'ctrl+o',
     args: {},
     toolCallId: 'call-1',
     invalidate: () => {},

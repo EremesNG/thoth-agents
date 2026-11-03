@@ -6,6 +6,8 @@ import { sendSubagentQuestionMessage } from '../../src/render/question-message.j
 import * as rendering from '../../src/thread-view.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
+const keyHints = { keyText: () => 'ctrl+o' };
+
 vi.mock('../../src/manager.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/manager.js')>()),
   SubagentManager: vi.fn(),
@@ -105,13 +107,17 @@ describe('question message render and delivery', () => {
     const renderer = renderers.get('subagent-question')!;
     const theme = { fg: (_name: string, text: string) => text };
     const compact = env.stripAnsi(
-      renderer(payload, { expanded: false }, theme).render(100).join('\n'),
+      renderer(payload, { ...keyHints, expanded: false }, theme)
+        .render(100)
+        .join('\n'),
     );
     expect(compact).toContain('[subagent] Scope Analysis · question');
     expect(compact).toContain('ctrl+o to expand');
     expect(compact).not.toContain(question.message);
     const expanded = env.stripAnsi(
-      renderer(payload, { expanded: true }, theme).render(100).join('\n'),
+      renderer(payload, { ...keyHints, expanded: true }, theme)
+        .render(100)
+        .join('\n'),
     );
     expect(expanded).toContain(task.id);
     expect(expanded).toContain(question.request_id);
@@ -120,7 +126,11 @@ describe('question message render and delivery', () => {
     expect(expanded).not.toContain('Automated system notification');
     expect(expanded).toMatch(/╭─.*\n/);
     for (const width of [1, 9, 40]) {
-      const lines = renderer(payload, { expanded: true }, theme).render(width);
+      const lines = renderer(
+        payload,
+        { ...keyHints, expanded: true },
+        theme,
+      ).render(width);
       expect(
         lines.every((line: string) => env.stripAnsi(line).length <= width),
       ).toBe(true);

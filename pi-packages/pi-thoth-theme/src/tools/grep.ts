@@ -8,7 +8,7 @@ import { truncateToWidth } from '@earendil-works/pi-tui';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
-import { fitExpandHint } from '../shared/expand-hint.ts';
+import { expandHintSuffix, fitExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
@@ -254,7 +254,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
             lines.push(
               theme.fg(
                 'dim',
-                `${semanticIcon('ellipsis', config.icons)} ${rawLines.length - visibleRawLines.length} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
+                `${semanticIcon('ellipsis', config.icons)} ${rawLines.length - visibleRawLines.length} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
               ),
             );
           }
@@ -362,7 +362,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
           (groupEntries.length > maxGroups || remainingItems > 0)
         ) {
           const hiddenFiles = groupEntries.length - visibleGroups.length;
-          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remainingItems} more matches across ${hiddenFiles} files ${semanticIcon('separator', config.icons)} ctrl+o to expand`)}`;
+          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remainingItems} more matches across ${hiddenFiles} files${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
           rawLines.push(summary);
         }
 

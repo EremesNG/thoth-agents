@@ -30,6 +30,7 @@ import {
   totalTimeoutResult,
 } from './timeout-context.js';
 import { toolSelectionWarning } from './tool-selection-warning.js';
+import { resolveExpandHint } from './tools/expansion-hint.js';
 import {
   appendSubagentResumeGuidance,
   formatTaskLabel,
@@ -191,6 +192,7 @@ export const renderSubagentCompletionMessage = iconAwareRenderer(
     const status = task.status ?? 'completed';
     const failed = status === 'failed' || status === 'cancelled';
     const expanded = Boolean(options?.expanded);
+    const expandHint = resolveExpandHint('to expand', options);
     const rawResponse = details.full_result ?? task.result;
     const hasResp =
       typeof rawResponse === 'string' && rawResponse.trim().length > 0;
@@ -213,7 +215,7 @@ export const renderSubagentCompletionMessage = iconAwareRenderer(
           text: `subagent: ${task.agent ?? 'subagent'} ${resolveIcon('separator', '·')} model: ${task.model ?? 'default/current'} ${resolveIcon('separator', '·')} effort: ${task.effort ?? 'default/current'} ${resolveIcon('separator', '·')} status: ${status}`,
           style: 'dim',
         },
-        { text: 'ctrl+o to expand', style: 'dim' },
+        ...(expandHint ? [{ text: expandHint, style: 'dim' as const }] : []),
       );
     } else {
       sections.push({

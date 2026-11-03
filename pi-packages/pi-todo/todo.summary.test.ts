@@ -50,6 +50,8 @@ function context(overrides: Partial<RenderContext> = {}): RenderContext {
     isError: false,
     expanded: false,
     showImages: false,
+    keyText: () => 'ctrl+o',
+    keyHint: (_action, description) => `ctrl+o ${description}`,
     ...overrides,
   } as RenderContext;
 }
@@ -133,6 +135,25 @@ describe('todo result summary — collapsed', () => {
     expect(rows(tool, await run({ action: 'list' }))[0]).toBe(
       'list · ◐ 1  ✓ 2',
     );
+  });
+
+  it.each([
+    false,
+    true,
+  ])('uses injected custom and unbound expansion keys with KIT=%s', async (withKit) => {
+    if (token) withdrawRenderKit(token);
+    token = withKit ? registerRenderKit(createRenderKit({}), {}) : undefined;
+    const { tool, run } = await seeded();
+    const result = await run({ action: 'list' });
+    const custom = rows(tool, result, {
+      ctx: context({ keyText: () => 'ctrl+e' }),
+    }).join('\n');
+    expect(custom).toContain('ctrl+e to expand');
+    const unbound = rows(tool, result, {
+      ctx: context({ keyText: () => '' }),
+    }).join('\n');
+    expect(unbound).not.toContain('to expand');
+    expect(unbound).not.toContain('ctrl+o');
   });
 
   it('list with a status filter shows glyph and count', async () => {

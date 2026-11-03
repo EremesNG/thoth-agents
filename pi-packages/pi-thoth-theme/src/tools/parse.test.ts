@@ -540,7 +540,9 @@ describe('SDK-produced notice appendices', () => {
         expect(styled).toContainEqual({ color: 'toolOutput', text: entry });
       }
       const collapsed = tool
-        .renderResult(result, { ...expanded, expanded: false }, theme, {})
+        .renderResult(result, { ...expanded, expanded: false }, theme, {
+          keyText: () => 'ctrl+o',
+        })
         .render(300);
       expect(collapsed.some((line) => line.includes('ctrl+o to expand'))).toBe(
         true,

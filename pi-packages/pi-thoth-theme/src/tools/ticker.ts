@@ -1,6 +1,7 @@
 // Per-state elapsed invalidation adapted from pi-omp-theme (MIT).
 // Only public renderer context APIs are used; no viewport-dependent freezing.
 
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import type {
   RenderIndicatorContext,
   RenderStatus,
@@ -18,7 +19,9 @@ export type ElapsedRenderState = NonNullable<
   animationFrame?: number;
 };
 
-export interface ElapsedRenderContext extends RenderIndicatorContext {
+export interface ElapsedRenderContext
+  extends RenderIndicatorContext,
+    Partial<KeybindingHints> {
   state?: ElapsedRenderState;
 }
 

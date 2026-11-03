@@ -54,6 +54,27 @@ suppression. Upgrade pi-subagents and pi-thoth-theme to `>=0.3.0` together and
 `/reload` to retain status-line subagent cost display. See
 [pi-core's exact contracts](../pi-core/README.md#task-summary-and-usage-channels).
 
+### Subagent lifecycle events
+
+The owning parent extension also publishes best-effort raw Pi event-bus events
+for both background and task modes:
+
+- `task:subagent:lifecycle`: `{ id, runId, status, agent, description }`, where
+  `id` and `runId` are the task ID, `agent` is the agent name, and `description`
+  is the display name or whitespace-normalized task text, bounded to 160
+  characters. Every accepted attempt (including queued/pre-aborted launches)
+  emits `started`, followed by exactly one terminal status after runner cleanup:
+  `completed`, `failed` (including timeout/crash), or `aborted` (cancellation or
+  shutdown/reload interruption). A continuation reuses the task ID and emits a
+  new start/terminal pair.
+- `subagent:process-terminal`: `{ runId }`, emitted once after teardown only if
+  the attempt invoked a runner. Cancelled launches that never invoked a runner
+  emit no process-terminal event.
+
+These events originate in the parent manager, not child-session hooks. An absent
+or failing event bus cannot interrupt execution or cleanup. They let status
+consumers such as Orca keep the parent working while delegated attempts run.
+
 ## Rendering
 
 Tool calls/results, completion/question messages and the shared above-editor

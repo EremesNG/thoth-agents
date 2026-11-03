@@ -13,6 +13,7 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Fixed
 
+- Pause the stream-json overall turn budget while tool calls are parked, resuming with the remaining budget after all parks resolve.
 - Keep update notices on local package versions instead of repeatedly announcing upstream releases.
 
 ## [0.6.0] - 2026-10-29

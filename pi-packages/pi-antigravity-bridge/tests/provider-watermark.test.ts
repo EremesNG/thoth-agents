@@ -31,6 +31,7 @@ import {
 import { resetSyspromptAgentForTests } from "../src/sysprompt-agent.js";
 import { SessionStore } from "../src/sessions.js";
 import type { StreamDriver, DriverTurnRequest } from "../src/driver.js";
+import type { DriverActivity, TurnDriver, TurnHandle, TurnOutcome } from "../src/driver-types.js";
 
 const SYS = "You are pi. Follow AGENTS.md.";
 
@@ -314,5 +315,147 @@ test("aborted turn on the same conversation: watermark is not advanced", async (
 		} finally {
 			fs.rmSync(h.dir, { recursive: true, force: true });
 		}
+	});
+});
+
+/** A live originating handle whose bridge calls can park more than once. */
+function parkingHarness(engine: "stream-json" | "acp", conversationId: string | null = "park-own") {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-park-watermark-"));
+	const store = new SessionStore(path.join(dir, "sessions.json"));
+	const key = `cwd:${dir}${engine === "acp" ? "@acp" : ""}`;
+	const activities: DriverActivity[] = [];
+	let finish!: (outcome: TurnOutcome) => void;
+	const handle: TurnHandle = { id: "origin", conversationId: conversationId ?? undefined,
+		outcome: new Promise(resolve => { finish = resolve; }),
+		next: async () => activities.shift() ?? null, pushExternal: activity => { activities.push(activity); } };
+	const requests: DriverTurnRequest[] = [];
+	const driver = { get activeHandle() { return handle; }, reentry: () => handle, kickIdle() {},
+		snapshot: () => ({ conversationId: "UNRELATED-GLOBAL" }),
+		run: async (request: DriverTurnRequest) => { requests.push(request); park("park-1"); return handle; },
+	} as unknown as TurnDriver;
+	const rt = new ToolRoundTrips(driver);
+	const park = (id: string) => { void rt.onToolCall(id, "read", {}, new AbortController().signal).catch(() => {}); };
+	const simple = createStreamSimple({ entries: [], store, driver, acpDriver: engine === "acp" ? driver : undefined,
+		engine, roundTrips: rt });
+	const run = async (context: TranscriptContext) => {
+		const events = [];
+		for await (const event of simple(model, context, { cwd: dir } as SimpleStreamOptions)) events.push(event);
+		return events;
+	};
+	return { store, key, handle, requests, park, finish: (outcome: TurnOutcome) => finish(outcome), run,
+		async resume(id: string) {
+			const context = contextWith(["first task", "intervening"]);
+			context.messages.push({ role: "toolResult", toolCallId: id, toolName: "read",
+				content: [{ type: "text", text: "DONE" }], isError: false, timestamp: 0 });
+			return run(context);
+		},
+		cleanup() { rt.failAll("cleanup"); finish({ status: "ERROR", response: "", finished: true, aborted: true });
+			fs.rmSync(dir, { recursive: true, force: true }); },
+	};
+}
+
+test.each(["stream-json", "acp"] as const)("%s first park binds only the originating handle and dispatch watermark", async engine => {
+	const h = parkingHarness(engine);
+	try {
+		await h.run(contextWith(["first task"]));
+		assert.equal(h.store.get(h.key)?.conversationId, "park-own");
+		assert.equal(h.store.get(h.key)?.lastMessageCount, 1);
+	} finally { h.cleanup(); }
+});
+
+test.each(["stream-json", "acp"] as const)("%s park never writes over an existing or newly installed binding", async engine => {
+	for (const concurrent of [false, true]) {
+		const h = parkingHarness(engine);
+		const record = { conversationId: "newer-binding", lastStepIdx: -1, lastMessageCount: 7 };
+		try {
+			if (concurrent) {
+				const next = h.handle.next;
+				h.handle.next = async () => { h.store.set(h.key, record); return next(); };
+			} else h.store.set(h.key, record);
+			const write = vi.spyOn(h.store, "set");
+			await h.run(contextWith(["first task"]));
+			assert.deepEqual(h.store.get(h.key), record);
+			assert.equal(write.mock.calls.length, concurrent ? 1 : 0, "park must not write when the store is bound");
+		} finally { h.cleanup(); }
+	}
+});
+
+test.each(["stream-json", "acp"] as const)("%s repeated parks retain the original dispatch watermark without writing", async engine => {
+	const h = parkingHarness(engine);
+	try {
+		await h.run(contextWith(["first task"]));
+		const write = vi.spyOn(h.store, "set");
+		h.park("park-2");
+		await h.resume("park-1");
+		h.park("park-3");
+		await h.resume("park-2");
+		assert.equal(h.store.get(h.key)?.lastMessageCount, 1);
+		assert.equal(write.mock.calls.length, 0);
+		assert.equal(h.requests.length, 1, "parks reenter the same dispatch");
+	} finally { h.cleanup(); }
+});
+
+test.each(["stream-json", "acp"] as const)("%s parked then resumed ERROR and abort preserve the pre-turn watermark", async engine => {
+	for (const boundBeforeDispatch of [false, true]) {
+		for (const aborted of [false, true]) {
+			const h = parkingHarness(engine);
+			try {
+				if (boundBeforeDispatch) h.store.set(h.key, { conversationId: "park-own", lastStepIdx: -1, lastMessageCount: 7 });
+				await h.run(contextWith(["first task"]));
+				h.finish({ status: aborted ? "OK" : "ERROR", response: "", error: "boom", finished: true,
+					aborted, conversationId: "park-own" });
+				const events = await h.resume("park-1");
+				assert.equal(events.at(-1)?.type, "error");
+				assert.equal(h.store.get(h.key)?.conversationId, "park-own");
+				assert.equal(h.store.get(h.key)?.lastMessageCount, boundBeforeDispatch ? 7 : 1);
+			} finally { h.cleanup(); }
+		}
+	}
+});
+
+test.each(["stream-json", "acp"] as const)("%s parked A-to-B recreation is still detected at outcome", async engine => {
+	const h = parkingHarness(engine, "conv-b");
+	try {
+		h.store.set(h.key, { conversationId: "conv-a", lastStepIdx: -1, lastMessageCount: 7 });
+		await h.run(contextWith(["first task"]));
+		assert.equal(h.store.get(h.key)?.conversationId, "conv-a");
+		h.finish({ status: "OK", response: "ok", finished: true, aborted: false, conversationId: "conv-b" });
+		await h.resume("park-1");
+		assert.equal(h.store.get(h.key), null);
+	} finally { h.cleanup(); }
+});
+
+test("unavailable stream-json identity never borrows a global id, even on a later continuation park", async () => {
+	const h = parkingHarness("stream-json", null);
+	try {
+		await h.run(contextWith(["first task"]));
+		assert.equal(h.store.get(h.key), null);
+		Object.defineProperty(h.handle, "conversationId", { value: "learned-later" });
+		h.park("park-2");
+		await h.resume("park-1");
+		assert.equal(h.store.get(h.key), null, "only a fresh dispatch may bind at park");
+	} finally { h.cleanup(); }
+});
+
+test("first park transfers the staged carrier to the bound conversation", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-park-carrier-"));
+	await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENTS_ROOT: root, AGY_AGENT: "" }, async () => {
+		resetSyspromptAgentForTests();
+		const h = parkingHarness("stream-json", "park-carrier");
+		try {
+			await h.run(contextWith(["first task"], SYS));
+			const agent = h.requests[0].agent;
+			assert.ok(agent?.startsWith("pi-bridge-sys-"));
+			let request: DriverTurnRequest | undefined;
+			const driver = { run: async (opts: DriverTurnRequest) => { request = opts; return {
+				id: "restarted", next: async () => null, pushExternal() {}, outcome: Promise.resolve({
+					status: "OK" as const, response: "ok", finished: true, aborted: false, conversationId: "park-carrier" }),
+			}; } } as unknown as TurnDriver;
+			const simple = createStreamSimple({ entries: [], store: h.store, driver, roundTrips: new ToolRoundTrips(driver) });
+			for await (const event of simple(model, normalizeContext({ messages: [user("follow-up")] }),
+				{ cwd: h.requests[0].cwd } as SimpleStreamOptions)) void event;
+			assert.equal(request?.agent, agent);
+			assert.equal(request?.conversationId, "park-carrier");
+		} finally { h.cleanup(); fs.rmSync(root, { recursive: true, force: true }); }
 	});
 });

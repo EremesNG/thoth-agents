@@ -27,6 +27,7 @@ import { parkedTurnAnswer } from "./parked-turn.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { emitLifecycle } from "./lifecycle.js";
+import { buildImageNote, stagePromptImages } from "./prompt-images.js";
 import type {
 	AgyUsage,
 	DriverActivity,
@@ -112,6 +113,7 @@ async function nextActivity(turn: ActiveTurn): Promise<DriverActivity | null> {
 function makeHandle(turn: ActiveTurn): TurnHandle {
 	return {
 		id: turn.id,
+		get conversationId() { return turn.conversationId; },
 		outcome: turn.outcome,
 		next: () => nextActivity(turn),
 		pushExternal: (activity) => {
@@ -297,9 +299,20 @@ export class StreamDriver implements TurnDriver {
 			if (sinkFailure) throw sinkFailure.error;
 			this.#armTimers(turn);
 
+			// Recovery groups are already reserved by the provider. Staging never
+			// changes claims; frame-write confirmation lets the provider commit.
+			let prompt = request.prompt;
+			if (request.images?.length) {
+				const staged = stagePromptImages(request.images);
+				if (staged) prompt += `\n\n${buildImageNote(staged.paths)}`;
+				else {
+					this.#log("image-staging-failed", { count: request.images.length });
+					prompt += `\n\n[${request.images.length} image(s) could not be delivered to this turn; ask the user to re-attach or re-read the original path.]`;
+				}
+			}
 			const line = `${JSON.stringify({
 				event: "user",
-				message: { role: "user", content: request.prompt },
+				message: { role: "user", content: prompt },
 			})}\n`;
 			const child = this.#child;
 			if (!child?.stdin) throw new Error("agy driver stdin unavailable");

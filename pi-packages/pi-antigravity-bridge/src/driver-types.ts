@@ -35,7 +35,8 @@ export interface DriverTurnRequest extends DriverProfile {
 	prompt: string;
 	/** Image blocks riding with the prompt. ACP forwards them as typed
 	 *  content blocks (probe 2026-09-03: 64x64 two-tone PNG answered
-	 *  correctly); the stream-json CLI prompt is text-only and ignores them. */
+	 *  correctly); stream-json stages them as owner-only temp files and
+	 *  references the paths in the prompt (see prompt-images.ts). */
 	images?: Array<{ data: string; mimeType: string }>;
 	/** ACP only: pi-side context delivered as a native `embeddedContext`
 	 *  resource block instead of inline prompt text (G1 on ACP). Stream-json
@@ -115,6 +116,9 @@ export interface TurnOutcome {
 
 export interface TurnHandle {
 	id: string;
+	/** Live identity observed by THIS turn, never a driver-global binding.
+	 *  Undefined until the owning transport reports a conversation/session. */
+	readonly conversationId?: string;
 	/** Resolves when the turn settles (result event, exit, abort, recycle). */
 	outcome: Promise<TurnOutcome>;
 	/** Pull the next activity. Resolves null once the activity stream closes. */

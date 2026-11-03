@@ -948,3 +948,44 @@ test("escalation: a live model that polls its answer never gets a late prompt", 
 	assert.equal(d.runCalls, 0);
 	assert.equal(rt.poll("polled")?.text, "ANSWER");
 });
+
+test("concurrent first parks bind their originating handles even when another handle is globally active", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-concurrent-park-"));
+	const store = new SessionStore(path.join(dir, "sessions.json"));
+	let nextA!: () => void, releaseA!: () => void;
+	const drainingA = new Promise<void>(resolve => { nextA = resolve; });
+	const allowA = new Promise<void>(resolve => { releaseA = resolve; });
+	const handles = ["a", "b"].map(id => {
+		let emitted = false;
+		return { id, conversationId: `conv-${id}`, outcome: new Promise<TurnOutcome>(() => {}),
+			next: async (): Promise<DriverActivity | null> => {
+				if (emitted) return null;
+				emitted = true;
+				if (id === "a") { nextA(); await allowA; }
+				return { type: "bridge_call", callId: id, name: "read", args: {} };
+			}, pushExternal() {} } satisfies TurnHandle;
+	});
+	let active: TurnHandle | null = null;
+	let dispatched = 0;
+	const driver = { get activeHandle() { return active; },
+		snapshot: () => ({ conversationId: "GLOBAL-UNRELATED" }),
+		run: async () => { active = handles[dispatched++]; return active; },
+	} as unknown as StreamDriver;
+	const simple = createStreamSimple({ entries: [], store, driver, roundTrips: new ToolRoundTrips(driver) });
+	const run = async (sessionId: string) => {
+		for await (const event of simple(model, normalizeContext({ messages: [
+			{ role: "user", content: sessionId, timestamp: 0 },
+		] }), { sessionId })) void event;
+	};
+	try {
+		const a = run("a");
+		await drainingA;
+		await run("b");
+		assert.equal(store.get("sid:b")?.conversationId, "conv-b");
+		assert.equal(store.get("sid:a"), null);
+		releaseA();
+		await a;
+		assert.equal(store.get("sid:a")?.conversationId, "conv-a");
+		assert.equal(store.get("sid:b")?.conversationId, "conv-b");
+	} finally { releaseA(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

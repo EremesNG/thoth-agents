@@ -136,7 +136,11 @@ test.each([
 		{ name: "agent_browser_network_source", description: "28-char browser tool", parameters: object },
 		{ name: overlongName, description: "overlong", parameters: object },
 	]);
+	const registerProvider = vi.spyOn(s.pi, "registerProvider");
 	await extension(s.pi);
+	const advertised = registerProvider.mock.calls[0][1].models!;
+	assert.ok(advertised.length > 0);
+	for (const model of advertised) assert.deepEqual(model.input, ["text", "image"], `${engine} image input advertised`);
 	await s.emit("session_start");
 	const privateName = Object.keys(privateConfigs()[0].servers)[0];
 	const endpoint = Object.values(privateConfigs()[0].servers)[0];

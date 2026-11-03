@@ -13,6 +13,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Fixed
 
+- Resume bound conversations after retry-dropped assistant or tool-result tails without re-sending the context digest.
+- Bind first tool parks from their originating turn's live conversation identity, preserving existing bindings and dispatch watermarks.
+- Keep working conversation bindings after deadline errors when model output was observed.
+- Deliver user and recovered tool-result images on both engines without mixing originating conversations. Stream-json includes the full user suffix and stages private temporary image files with 24-hour cleanup; staging failures dispatch an explicit missing-image notice and warning instead of silently dropping images.
 - Pause the stream-json overall turn budget while tool calls are parked, resuming with the remaining budget after all parks resolve.
 - Keep update notices on local package versions instead of repeatedly announcing upstream releases.
 

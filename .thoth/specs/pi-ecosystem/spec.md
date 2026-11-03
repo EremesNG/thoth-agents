@@ -644,4 +644,24 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 - **GIVEN** subagents with 1 running, 2 queued, 30 completed, 1 failed and 1 cancelled, a task list with 1 in_progress, 2 pending and 12 completed tasks and background tasks with 1 running and 2 completed on a wide terminal with the sidebar hidden
 - **WHEN** the work panel renders normally and then while an `ask_user_question` panel is expanded
-- **THEN** the Agents heading shows `◐1 ○2 ✓30 ✗1 ■1`, the Todos heading shows `◐1 ○2 ✓12`, the Background heading shows `◐1 ✓2`, and the summary line reads `Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos ◐1 ○2 ✓12 · Background ◐1 ✓2` 
+- **THEN** the Agents heading shows `◐1 ○2 ✓30 ✗1 ■1`, the Todos heading shows `◐1 ○2 ✓12`, the Background heading shows `◐1 ✓2`, and the summary line reads `Agents ◐1 ○2 ✓30 ✗1 ■1 · Todos ◐1 ○2 ✓12 · Background ◐1 ✓2`
+
+### Requirement: Antigravity bridge resumes retry-dropped tails
+
+`@thoth-agents/pi-antigravity-bridge` MUST resume a bound conversation with a synthetic continuation prompt when a provider turn's context ends in an assistant or tool-result message with no new user input, images or late results, MUST keep failing visibly when no conversation is bound, and MUST bind a conversation at a turn's first park only from that turn's originating handle.
+
+#### Scenario: Antigravity bridge resumes retry-dropped tails
+
+- **GIVEN** a bound Antigravity conversation; WHEN Pi retries a turn whose context ends in an assistant or tool-result message without new user input; THEN the bridge dispatches a continuation prompt into that conversation instead of erroring; and GIVEN two concurrent turns
+- **WHEN** one parks first
+- **THEN** only its own conversation is bound
+
+### Requirement: Antigravity bridge delivers images on every path
+
+`@thoth-agents/pi-antigravity-bridge` MUST deliver user and recovered tool-result images on both engines, natively on ACP and as owner-only staged temporary files referenced in the prompt on stream-json, and MUST dispatch an explicit missing-image notice instead of silently dropping images when staging fails.
+
+#### Scenario: Antigravity bridge delivers images on every path
+
+- **GIVEN** a stream-json session with an image in the user suffix or in a stranded escalated result
+- **WHEN** the prompt is dispatched
+- **THEN** the image is staged and its path referenced in that prompt, or the prompt states that the image could not be delivered

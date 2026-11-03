@@ -176,10 +176,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	let acpServerName = bridgeDiscovery === "private" ? serverName : "pi-bridge";
 	let privateNameReservation: ReturnType<typeof acquirePrivateBridgeServerName> | null = null;
 	const releasePrivateName = () => { privateNameReservation?.release(); privateNameReservation = null; };
-	// Engine switching requires a restart, so the catalog-time engine read is
-	// authoritative for input advertising: image attach rides only when turns
-	// will run on the ACP engine (the stream-json CLI prompt is text-only).
-	const modelInput: Array<"text" | "image"> = engine === "acp" ? ["text", "image"] : ["text"];
+	// Both engines deliver images: ACP uses native blocks; stream-json stages
+	// files and points the prompt at the Pi read tool.
+	const modelInput: Array<"text" | "image"> = ["text", "image"];
 	const models = entries.map((e) => toPiModel(e, modelInput));
 
 	// failAll reasons the bridge treats as routine (turn end / shutdown
@@ -334,7 +333,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			msg.startsWith("stall:") ||
 			msg.startsWith("abort:") ||
 			(msg.startsWith("exit:") && msg !== "exit:0") ||
-			msg === "termination-warning";
+			msg === "termination-warning" ||
+			msg === "image-staging-failed";
 		const level = failed ? "warn" : msg === "turn-start" ? "info" : "debug";
 		fileLog.log(msg, data, level);
 	};

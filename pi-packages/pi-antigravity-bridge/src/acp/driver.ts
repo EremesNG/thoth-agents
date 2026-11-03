@@ -437,6 +437,7 @@ export class AcpDriver implements TurnDriver {
 	#makeHandle(turn: ActiveTurn): TurnHandle {
 		return {
 			id: turn.id,
+			get conversationId() { return turn.sessionId || undefined; },
 			outcome: turn.outcome,
 			next: () => this.#nextActivity(turn),
 			pushExternal: (activity) => this.pushExternal(activity),

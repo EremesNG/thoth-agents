@@ -278,3 +278,18 @@ test("a deadline drop is reported as a timeout, not an over-cap drop", async () 
 		fs.rmSync(h.dir, { recursive: true, force: true });
 	}
 });
+
+test.each(["timeout", "stall"] as const)("a %s without a result keeps the binding when model output was observed", async deadline => {
+	const h = harness([OK_CONV("conv-working"), {
+		status: "ERROR", response: "", error: "retryable deadline", finished: true, aborted: false,
+		conversationId: "conv-working", deadline, sawResult: false, modelOutputSeen: true,
+	}, OK_CONV("conv-working")]);
+	try {
+		await runTurn(h, "first");
+		const terminal = await runTurn(h, "second");
+		assert.equal(terminal.type, "error");
+		assert.equal(terminal.message, "retryable deadline");
+		await runTurn(h, "retry");
+		assert.equal(h.seen.opts?.conversationId, "conv-working");
+	} finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
+});

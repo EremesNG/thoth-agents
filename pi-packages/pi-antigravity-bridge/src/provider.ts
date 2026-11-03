@@ -127,15 +127,17 @@ function extractStreamJsonPrompt(context: TranscriptContext): string | null {
 	return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
-/** Image blocks of the latest user message (pi-ai ImageContent: base64 data
- *  + mimeType). The ACP engine forwards them as typed content blocks; the
- *  stream-json CLI prompt is text-only, so its driver simply ignores these. */
-function extractImages(context: TranscriptContext): Array<{ data: string; mimeType: string }> {
-	const last = context.messages[context.messages.length - 1];
-	if (!last || last.role !== "user" || typeof last.content === "string") return [];
-	return last.content
-		.filter((b): b is { type: "image"; data: string; mimeType: string } => b.type === "image")
-		.map((b) => ({ data: b.data, mimeType: b.mimeType }));
+/** Images follow the same boundary as text: the trailing user suffix for
+ *  stream-json, only the final user message for ACP. Drivers deliver them as
+ *  staged-file notes (stream-json) or native image blocks (ACP). */
+function extractImages(context: TranscriptContext, engine: "stream-json" | "acp"): Array<{ data: string; mimeType: string }> {
+	const start = engine === "stream-json" ? streamJsonUserSuffixStart(context.messages) : context.messages.length - 1;
+	return context.messages.slice(Math.max(0, start)).flatMap(message => {
+		if (message.role !== "user" || typeof message.content === "string") return [];
+		return message.content
+			.filter((b): b is { type: "image"; data: string; mimeType: string } => b.type === "image")
+			.map((b) => ({ data: b.data, mimeType: b.mimeType }));
+	});
 }
 
 // --- G1: pi-side context digest --------------------------------------------------
@@ -149,6 +151,11 @@ function extractImages(context: TranscriptContext): Array<{ data: string; mimeTy
 // No pi patch, no new MCP tool. See docs/PI-BRIDGE-GAPS.md (G1).
 
 const COMPACTION_MARKER = "compacted into the following summary";
+
+/** Retry projection can discard a failed attempt, but agy still holds its
+ *  history and may already have performed actions with side effects. */
+const RESUME_PROMPT =
+	"[The previous attempt of this turn failed and was discarded. Check your conversation history for the last step you completed, then continue the task from there. Do not repeat completed actions.]";
 
 const DIGEST_PREAMBLE =
 	"[The following is context from the broader pi session that this Antigravity turn was not directly spawned for: compaction summaries and turns handled by other providers or pi's own tools. Your own prior turns are already in your conversation history. Use this for continuity only.]";
@@ -1093,8 +1100,8 @@ export class ToolRoundTrips {
 
 	/** Complete a parked call from a pi toolResult message. Returns false when
 	 *  the id matches nothing pending. Image blocks ride the result on both
-	 *  engines (probe-verified on each); the late-delivery prompt stays
-	 *  text-only (see PI-BRIDGE-GAPS). */
+	 *  engines (probe-verified on each); late-delivery prompts reattach their
+	 *  images through the originating conversation's driver request. */
 	resolve(
 		toolCallId: string,
 		text: string,
@@ -1202,6 +1209,7 @@ export interface LateToolResult {
 	reason: string;
 	text: string;
 	isError: boolean;
+	images?: Array<{ data: string; mimeType: string }>;
 }
 
 /** Frame late tool results so agy treats them as the results its bridge calls
@@ -1484,8 +1492,8 @@ async function runTurnDriver(
 		// Images ride tool results on BOTH engines (ACP probe 2026-09-05;
 		// stream-json probe 2026-09-07: the CLI's MCP client delivers tool-result
 		// image content to the model — two-tone PNG named from the result alone,
-		// no decoders in the frame trail). The late-delivery prompt and the
-		// stream-json prompt attachments stay text-only by design.
+		// no decoders in the frame trail). Recovered results instead carry their
+		// images on the new driver request (ACP native blocks, stream-json files).
 		for (const r of results)
 			deps.roundTrips.resolve(r.toolCallId, r.text, r.isError, r.images);
 
@@ -1535,7 +1543,8 @@ async function runTurnDriver(
 				if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") return "parked";
 			}
 		};
-		const deliverStranded = async (): Promise<{ stopped: boolean; delivered: boolean; unknown: boolean }> => {
+		const deliverStranded = async (): Promise<{ stopped: boolean; delivered: Set<string>; unknown: boolean }> => {
+			const delivered = new Set<string>();
 			const unstarted = new Set<string>();
 			const groups = new Map<string, { callIds: string[]; results: LateToolResult[] }>();
 			let unknown = false;
@@ -1550,14 +1559,17 @@ async function runTurnDriver(
 				const group = groups.get(view.conversationId) ?? { callIds: [], results: [] };
 				group.callIds.push(view.callId);
 				group.results.push({ name: view.name, text: view.text ?? "(no output)", isError: view.isError ?? false,
+					images: view.images,
 					reason: view.reason ?? "you never received this result: you ended your turn without calling bridge_poll_result" });
 				groups.set(view.conversationId, group);
 			}
 			try {
 				for (const [conversationId, group] of groups) {
 					deps.log?.("escalated-redelivery", { tools: group.results.map(r => r.name), conversationId }, "info");
+					const images = group.results.flatMap(result => result.images ?? []);
 					handle = await startTurn({
 						conversationId, prompt: buildLateResultPrompt(group.results),
+						images: images.length > 0 ? images : undefined,
 						agent: config.agent ?? stagedAgentByConversation.get(conversationId),
 					});
 					// Both drivers publish only after prompt dispatch. Commit these
@@ -1567,28 +1579,29 @@ async function runTurnDriver(
 						deps.roundTrips.markDelivered(id);
 						unstarted.delete(id);
 					}
+					delivered.add(conversationId);
 					const textBefore = blocks.partial.content.filter(b => b.type === "text").map(b => b.text).join("");
-					if (await drainTurn(handle) === "parked") return { stopped: true, delivered: true, unknown };
+					if (await drainTurn(handle) === "parked") return { stopped: true, delivered, unknown };
 					const outcome = await handle.outcome;
 					if (outcome.aborted || outcome.status === "ERROR" || outcome.modelOutputSeen === false) {
 						finalize(stream, blocks, outcome.aborted ? "aborted" : "error",
 							outcome.aborted ? "Operation aborted" : outcome.error ?? "agy late delivery produced no model output");
-						return { stopped: true, delivered: true, unknown };
+						return { stopped: true, delivered, unknown };
 					}
 					const textAfter = blocks.partial.content.filter(b => b.type === "text").map(b => b.text).join("");
 					if (textBefore === textAfter && outcome.response) appendText(stream, blocks, outcome.response);
 				}
-				return { stopped: false, delivered: groups.size > 0, unknown };
+				return { stopped: false, delivered, unknown };
 			} finally {
 				for (const id of unstarted) deps.roundTrips.unclaim(id);
 			}
 		};
 		const active = isContinuation ? continuationHandle : undefined;
-		const prompt = deps.engine === "stream-json" ? extractStreamJsonPrompt(context) : extractUserPrompt(context);
-		const images = extractImages(context);
+		const userPrompt = deps.engine === "stream-json" ? extractStreamJsonPrompt(context) : extractUserPrompt(context);
+		const images = extractImages(context, deps.engine);
 		// Dispatch fresh input first: if recovery parks, the next Pi context is
 		// a toolResult and would otherwise lose this user's prompt.
-		const freshInput = !isContinuation && (prompt || images.length > 0);
+		const freshInput = !isContinuation && (userPrompt || images.length > 0);
 		const boundary = active || freshInput ? undefined : await deliverStranded();
 		if (boundary?.stopped) return;
 
@@ -1598,7 +1611,7 @@ async function runTurnDriver(
 		let stagedAgentName: string | undefined;
 		if (isContinuation) {
 			if (!active) {
-				if (boundary?.delivered) {
+				if (boundary?.delivered.size) {
 					finalize(stream, blocks, "stop");
 					return;
 				}
@@ -1616,25 +1629,36 @@ async function runTurnDriver(
 			}
 			handle = active;
 		} else {
-			// Only stream-json aggregates the final user suffix. ACP keeps its
-			// existing last-user behavior until its own prompt contract changes.
-			// An image-only message (no text) is valid on the ACP engine; only fail
+			// A retry-dropped tail can resume only its bound conversation. A sweep
+			// delivering to a different known owner must not suppress it. Unknown
+			// owners still block prompting: a retry must not steal their result.
+			const lastRole = context.messages[messageCount - 1]?.role;
+			const resume =
+				!userPrompt &&
+				images.length === 0 &&
+				!!existing?.conversationId &&
+				!boundary?.unknown &&
+				!boundary?.delivered.has(existing.conversationId) &&
+				(lastRole === "assistant" || lastRole === "toolResult");
+			const prompt = resume ? RESUME_PROMPT : userPrompt;
+			// An image-only message (no text) is valid on both engines; only fail
 			// when there is nothing at all to send (no text, no images, no late
 			// tool results to deliver).
 			if (!prompt && images.length === 0) {
-				if (boundary?.delivered || boundary?.unknown) {
+				if (boundary?.delivered.size || boundary?.unknown) {
 					finalize(stream, blocks, "stop");
 					return;
 				}
-				deps.log?.("turn-error", { reason: "no-user-message" }, "debug");
+				deps.log?.("turn-error", { reason: "no-user-message" }, "error");
 				finalize(stream, blocks, "error", "No user message to send to agy.");
 				return;
 			}
 			const watermark = existing?.lastMessageCount ?? 0;
-			// Recovery prompts are dispatched separately in their owning conversations.
-			// Exclude the user suffix from the stream-json digest; ACP keeps its
+			// Synthetic resumes use agy's own history, not a stale pi-side digest.
+			// Recovery prompts dispatch separately in their owning conversations.
+			// Normal stream-json digests exclude the user suffix; ACP keeps its
 			// legacy last-message behavior.
-			const digest = config.digest
+			const digest = config.digest && !resume
 					? buildContextDigest(
 							context.messages,
 							watermark,
@@ -1711,7 +1735,17 @@ async function runTurnDriver(
 		}
 
 		ensureStarted(stream, blocks);
-		if (await drainTurn(handle) === "parked") return;
+		if (await drainTurn(handle) === "parked") {
+			// Only the fresh dispatch may establish its first binding. Continuation
+			// contexts include later tool results, not the dispatch watermark. Never
+			// borrow a driver's current identity or overwrite a concurrent binding.
+			const conversationId = handle.conversationId;
+			if (!isContinuation && !existing && !store.get(key) && conversationId) {
+				store.set(key, { conversationId, lastStepIdx: -1, lastMessageCount: messageCount });
+				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
+			}
+			return;
+		}
 
 		const outcome = await handle.outcome;
 		// Issue #2 recovery paths. agy's stream-json prompt path silently drops an
@@ -1727,6 +1761,7 @@ async function runTurnDriver(
 			outcome.status === "ERROR" &&
 			outcome.deadline !== undefined &&
 			outcome.sawResult === false &&
+			outcome.modelOutputSeen === false &&
 			Boolean(existing?.conversationId);
 		if (silentDrop || poisonedResume) {
 			if (existing?.conversationId || outcome.conversationId) {

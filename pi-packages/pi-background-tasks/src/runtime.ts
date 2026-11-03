@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
@@ -697,8 +698,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
       if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
       applyCaptureOverflow(latest, result);
       enforceLogRetention(latest);
-      latest.lastCheckedAt = Date.now();
-      latest.lastProgressAt = latest.lastCheckedAt;
+      const checkedAt = Date.now();
+      observeWatchOutcome(latest, result, checkedAt);
+      latest.lastCheckedAt = checkedAt;
       latest.lastExitCode = result.exitCode;
       latest.lastSignal = result.signal;
       latest.lastState = extractLastState(result);
@@ -1073,7 +1075,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
   function enforceLogRetention(meta: BackgroundTaskMeta): void {
     try {
       const mtimeMs = Math.trunc(statSync(meta.logPath).mtimeMs);
-      if (mtimeMs > (meta.lastProgressAt ?? meta.startedAt)) {
+      // A watch writes its own poll log; only process output is progress here.
+      if (meta.kind === "process" && mtimeMs > (meta.lastProgressAt ?? meta.startedAt)) {
         meta.lastProgressAt = mtimeMs;
         writeMeta(meta);
       }
@@ -1113,6 +1116,64 @@ function createTaskRuntime(owner: ExtensionAPI) {
     }
   }
   return { awaitFirstWatchCheck, suspendScheduledWork, resumeScheduledWork, spawnTask, startWatchTask, resumeRunningTask, stopTask };
+}
+
+/** Other fingerprint versions are adopted rather than compared. */
+const WATCH_FINGERPRINT_VERSION = "v1";
+/** OSC and CSI sequences are display markup, not outcome content. */
+const TERMINAL_ESCAPE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]/g;
+
+function settledTerminalText(text: string): string {
+  return text.replace(TERMINAL_ESCAPE, "")
+    .split("\n")
+    .map((line) => {
+      // CRLF ends a line; an embedded CR redraws it in place.
+      const body = line.endsWith("\r") ? line.slice(0, -1) : line;
+      return (body.split("\r").at(-1) ?? "").replace(/[ \t]+$/, "");
+    })
+    .join("\n")
+    .replace(/\n+$/, "");
+}
+
+function canonicalJsonText(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJsonText).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const entries = Object.keys(record).sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJsonText(record[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function canonicalWatchStdout(stdout: string): string {
+  const settled = settledTerminalText(stdout);
+  try { return `json:${canonicalJsonText(JSON.parse(settled))}`; }
+  catch { return `text:${settled}`; }
+}
+
+/** Compare observed content, never poll timestamps, duration, or check count. */
+function watchOutcomeFingerprint(result: CommandResult): string {
+  const reported = (result as CommandResult & { error?: unknown }).error;
+  const error = typeof reported === "string" ? settledTerminalText(reported) : null;
+  const payload = JSON.stringify([
+    result.exitCode, result.signal ?? null, result.timedOut === true, error,
+    canonicalWatchStdout(result.stdout), settledTerminalText(result.stderr),
+  ]);
+  return `${WATCH_FINGERPRINT_VERSION}:${createHash("sha256").update(payload).digest("hex")}`;
+}
+
+function observeWatchOutcome(meta: BackgroundTaskMeta, result: CommandResult, checkedAt: number): void {
+  const fingerprint = watchOutcomeFingerprint(result);
+  const prior = meta.watchFingerprint;
+  meta.watchFingerprint = fingerprint;
+  if (typeof prior !== "string" || !prior.startsWith(`${WATCH_FINGERPRINT_VERSION}:`)) {
+    // Preserve the old clock on upgrade, including pre-progress-clock records.
+    // This runs before lastCheckedAt is updated, so adoption cannot reset silence.
+    meta.lastProgressAt ??= meta.lastCheckedAt ?? meta.startedAt;
+  } else if (prior !== fingerprint) {
+    meta.lastProgressAt = checkedAt;
+  }
 }
 
 type TaskRuntime = ReturnType<typeof createTaskRuntime>;

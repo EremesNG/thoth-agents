@@ -62,6 +62,20 @@ afterEach(async () => {
 });
 
 describe("durable callback reload ownership", () => {
+  it("replays a terminal task once when its queued status changes before delivery", async () => {
+    const host = lifecycleHost();
+    backgroundTasksExtension(host.pi);
+    terminal("bg_callback_status_changed");
+    await host.fire("session_start");
+    writeMeta({ ...readMeta(ids[0]!)!, status: "failed" });
+    await host.fire("session_start");
+    expect(getCallbackBatcher(host.pi).pendingCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(host.messages).toHaveLength(1);
+    expect(host.messages[0]).toContain("1 background completion");
+    expect(readMeta(ids[0]!)?.callbackSentAt).toBeDefined();
+  });
+
   it.each([false, true])("cancels an already-queued callback and replays with fresh ownership (wrapped bus: %s)", async (wrappedBus) => {
     const before = lifecycleHost();
     backgroundTasksExtension(before.pi);
@@ -100,6 +114,7 @@ describe("durable callback reload ownership", () => {
     expect(before.messages).toHaveLength(1);
     expect(readMeta(ids[0]!)?.callbackSentAt).toBeUndefined();
     await before.fire("session_shutdown");
+    writeMeta({ ...readMeta(ids[0]!)!, status: "failed" });
     terminal("bg_callback_fresh_after_reload");
     await vi.advanceTimersByTimeAsync(2_000);
     expect(before.messages).toHaveLength(1);

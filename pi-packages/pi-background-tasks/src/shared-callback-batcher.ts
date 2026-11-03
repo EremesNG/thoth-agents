@@ -603,7 +603,7 @@ export function createCallbackBatcher(
 
   const enqueue = (event: CallbackBatchEvent): boolean => {
     if (event.callback === false) return false;
-    const key = eventKey(event);
+    const key = completionKey(event);
     if (pending.has(key) || inFlight.has(key)) return false;
     pending.set(key, { event, sequence: sequence++ });
     schedule(windowMs);
@@ -828,6 +828,11 @@ function globalState(): SharedCallbackBatcherState {
 
 function eventKey(event: Pick<CallbackBatchEvent, "source" | "id" | "status">): string {
   return `${event.source}\u0000${event.id}\u0000${event.status}`;
+}
+
+/** Keep the first ordinary snapshot per task; urgent statuses remain distinct transitions. */
+function completionKey(event: Pick<CallbackBatchEvent, "source" | "id">): string {
+  return `${event.source}\u0000${event.id}`;
 }
 
 function eventDisposition(

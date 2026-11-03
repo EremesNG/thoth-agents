@@ -4,6 +4,11 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Fixed
+
+- Deduplicate ordinary completion callbacks by source and task ID even when status wording changes; urgent transitions remain distinct and immediate.
+- Advance watch progress only when the observed outcome changes, ignoring poll timing, JSON formatting, and terminal redraws while preserving legacy progress clocks on resume.
+
 ### Changed
 
 - Require Pi 1.5.0 or newer.

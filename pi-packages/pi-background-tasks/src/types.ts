@@ -69,8 +69,10 @@ export interface BackgroundTaskMeta {
   deadlineAt?: number;
   intervalMs?: number;
   lastCheckedAt?: number;
-  /** Latest command completion or observed process log output. */
+  /** Latest process output or changed watch outcome; completing a poll is not progress. */
   lastProgressAt?: number;
+  /** Versioned canonical poll outcome; absent/older versions adopt without resetting silence. */
+  watchFingerprint?: string;
   lastExitCode?: number | null;
   lastSignal?: NodeJS.Signals | null;
   lastState?: unknown;

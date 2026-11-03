@@ -29,6 +29,24 @@ afterEach(() => {
 });
 
 describe("ordinary callback availability", () => {
+  it("keeps the first ordinary completion snapshot when status wording changes", async () => {
+    const { host, messages } = recordingHost();
+    const batcher = track(createCallbackBatcher(host));
+    const delivered = vi.fn();
+    expect(batcher.enqueue(event("same-id", { status: "failed", onDelivered: delivered }))).toBe(true);
+    expect(batcher.enqueue(event("same-id", { status: "failed; 1 incident needs attention" }))).toBe(false);
+    expect(batcher.enqueue(event("same-id", { source: "subagent", detailTool: "subagent_result" }))).toBe(true);
+    expect(batcher.pendingCount()).toBe(2);
+
+    await batcher.flush();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.message.details?.entries).toEqual([
+      expect.objectContaining({ source: "background-task", id: "same-id", status: "failed" }),
+      expect.objectContaining({ source: "subagent", id: "same-id", status: "succeeded" }),
+    ]);
+    expect(delivered).toHaveBeenCalledOnce();
+  });
+
   it("holds time-separated busy completions and drains one aggregate after availability refresh", async () => {
     let idle = false;
     const { host, messages } = recordingHost();
@@ -169,7 +187,7 @@ describe("ordinary callback availability", () => {
     batcher.enqueue(event("b", { onDelivered: () => { delivered.push("b"); } }));
     const failed = batcher.flush();
     batcher.enqueue(event("c", { onDelivered: () => { delivered.push("c"); } }));
-    expect(batcher.enqueue(event("a"))).toBe(false);
+    expect(batcher.enqueue(event("a", { status: "succeeded; 1 incident needs attention" }))).toBe(false);
     reject(new Error("handoff failed"));
     expect(await failed).toBe(false);
     expect(delivered).toEqual([]);
@@ -186,13 +204,14 @@ describe("ordinary callback availability", () => {
     const batcher = track(createCallbackBatcher(host, { isAvailable: () => idle }));
     batcher.enqueue(event("ordinary"));
     expect(await batcher.flush()).toBe(false);
-    const urgent = (id: string) => ({ source: "background-task" as const, id, label: id, status: "lost", customType: "background-task-failure", content: "needs attention" });
-    expect(await batcher.deliverUrgent(urgent("busy-alert"))).toBe(true);
+    const urgent = (status: string) => ({ source: "background-task" as const, id: "ordinary", label: "ordinary", status, customType: "background-task-failure", content: "needs attention" });
+    expect(await batcher.deliverUrgent(urgent("orphaned"))).toBe(true);
+    expect(await batcher.deliverUrgent(urgent("orphaned"))).toBe(true);
     expect(messages).toHaveLength(1);
     idle = true;
     batcher.setAvailability(() => idle);
     await batcher.flush();
-    expect(await batcher.deliverUrgent(urgent("deferred-alert"))).toBe(true);
+    expect(await batcher.deliverUrgent(urgent("lost"))).toBe(true);
     expect(messages.map(({ message }) => message.customType)).toEqual(["background-task-failure", "background-completion-batch", "background-task-failure"]);
   });
 });

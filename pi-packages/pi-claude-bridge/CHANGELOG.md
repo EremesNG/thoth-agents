@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
 ### Changed
 
 - Require Pi 1.5.0 or newer and update the system-prompt preamble guard for that runtime.

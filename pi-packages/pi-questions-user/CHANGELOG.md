@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+
 ### Changed
 
 - Require Pi 1.5.0 or newer and use injected expand-key hints that honor remapped or unbound actions.
@@ -11,6 +13,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 - Keep prompts pinned above options, prioritize option space over context, and bound context scrolling with Alt+arrows.
 - Start narrow previews collapsed and toggle them with `p` outside editors, preserving the choice across tabs; wide previews remain visible.
 - Limit tool `context` to 500 characters. Show longer proposals in response text before asking; internal question-service requests remain unrestricted.
+
+### Fixed
+
+- Return keyboard focus to the panel that was open before a question once the question closes.
 
 ## [0.5.3] - 2026-10-23
 

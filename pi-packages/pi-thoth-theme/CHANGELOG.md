@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-03
+
 ### Changed
 
 - Require Pi 1.5.0 or newer and preserve the empty-editor placeholder with current TUI cursor markers.

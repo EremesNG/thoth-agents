@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-03
+
 ### Changed
 
 - Require Pi 1.5.0 or newer.
@@ -13,6 +15,7 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ### Fixed
 
+- Close the settings and curves panels on session shutdown without touching the invalidated context.
 - Fold untracked cost into the legend only when no task is live.
 
 ## [0.6.0] - 2026-10-30

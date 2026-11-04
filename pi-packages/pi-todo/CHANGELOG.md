@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
 ### Added
 
 - Group, order, and archive todos in compact views; cap completed rows without hiding pending work.

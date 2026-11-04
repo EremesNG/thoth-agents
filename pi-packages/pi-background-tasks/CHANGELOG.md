@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+
 ### Fixed
 
 - Detect damaged log, metadata, and incident paging cursors with explicit copy/restart guidance; resume only independently witnessed source positions, rejecting unsafe legacy offsets without skipping retained evidence.

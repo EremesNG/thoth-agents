@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-03
+
 ### Added
 
 - Compact Work panel summary while another component replaces the editor, including activation after `/reload`.
@@ -18,6 +20,7 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ### Fixed
 
+- Restore focus to an owned panel displaced by an editor-slot question once the question closes, and settle owned overlays exactly once on session shutdown or owned hide; export `settleOwnedOverlays`.
 - Use the pending glyph consistently in todo counts.
 
 ## [0.6.1] - 2026-10-30

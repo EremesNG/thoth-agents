@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-03
+
 ### Added
 
 - Subagent lifecycle events for Orca, with duplicate-event suppression.
@@ -18,6 +20,7 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Fixed
 
+- Keep `/subagents-model` and `/subagents-tools` usable after a question closes, and return cleanly when `/reload` closes them instead of blocking later commands.
 - Keep update notices on local package versions instead of repeatedly announcing upstream releases.
 
 ## [0.10.1] - 2026-10-30

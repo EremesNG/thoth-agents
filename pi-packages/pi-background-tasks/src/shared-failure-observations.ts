@@ -840,9 +840,10 @@ export interface IncidentSummary {
 
 /**
  * The shared priority failure section for a byte budget. When every active
- * incident fits, the rows are returned unchanged. Otherwise a count line leads:
- * total, fully shown, omitted, and the incident cursor that resumes at the
- * first byte not shown. Counts survive any budget that fits the count line.
+ * incident fits, the rows are returned unchanged. Otherwise the rows lead,
+ * followed by total, fully shown, partial, omitted, and the incident cursor
+ * that resumes at the first byte not shown. Omitted includes a partial row.
+ * Counts survive any budget that fits the count line.
  */
 export interface IncidentSummaryOptions {
   maxBytes: number;
@@ -869,7 +870,7 @@ function actionableIncidentSummary(state: FailureState, options: IncidentSummary
   if (whole.total === 0) return { text: "", total: 0, represented: 0, omitted: 0 };
   if (!whole.hasMore) return { text: whole.text, total: whole.total, represented: whole.represented, omitted: 0 };
   const header = (page: FailureIncidentPage): string =>
-    `${page.total} active failure observation${page.total === 1 ? "" : "s"} · ${page.represented} shown · ${page.omitted} omitted` +
+    `${page.text ? "" : "Action required · "}${page.total} active failure observation${page.total === 1 ? "" : "s"} · ${page.represented} shown${page.endsPartial ? " · 1 partial" : ""} · ${page.omitted} omitted` +
     ` · incidentCursor=${page.nextCursor}${options.retrieval ? ` (${options.retrieval})` : ""}`;
   let rowBudget = maxBytes - utf8Length(header(whole)) - 1;
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -880,7 +881,7 @@ function actionableIncidentSummary(state: FailureState, options: IncidentSummary
       page = pageFailureIncidents(state, { maxBytes: 0, resource: options.resource, detail: options.detail });
     }
     const line = header(page);
-    const text = page.text ? `${line}\n${page.text}` : line;
+    const text = page.text ? `${page.text}\n${line}` : line;
     const overflow = utf8Length(text) - maxBytes;
     if (overflow <= 0) {
       return { text, total: page.total, represented: page.represented, omitted: page.omitted, nextCursor: page.nextCursor };
@@ -897,9 +898,9 @@ function actionableIncidentSummary(state: FailureState, options: IncidentSummary
   }
   const plural = empty.total === 1 ? "" : "s";
   for (const candidate of [
-    `${empty.total} active failure observation${plural} · 0 shown · ${empty.total} omitted · incident cursor not shown (page too small; retry with a larger maxBytes${options.retrieval ? ` or ${options.retrieval}` : ""})`,
-    `${empty.total} active failure observation${plural} · 0 shown · ${empty.total} omitted · incident cursor not shown (page too small)`,
-    `${empty.total} active failure observation${plural} (page too small for details)`,
+    `Action required · ${empty.total} active failure observation${plural} · 0 shown · ${empty.total} omitted · incident cursor not shown (page too small; retry with a larger maxBytes${options.retrieval ? ` or ${options.retrieval}` : ""})`,
+    `Action required · ${empty.total} active failure observation${plural} · 0 shown · ${empty.total} omitted · incident cursor not shown (page too small)`,
+    `Action required · ${empty.total} active failure observation${plural} (page too small for details)`,
   ]) {
     if (utf8Length(candidate) <= maxBytes) return { text: candidate, total: empty.total, represented: 0, omitted: empty.total };
   }

@@ -8,6 +8,7 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ### Fixed
 
+- Lead budget-truncated status with the actionable incident text and label partial incident rows in the paging summary.
 - Detect damaged log, metadata, and incident paging cursors with explicit copy/restart guidance; resume only independently witnessed source positions, rejecting unsafe legacy offsets without skipping retained evidence.
 - Deduplicate ordinary completion callbacks by source and task ID even when status wording changes; urgent transitions remain distinct and immediate.
 - Advance watch progress only when the observed outcome changes, ignoring poll timing, JSON formatting, and terminal redraws while preserving legacy progress clocks on resume.

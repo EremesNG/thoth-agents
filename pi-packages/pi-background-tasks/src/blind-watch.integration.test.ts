@@ -96,7 +96,10 @@ describe("#359 blind watch checks", () => {
     expect(readMeta(id)?.status).toBe("running");
     const status = formatStatus(inspectMeta(id), { origin });
     expect(status).toMatch(/^Action required/);
-    expect(status).toContain("Transform function expected");
+    expect(Buffer.byteLength(status)).toBeLessThanOrEqual(1024);
+    // The default preview may end before stderr once paging metadata is included.
+    // A larger status page must expose the retained evidence, not just the alert.
+    expect(formatStatus(inspectMeta(id), { origin, maxBytes: 2048 })).toContain("Transform function expected");
 
     // The existing attention path holds a 60 s grace before waking; step past it.
     const realNow = Date.now.bind(Date);

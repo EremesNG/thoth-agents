@@ -1,7 +1,8 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { recordFailure } from "./failures.js";
+import { failurePath, recordFailure } from "./failures.js";
+import { formatIncidentSummary, readFailureState } from "./shared-failure-observations.js";
 import { packCallbackBatch } from "./shared-callback-batcher.js";
 import { pageTaskLog, readLog, retainLogTail } from "./logs.js";
 import {
@@ -260,6 +261,48 @@ describe("background output budgets", () => {
     expect(status).toContain("capture overflow discarded 1200012");
     expect(status).not.toContain("PATH=");
     expect(status).not.toContain("success_when");
+  });
+
+  it("leads with a partial actionable incident and resumes its exact remaining bytes under the default budget", () => {
+    const meta = fixture({
+      id: "bg_blind_budget_regression_0123456789",
+      status: "running", endedAt: undefined, lastExitCode: 0,
+      logLines: ["STILL_UNKNOWN", "stderr: " + "x".repeat(800)],
+    });
+    recordFailure(meta, "watch-blind", "Blind watch check: 3 checks in a row exited 0 with stderr; " + "界🌟".repeat(40), "blind", {
+      category: "operation", at: 1,
+      evidence: "latest stderr: Transform function expected " + "界🌟".repeat(100),
+    });
+    const status = formatStatus(meta, { origin });
+    expect(utf8ByteLength(status)).toBeLessThanOrEqual(1024);
+    expect(status).toMatch(/^Action required/);
+    expect(status).toContain("0 shown · 1 partial · 1 omitted");
+    const header = status.split("\n").find((line) => line.includes("incidentCursor="))!;
+    const fragment = status.slice(0, status.indexOf(`\n${header}`));
+    expect(fragment.length).toBeGreaterThan(96);
+    expect(fragment).toContain("界");
+    expect(fragment).not.toContain("\uFFFD");
+    const fullRow = formatStatus(meta, { origin, maxBytes: 2048 }).split("\n")[0]!;
+    expect(fullRow.startsWith(fragment)).toBe(true);
+    expect(fullRow.length).toBeGreaterThan(fragment.length);
+    const cursor = header.match(/incidentCursor=(\S+)/)![1]!;
+    const continued = formatStatus(meta, { origin, cursor, maxBytes: 2048 });
+    expect(utf8ByteLength(continued)).toBeLessThanOrEqual(2048);
+    expect(continued.split("\n")).toContain(fullRow.slice(fragment.length));
+    expect(continued).not.toContain("reset=");
+    expect(continued).not.toContain("hasMore=true");
+  });
+
+  it.each([256, 160, 96])("keeps the actionable lead-in when %s bytes fit only incident counts", (maxBytes) => {
+    const meta = fixture();
+    recordFailure(meta, "watch-blind", "Blind watch check " + "x".repeat(200), "blind", {
+      category: "operation", evidence: "stderr " + "x".repeat(300),
+    });
+    const summary = formatIncidentSummary(readFailureState(failurePath(meta.id)), { maxBytes });
+    expect(utf8ByteLength(summary.text)).toBeLessThanOrEqual(maxBytes);
+    expect(summary.text).toMatch(/^Action required · 1 active failure observation/);
+    expect(summary.represented).toBe(0);
+    expect(summary.omitted).toBe(1);
   });
 
   it("pages a long unicode JSON line without exceeding the status budget", () => {

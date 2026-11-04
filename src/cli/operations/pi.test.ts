@@ -124,7 +124,7 @@ describe('Pi operations', () => {
       if (command === 'node')
         return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
       if (args[0] === '--version')
-        return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        return { exitCode: 0, stdout: '1.5.0', stderr: '' };
       return { exitCode: 0, stdout: packageList, stderr: '' };
     };
   };

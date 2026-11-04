@@ -1,7 +1,9 @@
-// Engine picker tests: the first-run predicate and the picker copy/order.
-// The overlay itself is TUI-bound; its logic lives in the two exports below.
+// Engine picker predicates, copy/order and SDK-backed overlay teardown.
 
-import { test } from "vitest";
+import { beforeAll, expect, test, vi } from "vitest";
+import { initTheme } from '@earendil-works/pi-coding-agent';
+import { settleOwnedOverlays } from '@thoth-agents/pi-core';
+import { ownedOverlaySession } from '../../pi-core/test/owned-overlay-fixture.js';
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,8 +15,33 @@ import {
 	isAgyInstalled,
 	savedEngineMessage,
 	shouldOfferEnginePicker,
+	showEnginePicker,
 	toEngine,
 } from "../src/engine-picker.js";
+
+beforeAll(() => initTheme('dark', false));
+
+test('picker: reload settles once with undefined and restores editor focus', async () => {
+  vi.useFakeTimers();
+  const app = ownedOverlaySession();
+  try {
+    const result = showEnginePicker(app.ctx.ui);
+    const settled = vi.fn();
+    void result.then(settled);
+    await Promise.resolve();
+    expect(app.tui.hasOverlay()).toBe(true);
+    settleOwnedOverlays(app.ctx);
+    await vi.waitFor(() => expect(settled).toHaveBeenCalledExactlyOnceWith(undefined));
+    settleOwnedOverlays(app.ctx);
+    await expect(result).resolves.toBeUndefined();
+    expect(app.completions).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(app.tui.hasOverlay()).toBe(false);
+    expect(app.tui.getFocusedComponent()).toBe(app.editor);
+  } finally {
+    app.tui.stop();
+    vi.useRealTimers();
+  }
+});
 
 function tmpConfig(): string {
 	return path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agy-picker-")), "config.json");

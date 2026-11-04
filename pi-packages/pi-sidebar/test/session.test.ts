@@ -37,6 +37,7 @@ vi.mock('@thoth-agents/pi-core/panel', async (importOriginal) => {
   };
 });
 
+import { invalidatableContext } from '../../pi-core/test/owned-overlay-fixture.js';
 import { uiSession } from '../../pi-core/test/work-panel-fixture.js';
 import sidebar from '../src/index.js';
 import { agentRow, source as historySource, strip } from './fixture.js';
@@ -1509,6 +1510,49 @@ it('saves settings from the overlay with Enter, preserving unknown keys, and app
   app.tui.renderNow(true);
   app.tui.renderNow(true);
   expect(app.widths.at(-1)).toBe(106);
+});
+
+it.each([
+  'settings',
+  'cost',
+])('settles the %s overlay on reload without reading a stale command context', async (command) => {
+  const app = setup();
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  const { ctx, invalidate } = invalidatableContext(app.ctx);
+  await app.commands.get('sidebar').handler(command, ctx);
+  await vi.waitFor(() => expect(app.overlay()).toBeDefined());
+  const settled = vi.fn();
+  void app.ui.custom.mock.results.at(-1)?.value.then(settled);
+  app.handlers.get('session_shutdown')?.({ reason: 'reload' }, app.ctx);
+  invalidate();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(settled).toHaveBeenCalledExactlyOnceWith(undefined);
+  expect(app.ui.notify).not.toHaveBeenCalled();
+  expect(() => app.overlay().handleInput('\u001b')).not.toThrow();
+});
+
+it('reports an overlay rejection without reading an invalidated command context', async () => {
+  const app = setup();
+  app.handlers.get('session_start')?.({ reason: 'startup' }, app.ctx);
+  let reject = (_error: Error) => {};
+  app.ui.custom.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  const { ctx, invalidate } = invalidatableContext(app.ctx);
+  await app.commands.get('sidebar').handler('settings', ctx);
+  invalidate();
+  reject(new Error('overlay unavailable'));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(app.ui.notify).toHaveBeenCalledWith(
+    'Sidebar overlay failed: overlay unavailable',
+    'error',
+  );
 });
 
 it('leaves the config untouched when the settings overlay is cancelled', async () => {

@@ -53,7 +53,7 @@ export type {
   OwnedOverlayFactory,
   OwnedOverlayOptions,
 } from './owned-overlay.js';
-export { openOwnedOverlay } from './owned-overlay.js';
+export { openOwnedOverlay, settleOwnedOverlays } from './owned-overlay.js';
 export type {
   ProviderLimitEntry,
   ProviderLimitListener,

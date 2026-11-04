@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { bindWorkPanelLifecycle, openOwnedOverlay } from '../src/index.js';
+import {
+  bindWorkPanelLifecycle,
+  openOwnedOverlay,
+  settleOwnedOverlays,
+} from '../src/index.js';
+import { settleOwnedOverlays as settlePanelOverlays } from '../src/panel.js';
 import {
   inputComponent,
   overlayLifecycle,
@@ -18,6 +23,21 @@ function session() {
   cleanups.push(() => result.tui.stop());
   return result;
 }
+
+it.each([
+  ['root', settleOwnedOverlays],
+  ['panel', settlePanelOverlays],
+] as const)('exposes standalone settlement through the %s entrypoint', async (_entry, settle) => {
+  const { ctx, completions } = session();
+  const result = openOwnedOverlay<string>(ctx, () =>
+    inputComponent('Standalone'),
+  );
+  await Promise.resolve();
+  settle(ctx);
+  settle(ctx);
+  await expect(result).resolves.toBeUndefined();
+  expect(completions).toHaveBeenCalledExactlyOnceWith(undefined);
+});
 
 it('completes an owned overlay exactly once with its first result', async () => {
   const { ctx, tui, editor, completions } = session();

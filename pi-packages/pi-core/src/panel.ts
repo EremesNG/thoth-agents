@@ -5,6 +5,7 @@ export type {
   EditorSlotHandle,
 } from './editor-slot.js';
 export { isEditorReplaced, registerEditorSlot } from './editor-slot.js';
+export { settleOwnedOverlays } from './owned-overlay.js';
 
 export { PanelDiscardConfirmation } from './panel-discard.js';
 export type {

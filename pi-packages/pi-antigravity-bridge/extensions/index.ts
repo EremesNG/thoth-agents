@@ -75,7 +75,7 @@ import { CONFIG_PATH, loadConfig, logsDir, MAX_TURN_CAP_MIN, parseCapMinutes, sa
 import { agyMissingMessage, isAgyInstalled, savedEngineMessage, showEnginePicker, shouldOfferEnginePicker } from "../src/engine-picker.js";
 import { checkAgyCliVersion, describeAgyVersionCheck, MIN_AGY_VERSION } from "../src/agy-version.js";
 import { isValidAgyAgentName, listAgyAgents } from "../src/agents.js";
-import { resolveIcon } from '@thoth-agents/pi-core';
+import { resolveIcon, settleOwnedOverlays } from '@thoth-agents/pi-core';
 import { formatSubagentRoster, SubagentRoster } from "../src/subagent-roster.js";
 import { spawn } from "node:child_process";
 import { fetchAgyQuota, formatAgyQuotaReport } from "../src/usage.js";
@@ -744,6 +744,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// The default engine keeps working untouched.
 			try {
 				const picked = await showEnginePicker(ctx.ui);
+				if (picked === undefined) return;
 				if (picked) {
 					saveConfig({ engine: picked });
 					notifyUi(ctx.ui, savedEngineMessage(picked), "info");
@@ -1114,7 +1115,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			console.error(`[antigravity-bridge] MCP tool bridge disabled: ${r.reason}`);
 		}
 	}
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
+		settleOwnedOverlays(ctx);
 		if (shutdownFlight) return shutdownFlight;
 		stopped = true;
 		lifecycleEpoch++;
@@ -1352,7 +1354,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					// + sign-in immediately, restart applies the switch.
 					const current = loadConfig().engine;
 					const picked = await showEnginePicker(ui);
-					if (picked === null) {
+					if (!picked) {
 						notifyUi(ui, `engine unchanged: ${current}.`, "info");
 						return;
 					}
@@ -1613,6 +1615,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				}
 				for (;;) {
 					const action = await showTasksBrowser(ui, tasks, tasks[0]?.livenessKnown ?? false);
+					if (!action) return;
 					if (action.type === "rescan") {
 						tasks = await listAgyTasks(dir);
 						if (tasks.length === 0) {
@@ -1685,6 +1688,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				}
 				for (;;) {
 					const action = await showArtifactsBrowser(ui, artifacts);
+					if (!action) return;
 					if (action.type === "rescan") {
 						artifacts = await listAgyArtifacts(dir);
 						continue;

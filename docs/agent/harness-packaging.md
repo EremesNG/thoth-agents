@@ -372,8 +372,16 @@ root editor. Collapsing, answering, cancelling, aborting and teardown preserve
 focus held by a still-visible foreign overlay. `bindWorkPanelLifecycle` settles
 all owned overlays in the shared UI session with `undefined` on
 `session_shutdown` (including reload); external owned-handle `hide()` also
-settles once. A raw TUI `hideOverlay()` does not settle standalone consumers
-without that lifecycle binding. No polling is used.
+settles once. Standalone consumers can import `settleOwnedOverlays` from the
+root or `./panel` entrypoint and call it with the event context before teardown;
+pi-sidebar and pi-antigravity-bridge do so on shutdown. Antigravity's engine,
+tasks and artifacts browsers use owned overlays and accept `undefined` teardown
+cancellation without continuing through stale context accessors. Background
+history already uses the lifecycle binding: Pi 1.5.0 snapshots event handlers
+before dispatch (`dist/core/extensions/runner.js:87–89,813–819`), so its earlier
+`releaseLifecycle()` does not skip the shutdown settlement callback. A raw TUI
+`hideOverlay()` alone still cannot settle custom promises; unowned third-party
+overlays remain outside this guarantee. No polling is used.
 
 See [question controls and lifecycle](../../pi-packages/pi-questions-user/README.md#custom-ui-seam-and-lifecycle),
 [panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor),

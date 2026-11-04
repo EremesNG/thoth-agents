@@ -6,14 +6,15 @@ import http from "node:http";
 import * as childProcess from "node:child_process";
 import * as ownedProcess from "../src/owned-process.js";
 import { randomUUID } from "node:crypto";
-import { beforeAll, afterEach, test, vi } from "vitest";
+import { beforeAll, afterEach, expect, test, vi } from "vitest";
+import { invalidatableContext } from '../../pi-core/test/owned-overlay-fixture.js';
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import extension from "../extensions/index.js";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { CONFIG_PATH, loadConfig, saveConfig } from "../src/config.js";
 import { defaultAcpAuthVerifiedPath, readAcpAuthVerified, writeAcpAuthVerified, writeAuthType } from "../src/acp/setup.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
@@ -59,8 +60,8 @@ function session(providerName = "antigravity", tools: Array<{ name: string; desc
 	const s = {
 		pi, ctx, notices, commands,
 		command: (args: string, ui: any = ctx.ui) => commands.get("agy").handler(args, { ...ctx, ui }),
-		emit: async (name: string, event: any = { reason: "startup" }) => {
-			for (const fn of handlers.get(name) ?? []) await fn(event, ctx);
+		emit: async (name: string, event: any = { reason: "startup" }, eventCtx: any = ctx) => {
+			for (const fn of handlers.get(name) ?? []) await fn(event, eventCtx);
 		},
 		turn: async (sessionId = "lifecycle-test") => {
 			const model = { ...provider.models[0], provider: "antigravity", baseUrl: provider.baseUrl } as Model<Api>;
@@ -174,6 +175,69 @@ test.each([
 	}
 	assert.deepEqual(s.notices, [], "headless output must not depend on UI notifications");
 	assert.equal("type" in union, false, "Pi's validation schema stays original");
+});
+
+function pendingOverlay(invalidate: () => void) {
+  const complete = vi.fn();
+  const custom = vi.fn((factory: any) => new Promise((resolve) => {
+    factory({ requestRender() {} }, {
+      fg: (_role: string, text: string) => text, bold: (text: string) => text,
+    }, {}, (result: unknown) => {
+      complete(result);
+      invalidate();
+      resolve(result);
+    });
+  }));
+  return { custom, complete };
+}
+
+test.each(['engine', 'tasks', 'artifacts'])('/agy %s settles on reload and safely resumes after context invalidation', async (command) => {
+  fixture();
+  const s = session(command === 'engine' ? 'other' : 'antigravity');
+  await extension(s.pi);
+  await s.emit('session_start');
+  if (command !== 'engine') {
+    assert.deepEqual(await s.turn(), []);
+    const dir = agyConversationDir('stream-json', 'conv-lazy');
+    fs.mkdirSync(path.join(dir, '.system_generated', 'tasks'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'report.md'), 'offline artifact');
+    fs.writeFileSync(path.join(dir, '.system_generated', 'tasks', 'task-1.log'), 'offline task');
+    dirs.push(dir);
+  }
+  const before = fs.readFileSync(CONFIG_PATH, 'utf8');
+  const { ctx, invalidate } = invalidatableContext({ ...s.ctx, mode: 'tui', hasUI: true });
+  const { custom, complete } = pendingOverlay(invalidate);
+  Object.assign(s.ctx.ui, { custom });
+  const commandResult = s.commands.get('agy').handler(command, ctx);
+  const settled = vi.fn();
+  void commandResult.then(settled, settled);
+  await vi.waitFor(() => expect(custom).toHaveBeenCalledTimes(1));
+  await s.emit('session_shutdown', { reason: 'reload' });
+  await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+  await expect(commandResult).resolves.toBeUndefined();
+  expect(complete).toHaveBeenCalledExactlyOnceWith(undefined);
+  expect(custom).toHaveBeenCalledTimes(1);
+  expect(fs.readFileSync(CONFIG_PATH, 'utf8')).toBe(before);
+});
+
+test('first-run picker cancellation on reload does not read the invalidated startup context', async () => {
+  fixture();
+  const s = session('other');
+  await extension(s.pi);
+  vi.stubEnv('AGY_ENGINE', undefined);
+  fs.rmSync(CONFIG_PATH, { force: true });
+  const { ctx, invalidate } = invalidatableContext({ ...s.ctx, mode: 'tui', hasUI: true });
+  const { custom, complete } = pendingOverlay(invalidate);
+  Object.assign(s.ctx.ui, { custom });
+  const start = s.emit('session_start', { reason: 'startup' }, ctx);
+  const settled = vi.fn();
+  void start.then(settled, settled);
+  await vi.waitFor(() => expect(custom).toHaveBeenCalledTimes(1));
+  await s.emit('session_shutdown', { reason: 'reload' });
+  await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+  await expect(start).resolves.toBeUndefined();
+  expect(complete).toHaveBeenCalledExactlyOnceWith(undefined);
+  expect(fs.existsSync(CONFIG_PATH)).toBe(false);
 });
 
 test("/agy help ends with supported runtime commands", async () => {

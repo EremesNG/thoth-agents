@@ -8,7 +8,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Spacer, Text } from "@earendil-works/pi-tui";
-import { resolveIcon } from "@thoth-agents/pi-core";
+import { openOwnedOverlay, resolveIcon } from "@thoth-agents/pi-core";
 import type { AgyTask } from "./tasks.js";
 
 export type TasksBrowserAction = { type: "rescan" } | { type: "close" };
@@ -32,15 +32,15 @@ function humanBytes(n: number): string {
 	return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-/** Render the overlay. Resolves rescan (caller re-lists and reopens) or
- *  close. */
+/** Render the overlay. Resolves rescan (caller re-lists and reopens), close,
+ *  or undefined on session teardown. */
 export async function showTasksBrowser(
 	ctx: ExtensionUIContext,
 	tasks: AgyTask[],
 	livenessKnown: boolean,
-): Promise<TasksBrowserAction> {
+): Promise<TasksBrowserAction | undefined> {
 	const items = taskItems(tasks);
-	return ctx.custom<TasksBrowserAction>((tui, theme, _keybindings, done) => {
+	return openOwnedOverlay<TasksBrowserAction | undefined>({ ui: ctx }, (tui, theme, _keybindings, done) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 		container.addChild(
@@ -83,7 +83,6 @@ export async function showTasksBrowser(
 			},
 		};
 	}, {
-		overlay: true,
 		overlayOptions: { anchor: "center" as const, width: 72, maxHeight: "85%" as const, margin: 1 },
 	});
 }

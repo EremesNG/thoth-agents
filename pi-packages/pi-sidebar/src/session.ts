@@ -446,8 +446,9 @@ export class SidebarSession {
     this.refresh();
   }
   private fail(ctx: ExtensionContext, work: Promise<unknown>): void {
+    const ui = ctx.ui;
     work.catch((error) =>
-      ctx.ui.notify(
+      ui.notify(
         `Sidebar overlay failed: ${error instanceof Error ? error.message : String(error)}`,
         'error',
       ),

@@ -9,7 +9,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Spacer, Text } from "@earendil-works/pi-tui";
-import { resolveIcon } from "@thoth-agents/pi-core";
+import { openOwnedOverlay, resolveIcon } from "@thoth-agents/pi-core";
 import type { AgyArtifact } from "./artifacts.js";
 
 export type ArtifactsBrowserAction =
@@ -35,14 +35,14 @@ export function artifactItems(artifacts: AgyArtifact[]): SelectItem[] {
 	});
 }
 
-/** Render the overlay. Resolves with what the user asked for: open (with the
- *  selected artifact), rescan, or close. */
+/** Render the overlay. Resolves with open (with the selected artifact),
+ *  rescan, close, or undefined on session teardown. */
 export async function showArtifactsBrowser(
 	ctx: ExtensionUIContext,
 	artifacts: AgyArtifact[],
-): Promise<ArtifactsBrowserAction> {
+): Promise<ArtifactsBrowserAction | undefined> {
 	const items = artifactItems(artifacts);
-	return ctx.custom<ArtifactsBrowserAction>((tui, theme, _keybindings, done) => {
+	return openOwnedOverlay<ArtifactsBrowserAction | undefined>({ ui: ctx }, (tui, theme, _keybindings, done) => {
 		const container = new Container();
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 		container.addChild(
@@ -81,7 +81,6 @@ export async function showArtifactsBrowser(
 			},
 		};
 	}, {
-		overlay: true,
 		overlayOptions: { anchor: "center" as const, width: 84, maxHeight: "85%" as const, margin: 1 },
 	});
 }

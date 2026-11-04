@@ -11,7 +11,7 @@
 // native overlay (the window feel pi-rtk builds its modal on).
 
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { resolveIcon } from "@thoth-agents/pi-core";
+import { openOwnedOverlay, resolveIcon } from "@thoth-agents/pi-core";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
@@ -109,10 +109,11 @@ export function agyMissingMessage(): string {
 	return "The `agy` CLI is not installed. Install it from https://antigravity.google/product/antigravity-cli and log in on it to use Antigravity models.";
 }
 
-/** Render the picker overlay. Resolves with the chosen engine, or null when
- *  the user pressed esc (decide later - nothing is persisted). */
-export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine | null> {
-	return ctx.custom<Engine | null>(
+/** Render the picker overlay. Resolves with the chosen engine, null on esc,
+ *  or undefined on session teardown (nothing is persisted on cancellation). */
+export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine | null | undefined> {
+	return openOwnedOverlay<Engine | null | undefined>(
+		{ ui: ctx },
 		(tui, theme, _keybindings, done) => {
 			const container = new Container();
 			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
@@ -149,7 +150,6 @@ export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine 
 			};
 		},
 		{
-			overlay: true,
 			overlayOptions: { anchor: "center" as const, width: 80, maxHeight: "85%" as const, margin: 1 },
 		},
 	);

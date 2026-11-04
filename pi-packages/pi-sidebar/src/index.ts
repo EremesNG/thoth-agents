@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import { settleOwnedOverlays } from '@thoth-agents/pi-core';
 import { SidebarSession } from './session.js';
 
 const WIDGET = 'thoth-sidebar-lifecycle';
@@ -38,7 +39,13 @@ export default function sidebar(pi: ExtensionAPI): void {
       { placement: 'belowEditor' },
     );
   });
-  pi.on('session_shutdown', dispose);
+  pi.on('session_shutdown', (_event, ctx) => {
+    try {
+      settleOwnedOverlays(ctx);
+    } finally {
+      dispose();
+    }
+  });
   // Workspace refreshes mirror atelier: turn start, every tool end and turn end.
   pi.on('turn_start', (_event, ctx) => session?.refresh(ctx, true));
   pi.on('turn_end', (_event, ctx) => session?.refresh(ctx, true, true));

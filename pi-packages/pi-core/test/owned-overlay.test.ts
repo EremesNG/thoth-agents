@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { openOwnedOverlay } from '../src/index.js';
+import { bindWorkPanelLifecycle, openOwnedOverlay } from '../src/index.js';
 import {
   inputComponent,
+  overlayLifecycle,
   ownedOverlaySession,
 } from './owned-overlay-fixture.js';
 
@@ -37,6 +38,117 @@ it('completes an owned overlay exactly once with its first result', async () => 
   expect(dispose).toHaveBeenCalledTimes(1);
   expect(tui.hasOverlay()).toBe(false);
   expect(tui.getFocusedComponent()).toBe(editor);
+});
+
+it.each([
+  ['quit', 'shutdown first'],
+  ['reload', 'shutdown first'],
+  ['reload', 'external removal first'],
+])('settles owned overlays exactly once on session shutdown (%s, %s)', async (reason, order) => {
+  const { ctx, tui, completions } = session();
+  const lifecycle = overlayLifecycle(ctx);
+  cleanups.push(bindWorkPanelLifecycle(lifecycle.pi, ctx));
+  const dispose = vi.fn();
+  let close: (result: string) => void = () => {};
+  const result = openOwnedOverlay<string>(ctx, (_tui, _theme, _keys, done) => {
+    close = done;
+    return Object.assign(inputComponent('Model profiles'), { dispose });
+  });
+  const settled = vi.fn();
+  void result.then(settled);
+  await Promise.resolve();
+  if (order === 'external removal first') tui.hideOverlay();
+  lifecycle.shutdown(reason);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(settled).toHaveBeenCalledExactlyOnceWith(undefined);
+  tui.hideOverlay(); // resetExtensionUI may run after lifecycle cleanup.
+  lifecycle.shutdown(reason);
+  close('late answer');
+  await expect(result).resolves.toBeUndefined();
+  expect(completions).toHaveBeenCalledExactlyOnceWith(undefined);
+  expect(dispose).toHaveBeenCalledTimes(1);
+  expect(tui.hasOverlay()).toBe(false);
+});
+
+it('settles every bundled owner and pending factory, but not another UI session', async () => {
+  vi.resetModules();
+  const { openOwnedOverlay: openCopy } = await import('../src/index.js');
+  const { ctx, tui, completions } = session();
+  const other = session();
+  const lifecycle = overlayLifecycle(ctx);
+  cleanups.push(bindWorkPanelLifecycle(lifecycle.pi, ctx));
+  const first = openOwnedOverlay<void>(ctx, () =>
+    inputComponent('First panel'),
+  );
+  const second = openCopy<void>(ctx, () => inputComponent('Second panel'));
+  let finishFactory: (component: ReturnType<typeof inputComponent>) => void =
+    () => {};
+  const pending = openCopy<void>(
+    ctx,
+    () =>
+      new Promise((resolve) => {
+        finishFactory = resolve;
+      }),
+  );
+  let closeOther = () => {};
+  const otherResult = openCopy<void>(
+    other.ctx,
+    (_tui, _theme, _keys, close) => {
+      closeOther = close;
+      return inputComponent('Other session');
+    },
+  );
+  await Promise.resolve();
+  lifecycle.shutdown();
+  await expect(Promise.all([first, second, pending])).resolves.toEqual([
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  finishFactory(inputComponent('Late panel'));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(completions).toHaveBeenCalledTimes(3);
+  expect(tui.hasOverlay()).toBe(false);
+  expect(other.tui.hasOverlay()).toBe(true);
+  expect(other.completions).not.toHaveBeenCalled();
+  closeOther();
+  await otherResult;
+});
+
+it('settles external owned-handle removal as cancellation, without closing a newer overlay', async () => {
+  const { ctx, tui, completions } = session();
+  let hide = () => {};
+  let close: (result: string) => void = () => {};
+  const result = openOwnedOverlay<string>(
+    ctx,
+    (_tui, _theme, _keys, done) => {
+      close = done;
+      return inputComponent('Model profiles');
+    },
+    {
+      onHandle: (handle) => {
+        hide = () => handle.hide();
+      },
+    },
+  );
+  const settled = vi.fn();
+  void result.then(settled);
+  await Promise.resolve();
+  const foreign = inputComponent('Newer overlay');
+  const foreignHandle = tui.showOverlay(foreign);
+  hide();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(settled).toHaveBeenCalledExactlyOnceWith(undefined);
+  hide();
+  close('late answer');
+  await expect(result).resolves.toBeUndefined();
+  expect(completions).toHaveBeenCalledExactlyOnceWith(undefined);
+  expect(tui.getFocusedComponent()).toBe(foreign);
+  foreignHandle.hide();
+  expect(tui.hasOverlay()).toBe(false);
 });
 
 it('repairs a detached preFocus to the mounted editor after SDK editor replacement', async () => {

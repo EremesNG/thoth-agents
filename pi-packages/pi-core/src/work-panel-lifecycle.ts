@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import { settleOwnedOverlays } from './owned-overlay.js';
 import { type Lifecycle, workPanelRegistry } from './work-panel-state.js';
 
 export interface WorkPanelLifecycleState {
@@ -135,7 +136,12 @@ export function bindWorkPanelLifecycle(
       active(eventCtx);
     }),
     pi.on('session_shutdown', (_event, eventCtx) => {
-      if (eventCtx.sessionManager === key) dispose();
+      if (eventCtx.sessionManager !== key) return;
+      try {
+        settleOwnedOverlays(eventCtx);
+      } finally {
+        dispose();
+      }
     }),
   );
   return dispose;

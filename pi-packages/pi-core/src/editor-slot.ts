@@ -8,6 +8,7 @@ import { hasBlockingOverlay } from './decorative-overlay.js';
 import {
   acquireEditorSlotFocus,
   focusedForeignOverlay,
+  overlayFocusRestorer,
   preservingOverlayFocus,
 } from './owned-overlay.js';
 
@@ -134,6 +135,7 @@ export function registerEditorSlot(
     | { tui: TUI; keybindings: KeybindingsManager; mounted: EditorComponent }
     | undefined;
   let invocations = 0;
+  let restoreOverlayFocus = () => {};
   const replacement = () => {
     for (const entry of [...contributions.values()].reverse()) {
       const component = entry.replacement?.();
@@ -144,6 +146,7 @@ export function registerEditorSlot(
   const factory: EditorFactory = (liveTui, theme, keys) => {
     invocations++;
     if (runtime) return runtime.mounted;
+    restoreOverlayFocus = overlayFocusRestorer(liveTui);
     const retained = baseFactory(liveTui, theme, keys);
     const mounted = new Proxy(retained, {
       get(target, property) {
@@ -172,6 +175,7 @@ export function registerEditorSlot(
     return mounted;
   };
   ui.setEditorComponent(factory);
+  restoreOverlayFocus();
   // RPC exposes no-op hooks: no factory invocation means no mountable slot.
   if (!runtime) {
     if (ui.getEditorComponent() === factory)
@@ -191,15 +195,22 @@ export function registerEditorSlot(
         );
       contributions.set(entry.key, entry);
       let disposed = false;
+      let restoreFocus: (() => void) | undefined;
+      const releaseDisplacedFocus = () => {
+        restoreFocus?.();
+        restoreFocus = undefined;
+      };
       const handle: EditorSlotHandle = {
         tui,
         keybindings,
         refresh: () => tui.requestRender(),
         acquireFocus: () => {
-          if (active()) acquireEditorSlotFocus(tui, mounted);
+          if (!disposed && active())
+            restoreFocus = acquireEditorSlotFocus(tui, mounted) ?? restoreFocus;
         },
         releaseFocus: () => {
-          if (active() && !focusedForeignOverlay(tui))
+          releaseDisplacedFocus();
+          if (!disposed && active() && !focusedForeignOverlay(tui))
             acquireEditorSlotFocus(tui, mounted);
         },
         isRootEditorInputActive: () =>
@@ -212,6 +223,7 @@ export function registerEditorSlot(
         dispose() {
           if (disposed) return;
           disposed = true;
+          releaseDisplacedFocus();
           contributions.delete(entry.key);
           try {
             if (entry.aboveEditor) ui.setWidget(entry.key, undefined);

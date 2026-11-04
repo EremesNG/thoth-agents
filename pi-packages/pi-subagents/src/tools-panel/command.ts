@@ -34,8 +34,10 @@ export function registerToolsCommand(
   pi.registerCommand('subagents-tools', {
     description: 'Edit subagent definition tools',
     handler: async (_args, ctx) => {
+      // Reload can invalidate ctx before the overlay's continuation resumes.
+      const ui = ctx.ui;
       if (ctx.mode !== 'tui') {
-        ctx.ui.notify(
+        ui.notify(
           '/subagents-tools requires interactive TUI mode; no files were changed.',
           'error',
         );
@@ -45,7 +47,7 @@ export function registerToolsCommand(
         typeof pi.getAllTools !== 'function' ||
         typeof pi.getActiveTools !== 'function'
       ) {
-        ctx.ui.notify(
+        ui.notify(
           'Tool discovery is unavailable in this Pi environment; no files were changed.',
           'error',
         );
@@ -74,17 +76,17 @@ export function registerToolsCommand(
               ...host,
             }),
         );
-        if (result.kind === 'saved') {
+        if (result?.kind === 'saved') {
           const detail = result.changedRoles.length
             ? ` Updated: ${result.changedRoles.join(', ')}.`
             : ' No file content changed.';
-          ctx.ui.notify(
+          ui.notify(
             `Saved subagent definition tools.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Native settings or project definitions may override them.`,
             'info',
           );
         }
       } catch (error) {
-        ctx.ui.notify(
+        ui.notify(
           `Unable to open subagent tools: ${error instanceof Error ? error.message : String(error)}`,
           'error',
         );

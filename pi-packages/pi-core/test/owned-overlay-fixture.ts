@@ -1,4 +1,5 @@
 import {
+  type ExtensionAPI,
   type ExtensionContext,
   InteractiveMode,
 } from '@earendil-works/pi-coding-agent';
@@ -29,6 +30,51 @@ export function inputComponent(label: string) {
     getText: () => text,
     setText(value: string) {
       text = value;
+    },
+  };
+}
+
+/** SDK context accessors reject reads after the originating runner is invalidated. */
+export function invalidatableContext<T extends object>(context: T) {
+  let stale = false;
+  return {
+    ctx: new Proxy(context, {
+      get(target, property, receiver) {
+        if (stale)
+          throw new Error(
+            'This extension ctx is stale after session replacement or reload',
+          );
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+    invalidate() {
+      stale = true;
+    },
+  };
+}
+
+/** The public extension event seam, with one shared UI context per session. */
+export function overlayLifecycle(ctx: ExtensionContext) {
+  Object.assign(ctx, { sessionManager: { getSessionId: () => 'test' } });
+  const handlers = new Map<
+    string,
+    (event: unknown, ctx: ExtensionContext) => void
+  >();
+  return {
+    pi: {
+      on(
+        name: string,
+        handler: (event: unknown, ctx: ExtensionContext) => void,
+      ) {
+        handlers.set(name, handler);
+        return () => handlers.delete(name);
+      },
+    } as unknown as ExtensionAPI,
+    shutdown(reason = 'reload') {
+      handlers.get('session_shutdown')?.(
+        { type: 'session_shutdown', reason },
+        ctx,
+      );
     },
   };
 }

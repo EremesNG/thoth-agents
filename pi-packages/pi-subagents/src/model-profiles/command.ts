@@ -956,6 +956,8 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
     return buildNonTuiModelProfilesMessage(workspace, agentDir);
 
   if (hasCustomUi) {
+    // Reload can invalidate ctx before the overlay's continuation resumes.
+    const ui = ctx.ui;
     const availableModels = await getAvailableModels(ctx);
     const result = await openPanelOverlay<SubagentModelProfilesModalResult>(
       ctx,
@@ -971,11 +973,12 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
           done,
         }),
     );
-    const discarded = result?.discarded ?? 0;
+    if (result === undefined) return 'Closed model profiles.';
+    const discarded = result.discarded ?? 0;
     const message = discarded
       ? `Closed model profiles; discarded ${discarded} unsaved draft${discarded === 1 ? '' : 's'}/edit${discarded === 1 ? '' : 's'}.`
       : 'Closed model profiles.';
-    ctx.ui.notify?.(message, discarded ? 'warning' : 'info');
+    ui.notify?.(message, discarded ? 'warning' : 'info');
     return message;
   }
 

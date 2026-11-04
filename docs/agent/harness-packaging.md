@@ -364,10 +364,16 @@ one editor factory and terminal-input listener per session, retaining editor
 callbacks and app actions. Work-panel rows and routing are slot contributions;
 the question contributes an editor replacement or collapsed dock. Expanded
 questions acquire focus through owned-overlay handles so a visible history
-panel cannot recapture the next key. History/detail panels close only their own
+panel cannot recapture the next key. Releasing or disposing the slot restores a
+displaced owned panel only while it remains registered and visible and focus
+has not moved away from the slot. History/detail panels close only their own
 handle; close repair targets the expanded question or otherwise the mounted
 root editor. Collapsing, answering, cancelling, aborting and teardown preserve
-focus held by a still-visible foreign overlay. No polling is used.
+focus held by a still-visible foreign overlay. `bindWorkPanelLifecycle` settles
+all owned overlays in the shared UI session with `undefined` on
+`session_shutdown` (including reload); external owned-handle `hide()` also
+settles once. A raw TUI `hideOverlay()` does not settle standalone consumers
+without that lifecycle binding. No polling is used.
 
 See [question controls and lifecycle](../../pi-packages/pi-questions-user/README.md#custom-ui-seam-and-lifecycle),
 [panel API](../../pi-packages/pi-core/README.md#panel-primitives-and-list-editor),

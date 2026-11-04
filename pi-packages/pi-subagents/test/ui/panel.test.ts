@@ -2430,7 +2430,7 @@ describe('subagents panel and extension ui', () => {
   it('keeps the history shortcut and command available together', async () => {
     let historyShortcutHandler: any;
     let subagentsCommand: any;
-    const custom = vi.fn();
+    const custom = vi.fn(async () => undefined);
     extension({
       registerTool: () => undefined,
       registerCommand: (name: string, command: any) => {

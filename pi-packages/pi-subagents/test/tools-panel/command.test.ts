@@ -1,7 +1,15 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { initTheme } from '@earendil-works/pi-coding-agent';
+import { bindWorkPanelLifecycle } from '@thoth-agents/pi-core';
+import { afterEach, beforeAll, expect, test, vi } from 'vitest';
+import {
+  invalidatableContext,
+  overlayLifecycle,
+  ownedOverlaySession,
+} from '../../../pi-core/test/owned-overlay-fixture.js';
 import { registerToolsCommand } from '../../src/tools-panel/command.js';
 import { toolsPanelRegistryKey } from '../../src/tools-panel/registry.js';
 
+beforeAll(() => initTheme('dark'));
 const shared = globalThis as any;
 afterEach(() => {
   delete shared[toolsPanelRegistryKey];
@@ -145,7 +153,36 @@ test.each([
   expect(save).not.toHaveBeenCalled();
 });
 
-test('opens an owned centered height-aware overlay, discovers inactive tools and saves with notification', async () => {
+test('returns normally without saving or errors when shutdown cancels the tools panel', async () => {
+  vi.useFakeTimers();
+  const { commands, save } = setup();
+  const { ctx: originalContext, tui, completions } = ownedOverlaySession();
+  const { ctx, invalidate } = invalidatableContext(originalContext);
+  const lifecycle = overlayLifecycle(ctx);
+  const release = bindWorkPanelLifecycle(lifecycle.pi, ctx);
+  const notify = vi.fn();
+  Object.assign(ctx, { cwd: '/project', mode: 'tui' });
+  Object.assign(ctx.ui, { notify });
+  try {
+    const result = commands.get('subagents-tools').handler('', ctx);
+    await Promise.resolve();
+    expect(tui.hasOverlay()).toBe(true);
+    lifecycle.shutdown();
+    invalidate();
+    expect(() => ctx.ui).toThrow('This extension ctx is stale');
+    await expect(result).resolves.toBeUndefined();
+    expect(completions).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(save).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(tui.hasOverlay()).toBe(false);
+  } finally {
+    release();
+    tui.stop();
+    vi.useRealTimers();
+  }
+});
+
+test('opens an owned centered overlay and reports a save without re-reading an invalidated context', async () => {
   const { pi, commands, read, save } = setup();
   const notify = vi.fn();
   const tui = { requestRender: vi.fn(), terminal: { rows: 10 } };
@@ -172,11 +209,16 @@ test('opens an owned centered height-aware overlay, discovers inactive tools and
     panel.handleInput(' ');
     panel.handleInput('q');
     panel.handleInput('s');
+    invalidate();
     return result;
   });
-  await commands
-    .get('subagents-tools')
-    .handler('', { cwd: '/project', mode: 'tui', ui: { notify, custom } });
+  const { ctx, invalidate } = invalidatableContext({
+    cwd: '/project',
+    mode: 'tui',
+    ui: { notify, custom },
+  });
+  await commands.get('subagents-tools').handler('', ctx);
+  expect(() => ctx.ui).toThrow('This extension ctx is stale');
   expect(custom).toHaveBeenCalledWith(
     expect.any(Function),
     expect.objectContaining({

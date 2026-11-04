@@ -152,6 +152,39 @@ it('collapsed Enter submits through the real native editor callback while the qu
   await result;
 });
 
+it('returns focus and keys to the owned model panel after the questionnaire completes', async () => {
+  const { ctx, tui, input } = session();
+  const panel = inputComponent('Model profiles');
+  let close = () => {};
+  const panelResult = openOwnedOverlay<void>(
+    ctx,
+    (_tui, _theme, _keys, done) => {
+      close = done;
+      return panel;
+    },
+  );
+  await opened();
+  expect(tui.getFocusedComponent()).toBe(panel);
+  const result = createQuestionTool().execute(
+    'call',
+    params,
+    undefined,
+    undefined,
+    ctx,
+  );
+  await opened();
+  input('1');
+  await expect(result).resolves.toMatchObject({
+    details: { cancelled: false, answers: { plan: { values: ['safe'] } } },
+  });
+  expect(tui.getFocusedComponent()).toBe(panel);
+  input('\x1b');
+  expect(panel.handleInput).toHaveBeenCalledExactlyOnceWith('\x1b');
+  close();
+  await panelResult;
+  expect(tui.hasOverlay()).toBe(false);
+});
+
 it.each([
   'same editor',
   'replacement editor',

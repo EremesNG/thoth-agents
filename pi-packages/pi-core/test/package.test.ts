@@ -65,6 +65,7 @@ describe('Pi ecosystem package manifests', () => {
       'src/windows-job/launcher.ps1',
       '!src/**/*.test.ts',
       'README.md',
+      'CHANGELOG.md',
       'LICENSE',
     ]);
     expect(core.dependencies).toBeUndefined();
@@ -99,6 +100,11 @@ describe('Pi ecosystem package manifests', () => {
     expect(todo.main).toBe('./dist/index.ts');
     expect(todo.pi).toEqual({ extensions: ['./dist/index.ts'] });
     expect(todo.keywords).toContain('pi-extension');
-    expect(todo.files).toEqual(['dist', 'README.md', 'LICENSE']);
+    expect(todo.files).toEqual([
+      'dist',
+      'README.md',
+      'CHANGELOG.md',
+      'LICENSE',
+    ]);
   });
 });

@@ -16,7 +16,14 @@ const cwd = join(root, "project");
 process.env.PI_CODING_AGENT_DIR = join(root, "agent");
 process.env.CLAUDE_CONFIG_DIR = join(root, "claude");
 fs.mkdirSync(cwd, { recursive: true });
-after(() => fs.rmSync(root, { recursive: true, force: true }));
+let cleaningUp = false;
+after(() => {
+	// Node 22's rimraf can retain mocked fs methods even after restoreAll().
+	cleaningUp = true;
+	try {
+		fs.rmSync(root, { recursive: true, force: true });
+	} finally { cleaningUp = false; }
+});
 
 const { default: activate, __test } = await import("../src/index.js");
 const handlers = new Map();
@@ -58,8 +65,8 @@ test("ignores and preserves old checkpoints, writes Pi history once, then uses t
 		updatedAt: Date.now(),
 	}));
 
-	// Exempt only synchronous test inspections from the tripwire: even a bridge
-	// read that is discarded or swallowed must fail, not just an old-id resume.
+	// Outside fixture cleanup, exempt only synchronous test inspections: even a
+	// bridge read that is discarded or swallowed must fail, not just an old-id resume.
 	let inspectingLegacy = false;
 	const snapshot = () => {
 		inspectingLegacy = true;
@@ -90,7 +97,7 @@ test("ignores and preserves old checkpoints, writes Pi history once, then uses t
 			t.mock.method(api, method, function (path, ...args) {
 				if (typeof path === "string" || Buffer.isBuffer(path) || path instanceof URL) {
 					const absolute = resolve(path instanceof URL ? fileURLToPath(path) : path.toString());
-					if (!inspectingLegacy && (absolute === legacyDir || absolute.startsWith(`${legacyDir}${sep}`))) {
+					if (!cleaningUp && !inspectingLegacy && (absolute === legacyDir || absolute.startsWith(`${legacyDir}${sep}`))) {
 						legacyReads.push(`${method}: ${absolute}`);
 						throw new Error("Bridge read the retired checkpoint directory");
 					}

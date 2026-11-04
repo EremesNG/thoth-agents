@@ -135,7 +135,8 @@ export const OUTPUT_PAGE_DEFAULTS = {
 
 export type OutputBudgetSurface = keyof typeof OUTPUT_BUDGET_BYTES;
 
-export type PageReset = "stale-cursor" | "source-replaced" | "compacted";
+/** Corruption is a damaged cursor, not evidence that the source was replaced. */
+export type PageReset = "stale-cursor" | "source-replaced" | "compacted" | "cursor-corrupt";
 export type EvidenceGapKind = "capture" | "retention" | "read";
 export type StatusChange = "none" | "failure" | "content" | "reset";
 export type EnvelopeSectionName =
@@ -290,6 +291,8 @@ interface CursorPayload {
   c?: string;
   f?: string;
   a?: 1;
+  /** Integrity tag over all other fields of offset-bearing cursors. */
+  x?: string;
 }
 
 function positiveInt(value: unknown): number | undefined {
@@ -438,8 +441,32 @@ function resourceTag(resource: string): string {
   return hashBytes(encoder.encode(resource)).slice(0, 16);
 }
 
+/** Status cursors have no offset and stay compact; only page cursors need a tag. */
 function encodeCursor(payload: CursorPayload): string {
-  return CURSOR_PREFIX + Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const tagged = payload.k === "s" ? payload : { ...payload, x: cursorIntegrityTag(payload) };
+  return CURSOR_PREFIX + Buffer.from(JSON.stringify(tagged), "utf8").toString("base64url");
+}
+
+function cursorIntegrityTag(payload: CursorPayload): string {
+  const { x: _ignored, ...rest } = payload;
+  return shortHash(encoder.encode(JSON.stringify(rest))).slice(0, 6);
+}
+
+function cursorIntegrityOk(parsed: CursorPayload): boolean {
+  return typeof parsed.x === "string" && parsed.x === cursorIntegrityTag(parsed);
+}
+
+/** Independent witnesses bind the source snapshot to this exact byte offset. */
+function textSnapshotDigest(revision: string, offset: number): string {
+  return shortHash(encoder.encode(`t\0${revision}\0${offset}`));
+}
+
+function textOffsetWitness(revision: string, offset: number, length: number): string {
+  return shortHash(encoder.encode(`t\0${revision}\0${length}\0${offset}`)).slice(0, 6);
+}
+
+function cursorOffset(parsed: CursorPayload): number {
+  return typeof parsed.o === "number" && Number.isSafeInteger(parsed.o) && parsed.o >= 0 ? parsed.o : Number.NaN;
 }
 
 function decodeCursor(cursor: string | undefined): CursorPayload | undefined {
@@ -501,20 +528,33 @@ export function pageVerbatimText(text: string, request: PageRequest = {}): PageR
   let reset: PageReset | undefined;
   const parsed = decodeCursor(request.cursor);
   if (request.cursor) {
-    if (!parsed || parsed.k !== "t" || (parsed.r ?? undefined) !== resource) {
+    if (!parsed || parsed.k !== "t") {
       reset = "stale-cursor";
-    } else if (parsed.v !== revision) {
-      reset = "source-replaced";
+    } else if (!cursorIntegrityOk(parsed) || parsed.w === undefined) {
+      reset = "cursor-corrupt";
+      const decoded = cursorOffset(parsed);
+      if (parsed.r === resource && decoded <= encoded.length
+        && (parsed.v === textSnapshotDigest(revision, decoded)
+          || parsed.w === textOffsetWitness(revision, decoded, encoded.length))) {
+        offset = decoded;
+      }
+    } else if (parsed.r !== resource) {
+      reset = "stale-cursor";
     } else {
-      offset = Math.min(encoded.length, Math.max(0, Math.floor(parsed.o ?? 0)));
+      offset = cursorOffset(parsed);
+      if (!Number.isFinite(offset) || offset > encoded.length || parsed.v !== textSnapshotDigest(revision, offset)) {
+        reset = "source-replaced";
+        offset = 0;
+      }
     }
   }
   const mint = (o: number): string => encodeCursor({
     k: "t",
     ...(resource !== undefined ? { r: resource } : {}),
-    v: revision,
+    v: textSnapshotDigest(revision, o),
     o,
     n: encoded.length,
+    w: textOffsetWitness(revision, o, encoded.length),
   });
   const make = (start: number, end: number): PageResult => ({
     text: decoder.decode(encoded.subarray(start, end)),
@@ -612,11 +652,15 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
   const resource = resourceTag(request.resource ?? path);
   const generation = request.generation === undefined ? undefined : String(request.generation);
   const suppliedGaps = fileGaps(request);
+  const parsed = decodeCursor(request.cursor);
+  const corrupt = parsed?.k === "f" && !cursorIntegrityOk(parsed);
+  const reason = (clean: PageReset): PageReset => corrupt ? "cursor-corrupt" : clean;
+  const readReset = request.cursor ? reason(parsed?.k === "f" ? "source-replaced" : "stale-cursor") : undefined;
   let fd: number | undefined;
   try {
     fd = openSync(path, "r");
   } catch (error) {
-    return fileReadError(request, path, error, request.cursor ? "source-replaced" : undefined);
+    return fileReadError(request, path, error, readReset);
   }
   const opened = fd;
   try {
@@ -630,10 +674,13 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
       const from = Math.max(0, o - WINDOW_SAMPLE_BYTES);
       return shortHash(readAt(opened, from, o - from));
     };
+    // Bind bytes to their position too: repeated log windows must not validate a damaged offset.
+    const positionWitness = (o: number, n: number, hl: number): string => shortHash(encoder.encode(JSON.stringify([
+      "f", identity, generation ?? null, o, n, hl, shortHash(head.subarray(0, hl)), windowHash(o) ?? "",
+    ])));
     const initialSnapshot = (): number => Math.min(size, request.snapshotBytes !== undefined
       ? clampBudgetBytes(request.snapshotBytes, size)
       : size);
-    const parsed = decodeCursor(request.cursor);
     let reset: PageReset | undefined;
     let offset = 0;
     let snapshot = initialSnapshot();
@@ -641,31 +688,32 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
 
     if (request.cursor) {
       if (!parsed || parsed.k !== "f" || parsed.r !== resource) {
-        reset = "stale-cursor";
+        reset = reason("stale-cursor");
       } else if (parsed.i !== identity) {
-        reset = "source-replaced";
+        reset = reason("source-replaced");
       } else {
-        const o = Math.max(0, Math.floor(parsed.o ?? 0));
-        const n = Math.max(0, Math.floor(parsed.n ?? 0));
-        const headLength = Math.max(0, Math.floor(parsed.hl ?? 0));
+        const o = cursorOffset(parsed);
+        const n = typeof parsed.n === "number" && Number.isSafeInteger(parsed.n) ? parsed.n : Number.NaN;
+        const headLength = typeof parsed.hl === "number" && Number.isSafeInteger(parsed.hl) ? parsed.hl : Number.NaN;
         const generationChanged = generation !== undefined && parsed.g !== generation;
-        const bytesIntact = o <= n
-          && n <= size
-          && headLength <= size
-          && (!parsed.h || shortHash(head.subarray(0, headLength)) === parsed.h)
-          && (o === 0 || windowHash(o) === parsed.w);
+        const bytesIntact = typeof parsed.x === "string"
+          && o <= n && n <= size
+          && headLength >= 0 && headLength <= head.length
+          && shortHash(head.subarray(0, headLength)) === parsed.h
+          && positionWitness(o, n, headLength) === parsed.w;
         if (generationChanged) {
           // The consumer declared a compaction/replacement of this file.
-          reset = "compacted";
+          reset = reason("compacted");
         } else if (!bytesIntact) {
           // Same file object as far as stat can tell, but the bytes behind the
           // cursor changed without a declared compaction: rewritten in place,
           // or deleted and recreated on a reused inode with coarse timestamps.
-          reset = "source-replaced";
+          reset = reason("source-replaced");
         } else {
           offset = o;
           snapshot = n;
           appendReady = parsed.a === 1;
+          if (corrupt) reset = "cursor-corrupt";
         }
       }
     }
@@ -675,7 +723,6 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
     }
 
     const mint = (o: number, n: number, append: boolean): string => {
-      const window = windowHash(o);
       return encodeCursor({
         k: "f",
         r: resource,
@@ -685,7 +732,7 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
         i: identity,
         h: headHash,
         hl: head.length,
-        ...(window ? { w: window } : {}),
+        w: positionWitness(o, n, head.length),
         ...(append ? { a: 1 } : {}),
       });
     };
@@ -754,7 +801,7 @@ export function pageRetainedFile(path: string, request: FilePageRequest = {}): P
       ...base,
     };
   } catch (error) {
-    return fileReadError(request, path, error, request.cursor ? "source-replaced" : undefined);
+    return fileReadError(request, path, error, readReset);
   } finally {
     if (fd !== undefined) {
       try { closeSync(fd); } catch { /* best effort */ }
@@ -1074,6 +1121,13 @@ function clipPrefix(text: string, maxBytes: number): { text: string; omittedByte
   return { text: decoder.decode(encoded.subarray(0, range.end)), omittedBytes: total - range.end };
 }
 
+/** Keep copy/restart guidance explicit on every model-facing paging surface. */
+export function formatPageReset(reset: PageReset): string {
+  if (reset !== "cursor-corrupt" && reset !== "stale-cursor") return `reset=${reset}`;
+  const error = reset === "cursor-corrupt" ? "corrupt cursor" : "stale or invalid cursor";
+  return `reset=${reset} (Error: ${error}. Reuse the exact cursor or restart without it.)`;
+}
+
 function formatContinuation(info: {
   page?: VerbatimPage;
   gaps: EvidenceGap[];
@@ -1082,7 +1136,7 @@ function formatContinuation(info: {
 }): string | undefined {
   const lines: string[] = [];
   const page = info.page;
-  if (page?.reset) lines.push(`reset=${page.reset}`);
+  if (page?.reset) lines.push(formatPageReset(page.reset));
   if (page && (page.hasMore || page.omittedBytes > 0 || (page.omittedRows ?? 0) > 0)) {
     const amount = page.omittedRows !== undefined
       ? `omittedRows=${page.omittedRows}`

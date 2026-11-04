@@ -21,6 +21,7 @@ import {
   assemblePriorityEnvelope,
   clampBudgetBytes,
   cursorKind,
+  formatPageReset,
   formatUnchangedEvidence,
   inspectStatusRevision,
   lifecycleContentRevision,
@@ -648,7 +649,7 @@ export function formatStatus(
   const changeFacts = [
     ...(listCursor ? ["cursor ignored: it is a bg_task_list page cursor; pass it to bg_task_list, or pass this status's statusCursor here."] : []),
     ...(revision.change === "failure" ? ["change=failure"] : []),
-    ...(revision.reset ? [`reset=${revision.reset}`] : []),
+    ...(revision.reset ? [formatPageReset(revision.reset)] : []),
     ...(log.error ? [`log unreadable: ${oneLine(log.error, 200)}; cannot treat this as an empty healthy log.`] : []),
   ];
   return assembleBackgroundContent({
@@ -697,7 +698,7 @@ export function formatLog(id: string, options: OutputOptions = {}): string {
   }
   const tailLines = options.tailLines && options.tailLines > 0 ? Math.floor(options.tailLines) : DEFAULT_LOG_TAIL_ROWS;
   const log = readLog(meta.logPath, tailLines);
-  const staleCursor = options.cursor ? ["reset=stale-cursor (compact tails have no cursor; pass a raw nextCursor or lines:0)"] : [];
+  const staleCursor = options.cursor ? [formatPageReset("stale-cursor"), "Compact tails have no cursor; pass a raw nextCursor or lines:0."] : [];
   if (log.error) {
     return assembleBackgroundContent({
       surface: "log",

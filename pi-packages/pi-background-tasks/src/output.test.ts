@@ -468,10 +468,10 @@ describe("retained log paging and capture/retention disclosure", () => {
     const status = formatStatus(inspectMeta(meta.id), { origin });
     expect(utf8ByteLength(status)).toBeLessThanOrEqual(1024);
     expect(status).not.toContain("\uFFFD");
-    expect(status).toMatch(/incidentCursor=i1\./);
+    expect(status).toMatch(/incidentCursor=i2\./);
     const shownCount = Number(status.match(/(\d+) shown/)?.[1]);
     expect(status).toMatch(new RegExp(`12 active failure observations · ${shownCount} shown · ${12 - shownCount} omitted`));
-    let cursor = status.match(/incidentCursor=(i1\.\S+)/)?.[1];
+    let cursor = status.match(/incidentCursor=(i2\.\S+)/)?.[1];
     expect(cursor).toBeTruthy();
     const seen = new Set<string>();
     for (const match of status.matchAll(/bg-incident-(\d+)/g)) seen.add(match[1]!);
@@ -484,7 +484,7 @@ describe("retained log paging and capture/retention disclosure", () => {
         expect(seen.has(match[1]!), `incident ${match[1]} repeated`).toBe(false);
         seen.add(match[1]!);
       }
-      cursor = page.includes("hasMore=true") ? page.match(/nextCursor=(i1\.\S+)/)?.[1] : undefined;
+      cursor = page.includes("hasMore=true") ? page.match(/nextCursor=(i2\.\S+)/)?.[1] : undefined;
     }
     expect([...seen].sort()).toEqual(Array.from({ length: 12 }, (_, i) => String(i)).sort());
     const log = formatLog(meta.id, { origin });
@@ -1040,5 +1040,54 @@ describe("#332 navigator rows", () => {
     row = provider.listRows(Date.now()).find((x: any) => x.id === loud.id);
     expect(row!.primary).toMatch(/Action required/);
     navigator.dispose();
+  });
+});
+
+describe("model-facing cursor integrity errors", () => {
+  function damage(cursor: string): string {
+    const value = JSON.parse(Buffer.from(cursor.slice(3), "base64url").toString("utf8"));
+    const tag = cursor.startsWith("i2.") ? "q" : "x";
+    value[tag] = value[tag][0] === "A" ? `B${value[tag].slice(1)}` : `A${value[tag].slice(1)}`;
+    return cursor.slice(0, 3) + Buffer.from(JSON.stringify(value)).toString("base64url");
+  }
+
+  function expectRecoveryInstructions(text: string, reset = "cursor-corrupt"): void {
+    expect(text).toContain(`reset=${reset}`);
+    expect(text).toMatch(/error:.*cursor/i);
+    expect(text).toMatch(/reuse the exact cursor or restart without it/i);
+    expect(utf8ByteLength(text)).toBeLessThanOrEqual(1024);
+  }
+
+  it("explains a corrupt raw-log cursor on both log and status without hiding retained evidence", () => {
+    const meta = fixture({ logLines: Array.from({ length: 40 }, (_, i) => `line-${i} ${"x".repeat(40)}`) });
+    const first = formatLog(meta.id, { origin, raw: true, maxBytes: 1024 });
+    const cursor = damage(first.match(/nextCursor=(\S+)/)![1]!);
+    const log = formatLog(meta.id, { origin, cursor, maxBytes: 1024 });
+    expectRecoveryInstructions(log);
+    expectRecoveryInstructions(formatStatus(meta, { origin, cursor, maxBytes: 1024 }));
+    expect(log).not.toContain("reset=source-replaced");
+    expect(log).toContain("hasMore=true");
+  });
+
+  it("explains corrupt verbose metadata and incident cursors, and stale legacy incidents", () => {
+    const meta = fixture({ result: { data: "metadata".repeat(500) } });
+    const verbose = formatStatus(meta, { origin, verbose: true, maxBytes: 1024 });
+    expectRecoveryInstructions(formatStatus(meta, { origin, cursor: damage(verbose.match(/nextCursor=(\S+)/)![1]!), maxBytes: 1024 }));
+    for (let index = 0; index < 12; index += 1) {
+      recordFailure(meta, `op-${index}`, `cursor-failure-${index}`, `integrity-${index}`, { category: "exit" });
+    }
+    const status = formatStatus(meta, { origin, maxBytes: 1024 });
+    const incident = status.match(/incidentCursor=(\S+)/)![1]!;
+    expectRecoveryInstructions(formatStatus(meta, { origin, cursor: damage(incident), maxBytes: 1024 }));
+    expectRecoveryInstructions(formatStatus(meta, { origin, cursor: `i1.${incident.slice(3)}`, maxBytes: 1024 }), "stale-cursor");
+  });
+
+  it("gives explicit recovery instructions even when damage prevents cursor routing", () => {
+    const meta = fixture({ logLines: ["retained evidence"] });
+    for (const cursor of ["p1.garbage", "i2.garbage", "broken-cursor"]) {
+      const status = formatStatus(meta, { origin, cursor, maxBytes: 1024 });
+      expectRecoveryInstructions(status, cursor.startsWith("i2.") ? "cursor-corrupt" : "stale-cursor");
+      expectRecoveryInstructions(formatLog(meta.id, { origin, cursor, maxBytes: 1024 }), "stale-cursor");
+    }
   });
 });

@@ -42,6 +42,23 @@ const DEFAULT_TIMEOUT_MIN = 10;
 const MAX_TIMEOUT_MINUTES = Math.floor(2_147_483_647 / 60_000);
 const ANIMATION_INTENDED_MS = 200;
 const STATUS_TAIL_CHARS = 160;
+// agy -p returns plain text (trimmed below), not framed JSON. Keep generous
+// answer head+tail so both its opening and final conclusion survive overflow;
+// diagnostics keep their tail on line boundaries (see the stderr handler).
+// Caps include markers, in UTF-16 code units.
+const STDOUT_MAX_CHARS = 1_000_000;
+const STDERR_MAX_CHARS = 65_536;
+const STDOUT_TRUNCATED = "\n[stdout truncated]\n";
+const STDERR_TRUNCATED = "[stderr truncated]\n";
+
+function appendBoundedOutput(current: string, chunk: string, cap: number, marker: string, keepHead = false): string {
+	if (current.length + chunk.length <= cap) return current + chunk;
+	const headSize = keepHead ? Math.floor((cap - marker.length) / 2) : 0;
+	const tailSize = cap - marker.length - headSize;
+	const head = (current.slice(0, headSize) + chunk.slice(0, headSize)).slice(0, headSize);
+	const tail = (current.slice(-tailSize) + chunk.slice(-tailSize)).slice(-tailSize);
+	return head + marker + tail;
+}
 
 // renderCall / renderResult preview limits (match @thoth-agents/pi-claude-bridge).
 const PREVIEW_MAX_CHARS = 1000;
@@ -566,8 +583,8 @@ export async function registerAskAntigravityTool(
 
 			const body = result.content[0]?.type === "text" ? result.content[0].text : "";
 			const errored =
-				d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
-			const status = errored || context?.isError ? "failed" : "completed";
+				!!context?.isError || !!d?.refused || d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
+			const status = errored ? "failed" : "completed";
 
 			const renderText = () => {
 				let text = errored
@@ -601,7 +618,7 @@ export async function registerAskAntigravityTool(
 				(kit) => ({
 					title: "AskAntigravity",
 					body: renderText().split("\n"),
-					isError: errored || context?.isError,
+					isError: errored,
 					status,
 					context,
 					footer: renderToolFooter(kit, theme, {
@@ -621,6 +638,7 @@ export async function registerAskAntigravityTool(
 			if (config.readOnly) {
 				return {
 					content: [{ type: "text", text: "readOnly is on: AskAntigravity is refused. The agy CLI cannot enforce review-only (#1181). Enforce read-only in the host, then /agy readonly off (AGY_READONLY overrides config)." }],
+					isError: true,
 					details: emptyDetails(),
 				};
 			}
@@ -634,6 +652,7 @@ export async function registerAskAntigravityTool(
 							text: "Error: AskAntigravity cannot be used when the active provider is already antigravity - you're already running through it.",
 						},
 					],
+					isError: true,
 					details: emptyDetails(),
 				};
 			}
@@ -647,6 +666,7 @@ export async function registerAskAntigravityTool(
 							text: `model value "${params.model}" starts with "-" - not a valid model id.`,
 						},
 					],
+					isError: true,
 					details: emptyDetails(requestedModel),
 				};
 			}
@@ -666,12 +686,14 @@ export async function registerAskAntigravityTool(
 				if (!stat.isDirectory()) {
 					return {
 						content: [{ type: "text", text: `cwd is not a directory: ${cwd}` }],
+						isError: true,
 						details: emptyDetails(requestedModel, resolved.model),
 					};
 				}
 			} catch {
 				return {
 					content: [{ type: "text", text: `cwd does not exist: ${cwd}` }],
+					isError: true,
 					details: emptyDetails(requestedModel, resolved.model),
 				};
 			}
@@ -680,6 +702,7 @@ export async function registerAskAntigravityTool(
 			if (!(Number.isFinite(timeoutMin) && timeoutMin > 0 && timeoutMin <= MAX_TIMEOUT_MINUTES)) {
 				return {
 					content: [{ type: "text", text: `timeoutMinutes must be a positive finite number of minutes up to ${MAX_TIMEOUT_MINUTES} (for example 0.5 for 30 seconds).` }],
+					isError: true,
 					details: emptyDetails(requestedModel, resolved.model),
 				};
 			}
@@ -780,6 +803,26 @@ export async function registerAskAntigravityTool(
 
 			const binary = process.env.AGY_BIN || "agy";
 			let out = "";
+			// Reassemble chunks privately so split credentials can be scrubbed before
+			// details leave the tool (including progress and process-error paths).
+			let stderr = "";
+			let stderrDiscardingLine = false;
+			const syncStderr = (settled = false) => {
+				// A timer can run between credential chunks. Publish only complete
+				// lines until settlement makes the trailing fragment final.
+				const publishable = settled ? stderr : stderr.slice(0, stderr.lastIndexOf("\n") + 1);
+				const redacted = (details.stderrTruncated ? STDERR_TRUNCATED : "") + redactText(publishable);
+				if (redacted.length <= STDERR_MAX_CHARS) {
+					details.stderr = redacted;
+					return;
+				}
+				// Redaction can expand short credentials. Reapply the line-safe
+				// tail policy after scrubbing, never split a redacted line.
+				details.stderrTruncated = true;
+				const tail = redacted.slice(-(STDERR_MAX_CHARS - STDERR_TRUNCATED.length));
+				const newline = tail.indexOf("\n");
+				details.stderr = STDERR_TRUNCATED + (newline === -1 ? "" : tail.slice(newline + 1));
+			};
 
 			// Delegation isolation: any agy on this machine discovers MCP servers
 			// from the global mcp_config.json, so this spawned `agy -p` would find
@@ -802,6 +845,7 @@ export async function registerAskAntigravityTool(
 						kind: "secondary",
 						intendedMs: ANIMATION_INTENDED_MS,
 						onStep: ({ frame, now }) => {
+							syncStderr();
 							const durationMs = now - start;
 							const elapsed = formatDuration(Math.floor(durationMs / 1000) * 1000);
 							const tail = out.slice(-STATUS_TAIL_CHARS);
@@ -835,8 +879,32 @@ export async function registerAskAntigravityTool(
 					});
 					proc.stdout?.setEncoding("utf8");
 					proc.stderr?.setEncoding("utf8");
-					proc.stdout?.on("data", (d: string) => (out += d));
-					proc.stderr?.on("data", (d: string) => (details.stderr += d));
+					proc.stdout?.on("data", (d: string) => {
+						if (out.length + d.length > STDOUT_MAX_CHARS) details.stdoutTruncated = true;
+						out = appendBoundedOutput(out, d, STDOUT_MAX_CHARS, STDOUT_TRUNCATED, true);
+					});
+					proc.stderr?.on("data", (d: string) => {
+						// Never retain a partial leading line: losing a credential's
+						// prefix would make its suffix invisible to the redactor. If
+						// a giant line spans chunks, discard through its next newline.
+						if (stderrDiscardingLine) {
+							const newline = d.indexOf("\n");
+							if (newline === -1) return;
+							d = d.slice(newline + 1);
+							stderrDiscardingLine = false;
+						}
+						const cap = STDERR_MAX_CHARS - (details.stderrTruncated ? STDERR_TRUNCATED.length : 0);
+						if (stderr.length + d.length <= cap) {
+							stderr += d;
+							return;
+						}
+						details.stderrTruncated = true;
+						const tailSize = STDERR_MAX_CHARS - STDERR_TRUNCATED.length;
+						const tail = (stderr.slice(-tailSize) + d.slice(-tailSize)).slice(-tailSize);
+						const newline = tail.indexOf("\n");
+						stderr = newline === -1 ? "" : tail.slice(newline + 1);
+						stderrDiscardingLine = newline === -1;
+					});
 
 					// Concurrent bind: poll for the new id while agy is alive. The FD
 					// resolver needs a live process tree, so this stops (and the post-
@@ -924,6 +992,7 @@ export async function registerAskAntigravityTool(
 				// has exited, so this rarely blocks).
 				await bindDuringRun;
 
+				syncStderr(true);
 				details.exitCode = outcome.exitCode;
 				details.aborted = outcome.aborted;
 				details.timedOut = outcome.timedOut;
@@ -970,7 +1039,7 @@ export async function registerAskAntigravityTool(
 
 				if (outcome.exitCode !== 0) {
 					// stderr can carry auth material; the note is chat-visible.
-					const stderr = redactText(details.stderr.trim());
+					const stderr = details.stderr.trim();
 					const note = stderr
 						? `agy exited with status ${outcome.exitCode}: ${stderr}`
 						: `agy exited with status ${outcome.exitCode}`;
@@ -988,7 +1057,7 @@ export async function registerAskAntigravityTool(
 				// success (silent-failure bug found 2026-09-25).
 				if (!text) {
 					details.empty = true;
-					const stderr = redactText(details.stderr.trim());
+					const stderr = details.stderr.trim();
 					const note = [
 						"agy exited cleanly but produced no output.",
 						stderr ? `stderr: ${stderr}` : null,
@@ -1005,6 +1074,7 @@ export async function registerAskAntigravityTool(
 					: "";
 				return { content: [{ type: "text", text: text + footer }], details };
 			} catch (err) {
+				syncStderr(true);
 				details.durationMs = Date.now() - start;
 				const msg = err instanceof Error ? err.message : String(err);
 				emitLog("ask-fail", { error: msg, durationMs: details.durationMs }, "error");
@@ -1110,10 +1180,14 @@ interface AgyDetails {
 	// Exit 0 with no answer on stdout (the empty-output failure branch).
 	// renderResult flips to the error glyph on it.
 	empty?: boolean;
+	/** Validation refused the call before spawning agy. */
+	refused?: boolean;
 	durationMs: number;
 	/** Stepper-owned animation frame on partial updates only. */
 	frame?: number;
 	stderr: string;
+	stdoutTruncated?: boolean;
+	stderrTruncated?: boolean;
 }
 
 function emptyDetails(
@@ -1130,7 +1204,9 @@ function emptyDetails(
 		digest: false,
 		includeContext,
 		conversationId: null,
-		exitCode: 0,
+		// Every caller is a pre-spawn refusal, never a successful run.
+		refused: true,
+		exitCode: 1,
 		aborted: false,
 		timedOut: false,
 		durationMs: 0,

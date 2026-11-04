@@ -221,7 +221,11 @@ function bestEffortWriteMarker(file: string, marker: SuppressionMarker): void {
 	}
 }
 
-const suppressionRefs = new Map<string, number>();
+// Pi reloads replace modules, not the process. Share owner tokens across
+// runtimes so late cleanup cannot reopen entries held by a replacement.
+const SUPPRESSION_OWNERS_KEY = Symbol.for("thoth.pi-antigravity-bridge.suppression-owners.v1");
+const suppressionOwners = ((globalThis as Record<symbol, unknown>)[SUPPRESSION_OWNERS_KEY] ??=
+	new Map<string, Set<symbol>>()) as Map<string, Set<symbol>>;
 
 /** Reference-counted suppression for a self-spawned agy process (AskAntigravity
  *  delegation). First acquire disables every pi-bridge-* entry AND records
@@ -241,9 +245,14 @@ export function acquireBridgeSuppression(opts: SuppressionOptions = {}): () => v
 	const isAlive = opts.isAlive ?? pidAlive;
 	const now = opts.now ?? Date.now;
 	const key = `${path.resolve(markerPath)}\u0000${pid}`;
-	const refs = (suppressionRefs.get(key) ?? 0) + 1;
-	suppressionRefs.set(key, refs);
-	if (refs === 1) {
+	let owners = suppressionOwners.get(key);
+	if (!owners) {
+		owners = new Set();
+		suppressionOwners.set(key, owners);
+	}
+	const owner = Symbol();
+	owners.add(owner);
+	if (owners.size === 1) {
 		// Marker BEFORE the config flip: a session-start heal racing between
 		// the two writes reads an empty marker and would re-enable entries for
 		// a delegation that is about to go live. Recording first shrinks that
@@ -253,25 +262,21 @@ export function acquireBridgeSuppression(opts: SuppressionOptions = {}): () => v
 		bestEffortWriteMarker(markerPath, marker);
 		setBridgeEntriesDisabled(true, configPath);
 	}
-	let released = false;
 	return () => {
-		if (released) return;
-		released = true;
-		const left = Math.max(0, (suppressionRefs.get(key) ?? 1) - 1);
-		if (left === 0) suppressionRefs.delete(key);
-		else suppressionRefs.set(key, left);
-		if (left === 0) {
-			const marker = readSuppressionMarker(markerPath);
-			delete marker.delegators[String(pid)];
-			const { kept } = pruneDelegators(marker, isAlive, now());
-			bestEffortWriteMarker(markerPath, kept);
-			// Re-read right before the flip: an acquire that raced us between
-			// the marker write and this read is already live and must keep its
-			// suppression (a stale snapshot here would re-enable over it).
-			const fresh = readSuppressionMarker(markerPath);
-			if (Object.keys(fresh.delegators).length === 0) {
-				setBridgeEntriesDisabled(false, configPath);
-			}
+		// Deleting the token is the exactly-once release latch, including when
+		// a new ownership set was created after this one's final release.
+		if (!owners.delete(owner) || owners.size > 0) return;
+		suppressionOwners.delete(key);
+		const marker = readSuppressionMarker(markerPath);
+		delete marker.delegators[String(pid)];
+		const { kept } = pruneDelegators(marker, isAlive, now());
+		bestEffortWriteMarker(markerPath, kept);
+		// Re-read right before the flip: an acquire that raced us between
+		// the marker write and this read is already live and must keep its
+		// suppression (a stale snapshot here would re-enable over it).
+		const fresh = readSuppressionMarker(markerPath);
+		if (Object.keys(fresh.delegators).length === 0) {
+			setBridgeEntriesDisabled(false, configPath);
 		}
 	};
 }

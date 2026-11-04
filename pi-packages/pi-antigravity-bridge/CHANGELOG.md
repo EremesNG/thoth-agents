@@ -13,6 +13,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Fixed
 
+- Redact AskAntigravity stderr in persisted results and progress, bound retained output with explicit truncation (1,000,000 UTF-16 code units of answer head/tail; 65,536 of line-safe stderr tail), and report pre-spawn refusals as failures.
+- Keep legacy-global AskAntigravity MCP suppression owned across runtime reloads so late cleanup cannot reopen another live delegation's entries.
 - Resume bound conversations after retry-dropped assistant or tool-result tails without re-sending the context digest.
 - Bind first tool parks from their originating turn's live conversation identity, preserving existing bindings and dispatch watermarks.
 - Keep working conversation bindings after deadline errors when model output was observed.

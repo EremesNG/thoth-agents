@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
 	acquireBridgeSuppression,
 	bridgeServerName,
@@ -206,6 +206,50 @@ test("acquireBridgeSuppression refcounts: first acquire disables, last release r
 	releaseA();
 	assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).mcpServers["pi-bridge-4242"].disabled, false);
 	fs.rmSync(home, { recursive: true, force: true });
+});
+
+test.each(["old", "replacement"])("suppression survives module reload when the %s runtime releases first, exactly once per owner", async (first) => {
+	const home = tmpHome();
+	const file = cfgFile(home);
+	const marker = markerFile(home);
+	const opts = { configPath: file, markerPath: marker, pid: 4242, isAlive: () => true };
+	reg(home, ENTRY);
+	const disabled = () => JSON.parse(fs.readFileSync(file, "utf8")).mcpServers["pi-bridge-4242"].disabled;
+	const delegators = () => JSON.parse(fs.readFileSync(marker, "utf8")).delegators;
+	let releaseA = () => {};
+	let releaseB = () => {};
+	let releaseC = () => {};
+	try {
+		const { acquireBridgeSuppression: acquireA } = await import("../src/mcp-registration.js");
+		releaseA = acquireA(opts);
+		vi.resetModules();
+		const { acquireBridgeSuppression: acquireB } = await import("../src/mcp-registration.js");
+		releaseB = acquireB(opts);
+		const [early, late] = first === "old" ? [releaseA, releaseB] : [releaseB, releaseA];
+		early();
+		early();
+		assert.equal(disabled(), true, "another runtime still owns suppression");
+		assert.ok(delegators()["4242"], "live process marker must survive an old runtime's release");
+		late();
+		assert.equal(disabled(), false, "last owner restores entries");
+		assert.equal(delegators()["4242"], undefined);
+
+		// Late duplicate cleanup from either retired runtime cannot consume a
+		// newly acquired owner, even after the previous ownership set emptied.
+		releaseC = acquireB(opts);
+		releaseA();
+		releaseB();
+		assert.equal(disabled(), true);
+		assert.ok(delegators()["4242"]);
+		releaseC();
+		assert.equal(disabled(), false);
+		const contents = fs.readFileSync(marker, "utf8");
+		releaseC();
+		assert.equal(fs.readFileSync(marker, "utf8"), contents, "duplicate release does not write");
+	} finally {
+		releaseA(); releaseB(); releaseC();
+		fs.rmSync(home, { recursive: true, force: true });
+	}
 });
 
 test("setBridgeEntriesDisabled refuses corrupt config, no-ops on missing/empty", () => {

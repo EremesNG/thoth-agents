@@ -5,7 +5,7 @@ import { PromptCaptures, projectPromptCapture } from "../src/prompt-capture.js";
 import { diffBlocks, segment } from "../src/append-blocks.js";
 
 const base = { cwd: "/test", selectedTools: [], contextFiles: [], skills: [] };
-const project = (capture, skillReadTool = "none") => projectPromptCapture(capture, { skillReadTool });
+const project = (capture, hasReadTool = false) => projectPromptCapture(capture, { hasReadTool });
 
 function record(captures, options) {
 	const key = buildSystemPrompt({ ...base, ...options });

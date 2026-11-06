@@ -47,7 +47,7 @@ test("default binary resolution matches the installed SDK without launching a pr
 });
 
 for (const insideOrca of [false, true]) {
-	for (const path of ["summary", "AskClaude", "quota"]) {
+	for (const path of ["summary", "quota"]) {
 		test(`${path} preserves built-in stderr-tail errors with DEBUG off ${insideOrca ? "inside Orca through the alias" : "outside Orca"}`, { timeout: 10000 }, async (t) => {
 			const dir = fs.mkdtempSync(join(tmpdir(), "bridge-auxiliary-runtime-"));
 			t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -75,11 +75,10 @@ for (const insideOrca of [false, true]) {
 				__test.setAuxiliaryQuery(null);
 				__test.resetSharedSession();
 			});
-			fs.writeFileSync(globalConfigPath(), JSON.stringify({ startupNoticeShown: "2026-09-30", askClaude: { enabled: true }, provider: { pathToClaudeCodeExecutable: executable } }));
-			let tool;
+			fs.writeFileSync(globalConfigPath(), JSON.stringify({ startupNoticeShown: "2026-09-30", provider: { pathToClaudeCodeExecutable: executable } }));
 			let quota;
 			const handlers = new Map();
-			activate({ on: (name, handler) => handlers.set(name, handler), registerProvider() {}, registerTool: (value) => tool = value, registerCommand: (_name, value) => quota = value });
+			activate({ on: (name, handler) => handlers.set(name, handler), registerProvider() {}, registerCommand: (_name, value) => quota = value });
 			t.after(() => handlers.get("session_shutdown")({}, ctx));
 			let receivedOptions;
 			__test.setAuxiliaryQuery(({ prompt, options }) => {
@@ -90,12 +89,10 @@ for (const insideOrca of [false, true]) {
 			let output;
 			const ctx = { cwd: dir, ui: { notify: (message) => output = message }, getSystemPrompt: () => "", sessionManager: { getSessionId: () => `auxiliary-${path}` } };
 			if (path === "summary") output = (await __test.isolatedStreamFn(model, context, { cacheRetention: "none" }).result()).errorMessage;
-			else if (path === "AskClaude") output = (await tool.execute("call", { prompt: "offline", mode: "none", isolated: true }, undefined, undefined, ctx)).content[0].text;
 			else await quota.handler("quota", ctx);
 
 			assert.ok(output?.includes(diagnostic), `expected the SDK's built-in diagnostic, got: ${output}`);
-			if (path === "AskClaude") assert.equal(typeof receivedOptions.spawnClaudeCodeProcess, "function", "AskClaude observes actual child close");
-			else assert.equal(receivedOptions.spawnClaudeCodeProcess, undefined, "summary/quota retain the SDK launcher");
+			assert.equal(receivedOptions.spawnClaudeCodeProcess, undefined, "summary/quota retain the SDK launcher");
 			const expectedPath = insideOrca ? join(dir, "cc-bridge-runtime.exe") : executable;
 			assert.equal(fs.readFileSync(launchedPath, "utf8"), expectedPath);
 			assert.equal(receivedOptions.pathToClaudeCodeExecutable, expectedPath);

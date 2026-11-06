@@ -114,7 +114,7 @@ describe('query-local attribution', () => {
     }
   });
 
-  it('attributes isolated summaries and AskClaude to their options, not the SDK session', async () => {
+  it('attributes isolated summaries to their options, not the SDK session', async () => {
     const reports = [];
     const unsubscribe = subscribeProviderLimits((entry) => reports.push(entry));
     let closes = 0;
@@ -143,16 +143,11 @@ describe('query-local attribution', () => {
         { sessionId: 'summary-child', cacheRetention: 'none' },
       );
       await stream.result();
-      await __test.promptAndWait('hello', 'none', new Map(), undefined, {
-        piSessionId: 'ask-child',
-        isolated: true,
-        appendSkills: false,
-      });
       assert.deepEqual(
         reports.map((entry) => entry.sessionId),
-        ['summary-child', 'ask-child'],
+        ['summary-child'],
       );
-      assert.equal(closes, 2);
+      assert.equal(closes, 1);
     } finally {
       unsubscribe();
       __test.setAuxiliaryQuery(null);

@@ -32,7 +32,7 @@ async function run() {
 	const oldCwd = process.cwd();
 	const cwd = mkdtempSync(join(tmpdir(), "pi-claude-bridge-append-live-"));
 	mkdirSync(join(cwd, ".pi"));
-	writeFileSync(join(cwd, ".pi", "claude-bridge.json"), '{"askClaude":{"enabled":false}}\n');
+	writeFileSync(join(cwd, ".pi", "claude-bridge.json"), '{}\n');
 	process.chdir(cwd);
 	const A = `alpha_${randomUUID().replaceAll("-", "")}`;
 	const B = `beta_${randomUUID().replaceAll("-", "")}`;

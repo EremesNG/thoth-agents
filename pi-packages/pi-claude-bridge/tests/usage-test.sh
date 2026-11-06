@@ -58,7 +58,7 @@ build_prompts() {
   PROMPTS=()
   PROMPTS+=("Read package.json and explain what this project does based on its dependencies, scripts, and metadata. Be thorough.")
   PROMPTS+=("Write a detailed summary of what you just learned to $tmpfile")
-  PROMPTS+=("Read README.md and explain the architecture — how does the provider work, what is AskClaude, how do they interact?")
+  PROMPTS+=("Read README.md and explain the architecture — how does the provider integrate Pi tools and conversation history with Claude Code?")
   PROMPTS+=("Read tsconfig.json and explain all the compiler options and why they might have been chosen.")
   PROMPTS+=("What are the tradeoffs of using the Agent SDK as a provider vs direct API access? Think through caching, latency, token overhead.")
   PROMPTS+=("Read $tmpfile back and compare it to what you now know. What did you miss in the first summary?")

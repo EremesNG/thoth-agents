@@ -94,7 +94,7 @@ describe("resumed structured prompt capture", () => {
 		const provider = __test.toBridgeContext({ messages });
 		assert.equal(provider.systemPrompt, fresh, "the provider must resolve the getter's exact capture key");
 		const capture = __test.promptCaptures.resolveOrDerive(provider.systemPrompt);
-		const projected = projectPromptCapture(capture, { skillReadTool: "mcp" });
+		const projected = projectPromptCapture(capture, { hasReadTool: true });
 		assert.equal(occurrences(projected, APPEND), 1);
 		assert.equal(occurrences(projected, CONTEXT), 1);
 		assert.equal(occurrences(projected, SKILL_PATH), 1);
@@ -131,7 +131,7 @@ describe("resumed structured prompt capture", () => {
 			handlers.get("turn_start")({}, ctx);
 			const prompt = __test.toBridgeContext({ messages }).systemPrompt;
 			assert.equal(prompt, ctx.getSystemPrompt());
-			const projected = projectPromptCapture(__test.promptCaptures.resolveOrDerive(prompt), { skillReadTool: "mcp" });
+			const projected = projectPromptCapture(__test.promptCaptures.resolveOrDerive(prompt), { hasReadTool: true });
 			assert.equal(occurrences(projected, APPEND), 1);
 			assert.equal(occurrences(projected, CONTEXT), 1);
 			assert.equal(occurrences(projected, SKILL_PATH), 1);
@@ -145,7 +145,7 @@ describe("resumed structured prompt capture", () => {
 		handlers.get("turn_start")({}, ctx);
 		const prompt = __test.toBridgeContext({ messages }).systemPrompt;
 		assert.equal(prompt, ctx.getSystemPrompt());
-		const projected = projectPromptCapture(__test.promptCaptures.resolveOrDerive(prompt), { skillReadTool: "mcp" });
+		const projected = projectPromptCapture(__test.promptCaptures.resolveOrDerive(prompt), { hasReadTool: true });
 		assert.equal(occurrences(projected, APPEND), 1, "a re-keyed turn must not duplicate the extension append");
 	});
 });

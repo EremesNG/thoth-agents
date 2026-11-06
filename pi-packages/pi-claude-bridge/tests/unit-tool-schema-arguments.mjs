@@ -108,7 +108,7 @@ it("Pi history re-wraps advertised unions and round-trips to the original Pi arg
 	const result = await deliver(t, [{ type: "assistant", message: { id: "msg_replayed", content: converted.content } }]);
 	assert.deepEqual(result.content.filter((block) => block.type === "toolCall").map((block) => block.arguments), [original, ordinary]);
 	assert.deepEqual(convertPiMessages([piMessage]).anthropicMessages[0].content.map((block) => block.input), [original, ordinary],
-		"conversion without an advertised wrapped catalog (AskClaude) stays unchanged");
+		"standalone conversion without an advertised wrapped catalog stays unchanged");
 });
 
 it("provider session rebuild writes wrapped history for the advertised catalog", async (t) => {

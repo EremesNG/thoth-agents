@@ -1,6 +1,6 @@
 # @thoth-agents/pi-antigravity-bridge
 
-A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](https://github.com/earendil-works/pi), built on Google's official Antigravity binaries: the `agy` CLI by default, or **Google's official ACP server** (opt-in). It registers `antigravity/gemini-*` models in pi's `/model` picker (streaming), and can provide the opt-in `AskAntigravity` tool for one-shot delegation (`askTool`, off by default) - the same combined shape as `@thoth-agents/pi-claude-bridge`.
+A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](https://github.com/earendil-works/pi), built on Google's official Antigravity binaries: the `agy` CLI by default, or **Google's official ACP server** (opt-in). It registers `antigravity/gemini-*` models in pi's `/model` picker (streaming), and can provide the opt-in `AskAntigravity` tool for one-shot delegation (`askTool`, off by default).
 
 
 If you also have [`@estebanforge/pi-ask-antigravity`](https://github.com/EstebanForge/pi-extensions/tree/main/packages/pi-ask-antigravity) installed, this bridge takes over: pi-ask-antigravity detects the bridge and registers nothing, so the `AskAntigravity` tool is never duplicated.
@@ -72,7 +72,7 @@ The bridge starts a localhost MCP server inside pi's process. The exposed catalo
 
 **Recursion safety.** Only the provider's agy receives its private `--add-dir`; `AskAntigravity` is filtered from the exposed tool list. In private mode delegated agy never receives the private bridge config, and no global suppression or suppression healing runs. `bridgeDiscovery: "legacy-global"` restores the upstream shared registration/suppression behavior: stream-json also registers `pi-bridge-<pid>-<instance>` globally, and AskAntigravity hides global bridge entries for its entire run, with marker-aware release/healing. Foreign global servers remain untouched. Discovery changes require a restart; do not mix private and legacy-global sessions.
 
-**Cost / fan-out.** Every registered pi tool except builtins and the bridge's own internal tools is exposed (respecting the `bridgeTools` mode and any `/agy tools` hides), including other delegation tools like `AskClaude`/`AskCodex`. agy can therefore chain into other models via the bridge, which is a new cost/time fan-out vector that did not exist before this feature.
+**Cost / fan-out.** Every registered pi tool except builtins and the bridge's own internal tools is exposed (respecting the `bridgeTools` mode and any `/agy tools` hides), including other delegation tools like `AskCodex`. agy can therefore chain into other models via the bridge, which is a new cost/time fan-out vector that did not exist before this feature.
 
 **Security.** The MCP server binds to `127.0.0.1` only and requires a per-session shared-secret header (`x-bridge-token`) that agy sends from the bridge config; browsers cannot set custom headers on a simple cross-origin POST, so this blocks web CSRF against the loopback server. Request bodies are size-capped. This is intended for single-user developer machines: any local process running as the same user can read the token from the per-pid config and call the exposed tools, so do not run it on a shared host where you do not trust other same-user processes.
 

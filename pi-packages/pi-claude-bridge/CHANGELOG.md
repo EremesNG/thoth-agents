@@ -5,6 +5,15 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Changed
+
+- Sync upstream through `acbe45b` (0.11.0), including thinking-off, fork/clone recording inheritance, verbatim tool-result replay, background Bash timeout exemption, and updated child policies; retain local append epochs.
+
+### Removed
+
+- Remove the AskClaude delegation tool, its settings and notices from the bridge; leftover `askClaude` config keys are ignored.
+- Remove the one-time startup context notice. Configuration is global only; a project `.pi/claude-bridge.json` is no longer read.
+
 ## [0.4.0] - 2026-11-03
 
 ### Changed

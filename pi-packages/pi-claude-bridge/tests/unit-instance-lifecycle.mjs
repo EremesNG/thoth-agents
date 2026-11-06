@@ -15,7 +15,7 @@ process.env.CLAUDE_CONFIG_DIR = join(fixtureDir, "claude");
 mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
 const configPath = join(process.env.PI_CODING_AGENT_DIR, "claude-bridge.json");
 const configure = (provider) => writeFileSync(configPath, JSON.stringify({
-	startupNoticeShown: "2026-09-30", askClaude: { enabled: false }, provider,
+	startupNoticeShown: "2026-09-30", provider,
 }));
 configure({ strictMcpConfig: true });
 const { default: activate, __test } = await import("../src/index.js");
@@ -118,7 +118,7 @@ it("loading the cached factory without session_start preserves the parent's prov
 	scripts.push({ id: "ignored" });
 	await call("pi-parent", [user("first"), answer("survived"), user("second"), answer("survived"), user("third")]).result();
 	assert.equal(calls.at(-1).options.resume, calls[0].options.sessionId, "the parent's mirror survives child load");
-	assert.ok("strict-mcp-config" in calls.at(-1).options.extraArgs, "child config cannot change the pinned provider");
+	assert.equal(calls.at(-1).options.strictMcpConfig, true, "child config cannot change the pinned provider");
 	assert.equal(calls.at(-1).options.pathToClaudeCodeExecutable, undefined);
 	assert.equal(instance().registered.length, 0, "the load-time registration marker remains pinned");
 });

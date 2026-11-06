@@ -153,15 +153,12 @@ describe("replaying a recorded parallel-tool turn", () => {
 		assert.deepEqual(ctx.turnToolCallIds, calls.map((c) => c.id), "routing ids must match the emitted calls, in order");
 		assert.equal(new Set(calls.map((c) => c.id)).size, calls.length, "no duplicate ids");
 		for (const call of calls) assert.equal(call.name, "read");
+		// The recording splits each call's input across several input_json_delta frames.
+		assert.deepEqual(calls.map((c) => c.arguments), [{ path: "one.txt" }, { path: "two.txt" }, { path: "three.txt" }]);
 	});
-
-	// The bug in 122914dd was a tool_use surviving into pi under a name the bridge
-	// does not serve. Recorded streams are the check that the names CC really sends
-	// are the ones the map is keyed on.
 	it("leaves nothing unmapped when the served tool list is empty", async () => {
 		const { ctx } = await replay("parallel-tools", { toolNames: [] });
-
-		assert.equal(blocks(ctx, "toolCall").length, 0, "unserved names must not reach pi");
+		assert.equal(blocks(ctx, "toolCall").length, 0);
 		assert.equal(ctx.turnSawToolCall, false);
 	});
 });

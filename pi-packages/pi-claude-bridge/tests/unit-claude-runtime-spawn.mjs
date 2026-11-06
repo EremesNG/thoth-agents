@@ -29,7 +29,7 @@ function placeRuntime(target) {
 	}
 }
 
-for (const path of ["provider", "summary", "AskClaude", "quota"]) {
+for (const path of ["provider", "summary", "quota"]) {
 	test(`${path} spawns the neutral Orca runtime, preserves SDK options and forwards stderr once`, { timeout: 10000 }, async (t) => {
 		const dir = fs.mkdtempSync(join(tmpdir(), "bridge-runtime-spawn-"));
 		t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -45,17 +45,15 @@ for (const path of ["provider", "summary", "AskClaude", "quota"]) {
 			__test.resetSharedSession();
 		});
 		fs.writeFileSync(globalConfigPath(), JSON.stringify({
-			startupNoticeShown: "2026-09-30", askClaude: { enabled: true },
+			startupNoticeShown: "2026-09-30",
 			provider: { pathToClaudeCodeExecutable: command },
 		}));
 		let provider;
-		let tool;
 		let quota;
 		const handlers = new Map();
 		activate({
 			on: (name, handler) => handlers.set(name, handler),
 			registerProvider: (_id, value) => provider = value,
-			registerTool: (value) => tool = value,
 			registerCommand: (_name, value) => quota = value,
 		});
 		t.after(() => handlers.get("session_shutdown")({}, ctx));
@@ -75,8 +73,7 @@ for (const path of ["provider", "summary", "AskClaude", "quota"]) {
 			const onStderr = options.stderr;
 			options.stderr = (data) => { receivedStderr += data; onStderr?.(data); };
 			if (path !== "provider") {
-				if (path === "AskClaude") assert.equal(typeof options.spawnClaudeCodeProcess, "function", "AskClaude observes actual child close");
-				else assert.equal(options.spawnClaudeCodeProcess, undefined, "summary/quota use the SDK launcher");
+				assert.equal(options.spawnClaudeCodeProcess, undefined, "summary/quota use the SDK launcher");
 				return query({ prompt, options: {
 					...options,
 					cwd: dir,
@@ -112,7 +109,6 @@ for (const path of ["provider", "summary", "AskClaude", "quota"]) {
 		};
 		if (path === "provider") await provider.streamSimple(provider.models[0], context, { sessionId: `runtime-${path}` }).result();
 		else if (path === "summary") await __test.isolatedStreamFn(model, context, { cacheRetention: "none" }).result();
-		else if (path === "AskClaude") await tool.execute("call", { prompt: "hello", mode: "none", isolated: true }, undefined, undefined, ctx);
 		else await quota.handler("quota", ctx);
 
 		if (path === "provider") {

@@ -15,7 +15,7 @@ export function recordSdkTurn(options, initial, text = "OK", contexts = []) {
 		writeFileSync(path, source.slice(0, cut + 1).map((record) => JSON.stringify({ ...record, sessionId: id }) + "\n").join(""));
 	}
 	const previous = existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map(JSON.parse) : [];
-	const session = createSession({ sessionId: id, projectPath: options.cwd, claudeDir: process.env.CLAUDE_CONFIG_DIR, model: options.extraArgs?.model });
+	const session = createSession({ sessionId: id, projectPath: options.cwd, claudeDir: process.env.CLAUDE_CONFIG_DIR, model: options.model });
 	session.addUserMessage(initial.message.content);
 	if (contexts.length) session.addAttachment({ type: "hook_additional_context", hookEvent: "UserPromptSubmit", content: contexts });
 	session.addAssistantMessage([{ type: "text", text }]);

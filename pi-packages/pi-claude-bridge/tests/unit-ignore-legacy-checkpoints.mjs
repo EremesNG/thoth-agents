@@ -161,7 +161,7 @@ test("ignores and preserves old checkpoints, writes Pi history once, then uses t
 		assert.equal(stored.version, 1);
 		assert.equal(stored.ccSessionId, first.sessionId);
 		assert.equal(stored.cwd, cwd);
-		assert.equal(stored.model, first.options.extraArgs.model);
+		assert.equal(stored.model, first.options.model);
 		assert.equal(stored.digests.length, history.length);
 		assert.equal(stored.uuids.length, history.length);
 		assert.deepEqual(stored.cuttable, [true, true, true, true]);

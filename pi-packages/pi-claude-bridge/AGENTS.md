@@ -12,28 +12,15 @@ Five wrong conclusions across two sessions came from skipping the above.
 
 ## Changelog
 
-Maintain an entry in the `## UNRELEASED` section at the top of `CHANGELOG.md` for every significant change, using the existing format:
+Maintain an entry in the `## [Unreleased]` section at the top of `CHANGELOG.md` for every significant change, using its existing Keep a Changelog categories (`Added`, `Changed`, `Fixed`, `Deprecated`, `Removed`, `Security`). Mark breaking changes with `**Breaking:**` within the relevant category.
 
-```
-- **Tag: summary** — detail
-```
+Do not add changelog entries for docs-only changes, or for small changes (especially test-only ones) unless they relate to an issue. Combine multiple Unreleased entries about the same feature into one. Test, debug and docs entries generally go last.
 
-Do not add changelog entries for docs-only changes, or for small changes (especially test-only ones) unless they relate to an issue. Combine multiple UNRELEASED entries about the same feature into one.
-
-Keep entries short: one sentence of detail is usually enough. Only a big change warrants a few sentences. Leave implementation details and file lists to the commit log and docs.
-
-Tags: `Add`, `Fix`, `Refactor`, `Tests`, `Bump`, `Deprecate`, `Remove`, `Debug`.
+Keep entries short: one sentence of detail is usually enough. Only a big change warrants a few sentences. Leave implementation details and file lists to the commit log and docs. Preserve upstream history in `UPSTREAM-CHANGELOG.md`; upstream syncs belong under the local Unreleased section, not upstream-version headings.
 
 ## Release
 
-This workspace copy builds to `dist` with `pnpm run build` (see `files` in `package.json`). The upstream release checklist below is reference only; do not bump or publish this scoped package without explicit authorization. To cut upstream version `X.Y.Z`:
-
-1. **Changelog** — rename the `## UNRELEASED` section to `## X.Y.Z — YYYY-MM-DD`.
-2. **Bump** — set `version` to `X.Y.Z` in `package.json`.
-3. **Commit** — `git commit -m "Release X.Y.Z"` (changelog + package.json only).
-4. **Tag** — `git tag vX.Y.Z` (note the `v` prefix).
-5. **Push commit and tag together** — `git push --follow-tags`.
-6. **Publish** — `pnpm login` and `pnpm publish` (the thoth-agents release workflow and tag rules for Pi packages are not defined yet).
+This workspace copy builds to `dist` with `pnpm run build` (see `files` in `package.json`). Do not bump or publish this scoped package without explicit authorization. Releases are monorepo-managed through the root release scripts; follow the [workspace release flow](../../docs/agent/harness-packaging.md#release-flow) and [version-bump guidance](../../docs/agent/harness-packaging.md#bumping), not upstream's standalone release procedure.
 
 ## Tests
 

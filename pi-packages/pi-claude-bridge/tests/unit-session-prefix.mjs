@@ -36,7 +36,7 @@ function seed(messages, carried = []) {
 	__test.setSharedSession("pi", state);
 	return { session, state };
 }
-const sync = (messages) => __test.syncSharedSession([...messages, user("next")], root, undefined, "sonnet", "pi");
+const sync = (messages) => __test.syncSharedSession([...messages, user("next")], root, new Map(), "sonnet", "pi");
 
 it("row6 forks a real history prefix at its attachment run, with a pre-minted fresh id", () => {
 	const history = [user("first"), say("answer"), user("second"), say("later")];
@@ -161,7 +161,7 @@ it("c0 rewrites carry @file expansions of later unchanged prompts, for an early 
 	for (const [messages, modelId] of [[[user("REDACTED first"), ...history.slice(1)], "sonnet"], [history, "opus"]]) {
 		const { session } = seed(history, [{ userOrdinal: 1, parentText: prompt, attachment: file }]);
 		const before = readFileSync(session.jsonlPath);
-		const synced = __test.syncSharedSession([...messages, user("next")], root, undefined, modelId, "pi");
+		const synced = __test.syncSharedSession([...messages, user("next")], root, new Map(), modelId, "pi");
 		assert.equal(synced.forkAt, undefined);
 		const rewritten = openSession({ sessionId: synced.targetSessionId, projectPath: root });
 		assert.deepEqual(rewritten.attachments.map((r) => r.attachment.filename), ["fixture"]);
@@ -178,11 +178,11 @@ it("a symlinked cwd resolves the same transcript for reuse and fork, not a missi
 	const state = { ...importHistory(session, history), ccSessionId: session.sessionId, cwd: link, model: "sonnet", dirtyTail: false };
 	session.save();
 	__test.setSharedSession("pi", state);
-	const reuse = __test.syncSharedSession([...history, user("next")], link, undefined, "sonnet", "pi");
+	const reuse = __test.syncSharedSession([...history, user("next")], link, new Map(), "sonnet", "pi");
 	assert.equal(reuse.created, false);
 	assert.equal(reuse.sessionId, session.sessionId);
 	state.dirtyTail = true;
-	const fork = __test.syncSharedSession([...history, user("next")], link, undefined, "sonnet", "pi");
+	const fork = __test.syncSharedSession([...history, user("next")], link, new Map(), "sonnet", "pi");
 	assert.equal(fork.sessionId, session.sessionId);
 	assert.equal(fork.forkAt, state.uuids.at(-1));
 });

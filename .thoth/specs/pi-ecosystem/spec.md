@@ -428,7 +428,7 @@ The in-repo Pi packages pi-background-tasks, pi-questions-user, pi-todo, pi-anti
 
 ### Requirement: Claude bridge resumes Claude Code sessions across Pi processes
 
-`@thoth-agents/pi-claude-bridge` MUST persist, per Pi session, the Claude Code session it last recorded together with per-message content digests of the Pi history that session received, and when that Pi session continues, including in a new Pi process or after its in-memory bridge state was cleared, MUST compare the current Pi history with that recording by those digests: on a match it MUST continue from the recorded Claude Code records, and on a difference it MUST keep the recorded records up to the last valid cut before the first difference in a new Claude Code session and add only the differing remainder, never rewriting or deleting an existing Claude Code transcript in place; it MUST write Pi's history to a new Claude Code session when no usable recording exists (none persisted, an unrecognized format, a different model or working directory, a missing transcript or no valid cut), and MUST NOT read or delete state left in the previous checkpoint format.
+`@thoth-agents/pi-claude-bridge` MUST persist, per Pi session, the Claude Code session it last recorded together with per-message content digests of the Pi history that session received, and when that Pi session continues, including in a new Pi process or after its in-memory bridge state was cleared, MUST compare the current Pi history with that recording by those digests: on a match it MUST continue from the recorded Claude Code records, and on a difference it MUST keep the recorded records up to the last valid cut before the first difference in a new Claude Code session and add only the differing remainder, never rewriting or deleting an existing Claude Code transcript in place; a Pi session forked or cloned from another Pi session that has no recording of its own MUST start from the parent session's recording, treating the inherited records after the last confirmed point as unconfirmed, and MUST NOT force writing Pi's history to a new Claude Code session only because the appended system instructions changed; it MUST write Pi's history to a new Claude Code session when no usable recording exists (none persisted for the session or its parent, an unrecognized format, a different model or working directory, a missing transcript or no valid cut), and MUST NOT read or delete state left in the previous checkpoint format.
 
 #### Scenario: Claude bridge resumes Claude Code sessions across Pi processes
 
@@ -665,3 +665,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 - **GIVEN** a stream-json session with an image in the user suffix or in a stranded escalated result
 - **WHEN** the prompt is dispatched
 - **THEN** the image is staged and its path referenced in that prompt, or the prompt states that the image could not be delivered
+
+### Requirement: Claude bridge honors disabled thinking
+
+`@thoth-agents/pi-claude-bridge` MUST, when the Pi thinking level is off for a reasoning model whose catalog entry does not map off to an unsupported value, run the Claude Code query with thinking explicitly disabled rather than leaving Claude Code's default thinking enabled.
+
+#### Scenario: Claude bridge honors disabled thinking
+
+- **GIVEN** a reasoning Claude model selected in Pi with thinking level off
+- **WHEN** a prompt runs through the bridge
+- **THEN** the Claude Code query options disable thinking and no thinking effort is requested

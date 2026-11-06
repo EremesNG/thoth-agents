@@ -3,21 +3,20 @@ import { it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSession, getSessionPath } from "cc-session-io";
 import { digestMessages } from "../src/message-digests.js";
 import { loadSessionState, saveSessionState } from "../src/session-store.js";
 import { diagLogPath } from "../src/log-paths.js";
-const root = mkdtempSync(join(tmpdir(), "query-lifecycle-"));
-process.env.CLAUDE_CONFIG_DIR = root;
-process.on("exit", () => rmSync(root, { recursive: true, force: true }));
+// Doubles as the cwd for spawned children and scratch files, so it must exist.
+const root = process.env.CLAUDE_CONFIG_DIR;
+mkdirSync(root, { recursive: true });
 const mod = await import("../src/index.js");
 const { __test } = mod;
 let provider;
 const handlers = {};
-mod.default({ on: (name, fn) => { (handlers[name] ??= []).push(fn); }, registerProvider: (_id, value) => { provider = value; }, registerTool: () => {} });
+mod.default({ on: (name, fn) => { (handlers[name] ??= []).push(fn); }, registerProvider: (_id, value) => { provider = value; } });
 const model = provider.models[0];
 const tools = [{ name: "read", description: "read", parameters: { type: "object", properties: {} } }];
 const user = (content) => ({ role: "user", content, timestamp: 1 });
@@ -37,7 +36,6 @@ beforeEach(() => {
 	scripts = [];
 	calls = [];
 	__test.setQuery(fakeQuery);
-	__test.setAuxiliaryQuery(fakeQuery);
 });
 function fakeQuery({ options, prompt }) {
 	const script = scripts.shift();
@@ -117,10 +115,8 @@ function fakeQuery({ options, prompt }) {
 }
 afterEach(async () => {
 	__test.setQuery(null);
-	__test.setAuxiliaryQuery(null);
 	for (const fresh of reloadedModules.splice(0)) {
 		fresh.__test.setQuery(null);
-		fresh.__test.setAuxiliaryQuery(null);
 	}
 	for (const call of calls) if (call.child.exitCode === null && call.child.signalCode === null) call.child.kill("SIGKILL");
 	await Promise.all(calls.map((c) => c.exited));
@@ -211,6 +207,7 @@ it("continuation digest failures report provider errors instead of throwing", { 
 	assert.equal(output.stopReason, "error");
 	assert.match(output.errorMessage, /JSON|finite/);
 	assert.equal(calls.length, 1);
+	assert.equal(__test.activeQueryContexts.size, 0, "the unverifiable query is discarded, not left parked");
 });
 
 it("quota retries delete each new file only after the child finishes its late writes", async () => {
@@ -227,6 +224,18 @@ it("quota retries delete each new file only after the child finishes its late wr
 		await tick();
 		assert.equal(existsSync(current.path), false, "cleanup follows actual exit, including late writes");
 	}
+});
+
+it("a launch that throws fails the turn and deletes the session it imported", async () => {
+	let launched;
+	__test.setQuery(({ options }) => { launched = options; throw new Error("spawn failed"); });
+	const output = await call([user("prior"), say("prior answer"), user("retry")]).result();
+	assert.equal(output.stopReason, "error");
+	assert.match(output.errorMessage, /spawn failed/);
+	assert.ok(launched.resume, "the rebuild wrote pi's history to a file before launch");
+	assert.equal(existsSync(getSessionPath(launched.resume, launched.cwd, root)), false);
+	assert.equal(__test.getSharedSession("pi"), null);
+	assert.equal(__test.activeQueryContexts.size, 0);
 });
 
 it("a no-progress fork failing before init deletes only its pre-minted target", async () => {
@@ -303,7 +312,6 @@ it("a reloaded module shares state and stopping writers, and the old finalizer n
 	let freshProvider;
 	fresh.default({ on() {}, registerProvider: (_id, value) => { freshProvider = value; }, registerTool() {} });
 	fresh.__test.setQuery(fakeQuery);
-	fresh.__test.setAuxiliaryQuery(fakeQuery);
 	reloadedModules.push(fresh);
 	assert.strictEqual(fresh.__test.getSharedSession("pi"), committed, "the newer memory state, not the empty disk");
 	const waiting = new AbortController();
@@ -363,34 +371,6 @@ it("a synthetic durable-host continuation is grouped with its next assistant, no
 	assert.doesNotMatch(JSON.stringify(records.slice(0, resultCut.index + 1)), /Your session was interrupted and resumed/);
 	assert.match(JSON.stringify(records.slice(resultCut.index + 1)), /Your session was interrupted and resumed/);
 	assert.equal(resolveRecordingCut(records, state, 4).uuid, state.uuids[3]);
-});
-
-it("AskClaude forks the same model and imports a changed model without writing provider state", async () => {
-	const ask = user("warm");
-	scripts.push({});
-	const answer = await call([ask]).result();
-	const state = __test.getSharedSession("pi");
-	const storedBefore = persisted();
-	await calls[0].exited;
-	const before = readFileSync(calls[0].path);
-	scripts.push({});
-	await __test.promptAndWait("delegated", "none", new Map(), undefined, { model: model.id, appendSkills: false, context: [ask, answer], piSessionId: "pi" });
-	assert.equal(calls[1].options.forkSession, true);
-	assert.equal(calls[1].options.resume, state.ccSessionId);
-	assert.notEqual(calls[1].options.sessionId, state.ccSessionId);
-	assert.strictEqual(__test.getSharedSession("pi"), state);
-	scripts.push({});
-	await __test.promptAndWait("other model", "none", new Map(), undefined, { model: "other-model", appendSkills: false, context: [ask, answer], piSessionId: "pi" });
-	assert.equal(calls[2].options.forkSession, undefined);
-	assert.notEqual(calls[2].options.resume, state.ccSessionId);
-	assert.strictEqual(__test.getSharedSession("pi"), state);
-	assert.deepEqual(readFileSync(calls[0].path), before);
-	assert.deepEqual(persisted(), storedBefore, "AskClaude never writes the provider's persisted state");
-	scripts.push({});
-	await __test.promptAndWait("no state", "none", new Map(), undefined, { model: model.id, appendSkills: false, context: [ask, answer], piSessionId: "pi-ask" });
-	assert.equal(calls[3].options.sessionId, undefined, "an imported session resumes its own written id");
-	assert.ok(calls[3].options.resume);
-	assert.equal(persisted("pi-ask"), null);
 });
 
 it("a restart reloads the persisted pointer dirty and forks at its last valid cut", async () => {
@@ -501,6 +481,39 @@ it("switching pi sessions retains every other session's state", async () => {
 	assert.deepEqual(persisted(), stored(saved));
 });
 
+it("a pi fork or clone forks its parent's Claude Code session instead of importing", async () => {
+	const ask = user("warm");
+	scripts.push({});
+	const answer = await call([ask]).result();
+	const parent = __test.getSharedSession("pi");
+	const parentFile = join(root, "parent.jsonl");
+	writeFileSync(parentFile, JSON.stringify({ type: "session", version: 3, id: "pi", timestamp: "", cwd: root }) + "\n");
+	for (const fn of handlers.session_start) await fn({ reason: "fork", previousSessionFile: parentFile }, { cwd: process.cwd(), sessionManager: { getSessionId: () => "pi-clone" } });
+	assert.equal(readdirSync(sessionsDir()).length, 1, "the inherited copy is not saved before its own turn");
+	scripts.push({});
+	await call([ask, answer, user("next")], undefined, "pi-clone").result();
+	assert.equal(calls[1].options.forkSession, true);
+	assert.equal(calls[1].options.resume, parent.ccSessionId);
+	assert.equal(calls[1].options.resumeSessionAt, parent.uuids.at(-1));
+	assert.strictEqual(__test.getSharedSession("pi"), parent, "the parent keeps its own session");
+});
+
+it("fork inheritance waits for the parent's stopping writer and copies its final append evidence", async () => {
+	const controller = new AbortController();
+	scripts.push({ tool: true, late: true, deferTool: true });
+	await call([user("tool")], controller.signal).result();
+	controller.abort();
+	const parentFile = join(root, "parent-stopping.jsonl");
+	writeFileSync(parentFile, JSON.stringify({ type: "session", id: "pi" }) + "\n");
+	await Promise.all(handlers.session_start.map((fn) => fn({ reason: "fork", previousSessionFile: parentFile }, {
+		cwd: process.cwd(), sessionManager: { getSessionId: () => "pi-stopping-child" },
+	})));
+	const child = __test.getSharedSession("pi-stopping-child");
+	assert.deepEqual(child.appendState, { base: calls[0].options.systemPrompt.append, refreshes: [] }, "inherit after the source's exit snapshot, not its provisional in-memory commit");
+	assert.deepEqual(child.appendState, persisted().appendState);
+	assert.match(readFileSync(calls[0].path, "utf8"), /late-exit-marker/);
+});
+
 it("a prompt CC pulled but never replayed stays a gap, so a boot abort persists no absent anchor", async () => {
 	const ask = user("warm");
 	scripts.push({});
@@ -523,28 +536,6 @@ it("a prompt CC pulled but never replayed stays a gap, so a boot abort persists 
 	const state = __test.getSharedSession("pi");
 	const records = readFileSync(getSessionPath(state.ccSessionId, state.cwd, root), "utf8");
 	for (const uuid of state.uuids) if (uuid) assert.match(records, new RegExp(uuid));
-});
-
-it("a healthy parked provider query does not block a readonly AskClaude fork", { timeout: 5000 }, async () => {
-	const ask = user("warm");
-	scripts.push({});
-	const answer = await call([ask]).result();
-	const saved = __test.getSharedSession("pi");
-	await calls[0].exited;
-	scripts.push({ tool: true });
-	await call([ask, answer, user("tool")]).result();
-	assert.equal(calls[1].options.resume, saved.ccSessionId, "the parked query appends to the saved file");
-	const [parked] = __test.activeQueryContexts;
-	scripts.push({});
-	const reply = await __test.promptAndWait("delegated", "none", new Map(), undefined, { model: model.id, appendSkills: false, context: [ask, answer], piSessionId: "pi" });
-	assert.equal(reply.responseText, "answer");
-	assert.equal(calls[2].options.forkSession, true);
-	assert.equal(calls[2].options.resume, saved.ccSessionId);
-	assert.equal(calls[2].options.resumeSessionAt, saved.uuids.at(-1));
-	assert.equal(parked.discarded, false);
-	assert.ok(__test.activeQueryContexts.has(parked));
-	assert.equal(calls[1].child.exitCode, null, "the parked child keeps running");
-	assert.strictEqual(__test.getSharedSession("pi"), saved);
 });
 
 it("an abort cancels a fresh query's wait on a stopping writer", { timeout: 5000 }, async () => {

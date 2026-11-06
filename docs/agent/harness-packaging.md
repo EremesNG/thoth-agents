@@ -554,7 +554,7 @@ fetching. Synchronous isolated listeners receive reports, with no initial replay
 See [the exact registry contract](../../pi-packages/pi-core/README.md#provider-limits-v1).
 
 The Claude bridge reports every SDK `rate_limit_event`, including root queries,
-subagent children, AskClaude and summaries, with per-query session attribution;
+subagent children and summaries, with per-query session attribution;
 existing notifications remain unchanged. pi-subagents captures reports while the
 child is live in a bounded per-task UI cache. Active warning/rejected observations
 appear on the Agents Work row and `/subagents` detail with reset time when known,

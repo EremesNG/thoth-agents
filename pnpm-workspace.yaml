@@ -18,3 +18,5 @@ minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - '@earendil-works/*'
   - '@anthropic-ai/claude-agent-sdk*'
+  # Audited 2026-11-06: same publisher, no install scripts, matches tag v0.4.1.
+  - 'cc-session-io@0.4.1'

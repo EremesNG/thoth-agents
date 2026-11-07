@@ -185,3 +185,33 @@ The bundled result validator MUST accept an explicit no-record mode for final ve
 - **GIVEN** a small change without a record that root assigned to Oracle and an Oracle PASS envelope without record binding
 - **WHEN** root validates it with the no-record mode and, separately, without it
 - **THEN** the first validation succeeds and the second fails for missing record binding
+
+### Requirement: Root authors the change record
+
+Root MUST be the sole author of the substantial change record through every stage: it creates, edits, validates and corrects it. During planning root MAY obtain context from any specialist within that specialist's role scope but MUST NOT assign a specialist to create, modify or correct SDD files. When a selected plan review returns REJECT, root MUST repair the same record, rerun the affected gates and request a fresh Oracle review, repeating until OKAY or until a human-owned material blocker stops the round. Implementation writers MUST start only after implementation authorization.
+
+#### Scenario: Root authors the change record
+
+- **GIVEN** a selected plan review that returns REJECT with same-intent blockers
+- **WHEN** root processes the result
+- **THEN** root edits the record itself, reruns the affected gates and dispatches a fresh Oracle, and no Worker or Designer is assigned to change the record 
+
+### Requirement: Plan small work in session
+
+Before delegating or implementing small work, root MUST state a brief in-session plan naming scope, owner and focused verification, without creating a persistent record.
+
+#### Scenario: Plan small work in session
+
+- **GIVEN** work classified as small
+- **WHEN** root prepares to delegate or implement it
+- **THEN** root first states the in-session scope, owner and focused verification and creates no `.thoth/changes/` record 
+
+### Requirement: Route final-verification failures to implementation owners
+
+Plan review and final verification MUST remain distinct gates. When final verification fails, root MUST record the remaining acceptance-linked work (in the substantial record when one exists, otherwise in the brief in-session small plan) and, unless the user explicitly instructs direct work, MUST route repairs to the Worker or Designer owning each affected surface and MUST NOT repair the implementation itself; independent verification MUST then be repeated as the change's verification level requires. Under an explicit direct-work instruction root MAY apply the repairs but MUST NOT self-approve and MUST report unavailable independent review. When a failure reveals a material change in intent, scope or risk, root MUST reopen understanding and planning before further implementation.
+
+#### Scenario: Route final-verification failures to implementation owners
+
+- **GIVEN** final verification of a substantial change returns FAIL with implementation findings and no direct-work instruction
+- **WHEN** root processes the result
+- **THEN** root records the remaining work in the record, assigns the repairs to the owning Worker or Designer and requests a fresh Oracle final verification, without editing the implementation itself 

@@ -34,8 +34,10 @@ planning. A small patch can still be substantial when its risk warrants it. Scop
 or risk that grows during implementation reopens understanding and
 classification before work expands.
 
-- **Small:** clear, localized, low-risk work. Use test-first implementation and
-  focused verification. Create no persistent change record.
+- **Small:** clear, localized, low-risk work. Before delegating or implementing,
+  root states a brief in-session plan (scope, owner, focused verification).
+  Use test-first implementation and focused verification; create no persistent
+  change record.
 - **Substantial:** work with coordinated or cross-cutting impact, material
   uncertainty, or elevated risk. Plan and track it in one record after
   classification.
@@ -49,6 +51,13 @@ verification, and closeout. Do not create a `change.md` alias, a second planning
 narrative, sidecar specifications, reports, evidence directories, worker
 packets, scripts, execution wrappers, or evidence generators, even temporarily.
 
+Root alone creates, edits, validates, and corrects the record at every stage.
+Record authorship is coordination outside specialist-default execution and the
+direct-work allowances, not permission for source discovery or substantive
+implementation. During planning, specialists supply context within their full
+role scope; root never assigns them to write SDD files. Worker and Designer
+refuse `.thoth/changes/` writes and start implementation only after authorization.
+
 Substantial work uses plan and tasks. Checklist and convergence are conditional
 when useful; verification is always required. At ready, first show the
 user a concise plan summary, then always offer
@@ -60,10 +69,11 @@ while an explicit later `Stop` supersedes it. Record plan-review selection
 as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`: `SKIPPED`
 requires explicit skip, and `OKAY` requires an explicit review or the third-return
 review default; the initial `PENDING` provenance placeholder is valid before
-closeout only. A review result never authorizes implementation. Repair
-same-intent blockers with a fresh review; material intent changes require new
-clarification. A safe deferral recommendation never resolves material
-human-owned intent.
+closeout only. A review result never authorizes implementation. On selected
+plan-review REJECT, root repairs the same record, reruns affected gates, and
+requests a fresh Oracle. Repeat until OKAY or a human-owned material blocker
+stops the round; material intent changes require new clarification. A safe
+deferral recommendation never resolves material human-owned intent.
 
 ## Verification and archive
 
@@ -113,3 +123,11 @@ missing minimum `.thoth/` paths. Historical `.thoth/history/openspec/` content i
 not active workflow state. Missing installed contracts are reported as
 installation drift; SDD execution does not install skills, invoke the product
 CLI, or access the network.
+
+## REJECT and FAIL repair ownership
+
+Plan review OKAY/REJECT judges the record; root repairs REJECT. Final verification PASS/FAIL judges the implementation.
+
+Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan; the owning Worker or Designer repairs each affected surface; root coordinates and does not repair implementation unless the user explicitly instructs direct work; even then, never self-approve and report unavailable independent review.
+
+Repeat independent verification as the change's verification level requires; substantial or materially risky work uses a fresh Oracle. Material changes in intent, scope or risk reopen understanding and planning before further implementation.

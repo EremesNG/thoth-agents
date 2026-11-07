@@ -33,9 +33,9 @@ resolve material product, architecture, security, or destructive choices.
 ## Proportional classification
 
 - **Small** means local impact, clear intent, and low risk. Local work may touch
-  several files within one area; file count alone never increases scope. Use
-  test-first implementation and focused verification; create no persistent
-  change record.
+  several files within one area; file count alone never increases scope.
+  Before delegating or implementing, root states a brief in-session plan (scope, owner, focused verification). Use test-first implementation and
+  focused verification; create no persistent change record.
 - **Substantial** means coordinated impact across multiple areas, cross-cutting
   contract changes, material uncertainty, or elevated failure/contract risk. A
   small patch can still be substantial when its risk demands planning. Persist
@@ -47,6 +47,13 @@ Do not auto-increment package versions. Use native harness lifecycle and status;
 never build a scheduler, state mirror, or process tooling.
 
 ## Ownership and decisions
+
+Root is the sole record author at every stage: it creates, edits, validates and
+corrects the record. During planning, specialists supply context within their
+full role scope; root never assigns them to create, modify or correct SDD files.
+Record authorship is coordination, not a direct-work allowance for discovery or
+implementation. Implementation writers start only after authorization and never
+write `.thoth/changes/`.
 
 Root owns user intent, scope, material decisions, classification, and final
 acceptance. Root also owns completing understanding, while the specific discovery
@@ -74,7 +81,10 @@ At substantial `ready`, first show the user a concise plan summary (goal,
 acceptance, key decisions, units, risks, record path), then always offer
 `Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation was already authorized.
 Silence is never an explicit review skip; run a fresh read-only review only when
-selected. After a validated plan-review `OKAY`, separately offer `Implement (Recommended)` /
+selected. On selected plan-review `REJECT`, root repairs the same record, reruns
+affected gates and sends it to a fresh Oracle until `OKAY` or a human-owned
+material blocker stops the round. After a validated plan-review `OKAY`, separately
+offer `Implement (Recommended)` /
 `Stop`; prior explicit authorization remains valid, while an explicit later
 `Stop` supersedes it. Record the plan-review selection as
 `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`; `SKIPPED`
@@ -85,6 +95,14 @@ verification, while substantial or materially risky work requires a fresh
 independent Oracle. An implementation writer never approves its own work. If the
 user forbids delegation, perform authorized work directly but report unavailable
 independent review; never claim independent PASS or archive.
+
+
+
+Plan review OKAY/REJECT judges the record; root repairs REJECT. Final verification PASS/FAIL judges the implementation.
+
+Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan; the owning Worker or Designer repairs each affected surface; root coordinates and does not repair implementation unless the user explicitly instructs direct work; even then, never self-approve and report unavailable independent review.
+
+Repeat independent verification as the change's verification level requires; substantial or materially risky work uses a fresh Oracle. Material changes in intent, scope or risk reopen understanding and planning before further implementation.
 
 ## Bounded execution
 
@@ -121,7 +139,7 @@ and preserve substantive handoffs across late notifications. Load the
 
 ## The sole substantial-change record
 
-After substantial classification, create only
+After substantial classification, root creates only
 `.thoth/changes/<id>/<id>.md` from
 `<skill-dir>/templates/change.md`. Use a safe lowercase kebab-case ID; reject
 Windows-reserved names and unsafe path components. The record covers grounded
@@ -181,7 +199,7 @@ Require `valid:true` and `kind` matches the assignment. Plan review requires
 
 Record equality, `mode` and `recordDigest` checks apply only to final verification.
 See the [verify phase](references/phases/verify.md).
-Copy the verdict and `recordSha256` into the record when there is one; final
+Root copies the verdict and `recordSha256` into the record when there is one; final
 verification uses that digest for `**Reviewed record SHA-256**`. Still judge
 scope, evidence, checks, freshness, provenance, independence, and content.
 Validation is not authorization.
@@ -216,7 +234,7 @@ to the assigned `plan-review` or `final-verification`. For record-bound final
 verification, independently calculate the expected record-prefix SHA-256 and
 pass `--record-sha256 <hex>`. Apply the same kind-specific approval checks above;
 the explicit expected digest supplies agreement if the CLI cannot read the
-record itself. Copy the accepted summary and digest into
+record itself. Root copies the accepted summary and digest into
 the record. For Oracle final verification of a small change without a record,
 root passes `--no-record`; Oracle omits both `reviewedRecord` and
 `reviewedRecordSha256`. Do not combine `--no-record` with `--record-sha256` or

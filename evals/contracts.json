@@ -2,6 +2,53 @@
   "version": 1,
   "cases": [
     {
+      "id": "gate-contrast-fail-owner-routing",
+      "contract": "plan-authorization",
+      "polarity": "positive",
+      "scenario": "REJECT repairs the record; FAIL routes implementation repairs to surface owners, including recordless small work and explicit direct-work boundaries.",
+      "productPatterns": [
+        {
+          "source": "phases",
+          "pattern": "Plan review OKAY/REJECT judges the record; root repairs REJECT"
+        },
+        {
+          "source": "phases",
+          "pattern": "Final verification PASS/FAIL judges the implementation"
+        },
+        {
+          "source": "phases",
+          "pattern": "Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan"
+        },
+        {
+          "source": "phases",
+          "pattern": "owning Worker or Designer repairs each affected surface"
+        },
+        {
+          "source": "phases",
+          "pattern": "root coordinates and does not repair implementation unless the user explicitly instructs direct work"
+        },
+        {
+          "source": "phases",
+          "pattern": "never self-approve and report unavailable independent review"
+        },
+        {
+          "source": "phases",
+          "pattern": "Repeat independent verification as the change's verification level requires"
+        },
+        {
+          "source": "phases",
+          "pattern": "Material changes in intent, scope or risk reopen understanding and planning before further implementation"
+        }
+      ],
+      "rootPatterns": [
+        "Plan OKAY/REJECT judges record.*REJECT: root repairs same record/reruns affected gates/fresh Oracle; repeat until OKAY or human-owned material blocker",
+        "Final PASS/FAIL judges implementation.*FAIL: root records acceptance-linked work in record or small in-session plan",
+        "surface-owning Worker/Designer repairs, not root unless user explicitly directs; repeat required independent verification",
+        "Disclose unavailable independent review; never self-approve",
+        "Material intent/uncertainty/scope/risk changes: reopen understanding/planning; reclassify"
+      ]
+    },
+    {
       "id": "plan-review-choice",
       "contract": "plan-authorization",
       "polarity": "positive",
@@ -50,8 +97,8 @@
       ],
       "rootPatterns": [
         "\\[OKAY\\] alone never authorizes implementation",
-        "After \\[OKAY\\], keep Implement.*Stop separate",
-        "plan review does not replace final verification"
+        "After \\[OKAY\\]: separate Implement.*Stop",
+        "plan review never replaces final verification"
       ]
     },
     {
@@ -71,7 +118,7 @@
       ],
       "rootPatterns": [
         "Silence never skips",
-        "Pending, unavailable, failed, interrupted or host-prohibited questions do not count"
+        "Pending/unavailable/failed/interrupted/host-prohibited questions do not count"
       ]
     },
     {
@@ -371,7 +418,7 @@
       "productPatterns": [
         {
           "source": "workflow",
-          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+          "pattern": "For small work, root states a brief in-session plan \\(scope, owner, focused verification\\).*no record or planning phases.*Test-first implementation and focused verification remain required"
         },
         {
           "source": "workflow",
@@ -379,7 +426,7 @@
         }
       ],
       "rootPatterns": [
-        "Small work: test-first, focused verification, no record",
+        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -414,7 +461,7 @@
       "productPatterns": [
         {
           "source": "workflow",
-          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+          "pattern": "For small work, root states a brief in-session plan \\(scope, owner, focused verification\\).*no record or planning phases.*Test-first implementation and focused verification remain required"
         },
         {
           "source": "workflow",
@@ -422,7 +469,7 @@
         }
       ],
       "rootPatterns": [
-        "Small work: test-first, focused verification, no record",
+        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -449,7 +496,7 @@
       "productPatterns": [
         {
           "source": "workflow",
-          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+          "pattern": "For small work, root states a brief in-session plan \\(scope, owner, focused verification\\).*no record or planning phases.*Test-first implementation and focused verification remain required"
         },
         {
           "source": "workflow",
@@ -457,7 +504,7 @@
         }
       ],
       "rootPatterns": [
-        "Small work: test-first, focused verification, no record",
+        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -484,7 +531,7 @@
       "productPatterns": [
         {
           "source": "workflow",
-          "pattern": "Small clear low-risk work gets test-first implementation and verification with no record"
+          "pattern": "For small work, root states a brief in-session plan \\(scope, owner, focused verification\\).*no record or planning phases.*Test-first implementation and focused verification remain required"
         },
         {
           "source": "workflow",
@@ -492,7 +539,7 @@
         }
       ],
       "rootPatterns": [
-        "Small work: test-first, focused verification, no record",
+        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {

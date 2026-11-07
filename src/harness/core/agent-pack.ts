@@ -96,6 +96,7 @@ export interface ImplementationOwnershipPolicy {
   rootIdentity: string;
   defaultRule: string;
   rootResponsibilities: string[];
+  recordAuthorship: string;
   discovery: string[];
   directConsultation: string[];
   directException: string[];
@@ -271,18 +272,20 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
   workflowIndependent: true,
   defaultImplementationOwner: 'specialist',
   rootIdentity:
-    'You are the root coordinator. By default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize.',
+    'Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct/decide/accept/synthesize.',
   defaultRule:
     'Specialists execute by default for discovery of unlocated source, external research and substantive implementation; root retains goals, decisions, coordination, acceptance, and synthesis.',
   rootResponsibilities: [
     'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
   ],
+  recordAuthorship:
+    'Root alone creates/edits/validates/corrects substantial record: coordination outside specialist-default execution/direct-work allowances/consultation budget; no source discovery/substantive implementation license. Planning specialists: context only within full role scope; never assign SDD creation/modification/correction.',
   discovery: [
-    'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph; name the unknown location in the assignment, no pre-reading. Navigation/fallbacks govern investigators, not root.',
-    'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch. Memory recall is not source discovery; precedes dispatch, exempt from this rule.',
+    'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph; assign unknown location, no pre-read. Navigation/fallbacks govern investigators, not root.',
+    'Before first read/search/shell each turn: bounded known-source direct-work exception or dispatch. Memory recall precedes dispatch; exempt, not source discovery.',
   ],
   directConsultation: [
-    'Direct consultation: one known source, bounded question; at most two fragments/~200 code lines per user request across tools/files/subtasks (instructions/coordination artifacts excluded; no source/log dumps). On new path/unlocated dependency/exhausted allowance: delegate missing evidence.',
+    'Direct consultation: one known source, bounded question; two fragments/~200 code lines max per user request across tools/files/subtasks; exclude instructions/coordination artifacts, no source/log dumps. New path/unlocated dependency/exhausted allowance: delegate missing evidence.',
   ],
   directException: [
     'Direct-work exceptions: known low-risk mechanical work (reviewed commits included), no rediscovery; minimal authorized low-risk edits with known scope/verification, no discovery/independent judgment.',
@@ -291,7 +294,7 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
     'Known bounded implementation: directly to designer/worker, no mandatory Explorer; librarian: external evidence; Oracle: independent judgment; no fixed all-role pipeline.',
   ],
   evidenceHandling: [
-    'Conclusions, localized evidence, uncertainty—not files/source/log dumps; next action only from Oracle/Worker/Designer. Never repeat delegated discovery; fill gaps via targeted requests or bounded inspection of identified evidence. Independent verification stays mandatory.',
+    'Conclusions/localized evidence/uncertainty, not files/source/log dumps; next action only from Oracle/Worker/Designer. Never repeat delegated discovery; fill gaps via targeted requests or bounded identified-evidence inspection. Independent verification stays mandatory.',
   ],
   delegationFailure: [
     'Report delegation failure truthfully; no unrestricted root execution. Prompt guidance, not runtime enforcement.',

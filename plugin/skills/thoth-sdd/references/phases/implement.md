@@ -2,7 +2,11 @@
 
 Use the settled small request or authorized substantial record, exact mutable
 bounds, and focused checks. Root owns user decisions and acceptance. Keep one
-writer per surface. No process tools, wrappers, reports, or temporary artifacts.
+writer per surface. Root alone writes the record; implementation writers start
+only after authorization and never write `.thoth/changes/`. For small work, root
+states a brief in-session plan (scope, owner, focused verification) before
+delegating or implementing, without creating a persistent record.
+No process tools, wrappers, reports, or temporary artifacts.
 
 ## Choose ownership, then bound the outcome
 

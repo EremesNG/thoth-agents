@@ -13,5 +13,5 @@ work, then select the recommendation after the third. Pending, unavailable,
 failed, interrupted, and host-prohibited attempts do not count. Do not fabricate
 facts or secrets; a safe deferral may preserve a human-owned choice as unresolved.
 
-Record the outcome in the one substantial record if one exists. An unresolved
+Root records the outcome in the one substantial record if one exists. An unresolved
 material decision blocks classification, planning, and implementation.

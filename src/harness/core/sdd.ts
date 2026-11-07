@@ -226,6 +226,12 @@ export const SDD_PHASES = [
   },
 ] as const satisfies readonly SddPhaseContract[];
 
+const FAILURE_CONVERGENCE_RULES = [
+  'Plan review OKAY/REJECT judges the record; root repairs REJECT. Final verification PASS/FAIL judges the implementation.',
+  'Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan; the owning Worker or Designer repairs each affected surface; root coordinates and does not repair implementation unless the user explicitly instructs direct work; even then, never self-approve and report unavailable independent review.',
+  "Repeat independent verification as the change's verification level requires; substantial or materially risky work uses a fresh Oracle. Material changes in intent, scope or risk reopen understanding and planning before further implementation.",
+] as const;
+
 export const SDD_PHASE_PROTOCOLS = [
   {
     id: 'explore',
@@ -235,6 +241,7 @@ export const SDD_PHASE_PROTOCOLS = [
     instructions: [
       'Inspect repository evidence in proportion to the request to identify behavior, constraints, risks, and safe assumptions.',
       'Root owns completing understanding and acceptance; specific discovery ownership determines who gathers evidence, even when generic guidance permits direct exploration.',
+      'During planning, specialists supply only context within their full role scope; never assign them to create, modify or correct SDD files.',
       'Give each evidence assignment one precise question and result. Independent questions may run in parallel within native capacity; dependent questions wait until the upstream output is accepted by root. Do not duplicate discovery.',
       'Complete this phase before specifying. No document, agent, or interview is forced in this phase.',
     ],
@@ -302,6 +309,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Accepted outcomes',
     ],
     instructions: [
+      'Root alone creates, edits, validates and corrects the substantial change record: coordination outside specialist-default execution, direct-work allowances and consultation budget; no source discovery or substantive implementation permission.',
       'Substantial classification only creates the `.thoth/changes/<id>/<id>.md` record.',
       'Capture interfaces, mutable surfaces, durable deltas, dependencies, risks, and verification seams.',
       'Plan each useful work unit with concrete inputs, outputs, and dependencies.',
@@ -375,6 +383,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Review scope, approach, risks, and acceptance coverage without redesigning settled intent.',
       'Return actionable blockers and cautions; a pass is not implementation authorization or final verification.',
       'After [OKAY], preserve the separate Implement (Recommended) / Stop authorization decision; honor applicable prior explicit authorization, and let explicit Stop supersede it.',
+      'REJECT: root repairs the same record, reruns affected gates and sends it to a fresh Oracle; repeat until OKAY or a human-owned material blocker stops the round.',
       'A plan review does not substitute for fresh final verification.',
     ],
     outputSchema: ['status', 'blockers', 'cautions'],
@@ -393,6 +402,8 @@ export const SDD_PHASE_PROTOCOLS = [
       'Focused checks',
     ],
     instructions: [
+      'For small work, root states a brief in-session plan (scope, owner, focused verification) before delegation or implementation; no record or planning phases.',
+      'Implementation writers start only after authorization; never write .thoth/changes/ records.',
       'Use one writer per mutable surface and choose an owner from task shape.',
       'Work only from accepted inputs and named dependencies within the assigned outcome and interface boundaries.',
       'Return bounded progress for root acceptance before dependent work starts.',
@@ -417,6 +428,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Judge the actual diff, executed checks, and residual risks; verify completeness, correctness, coherence, and behavior.',
       'Substantial or materially risky work requires a fresh independent Oracle; no writer self-approves.',
       'For substantial work, record acceptance evidence, checks, source digests, and reviewed-record digest in the same record.',
+      ...FAILURE_CONVERGENCE_RULES,
     ],
     outputSchema: [
       'verdict',
@@ -437,8 +449,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Turn actionable verification gaps into bounded corrective work.',
     requiredInputs: ['Failed verification', 'Settled intent'],
     instructions: [
-      'Record acceptance-linked follow-up in the same record when one exists.',
-      'If scope or risk changes materially, reopen understanding and classification.',
+      ...FAILURE_CONVERGENCE_RULES,
       'Do not create a separate convergence report.',
     ],
     outputSchema: ['bounded follow-up', 'verification seam'],
@@ -488,7 +499,8 @@ const workflow: SddWorkflowContract = {
     'Scope or risk increases reopen understanding and classification before more work.',
   ],
   artifactRules: [
-    'Small clear low-risk work gets test-first implementation and verification with no record.',
+    'For small work, root states a brief in-session plan (scope, owner, focused verification) before delegation or implementation; no record or planning phases. Test-first implementation and focused verification remain required.',
+    'Root alone creates, edits, validates and corrects the substantial change record: coordination outside specialist-default execution, root execution allowances and consultation budget; no source discovery or substantive implementation permission. During planning, specialists supply only context within their entire role scope; never assign them to create, modify or correct SDD files.',
     'Substantial work creates one `.thoth/changes/<id>/<id>.md` record after classification; the record contains exploration, intent, acceptance, clarification, decisions, plan, tasks, verification, and closeout.',
     'Archive to `.thoth/changes/archive/YYYY-MM-DD-<id>/<id>.md`; the date prefixes only the directory, and the ID filename remains stable.',
     'No aliases, extra per-change files, reports, evidence directories, process tools, wrappers, or temporary generators are created.',
@@ -501,6 +513,7 @@ const workflow: SddWorkflowContract = {
     'Plan review is optional and separate from the Implement or Stop authorization decision and final verification.',
     'A substantial record cannot close out without complete tasks, independent PASS, acceptance evidence, current digests, and Archive READY.',
     'A verification failure blocks archive; actionable fixes must be reimplemented and reverified.',
+    ...FAILURE_CONVERGENCE_RULES,
   ],
 };
 

@@ -7,6 +7,20 @@ import {
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
+  test('treats record authorship as root coordination, not an execution exception', () => {
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    expect(ownership.recordAuthorship).toMatch(
+      /root alone creates\/edits\/validates\/corrects.*record/i,
+    );
+    expect(ownership.recordAuthorship).toMatch(
+      /outside specialist-default execution\/direct-work allowances\/consultation budget/i,
+    );
+    expect(ownership.recordAuthorship).toMatch(
+      /no source discovery\/substantive implementation license/i,
+    );
+  });
+
   test('exposes the six-role adaptive roster', () => {
     expect(getAgentPackContract().roles.map(({ name }) => name)).toEqual([
       'orchestrator',
@@ -77,11 +91,11 @@ describe('agent-pack contract', () => {
       /new path.*unlocated dependency.*exhausted allowance.*delegate missing evidence/i,
     );
     expect(consultation).toMatch(
-      /two fragments.*~200 code lines per user request/i,
+      /two fragments.*~200 code lines max per user request/i,
     );
     expect(consultation).toMatch(/across tools\/files\/subtasks/i);
     expect(consultation).toMatch(
-      /instructions.*coordination artifacts excluded.*source\/log dumps/i,
+      /exclude instructions.*coordination artifacts.*source\/log dumps/i,
     );
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;

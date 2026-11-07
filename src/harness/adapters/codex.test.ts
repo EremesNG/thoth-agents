@@ -47,7 +47,7 @@ describe('Codex adapter v0.3', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -59,16 +59,14 @@ describe('Codex adapter v0.3', () => {
       .toContain(
         'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph',
       );
-    expect
-      .soft(block)
-      .toContain('name the unknown location in the assignment, no pre-reading');
+    expect.soft(block).toContain('assign unknown location, no pre-read');
     expect
       .soft(block)
       .toContain('Navigation/fallbacks govern investigators, not root.');
     expect
       .soft(block)
       .toContain(
-        'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch',
+        'Before first read/search/shell each turn: bounded known-source direct-work exception or dispatch',
       );
     expect.soft(block).toContain('Prompt guidance, not runtime enforcement.');
     for (const phrase of [
@@ -111,17 +109,17 @@ describe('Codex adapter v0.3', () => {
 
     // Includes canonical discovery/navigation guidance and the Codex dialect.
     expect(root.length).toBeLessThanOrEqual(14_800);
-    expect(root).toContain('root coordinator');
+    expect(root).toContain('Root:');
     expect(root).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
     expect(root).toContain(
-      'By default, specialists perform discovery of unlocated source, external research and substantive implementation',
+      'specialists default to unlocated-source discovery, external research and substantive implementation',
     );
     expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
     expect(root).toMatch(
-      /specialists perform discovery.*you direct, decide, accept/is,
+      /specialists default to unlocated-source discovery.*you direct\/decide\/accept/is,
     );
     expect(root).not.toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
@@ -130,9 +128,9 @@ describe('Codex adapter v0.3', () => {
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
     expect(root).toContain('thoth-sdd');
-    expect(root).toContain('Final verification is mandatory:');
+    expect(root).toContain('Mandatory final verification:');
     expect(root).toContain(
-      'trivial deterministic low-risk work may use focused root checks',
+      'focused root checks for trivial deterministic low-risk work',
     );
     expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');

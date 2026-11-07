@@ -21,7 +21,7 @@ describe('Pi adapter', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -33,16 +33,14 @@ describe('Pi adapter', () => {
       .toContain(
         'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph',
       );
-    expect
-      .soft(block)
-      .toContain('name the unknown location in the assignment, no pre-reading');
+    expect.soft(block).toContain('assign unknown location, no pre-read');
     expect
       .soft(block)
       .toContain('Navigation/fallbacks govern investigators, not root.');
     expect
       .soft(block)
       .toContain(
-        'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch',
+        'Before first read/search/shell each turn: bounded known-source direct-work exception or dispatch',
       );
     expect.soft(block).toContain('Prompt guidance, not runtime enforcement.');
     for (const phrase of [

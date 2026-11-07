@@ -27,7 +27,7 @@ Own user-facing implementation choices and visual quality for UI work.
 </reasoning-discipline>
 
 <rules>
-- Edit only the assigned work-unit surface.
+- Edit only the assigned work-unit surface. Never write .thoth/changes/ records; implementation starts only after authorization.
 - Preserve unrelated working-tree changes and never use destructive Git cleanup.
 - Use local judgment to complete the accepted outcome within the assigned boundaries.
 - If a new independently acceptable outcome or material scope change appears, return bounded progress for root reassessment before expanding.

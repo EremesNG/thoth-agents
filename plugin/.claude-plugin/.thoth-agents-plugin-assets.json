@@ -9,7 +9,7 @@
     {
       "path": "agents/designer.md",
       "kind": "agent-config",
-      "sha256": "sha256:34467be2e94c4d8a5c3ba39fc8bb97cf665d46806465f5a86d604ee7a02780dc"
+      "sha256": "sha256:697a333a32819d383cd9ab6875c9c29cd5bcf50da693c77394f671ae9fdcffdd"
     },
     {
       "path": "agents/explorer.md",
@@ -29,12 +29,12 @@
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:3416fa6da73974241b6c40d1d6d15a6f09fa5b20cdb1e9e00cf90b0eab9b9f47"
+      "sha256": "sha256:959408cafbc598d68d644b8993a2f218fea8b82ba6c894d8dea836ab3105fe61"
     },
     {
       "path": "agents/worker.md",
       "kind": "agent-config",
-      "sha256": "sha256:4a569341d43cb4d10d317aee009429a6baf71e7ec248259e93847b59187f3764"
+      "sha256": "sha256:49f2756cd5cd6b72ccb20a9983b4d0d908796be4d4c8d591a8e40e503d7b6e4e"
     },
     {
       "path": "claude-hooks/hooks.json",

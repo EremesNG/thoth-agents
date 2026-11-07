@@ -176,17 +176,17 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
     expect(prompt.length).toBeLessThanOrEqual(13_300);
-    expect(prompt).toContain('root coordinator');
+    expect(prompt).toContain('Root:');
     expect(prompt).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
     expect(prompt).toContain(
-      'By default, specialists perform discovery of unlocated source, external research and substantive implementation',
+      'specialists default to unlocated-source discovery, external research and substantive implementation',
     );
     expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
     expect(prompt).toMatch(
-      /specialists perform discovery.*you direct, decide, accept/is,
+      /specialists default to unlocated-source discovery.*you direct\/decide\/accept/is,
     );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
@@ -194,9 +194,9 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt).toContain('.thoth/changes/<id>/<id>.md');
     expect(prompt).toContain('thoth-sdd');
     expect(prompt).toContain('oracle');
-    expect(prompt).toContain('Final verification is mandatory:');
+    expect(prompt).toContain('Mandatory final verification:');
     expect(prompt).toContain(
-      'trivial deterministic low-risk work may use focused root checks',
+      'focused root checks for trivial deterministic low-risk work',
     );
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');

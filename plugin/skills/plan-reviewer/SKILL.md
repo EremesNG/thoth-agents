@@ -50,14 +50,14 @@ reports (foreground or background; `agent` is the agent id, match it to the Agen
 result's `agentId`) and completed foreground `Agent` results whose content carries
 the report. Other deliveries (e.g. background runs without hand-back) carry none;
 use the explicit compact CLI fallback.
-Copy the verdict and `recordSha256` into the record (accepted summary/digest
+Root copies the verdict and `recordSha256` into the record (accepted summary/digest
 in fallback). Keep the shared one-request format-only repair budget. Root records
 plan-review `OKAY` only after these checks and judging content and provenance;
 a malformed or missing envelope is not approval.
-Root repairs same-intent blockers in the same record, revalidates affected gates,
-and uses a fresh Oracle for each round. A human-owned material blocker stops the
-round. Root records both review disposition and selection provenance without
-inventing approval. Accepted provenance is `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+On selected plan-review `REJECT`, root repairs the same record, reruns affected
+gates and sends it to a fresh Oracle until `OKAY` or a human-owned material
+blocker stops the round. Root records both review disposition and selection
+provenance without inventing approval. Accepted provenance is `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
 `DEFAULT_REVIEW_AFTER_3`; `SKIPPED` requires explicit skip, while `OKAY` requires
 explicit review or the third-return review default. After validated `OKAY`, root preserves
 the separate Implement (Recommended) / Stop choice and separately offers it,

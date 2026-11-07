@@ -193,6 +193,27 @@ describe('bundled thoth-init', () => {
 });
 
 describe('canonical workflow bundle contracts', () => {
+  test.each([
+    'converge',
+    'verify',
+  ])('distinguishes record REJECT and implementation FAIL in %s guidance', (phase) => {
+    const guidance = readFileSync(
+      `skills/thoth-sdd/references/phases/${phase}.md`,
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    for (const rule of [
+      'Plan review OKAY/REJECT judges the record; root repairs REJECT.',
+      'Final verification PASS/FAIL judges the implementation.',
+      'Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan',
+      'owning Worker or Designer repairs each affected surface',
+      'root coordinates and does not repair implementation unless the user explicitly instructs direct work',
+      'never self-approve and report unavailable independent review',
+      "Repeat independent verification as the change's verification level requires",
+      'Material changes in intent, scope or risk reopen understanding and planning before further implementation',
+    ])
+      expect.soft(guidance).toContain(rule);
+  });
+
   test('guides root progress from SDD stages into implementation tasks', () => {
     const guidance = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
       /\s+/g,
@@ -299,6 +320,38 @@ describe('canonical workflow bundle contracts', () => {
     }
   });
 
+  test('names root as record writer throughout planning, repair, and execution guidance', () => {
+    const readSkill = (path: string) =>
+      readFileSync(`skills/${path}`, 'utf8').replace(/\s+/g, ' ');
+    for (const [phase, rule] of [
+      ['plan', 'root translates settled intent'],
+      ['tasks', 'root records only useful implementation slices'],
+      ['checklist', 'Root corrects gaps'],
+      [
+        'converge',
+        'Root records only bounded remaining acceptance-linked work',
+      ],
+      ['specify', 'root creates the sole'],
+      ['clarify', 'Root records the outcome'],
+      ['verify', 'root records each outcome'],
+      [
+        'implement',
+        'Root alone writes the record; implementation writers start only after authorization and never write `.thoth/changes/`.',
+      ],
+    ]) {
+      expect(
+        readSkill(`thoth-sdd/references/phases/${phase}.md`),
+        phase,
+      ).toContain(rule);
+    }
+    expect(readSkill('thoth-sdd/templates/change.md')).toContain(
+      'Owner names the role executing the task unit; root always writes the record.',
+    );
+    expect(readSkill('plan-reviewer/SKILL.md')).toContain(
+      'On selected plan-review `REJECT`, root repairs the same record, reruns affected gates and sends it to a fresh Oracle until `OKAY` or a human-owned material blocker stops the round.',
+    );
+  });
+
   test('requires delivery verdicts with a compact fallback before Oracle approvals', () => {
     const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
       /\s+/g,
@@ -341,7 +394,7 @@ describe('canonical workflow bundle contracts', () => {
       'Plan review requires `verdict:"OKAY"` and `record` null or the assigned record; ignore `mode` and `recordDigest`.',
       'Record-bound final verification requires `record` = assigned record and `mode:"record"`',
       '`recordDigest:"match"`',
-      'Copy the verdict and `recordSha256` into the record',
+      'Root copies the verdict and `recordSha256` into the record',
       'Never re-emit the envelope to validate it',
       'Only when no verdict was delivered',
       'unchanged native result',
@@ -375,7 +428,7 @@ describe('canonical workflow bundle contracts', () => {
     expect(plan).toContain('ignore `mode` and `recordDigest`');
     expect(plan).not.toContain('assigned `record`, and `mode:"record"`');
     expect(plan).toContain(
-      'Copy the verdict and `recordSha256` into the record',
+      'Root copies the verdict and `recordSha256` into the record',
     );
     expect(plan).not.toContain('Return `[OKAY]`');
 
@@ -390,7 +443,7 @@ describe('canonical workflow bundle contracts', () => {
       'Record equality, `mode` and `recordDigest` checks apply only to final verification.',
     );
     expect(verify).toContain(
-      'Copy the verdict and `recordSha256` into the record',
+      'Root copies the verdict and `recordSha256` into the record',
     );
   });
 
@@ -524,9 +577,36 @@ describe('canonical workflow bundle contracts', () => {
       expect(sddSkill).toContain('specific discovery');
       expect(sddSkill).toContain('determines who gathers evidence');
       expect(sddSkill).toMatch(/apply these rules across all workflow stages/i);
-      expect(sddSkill).not.toMatch(
-        /\b(?:Direct|Accelerated|Full)\s+(?:route|work|is)/i,
-      );
+      const withoutExemptPhrases = (wording: string) =>
+        wording.replace(
+          /\b(?:direct work|direct-work|full role scope)\b/gi,
+          '',
+        );
+      const rejectedRoute =
+        /\b(?:Direct|Accelerated|Full)\s+(?:route|work|is)/i;
+      for (const [wording, rejected] of [
+        ['Direct is the route for tiny changes', true],
+        ['accelerated', false],
+        ['"route":"full"', false],
+        ['Full routes remain available', true],
+        ['Full workflows remain available', true],
+        ['direct workforce', true],
+        ['full role scopes', false],
+        ['direct work; Full routes remain available', true],
+      ] as const) {
+        expect
+          .soft(rejectedRoute.test(withoutExemptPhrases(wording)), wording)
+          .toBe(rejected);
+      }
+      for (const currentWording of [
+        'Root coordinates and does not repair implementation unless the user explicitly instructs direct work.',
+        'During planning, specialists supply context within their full role scope; root never assigns them to create, modify or correct SDD files.',
+        'Explicit direct-work or no-delegation instructions win.',
+        'DIRECT WORK, DIRECT-WORK, FULL ROLE SCOPE.',
+      ]) {
+        expect(withoutExemptPhrases(currentWording)).not.toMatch(rejectedRoute);
+      }
+      expect(withoutExemptPhrases(sddSkill)).not.toMatch(rejectedRoute);
 
       const changeTemplate = readFileSync(
         join(canonicalRoot, 'thoth-sdd', 'templates', 'change.md'),

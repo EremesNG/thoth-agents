@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  canEnterSddPhase,
   getSddPhase,
   getSddPhaseProtocol,
+  getSddRequiredPhaseOrder,
   getSddWorkflowContract,
   SDD_UNDERSTANDING_PHASES,
 } from './sdd';
@@ -10,6 +12,81 @@ const text = (phase: Parameters<typeof getSddPhaseProtocol>[0]) =>
   JSON.stringify(getSddPhaseProtocol(phase));
 
 describe('proportional SDD phase protocols', () => {
+  test.each([
+    'verify',
+    'converge',
+  ] as const)('routes %s FAIL repairs to surface owners with explicit boundaries', (phase) => {
+    const protocol = text(phase);
+    for (const rule of [
+      /Plan review OKAY\/REJECT judges the record; root repairs REJECT/,
+      /Final verification PASS\/FAIL judges the implementation/,
+      /Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan/,
+      /owning Worker or Designer repairs each affected surface/,
+      /root coordinates and does not repair implementation unless the user explicitly instructs direct work/,
+      /never self-approve and report unavailable independent review/,
+      /Repeat independent verification as the change's verification level requires/,
+      /Material changes in intent, scope or risk reopen understanding and planning before further implementation/,
+    ])
+      expect.soft(protocol).toMatch(rule);
+  });
+
+  test('keeps record authorship and repeated plan-review repair with root', () => {
+    const plan = text('plan');
+    expect(plan).toMatch(
+      /Root alone creates, edits, validates and corrects the substantial change record/,
+    );
+    expect(plan).toMatch(
+      /outside specialist-default execution, direct-work allowances and consultation budget/,
+    );
+    expect(plan).toMatch(
+      /no source discovery or substantive implementation permission/,
+    );
+    expect(text('explore')).toMatch(
+      /specialists supply only context within their full role scope/,
+    );
+    expect(text('explore')).toMatch(
+      /never assign them to create, modify or correct SDD files/,
+    );
+    expect(text('plan-review')).toMatch(
+      /REJECT: root repairs the same record, reruns affected gates and sends it to a fresh Oracle; repeat until OKAY or a human-owned material blocker/,
+    );
+    expect(text('implement')).toMatch(
+      /implementation writers start only after authorization/i,
+    );
+  });
+
+  test('plans small work in session without entering planning phases or creating records', () => {
+    const artifacts = getSddWorkflowContract().artifactRules.join(' ');
+    expect(artifacts).toMatch(
+      /root.*brief in-session plan.*scope, owner, focused verification.*before delegation or implementation/i,
+    );
+    expect(artifacts).toMatch(/no record/i);
+    expect(text('implement')).toMatch(
+      /brief in-session plan.*scope, owner, focused verification.*before delegation or implementation/i,
+    );
+    expect(getSddRequiredPhaseOrder({ classification: 'small' })).toEqual([
+      'explore',
+      'specify',
+      'clarify',
+      'implement',
+      'verify',
+    ]);
+    for (const target of [
+      'plan',
+      'tasks',
+      'checklist',
+      'plan-review',
+    ] as const) {
+      expect(
+        canEnterSddPhase({
+          classification: { classification: 'small' },
+          completed: ['explore', 'specify', 'clarify'],
+          target,
+        }),
+      ).toBe(false);
+    }
+  });
+
   test('provides a complete protocol for every phase', () => {
     for (const phase of getSddWorkflowContract().phases) {
       const protocol = getSddPhaseProtocol(phase.id);
@@ -141,7 +218,32 @@ describe('proportional SDD phase protocols', () => {
 
   test('contains no rejected route vocabulary or machine-facing route contract', () => {
     const serialized = JSON.stringify(getSddWorkflowContract());
-    expect(serialized).not.toMatch(/\b(?:direct|accelerated|full)\b|--route/i);
+    const withoutExemptPhrases = (wording: string) =>
+      wording.replace(/\b(?:direct work|direct-work|full role scope)\b/gi, '');
+    const rejectedRoute = /\b(?:direct|accelerated|full)\b|--route/i;
+    for (const [wording, rejected] of [
+      ['Direct is the route for tiny changes', true],
+      ['accelerated', true],
+      ['"route":"full"', true],
+      ['Full routes remain available', true],
+      ['Full workflows remain available', true],
+      ['direct workforce', true],
+      ['full role scopes', true],
+      ['direct work; Full routes remain available', true],
+    ] as const) {
+      expect
+        .soft(rejectedRoute.test(withoutExemptPhrases(wording)), wording)
+        .toBe(rejected);
+    }
+    for (const currentWording of [
+      'Root coordinates and does not repair implementation unless the user explicitly instructs direct work.',
+      'During planning, specialists supply only context within their full role scope; never assign them to create, modify or correct SDD files.',
+      'Explicit direct-work or no-delegation instructions win.',
+      'DIRECT WORK, DIRECT-WORK, FULL ROLE SCOPE.',
+    ]) {
+      expect(withoutExemptPhrases(currentWording)).not.toMatch(rejectedRoute);
+    }
+    expect(withoutExemptPhrases(serialized)).not.toMatch(rejectedRoute);
     expect(serialized).not.toContain('requestedRoute');
   });
 });

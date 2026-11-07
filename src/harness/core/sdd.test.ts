@@ -116,6 +116,55 @@ describe('proportional SDD classification', () => {
 });
 
 describe('phase and verification contract', () => {
+  test('keeps failed small work recordless and independent review mandatory under direct work', () => {
+    const skill = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    for (const rule of [
+      'Plan review OKAY/REJECT judges the record; root repairs REJECT.',
+      'Final verification PASS/FAIL judges the implementation.',
+      'otherwise in the brief in-session small plan',
+      'owning Worker or Designer repairs each affected surface',
+      'unless the user explicitly instructs direct work',
+      'never self-approve and report unavailable independent review',
+      "Repeat independent verification as the change's verification level requires",
+      'Material changes in intent, scope or risk reopen understanding and planning before further implementation',
+    ])
+      expect.soft(skill).toContain(rule);
+    expect(getSddRequiredPhaseOrder({ classification: 'small' })).not.toContain(
+      'converge',
+    );
+    expect(
+      getSddFinalVerificationDecision({
+        classification: 'small',
+        risk: 'medium',
+      }),
+    ).toEqual({
+      verificationRequired: true,
+      independent: true,
+      owner: 'oracle',
+    });
+  });
+
+  test('keeps record authorship, optional review repair, and small-work planning with root', () => {
+    const skill = readFileSync(
+      new URL('../../../skills/thoth-sdd/SKILL.md', import.meta.url),
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    for (const rule of [
+      'Root is the sole record author at every stage: it creates, edits, validates and corrects the record.',
+      'During planning, specialists supply context within their full role scope; root never assigns them to create, modify or correct SDD files.',
+      'Implementation writers start only after authorization and never write `.thoth/changes/`.',
+      'Before delegating or implementing, root states a brief in-session plan (scope, owner, focused verification)',
+      'On selected plan-review `REJECT`, root repairs the same record, reruns affected gates and sends it to a fresh Oracle until `OKAY` or a human-owned material blocker stops the round.',
+      '`Review plan with Oracle (Recommended)` or `Proceed without review`',
+      '`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`',
+      '`Implement (Recommended)` / `Stop`',
+    ])
+      expect.soft(skill).toContain(rule);
+  });
+
   test('keeps SDD understanding and implementation ownership subject to root delegation policy', () => {
     const skill = readFileSync(
       new URL('../../../skills/thoth-sdd/SKILL.md', import.meta.url),
@@ -254,6 +303,31 @@ describe('phase and verification contract', () => {
     const serialized = JSON.stringify(getSddWorkflowContract());
     expect(serialized).toMatch(/scope.*uncertainty.*risk/i);
     expect(serialized).toMatch(/human.*material/i);
-    expect(serialized).not.toMatch(/\b(?:direct|accelerated|full)\b|--route/i);
+    const withoutExemptPhrases = (wording: string) =>
+      wording.replace(/\b(?:direct work|direct-work|full role scope)\b/gi, '');
+    const rejectedRoute = /\b(?:direct|accelerated|full)\b|--route/i;
+    for (const [wording, rejected] of [
+      ['Direct is the route for tiny changes', true],
+      ['accelerated', true],
+      ['"route":"full"', true],
+      ['Full routes remain available', true],
+      ['Full workflows remain available', true],
+      ['direct workforce', true],
+      ['full role scopes', true],
+      ['direct work; Full routes remain available', true],
+    ] as const) {
+      expect
+        .soft(rejectedRoute.test(withoutExemptPhrases(wording)), wording)
+        .toBe(rejected);
+    }
+    for (const currentWording of [
+      'Root coordinates and does not repair implementation unless the user explicitly instructs direct work.',
+      'During planning, specialists supply only context within their full role scope; never assign them to create, modify or correct SDD files.',
+      'Explicit direct-work or no-delegation instructions win.',
+      'DIRECT WORK, DIRECT-WORK, FULL ROLE SCOPE.',
+    ]) {
+      expect(withoutExemptPhrases(currentWording)).not.toMatch(rejectedRoute);
+    }
+    expect(withoutExemptPhrases(serialized)).not.toMatch(rejectedRoute);
   });
 });

@@ -25,12 +25,24 @@ for the end-to-end lifecycle.
 
 ## Product workflow ownership
 
-The product classifies work after proportional understanding, with artifact-free
-small work and an ID-named record for substantial work. Its phase contracts
-cover planning, authorization, independent verification, and transactional
-archive of declared durable deltas. Initialization preserves existing project
-governance. These behaviors are delivered by installed skills, not by this
-repository's development documentation.
+The product classifies work after proportional understanding. Before delegating
+or implementing small work, root states a brief in-session plan (scope, owner,
+focused verification), without a persistent record. For substantial work, root
+alone creates, edits, validates, and corrects the ID-named record at every stage.
+Record authorship is coordination outside the direct-work allowances, not
+permission for source discovery or substantive implementation. During planning,
+specialists supply context within their full role scope and never write SDD files.
+Worker and Designer refuse `.thoth/changes/` writes and start implementation only
+after authorization.
+
+Plan review remains optional. When selected review returns REJECT, root repairs
+the same record, reruns affected gates, and requests a fresh Oracle, repeating
+until OKAY or a human-owned material blocker stops the round. Review does not
+authorize implementation; the separate Implement/Stop decision remains.
+Phase contracts also cover independent verification and transactional archive of
+declared durable deltas. Initialization preserves existing project governance.
+These behaviors are delivered by installed skills, not by this repository's
+development documentation.
 
 Owners: `src/harness/core/sdd.ts` (`classifySddChange`,
 `SDD_PHASE_PROTOCOLS`, `getSddFinalVerificationDecision`),
@@ -56,3 +68,11 @@ for touched-area typechecks/tests, repository checks, and conditional build or
 release-tooling tests; the full suite is the post-push/PR CI safety net, not a
 local blocker. Tests show rendered guidance and structural behavior, not automatic
 model compliance or provenance of claimed independent review.
+
+## REJECT and FAIL repair ownership
+
+Plan review OKAY/REJECT judges the record; root repairs REJECT. Final verification PASS/FAIL judges the implementation.
+
+Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan; the owning Worker or Designer repairs each affected surface; root coordinates and does not repair implementation unless the user explicitly instructs direct work; even then, never self-approve and report unavailable independent review.
+
+Repeat independent verification as the change's verification level requires; substantial or materially risky work uses a fresh Oracle. Material changes in intent, scope or risk reopen understanding and planning before further implementation.

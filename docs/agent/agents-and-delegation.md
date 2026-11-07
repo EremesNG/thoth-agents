@@ -23,6 +23,14 @@ Owners: `src/harness/core/agent-pack.ts` (`AGENT_ROLES`,
 `SPECIALIST_RESULT_CONTRACT`, `VERIFICATION_PROTOCOL`);
 `src/agents/prompt-sections.ts` and
 `src/agents/prompt-dialects.ts` render harness-specific guidance.
+
+Root alone creates, edits, validates, and corrects the substantial change record
+at every stage. This is coordination outside specialist-default execution and
+the direct-work allowances; it does not authorize source discovery or substantive
+implementation. During planning, specialists supply context within their full
+role scope and never write SDD files. Worker and Designer refuse `.thoth/changes/`
+writes and start implementation only after authorization.
+
 Tests: `src/harness/core/agent-pack.test.ts`,
 `src/harness/core/agent-routing.test.ts`, and prompt-rendering tests.
 
@@ -125,7 +133,11 @@ observed model results:
 | A known-source lookup reveals another path | Stop the direct lookup and delegate the new discovery question. |
 | Specialist report has sufficient localized evidence | Accept it without repeating discovery. If a claim lacks support, request that specific evidence from the specialist. |
 | Tiny question has a known source and answer boundary | Root may consult only the needed fragment and stop within the cumulative allowance. |
-| Implementation is known and bounded | Assign Worker or Designer directly; do not insert Explorer. |
+| Implementation is known and bounded | After authorization, assign Worker or Designer directly; do not insert Explorer. |
+| A substantial record needs creation or correction | Root writes it at every stage as coordination, outside the direct-work allowances; specialists supply planning context within their full role scope only. |
+| Selected plan review returns REJECT | Root repairs the same record, reruns affected gates, and requests a fresh Oracle; repeat until OKAY or a human-owned material blocker stops the round. |
+| Worker or Designer is assigned `.thoth/changes/` writes | Refuse the record writes and return them to root. |
+| Small work is ready to delegate or implement | Root first states a brief in-session plan: scope, owner, focused verification; create no record. |
 | Two Explorer questions have separate outcomes and no shared evidence | They may run in parallel within native capacity; do not split one cohesive inquiry mechanically. |
 | One Explorer question depends on another's finding | Hold it until the upstream result is terminal, fresh and accepted. |
 | Writer assignment contains several independently acceptable outcomes | Split along outcome/interface boundaries; keep coupled writes with one writer and ordered handoffs. |
@@ -158,3 +170,11 @@ Tests: `src/harness/adapters/pi.test.ts` and the corresponding Pi package tests.
 - `src/harness/core/memory-governance.ts` and `sdd-protocol.test.ts`
 - `src/config/constants.ts`, `schema.ts`, and config tests
 - adapter tests for serialized harness output
+
+## REJECT and FAIL repair ownership
+
+Plan review OKAY/REJECT judges the record; root repairs REJECT. Final verification PASS/FAIL judges the implementation.
+
+Root records remaining acceptance-linked work in the substantial record when one exists, otherwise in the brief in-session small plan; the owning Worker or Designer repairs each affected surface; root coordinates and does not repair implementation unless the user explicitly instructs direct work; even then, never self-approve and report unavailable independent review.
+
+Repeat independent verification as the change's verification level requires; substantial or materially risky work uses a fresh Oracle. Material changes in intent, scope or risk reopen understanding and planning before further implementation.

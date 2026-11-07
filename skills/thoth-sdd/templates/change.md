@@ -45,7 +45,8 @@ remaining fields below it. Repeat an AC number when separate units contribute
 to that acceptance outcome. The row text names one reviewable result; do not
 combine separately acceptable outcomes into a phase-sized task. Fill the
 indented fields with concrete information. For a read-only unit, write `none`
-for owned writes.
+for owned writes. Owner names the role executing the task unit; root always
+writes the record.
 
 - [ ] AC-1: TBD
   - Outcome: one result that root can accept independently

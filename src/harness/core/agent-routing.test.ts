@@ -218,9 +218,7 @@ describe('canonical agent routing', () => {
       expect(
         surface.root,
         `${routingCase.id}:${surface.harness}:workflow-owner`,
-      ).toMatch(
-        /by default, specialists perform.*you direct, decide, accept/is,
-      );
+      ).toMatch(/specialists default to.*you direct\/decide\/accept/is);
       expect(surface.root).not.toMatch(/Direct micro-action/i);
       expect(surface.root).not.toMatch(/Artifact-backed implement follows/i);
       if (routingCase.expectedOwner === 'oracle') {
@@ -237,6 +235,20 @@ describe('canonical agent routing', () => {
       expect(surface.root).toContain('Block a unit until every concrete');
       expect(surface.root).toContain(
         'Dispatch every admitted conflict-free ready unit',
+      );
+    }
+  });
+
+  test('does not route planning authorship to implementation specialists', () => {
+    for (const surface of renderRoutingSurfaces()) {
+      expect(surface.root).toMatch(
+        /Root alone creates\/edits\/validates\/corrects substantial record/,
+      );
+      expect(surface.root).toMatch(
+        /Planning specialists: context only within full role scope/,
+      );
+      expect(surface.root).toMatch(
+        /never assign SDD creation\/modification\/correction/,
       );
     }
   });

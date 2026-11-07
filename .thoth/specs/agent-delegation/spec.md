@@ -42,4 +42,14 @@ Shipped root instructions on every harness MUST present specialist execution of 
 
 - **GIVEN** a root prompt rendered for any supported harness
 - **WHEN** the task needs discovery of unlocated local source
-- **THEN** the prompt directs root to dispatch Explorer without preliminary reads, search, shell inspection or CodeGraph queries, while still permitting memory recall before dispatch 
+- **THEN** the prompt directs root to dispatch Explorer without preliminary reads, search, shell inspection or CodeGraph queries, while still permitting memory recall before dispatch
+
+### Requirement: Planning authorship stays with root on every harness
+
+Shipped root instructions on every harness MUST present change-record authorship and plan-review repair as root work outside specialist-default execution and direct-work allowances, MUST present specialists during planning only as context sources within their role scope, and write-capable specialist instructions MUST exclude `.thoth/changes/` records from assignable surfaces.
+
+#### Scenario: Planning authorship stays with root on every harness
+
+- **GIVEN** a root prompt rendered for any supported harness and a plan review that returned REJECT
+- **WHEN** root needs the record corrected
+- **THEN** the prompt directs root to edit the record itself and Worker or Designer instructions refuse `.thoth/changes/` writes 

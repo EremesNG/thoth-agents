@@ -24,7 +24,7 @@ describe('OpenCode harness adapter v0.3', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /by default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize/i,
+      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -36,16 +36,14 @@ describe('OpenCode harness adapter v0.3', () => {
       .toContain(
         'Unlocated local source/flow/responsibility: Explorer before root read/search/shell/git/CodeGraph',
       );
-    expect
-      .soft(block)
-      .toContain('name the unknown location in the assignment, no pre-reading');
+    expect.soft(block).toContain('assign unknown location, no pre-read');
     expect
       .soft(block)
       .toContain('Navigation/fallbacks govern investigators, not root.');
     expect
       .soft(block)
       .toContain(
-        'Before first read/search/shell each turn: bounded known source in a direct-work exception or dispatch',
+        'Before first read/search/shell each turn: bounded known-source direct-work exception or dispatch',
       );
     expect.soft(block).toContain('Prompt guidance, not runtime enforcement.');
     for (const phrase of [
@@ -84,14 +82,14 @@ describe('OpenCode harness adapter v0.3', () => {
     const root = configs.orchestrator.prompt ?? '';
     const oracle = configs.oracle.prompt ?? '';
 
-    expect(root).toContain('root coordinator');
+    expect(root).toContain('Root:');
     expect(root).toContain('.thoth/changes/<id>/<id>.md');
-    expect(root).toContain('bundled `thoth-sdd` skill');
+    expect(root).toContain('Bundled `thoth-sdd` skill');
     expect(root).toContain(
-      'substantial or materially risky work requires fresh read-only @oracle judgment',
+      'fresh read-only @oracle for substantial/material risk',
     );
     expect(root).toContain(
-      'trivial deterministic low-risk work may use focused root checks',
+      'focused root checks for trivial deterministic low-risk work',
     );
     expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
     expect(root).toContain('`task`');

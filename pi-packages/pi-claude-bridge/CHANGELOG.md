@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-07
+
 ### Changed
 
 - Sync upstream through `acbe45b` (0.11.0), including thinking-off, fork/clone recording inheritance, verbatim tool-result replay, background Bash timeout exemption, and updated child policies; retain local append epochs.

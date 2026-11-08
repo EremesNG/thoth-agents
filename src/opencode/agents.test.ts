@@ -5,6 +5,15 @@ import type { Plugin } from '@opencode/plugin';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { registerAgents } from './agents';
 import { loadOpenCodeDependencies } from './context';
+import {
+  type PermissionRule,
+  translatePermissionRules,
+} from './permission-rules';
+import {
+  evaluateAction,
+  matchAction,
+  SPECIALIST_ROLES,
+} from './tool-overrides';
 
 function fixture(directory: string) {
   const registered: Record<string, Record<string, unknown>> = {};
@@ -45,6 +54,198 @@ describe('OpenCode agent registration', () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     rmSync(root, { recursive: true, force: true });
+  });
+
+  test('without override files preserves the shipped permission arrays for all six roles', async () => {
+    const { ctx, deps, registered } = fixture(root);
+    await registerAgents(ctx, deps);
+    for (const { name } of deps.agentDefs) {
+      expect(registered[name].permissions).toEqual(
+        translatePermissionRules(deps.agents[name].permission),
+      );
+    }
+  });
+
+  test.each([
+    '*',
+    'subagent',
+  ])('appends ordered overrides including %s allow and locks subagent without changing orchestrator', async (lockedAction) => {
+    mkdirSync(join(root, 'thoth'));
+    writeFileSync(
+      join(root, 'thoth/tools.json'),
+      JSON.stringify({
+        version: 1,
+        roles: Object.fromEntries(
+          SPECIALIST_ROLES.map((role) => [
+            role,
+            {
+              overrides: [
+                { action: lockedAction, effect: 'allow' },
+                { action: 'webfetch', effect: 'deny' },
+                { action: 'webfetch', effect: 'ask' },
+              ],
+            },
+          ]),
+        ),
+      }),
+    );
+    const { ctx, deps, registered } = fixture(root);
+    await registerAgents(ctx, deps);
+    for (const role of SPECIALIST_ROLES) {
+      expect(registered[role].permissions).toEqual([
+        ...translatePermissionRules(deps.agents[role].permission),
+        { action: lockedAction, resource: '*', effect: 'allow' },
+        { action: 'webfetch', resource: '*', effect: 'deny' },
+        { action: 'webfetch', resource: '*', effect: 'ask' },
+        { action: 'subagent', resource: '*', effect: 'deny' },
+      ]);
+      expect(
+        evaluateAction(
+          registered[role].permissions as PermissionRule[],
+          undefined,
+          'subagent',
+        ).effect,
+      ).toBe('deny');
+    }
+    expect(registered.orchestrator.permissions).toEqual(
+      translatePermissionRules(deps.agents.orchestrator.permission),
+    );
+  });
+
+  test('project empty overrides replace global rules and preserve shipped arrays', async () => {
+    mkdirSync(join(root, 'thoth'));
+    mkdirSync(join(root, '.opencode/thoth'), { recursive: true });
+    writeFileSync(
+      join(root, 'thoth/tools.json'),
+      JSON.stringify({
+        version: 1,
+        roles: Object.fromEntries(
+          SPECIALIST_ROLES.map((role) => [
+            role,
+            {
+              overrides: [{ action: '*', effect: 'deny' }],
+            },
+          ]),
+        ),
+      }),
+    );
+    writeFileSync(
+      join(root, '.opencode/thoth/tools.json'),
+      JSON.stringify({
+        version: 1,
+        roles: Object.fromEntries(
+          SPECIALIST_ROLES.map((role) => [role, { overrides: [] }]),
+        ),
+      }),
+    );
+    const { ctx, deps, registered } = fixture(root);
+    await registerAgents(ctx, deps);
+    for (const { name } of deps.agentDefs) {
+      expect(registered[name].permissions).toEqual(
+        translatePermissionRules(deps.agents[name].permission),
+      );
+    }
+  });
+
+  test.each([
+    'designer',
+    'worker',
+  ] as const)('%s matching overrides supersede the shipped resource-specific allow; unrelated overrides preserve it', async (role) => {
+    const { ctx, deps, registered, editor } = fixture(root);
+    await registerAgents(ctx, deps);
+    const transform = vi.mocked(ctx.agent.transform).mock.calls[0][0];
+    for (const [action, expected] of [
+      ['external_*', 'deny'],
+      ['webfetch', 'allow'],
+    ] as const) {
+      deps.toolState.store.save(
+        'project',
+        role,
+        [{ action, effect: 'deny' }],
+        deps.toolState.store.read('project').revision,
+      );
+      deps.toolState.refresh();
+      await transform(editor as unknown as Parameters<typeof transform>[0]);
+      const rules = registered[role].permissions as PermissionRule[];
+      expect(rules).toContainEqual({
+        action: 'external_directory',
+        resource: '~/.config/opencode/skills/**',
+        effect: 'allow',
+      });
+      const lastMatch = rules.findLast(
+        (rule) =>
+          matchAction('external_directory', rule.action) &&
+          matchAction(
+            '~/.config/opencode/skills/example/SKILL.md',
+            rule.resource,
+          ),
+      );
+      expect(lastMatch?.effect).toBe(expected);
+    }
+  });
+
+  test('refresh re-reads changed files and the existing transform uses the new effective overrides', async () => {
+    const { ctx, deps, registered, editor } = fixture(root);
+    expect(deps.toolState.store.paths.global).toBe(
+      join(root, 'thoth/tools.json'),
+    );
+    expect(deps.toolState.store.paths.project).toBe(
+      join(root, '.opencode/thoth/tools.json'),
+    );
+    await registerAgents(ctx, deps);
+    const transform = vi.mocked(ctx.agent.transform).mock.calls[0][0];
+    mkdirSync(join(root, 'thoth'));
+    mkdirSync(join(root, '.opencode/thoth'), { recursive: true });
+    writeFileSync(
+      deps.toolState.store.paths.global,
+      JSON.stringify({
+        version: 1,
+        roles: {
+          explorer: { overrides: [{ action: 'webfetch', effect: 'deny' }] },
+        },
+      }),
+    );
+    writeFileSync(
+      deps.toolState.store.paths.project,
+      JSON.stringify({
+        version: 1,
+        roles: {
+          explorer: { overrides: [{ action: 'webfetch', effect: 'allow' }] },
+        },
+      }),
+    );
+    // Disk edits are applied only after refresh, not by running the transform alone.
+    await transform(editor as unknown as Parameters<typeof transform>[0]);
+    expect(registered.explorer.permissions).toEqual(
+      translatePermissionRules(deps.agents.explorer.permission),
+    );
+    deps.toolState.refresh();
+    expect(deps.toolState.state.effective.explorer?.origin).toBe('project');
+    await transform(editor as unknown as Parameters<typeof transform>[0]);
+    expect(
+      evaluateAction(
+        registered.explorer.permissions as PermissionRule[],
+        undefined,
+        'webfetch',
+      ).effect,
+    ).toBe('allow');
+    rmSync(deps.toolState.store.paths.project);
+    deps.toolState.refresh();
+    expect(deps.toolState.state.effective.explorer?.origin).toBe('global');
+    await transform(editor as unknown as Parameters<typeof transform>[0]);
+    expect(
+      evaluateAction(
+        registered.explorer.permissions as PermissionRule[],
+        undefined,
+        'webfetch',
+      ).effect,
+    ).toBe('deny');
+    rmSync(deps.toolState.store.paths.global);
+    deps.toolState.refresh();
+    await transform(editor as unknown as Parameters<typeof transform>[0]);
+    expect(registered.explorer.permissions).toEqual(
+      translatePermissionRules(deps.agents.explorer.permission),
+    );
   });
 
   test('applies global profile defaults before deduplicated configured fallbacks', async () => {

@@ -298,6 +298,11 @@ session → project pin → global active → read-only `default`. Profiles live
 `<project>/.opencode/thoth/profiles.json`; the CLI manages global profiles only.
 Other harnesses use their own model configuration and capability rules.
 
+In OpenCode, `/subagents-tools` edits global/project allow/ask/deny overrides for
+the five specialists, independently of model profiles. Project entries replace
+global entries per role; `subagent` stays locked. See the
+[tool-permission guide and limits](docs/provider-configurations.md#manage-tool-permissions-inside-opencode).
+
 See [Provider Configuration](docs/provider-configurations.md) and
 [Codex Model Customization](docs/codex-model-customization.md).
 

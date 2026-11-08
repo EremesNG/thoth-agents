@@ -30,6 +30,7 @@ const registration = vi.hoisted(() => ({
   permissions: vi.fn(),
   profileRuntime: vi.fn(),
   profileRpc: vi.fn(),
+  toolRpc: vi.fn(),
   delegation: vi.fn(),
   session: vi.fn(),
 }));
@@ -51,6 +52,9 @@ vi.mock('./opencode/profile-runtime', () => ({
 }));
 vi.mock('./opencode/profile-rpc-handlers', () => ({
   registerProfileRpc: registration.profileRpc,
+}));
+vi.mock('./opencode/tool-rpc-handlers', () => ({
+  registerToolRpc: registration.toolRpc,
 }));
 vi.mock('./opencode/delegation-hooks', () => ({
   registerDelegationHooks: registration.delegation,
@@ -106,6 +110,7 @@ describe('plugin runtime compatibility', () => {
       registration.permissions,
       registration.profileRuntime,
       registration.profileRpc,
+      registration.toolRpc,
       registration.delegation,
       registration.session,
     ]) {

@@ -3,7 +3,8 @@
 ## Responsibility
 
 This route owns the OpenCode >=2.2.6 plugin, native roles, tools, MCPs,
-`/thoth-init`, `/subagents-model`, package skills, permissions and session hooks.
+`/thoth-init`, `/subagents-model`, `/subagents-tools`, package skills, permissions
+and session hooks.
 Entrypoints: `src/index.ts`, `src/opencode/` and `src/tui/`.
 Provider memory lifecycle remains external.
 
@@ -59,6 +60,48 @@ installed `thoth-sdd` skill on the unchanged result.
 - `src/cli/opencode-profiles.ts` manages global profiles only; CLI Apply writes
   and activates the complete `agents` roster. Project pins belong to the TUI.
 
+## Tool overrides and TUI
+
+- `src/opencode/tool-overrides/` (not `src/opencode/tools/`) owns the
+  host-neutral store, validation, matcher and evaluator. Files are
+  `<opencode-config-dir>/thoth/tools.json` and
+  `<project>/.opencode/thoth/tools.json`, with the same config-dir resolution as
+  profiles. Schema: `{version:1, roles:{<specialist>:{overrides:[{action,effect}]}}}`;
+  effects are `allow|ask|deny`. Only explorer/librarian/oracle/designer/worker
+  are editable. Ordered entries survive writes; invalid input loads with warnings,
+  writes are atomic and whole-file revision conflicts return `TOOLS_CONFLICT`.
+- Project presence replaces global per role, including an empty list. Reset
+  deletes that scope's role entry, so project reset resumes global inheritance.
+  To mask global overrides with shipped defaults, save an empty project list.
+- `context.ts` owns mutable `toolState`; `agents.ts` keeps shipped arrays exactly
+  when there are no effective overrides. Otherwise it appends resource-`*`
+  overrides, then a final locked `subagent` deny. Orchestrator is unaffected and
+  the existing `permissions.ts` evaluation deny remains. Last match wins;
+  wildcards match whole actions (`*` includes `/`, `?` one character,
+  case-insensitive on Windows).
+- Actions group tools: write/patch/edit → `edit`, bash → `shell`; MCP actions
+  appear as `server_tool`. Resource-`*` deny hides tools, ask prompts. Matching
+  `external_directory` overrides supersede designer/worker's shipped
+  resource-specific allow; this is intentional, including broader access on allow.
+- `src/opencode/tool-rpc.ts` defines JSON-safe `thoth-tool-permissions`
+  state/save/reset; `src/opencode/tool-rpc-handlers.ts` serializes operations,
+  groups `ctx.tool.list()` by permission action, and returns role effects,
+  origins, shipped `baseEffect`, locks, scope revisions and warnings. Saves/reset
+  refresh tool state and call `ctx.agent.reload()`; changes apply at the next
+  context selection, not via request-local tool mutation.
+- `src/tui/tools/model.ts` and `src/tui/tools/flow.ts` implement native dialogs
+  registered in `src/tui/index.ts` beside `/subagents-model`. Overview shows G/P
+  scope, counts and summaries; role rows use `●` override, `○` pattern,
+  `·` default and `🔒` locked. Scope selection, inherit/allow/ask/deny, manual
+  patterns with action match counts, draft Save/Discard/Keep editing, conflict
+  reload and confirmed immediate reset work without a session. Inherit removes
+  exact entries only; broader patterns can still match.
+- Effects are role-level, not session-level; session permissions may supersede
+  them. Disconnected/undiscovered MCP tools are absent from inventory (manual
+  patterns may match zero actions). Code Mode catalog tools may remain despite
+  deny: version-sensitive, requiring live verification. See the
+  [user guide](../provider-configurations.md#manage-tool-permissions-inside-opencode).
+
 ## Packaged skill precedence
 
 Skills register from absolute package `skills/<name>/SKILL.md` paths. OpenCode
@@ -99,8 +142,8 @@ only orchestrator may delegate. These are host permissions, not an OS sandbox.
   Thoth standalone LSP tools use built-in defaults and do not consume host
   overrides. Configure host-native LSP separately; this is a capability gap.
 - Tmux and runtime auto-update checking are removed. Runtime does not install
-  packages or automatically rewrite configuration; explicit profile actions can
-  save profile files and report warnings. Use the CLI for package updates.
+  packages or automatically rewrite configuration; explicit profile/tool actions
+  can save their configuration files and report warnings. Use the CLI for package updates.
 
 ## Focused verification
 

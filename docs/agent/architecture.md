@@ -25,6 +25,12 @@ persistence, receipts, state, and recovery remain outside this package.
    Global/project profile files and per-session plugin storage select session →
    project pin → global active → virtual read-only `default`. See the
    [profile contract](runtime-integrations.md#model-profiles-and-tui).
+   Separately, `src/opencode/tool-overrides/` resolves global/project specialist
+   permission overrides. `src/opencode/tool-rpc.ts` and
+   `src/opencode/tool-rpc-handlers.ts` expose state/save/reset; `src/tui/tools/`
+   supplies `/subagents-tools` through the same TUI entry. Saves refresh mutable
+   tool state and reload agents for the next context selection. See the
+   [tool contract](runtime-integrations.md#tool-overrides-and-tui).
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
@@ -136,7 +142,7 @@ subscription classification. See [controls and compatibility](harness-packaging.
 
 | Boundary | Owner |
 | --- | --- |
-| OpenCode runtime and profiles | `src/index.ts`, `src/opencode/`, hooks, MCPs, tools; `src/tui/` owns native profile dialogs |
+| OpenCode runtime, profiles and tool overrides | `src/index.ts`, `src/opencode/`, hooks, MCPs, tools; `src/tui/` owns native profile and tool-permission dialogs |
 | Pi delegation runtime | Pi plus the selected external delegation package; thoth-agents supplies only policy, prompts, managed resources, installation, and diagnostics |
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` |
 | Adaptive SDD route and phase policy | `src/harness/core/sdd.ts` |
@@ -156,6 +162,11 @@ subscription classification. See [controls and compatibility](harness-packaging.
 - OpenCode ships only the `openai` built-in model profile. Profile model/variant
   pairs override root model settings without changing prompts or permissions;
   project profiles shadow same-named global ones. CLI profile writes are global.
+- Tool overrides are independent of profiles: project replaces global per
+  specialist (even an empty list), then ordered resource-`*` overrides follow
+  shipped rules and precede the locked `subagent` deny. No overrides preserves
+  shipped permission arrays exactly; orchestrator is unchanged. Session policy
+  may supersede displayed role effects; Code Mode removal is version-sensitive.
 - Owned workflow contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during execution.
   OpenCode registers owned skills from package paths; config-discovered

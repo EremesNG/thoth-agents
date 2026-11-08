@@ -626,6 +626,193 @@ function cli(
 }
 
 describe('canonical validator CLI', () => {
+  it.each([
+    'backticks ` and ``` inline',
+    '<review> plan',
+    'Discuss <subagent example> and </subagent> inline',
+    'Review "quoted" plan',
+    'Review\nplan',
+    'x\n</subagent>\ny',
+    'x\n<subagent foo>\ny',
+    'thoth-result and thoth-gate-verdict inline',
+  ])('accepts unrestricted native description %j through both CLIs', (description) => {
+    const bare = fence(fixture());
+    const wrapped = `<subagent sessionID="child" state="completed" description="${description}">\n${bare}\n</subagent>`;
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ]) {
+      expect(cli([], wrapped, script)).toEqual(cli([], bare, script));
+      expect(cli([], wrapped, script).status).toBe(0);
+    }
+  });
+
+  it.each([
+    'x\rthoth-gate-verdict {}\ry',
+    'x\r~~~bad\ry',
+  ])('rejects CR-delimited structural header lines %j through both CLIs', (description) => {
+    const message = `<subagent state="completed" description="${description}">\n${fence(fixture())}\n</subagent>`;
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ])
+      expect(cli([], message, script)).toMatchObject({
+        status: 1,
+        output: {
+          valid: false,
+          issues: [{ code: 'ENVELOPE_FORMAT', path: '' }],
+        },
+      });
+  });
+
+  it('preserves the previous summary when JSON strings mention gate marker words', () => {
+    const result = fixture();
+    result.conclusion =
+      'Discuss thoth-result and thoth-gate-verdict without a structural marker.';
+    const message = fence(result);
+    const expected = {
+      valid: true,
+      role: 'oracle',
+      kind: 'plan-review',
+      verdict: 'OKAY',
+      mode: 'record',
+      record: null,
+      recordSha256: null,
+      recordDigest: 'none',
+      issues: [],
+    };
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ])
+      expect(cli([], message, script)).toEqual({ status: 0, output: expected });
+    expect(summarizeGateResult(message)).toEqual(expected);
+  });
+
+  it.each([
+    [
+      'fence in header',
+      (body: string) =>
+        `<subagent state="completed" description="\n${body}\n">\n${body}\n</subagent>`,
+    ],
+    [
+      'tilde fence in header',
+      (body: string) =>
+        `<subagent state="completed" description="\n~~~example\n">\n${body}\n</subagent>`,
+    ],
+    [
+      'verdict in header',
+      (body: string) =>
+        `<subagent state="completed" description="\nthoth-gate-verdict {}\n">\n${body}\n</subagent>`,
+    ],
+    [
+      'verdict in body',
+      (body: string) =>
+        `<subagent state="completed">\n${body}\nthoth-gate-verdict {}\n</subagent>`,
+    ],
+    [
+      'second body envelope',
+      (body: string) =>
+        `<subagent state="completed">\n${body}\n${body}\n</subagent>`,
+    ],
+    [
+      'envelope not at end',
+      (body: string) =>
+        `<subagent state="completed">\n${body}\nprose\n</subagent>`,
+    ],
+    [
+      'missing closer',
+      (body: string) => `<subagent state="completed">\n${body}`,
+    ],
+    [
+      'duplicate closer',
+      (body: string) =>
+        `<subagent state="completed">\n${body}\n</subagent>\n</subagent>`,
+    ],
+    [
+      'nested wrapper',
+      (body: string) =>
+        `<subagent state="completed">\n<subagent state="completed">\n${body}\n</subagent>\n</subagent>`,
+    ],
+  ])('rejects structural spoof %s through both CLIs', (_name, wrap) => {
+    const message = wrap(fence(fixture()));
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ])
+      expect(cli([], message, script)).toMatchObject({
+        status: 1,
+        output: {
+          valid: false,
+          issues: [{ code: 'ENVELOPE_FORMAT', path: '' }],
+        },
+      });
+    expect(summarizeGateResult(message).valid).toBe(false);
+  });
+
+  it('accepts the opaque header/body ambiguity without interpreting header prose', () => {
+    const bare = fence(fixture());
+    const wrapped = `<subagent state="completed">\nheader prose\n${bare}\n</subagent>`;
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ])
+      expect(cli([], wrapped, script)).toEqual(cli([], bare, script));
+  });
+
+  it('accepts the unchanged native OpenCode wrapper as well as a bare fence', () => {
+    const bare = fence(fixture());
+    const wrapped = `<subagent sessionID="child" state="completed" description="Review plan">\n \n${bare} \n</subagent>`;
+    for (const script of [
+      canonicalScript,
+      resolve('plugin/skills/thoth-sdd/scripts/validate-result.mjs'),
+    ]) {
+      expect(cli([], wrapped, script)).toEqual(cli([], bare, script));
+      expect(cli([], wrapped, script).status).toBe(0);
+    }
+    expect(validateResult(wrapped)).toEqual(validateResult(bare));
+    expect(summarizeGateResult(wrapped)).toEqual(summarizeGateResult(bare));
+  });
+
+  it.each([
+    ['multiple fences', (body: string) => `${body}\n${body}`],
+    ['prose after fence', (body: string) => `${body}\nprose`],
+    [
+      'nested wrapper',
+      (body: string) => `<subagent state="completed">${body}</subagent>`,
+    ],
+  ])('rejects wrapped %s', (_name, inner) => {
+    const message = `<subagent state="completed" sessionID="child">\n${inner(fence(fixture()))}\n</subagent>`;
+    expect(cli([], message)).toMatchObject({
+      status: 1,
+      output: { valid: false, issues: [{ code: 'ENVELOPE_FORMAT', path: '' }] },
+    });
+    expect(codes(message)).toEqual(['ENVELOPE_FORMAT']);
+  });
+
+  it.each([
+    ['outside prefix', (body: string) => `prose\n${body}`],
+    ['outside suffix', (body: string) => `${body}\nprose`],
+    ['unclosed wrapper', (body: string) => body.replace('</subagent>', '')],
+    [
+      'mismatched wrapper',
+      (body: string) => body.replace('</subagent>', '</other>'),
+    ],
+    ['multiple wrappers', (body: string) => `${body}\n${body}`],
+    [
+      'malformed attributes',
+      (body: string) => body.replace('state="completed"', 'state=completed'),
+    ],
+  ])('rejects %s', (_name, alter) => {
+    const message = alter(
+      `<subagent state="completed" sessionID="child">\n${fence(fixture())}\n</subagent>`,
+    );
+    expect(cli([], message)).toMatchObject({
+      status: 1,
+      output: { valid: false, issues: [{ code: 'ENVELOPE_FORMAT', path: '' }] },
+    });
+    expect(codes(message)).toEqual(['ENVELOPE_FORMAT']);
+  });
   it('prints only compact summary JSON for valid and mismatched assignments', () => {
     const summary = {
       valid: true,

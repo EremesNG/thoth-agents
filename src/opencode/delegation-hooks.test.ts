@@ -35,7 +35,13 @@ function completed(
     status: 'completed',
     result: {
       output: { sessionID: 'child', status, output: content },
-      content: `<subagent sessionID="child" state="${status}">\n${content}\n</subagent>`,
+      // OpenCode 2.2.5 normalizes tool content before execute.after hooks.
+      content: [
+        {
+          type: 'text',
+          text: `<subagent description="Review plan" state="${status}" sessionID="child">\n${content}\n</subagent>`,
+        },
+      ],
     },
   };
 }
@@ -46,8 +52,11 @@ describe('v2 delegation delivery', () => {
     const event = completed();
     const original = event.result.content;
     await deliver(event);
-    expect(event.result.content).toMatch(/thoth-gate-verdict .*"valid":false/);
-    expect(event.result.content.startsWith(original)).toBe(true);
+    expect(event.result.content.at(-1)?.text).toMatch(
+      /thoth-gate-verdict .*"valid":false/,
+    );
+    expect(event.result.content.slice(0, original.length)).toEqual(original);
+    expect(original).toHaveLength(1);
     const delivered = structuredClone(event);
     await deliver(event);
     expect(event).toEqual(delivered);

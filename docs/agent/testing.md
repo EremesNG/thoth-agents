@@ -169,10 +169,22 @@ Focused delivery tests: `src/pi-gate-verdict.test.ts`, `src/pi.test.ts`,
 cover root acceptance and fallback instructions; validator tests cover digest and
 CLI semantics. Regressions cover forged verdict markers, embedded OpenCode wrapper
 terminators, and input preservation. The OpenCode v2 hook appends verdicts to
-completed foreground Oracle `subagent` results with the native completed wrapper
-only; an existing tail verdict is preserved without appending a second line.
-Unwrapped and `running` results are ignored; background completions use the
-explicit compact-validator fallback.
+completed foreground Oracle `subagent` results, validating the structured raw
+child output as a bare envelope. String and host-normalized `Content[]` delivery
+are supported without rewriting existing parts; arrays receive a new text part.
+An existing adapter-owned verdict is preserved without appending another line.
+`running` and non-gate results are unchanged. Raw output is used only if it appears
+verbatim in the joined visible content; otherwise the hook validates that content
+using the native-wrapper fallback, also used
+by background completions through the compact CLI validator.
+The validator accepts a bare fence or a completed native wrapper whose envelope
+is anchored at the end. The header is opaque because native descriptions are
+unescaped: quotes, newlines, backticks, angle brackets, and wrapper-looking lines
+are ordinary header data. Header/body ambiguity is accepted, not resolved as
+prose or nesting. Apart from the native prefix and completed-state marker, only
+structural fence/verdict lines are rejected there. Exactly two structural fence
+lines and no verdict line are permitted across the complete input, recognizing
+LF, CRLF, and lone CR boundaries; marker words inside JSON strings are ordinary data.
 Pi covers completion notifications, `subagent_result`, and
 task-mode `subagent_run`. Claude covers
 Subagent hand-back reports (foreground or background; `agent` is the agent id,

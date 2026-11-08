@@ -1,4 +1,4 @@
-import { Box } from '@earendil-works/pi-tui';
+import { Box, stripTerminalSequences } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
   isAnimationEffectEnabled,
@@ -95,6 +95,28 @@ export interface BoxedComponentOptions {
   workingRow?: number;
   /** Caller-owned stepper frame for live progress. */
   animationFrame?: number;
+  /** Plain glyph-free label used as the collapsed row title. */
+  label?: string;
+  /** Raw error text; its first line is the collapsed row body on terminal failure. */
+  error?: string;
+  /** Explicit tool expansion; tool cards opt into the kit's collapsed density only when set. */
+  expanded?: boolean;
+  /** Collapsed-row data, sent as `row` for tool cards (ignored by framed kits). */
+  compact?: {
+    title?: string;
+    body?: string[];
+    /** Primary argument/metadata shown in every state. */
+    summary?: string[];
+    /** Terminal metrics shown after elapsed, hidden while running. */
+    tail?: string[];
+  };
+}
+
+export function firstLineOf(text: string | undefined): string | undefined {
+  return text
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
 }
 
 export function boxedComponent(
@@ -141,6 +163,27 @@ export function boxedComponent(
           : [truncateToWidth(text, contentWidth, resolveIcon('ellipsis', '…'))];
       });
     if (kit) {
+      const toolSurface =
+        !options?.message && typeof options?.expanded === 'boolean';
+      const failedLine =
+        status === 'failed'
+          ? firstLineOf(stripTerminalSequences(options?.error ?? ''))
+          : undefined;
+      const row = toolSurface
+        ? {
+            title:
+              options?.compact?.title ??
+              options?.label ??
+              stripTerminalSequences(title),
+            body: failedLine
+              ? [failedLine]
+              : (options?.compact?.body ?? rawLines),
+            summary: options?.compact?.summary?.join(
+              ` ${resolveIcon('separator', '·')} `,
+            ),
+            tail: options?.compact?.tail,
+          }
+        : undefined;
       const footer = options?.message
         ? undefined
         : renderToolFooter(kit, theme, {
@@ -150,6 +193,9 @@ export function boxedComponent(
       return kit.card(
         theme,
         {
+          ...(toolSurface
+            ? { surface: 'tool' as const, expanded: options?.expanded, row }
+            : {}),
           title,
           body: rows,
           status: options?.message ? undefined : status,
@@ -240,7 +286,20 @@ export function toolRenderState(result: any, options: any, context?: any) {
     : isError
       ? 'failed'
       : 'completed';
+  const rawExpanded =
+    typeof options === 'object' && options !== null
+      ? options.expanded
+      : typeof options === 'boolean'
+        ? options
+        : undefined;
+  const expanded =
+    typeof rawExpanded === 'boolean'
+      ? rawExpanded
+      : typeof context?.expanded === 'boolean'
+        ? context.expanded
+        : undefined;
   return {
+    expanded,
     context: { ...context, isError, isPartial },
     isSuccess: !isPartial && !isError && completed,
     status,

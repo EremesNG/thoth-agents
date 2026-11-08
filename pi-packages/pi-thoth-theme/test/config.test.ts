@@ -14,6 +14,7 @@ const defaults = {
     subscriptionProviders: ['claude-bridge', 'antigravity'],
   },
   tools: {
+    collapsed: 'frame',
     enabled: true,
     respectPackages: ['thoth-agents', '@thoth-agents/*', 'thoth-mem'],
   },
@@ -136,7 +137,7 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath)).toEqual({
       ...defaults,
-      tools: { enabled: false, respectPackages },
+      tools: { collapsed: 'frame', enabled: false, respectPackages },
     });
   });
 

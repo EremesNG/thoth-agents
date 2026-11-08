@@ -1,3 +1,4 @@
+import type { KeybindingHints } from '@earendil-works/pi-coding-agent';
 import {
   stripTerminalSequences,
   truncateToWidth,
@@ -17,18 +18,27 @@ import {
   isAnimationEffectEnabled,
 } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
-import type { IconMode } from '../shared/config.ts';
+import type { IconMode, ToolDensity } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { resolveExpandHint } from '../shared/expand-hint.ts';
 import { frames, icon, statusIcon } from '../shared/icons.ts';
 import { getBorderTone } from '../tools/border.ts';
 import { renderBox } from '../tools/box.ts';
+import {
+  buildCompactRows,
+  type CompactRowState,
+  compactElapsed,
+} from '../tools/compact-row.ts';
 import {
   renderFrameBottom,
   renderFrameDivider,
   renderFrameRow,
   renderFrameTop,
 } from '../tools/frame.ts';
-import { syncElapsedTicker } from '../tools/ticker.ts';
+import {
+  type ElapsedRenderContext,
+  syncElapsedTicker,
+} from '../tools/ticker.ts';
 import { runningFooter, workingFrame } from './working.ts';
 
 const STATUS_ROLE = {
@@ -97,6 +107,79 @@ function indicatorLabel(status: RenderStatus): string {
   if (status === 'completed') return 'Done';
   if (status === 'failed') return 'Error';
   return status;
+}
+
+const FAILED_STATUSES: ReadonlySet<RenderStatus> = new Set([
+  'failed',
+  'timedOut',
+  'cancelled',
+  'interrupted',
+  'blocked',
+]);
+
+function compactCardState(options: RenderCardOptions): CompactRowState {
+  if (options.status && isRunning(options.status)) return 'running';
+  return options.isError ||
+    (options.status && FAILED_STATUSES.has(options.status))
+    ? 'error'
+    : 'success';
+}
+
+/** Collapsed-row rendering of an opted-in tool card (`surface: 'tool'`). */
+function compactCard(
+  theme: RenderKitTheme,
+  options: RenderCardOptions,
+  width: number,
+  mode: IconMode,
+  density: Exclude<ToolDensity, 'frame'>,
+  owner: object,
+): string[] {
+  if (options.part === 'start') return [];
+  const state = compactCardState(options);
+  const plain = (text: string | undefined) =>
+    stripTerminalSequences(text ?? '');
+  const { row } = options;
+  const body =
+    row?.body ??
+    (typeof options.body === 'function'
+      ? options.body(Math.max(1, width))
+      : options.body);
+  const firstLine = (body ?? [])
+    .map((line) => plain(line).trim())
+    .find(Boolean);
+  // Row data keeps `summary` as the primary argument in every state; legacy
+  // `options.summary` stays a terminal-only tail.
+  const tailSource = row ? row.tail : options.summary;
+  const terminalTail =
+    typeof tailSource === 'string' ? [tailSource] : (tailSource ?? []);
+  return buildCompactRows(
+    theme,
+    {
+      density,
+      state,
+      mode,
+      title: plain(row?.title ?? options.title),
+      summary: row?.summary === undefined ? undefined : plain(row.summary),
+      tail: [
+        options.context
+          ? compactElapsed(
+              options.context as ElapsedRenderContext,
+              state,
+              owner,
+            )
+          : undefined,
+        ...(state === 'running' ? [] : terminalTail.map(plain)),
+      ],
+      frame: options.context?.state?.animationFrame,
+      continuation: firstLine,
+      errorLine: firstLine,
+      expandHint:
+        state === 'running'
+          ? ''
+          : resolveExpandHint(options.context as Partial<KeybindingHints>),
+    },
+    width,
+  );
 }
 
 function card(
@@ -213,6 +296,7 @@ export function createRenderKit(
   owner: object,
   resolveToolRenderers?: ThothRenderKit['resolveToolRenderers'],
   mode: IconMode = 'nerd',
+  density: ToolDensity = 'frame',
 ): ThothRenderKit {
   const separator = icon('separator', mode);
   const ellipsis = icon('ellipsis', mode);
@@ -226,6 +310,20 @@ export function createRenderKit(
     ...(resolveToolRenderers ? { resolveToolRenderers } : {}),
     toolFooter: ownedToolFooter,
     card(theme, options, width) {
+      if (
+        density !== 'frame' &&
+        options.surface === 'tool' &&
+        options.expanded === false
+      ) {
+        return compactCard(
+          theme,
+          options,
+          Math.max(0, Math.floor(width)),
+          mode,
+          density,
+          owner,
+        );
+      }
       if (options.footer !== undefined && options.context && options.status) {
         syncElapsedTicker(options.context, owner, options.status);
       }

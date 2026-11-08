@@ -26,6 +26,24 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+describe('collapsed tool density configuration', () => {
+  it.each(['frame', 'compact', 'line'] as const)('loads %s', (collapsed) => {
+    writeFileSync(path, JSON.stringify({ tools: { collapsed } }));
+    expect(loadConfig(path).tools.collapsed).toBe(collapsed);
+  });
+
+  it.each(
+    [undefined, null, false, 42, '', 'LINE', 'line ', [], {}].map(
+      (collapsed) => ({ collapsed }),
+    ),
+  )('defaults malformed or missing density $collapsed to frame', ({
+    collapsed,
+  }) => {
+    writeFileSync(path, JSON.stringify({ tools: { collapsed } }));
+    expect(loadConfig(path).tools.collapsed).toBe('frame');
+  });
+});
+
 describe('animation configuration', () => {
   it.each([
     'full',

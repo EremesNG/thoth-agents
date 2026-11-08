@@ -59,10 +59,17 @@ export const renderSubagentListResult = iconAwareRenderer(
       : [];
     const archPrefix = themeFg(theme, 'accent', agentIcon());
     const title = `${archPrefix} ${themeTitle(theme, agents.length ? `subagents ${resolveIcon('separator', '·')} ${agents.length} available` : 'subagents')}`;
+    const compact = {
+      summary: agents.length ? [`${agents.length} available`] : [],
+    };
+    const error = result?.content?.[0]?.text;
 
     if (!agents.length) {
       return boxedComponent([themeDim(theme, 'No subagents available.')], {
         title,
+        label: 'subagents',
+        error,
+        compact,
         theme,
         ...renderState,
         wrapped: true,
@@ -76,6 +83,9 @@ export const renderSubagentListResult = iconAwareRenderer(
       ]);
       return boxedComponent(lines, {
         title,
+        label: 'subagents',
+        error,
+        compact,
         theme,
         ...renderState,
         wrapped: true,
@@ -96,6 +106,9 @@ export const renderSubagentListResult = iconAwareRenderer(
 
     return boxedComponent(lines, {
       title,
+      label: 'subagents',
+      error,
+      compact,
       theme,
       ...renderState,
       wrapped: true,

@@ -10,6 +10,13 @@ import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -29,6 +36,7 @@ interface WriteArgs {
 }
 
 interface WriteContext extends ElapsedRenderContext {
+  expanded?: boolean;
   args?: unknown;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
@@ -49,6 +57,13 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
       const args = (rawArgs ?? {}) as WriteArgs;
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'Write',
+          summary: filePath,
+        });
+      }
       const icon = getFileIcon(filePath, config.icons);
       const writeIcon = getToolIcon('write', config.icons);
       const borderTone = getToolBorderTone(context);
@@ -117,6 +132,34 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
       });
       const textOutput = getResultText(result);
 
+      // Check content lines from context args or result
+      const writeArgs = context?.args as WriteArgs | undefined;
+      const content = String(writeArgs?.content ?? '');
+      const contentLines = content ? content.split('\n') : [];
+      if (contentLines.length > 1 && contentLines.at(-1) === '') {
+        contentLines.pop();
+      }
+      const lineCount = contentLines.length || 1;
+
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const path = String(writeArgs?.path ?? writeArgs?.file_path ?? '');
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'Write',
+            summary: formatDisplayPath(path, context?.cwd ?? cwd),
+            counts: [`${plural(lineCount, 'line')} written`],
+            continuation: firstLine(content) || textOutput || 'File written',
+            errorLine: firstLine(textOutput) || 'Write failed',
+          },
+        );
+      }
+
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
@@ -132,15 +175,6 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
           ];
         });
       }
-
-      // Check content lines from context args or result
-      const writeArgs = context?.args as WriteArgs | undefined;
-      const content = String(writeArgs?.content ?? '');
-      const contentLines = content ? content.split('\n') : [];
-      if (contentLines.length > 1 && contentLines.at(-1) === '') {
-        contentLines.pop();
-      }
-      const lineCount = contentLines.length || 1;
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);

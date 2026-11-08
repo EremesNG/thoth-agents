@@ -15,12 +15,14 @@ import type { SubagentTask } from '../types.js';
 import {
   boxedComponent,
   emptyComponent,
+  firstLineOf,
   toolRenderState,
 } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import {
   clip,
   formatTaskLabel,
+  formatTaskSummary,
   formatUsage,
   hasAgentResponse,
   modelEffortLine,
@@ -63,6 +65,8 @@ export const renderSubagentStatusResult = iconAwareRenderer(
         [failed ? themeError(theme, text) : themeDim(theme, text)],
         {
           title,
+          label: 'subagent status',
+          error: text,
           theme,
           ...renderState,
           wrapped: true,
@@ -80,7 +84,8 @@ export const renderSubagentStatusResult = iconAwareRenderer(
       task.effective_mode === 'background' ||
       result?.details?.mode === 'background';
     const bgSuffix = isBg ? ' (background)' : '';
-    const title = `${archPrefix} ${themeTitle(theme, `subagent status ${resolveIcon('separator', '·')} ${taskLabel} ${resolveIcon('separator', '·')} ${statusText}${bgSuffix}`)}`;
+    const label = `subagent status ${resolveIcon('separator', '·')} ${taskLabel} ${resolveIcon('separator', '·')} ${statusText}${bgSuffix}`;
+    const title = `${archPrefix} ${themeTitle(theme, label)}`;
 
     if (!expanded) {
       const metaLine = `subagent: ${themeAccent(theme, task.agent)} ${resolveIcon('separator', '·')} model: ${task.model ?? 'default/current'} ${resolveIcon('separator', '·')} effort: ${themeAccent(theme, task.effort ?? 'default/current')} ${resolveIcon('separator', '·')} status: ${status}`;
@@ -88,10 +93,26 @@ export const renderSubagentStatusResult = iconAwareRenderer(
         metaLine,
         themeDim(theme, resolveExpandHint('to expand', context)),
       ];
+      const compactError = failed
+        ? firstLineOf(
+            task.error ||
+              (renderState.context.isError
+                ? result?.content?.[0]?.text
+                : undefined),
+          )
+        : undefined;
       return boxedComponent(lines, {
         title,
         theme,
         ...renderState,
+        label: 'subagent status',
+        error: compactError,
+        compact: {
+          summary: [formatTaskSummary(task), task.model, task.effort].filter(
+            Boolean,
+          ) as string[],
+          body: compactError ? [themeError(theme, compactError)] : [],
+        },
         wrapped: true,
       });
     }

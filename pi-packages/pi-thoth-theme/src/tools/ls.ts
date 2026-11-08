@@ -17,6 +17,13 @@ import {
   renderBox,
   splitResultNotice,
 } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 import { getDirIcon, getFileIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -35,6 +42,8 @@ interface LsArgs {
 }
 
 interface LsContext extends ElapsedRenderContext {
+  expanded?: boolean;
+  args?: unknown;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
   state?: {
@@ -43,6 +52,11 @@ interface LsContext extends ElapsedRenderContext {
     [key: string]: unknown;
   };
   toolCallId?: string;
+}
+
+function listedPath(context: LsContext | undefined, cwd: string): string {
+  const args = (context?.args ?? {}) as LsArgs;
+  return formatDisplayPath(String(args.path ?? '.'), context?.cwd ?? cwd);
 }
 
 function parseLsOutput(
@@ -71,6 +85,13 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
       const dirPath = escapeControlCharacters(
         formatDisplayPath(rawPath, context?.cwd ?? cwd),
       );
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'List',
+          summary: dirPath,
+        });
+      }
       const icon = getDirIcon(config.icons);
       const borderTone = getToolBorderTone(context);
 
@@ -147,6 +168,26 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
         isPartial: options?.isPartial,
       });
       const textOutput = getRawResultText(result);
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const { entries } = isErr
+          ? { entries: [] }
+          : parseLsOutput(textOutput, result.details);
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'List',
+            summary: listedPath(context, cwd),
+            counts: [plural(entries.length, 'entry', 'entries')],
+            continuation: entries[0] ?? 'empty directory',
+            errorLine: firstLine(textOutput) || 'Failed to list directory',
+          },
+        );
+      }
 
       if (isErr) {
         return createComponent((width: number) => {

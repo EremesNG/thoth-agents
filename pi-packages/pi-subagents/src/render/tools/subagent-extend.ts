@@ -36,7 +36,14 @@ export const renderSubagentExtendResult = iconAwareRenderer(
       const text = result?.content?.[0]?.text ?? details.error ?? '';
       return boxedComponent(
         [failed ? themeError(theme, text) : themeDim(theme, text)],
-        { title, theme, ...renderState, wrapped: true },
+        {
+          title,
+          label: 'subagent extend',
+          error: text,
+          theme,
+          ...renderState,
+          wrapped: true,
+        },
       );
     }
 
@@ -54,6 +61,15 @@ export const renderSubagentExtendResult = iconAwareRenderer(
     }
     return boxedComponent(lines, {
       title,
+      label: 'subagent extend',
+      compact: {
+        summary: [details.task_id],
+        tail: [
+          `+${details.added_ms}ms`,
+          `${details.extensions_remaining} left`,
+        ],
+        body: [],
+      },
       theme,
       ...renderState,
       wrapped: true,

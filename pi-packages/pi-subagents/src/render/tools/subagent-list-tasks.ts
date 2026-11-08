@@ -31,6 +31,9 @@ export const renderSubagentListTasksResult = iconAwareRenderer(
 
     return boxedComponent(lines, {
       title,
+      label: 'subagent tasks',
+      compact: { summary: tasks.length ? [`${tasks.length} listed`] : [] },
+      error: result?.content?.[0]?.text,
       theme,
       ...renderState,
       wrapped: true,

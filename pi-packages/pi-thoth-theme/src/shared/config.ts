@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import type { AnimationLevel } from '@thoth-agents/pi-core';
 
 export type IconMode = 'nerd' | 'unicode' | 'ascii';
+export type ToolDensity = 'frame' | 'compact' | 'line';
 
 export const DEFAULT_RESPECT_PACKAGES: readonly string[] = [
   'thoth-agents',
@@ -28,7 +29,12 @@ export interface ThemeConfig {
   };
   /** Omission enables the input box, preserving the legacy config shape. */
   inputBox?: { enabled: boolean };
-  tools: { enabled: boolean; respectPackages?: string[] };
+  tools: {
+    enabled: boolean;
+    respectPackages?: string[];
+    /** Omission keeps framed tool cards for programmatic configs. */
+    collapsed?: ToolDensity;
+  };
   welcome: { enabled: boolean };
 }
 
@@ -122,6 +128,7 @@ export function loadConfig(configPath = defaultConfigPath()): ThemeConfig {
   } catch {
     // Missing or malformed package configuration uses package defaults.
   }
+  const collapsed = asObject(config.tools).collapsed;
   return {
     animation: isAnimationLevel(config.animation) ? config.animation : 'full',
     icons:
@@ -138,6 +145,8 @@ export function loadConfig(configPath = defaultConfigPath()): ThemeConfig {
     tools: {
       enabled: moduleEnabled(config.tools),
       respectPackages: parseRespectPackages(config.tools),
+      collapsed:
+        collapsed === 'compact' || collapsed === 'line' ? collapsed : 'frame',
     },
     welcome: { enabled: moduleEnabled(config.welcome) },
   };

@@ -10,6 +10,7 @@ import { iconAwareRenderer } from '../icon-aware-component.js';
 import {
   boxedComponent,
   emptyComponent,
+  firstLineOf,
   toolRenderState,
 } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
@@ -54,6 +55,14 @@ export const renderSubagentReplyResult = iconAwareRenderer(
     ].filter(Boolean) as string[];
     return boxedComponent(lines, {
       title: `${themeFg(theme, 'accent', agentIcon())} ${themeTitle(theme, `subagent reply ${resolveIcon('separator', '·')} ${status}`)}`,
+      label: 'subagent reply',
+      error: text,
+      compact: {
+        summary: [status, clip(firstLineOf(text) ?? '', 60, true)].filter(
+          Boolean,
+        ),
+        body: [],
+      },
       theme,
       ...renderState,
       wrapped: true,

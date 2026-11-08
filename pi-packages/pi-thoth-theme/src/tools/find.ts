@@ -17,6 +17,13 @@ import {
   renderBox,
   splitResultNotice,
 } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -36,6 +43,8 @@ interface FindArgs {
 }
 
 interface FindContext extends ElapsedRenderContext {
+  expanded?: boolean;
+  args?: unknown;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
   state?: {
@@ -70,6 +79,13 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
       const searchPath = escapeControlCharacters(
         formatDisplayPath(rawPath, context?.cwd ?? cwd),
       );
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'Find',
+          summary: `"${pattern}" in ${searchPath}`,
+        });
+      }
       const icon = getToolIcon('search', config.icons);
       const borderTone = getToolBorderTone(context);
 
@@ -146,6 +162,31 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
         isPartial: options?.isPartial,
       });
       const textOutput = getRawResultText(result);
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const findArgs = (context?.args ?? {}) as FindArgs;
+        const { entries } = isErr
+          ? { entries: [] }
+          : parseFindOutput(textOutput, result.details);
+        const searched = formatDisplayPath(
+          String(findArgs.path ?? '.'),
+          context?.cwd ?? cwd,
+        );
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'Find',
+            summary: `"${String(findArgs.pattern ?? '*')}" in ${searched}`,
+            counts: [plural(entries.length, 'file')],
+            continuation: entries[0] ?? 'no matches found',
+            errorLine: firstLine(textOutput) || 'Find failed',
+          },
+        );
+      }
 
       if (isErr) {
         return createComponent((width: number) => {

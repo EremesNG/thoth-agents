@@ -3,10 +3,11 @@ import { agentIcon, themeFg, themeStatus } from '../completion-message.js';
 import { iconAwareRenderer } from '../icon-aware-component.js';
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
-import { boxedComponent, toolRenderState } from './components.js';
+import { boxedComponent, firstLineOf, toolRenderState } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import {
   formatTaskLabel,
+  formatTaskSummary,
   formatUsage,
   hasAgentResponse,
   modelEffortLine,
@@ -48,6 +49,8 @@ export const renderSubagentResult = iconAwareRenderer(
       const title = `${archPrefix} ${theme.fg?.('toolTitle', titleText) ?? titleText}`;
       return boxedComponent([text], {
         title,
+        label: titleText,
+        error: result?.content?.[0]?.text,
         theme,
         ...renderState,
         wrapped: true,
@@ -64,23 +67,48 @@ export const renderSubagentResult = iconAwareRenderer(
       result?.details?.mode === 'background';
     const bgSuffix = isBg ? ' (background)' : '';
     let title: string;
+    let label: string;
     if (isRunning) {
       const agentOrName = task.display_name || task.agent || 'subagent';
-      title = `${archPrefix} ${theme.fg?.('toolTitle', `Subagent ${resolveIcon('separator', '·')} ${agentOrName} ${resolveIcon('separator', '·')} ${task.status}${bgSuffix}`) ?? `Subagent ${resolveIcon('separator', '·')} ${agentOrName} ${resolveIcon('separator', '·')} ${task.status}${bgSuffix}`}`;
+      label = `Subagent ${resolveIcon('separator', '·')} ${agentOrName} ${resolveIcon('separator', '·')} ${task.status}${bgSuffix}`;
     } else if (hasResp) {
-      title = `${archPrefix} ${theme.fg?.('toolTitle', `Subagent result ${resolveIcon('separator', '·')} ${taskLabel}`) ?? `Subagent result ${resolveIcon('separator', '·')} ${taskLabel}`}`;
+      label = `Subagent result ${resolveIcon('separator', '·')} ${taskLabel}`;
     } else {
-      title = `${archPrefix} ${theme.fg?.('toolTitle', `Subagent ${resolveIcon('separator', '·')} ${taskLabel}`) ?? `Subagent ${resolveIcon('separator', '·')} ${taskLabel}`}`;
+      label = `Subagent ${resolveIcon('separator', '·')} ${taskLabel}`;
     }
+    title = `${archPrefix} ${theme.fg?.('toolTitle', label) ?? label}`;
 
     if (!expanded) {
       const metaLine = `subagent: ${theme.fg?.('accent', task.agent) ?? task.agent} ${resolveIcon('separator', '·')} model: ${task.model ?? 'default/current'} ${resolveIcon('separator', '·')} effort: ${task.effort ?? 'default/current'} ${resolveIcon('separator', '·')} status: ${status}`;
       const expandHint = resolveExpandHint('to expand', context);
       const lines = [metaLine, theme.fg?.('dim', expandHint) ?? expandHint];
+      const compactError = failed
+        ? firstLineOf(
+            task.error ||
+              (renderState.context.isError
+                ? result?.content?.[0]?.text
+                : undefined),
+          )
+        : undefined;
+      const compactDetail = compactError ?? firstLineOf(responseText);
       return boxedComponent(lines, {
         title,
         theme,
         ...renderState,
+        label: hasResp && !isRunning ? 'Subagent result' : 'Subagent',
+        error: compactError,
+        compact: {
+          summary: [formatTaskSummary(task), task.model, task.effort].filter(
+            Boolean,
+          ) as string[],
+          body: compactDetail
+            ? [
+                compactError
+                  ? (theme.fg?.('error', compactDetail) ?? compactDetail)
+                  : compactDetail,
+              ]
+            : [],
+        },
         wrapped: true,
       });
     }

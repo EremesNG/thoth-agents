@@ -206,6 +206,46 @@ Configuration is read at extension load; use `/reload` after manual file edits
 malformed or invalid values use defaults unless noted above. Pi settings are
 never read for package configuration.
 
+### Collapsed tool rows
+
+`tools.collapsed` accepts `"frame"` (default), `"compact"` or `"line"` in
+`pi-thoth-theme.json`. Missing or malformed values use `"frame"`. For example:
+
+```json
+{ "tools": { "collapsed": "compact" } }
+```
+
+Apply changes with `/reload`; there is no runtime command for this setting.
+
+- `"frame"`: the existing framed calls and results.
+- `"line"`: one row with a status glyph, tool name, primary argument or summary,
+  and a dim tail with elapsed time, exit code or counts as applicable, plus the
+  expand key.
+- `"compact"`: the same row plus a dim `└` continuation row with the first
+  meaningful output line, when available. For example (colors omitted):
+
+  ```text
+  ✓ bash echo hello · 0.1s · exit 0
+  └ hello · ctrl+o to expand
+  ```
+
+Running calls stay on one row in both row modes, even with a partial error flag.
+Terminal errors use two rows, with the first error line in red on the second row.
+The `ctrl+o` expanded view is always the full framed card, in every mode.
+Pi inserts one blank row before every tool call, so a `"line"` call occupies its
+content row plus that spacer.
+
+This covers theme built-ins (`bash`, PowerShell, `read`, `edit`, `write`, `ls`,
+`grep`, `find`, `codemode` and generic/MCP tools) and render-kit tool cards that
+opt in, including pi-todo and pi-subagents tools. It does not cover thoth-mem
+tools, AskCodex/AskAntigravity, `ask_user_question`, `bg_task_*`, or
+notification/message cards.
+
+For producers, pi-core's `RenderCardOptions` opts in with
+`card({ surface: 'tool', expanded, row: { title, summary, body } })`.
+Set `expanded` to the current expansion state (`false` enables collapsed rows);
+`body` is an array of output lines. Cards without this opt-in stay framed.
+
 **A Nerd Font is required for the default icons.** Configure your terminal to
 use one, set `"icons": "unicode"` for native glyphs, or use `"icons": "ascii"`
 for plain-text alternatives. Unicode mode substitutes a Unicode glyph where

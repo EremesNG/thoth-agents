@@ -7,7 +7,7 @@ import type {
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { IconMode, ThemeConfig } from '../shared/config.ts';
-import { expandHintSuffix } from '../shared/expand-hint.ts';
+import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
@@ -16,6 +16,7 @@ import {
   getResultText,
   hasImageContent,
 } from './box.ts';
+import { buildCompactRows, compactElapsed } from './compact-row.ts';
 import {
   hasToolResult,
   renderFrameBottom,
@@ -34,6 +35,8 @@ const NESTED_KEYS_SHOWN = 4;
 
 interface GenericContext extends ElapsedRenderContext {
   lastComponent?: { invalidate?: () => void };
+  args?: unknown;
+  expanded?: boolean;
   state?: ElapsedRenderState & {
     hasResult?: boolean;
     callComponent?: { invalidate?: () => void };
@@ -93,12 +96,36 @@ export function createGenericTool(
   const ellipsis = semanticIcon('ellipsis', config.icons);
   const toolIcon = semanticIcon('tool', config.icons);
   const name = escapeControlCharacters(toolName);
+  const density = config.tools.collapsed ?? 'frame';
 
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GenericContext) {
       context = detachRenderContext(context);
       syncElapsedTicker(context);
+      if (density !== 'frame' && !context?.expanded) {
+        const argsText = summarizeArgs(rawArgs, config.icons);
+        const collapsed = createComponent((width: number) =>
+          hasToolResult(context)
+            ? []
+            : buildCompactRows(
+                theme,
+                {
+                  density,
+                  state: 'running',
+                  mode: config.icons,
+                  title: toolName,
+                  summary: argsText,
+                  tail: [compactElapsed(context, 'running')],
+                  frame: context?.state?.animationFrame,
+                },
+                width,
+              ),
+        );
+        if (context?.state) context.state.callComponent = collapsed;
+        return collapsed;
+      }
+
       const borderTone = context?.isPartial
         ? 'accent'
         : getToolBorderTone(context);
@@ -156,6 +183,36 @@ export function createGenericTool(
       const allLines = text ? text.split('\n') : [];
       const lineCount = allLines.length;
       const hasImage = hasImageContent(result);
+
+      if (density !== 'frame' && !options?.expanded) {
+        const state = isPartial ? 'running' : isErr ? 'error' : 'success';
+        const firstLine =
+          allLines.map((line) => line.trim()).find(Boolean) ??
+          (hasImage ? '' : '(no output)');
+        return createComponent((width: number) =>
+          buildCompactRows(
+            theme,
+            {
+              density,
+              state,
+              mode: config.icons,
+              title: toolName,
+              summary: summarizeArgs(context?.args, config.icons),
+              tail: [
+                compactElapsed({ ...context, isPartial }, state),
+                ...(isPartial
+                  ? []
+                  : [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`]),
+              ],
+              frame: context?.state?.animationFrame,
+              continuation: firstLine,
+              errorLine: firstLine,
+              expandHint: isPartial ? '' : resolveExpandHint(context),
+            },
+            width,
+          ),
+        );
+      }
 
       return createComponent((width: number) => {
         const footer = toolFooter(

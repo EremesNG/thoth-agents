@@ -13,6 +13,13 @@ import { createRenderKit } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { escapeControlCharacters, getResultText } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 
 const COLLAPSED_CALLS = 8;
 const RESULT_PRESENT = 'codemodeResultPresent';
@@ -99,6 +106,12 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
         context.state[RESULT_PRESENT] = false;
         context.state[RESULT_BORDER] = undefined;
       }
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'codemode',
+        });
+      }
       const memo = createKitRenderMemo();
       const component = {
         invalidate: () => memo.invalidate(),
@@ -144,6 +157,30 @@ export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
         context.state[CALL_COMPONENT]?.invalidate?.();
       }
       const calls = displayCalls(result.details);
+      const density = collapsedDensity(config, options.expanded);
+      if (density) {
+        if (context?.state) context.state.hasResult = true;
+        const text = getResultText(result);
+        const firstError = calls.find((call) => call.error);
+        return compactResult(
+          density,
+          theme,
+          context,
+          config,
+          Boolean(options.isPartial),
+          {
+            title: 'codemode',
+            summary: calls.length ? plural(calls.length, 'call') : undefined,
+            continuation:
+              calls.map((call) => call.name).join(', ') ||
+              firstLine(text) ||
+              '(no output)',
+            errorLine: firstError
+              ? firstLine(`${firstError.name}: ${firstError.error}`)
+              : firstLine(text),
+          },
+        );
+      }
       const visibleCalls = options.expanded
         ? calls
         : calls.slice(0, COLLAPSED_CALLS);

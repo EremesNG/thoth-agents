@@ -82,11 +82,11 @@ function redactText(
   );
   text = text
     .replace(
-      /authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]+/gi,
+      /authorization\s*:\s*bearer\s+[A-Za-z0-9._-]+/gi,
       'Authorization: [redacted]',
     )
-    .replace(/bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
-    .replace(/\b(sk|pk|rk)-[A-Za-z0-9._\-]+\b/g, '[redacted]')
+    .replace(/bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(sk|pk|rk)-[A-Za-z0-9._-]+\b/g, '[redacted]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted]')
     .replace(/(?:^|\s)(?:\/[A-Za-z0-9._-]+)+/g, (match) =>
       match.replace(/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*/g, '[redacted]'),

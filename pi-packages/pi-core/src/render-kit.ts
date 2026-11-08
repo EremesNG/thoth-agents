@@ -92,6 +92,27 @@ export interface RenderCardSection {
 }
 
 export interface RenderCardOptions {
+  /**
+   * Producers set `surface: 'tool'` plus explicit `expanded` to opt a tool card
+   * into the theme's collapsed density. Kits may ignore these hints.
+   */
+  surface?: 'tool';
+  /** Explicit expansion state for tool density opt-in; kits may ignore it. */
+  expanded?: boolean;
+  /**
+   * Collapsed-row data used only when the kit applies its collapsed tool
+   * density (`surface: 'tool'`, `expanded: false`); it overrides
+   * `title`/`summary`/`body` there. Framed kits ignore it.
+   * `summary` is the primary argument/summary shown in every state (lowest
+   * truncation priority); `tail` holds terminal metrics shown after elapsed
+   * and hidden while running.
+   */
+  row?: {
+    title?: string;
+    summary?: string;
+    tail?: string[];
+    body?: string[];
+  };
   title?: string;
   body?: RenderRows;
   sections?: readonly RenderCardSection[];

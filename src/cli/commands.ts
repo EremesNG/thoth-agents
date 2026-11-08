@@ -337,7 +337,7 @@ Codex and Claude marketplace versions remain native-manager-owned and do not pro
 that CLI-managed agents, skills, configuration, or provider setup are aligned.
 Use the latest CLI install or interactive CLI Update to change the pinned release.
 
-OpenCode 2.2.5 or later is required before applying configuration.
+OpenCode 2.2.6 or later is required before applying configuration.
 OpenCode install configures the adaptive six-role roster and native subagent delegation.
 The plugin provides its five owned skills from its installed package; no global copies are written.
 Provider capability is external and reported only from caller-supplied evidence.

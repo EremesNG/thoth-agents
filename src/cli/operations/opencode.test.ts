@@ -31,7 +31,7 @@ const installRequiredSkillMock = vi.hoisted(() =>
 
 vi.mock('../system', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../system')>()),
-  getOpenCodeVersionSync: vi.fn(() => 'opencode v2.2.5'),
+  getOpenCodeVersionSync: vi.fn(() => 'opencode v2.2.6'),
 }));
 
 vi.mock('../skills', async (importOriginal) => {
@@ -228,13 +228,13 @@ describe('OpenCode operations adapter v0.3', () => {
       status: 'complete' as const,
       changed: true,
       harness: 'opencode' as const,
-      target: 'C:/provider/opencode',
-      steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+      warnings: ['Provider warning'],
+      restartRequired: true,
       diagnostics: ['provider complete'],
-      manualActions: [],
+      actions: [],
       receipt: null,
       command: 'npx',
-      args: ['thoth-mem@latest'],
+      args: ['thoth-mem@>=0.7.0'],
       exitCode: 0,
     };
   }
@@ -335,6 +335,11 @@ describe('OpenCode operations adapter v0.3', () => {
 
   test.each([
     '1.18.2',
+    '2.2.5',
+    '2.2.6-beta.1',
+    '2.2.6+_',
+    '2.2.6+..',
+    '2.2.6+build..1',
     'invalid',
     null,
   ])('rejects host %s before Update/apply writes', (version) => {
@@ -350,7 +355,7 @@ describe('OpenCode operations adapter v0.3', () => {
     });
     const result = applyOpenCodePlan(plan);
     expect(result.applied).toBe(false);
-    expect(result.summary).toContain('OpenCode 2.2.5 or later');
+    expect(result.summary).toContain('OpenCode 2.2.6 or later');
     expect(updateMain).not.toHaveBeenCalled();
     expect(writeLite).not.toHaveBeenCalled();
     expect(readFileSync(mainConfigPath(), 'utf8')).toBe(before);
@@ -391,11 +396,11 @@ describe('OpenCode operations adapter v0.3', () => {
       provider: {
         ...completeProviderResult(),
         success: false,
-        status: 'partial' as const,
+        status: 'requires-user-action' as const,
         diagnostics: ['provider partial'],
-        manualActions: ['Run provider recovery.'],
+        actions: ['Run provider recovery.'],
         receipt: 'C:/provider/partial.json',
-        exitCode: 2,
+        exitCode: 1,
       },
       ledger: {
         status: 'not-attempted' as const,
@@ -420,7 +425,12 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(result.warnings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ message: 'provider partial' }),
-        expect.objectContaining({ message: 'Run provider recovery.' }),
+        expect.objectContaining({ message: 'Provider warning' }),
+      ]),
+    );
+    expect(result.changedTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ observed: 'Run provider recovery.' }),
       ]),
     );
     expect(result.summary).toContain('provider incomplete');

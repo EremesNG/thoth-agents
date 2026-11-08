@@ -129,6 +129,80 @@ describe('Pi operations', () => {
     };
   };
 
+  test.each([
+    true,
+    false,
+  ])('renders Pi provider evidence on success=%s', (success) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-provider-'));
+    roots.push(homeDir);
+    const context: PiOperationContext = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: installedRuntime(homeDir),
+      buildPiSetupPlan: (options) => ({
+        ...buildPiSetupPlan(options),
+        ready: true,
+        blockers: [],
+      }),
+      applyPiSetup: () => ({
+        success: true,
+        changed: [],
+        diagnostics: [],
+        installedPackages: [],
+        configuredPackageRoot: process.cwd(),
+      }),
+      inspectPiPackageSkills: () => ({ success: true, skills: [] }),
+      installRequiredSkill: (skill, harness) => ({
+        skill,
+        harness,
+        status: 'installed',
+        skillPath: join(homeDir, skill.name),
+      }),
+      finalizeHarnessInstall: () => ({
+        success,
+        provider: {
+          success,
+          evidenceValid: true,
+          status: success ? 'complete' : 'requires-user-action',
+          changed: false,
+          harness: 'pi',
+          actions: ['Pi provider action'],
+          warnings: ['Pi provider warning'],
+          diagnostics: ['Pi provider diagnostic'],
+          receipt: 'provider-receipt.json',
+          restartRequired: true,
+          command: 'npx',
+          args: [],
+          exitCode: success ? 0 : 1,
+        },
+        ledger: {
+          status: success ? 'recorded' : 'not-attempted',
+          path: 'ledger.json',
+          repairedInvalidState: false,
+        },
+        ...(!success ? { error: 'provider incomplete' } : {}),
+      }),
+    };
+    const plan = buildPiUpdatePlan(context);
+    expect(plan.canApply).toBe(true);
+    const result = applyPiPlan(plan);
+    expect(result.applied).toBe(success);
+    expect(result.changedTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ observed: 'Pi provider action' }),
+        expect.objectContaining({ path: 'provider-receipt.json' }),
+      ]),
+    );
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'Pi provider warning' }),
+        expect.objectContaining({ message: 'Pi provider diagnostic' }),
+        expect.objectContaining({ message: 'thoth-mem: restart required' }),
+      ]),
+    );
+  });
+
   test('keeps install and update complete while sync excludes packages/provider/ledger', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-op-'));
     roots.push(homeDir);

@@ -453,7 +453,7 @@ src/harness src/hooks src/config src/tools src/plugin-node-runtime.test.ts`.
 Cache guards check structural system/tool/history immutability, deterministic
 keyed instructions and compaction carry-over, not provider cache-hit rates.
 
-For a no-model smoke, build first and use OpenCode >=2.2.5 in a new scratch
+For a no-model smoke, build first and use OpenCode >=2.2.6 in a new scratch
 project with isolated `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
 `XDG_STATE_HOME` and `OPENCODE_CONFIG_DIR`. Set project `opencode.json` to
 `{"plugins":[{"package":"<absolute built repository path>"}]}`. Start

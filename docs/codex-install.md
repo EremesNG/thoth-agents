@@ -87,7 +87,7 @@ User-scope setup manages:
 - mandatory external skills in Codex's user skill root, `~/.agents/skills/`,
   via `npx skills add`;
 - provider-owned thoth-mem setup through
-  `npx -y thoth-mem@latest setup codex --json`.
+  `npx -y "thoth-mem@>=0.7.0" setup codex --json`.
 
 The CLI no longer writes root instructions to `~/.codex/AGENTS.md`.
 Install/update/sync remove a well-formed legacy `thoth-agents:codex-root` block
@@ -116,9 +116,12 @@ The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;
 Codex remains the owner of current marketplace snapshots and normal plugin
 cache lifecycle; the fixed legacy cleanup above is the only filesystem
-exception. Dry-run delegates to thoth-mem's `--plan` mode. A partial or
-user-action result keeps the combined installation incomplete and prints
-provider diagnostics, actions, and receipt.
+exception. Dry-run delegates to thoth-mem's `--plan` mode. Provider success
+requires exit 0 with `planned` for dry-run or `complete` for apply. Codex may
+instead report `unsupported` or `requires-user-action` with exit 1; both keep the
+combined installation incomplete. Provider actions, warnings, diagnostics,
+receipt path and restart requirement are surfaced. See the [provider outcome contract](installation.md#thoth-mem-companion-setup)
+for stderr-only failures, invalid options and evidence validation.
 
 ## 3. Restart and initialize each repository
 

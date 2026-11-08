@@ -40,13 +40,14 @@ npx thoth-agents@latest install --agent=claude
 Every installation uses the thoth-agents CLI to install external skills through
 `npx skills add`; published installs then invoke provider-owned thoth-mem setup.
 An explicit local Pi package install omits the provider step and directs the
-operator to install local thoth-mem separately. OpenCode >=2.2.5 registers five
+operator to install local thoth-mem separately. OpenCode >=2.2.6 registers five
 owned skills from package paths; 2.2.5 config-discovered same-ID copies shadow
 them. The installer offers a confirmed backup move, never deletion; otherwise
 it warns. See [legacy skill recovery](installation.md#opencode-legacy-skill-copies).
-Only a consistent thoth-mem `complete` result
-completes a published installation; printed manual actions and receipts remain
-provider-owned. Codex also needs the CLI for thin global role TOMLs and config;
+Provider success requires exit 0 with `planned` for dry-run or `complete` when
+applied. Provider actions, warnings, diagnostics, receipt path and restart
+requirement (when present) are shown; see [provider outcomes](installation.md#thoth-mem-companion-setup).
+Codex also needs the CLI for thin global role TOMLs and config;
 trusted plugin hooks deliver root/role prompts instead of a global `AGENTS.md`
 block. Work execution never calls either CLI.
 

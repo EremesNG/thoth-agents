@@ -8,47 +8,23 @@ Durable behavioral contract for `cli-installation`.
 
 ### Requirement: Provider setup policy
 
-Published installers MUST invoke `npx -y thoth-mem@latest setup <opencode|codex|claude|pi> --json` after thoth-agents-owned setup and mandatory external skills, adding `--plan` only for dry-run and accepting only internally consistent `complete` evidence. Provider setup is globally scoped by thoth-mem and the consumer MUST NOT pass the rejected `--scope` option. An explicit Pi `--local-package-root` install MUST omit provider setup, record only thoth-agents completion, and direct the operator to install thoth-mem separately from its own local checkout.
+Published installers MUST invoke `npx -y thoth-mem@>=0.7.0 setup <opencode|codex|claude|pi> --json`, passing the package spec as one literal argument that no shell interprets as redirection, after thoth-agents-owned setup and mandatory external skills, adding `--plan` only for dry-run, and MUST NOT substitute `@latest` or pass the rejected `--scope` option; provider setup is globally scoped by thoth-mem. An explicit Pi `--local-package-root` install MUST omit provider setup, record only thoth-agents completion, and direct the operator to install thoth-mem separately from its own local checkout.
 
-#### Scenario: US1 - Install the complete Pi agent pack 1
+#### Scenario: Provider setup policy
 
-- **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
-- **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
-
-#### Scenario: US1 - Install the complete Pi agent pack 2
-
-- **GIVEN** the same environment
-- **WHEN** the installation is run with `--dry-run`
-- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
-
-#### Scenario: US1 - Install the complete Pi agent pack 3
-
-- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
-- **WHEN** installation finishes
-- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
+- **GIVEN** any supported harness using its published install source
+- **WHEN** its installation reaches provider setup
+- **THEN** it runs `npx -y thoth-mem@>=0.7.0 setup <harness> --json` with the spec as one literal argument, with `--plan` only for dry-run, after thoth-agents-owned setup and required skills 
 
 ### Requirement: Truthful provider outcome
 
-The installer MUST parse the documented thoth-mem JSON result, accept only internally consistent `complete` evidence as success, and surface diagnostics, manual actions, and receipt information without claiming completion for any other state.
+The installer MUST parse thoth-mem's per-host setup JSON and exit code, accept as success only exit 0 with a well-formed result whose status is `planned` for dry-run or `complete` when applied and whose reported host matches the requested harness, treat `unsupported`, `requires-user-action`, a thrown setup failure, invalid options, malformed output and status/exit or host contradictions as unsuccessful, and surface the provider's actions, warnings, diagnostics, receipt path and restart requirement without claiming completion for any other state.
 
-#### Scenario: US1 - Complete harness installation 1
+#### Scenario: Truthful provider outcome
 
-- **GIVEN** any supported harness using its published install source
-- **WHEN** its thoth-agents installation reaches provider setup
-- **THEN** it invokes the official global thoth-mem setup command after thoth-agents-owned setup and required skills
-
-#### Scenario: US1 - Complete harness installation 2
-
-- **GIVEN** dry-run installation
-- **WHEN** provider setup is planned
-- **THEN** the thoth-mem command includes `--plan` and performs no provider mutation
-
-#### Scenario: US1 - Complete harness installation 3
-
-- **GIVEN** thoth-mem reports `partial`, `failed`, `requires_user_action`, malformed output, or contradictory exit evidence
+- **GIVEN** thoth-mem reports `requires-user-action` with exit 1, exits 1 with only a stderr failure, or prints malformed output
 - **WHEN** thoth-agents finishes the command
-- **THEN** it preserves bounded diagnostics, manual actions, and receipt evidence and does not claim complete installation
+- **THEN** it reports the bounded provider diagnostics, actions, warnings and receipt path and does not record complete installation 
 
 ### Requirement: Public operator guidance
 
@@ -158,7 +134,7 @@ The OpenCode plugin MUST register the five canonical thoth-owned workflow skills
 
 - **GIVEN** a complete installed thoth-agents package and a stale `thoth-sdd` copy under `~/.config/opencode/skills/`
 - **WHEN** `install --agent=opencode` runs and the operator confirms the move
-- **THEN** the copy is moved unchanged into the backup directory and OpenCode 2.2.5 lists all five owned skills once with paths inside the installed package 
+- **THEN** the copy is moved unchanged into the backup directory and OpenCode 2.2.6 lists all five owned skills once with paths inside the installed package 
 
 ### Requirement: Pin the OpenCode plugin to the executing release
 
@@ -168,7 +144,7 @@ Every OpenCode install or applied update MUST replace all managed thoth-agents p
 
 - **GIVEN** OpenCode configuration with a bare, tagged or differently versioned thoth-agents entry under `plugin` or `plugins` plus unrelated plugins
 - **WHEN** installation runs from version `0.4.8`
-- **THEN** `plugins` contains exactly one `thoth-agents@0.4.8` entry, no thoth-agents entry remains under `plugin`, and unrelated plugins keep their relative order 
+- **THEN** `plugins` contains exactly one `thoth-agents@0.4.8` entry, no thoth-agents entry remains under `plugin`, and unrelated plugins keep their relative order
 
 ### Requirement: Make applied Update installation-equivalent
 
@@ -314,7 +290,7 @@ The OpenCode plugin MUST NOT run a runtime version checker, rewrite plugin confi
 
 - **GIVEN** OpenCode is running a pinned release and a newer release exists
 - **WHEN** the plugin runs
-- **THEN** it performs no version check, notification, configuration rewrite or installation, and the operator updates through the CLI 
+- **THEN** it performs no version check, notification, configuration rewrite or installation, and the operator updates through the CLI
 
 ### Requirement: Document the explicit update contract
 
@@ -324,7 +300,7 @@ CLI help, status and operation messaging, and routed public installation guidanc
 
 - **GIVEN** installation and update help or documentation
 - **WHEN** an operator reads the OpenCode guidance
-- **THEN** it explains the exact-version pin, the OpenCode 2.2.5 minimum and that re-running the latest CLI installer or applying Update is the supported update mechanism 
+- **THEN** it explains the exact-version pin, the OpenCode 2.2.6 minimum and that re-running the latest CLI installer or applying Update is the supported update mechanism 
 
 ### Requirement: Expose truthful Pi operations
 
@@ -482,12 +458,12 @@ The CLI MUST provide Codex `uninstall`, removing only attributable thoth-agents 
 - **WHEN** `uninstall --agent=codex` runs
 - **THEN** the edited TOML and the unrelated entry are preserved and reported, and every unmodified thoth-owned surface is removed
 
-### Requirement: Require OpenCode 2.2.5 or later
+### Requirement: Require OpenCode 2.2.6 or later
 
-OpenCode installation and update MUST parse the detected host version and MUST fail before writing any configuration when OpenCode is missing, unparseable or older than 2.2.5.
+OpenCode installation and update MUST parse the detected host version and MUST fail before writing any configuration when OpenCode is missing, unparseable, a prerelease or older than 2.2.6.
 
-#### Scenario: Require OpenCode 2.2.5 or later
+#### Scenario: Require OpenCode 2.2.6 or later
 
-- **GIVEN** an OpenCode host reporting version 1.18.2
+- **GIVEN** an OpenCode host reporting version 2.2.5
 - **WHEN** `install --agent=opencode` runs
-- **THEN** it fails with a message requiring OpenCode 2.2.5 or later and writes no configuration 
+- **THEN** it fails with a message requiring OpenCode 2.2.6 or later and writes no configuration 

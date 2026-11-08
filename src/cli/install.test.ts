@@ -73,7 +73,7 @@ vi.mock('./config-manager', async (importOriginal) => {
   return {
     ...actual,
     isOpenCodeInstalled: vi.fn(async () => true),
-    getOpenCodeVersion: vi.fn(async () => 'opencode v2.2.5'),
+    getOpenCodeVersion: vi.fn(async () => 'opencode v2.2.6'),
     getOpenCodePath: vi.fn(() => 'C:/opencode/bin/opencode'),
   };
 });
@@ -82,14 +82,12 @@ function providerExitCode(
   status: ThothMemSetupResult['status'],
 ): number | null {
   switch (status) {
+    case 'planned':
     case 'complete':
       return 0;
-    case 'failed':
+    case 'unsupported':
+    case 'requires-user-action':
       return 1;
-    case 'partial':
-      return 2;
-    case 'requires_user_action':
-      return 3;
     case 'invalid':
       return null;
   }
@@ -100,19 +98,22 @@ function providerResult(
   status: ThothMemSetupResult['status'] = 'complete',
 ): ThothMemSetupResult {
   return {
-    success: status === 'complete',
+    success: status === 'complete' || status === 'planned',
     evidenceValid: status !== 'invalid',
     status,
     changed: false,
     harness,
-    target: `C:/provider/${harness}`,
-    steps: [{ name: 'Plan provider setup', outcome: 'planned' }],
+    warnings: ['Provider warning'],
+    restartRequired: true,
     diagnostics: [`provider ${status}`],
-    manualActions:
+    actions:
       status === 'complete' ? [] : ['Review provider-owned setup state.'],
-    receipt: status === 'partial' ? 'C:/receipts/provider-partial.json' : null,
+    receipt:
+      status === 'requires-user-action'
+        ? 'C:/receipts/provider-partial.json'
+        : null,
     command: 'npx',
-    args: ['-y', 'thoth-mem@latest', 'setup', harness, '--plan', '--json'],
+    args: ['-y', 'thoth-mem@>=0.7.0', 'setup', harness, '--plan', '--json'],
     exitCode: providerExitCode(status),
     ...(status === 'invalid' ? { error: 'invalid provider evidence' } : {}),
   };
@@ -275,7 +276,8 @@ describe('install', () => {
             status: 'installed',
             skillPath: join(homeDir, '.pi', 'agent', 'skills', skill.name),
           }),
-          runThothMemSetup: ({ harness }) => providerResult(harness),
+          runThothMemSetup: ({ harness, dryRun }) =>
+            providerResult(harness, dryRun ? 'planned' : 'complete'),
           installLedgerOptions: { configRoot: join(homeDir, '.config') },
         },
       );
@@ -300,7 +302,8 @@ describe('install', () => {
           piCommands += 1;
           return { exitCode: 0, stdout: '', stderr: '' };
         },
-        runThothMemSetup: ({ harness }) => providerResult(harness),
+        runThothMemSetup: ({ harness, dryRun }) =>
+          providerResult(harness, dryRun ? 'planned' : 'complete'),
         installLedgerOptions: { configRoot: join(homeDir, '.config') },
       },
     );
@@ -548,7 +551,10 @@ describe('install', () => {
           dryRun: true,
           reset: false,
         },
-        { runThothMemSetup: () => providerResult('codex') },
+        {
+          runThothMemSetup: ({ dryRun }) =>
+            providerResult('codex', dryRun ? 'planned' : 'complete'),
+        },
       );
 
       expect(code).toBe(0);
@@ -584,7 +590,10 @@ describe('install', () => {
           dryRun: false,
           reset: false,
         },
-        { runThothMemSetup: () => providerResult('codex') },
+        {
+          runThothMemSetup: ({ dryRun }) =>
+            providerResult('codex', dryRun ? 'planned' : 'complete'),
+        },
       );
 
       expect(code).toBe(1);
@@ -604,7 +613,9 @@ describe('install', () => {
   ] as const)('%s dry-run completes only after shared thoth-mem setup planning', async (agent) => {
     const lines: string[] = [];
     const originalLog = console.log;
-    const runThothMemSetup = vi.fn(() => providerResult(agent));
+    const runThothMemSetup = vi.fn(({ dryRun }) =>
+      providerResult(agent, dryRun ? 'planned' : 'complete'),
+    );
     console.log = (message?: unknown) => lines.push(String(message));
     try {
       const code = await install(
@@ -624,7 +635,9 @@ describe('install', () => {
         expect.objectContaining({ harness: agent, dryRun: true }),
       );
       expect(output).toContain('thoth-mem setup plan confirmed');
-      expect(output).toContain('provider complete');
+      expect(output).toContain('provider planned');
+      expect(output).toContain('Provider warning');
+      expect(output).toContain('restart required');
       expect(output).toContain('Required external skills');
     } finally {
       console.log = originalLog;
@@ -643,7 +656,10 @@ describe('install', () => {
           dryRun: true,
           reset: false,
         },
-        { runThothMemSetup: () => providerResult('opencode') },
+        {
+          runThothMemSetup: ({ dryRun }) =>
+            providerResult('opencode', dryRun ? 'planned' : 'complete'),
+        },
       );
       const output = lines.join('\n');
 
@@ -782,7 +798,9 @@ describe('install', () => {
         message: 'Executing package metadata has no valid semantic version.',
       },
     }));
-    const runProvider = vi.fn(() => providerResult(agent));
+    const runProvider = vi.fn(({ dryRun }) =>
+      providerResult(agent, dryRun ? 'planned' : 'complete'),
+    );
     const originalLog = console.log;
     console.log = () => undefined;
 
@@ -841,7 +859,8 @@ describe('install', () => {
               version: '0.4.8',
               packageRoot: process.cwd(),
             }),
-            runThothMemSetup: () => providerResult(agent),
+            runThothMemSetup: ({ dryRun }) =>
+              providerResult(agent, dryRun ? 'planned' : 'complete'),
             installLedgerOptions: { configRoot },
           },
         );
@@ -903,7 +922,8 @@ describe('install', () => {
             version: '0.4.8',
             packageRoot: process.cwd(),
           }),
-          runThothMemSetup: () => providerResult('codex', 'partial'),
+          runThothMemSetup: () =>
+            providerResult('codex', 'requires-user-action'),
           installLedgerOptions: { configRoot },
         },
       );
@@ -948,7 +968,8 @@ describe('install', () => {
             version: '0.4.8',
             packageRoot: process.cwd(),
           }),
-          runThothMemSetup: () => providerResult('claude'),
+          runThothMemSetup: ({ dryRun }) =>
+            providerResult('claude', dryRun ? 'planned' : 'complete'),
           installLedgerOptions: { configRoot },
         },
       );
@@ -1003,14 +1024,19 @@ describe('install', () => {
           reset: false,
         },
         {
-          runThothMemSetup: () => providerResult('opencode', 'partial'),
+          runThothMemSetup: () =>
+            providerResult('opencode', 'requires-user-action'),
         },
       );
       const output = lines.join('\n');
 
       expect(code).toBe(1);
-      expect(output).toContain('thoth-mem setup is incomplete: partial');
+      expect(output).toContain(
+        'thoth-mem setup is incomplete: requires-user-action',
+      );
       expect(output).toContain('Review provider-owned setup state.');
+      expect(output).toContain('Provider warning');
+      expect(output).toContain('restart required');
       expect(output).toContain('C:/receipts/provider-partial.json');
       expect(output).not.toMatch(/installation complete!/);
     } finally {
@@ -1021,6 +1047,11 @@ describe('install', () => {
 
 test.each([
   '1.18.2',
+  '2.2.5',
+  '2.2.6-beta.1',
+  '2.2.6+_',
+  '2.2.6+..',
+  '2.2.6+build..1',
   'invalid',
   null,
   'missing',
@@ -1051,10 +1082,10 @@ test.each([
     expect(updateMain).not.toHaveBeenCalled();
     expect(finalize).not.toHaveBeenCalled();
     expect(log.mock.calls.flat().join('\n')).toContain(
-      'OpenCode 2.2.5 or later',
+      'OpenCode 2.2.6 or later',
     );
   } finally {
-    getVersion.mockReset().mockResolvedValue('opencode v2.2.5');
+    getVersion.mockReset().mockResolvedValue('opencode v2.2.6');
     installed.mockReset().mockResolvedValue(true);
     log.mockRestore();
   }
@@ -1085,7 +1116,8 @@ test.each([
         },
         {
           homeDir: root,
-          runThothMemSetup: () => providerResult('opencode'),
+          runThothMemSetup: ({ dryRun }) =>
+            providerResult('opencode', dryRun ? 'planned' : 'complete'),
           installLedgerOptions: { configRoot: root },
         },
       ),

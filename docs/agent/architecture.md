@@ -13,7 +13,7 @@ persistence, receipts, state, and recovery remain outside this package.
 
 ## Runtime and delivery flows
 
-1. OpenCode >=2.2.5 installation pins the plugin under `plugins` and installs
+1. OpenCode >=2.2.6 installation pins the plugin under `plugins` and installs
    external skills. `src/opencode/` registers native roles, permissions, tools,
    MCPs, package-path skills and `/thoth-init`; init only synchronizes project
    governance. Native `subagent` owns delegation; keyed instructions and
@@ -150,12 +150,15 @@ subscription classification. See [controls and compatibility](harness-packaging.
 - OpenCode ships only the OpenAI preset.
 - Owned workflow contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during execution.
-  OpenCode registers owned skills from package paths; 2.2.5 config-discovered
+  OpenCode registers owned skills from package paths; config-discovered
   same-ID copies shadow them. The installer offers a confirmed backup move,
   never deletion; see [CLI installation](cli-installation.md).
-- Every published harness install requires consistent thoth-mem `complete`
-  evidence. An explicit local Pi package install records thoth-agents without
-  provider setup; provider assets and recovery remain independently owned.
+- Every published harness install invokes
+  `npx -y "thoth-mem@>=0.7.0" setup <harness> --json` (`--plan` for dry-run).
+  Success requires exit 0 with `planned` for dry-run or `complete` for apply;
+  see [provider outcome validation](cli-installation.md#invariants). An explicit
+  local Pi package install records thoth-agents without provider setup;
+  provider assets and recovery remain independently owned.
 - Memory authorization is rendered from `src/harness/core/memory-governance.ts`;
   tests: `src/harness/core/memory-governance.test.ts`. `.thoth/` contains active
   project governance and preserved historical material.

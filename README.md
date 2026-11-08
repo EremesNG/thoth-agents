@@ -46,7 +46,10 @@ verification you can follow—without manually coordinating every agent.
 - **Continuity between sessions.** Published installs include setup of
   [thoth-mem](https://github.com/EremesNG/thoth-mem), the independent memory
   companion for reusable decisions and project knowledge. thoth-mem owns its own
-  memory lifecycle, persistence, and storage; thoth-agents only invokes its setup.
+  memory lifecycle, persistence, and storage; thoth-agents only invokes
+  `npx -y "thoth-mem@>=0.7.0" setup <harness> --json` (adding `--plan` for
+  dry-run). Only exit 0 with `planned` for dry-run or `complete` for apply is
+  successful; see [provider outcomes](docs/installation.md#thoth-mem-companion-setup).
 
 > [!NOTE]
 > OpenCode is the CLI's default harness. Pi is our recommendation for the best
@@ -62,7 +65,7 @@ The commands below install at **global/user scope**.
 
 | Harness | What you get | Install command |
 | --- | --- | --- |
-| <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | OpenCode >=2.2.5 native v2 plugin, package skills, agent team, and memory setup. | `npx thoth-agents@latest install --agent=opencode` |
+| <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | OpenCode >=2.2.6 native v2 plugin, package skills, agent team, and memory setup. | `npx thoth-agents@latest install --agent=opencode` |
 | <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
 | <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. | `npx thoth-agents@latest install --agent=claude` |
 | <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation, research, theme, sidebar and background-task extensions, workflow skills, and memory setup. **Recommended for the best experience.** | `npx thoth-agents@latest install --agent=pi` |

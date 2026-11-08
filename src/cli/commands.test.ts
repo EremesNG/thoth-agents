@@ -118,7 +118,7 @@ describe('commands plain operation formatters', () => {
       'simplify, tdd, progressive-context-router, and grill-me',
     );
     expect(output).not.toContain('playwright-cli');
-    expect(output).toContain('OpenCode 2.2.5 or later');
+    expect(output).toContain('OpenCode 2.2.6 or later');
     expect(output).not.toContain('Runtime release checks');
     expect(output).not.toContain('tmux');
     expect(output).toContain(

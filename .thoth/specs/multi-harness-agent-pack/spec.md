@@ -579,7 +579,7 @@ Each harness integration MUST validate Oracle gate envelopes at native result de
 
 - **GIVEN** an OpenCode root whose foreground `subagent` call to the Oracle completes with a valid plan-review envelope
 - **WHEN** the tool result is delivered
-- **THEN** exactly one `thoth-gate-verdict` line reporting valid, plan-review and the verdict is appended without altering the envelope, while a background Oracle completion arrives without a verdict and root uses the explicit validator fallback 
+- **THEN** exactly one `thoth-gate-verdict` line reporting valid, plan-review and the verdict is appended without altering the envelope, while a background Oracle completion arrives without a verdict and root uses the explicit validator fallback
 
 ### Requirement: Native OpenCode v2 plugin integration
 
@@ -587,6 +587,6 @@ The OpenCode integration MUST be a `@opencode/plugin` v2 plugin that registers t
 
 #### Scenario: Native OpenCode v2 plugin integration
 
-- **GIVEN** OpenCode 2.2.5 with thoth-agents installed
+- **GIVEN** OpenCode 2.2.6 with thoth-agents installed
 - **WHEN** a session starts and the orchestrator delegates
 - **THEN** the six roles are listed with `orchestrator` as default, delegation uses `subagent`, a non-orchestrator `subagent` call is denied, and successive requests keep a byte-stable system prompt and message prefix 

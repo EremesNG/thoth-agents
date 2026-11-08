@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-This route owns the OpenCode >=2.2.5 plugin, native roles, tools, MCPs,
+This route owns the OpenCode >=2.2.6 plugin, native roles, tools, MCPs,
 `/thoth-init`, package skills, permissions and session hooks. Entrypoints:
 `src/index.ts` and `src/opencode/`. Provider memory lifecycle remains external.
 
@@ -26,7 +26,7 @@ installed `thoth-sdd` skill on the unchanged result.
 ## Packaged skill precedence
 
 Skills register from absolute package `skills/<name>/SKILL.md` paths. OpenCode
-2.2.5 runs external plugin transforms before config skill discovery; discovered
+runs external plugin transforms before config skill discovery; discovered
 same-ID copies win, not the plugin. The installer detects legacy copies and
 moves them only after interactive CLI/TUI confirmation or the explicit
 `--move-legacy-opencode-skills` flag. Moves are rename-only, never delete or
@@ -59,7 +59,7 @@ only orchestrator may delegate. These are host permissions, not an OS sandbox.
 - Never mutate `context.system`, tools or prior messages per request. Evolving
   state uses deterministic keyed entries; compaction is the accepted prefix reset.
 - Built-in MCPs honor `disabled_mcps`. Six LSP/AST tools keep their existing
-  implementations. OpenCode 2.2.5 has no plugin API for host LSP config overrides:
+  implementations. OpenCode has no plugin API for host LSP config overrides:
   Thoth standalone LSP tools use built-in defaults and do not consume host
   overrides. Configure host-native LSP separately; this is a capability gap.
 - Tmux and runtime auto-update checking are removed. There are no runtime

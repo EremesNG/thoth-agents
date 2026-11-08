@@ -180,16 +180,27 @@ test('drops an empty legacy key and rejects unresolved version without writes', 
 test.each([
   '1.18.2',
   'opencode v2.2.4',
+  'opencode v2.2.5',
+  '2.2.5',
   'unknown',
   null,
-  '2.2.5-beta.1',
+  '2.2.6-beta.1',
+  '2.2.6+_',
+  '2.2.6+..',
+  '2.2.6+build..1',
+  '2.2.6+build.',
+  '02.2.6',
 ])('rejects unsupported host output %s', async (output) => {
   const { isSupportedOpenCodeVersion } = await import('./system');
   expect(isSupportedOpenCodeVersion(output)).toBe(false);
 });
 test.each([
-  'opencode v2.2.5',
-  '2.2.5',
+  'opencode v2.2.6',
+  '2.2.6',
+  '2.2.6+build.1',
+  '2.2.6+build-1.0',
+  'v2.2.6',
+  ' OPENCODE V2.2.6+build.1\n',
   '2.3.0',
   '3.0.0',
 ])('accepts supported host output %s', async (output) => {

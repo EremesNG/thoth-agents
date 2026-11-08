@@ -245,7 +245,7 @@ describe('provider boundary', () => {
       ({ path }) => path === 'src/cli/install-completion.ts',
     );
 
-    expect(setup?.content).toMatch(/thoth-mem@latest[\s\S]*setup/);
+    expect(setup?.content).toMatch(/thoth-mem@>=0\.7\.0[\s\S]*setup/);
     expect(setup?.content).toContain("'--json'");
     expect(setup?.content).not.toContain("'--scope'");
     expect(setup?.content).toContain('--plan');
@@ -306,7 +306,18 @@ describe('provider boundary', () => {
     for (const harness of ['opencode', 'codex', 'claude', 'pi']) {
       expect(installation).toContain(`setup ${harness}`);
     }
-    expect(installation).toMatch(/partial[\s\S]*requires_user_action/i);
+    expect(installation).toMatch(
+      /`planned`\s*\|\s*0\s*\|\s*Successful dry-run only/i,
+    );
+    expect(installation).toMatch(
+      /`complete`\s*\|\s*0\s*\|\s*Successful applied setup only/i,
+    );
+    expect(installation).toMatch(
+      /`unsupported`\s*\|\s*1\s*\|\s*Codex\/Claude failure/i,
+    );
+    expect(installation).toMatch(
+      /`requires-user-action`\s*\|\s*1\s*\|\s*Codex\/Claude incomplete/i,
+    );
     expect(installation).toMatch(/--dry-run[\s\S]*--plan/i);
 
     const combined = [...docs.values()].join('\n');

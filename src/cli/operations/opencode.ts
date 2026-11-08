@@ -376,7 +376,7 @@ export const opencodeOperationAdapter = {
   displayName: 'OpenCode',
   available: true,
   description:
-    'OpenCode 2.2.5 or later: pinned plugin and configuration surfaces.',
+    'OpenCode 2.2.6 or later: pinned plugin and configuration surfaces.',
   actions: openCodeActions,
 } as const satisfies HarnessOperationAdapter;
 
@@ -1089,7 +1089,7 @@ export function getOpenCodeStatus(
   const managedStatus = getOpenCodeManagedStatus(context);
   return {
     ...managedStatus,
-    summary: `${managedStatus.summary} Requires OpenCode 2.2.5 or later.`,
+    summary: `${managedStatus.summary} Requires OpenCode 2.2.6 or later.`,
     targets: [
       ...managedStatus.targets,
       getCliManagedInstallVersionTarget('opencode', context),
@@ -1377,7 +1377,7 @@ export function buildOpenCodeSyncPlan(
     'opencode-sync-preview',
     'sync',
     'Sync OpenCode managed configuration',
-    'Preview pinned OpenCode plugins and thoth-agents config sync (requires OpenCode 2.2.5 or later).',
+    'Preview pinned OpenCode plugins and thoth-agents config sync (requires OpenCode 2.2.6 or later).',
     [
       {
         title: `Ensure OpenCode plugin points at ${PACKAGE_NAME}@${packageVersion.version}`,

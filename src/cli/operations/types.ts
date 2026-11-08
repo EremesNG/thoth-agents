@@ -84,12 +84,26 @@ export function getInstallCompletionEvidence(
       code: `${options.codePrefix}-provider-diagnostic`,
       message,
     })),
-    ...completion.provider.manualActions.map((message) => ({
+    ...completion.provider.warnings.map((message) => ({
       severity: 'important' as const,
-      code: `${options.codePrefix}-provider-manual-action`,
+      code: `${options.codePrefix}-provider-warning`,
       message,
     })),
   ];
+  for (const action of completion.provider.actions) {
+    targets.push({
+      kind: 'surface',
+      label: 'thoth-mem action',
+      observed: action,
+    });
+  }
+  if (completion.provider.restartRequired) {
+    warnings.push({
+      severity: 'important',
+      code: `${options.codePrefix}-provider-restart`,
+      message: 'thoth-mem: restart required',
+    });
+  }
   if (completion.provider.receipt) {
     targets.push({
       kind: 'file',

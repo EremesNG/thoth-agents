@@ -11,7 +11,10 @@ import {
   readInstallLedger,
   recordCompletedInstall,
 } from './install-ledger';
-import type { ThothMemSetupResult } from './thoth-mem-install';
+import {
+  runThothMemSetup,
+  type ThothMemSetupResult,
+} from './thoth-mem-install';
 
 function providerResult(
   harness: 'opencode' | 'codex' | 'claude',
@@ -23,13 +26,13 @@ function providerResult(
     status: 'complete',
     changed: true,
     harness,
-    target: `C:/provider/${harness}`,
-    steps: [{ name: 'Provider setup', outcome: 'complete' }],
+    warnings: ['Provider warning'],
+    restartRequired: true,
     diagnostics: ['provider diagnostic'],
-    manualActions: [],
+    actions: [],
     receipt: 'C:/provider/receipt.json',
     command: 'npx',
-    args: ['-y', 'thoth-mem@latest', 'setup', harness],
+    args: ['-y', 'thoth-mem@>=0.7.0', 'setup', harness],
     exitCode: 0,
     ...overrides,
   };
@@ -81,7 +84,9 @@ describe('finalizeHarnessInstall', () => {
   });
 
   test('dry-run plans provider and ledger finalization without writing state', () => {
-    const runProvider = vi.fn(() => providerResult('codex'));
+    const runProvider = vi.fn(() =>
+      providerResult('codex', { status: 'planned' }),
+    );
     const recordInstall = vi.fn(recordCompletedInstall);
 
     const result = finalizeHarnessInstall({
@@ -132,7 +137,11 @@ describe('finalizeHarnessInstall', () => {
   test.each([
     {
       name: 'partial evidence',
-      result: { success: false, status: 'partial' as const, exitCode: 2 },
+      result: {
+        success: false,
+        status: 'requires-user-action' as const,
+        exitCode: 2,
+      },
     },
     {
       name: 'contradictory complete evidence',
@@ -140,7 +149,11 @@ describe('finalizeHarnessInstall', () => {
     },
     {
       name: 'contradictory success status',
-      result: { success: true, status: 'partial' as const, exitCode: 2 },
+      result: {
+        success: true,
+        status: 'requires-user-action' as const,
+        exitCode: 2,
+      },
     },
     {
       name: 'wrong harness evidence',
@@ -161,6 +174,55 @@ describe('finalizeHarnessInstall', () => {
 
     expect(result).toMatchObject({
       success: false,
+      ledger: { status: 'not-attempted' },
+    });
+    expect(recordInstall).not.toHaveBeenCalled();
+    expect(existsSync(getInstallLedgerPath({ configRoot }))).toBe(false);
+  });
+
+  test.each([
+    'missing recovered',
+    'mistyped recovered',
+    'missing plugin',
+  ])('does not record malformed complete provider evidence: %s', (malformation) => {
+    const fixture: Record<string, unknown> = {
+      status: 'complete',
+      changed: true,
+      plugin: 'thoth-mem@0.7.0',
+      opencodeVersion: '2.2.6',
+      configPath: 'config',
+      skillPath: 'skill',
+      providerConfigPath: 'provider',
+      receiptPath: 'receipt.json',
+      actions: [],
+      recovered: false,
+      warnings: [],
+    };
+    if (malformation === 'missing plugin') delete fixture.plugin;
+    else if (malformation === 'missing recovered') delete fixture.recovered;
+    else fixture.recovered = 'false';
+    const recordInstall = vi.fn(recordCompletedInstall);
+
+    const result = finalizeHarnessInstall({
+      harness: 'opencode',
+      version: '0.11.0',
+      cwd: configRoot,
+      runThothMemSetup: (options) =>
+        runThothMemSetup({
+          ...options,
+          commandExecutor: () => ({
+            exitCode: 0,
+            stdout: JSON.stringify(fixture),
+            stderr: '',
+          }),
+        }),
+      recordCompletedInstall: recordInstall,
+      ledgerOptions: { configRoot },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      provider: { success: false, evidenceValid: false, status: 'invalid' },
       ledger: { status: 'not-attempted' },
     });
     expect(recordInstall).not.toHaveBeenCalled();

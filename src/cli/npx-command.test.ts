@@ -6,13 +6,13 @@ describe('npx command invocation', () => {
     const commandShell = 'C:\\Windows\\System32\\cmd.exe';
 
     expect(
-      getNpxCommand(['-y', 'thoth-mem@latest', 'setup', 'codex', '--json'], {
+      getNpxCommand(['skills', 'add', 'example/skills', '--yes'], {
         platform: 'win32',
         commandShell,
       }),
     ).toEqual({
       command: commandShell,
-      args: ['/d', '/s', '/c', 'npx -y thoth-mem@latest setup codex --json'],
+      args: ['/d', '/s', '/c', 'npx skills add example/skills --yes'],
     });
   });
 });

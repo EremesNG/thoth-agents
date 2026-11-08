@@ -57,13 +57,13 @@ function claudeProviderResult() {
     status: 'complete' as const,
     changed: true,
     harness: 'claude' as const,
-    target: 'C:/provider/claude',
-    steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+    warnings: ['Provider warning'],
+    restartRequired: true,
     diagnostics: ['provider complete'],
-    manualActions: [],
+    actions: [],
     receipt: null,
     command: 'npx',
-    args: ['thoth-mem@latest'],
+    args: ['thoth-mem@>=0.7.0'],
     exitCode: 0,
   };
 }
@@ -244,7 +244,7 @@ describe('claudeCodeOperationAdapter', () => {
       provider: {
         ...completeProviderResult(),
         success: false,
-        status: 'partial' as const,
+        status: 'requires-user-action' as const,
         diagnostics: ['provider partial'],
         exitCode: 2,
       },

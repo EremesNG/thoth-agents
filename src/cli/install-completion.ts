@@ -60,11 +60,12 @@ export interface FinalizeHarnessInstallOptions {
 function isConsistentProviderSuccess(
   result: ThothMemSetupResult,
   harness: InstallHarnessId,
+  dryRun: boolean | undefined,
 ): boolean {
   return (
     result.success &&
     result.evidenceValid &&
-    result.status === 'complete' &&
+    result.status === (dryRun ? 'planned' : 'complete') &&
     result.exitCode === 0 &&
     result.harness === harness
   );
@@ -121,14 +122,14 @@ export function finalizeHarnessInstall(
     cwd: options.cwd,
   });
 
-  if (!isConsistentProviderSuccess(provider, options.harness)) {
+  if (!isConsistentProviderSuccess(provider, options.harness, options.dryRun)) {
     return {
       success: false,
       provider,
       ledger: { status: 'not-attempted', path: ledgerPath },
       error:
         provider.error ??
-        'thoth-mem setup did not return consistent complete evidence.',
+        'thoth-mem setup did not return consistent setup evidence.',
     };
   }
 

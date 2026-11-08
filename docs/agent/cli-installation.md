@@ -8,9 +8,10 @@ execution does not.
 
 ## Invariants
 
-- OpenCode is the default CLI harness and requires >=2.2.5; missing,
-  unparseable or older hosts fail before config writes. Config resolves via
-  `OPENCODE_CONFIG_DIR`, then `${XDG_CONFIG_HOME:-~/.config}/opencode`.
+- OpenCode is the default CLI harness and requires stable >=2.2.6; missing,
+  unparseable, prerelease or older hosts fail Install/applied Update before config
+  writes. Config resolves via `OPENCODE_CONFIG_DIR`, then
+  `${XDG_CONFIG_HOME:-~/.config}/opencode`.
 - `@latest` is valid for selecting the CLI package to execute, but every
   OpenCode config mutation uses the executing package's exact semantic version.
   Package identity is resolved before managed writes and failure never falls
@@ -18,7 +19,7 @@ execution does not.
   v2 `plugins` converge to one `thoth-agents@<version>` under `plugins`,
   preserving unrelated entries. No `agent.*.disable` is written.
 - OpenCode registers the five owned skills from package `skills/<name>/SKILL.md`
-  paths. OpenCode 2.2.5 config-discovered copies shadow same-ID package skills.
+  paths. OpenCode config-discovered copies shadow same-ID package skills.
   Install/Update detects legacy copies; interactive CLI/TUI asks for confirmation,
   or non-interactive runs require `--move-legacy-opencode-skills`. Only then does
   same-volume rename move each copy to a new no-clobber hidden backup under
@@ -32,13 +33,18 @@ execution does not.
   `/thoth-init` only initializes missing project governance.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
-- After owned setup and external skills, published harness installs invoke the
-  official global `thoth-mem setup` command. Dry-run uses provider `--plan`;
-  only consistent `complete` evidence completes installation. Explicit local
-  Pi package installs omit provider setup, record thoth-agents completion, and
+- After owned setup and external skills, published harness installs invoke
+  `npx -y "thoth-mem@>=0.7.0" setup <harness> --json` (global provider setup).
+  Dry-run adds `--plan`; success requires exit 0 with `planned` for dry-run or
+  `complete` for apply. Codex/Claude `unsupported` and `requires-user-action`
+  exit 1 and are unsuccessful. Thrown failures exit 1 with stderr only; invalid
+  hosts/options exit 2. Malformed output, mismatched reported hosts and status/exit
+  or mode contradictions fail without recording completion. Explicit local Pi
+  package installs omit provider setup, record thoth-agents completion, and
   direct the operator to install thoth-mem separately from its local checkout.
-- Provider diagnostics, manual actions, and receipt are surfaced. Consumer
-  reset never becomes provider `--force`, rollback, removal, or file repair.
+- Provider actions, warnings, diagnostics, receipt path and restart requirement
+  (when present) are surfaced; stderr-only failures show bounded diagnostics.
+  Consumer reset never becomes provider `--force`, rollback, removal, or file repair.
 - Browser and QA executables remain project-owned.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config with package-provided skills; Codex performs

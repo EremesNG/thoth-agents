@@ -271,14 +271,12 @@ function printThothMemSetupResult(
   dryRun: boolean | undefined,
 ): boolean {
   printInfo(`Provider command: ${result.command} ${result.args.join(' ')}`);
-  for (const step of result.steps) {
-    printInfo(`thoth-mem: ${step.name} [${step.outcome}]`);
-  }
+  for (const action of result.actions) printInfo(`thoth-mem action: ${action}`);
+  for (const warning of result.warnings)
+    printWarning(`thoth-mem warning: ${warning}`);
+  if (result.restartRequired) printWarning('thoth-mem: restart required');
   for (const diagnostic of result.diagnostics) printInfo(diagnostic);
   if (result.receipt) printInfo(`thoth-mem receipt: ${result.receipt}`);
-  for (const action of result.manualActions) {
-    printWarning(`thoth-mem manual action: ${action}`);
-  }
 
   if (!result.success) {
     printError(`thoth-mem setup is incomplete: ${result.status}`);
@@ -382,7 +380,7 @@ async function runInstall(
   printStep(
     step++,
     totalSteps,
-    'Configuring the pinned thoth-agents plugin (OpenCode 2.2.5+)...',
+    'Configuring the pinned thoth-agents plugin (OpenCode 2.2.6+)...',
   );
   if (config.dryRun) {
     printInfo('Dry run mode - skipping main config update');

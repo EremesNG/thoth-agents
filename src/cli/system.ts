@@ -159,11 +159,11 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
 }
 
 export const OPENCODE_VERSION_REQUIREMENT =
-  'OpenCode 2.2.5 or later is required; install or upgrade OpenCode before applying configuration.';
+  'OpenCode 2.2.6 or later is required; install or upgrade OpenCode before applying configuration.';
 
 export function isSupportedOpenCodeVersion(output: string | null): boolean {
   const match =
-    /^(?:opencode\s+)?v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[\w.-]+)?$/i.exec(
+    /^(?:opencode\s+)?v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/iu.exec(
       output?.trim() ?? '',
     );
   if (!match) return false;
@@ -171,7 +171,7 @@ export function isSupportedOpenCodeVersion(output: string | null): boolean {
   return (
     Number(major) > 2 ||
     (Number(major) === 2 &&
-      (Number(minor) > 2 || (Number(minor) === 2 && Number(patch) >= 5)))
+      (Number(minor) > 2 || (Number(minor) === 2 && Number(patch) >= 6)))
   );
 }
 

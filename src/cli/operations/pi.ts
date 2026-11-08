@@ -86,6 +86,7 @@ import type {
 import {
   classifyProviderCapabilityEvidence,
   getCliManagedInstallVersionTarget,
+  getInstallCompletionEvidence,
 } from './types';
 
 export interface PiOperationContext extends OperationContext {
@@ -1359,11 +1360,19 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
         homeDir: source.context.homeDir,
       },
     });
-    if (!completion.success)
-      return reject(
+    const completionEvidence = getInstallCompletionEvidence(completion, {
+      codePrefix: 'pi',
+      version: source.version,
+      fallbackError: 'Pi provider setup or ledger commit failed.',
+    });
+    if (!completion.success) {
+      const rejected = reject(
         completion.error ?? 'Pi provider setup or ledger commit failed.',
-        [...setupTargets, ...skillTargets],
+        [...setupTargets, ...skillTargets, ...completionEvidence.targets],
       );
+      rejected.warnings.push(...completionEvidence.warnings);
+      return rejected;
+    }
     return {
       harness: 'pi',
       action: plan.action,
@@ -1372,12 +1381,7 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
       changedTargets: [
         ...setupTargets,
         ...skillTargets,
-        {
-          kind: 'file',
-          path: completion.ledger.path,
-          label: 'CLI-managed install version',
-          state: 'installed',
-        },
+        ...completionEvidence.targets,
       ],
       diagnosticTargets: packageSkills.skills.map((skill) => ({
         kind: 'skill' as const,
@@ -1386,7 +1390,7 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
         state: 'installed' as const,
       })),
       backups: [],
-      warnings: [],
+      warnings: completionEvidence.warnings,
       disclaimers: disclaimers(),
     };
   }

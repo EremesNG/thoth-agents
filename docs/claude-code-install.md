@@ -53,10 +53,13 @@ npx thoth-agents@latest install --agent=claude
 The installer invokes `npx skills add` for `simplify`, `tdd`,
 `progressive-context-router`, and `grill-me`, targeting the global
 Claude skill root. It then invokes
-`npx -y thoth-mem@latest setup claude --json`; dry-run adds provider `--plan`.
-A missing skill or any thoth-mem
-result other than consistent `complete` evidence makes installation incomplete.
-Provider manual actions and receipt remain visible for recovery.
+`npx -y "thoth-mem@>=0.7.0" setup claude --json`; dry-run adds provider `--plan`.
+A missing skill makes installation incomplete. Provider success requires exit 0
+with `planned` for dry-run or `complete` for apply. Claude may instead report
+`unsupported` or `requires-user-action` with exit 1; both leave installation
+incomplete. Provider actions, warnings, diagnostics, receipt path and restart
+requirement remain visible for recovery. See the [provider outcome contract](installation.md#thoth-mem-companion-setup)
+for stderr-only failures, invalid options and evidence validation.
 
 ## 4. Reload and initialize the project
 

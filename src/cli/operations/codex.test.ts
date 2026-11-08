@@ -66,13 +66,13 @@ function codexProviderResult() {
     status: 'complete' as const,
     changed: true,
     harness: 'codex' as const,
-    target: 'C:/provider/codex',
-    steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+    warnings: ['Provider warning'],
+    restartRequired: true,
     diagnostics: ['provider complete'],
-    manualActions: [],
+    actions: [],
     receipt: null,
     command: 'npx',
-    args: ['thoth-mem@latest'],
+    args: ['thoth-mem@>=0.7.0'],
     exitCode: 0,
   };
 }
@@ -940,7 +940,7 @@ describe('released 0.7.0 migration through public operations', () => {
     for (const artifact of LEGACY_CODEX_AGENT_ARTIFACTS) {
       const path = join(home, artifact.path);
       mkdirSync(join(path, '..'), { recursive: true });
-      const key = path.split(/[\/]/).at(-1);
+      const key = path.split(/[/]/).at(-1);
       const model = roleModel(artifact.content);
       if (!key || !model) throw new Error('Legacy role model is missing');
       models[key] = model;

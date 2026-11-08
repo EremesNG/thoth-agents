@@ -14,11 +14,11 @@
 
 ## Invariants
 
-- OpenCode remains default and requires >=2.2.5. `package.json#exports["."]`
+- OpenCode remains default and requires >=2.2.6. `package.json#exports["."]`
   points to `dist/index.js`: the host prefers `server`, then the root export
   for both local directories and npm packages. The v2 domain plugin registers
   six roles, six tools, MCPs, `/thoth-init` and five owned skills directly
-  from absolute package paths. OpenCode 2.2.5 config-discovered same-ID copies
+  from absolute package paths. OpenCode config-discovered same-ID copies
   shadow them. Installation offers a confirmed backup move of legacy copies,
   never deletion; otherwise it warns. See [CLI installation](cli-installation.md)
   for consent, backup and restoration. Init is project-only.

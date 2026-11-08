@@ -1,30 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import {
-  getNpxCommand,
-  type NpxCommand,
-  type NpxCommandOptions,
-} from './npx-command';
+import type { NpxCommand, NpxCommandOptions } from './npx-command';
 import type { InstallAgent } from './types';
+
+export const THOTH_MEM_PACKAGE_SPEC = 'thoth-mem@>=0.7.0';
 
 export const THOTH_MEM_SETUP_TIMEOUT_MS = 120_000;
 
 export type ThothMemSetupStatus =
-  | 'complete'
-  | 'failed'
-  | 'partial'
-  | 'requires_user_action';
-
-export type ThothMemSetupOutcome =
   | 'planned'
-  | 'skipped'
-  | 'confirmed'
-  | 'failed'
-  | 'unavailable';
-
-export interface ThothMemSetupStep {
-  name: string;
-  outcome: ThothMemSetupOutcome;
-}
+  | 'complete'
+  | 'unsupported'
+  | 'requires-user-action';
 
 export interface ThothMemCommandResult {
   exitCode: number | null;
@@ -52,10 +38,10 @@ export interface ThothMemSetupResult {
   status: ThothMemSetupStatus | 'invalid';
   changed: boolean;
   harness: InstallAgent;
-  target?: string;
-  steps: ThothMemSetupStep[];
+  actions: string[];
+  warnings: string[];
+  restartRequired?: boolean;
   diagnostics: string[];
-  manualActions: string[];
   receipt: string | null;
   command: string;
   args: string[];
@@ -63,36 +49,67 @@ export interface ThothMemSetupResult {
   error?: string;
 }
 
-interface ProviderSetupResult {
+// Wire types mirror thoth-mem 0.7.0's required per-host fields, including
+// informational evidence. Unknown future fields remain tolerated.
+interface ProviderSetupCore {
   status: ThothMemSetupStatus;
   changed: boolean;
-  harness: InstallAgent;
-  scope: 'global';
-  target: string;
-  steps: ThothMemSetupStep[];
-  diagnostics: string[];
-  manual_actions: string[];
-  receipt: string | null;
+  actions: string[];
+  warnings: string[];
+  receiptPath: string | null;
+  recovered: boolean;
 }
 
+interface OpenCodeSetupResult extends ProviderSetupCore {
+  status: 'planned' | 'complete';
+  plugin: string;
+  opencodeVersion: string;
+  configPath: string;
+  skillPath: string;
+  providerConfigPath: string;
+}
+
+interface PiSetupResult extends ProviderSetupCore {
+  host: 'pi';
+  status: 'planned' | 'complete';
+  source: string;
+  version: string;
+  piVersion: string;
+  verification: { package: boolean; source: boolean; manifest: boolean };
+}
+
+interface NativeManagerSetupResult extends ProviderSetupCore {
+  host: 'codex' | 'claude';
+  strategy: 'plugin_manager' | 'unsupported';
+  source: string;
+  version: string;
+  diagnostics: string[];
+  restartRequired: boolean;
+  verification: {
+    marketplace: boolean;
+    plugin: boolean;
+    enabled: boolean;
+    modelUse?: false;
+  };
+}
+
+type ProviderSetupResult =
+  | OpenCodeSetupResult
+  | PiSetupResult
+  | NativeManagerSetupResult;
+
+type ProviderSetupEvidence = Pick<
+  ProviderSetupResult,
+  'status' | 'changed' | 'actions' | 'warnings' | 'receiptPath'
+> &
+  Partial<Pick<NativeManagerSetupResult, 'diagnostics' | 'restartRequired'>>;
+
 const STATUS_EXIT_CODE: Record<ThothMemSetupStatus, number> = {
+  planned: 0,
   complete: 0,
-  failed: 1,
-  partial: 2,
-  requires_user_action: 3,
+  unsupported: 1,
+  'requires-user-action': 1,
 };
-
-const SETUP_STATUSES = new Set<ThothMemSetupStatus>(
-  Object.keys(STATUS_EXIT_CODE) as ThothMemSetupStatus[],
-);
-
-const STEP_OUTCOMES = new Set<ThothMemSetupOutcome>([
-  'planned',
-  'skipped',
-  'confirmed',
-  'failed',
-  'unavailable',
-]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -104,41 +121,71 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
-function isSetupStep(value: unknown): value is ThothMemSetupStep {
-  return (
-    isRecord(value) &&
-    typeof value.name === 'string' &&
-    value.name.length > 0 &&
-    typeof value.outcome === 'string' &&
-    STEP_OUTCOMES.has(value.outcome as ThothMemSetupOutcome)
-  );
-}
-
 function isProviderSetupResult(
   value: unknown,
   expectedHarness: InstallAgent,
-): value is ProviderSetupResult {
+): value is ProviderSetupEvidence {
+  if (
+    !isRecord(value) ||
+    typeof value.status !== 'string' ||
+    !Object.hasOwn(STATUS_EXIT_CODE, value.status) ||
+    typeof value.changed !== 'boolean' ||
+    typeof value.recovered !== 'boolean' ||
+    (value.host !== undefined && value.host !== expectedHarness) ||
+    !isStringArray(value.actions) ||
+    !isStringArray(value.warnings) ||
+    !(value.receiptPath === null || typeof value.receiptPath === 'string') ||
+    (value.diagnostics !== undefined && !isStringArray(value.diagnostics)) ||
+    (value.restartRequired !== undefined &&
+      typeof value.restartRequired !== 'boolean')
+  ) {
+    return false;
+  }
+
+  if (expectedHarness === 'opencode') {
+    return (
+      typeof value.plugin === 'string' &&
+      typeof value.opencodeVersion === 'string' &&
+      typeof value.configPath === 'string' &&
+      typeof value.skillPath === 'string' &&
+      typeof value.providerConfigPath === 'string'
+    );
+  }
+
+  if (
+    value.host !== expectedHarness ||
+    typeof value.source !== 'string' ||
+    typeof value.version !== 'string' ||
+    !isRecord(value.verification)
+  ) {
+    return false;
+  }
+
+  const verification = value.verification;
+  if (expectedHarness === 'pi') {
+    return (
+      typeof value.piVersion === 'string' &&
+      typeof verification.package === 'boolean' &&
+      typeof verification.source === 'boolean' &&
+      typeof verification.manifest === 'boolean'
+    );
+  }
+
   return (
-    isRecord(value) &&
-    typeof value.status === 'string' &&
-    SETUP_STATUSES.has(value.status as ThothMemSetupStatus) &&
-    typeof value.changed === 'boolean' &&
-    value.harness === expectedHarness &&
-    value.scope === 'global' &&
-    typeof value.target === 'string' &&
-    value.target.length > 0 &&
-    Array.isArray(value.steps) &&
-    value.steps.every(isSetupStep) &&
+    (value.strategy === 'plugin_manager' || value.strategy === 'unsupported') &&
     isStringArray(value.diagnostics) &&
-    isStringArray(value.manual_actions) &&
-    (value.receipt === null || typeof value.receipt === 'string')
+    typeof value.restartRequired === 'boolean' &&
+    typeof verification.marketplace === 'boolean' &&
+    typeof verification.plugin === 'boolean' &&
+    typeof verification.enabled === 'boolean' &&
+    (verification.modelUse === undefined || verification.modelUse === false)
   );
 }
 
 function parseProviderSetupResult(
   stdout: string,
   expectedHarness: InstallAgent,
-): ProviderSetupResult | undefined {
+): ProviderSetupEvidence | undefined {
   let value: unknown;
   try {
     value = JSON.parse(stdout.trim());
@@ -149,13 +196,14 @@ function parseProviderSetupResult(
   return isProviderSetupResult(value, expectedHarness) ? value : undefined;
 }
 
-function defaultCommandExecutor(
+export function executeThothMemCommand(
   command: string,
   args: readonly string[],
   options: { cwd?: string; timeoutMs: number },
 ): ThothMemCommandResult {
   const result = spawnSync(command, [...args], {
     windowsHide: true,
+    windowsVerbatimArguments: process.platform === 'win32',
     cwd: options.cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -191,9 +239,9 @@ function invalidResult(
     status: 'invalid',
     changed: false,
     harness,
-    steps: [],
+    actions: [],
+    warnings: [],
     diagnostics: [],
-    manualActions: [],
     receipt: null,
     command,
     args,
@@ -207,17 +255,25 @@ export function getThothMemSetupCommand(
   dryRun: boolean,
   options: NpxCommandOptions = {},
 ): NpxCommand {
-  return getNpxCommand(
-    [
-      '-y',
-      'thoth-mem@latest',
-      'setup',
-      harness,
-      ...(dryRun ? ['--plan'] : []),
-      '--json',
+  const args = [
+    '-y',
+    THOTH_MEM_PACKAGE_SPEC,
+    'setup',
+    harness,
+    ...(dryRun ? ['--plan'] : []),
+    '--json',
+  ];
+  if ((options.platform ?? process.platform) !== 'win32') {
+    return { command: 'npx', args };
+  }
+  return {
+    command: options.commandShell ?? process.env.ComSpec ?? 'cmd.exe',
+    // Node must not escape this cmd command line: quoted > is a literal,
+    // not redirection, and npx must receive the selector without quote characters.
+    args: [
+      `/d /s /c "npx ${args.map((arg) => (arg === THOTH_MEM_PACKAGE_SPEC ? `"${arg}"` : arg)).join(' ')}"`,
     ],
-    options,
-  );
+  };
 }
 
 export function runThothMemSetup(
@@ -227,7 +283,7 @@ export function runThothMemSetup(
     options.harness,
     options.dryRun ?? false,
   );
-  const executor = options.commandExecutor ?? defaultCommandExecutor;
+  const executor = options.commandExecutor ?? executeThothMemCommand;
 
   let commandResult: ThothMemCommandResult;
   try {
@@ -270,30 +326,36 @@ export function runThothMemSetup(
       args,
       commandResult.exitCode,
       stderr
-        ? `thoth-mem returned invalid JSON evidence: ${stderr.slice(0, 2_000)}`
+        ? `thoth-mem setup failed or returned invalid JSON evidence: ${stderr.slice(0, 2_000)}`
         : 'thoth-mem returned invalid JSON evidence.',
     );
   }
 
   const expectedExitCode = STATUS_EXIT_CODE[provider.status];
-  const evidenceValid = commandResult.exitCode === expectedExitCode;
+  const expectedStatus = options.dryRun ? 'planned' : 'complete';
+  const exitConsistent = commandResult.exitCode === expectedExitCode;
+  const modeConsistent =
+    expectedExitCode !== 0 || provider.status === expectedStatus;
+  const evidenceValid = exitConsistent && modeConsistent;
   return {
-    success: evidenceValid && provider.status === 'complete',
+    success: evidenceValid && provider.status === expectedStatus,
     evidenceValid,
     status: provider.status,
     changed: provider.changed,
-    harness: provider.harness,
-    target: provider.target,
-    steps: provider.steps,
-    diagnostics: provider.diagnostics,
-    manualActions: provider.manual_actions,
-    receipt: provider.receipt,
+    harness: options.harness,
+    actions: provider.actions,
+    warnings: provider.warnings,
+    diagnostics: provider.diagnostics ?? [],
+    restartRequired: provider.restartRequired,
+    receipt: provider.receiptPath,
     command,
     args,
     exitCode: commandResult.exitCode,
     ...(!evidenceValid
       ? {
-          error: `thoth-mem exit code ${String(commandResult.exitCode)} contradicts reported status ${provider.status} (expected ${expectedExitCode}).`,
+          error: !exitConsistent
+            ? `thoth-mem exit code ${String(commandResult.exitCode)} contradicts reported status ${provider.status} (expected ${expectedExitCode}).`
+            : `thoth-mem reported ${provider.status}; expected ${expectedStatus} for this setup mode.`,
         }
       : {}),
   };

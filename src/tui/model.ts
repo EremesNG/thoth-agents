@@ -190,7 +190,9 @@ export function searchOptions<
 >(query: string, options: readonly T[]): T[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return options.filter((option) => {
-    const text = `${option.title} ${option.description ?? ''}`.toLowerCase();
+    const id = typeof option.value === 'string' ? option.value : '';
+    const text =
+      `${option.title} ${id} ${option.description ?? ''}`.toLowerCase();
     return words.every((word) => text.includes(word));
   });
 }

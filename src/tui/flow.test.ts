@@ -8,6 +8,7 @@ type Opt = {
   value: unknown;
   disabled?: boolean;
   description?: string;
+  footer?: string;
 };
 type Step = (options: readonly Opt[], title: string) => unknown;
 
@@ -83,6 +84,66 @@ function harness(
 }
 
 describe('model profiles flow', () => {
+  it.each([
+    'openai',
+    'openai-codex-2',
+  ])('disambiguates same-name models for %s without a footer crowding out their IDs', async (providerID) => {
+    const variants = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+    const state = makeState({
+      providers: [
+        {
+          id: providerID,
+          name: 'OpenAI Codex',
+          models: [
+            { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', variants },
+            { id: 'gpt-6.1-sol-codex', name: 'GPT-6.1 Sol', variants },
+            { id: 'gpt-6.1-sol-2026-11-01', name: 'GPT-6.1 Sol', variants },
+          ],
+        },
+      ],
+    });
+    const h = harness(
+      [
+        choose('  G   deep'),
+        choose('explorer'),
+        choose('Change model and variant'),
+        choose('OpenAI Codex'),
+        (options) => {
+          expect(options.map((o) => o.title)).toEqual([
+            'gpt-6.1-sol',
+            'gpt-6.1-sol-codex',
+            'gpt-6.1-sol-2026-11-01',
+          ]);
+          for (const option of options) {
+            expect(option.description).toBe(
+              'GPT-6.1 Sol · variants: none, low, medium, high, xhigh, max',
+            );
+            expect(option.footer).toBeUndefined();
+          }
+          return options[1]?.value;
+        },
+        choose('high'),
+        choose('Save changes'),
+        esc,
+        esc,
+      ],
+      { state },
+    );
+    await h.run();
+    expect(h.rpc.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profile: {
+          agents: {
+            explorer: {
+              model: `${providerID}/gpt-6.1-sol-codex`,
+              variant: 'high',
+            },
+          },
+        },
+      }),
+    );
+  });
+
   it('manages profiles from home while explaining disabled session-only actions', async () => {
     const state = makeState();
     delete state.orchestrator;
@@ -111,7 +172,7 @@ describe('model profiles flow', () => {
         },
         choose('Change model and variant'),
         choose('OpenAI'),
-        choose('GPT-5 mini'),
+        choose('gpt-5-mini'),
         choose('Save changes'),
         choose('Set as global active'),
         choose('Pin to this project'),
@@ -165,7 +226,7 @@ describe('model profiles flow', () => {
       choose('worker'),
       choose('Change model and variant'),
       choose('OpenAI'),
-      choose('GPT-5 mini'),
+      choose('gpt-5-mini'),
       // gpt-5-mini has no variants → no variant picker
       choose('Save changes'),
       esc,
@@ -186,7 +247,7 @@ describe('model profiles flow', () => {
       choose('oracle'),
       choose('Change model and variant'),
       choose('OpenAI'),
-      choose('GPT-5'),
+      choose('gpt-5'),
       choose('high'),
       choose('Save changes'),
       esc,
@@ -208,7 +269,7 @@ describe('model profiles flow', () => {
       choose('worker'),
       choose('Change model and variant'),
       choose('OpenAI'),
-      choose('GPT-5 mini'),
+      choose('gpt-5-mini'),
       esc, // leave detail → prompt
       choose('Keep editing'),
       esc,
@@ -226,7 +287,7 @@ describe('model profiles flow', () => {
         choose('worker'),
         choose('Change model and variant'),
         choose('OpenAI'),
-        choose('GPT-5 mini'),
+        choose('gpt-5-mini'),
         choose('Clone this profile'),
         choose('global'),
         choose('Discard draft'), // clone detail
@@ -253,7 +314,7 @@ describe('model profiles flow', () => {
         choose('worker'),
         choose('Change model and variant'),
         choose('OpenAI'),
-        choose('GPT-5 mini'),
+        choose('gpt-5-mini'),
         choose('Clone this profile'),
         choose('global'),
         choose('Discard draft'),
@@ -275,7 +336,7 @@ describe('model profiles flow', () => {
         choose('worker'),
         choose('Change model and variant'),
         choose('OpenAI'),
-        choose('GPT-5 mini'),
+        choose('gpt-5-mini'),
         choose('Save changes'),
         (options) => {
           // After reload the draft is clean: no save row remains.

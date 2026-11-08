@@ -99,6 +99,28 @@ importers:
         specifier: 4.1.6
         version: 4.1.6(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  opencode-packages/opencode-multi-codex:
+    dependencies:
+      zod:
+        specifier: ^4.1.8
+        version: 4.4.3
+    devDependencies:
+      '@opencode/plugin':
+        specifier: 2.2.5
+        version: 2.2.5(@opentelemetry/semantic-conventions@1.44.0)(redis@6.3.1(@opentelemetry/api@1.9.0))(vite@8.0.13(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@types/node':
+        specifier: ^22.19.19
+        version: 22.19.19
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.14)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.6
+        version: 4.1.6(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   pi-packages/pi-antigravity-bridge:
     devDependencies:
       '@earendil-works/pi-ai':

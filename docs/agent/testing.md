@@ -420,6 +420,41 @@ local closeout. Report unrelated environment failures (such as Windows timing)
 with evidence, rather than treating them as change failures. Failures caused by
 the change must still be fixed before closeout.
 
+## OpenCode multi-codex checks
+
+`opencode-packages/opencode-multi-codex` is a workspace member with its own
+Vitest configuration and colocated `src/**/*.test.ts`; the root Vitest include
+does not run those package tests. Run:
+
+```sh
+pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
+pnpm --filter @thoth-agents/opencode-multi-codex run test
+pnpm --filter @thoth-agents/opencode-multi-codex run build
+pnpm --dir opencode-packages/opencode-multi-codex pack --dry-run
+```
+
+The dry-run must list both `dist/index.js` and `dist/tui/index.js`. Cover registry
+stability/missing credentials, per-request HTTP/WebSocket account substitution,
+Codex alias parity, quota parsing/freshness, config validation, RPC/TUI commands,
+and account-state rotation with concurrent auxiliary traffic. Add repository
+`check:ci`, `typecheck`, `build` and `git diff --check` for closeout.
+
+Linux CI and `pi-packages-windows` both run this package's typecheck/test/build.
+Release explicitly builds `opencode-packages/*` before publishing with scripts
+disabled, verifies packed entrypoints, and publishes/reconciles both workspace
+lanes. Lane/workspace/release changes require focused root tests:
+
+```sh
+pnpm exec vitest run src/harness/release-pi.test.ts src/harness/release-workflow.test.ts src/harness/generate-release-notes.test.ts src/harness/pi-package-changelogs.test.ts src/harness/check-pi-version-bumps.test.ts src/harness/publish-marketplace.test.ts
+```
+
+Automated checks do not establish cross-account encrypted-reasoning replay or
+live Codex quota contracts. A separately authorized user-run OpenCode >=2.2.6
+smoke needs two legacy ChatGPT accounts: pin agents separately, inspect status,
+force a usage limit and observe the rotated continuation. Preserve the documented
+compaction/generate/title mid-retry limitation; never use operator credentials or
+make live model calls as part of offline package checks.
+
 ## Packed Pi verification
 
 When packed Pi verification is in scope, it requires Pi `>=1.5.0` and Node.js

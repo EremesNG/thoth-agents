@@ -844,6 +844,38 @@ version fails; local validation does not require version bumps. The next root
 tag triggers `release.yml`; reconciliation creates missing package tags/releases
 for manually bootstrapped versions, and later versions use trusted publishing.
 
+## OpenCode multi-codex
+
+`@thoth-agents/opencode-multi-codex` lives in
+`opencode-packages/opencode-multi-codex`, separate from the root plugin and Pi
+packages. It is manually installed, not CLI-managed. Start with its
+[README](../../opencode-packages/opencode-multi-codex/README.md) for v2 `plugins`
+configuration, native legacy ChatGPT login, numbering, agent pins and commands.
+The server (`.`) and TUI (`./tui`) exports build with tsup; OpenCode >=2.2.6 and
+Node >=22.19 are required, and `@opencode/plugin` imports are type-only.
+
+`src/accounts/` owns persistent number-to-native-credential mappings (account 1
+= `openai`, others `openai-codex-N`); `provider/` mirrors v2.2.6 Codex rules;
+`request/` resolves natively refreshed credentials per HTTP/WebSocket request
+without global activation; `quota/` tracks unofficial backend usage and response
+observations. `rotation/` maintains process-wide blocks with exact response or
+handshake attribution, not retry-event attribution. `rpc-handlers.ts`, `rpc.ts`
+and `tui/` implement the four `/codex-*` commands. Server plugins-entry
+`options.autoSwitchOn429` defaults on; invalid config disables it with a status
+warning. Removed numbered accounts are unmapped, not deleted from OpenCode.
+
+Compaction/generate/title are not re-routed mid-retry. Cross-account encrypted
+continuation replay is unverified live and currently preserved, not stripped.
+Do not claim automated tests prove that live outcome or future host parity.
+
+CI checks this package on Linux and Windows. Release builds `opencode-packages/*`
+and checks packed `dist/index.js` and `dist/tui/index.js` before the shared
+workspace publish; reconciliation covers both lanes' package tags/releases.
+`pnpm release:pi opencode-multi-codex patch` discovers this lane too (despite the
+historical command name); do not bump or publish during implementation. New npm
+packages still need the [one-time bootstrap](#one-time-bootstrap).
+See [package checks](testing.md#opencode-multi-codex-checks).
+
 ## Verification
 
 Select focused adapter/generator tests for the touched output. When generated

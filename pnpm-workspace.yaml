@@ -1,5 +1,6 @@
 packages:
   - 'pi-packages/*'
+  - 'opencode-packages/*'
 
 allowBuilds:
   '@ast-grep/cli': true

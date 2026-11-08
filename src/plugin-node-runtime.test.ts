@@ -206,15 +206,22 @@ describe('plugin runtime compatibility', () => {
       mkdirSync(fakeBin);
       mkdirSync(homeDir);
       const providerResult = JSON.stringify({
-        status: 'complete',
+        status: 'planned',
         changed: false,
-        harness: 'opencode',
-        scope: 'global',
-        target: homeDir,
-        steps: [{ name: 'setup', outcome: 'planned' }],
-        diagnostics: [],
-        manual_actions: [],
-        receipt: null,
+        plugin: 'thoth-mem@0.7.0',
+        opencodeVersion: '2.2.6',
+        configPath: join(homeDir, '.config', 'opencode', 'opencode.json'),
+        skillPath: join(homeDir, '.config', 'opencode', 'skills', 'thoth-mem'),
+        providerConfigPath: join(
+          homeDir,
+          '.config',
+          'thoth-mem',
+          'config.json',
+        ),
+        receiptPath: null,
+        actions: ['Configure thoth-mem for OpenCode'],
+        recovered: false,
+        warnings: [],
       });
 
       try {

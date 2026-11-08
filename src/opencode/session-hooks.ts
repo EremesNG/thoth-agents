@@ -9,16 +9,16 @@ export async function registerSessionHooks(
   deps: OpenCodeDependencies,
 ): Promise<void> {
   const names = new Set(deps.agentDefs.map((agent) => agent.name));
-  const chains = Object.fromEntries(
-    Object.entries(deps.runtimeChains).filter(([name]) => names.has(name)),
-  );
+  // Keep the mutable map: profile refresh replaces its per-role chains.
   const fallback = new ForegroundFallbackManager(
     ctx.session,
-    chains,
+    deps.runtimeChains,
     deps.effectiveModelArrays,
   );
   const state = new SessionState(deps.directory, ctx.session.instructions);
-  await ctx.session.hook('retry', (input) => fallback.retry(input));
+  await ctx.session.hook('retry', (input) => {
+    if (names.has(input.agent)) return fallback.retry(input);
+  });
   await ctx.session.hook('prompt', async (input) => {
     await state.refresh(input.sessionID);
   });

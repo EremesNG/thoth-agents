@@ -346,7 +346,7 @@ External required skills are installed for every harness:
   simplify, tdd, progressive-context-router, and grill-me.
 Their installation is mandatory and cannot be skipped.
 
-The generated OpenCode config supports the built-in OpenAI preset only.
+The generated OpenCode config supports the built-in OpenAI profile only.
 
 Examples:
   thoth-agents

@@ -69,7 +69,7 @@ from both `plugins` and legacy `plugin` converge to one exact entry; unrelated
 plugins retain relative order. It no longer writes `agent.*.disable`. If package identity or version cannot be verified, installation fails
 before changing configuration and never substitutes `latest`.
 
-The plugin registers the six-role OpenAI preset, makes orchestrator default,
+The plugin registers six roles using the effective model profile, makes orchestrator default,
 removes native explore/general, and exposes `/thoth-init` plus five owned
 skills at package `skills/<name>/SKILL.md` paths. OpenCode applies
 config-discovered skills after external plugins, so same-ID copies shadow the
@@ -91,7 +91,39 @@ and must be configured separately. See
 An older globally materialized `thoth-work` skill may remain after upgrade and
 may still appear in native discovery. Inspect it and explicitly retire it if
 appropriate; setup never deletes unknown or modified global content. No Kimi,
-Copilot, ZAI/GLM, or mixed-provider preset is generated.
+Copilot, ZAI/GLM, or mixed-provider profile is generated.
+
+### Configure model profiles inside OpenCode
+
+Install/sync write the built-in `openai` profile into
+`<opencode-config-dir>/thoth/profiles.json` and activate it only when no valid
+global selection exists. Project profiles live in
+`<project>/.opencode/thoth/profiles.json`. The config directory follows
+`OPENCODE_CONFIG_DIR` → `$XDG_CONFIG_HOME/opencode` → `~/.config/opencode`.
+
+Run `/subagents-model` in the OpenCode TUI to create, clone, rename, delete,
+and edit named profiles for all six roles, including orchestrator. The package's
+`./tui` entry loads automatically. Native dialogs provide model/variant editing,
+session-model capture for the orchestrator, draft-until-save editing, conflict
+reload, activation and clearing selections. Use action rows, not single-letter
+hotkeys. Home-route use without a session disables only session-dependent actions.
+
+Selection is **session → project pin → global active → `default`**; project
+profiles shadow same-named global ones. `active` in the project file pins that
+project; `active` in the global file selects globally. Session selections live
+in per-session plugin storage. The virtual `default` is read-only and reflects
+the effective `thoth-agents.json` roster. Models and variants form a pair:
+setting a model without a variant clears inherited effort; a variant-only entry
+applies to the inherited model. Profile assignments take precedence over root
+role model settings.
+
+Activating switches the current orchestrator; project/global activation also
+reloads role defaults. Native subagent calls without a model use the parent's
+effective profile; explicit models are preserved. The CLI edits global profiles
+only: applying in its model editor saves and activates the complete `agents`
+profile, which status and readback recognize. Update and shipped-default restore
+also operate on profiles. See [Provider Configuration](provider-configurations.md)
+for the schema, overview markers, resolution rules and editing workflow.
 
 ## Codex
 
@@ -561,7 +593,7 @@ Do not invent batch, fresh-context, workflow, depth-enforcement, or child-marker
 controls absent from the runtime contract. Lean filters extension lifecycle
 hooks, not process permissions or host tools.
 
-Pi specialists use the shared OpenAI role preset through the `openai-codex`
+Pi specialists use the shared OpenAI role defaults through the `openai-codex`
 provider. The ambient root retains Pi's selected model and effort settings:
 
 | Specialist | Model | Effort |
@@ -826,7 +858,7 @@ constitution; historical material remains preserved. Project work is not mirrore
 
 | Harness | Limitation |
 | --- | --- |
-| OpenCode | Requires OpenCode >=2.2.6; package-owned skills register at runtime. CLI installation supplies external skills and thoth-mem setup. Only the OpenAI preset ships; host LSP overrides must be configured separately. |
+| OpenCode | Requires OpenCode >=2.2.6; package-owned skills register at runtime. CLI installation supplies external skills and thoth-mem setup. Only the `openai` built-in model profile ships; `/subagents-model` manages profiles. Host LSP overrides must be configured separately. |
 | Codex | Plugins cannot register agent roles; the CLI supplies thin global TOMLs and config, while trusted plugin hooks supply root/role prompts. CLI and provider setup remain mandatory. Installed-role selection and some permissions remain instruction-level. |
 | Claude Code | Native marketplace/install steps must precede the CLI and provider setup. Native tool denials protect read-only roles, but fine-grained write-path restriction remains instruction-level. |
 | Pi | Pi extensions execute with the invoking user's system permissions; tool allowlists are not an OS sandbox, project-local resources require trust, and continuation/live steering depend on the installed delegation runtime. |

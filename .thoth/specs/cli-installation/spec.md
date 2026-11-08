@@ -14,7 +14,7 @@ Published installers MUST invoke `npx -y thoth-mem@>=0.7.0 setup <opencode|codex
 
 - **GIVEN** any supported harness using its published install source
 - **WHEN** its installation reaches provider setup
-- **THEN** it runs `npx -y thoth-mem@>=0.7.0 setup <harness> --json` with the spec as one literal argument, with `--plan` only for dry-run, after thoth-agents-owned setup and required skills 
+- **THEN** it runs `npx -y thoth-mem@>=0.7.0 setup <harness> --json` with the spec as one literal argument, with `--plan` only for dry-run, after thoth-agents-owned setup and required skills
 
 ### Requirement: Truthful provider outcome
 
@@ -24,7 +24,7 @@ The installer MUST parse thoth-mem's per-host setup JSON and exit code, accept a
 
 - **GIVEN** thoth-mem reports `requires-user-action` with exit 1, exits 1 with only a stderr failure, or prints malformed output
 - **WHEN** thoth-agents finishes the command
-- **THEN** it reports the bounded provider diagnostics, actions, warnings and receipt path and does not record complete installation 
+- **THEN** it reports the bounded provider diagnostics, actions, warnings and receipt path and does not record complete installation
 
 ### Requirement: Public operator guidance
 
@@ -60,71 +60,35 @@ README, CLI help/status, and routed installation documentation MUST distinguish 
 - **WHEN** the Pi package change is present
 - **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
 
-### Requirement: Activate the applied agents preset
+### Requirement: Activate the applied agents profile
 
-Applying any valid OpenCode model configuration plan MUST persist `preset: agents` and MUST materialize the applied configuration under the real named preset `presets.agents`.
+Applying any valid OpenCode model configuration plan MUST materialize a complete `agents` profile in the global profiles file containing the changed assignment plus every unchanged effective role assignment, and MUST make it the global active profile.
 
-#### Scenario: US1 - Activate applied model assignments 1
+#### Scenario: Activate the applied agents profile
 
-- **GIVEN** the managed OpenCode config selects `openai`
+- **GIVEN** the global active profile is `openai`
 - **WHEN** the user applies one edited role
-- **THEN** the persisted config selects `agents` and `presets.agents` contains the changed assignment plus every unchanged effective role assignment
-
-#### Scenario: US1 - Activate applied model assignments 2
-
-- **GIVEN** no role is dirty and the TUI sends every displayed role
-- **WHEN** the user selects Apply
-- **THEN** the same complete `agents` preset is materialized and activated
-
-#### Scenario: US1 - Activate applied model assignments 3
-
-- **GIVEN** the active preset and root overrides each contribute fields to a role
-- **WHEN** model configuration is applied
-- **THEN** the materialized `agents` preset preserves their field-level effective value before applying the requested model or effort change
+- **THEN** the global profiles file activates `agents` and its `agents` profile contains the change plus every unchanged effective role 
 
 ### Requirement: Materialize the complete effective roster
 
-Before activation, the system MUST derive all six effective role configurations from the selected preset, root overrides, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated presets and configuration keys.
+Before activation, the system MUST derive all six effective role configurations from the active profile, root configuration, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated profiles and configuration keys; applying with no dirty role MUST still materialize and activate the same complete `agents` profile.
 
-#### Scenario: US1 - Activate applied model assignments 1
-
-- **GIVEN** the managed OpenCode config selects `openai`
-- **WHEN** the user applies one edited role
-- **THEN** the persisted config selects `agents` and `presets.agents` contains the changed assignment plus every unchanged effective role assignment
-
-#### Scenario: US1 - Activate applied model assignments 2
+#### Scenario: Materialize the complete effective roster
 
 - **GIVEN** no role is dirty and the TUI sends every displayed role
 - **WHEN** the user selects Apply
-- **THEN** the same complete `agents` preset is materialized and activated
+- **THEN** the same complete `agents` profile is materialized and activated 
 
-#### Scenario: US1 - Activate applied model assignments 3
+### Requirement: Recognize the managed agents profile
 
-- **GIVEN** the active preset and root overrides each contribute fields to a role
-- **WHEN** model configuration is applied
-- **THEN** the materialized `agents` preset preserves their field-level effective value before applying the requested model or effort change
+OpenCode status and model-role readback MUST recognize a complete active `agents` profile as a valid managed configuration and MUST keep subsequent valid model plans eligible to apply. Managed status MUST recognize a complete applied `agents` profile as the active roster without an `opencode-roster-drift` blocker, reload MUST display the active profile's effective values without falling back to `openai`, and a second apply MUST remain eligible and preserve the activated profile.
 
-### Requirement: Recognize the managed agents preset
+#### Scenario: Recognize the managed agents profile
 
-OpenCode status and model-role readback MUST recognize a complete active `presets.agents` roster as a valid managed configuration and MUST keep subsequent valid model plans eligible to apply.
-
-#### Scenario: US2 - Reapply the activated preset safely 1
-
-- **GIVEN** a complete applied `presets.agents` roster is active
+- **GIVEN** a complete applied `agents` profile is globally active
 - **WHEN** managed status is evaluated
-- **THEN** the roster is recognized without an `opencode-roster-drift` blocker
-
-#### Scenario: US2 - Reapply the activated preset safely 2
-
-- **GIVEN** a complete applied `agents` preset
-- **WHEN** model roles are loaded again
-- **THEN** the selected preset and permitted root overrides determine the displayed effective values without falling back to `openai`
-
-#### Scenario: US2 - Reapply the activated preset safely 3
-
-- **GIVEN** the first apply completed successfully
-- **WHEN** a second valid model plan is built and applied
-- **THEN** it remains eligible and preserves the activated `agents` preset
+- **THEN** the roster is recognized without an `opencode-roster-drift` blocker 
 
 ### Requirement: Provide owned OpenCode workflow skills from the plugin package
 
@@ -134,7 +98,7 @@ The OpenCode plugin MUST register the five canonical thoth-owned workflow skills
 
 - **GIVEN** a complete installed thoth-agents package and a stale `thoth-sdd` copy under `~/.config/opencode/skills/`
 - **WHEN** `install --agent=opencode` runs and the operator confirms the move
-- **THEN** the copy is moved unchanged into the backup directory and OpenCode 2.2.6 lists all five owned skills once with paths inside the installed package 
+- **THEN** the copy is moved unchanged into the backup directory and OpenCode 2.2.6 lists all five owned skills once with paths inside the installed package
 
 ### Requirement: Pin the OpenCode plugin to the executing release
 
@@ -300,7 +264,7 @@ CLI help, status and operation messaging, and routed public installation guidanc
 
 - **GIVEN** installation and update help or documentation
 - **WHEN** an operator reads the OpenCode guidance
-- **THEN** it explains the exact-version pin, the OpenCode 2.2.6 minimum and that re-running the latest CLI installer or applying Update is the supported update mechanism 
+- **THEN** it explains the exact-version pin, the OpenCode 2.2.6 minimum and that re-running the latest CLI installer or applying Update is the supported update mechanism
 
 ### Requirement: Expose truthful Pi operations
 
@@ -466,4 +430,4 @@ OpenCode installation and update MUST parse the detected host version and MUST f
 
 - **GIVEN** an OpenCode host reporting version 2.2.5
 - **WHEN** `install --agent=opencode` runs
-- **THEN** it fails with a message requiring OpenCode 2.2.6 or later and writes no configuration 
+- **THEN** it fails with a message requiring OpenCode 2.2.6 or later and writes no configuration

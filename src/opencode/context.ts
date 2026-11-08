@@ -4,6 +4,15 @@ import type { Plugin } from '@opencode/plugin';
 import { type AgentDefinition, createAgents } from '../agents';
 import { loadPluginConfig, type PluginConfig } from '../config';
 import { renderOpenCodeAgentConfigs } from '../harness/adapters/opencode';
+import {
+  type EffectiveRoster,
+  type ModelProfileSelection,
+  ModelProfileStore,
+  mergeProfileModelChain,
+  type ProfileRole,
+  type RoleProfile,
+  resolveRoleProfile,
+} from './profiles';
 
 type ModelEntry = { id: string; variant?: string };
 
@@ -16,6 +25,14 @@ export interface OpenCodeDependencies {
   modelArrayMap: Record<string, ModelEntry[]>;
   effectiveModelArrays: Record<string, ModelEntry[]>;
   runtimeChains: Record<string, string[]>;
+  profileState: {
+    store: ModelProfileStore;
+    roster: EffectiveRoster;
+    selection: ModelProfileSelection;
+    roles: Partial<Record<ProfileRole, RoleProfile>>;
+    /** Re-read global/project selection and update the transform's mutable defaults. */
+    refresh(): void;
+  };
 }
 
 export function loadOpenCodeDependencies(
@@ -58,6 +75,68 @@ export function loadOpenCodeDependencies(
     }
   }
 
+  // Build the profile roster from the rendered runtime defaults, not raw overrides:
+  // array entries intentionally do not inherit a scalar variant.
+  const roster: EffectiveRoster = {};
+  const configuredChains: Record<string, ModelEntry[]> = {};
+  const baseArrays = structuredClone(effectiveModelArrays);
+  const baseRuntimeChains = structuredClone(runtimeChains);
+  for (const { name } of agentDefs) {
+    const role = name as ProfileRole;
+    const first = effectiveModelArrays[name]?.[0];
+    roster[role] = first
+      ? { model: first.id, variant: first.variant }
+      : { model: agents[name]?.model, variant: agents[name]?.variant };
+    configuredChains[name] =
+      effectiveModelArrays[name] ??
+      (agents[name]?.model
+        ? [{ id: agents[name].model, variant: agents[name].variant }]
+        : []);
+  }
+  const store = new ModelProfileStore({
+    cwd: directory,
+    roster,
+    warn: (message) => console.warn(`[thoth-agents] ${message}`),
+  });
+  const profileState: OpenCodeDependencies['profileState'] = {
+    store,
+    roster,
+    selection: store.resolve(),
+    roles: {},
+    refresh() {
+      this.selection = store.resolve();
+      applyProfile();
+    },
+  };
+  function applyProfile(): void {
+    for (const { name } of agentDefs) {
+      const role = name as ProfileRole;
+      profileState.roles[role] = resolveRoleProfile(
+        role,
+        profileState.selection.profile,
+        roster,
+      );
+      // The virtual default is an exact no-op, including retry eligibility and
+      // variant-less arrays. Named profiles prepend to the same configured chain.
+      if (profileState.selection.name === 'default') {
+        if (baseArrays[name])
+          effectiveModelArrays[name] = structuredClone(baseArrays[name]);
+        else delete effectiveModelArrays[name];
+        if (baseRuntimeChains[name])
+          runtimeChains[name] = [...baseRuntimeChains[name]];
+        else delete runtimeChains[name];
+      } else {
+        const chain = mergeProfileModelChain(
+          profileState.roles[role],
+          configuredChains[name],
+        );
+        effectiveModelArrays[name] = chain;
+        runtimeChains[name] = chain.map(({ id }) => id);
+      }
+    }
+  }
+  applyProfile();
+
   return {
     directory,
     // Both src/opencode/context.ts and dist/index.js (or a root chunk) resolve
@@ -74,5 +153,6 @@ export function loadOpenCodeDependencies(
     modelArrayMap,
     effectiveModelArrays,
     runtimeChains,
+    profileState,
   };
 }

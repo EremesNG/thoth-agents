@@ -18,7 +18,13 @@ persistence, receipts, state, and recovery remain outside this package.
    MCPs, package-path skills and `/thoth-init`; init only synchronizes project
    governance. Native `subagent` owns delegation; keyed instructions and
    compaction carry state without per-call system/history rewrites. See
-   [runtime contracts](runtime-integrations.md).
+   [runtime contracts](runtime-integrations.md). The host-neutral profile core in
+   `src/opencode/profiles/` feeds setup defaults and parent-session subagent model
+   injection. `profile-runtime.ts`, `profile-sessions.ts` and RPC handlers bridge
+   the host; `src/tui/` auto-loads as `./tui` for native `/subagents-model` dialogs.
+   Global/project profile files and per-session plugin storage select session →
+   project pin → global active → virtual read-only `default`. See the
+   [profile contract](runtime-integrations.md#model-profiles-and-tui).
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
@@ -130,7 +136,7 @@ subscription classification. See [controls and compatibility](harness-packaging.
 
 | Boundary | Owner |
 | --- | --- |
-| OpenCode runtime | `src/index.ts`, hooks, MCPs, tools |
+| OpenCode runtime and profiles | `src/index.ts`, `src/opencode/`, hooks, MCPs, tools; `src/tui/` owns native profile dialogs |
 | Pi delegation runtime | Pi plus the selected external delegation package; thoth-agents supplies only policy, prompts, managed resources, installation, and diagnostics |
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` |
 | Adaptive SDD route and phase policy | `src/harness/core/sdd.ts` |
@@ -147,7 +153,9 @@ subscription classification. See [controls and compatibility](harness-packaging.
   selection by `src/harness/core/agent-pack.ts` and the prompt renderers in
   `src/agents/`. Tests: `src/harness/core/sdd-protocol.test.ts` and
   `src/harness/core/agent-pack.test.ts`.
-- OpenCode ships only the OpenAI preset.
+- OpenCode ships only the `openai` built-in model profile. Profile model/variant
+  pairs override root model settings without changing prompts or permissions;
+  project profiles shadow same-named global ones. CLI profile writes are global.
 - Owned workflow contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during execution.
   OpenCode registers owned skills from package paths; config-discovered

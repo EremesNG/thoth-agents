@@ -16,6 +16,7 @@ import {
 } from '../codex-install';
 import { parseConfig } from '../config-io';
 import { getShippedModelRoles } from '../model-defaults';
+import { effectiveOpenCodeProfile } from '../opencode-profiles';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeInstallPlan,
@@ -166,69 +167,16 @@ export function getPiModelRoles(): ModelRoleInput[] {
   return defaultPiModelRoles(context);
 }
 
-function readRoleField(
-  config: unknown,
-  role: string,
-  field: 'model' | 'variant',
-): string | undefined {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return undefined;
-  }
-  const record = config as Record<string, unknown>;
-  const value = record[role];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  const fieldValue = (value as Record<string, unknown>)[field];
-  return typeof fieldValue === 'string' && fieldValue.length > 0
-    ? fieldValue
-    : undefined;
-}
-
 export function getOpenCodeModelRoles(): ModelRoleInput[] {
   const parsed = parseConfig(getExistingLiteConfigPath());
-  const agents =
-    parsed.config?.agents && typeof parsed.config.agents === 'object'
-      ? parsed.config.agents
-      : undefined;
-  const presets =
-    parsed.config?.presets &&
-    typeof parsed.config.presets === 'object' &&
-    !Array.isArray(parsed.config.presets)
-      ? (parsed.config.presets as Record<string, unknown>)
-      : {};
-  const presetName =
-    typeof parsed.config?.preset === 'string'
-      ? parsed.config.preset
-      : undefined;
-  const selectedPreset =
-    presetName !== undefined ? presets[presetName] : undefined;
-  const activePreset =
-    selectedPreset &&
-    typeof selectedPreset === 'object' &&
-    !Array.isArray(selectedPreset)
-      ? selectedPreset
-      : undefined;
-
+  const profile = effectiveOpenCodeProfile(parsed.config);
   return ALL_AGENT_NAMES.map((role) => {
-    const defaultModel = getDefaultOpenCodeModel(role);
-    const configuredModel =
-      readRoleField(agents, role, 'model') ??
-      readRoleField(activePreset, role, 'model');
-    const model = configuredModel ?? defaultModel;
-    const configuredVariant =
-      readRoleField(agents, role, 'variant') ??
-      readRoleField(activePreset, role, 'variant');
-    const variant =
-      configuredVariant ??
-      (configuredModel === undefined
-        ? getDefaultOpenCodeVariant(role)
-        : undefined);
+    const value = profile.agents[role];
     return {
       role,
-      model,
-      effort: variant
-        ? { kind: 'effort' as const, value: variant }
+      model: value?.model ?? getDefaultOpenCodeModel(role),
+      effort: value?.variant
+        ? { kind: 'effort' as const, value: value.variant }
         : { kind: 'inherit' as const },
     };
   });

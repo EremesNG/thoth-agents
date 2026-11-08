@@ -276,7 +276,7 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     ][]
   ).map(([name, factory]) => {
     const override = getAgentOverride(config, name);
-    const prompts = loadAgentPrompt(name, config?.preset);
+    const prompts = loadAgentPrompt(name);
     const model =
       getPrimaryModelForPrompt(override?.model) ??
       (DEFAULT_MODELS[name] as string);
@@ -297,7 +297,7 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   });
 
   const orchestratorOverride = getAgentOverride(config, 'orchestrator');
-  const orchestratorPrompts = loadAgentPrompt('orchestrator', config?.preset);
+  const orchestratorPrompts = loadAgentPrompt('orchestrator');
   const orchestrator = createOrchestratorAgent(
     orchestratorOverride?.model ??
       `openai/${OPENCODE_OPENAI_ORCHESTRATOR_PRESET.model}`,

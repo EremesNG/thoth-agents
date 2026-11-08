@@ -9,6 +9,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./tui": {
+      "types": "./dist/tui/index.d.ts",
+      "default": "./dist/tui/index.js"
+    },
     "./package.json": "./package.json",
     "./dist/*": "./dist/*",
     "./skills/*": "./skills/*",

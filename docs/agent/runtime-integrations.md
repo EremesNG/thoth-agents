@@ -3,8 +3,9 @@
 ## Responsibility
 
 This route owns the OpenCode >=2.2.6 plugin, native roles, tools, MCPs,
-`/thoth-init`, package skills, permissions and session hooks. Entrypoints:
-`src/index.ts` and `src/opencode/`. Provider memory lifecycle remains external.
+`/thoth-init`, `/subagents-model`, package skills, permissions and session hooks.
+Entrypoints: `src/index.ts`, `src/opencode/` and `src/tui/`.
+Provider memory lifecycle remains external.
 
 ## Registration and delegation
 
@@ -12,7 +13,8 @@ The entry exports a plain object satisfying `Plugin.Plugin`; `@opencode/plugin`
 2.2.5 is a type-only devDependency, not a bundled runtime import. Setup composes
 agent, tool, MCP, command, skill, permission, delegation and session registrars.
 It registers six roles, defaults to `orchestrator`, and removes host `explore`
-and `general`. Models use `{providerID,id,variant}`; only the OpenAI preset ships.
+and `general`. Models use `{providerID,id,variant}`; only the `openai` built-in
+model profile ships.
 
 The native `subagent` tool takes `agent`, `description`, `prompt`, optional
 `background`, `model` and continuation `sessionID`. Native completion wakes the
@@ -22,6 +24,40 @@ Completed foreground Oracle gate results receive exactly one
 Background completions enter as synthetic host messages without a mutable
 admission hook: root must run the explicit compact-validator fallback from the
 installed `thoth-sdd` skill on the unchanged result.
+
+## Model profiles and TUI
+
+- `src/opencode/profiles/` owns the host-neutral store/editor/resolver. Files:
+  `<opencode-config-dir>/thoth/profiles.json` and
+  `<project>/.opencode/thoth/profiles.json`, both
+  `{version:1, active?, profiles:{name:{agents:{role:{model?,variant?}}}}}`.
+  Config directory: `OPENCODE_CONFIG_DIR` → `$XDG_CONFIG_HOME/opencode` →
+  `~/.config/opencode`. Six canonical roles include orchestrator.
+- Selection: session → project pin → global active → virtual read-only `default`
+  (= effective `thoth-agents.json` roster). Project names shadow global names;
+  missing pointers warn and fall through. `active` in the project/global file
+  is its pin/selection. Model + variant are a pair: a model entry owns its variant
+  (absence means none); variant-only entries use the inherited model. Profile
+  values precede root role configuration and shipped defaults.
+- Setup resolves the effective profile in `context.ts`; `agents.ts` registers
+  profile models first, followed by deduplicated configured fallback models.
+  This covers the first cold orchestrator session without `switchModel`.
+- `profile-runtime.ts` fills only absent native `subagent` models from the parent
+  session's effective profile (`provider/id#variant`). Explicit models are never
+  replaced. `profile-sessions.ts` stores session selections in plugin storage.
+- `profile-rpc.ts` defines the shared RPC contract; `profile-rpc-handlers.ts`
+  handles state, editing, activation, clearing and capture. Activation switches
+  the current orchestrator; project/global changes reload agent defaults.
+  Unavailable models warn without changing activation state.
+- `src/tui/index.ts` is the auto-loaded package `./tui` entry. It registers
+  `/subagents-model` using native select/prompt/confirm dialogs over RPC, not a
+  server command or custom renderer. Markers are `● S P G ~` (effective, session,
+  project, global, shadowed). Per-role editing, create/clone/rename/delete,
+  capture, save/discard and activation use action rows, no single-letter hotkeys.
+  Drafts remain unsaved until Save; conflicts require reload. Home-route use
+  disables session-only actions. See [user reference](../provider-configurations.md).
+- `src/cli/opencode-profiles.ts` manages global profiles only; CLI Apply writes
+  and activates the complete `agents` roster. Project pins belong to the TUI.
 
 ## Packaged skill precedence
 
@@ -62,8 +98,9 @@ only orchestrator may delegate. These are host permissions, not an OS sandbox.
   implementations. OpenCode has no plugin API for host LSP config overrides:
   Thoth standalone LSP tools use built-in defaults and do not consume host
   overrides. Configure host-native LSP separately; this is a capability gap.
-- Tmux and runtime auto-update checking are removed. There are no runtime
-  notifications, package installs or config rewrites; use explicit CLI updates.
+- Tmux and runtime auto-update checking are removed. Runtime does not install
+  packages or automatically rewrite configuration; explicit profile actions can
+  save profile files and report warnings. Use the CLI for package updates.
 
 ## Focused verification
 

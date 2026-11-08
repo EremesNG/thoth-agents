@@ -58,12 +58,12 @@ The system MUST preserve supported manual model definitions and their explicitly
 
 ### Requirement: Apply role-specific specialist effort
 
-The built-in OpenAI defaults MUST assign `explorer`, `librarian`, `designer` and `worker` `gpt-6-luna` with `max` effort and `oracle` `gpt-6.1-sol` with `xhigh` effort (provider-qualified where required), and the OpenCode managed orchestrator `gpt-6.1-sol` with `high` effort; other harness roots remain ambient. Claude Code keeps its own aliases with `explorer` at `medium` effort. On update, a role whose installed model and effort equal the previous shipped default MUST advance to the new default, while valid operator overrides MUST remain effective, and every harness that supports effort metadata MUST render it without silently downgrading `max`.
+The built-in OpenAI defaults (for OpenCode, the built-in `openai` profile) MUST assign `explorer`, `librarian`, `designer` and `worker` `gpt-6-luna` with `max` effort and `oracle` `gpt-6.1-sol` with `xhigh` effort (provider-qualified where required), and the OpenCode managed orchestrator `gpt-6.1-sol` with `high` effort; other harness roots remain ambient. Claude Code keeps its own aliases with `explorer` at `medium` effort. On update, a role whose installed model and effort equal the previous shipped default MUST advance to the new default, while valid operator overrides MUST remain effective, and every harness that supports effort metadata MUST render it without silently downgrading `max`.
 
 #### Scenario: Apply role-specific specialist effort
 
-- **GIVEN** the built-in OpenAI preset and an installed role still on the previous shipped default
-- **WHEN** defaults are resolved or the install is updated
+- **GIVEN** the built-in OpenAI profile and an installed role still on the previous shipped default
+- **WHEN** the install is updated
 - **THEN** `worker` resolves to `gpt-6-luna` with `max`, `oracle` to `gpt-6.1-sol` with `xhigh`, and customized roles keep their values 
 
 ### Requirement: Preview shipped model defaults

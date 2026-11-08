@@ -6,7 +6,11 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { LEGACY_OPENAI_PRESET } from '../config/constants';
+import {
+  effectiveOpenCodeProfile,
+  syncOpenCodeProfile,
+  withoutLegacyPresets,
+} from './opencode-profiles';
 import { isValidPackageVersion } from './package-version';
 import {
   ensureConfigDir,
@@ -221,54 +225,6 @@ function configObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function mergeLiteConfig(
-  defaults: Record<string, unknown>,
-  installed: Record<string, unknown>,
-): Record<string, unknown> {
-  const presets = { ...configObject(installed.presets) };
-  const shipped = configObject(configObject(defaults.presets).openai);
-  const activeName =
-    typeof installed.preset === 'string' ? installed.preset : 'openai';
-  const rootAgents = { ...configObject(installed.agents) };
-
-  // Merge the shipped preset and the selected preset. Root agent overrides must
-  // participate in comparison, otherwise a customized effective pair can advance.
-  for (const name of new Set(['openai', activeName])) {
-    const roles = { ...configObject(presets[name]) };
-    for (const [role, legacy] of Object.entries(LEGACY_OPENAI_PRESET)) {
-      const rootRole = name === activeName ? rootAgents[role] : undefined;
-      const current = {
-        ...configObject(roles[role]),
-        ...configObject(rootRole),
-      };
-      const advancesLegacy =
-        current.model === `openai/${legacy.model}` &&
-        current.variant === legacy.effort;
-      if (roles[role] === undefined && rootRole === undefined) {
-        roles[role] = shipped[role];
-      } else if (advancesLegacy) {
-        roles[role] = { ...current, ...configObject(shipped[role]) };
-        if (rootRole !== undefined)
-          rootAgents[role] = {
-            ...configObject(rootRole),
-            ...configObject(shipped[role]),
-          };
-      } else {
-        // Do not fill an omitted variant: it means runtime inheritance.
-        roles[role] = current;
-      }
-    }
-    presets[name] = roles;
-  }
-  return {
-    ...defaults,
-    ...installed,
-    preset: activeName,
-    presets,
-    ...(installed.agents !== undefined ? { agents: rootAgents } : {}),
-  };
-}
-
 export function writeLiteConfig(
   installConfig: InstallConfig,
   targetPath?: string,
@@ -281,8 +237,11 @@ export function writeLiteConfig(
     if (!installConfig.reset && existsSync(configPath)) {
       const { config: installed, error } = parseConfigFile(configPath);
       if (error) throw new Error(`Failed to parse lite config: ${error}`);
-      if (installed) config = mergeLiteConfig(config, configObject(installed));
+      if (installed) config = { ...config, ...configObject(installed) };
     }
+
+    config = withoutLegacyPresets(config);
+    syncOpenCodeProfile(installConfig.reset);
 
     // Atomic write for lite config too
     const tmpPath = `${configPath}.tmp`;
@@ -337,11 +296,7 @@ export function detectCurrentConfig(): DetectedConfig {
   const { config: liteConfig } = parseConfig(getLiteConfig());
   if (liteConfig && typeof liteConfig === 'object') {
     const configObj = liteConfig as Record<string, unknown>;
-    const presetName = configObj.preset as string;
-    const presets = configObj.presets as Record<string, unknown>;
-    const agents = presets?.[presetName] as
-      | Record<string, { model?: string }>
-      | undefined;
+    const agents = effectiveOpenCodeProfile(configObj).agents;
 
     if (agents) {
       const models = Object.values(agents)

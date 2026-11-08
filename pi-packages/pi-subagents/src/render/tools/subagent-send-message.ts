@@ -11,6 +11,7 @@ import { iconAwareRenderer } from '../icon-aware-component.js';
 import {
   boxedComponent,
   emptyComponent,
+  firstLineOf,
   toolRenderState,
 } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
@@ -45,6 +46,7 @@ export const renderSubagentSendMessageResult = iconAwareRenderer(
     const title = `${archPrefix} ${themeTitle(theme, `subagent send message ${resolveIcon('separator', '·')} ${status}`)}`;
 
     const taskId = details?.task_id;
+    const errorText = result?.content?.[0]?.text ?? details?.reason;
     const msgText = details?.message ?? result?.content?.[0]?.text ?? '';
 
     if (!expanded) {
@@ -60,6 +62,16 @@ export const renderSubagentSendMessageResult = iconAwareRenderer(
 
       return boxedComponent(lines, {
         title,
+        label: 'subagent send message',
+        error: isRejected ? errorText : undefined,
+        compact: {
+          summary: [
+            status,
+            taskId,
+            msgText ? clip(firstLineOf(msgText) ?? '', 60, true) : undefined,
+          ].filter(Boolean) as string[],
+          body: [],
+        },
         theme,
         ...renderState,
         wrapped: true,
@@ -88,6 +100,8 @@ export const renderSubagentSendMessageResult = iconAwareRenderer(
 
     return boxedComponent(contentLines, {
       title,
+      label: 'subagent send message',
+      error: isRejected ? errorText : undefined,
       theme,
       ...renderState,
       wrapped: true,

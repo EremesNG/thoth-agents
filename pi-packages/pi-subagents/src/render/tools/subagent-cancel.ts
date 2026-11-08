@@ -16,7 +16,12 @@ import {
   toolRenderState,
 } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
-import { formatTaskLabel, formatUsage, modelEffortLine } from './formatting.js';
+import {
+  formatTaskLabel,
+  formatTaskSummary,
+  formatUsage,
+  modelEffortLine,
+} from './formatting.js';
 
 export function renderSubagentCancelCall(_args: any, _theme: any) {
   return emptyComponent();
@@ -40,7 +45,14 @@ export const renderSubagentCancelResult = iconAwareRenderer(
       const text = result?.content?.[0]?.text ?? '';
       return boxedComponent(
         [failed ? themeError(theme, text) : themeDim(theme, text)],
-        { title, theme, ...renderState, wrapped: true },
+        {
+          title,
+          label: 'subagent cancel',
+          error: text,
+          theme,
+          ...renderState,
+          wrapped: true,
+        },
       );
     }
 
@@ -68,6 +80,13 @@ export const renderSubagentCancelResult = iconAwareRenderer(
 
     return boxedComponent(lines.filter(Boolean), {
       title,
+      label: 'subagent cancel',
+      error: task.error || result?.content?.[0]?.text,
+      compact: {
+        summary: [formatTaskSummary(task), task.model, task.effort].filter(
+          Boolean,
+        ) as string[],
+      },
       theme,
       ...renderState,
       wrapped: true,

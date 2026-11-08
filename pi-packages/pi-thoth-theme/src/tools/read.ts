@@ -10,6 +10,13 @@ import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 import { getFileIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -28,6 +35,8 @@ interface ReadArgs {
 }
 
 interface ToolContext extends ElapsedRenderContext {
+  args?: unknown;
+  expanded?: boolean;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
   state?: {
@@ -35,6 +44,17 @@ interface ToolContext extends ElapsedRenderContext {
     callComponent?: { invalidate?: () => void };
     [key: string]: unknown;
   };
+}
+
+function readRange(args: ReadArgs): string {
+  const offset = args.offset ?? undefined;
+  const limit = args.limit ?? undefined;
+  if (limit === undefined && (offset === undefined || Number(offset) === 1)) {
+    return '';
+  }
+  const start = offset ?? 1;
+  const end = limit !== undefined ? Number(start) + Number(limit) - 1 : '';
+  return `:${start}${end ? `-${end}` : ''}`;
 }
 
 export function createCustomReadTool(cwd: string, config: ThemeConfig) {
@@ -47,19 +67,15 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       const args = (rawArgs ?? {}) as ReadArgs;
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
-      const icon = getFileIcon(filePath, config.icons);
-      const offset = args.offset ?? undefined;
-      const limit = args.limit ?? undefined;
-      let range = '';
-      if (
-        limit !== undefined ||
-        (offset !== undefined && Number(offset) !== 1)
-      ) {
-        const start = offset ?? 1;
-        const end =
-          limit !== undefined ? Number(start) + Number(limit) - 1 : '';
-        range = `:${start}${end ? `-${end}` : ''}`;
+      const range = readRange(args);
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'Read',
+          summary: `${filePath}${range}`,
+        });
       }
+      const icon = getFileIcon(filePath, config.icons);
       const borderTone = getToolBorderTone(context);
 
       const comp = createComponent((width: number) => {
@@ -125,6 +141,27 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         isPartial: options?.isPartial,
       });
       const textOutput = getResultText(result);
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const readArgs = (context?.args ?? {}) as ReadArgs;
+        const path = String(readArgs.path ?? readArgs.file_path ?? '');
+        const lineCount = textOutput ? textOutput.split('\n').length : 0;
+        const isImage = hasImageContent(result);
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'Read',
+            summary: `${formatDisplayPath(path, context?.cwd ?? cwd)}${readRange(readArgs)}`,
+            counts: [isImage ? 'image' : plural(lineCount, 'line')],
+            continuation: firstLine(textOutput) || '(empty file)',
+            errorLine: firstLine(textOutput) || 'Failed to read file',
+          },
+        );
+      }
 
       if (isErr) {
         return createComponent((width: number) => {

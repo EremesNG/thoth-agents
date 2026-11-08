@@ -288,13 +288,13 @@ the shared work-panel renderer MUST decide multi-line metric wrapping and, for t
 
 ### Requirement: Codemode compact rendering
 
-When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by the Thoth render kit as a card of its nested calls without replacing or wrapping Pi's builtin codemode extension.
+When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by the Thoth render kit as a card of its nested calls without replacing or wrapping Pi's builtin codemode extension; with `tools.collapsed` at `frame` its collapsed card lists up to eight nested calls, and in `line` or `compact` its collapsed card follows the theme collapsed tool row density.
 
 #### Scenario: Codemode compact rendering
 
-- **GIVEN** a codemode call whose details list nested calls
+- **GIVEN** a codemode call whose details list nested calls and the default `frame` density
 - **WHEN** it renders collapsed
-- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors
+- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors 
 
 ### Requirement: Codemode default activation
 
@@ -675,3 +675,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 - **GIVEN** a reasoning Claude model selected in Pi with thinking level off
 - **WHEN** a prompt runs through the bridge
 - **THEN** the Claude Code query options disable thinking and no thinking effort is requested
+
+### Requirement: Theme collapsed tool row density
+
+`@thoth-agents/pi-thoth-theme` MUST accept a `tools.collapsed` setting of `frame`, `compact` or `line` in `pi-thoth-theme.json`, defaulting to `frame` when omitted or malformed. `@thoth-agents/pi-core` render-kit v1 card options MUST accept optional `expanded` and `surface: 'tool'` fields without changing the registry key or version. In `line` mode every collapsed theme built-in tool card and every opted-in render-kit tool card MUST render one content row and in `compact` mode at most two content rows; a running card MUST keep its running form even with a partial error flag; a terminal failure MUST render two content rows whose second shows the first error line in the error color; the expanded view, `frame` mode and cards without the opt-in MUST keep the existing framed rendering. pi-todo and pi-subagents tool cards MUST opt in; message cards MUST NOT.
+
+#### Scenario: Theme collapsed tool row density
+
+- **GIVEN** `pi-thoth-theme.json` with `"tools": { "collapsed": "line" }`
+- **WHEN** a successful bash call and a todo call are shown collapsed
+- **THEN** each renders one content row with status glyph, tool name, summary and elapsed, and expanding either renders its framed card 

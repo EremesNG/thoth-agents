@@ -18,6 +18,13 @@ import {
   renderBox,
   splitResultNotice,
 } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+  plural,
+} from './compact-tool.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -35,6 +42,8 @@ interface GrepArgs {
 }
 
 interface GrepContext extends ElapsedRenderContext {
+  expanded?: boolean;
+  args?: unknown;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
   state?: {
@@ -128,6 +137,24 @@ function groupMatches(matches: GrepMatchItem[]): [string, GrepMatchItem[]][] {
   return groups;
 }
 
+/** Match count and first result of a grep result; raw output counts its lines. */
+function compactMatches(
+  textOutput: string,
+  result: AgentToolResult<unknown>,
+): { count: string; first: string | undefined } {
+  const output = parseGrepOutput(textOutput, result.details);
+  if (output.raw) {
+    const lines = output.rawLines.filter((line) => line.length > 0);
+    return { count: plural(lines.length, 'line'), first: lines[0] };
+  }
+  const found = output.matches.filter((match) => !match.isContext);
+  const [first] = found;
+  return {
+    count: plural(found.length, 'match', 'matches'),
+    first: first && `${first.file}:${first.line}: ${first.content.trim()}`,
+  };
+}
+
 export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
   const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
@@ -141,6 +168,13 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
       const searchPath = rawPath
         ? ` in ${escapeControlCharacters(formatDisplayPath(rawPath, context?.cwd ?? cwd))}`
         : '';
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'Grep',
+          summary: `"${pattern}"${searchPath}`,
+        });
+      }
       const icon = getToolIcon('search', config.icons);
       const borderTone = getToolBorderTone(context);
 
@@ -217,6 +251,28 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
         isPartial: options?.isPartial,
       });
       const textOutput = getRawResultText(result);
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const grepArgs = (context?.args ?? {}) as GrepArgs;
+        const where = grepArgs.path
+          ? ` in ${formatDisplayPath(String(grepArgs.path), context?.cwd ?? cwd)}`
+          : '';
+        const found = isErr ? undefined : compactMatches(textOutput, result);
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'Grep',
+            summary: `"${String(grepArgs.pattern ?? '')}"${where}`,
+            counts: [found?.count],
+            continuation: found?.first ?? 'no matches found',
+            errorLine: firstLine(textOutput) || 'Grep failed',
+          },
+        );
+      }
 
       if (isErr) {
         return createComponent((width: number) => {

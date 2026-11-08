@@ -53,7 +53,12 @@ export default function thothTheme(pi: ExtensionAPI): void {
     if (!ctx.hasUI) return;
     if (config.tools.enabled) {
       kitToken = registerRenderKit(
-        createRenderKit(owner, resolveToolRenderers, config.icons),
+        createRenderKit(
+          owner,
+          resolveToolRenderers,
+          config.icons,
+          config.tools.collapsed,
+        ),
         owner,
       );
     }

@@ -23,6 +23,7 @@ import type { SubagentTask } from '../types.js';
 import {
   boxedComponent,
   emptyComponent,
+  firstLineOf,
   textComponent,
   toolRenderState,
 } from './components.js';
@@ -31,6 +32,7 @@ import {
   collapsedResultHint,
   formatDuration,
   formatTaskLabel,
+  formatTaskSummary,
   formatUsage,
   generationSpeed,
   hasAgentResponse,
@@ -70,6 +72,28 @@ function formatRuntimeMetrics(task: SubagentTask): {
       Number.isFinite(started) && Number.isFinite(ended)
         ? formatDuration(isLive ? Math.floor(elapsed / 1000) * 1000 : elapsed)
         : '',
+  };
+}
+
+/** Collapsed title and summary parts for compact/line tool density. */
+function compactRunRow(
+  task: SubagentTask | undefined,
+  statusLabel: string,
+  resumedSuffix: string,
+) {
+  const cost =
+    typeof task?.usage?.cost === 'number' && task.usage.cost > 0
+      ? `$${task.usage.cost.toFixed(2)}`
+      : undefined;
+  return {
+    title: 'subagent',
+    summary: [
+      `${formatTaskSummary(task)}${resumedSuffix}`,
+      statusLabel,
+      task?.model,
+      task?.effort,
+      cost,
+    ].filter(Boolean) as string[],
   };
 }
 
@@ -152,6 +176,13 @@ export const renderSubagentRunResult = iconAwareRenderer(
         title,
         theme,
         ...renderState,
+        compact: {
+          title: 'subagent',
+          summary: [`${formatTaskSummary(task)}${resumedSuffix}${bgSuffix}`],
+          body: task?.live_activity?.trail?.length
+            ? [lines[currentActivityIndex] ?? '']
+            : lines.slice(1),
+        },
         workingRow: 0,
         animationFrame: result?.details?.frame,
         wrapped: true,
@@ -205,6 +236,26 @@ export const renderSubagentRunResult = iconAwareRenderer(
       .filter(Boolean)
       .join(` ${resolveIcon('separator', '·')} `);
 
+    const compactError = failed
+      ? firstLineOf(
+          task?.error ||
+            (renderState.context.isError
+              ? result?.content?.[0]?.text
+              : undefined),
+        )
+      : undefined;
+    const compactDetail =
+      compactError ??
+      firstLineOf(hasResp ? responseText : undefined) ??
+      firstLineOf(task?.output_preview) ??
+      firstLineOf(task?.last_activity);
+    const compact = {
+      ...compactRunRow(task, statusLabel, resumedSuffix),
+      body: compactDetail
+        ? [compactError ? themeError(theme, compactDetail) : compactDetail]
+        : [],
+    };
+
     if (!isRunning && !isExpanded) {
       const costSuffix =
         typeof task?.usage?.cost === 'number' && task.usage.cost > 0
@@ -236,6 +287,7 @@ export const renderSubagentRunResult = iconAwareRenderer(
         title,
         theme,
         ...renderState,
+        compact,
         wrapped: false,
         onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
       });
@@ -268,6 +320,7 @@ export const renderSubagentRunResult = iconAwareRenderer(
       title,
       theme,
       ...renderState,
+      compact,
       wrapped: true,
       onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
     });

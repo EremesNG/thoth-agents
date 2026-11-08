@@ -6,10 +6,11 @@ import type {
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
-import { expandHintSuffix } from '../shared/expand-hint.ts';
+import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
+import { buildCompactRows, compactElapsed } from './compact-row.ts';
 import { getToolIcon } from './file-icons.ts';
 import {
   hasToolResult,
@@ -32,6 +33,8 @@ interface ShellArgs {
 
 interface ShellContext extends ElapsedRenderContext {
   lastComponent?: { invalidate?: () => void };
+  args?: unknown;
+  expanded?: boolean;
   state?: ElapsedRenderState & {
     hasResult?: boolean;
     callComponent?: { invalidate?: () => void };
@@ -61,7 +64,7 @@ const POWERSHELL_CONFIG: ShellConfig = {
   prompt: 'PS> ',
 };
 
-function extractShellExitCode(
+export function extractShellExitCode(
   result: AgentToolResult<unknown>,
   textOutput: string,
   isErr: boolean,
@@ -82,13 +85,54 @@ function extractShellExitCode(
   return match ? Number.parseInt(match[1], 10) : 1;
 }
 
+const EXIT_STATUS_LINE = /^Command exited with code \d+$/;
+
+/** Single display line of the command for collapsed rows. */
+function summarizeCommand(args: unknown, ellipsis: string): string {
+  const command = String((args as ShellArgs | undefined)?.command ?? '').trim();
+  const [first = '', ...rest] = command.split('\n');
+  return rest.length > 0 ? `${first} ${ellipsis}` : first;
+}
+
+/** First meaningful output line; an exit-status appendix only as a fallback. */
+function firstOutputLine(output: string): string {
+  const lines = output
+    .split('\n')
+    .map((line) => escapeOutputRow(line).trim())
+    .filter(Boolean);
+  return lines.find((line) => !EXIT_STATUS_LINE.test(line)) ?? lines[0] ?? '';
+}
+
 function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
   const ellipsis = semanticIcon('ellipsis', config.icons);
+  const density = config.tools.collapsed ?? 'frame';
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
       context = detachRenderContext(context);
       syncElapsedTicker(context);
+
+      if (density !== 'frame' && !context?.expanded) {
+        const collapsed = createComponent((width: number) =>
+          hasToolResult(context)
+            ? []
+            : buildCompactRows(
+                theme,
+                {
+                  density,
+                  state: 'running',
+                  mode: config.icons,
+                  title: shellConfig.title,
+                  summary: summarizeCommand(rawArgs, ellipsis),
+                  tail: [compactElapsed(context, 'running')],
+                  frame: context?.state?.animationFrame,
+                },
+                width,
+              ),
+        );
+        if (context?.state) context.state.callComponent = collapsed;
+        return collapsed;
+      }
 
       const args = (rawArgs ?? {}) as ShellArgs;
       const command = String(args.command ?? '').trim();
@@ -180,6 +224,37 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
 
       const words = output.trim() ? output.trim().split(/\s+/).length : 0;
       const wordsStr = words > 0 ? `~${words} words` : '';
+
+      if (density !== 'frame' && !options?.expanded) {
+        const failed = !isPartial && (isErr || exitNum !== 0);
+        const state = isPartial ? 'running' : failed ? 'error' : 'success';
+        return createComponent((width: number) =>
+          buildCompactRows(
+            theme,
+            {
+              density,
+              state,
+              mode: config.icons,
+              title: shellConfig.title,
+              summary: summarizeCommand(context?.args, ellipsis),
+              tail: [
+                compactElapsed({ ...context, isPartial }, state),
+                ...(isPartial
+                  ? []
+                  : [
+                      exitStr,
+                      `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+                    ]),
+              ],
+              frame: context?.state?.animationFrame,
+              continuation: firstOutputLine(output) || '(no output)',
+              errorLine: firstOutputLine(textOutput),
+              expandHint: isPartial ? '' : resolveExpandHint(context),
+            },
+            width,
+          ),
+        );
+      }
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);

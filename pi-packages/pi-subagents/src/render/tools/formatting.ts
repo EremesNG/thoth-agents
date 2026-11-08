@@ -124,6 +124,17 @@ export function formatTaskLabel(
     : task.agent || 'subagent';
 }
 
+/** Variable collapsed-row summary: display name, else `agent: task`. */
+export function formatTaskSummary(
+  task: Pick<SubagentTask, 'agent' | 'display_name' | 'task'> | undefined,
+): string {
+  if (!task) return '';
+  const displayName = task.display_name?.trim();
+  if (displayName) return displayName;
+  const snippet = clip(task.task, 120, true);
+  return snippet ? `${task.agent}: ${snippet}` : (task.agent ?? '');
+}
+
 export function hasAgentResponse(
   task?: Pick<SubagentTask, 'result'>,
   result?: any,

@@ -2,6 +2,7 @@ import type { KeybindingHints, Theme } from '@earendil-works/pi-coding-agent';
 import {
   Box,
   type Component,
+  stripTerminalSequences,
   Text,
   truncateToWidth,
 } from '@earendil-works/pi-tui';
@@ -411,11 +412,14 @@ function resultView(
   }
 }
 
+const plainText = (text: string) => stripTerminalSequences(text).trim();
+
 /** Read kit availability inside render(), including for an already mounted row. */
 export function renderTodoCall(
   args: TaskMutationParams & { action: TaskAction },
   theme: Theme,
-  context?: RenderIndicatorContext,
+  context?: RenderIndicatorContext &
+    Partial<KeybindingHints> & { expanded?: boolean },
 ): Component {
   context = detachRenderContext(context);
   const memo = createKitRenderMemo();
@@ -431,9 +435,16 @@ export function renderTodoCall(
         // the shared state, so the first completed render has no duplicate padding.
         const part = hasResult ? 'start' : 'full';
         if (kit) {
+          const expanded = context?.expanded ?? false;
           return kit.card(
             theme,
             {
+              surface: 'tool',
+              expanded,
+              row: {
+                title: 'todo',
+                summary: plainText(callSummary(args, theme)),
+              },
               title: 'todo',
               body: (bodyWidth) =>
                 text ? new Text(text, 0, 0).render(bodyWidth) : [],
@@ -471,7 +482,10 @@ export function renderTodoResult(
   theme: Theme,
   options: { isPartial?: boolean; expanded?: boolean } = {},
   context?: RenderIndicatorContext &
-    Partial<KeybindingHints> & { expanded?: boolean },
+    Partial<KeybindingHints> & {
+      expanded?: boolean;
+      args?: { action?: string };
+    },
 ): Component {
   context = detachRenderContext(context);
   const expandKey = context?.keyText?.('app.tools.expand') ?? '';
@@ -508,6 +522,24 @@ export function renderTodoResult(
                 ),
                 rows: [],
               };
+        const row = failed
+          ? {
+              title: 'todo',
+              summary: String(details?.action ?? context?.args?.action ?? ''),
+              body: [
+                plainText(
+                  sanitizeTerminalText(
+                    (details?.error ?? resultText(result)).split('\n')[0] ||
+                      'error',
+                  ),
+                ),
+              ],
+            }
+          : {
+              title: 'todo',
+              summary: plainText(view.summary),
+              body: view.rows,
+            };
         const bodyRows = (bodyWidth: number): string[] => {
           const clip = (line: string) => truncateToWidth(line, bodyWidth, '…');
           const lines = [view.summary, ...view.rows].map(clip);
@@ -527,6 +559,9 @@ export function renderTodoResult(
           return kit.card(
             theme,
             {
+              surface: 'tool',
+              expanded,
+              row,
               body: bodyRows,
               status: toolStatus,
               isSuccess:

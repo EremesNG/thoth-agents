@@ -25,7 +25,10 @@ import {
 } from './ticker.ts';
 import { createCustomWriteTool } from './write.ts';
 
-/** Resolve themed renderers using this theme instance's live tool ownership. */
+/**
+ * Resolve themed renderers using this theme instance's live tool ownership.
+ * Forward the full config, including tools.collapsed, to every renderer factory.
+ */
 export function createToolRendererResolver(
   pi: Pick<ExtensionAPI, 'getAllTools'>,
   config: ThemeConfig,

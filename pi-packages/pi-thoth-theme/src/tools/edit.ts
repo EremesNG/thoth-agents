@@ -10,6 +10,12 @@ import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText } from './box.ts';
+import {
+  collapsedDensity,
+  compactCall,
+  compactResult,
+  firstLine,
+} from './compact-tool.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
 import {
   formatDisplayPath,
@@ -28,6 +34,8 @@ interface EditArgs {
 }
 
 interface EditContext extends ElapsedRenderContext {
+  args?: unknown;
+  expanded?: boolean;
   cwd?: string;
   lastComponent?: { invalidate?: () => void };
   state?: {
@@ -58,6 +66,20 @@ function parseDiffStats(diffText: string): {
   return { additions, removals };
 }
 
+function firstChangedLine(diffText: string): string {
+  return (
+    diffText
+      .split('\n')
+      .find(
+        (line) =>
+          (line.startsWith('+') || line.startsWith('-')) &&
+          !line.startsWith('+++') &&
+          !line.startsWith('---'),
+      )
+      ?.trim() ?? ''
+  );
+}
+
 function colorDiffLine(line: string, theme: Theme): string {
   if (
     line.startsWith('+++') ||
@@ -85,6 +107,13 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
       const args = (rawArgs ?? {}) as EditArgs;
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
+      const density = collapsedDensity(config, context?.expanded);
+      if (density) {
+        return compactCall(density, theme, context, config, {
+          title: 'Edit',
+          summary: filePath,
+        });
+      }
       const icon = getFileIcon(filePath, config.icons);
       const editIcon = getToolIcon('edit', config.icons);
       const borderTone = getToolBorderTone(context);
@@ -153,6 +182,27 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
       });
       const details = result.details as EditDetails | undefined;
       const diffText = details?.diff ?? getResultText(result);
+      const resultDensity = collapsedDensity(config, options?.expanded);
+      if (resultDensity) {
+        const editArgs = (context?.args ?? {}) as EditArgs;
+        const path = String(editArgs.path ?? editArgs.file_path ?? '');
+        const stats = parseDiffStats(diffText);
+        const minus = config.icons === 'ascii' ? '-' : '−';
+        return compactResult(
+          resultDensity,
+          theme,
+          context,
+          config,
+          Boolean(options?.isPartial),
+          {
+            title: 'Edit',
+            summary: formatDisplayPath(path, context?.cwd ?? cwd),
+            counts: [`+${stats.additions} ${minus}${stats.removals}`],
+            continuation: firstChangedLine(diffText) || '(no changes)',
+            errorLine: firstLine(diffText) || 'Edit failed',
+          },
+        );
+      }
 
       if (isErr) {
         return createComponent((width: number) => {

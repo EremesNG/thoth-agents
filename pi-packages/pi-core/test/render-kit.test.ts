@@ -10,6 +10,7 @@ import {
   detachRenderContext,
   getRenderKit,
   getToolElapsedMs,
+  type RenderCardOptions,
   type RenderIndicatorContext,
   type RenderKitTheme,
   type RenderStatus,
@@ -59,6 +60,44 @@ it('detaches previous components without mutating the host context or cloning sh
 });
 
 describe('render kit registry', () => {
+  it('accepts optional tool density hints without changing v1 discovery or legacy cards', () => {
+    expectTypeOf<RenderCardOptions['expanded']>().toEqualTypeOf<
+      boolean | undefined
+    >();
+    expectTypeOf<RenderCardOptions['surface']>().toEqualTypeOf<
+      'tool' | undefined
+    >();
+    expectTypeOf<RenderCardOptions['row']>().toEqualTypeOf<
+      | {
+          title?: string;
+          summary?: string;
+          tail?: string[];
+          body?: string[];
+        }
+      | undefined
+    >();
+    const options: RenderCardOptions = {
+      title: 'read',
+      body: ['file contents'],
+      surface: 'tool',
+      expanded: false,
+      row: {
+        title: 'read',
+        summary: 'ok',
+        tail: ['1 line'],
+        body: ['file contents'],
+      },
+    };
+    const token = registerRenderKit(kit, {});
+    expect(kit.version).toBe(1);
+    expect(shared[registryKey]).toMatchObject({ kit, token });
+    const discovered = getRenderKit();
+    expect(discovered).toBe(kit);
+    expect(discovered?.card(theme, options, 80)).toEqual(
+      kit.card(theme, { title: 'read', body: ['file contents'] }, 80),
+    );
+  });
+
   it('accepts SDK 1.0.2 theme and tool render context structurally', () => {
     type Context = Parameters<NonNullable<ToolDefinition['renderCall']>>[2];
     expectTypeOf<Theme>().toExtend<RenderKitTheme>();

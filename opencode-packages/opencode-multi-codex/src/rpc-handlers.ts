@@ -26,10 +26,10 @@ type Runtime = {
 function quotaWindowView(
   window: { usedPercent: number; resetAt?: number } | undefined,
 ) {
-  return window
+  return window && Number.isFinite(window.usedPercent)
     ? {
         remainingPercent: 100 - window.usedPercent,
-        resetAt: window.resetAt,
+        ...(Number.isFinite(window.resetAt) ? { resetAt: window.resetAt } : {}),
       }
     : undefined;
 }
@@ -47,6 +47,9 @@ export async function registerCodexRpc(ctx: Plugin.Context, runtime: Runtime) {
           const quota = await runtime.quota.getQuota(account.number, {
             refresh: false,
           });
+          const primary = quotaWindowView(quota.snapshot?.primary);
+          const secondary = quotaWindowView(quota.snapshot?.secondary);
+          const blockedUntil = runtime.blockedUntil(account.number);
           return {
             number: account.number,
             providerID: account.providerID,
@@ -55,12 +58,18 @@ export async function registerCodexRpc(ctx: Plugin.Context, runtime: Runtime) {
                 ? `${account.label} (openai default)`
                 : account.label,
             credentialState: account.state,
-            blockedUntil: runtime.blockedUntil(account.number),
+            blockedUntil:
+              blockedUntil !== null && Number.isFinite(blockedUntil)
+                ? blockedUntil
+                : null,
             quota: {
               state: quota.state,
-              primary: quotaWindowView(quota.snapshot?.primary),
-              secondary: quotaWindowView(quota.snapshot?.secondary),
-              fetchedAt: quota.fetchedAt,
+              // Optional Zod keys still cannot contain undefined on the RPC wire.
+              ...(primary === undefined ? {} : { primary }),
+              ...(secondary === undefined ? {} : { secondary }),
+              ...(Number.isFinite(quota.fetchedAt)
+                ? { fetchedAt: quota.fetchedAt }
+                : {}),
             },
           };
         }),

@@ -35,6 +35,7 @@ type View =
   | 'status'
   | 'preview'
   | 'hookTrust'
+  | 'skillMove'
   | 'modelRoles'
   | 'modelChoice'
   | 'effortChoice'
@@ -420,7 +421,11 @@ export function App({
       setView('harness');
     } else if (view === 'action') {
       setView('root');
-    } else if (view === 'preview' || view === 'hookTrust') {
+    } else if (
+      view === 'preview' ||
+      view === 'hookTrust' ||
+      view === 'skillMove'
+    ) {
       setView(previewBackView);
     } else if (view === 'modelRoles') {
       setView('manageHarness');
@@ -453,6 +458,16 @@ export function App({
       setPendingHookAction(action);
       setHookTrustSelected(0);
       setView('hookTrust');
+      return;
+    }
+    if (
+      harness === 'opencode' &&
+      (action === 'install' || action === 'update') &&
+      (operations.legacyOpenCodeSkillCopies?.().length ?? 0) > 0
+    ) {
+      setPendingHookAction(action);
+      setHookTrustSelected(0);
+      setView('skillMove');
       return;
     }
     setPlan(operations.plan(harness, action));
@@ -674,6 +689,20 @@ export function App({
     if (input === 'q' || key.escape) {
       if (view === 'root' && exitOnQuit) exit();
       if (view !== 'root') goBack();
+      return;
+    }
+
+    if (view === 'skillMove') {
+      if (key.upArrow || key.downArrow || input === 'j' || input === 'k')
+        setHookTrustSelected((current) => (current === 0 ? 1 : 0));
+      if (key.return) {
+        setPlan(
+          operations.plan('opencode', pendingHookAction, {
+            moveLegacyOpenCodeSkills: hookTrustSelected === 1,
+          }),
+        );
+        setView('preview');
+      }
       return;
     }
 
@@ -1000,6 +1029,32 @@ export function App({
           draftEffort={effort.kind === 'effort' ? effort.value : 'inherit'}
           choices={effortChoicesForModel(draftModelOption)}
           selected={effortSelected}
+        />
+      </Box>
+    );
+  }
+
+  if (view === 'skillMove') {
+    return (
+      <Box flexDirection="column">
+        <Header
+          title="Move legacy OpenCode skills?"
+          subtitle="These copies shadow the packaged skills. Backup only; never delete."
+        />
+        <Menu
+          items={[
+            {
+              id: 'no',
+              label: 'No — leave copies unchanged',
+              detail: 'Copies will continue to shadow packaged skills.',
+            },
+            {
+              id: 'yes',
+              label: 'Yes — move copies to a new hidden backup',
+              detail: 'Keep the original contents in a reversible backup.',
+            },
+          ]}
+          selected={hookTrustSelected}
         />
       </Box>
     );

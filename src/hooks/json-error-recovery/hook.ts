@@ -1,4 +1,7 @@
-import type { PluginInput } from '@opencode-ai/plugin';
+import {
+  appendErrorGuidance,
+  type DelegationToolEvent,
+} from '../delegate-task-retry/hook';
 
 export const JSON_ERROR_TOOL_EXCLUDE_LIST = [
   'bash',
@@ -22,7 +25,6 @@ export const JSON_ERROR_PATTERNS = [
 
 const JSON_ERROR_REMINDER_MARKER =
   '[JSON PARSE ERROR - IMMEDIATE ACTION REQUIRED]';
-const JSON_ERROR_EXCLUDED_TOOLS = new Set<string>(JSON_ERROR_TOOL_EXCLUDE_LIST);
 
 export const JSON_ERROR_REMINDER = `
 [JSON PARSE ERROR - IMMEDIATE ACTION REQUIRED]
@@ -37,37 +39,12 @@ STOP and do this NOW:
 DO NOT repeat the exact same invalid call.
 `;
 
-interface ToolExecuteAfterInput {
-  tool: string;
-  sessionID: string;
-  callID: string;
-}
-
-interface ToolExecuteAfterOutput {
-  title: string;
-  output: unknown;
-  metadata: unknown;
-}
-
-export function createJsonErrorRecoveryHook(_ctx: PluginInput) {
-  return {
-    'tool.execute.after': async (
-      input: ToolExecuteAfterInput,
-      output: ToolExecuteAfterOutput,
-    ): Promise<void> => {
-      if (JSON_ERROR_EXCLUDED_TOOLS.has(input.tool.toLowerCase())) return;
-      if (typeof output.output !== 'string') return;
-      if (output.output.includes(JSON_ERROR_REMINDER_MARKER)) return;
-
-      const outputText = output.output;
-
-      const hasJsonError = JSON_ERROR_PATTERNS.some((pattern) =>
-        pattern.test(outputText),
-      );
-
-      if (hasJsonError) {
-        output.output += `\n${JSON_ERROR_REMINDER}`;
-      }
-    },
+export function createJsonErrorRecoveryHook() {
+  return async (event: DelegationToolEvent): Promise<void> => {
+    if (event.tool !== 'subagent' || event.status !== 'error') return;
+    const text = event.error.message;
+    if (text.includes(JSON_ERROR_REMINDER_MARKER)) return;
+    if (!JSON_ERROR_PATTERNS.some((pattern) => pattern.test(text))) return;
+    appendErrorGuidance(event, JSON_ERROR_REMINDER);
   };
 }

@@ -1,25 +1,26 @@
+import { randomBytes } from 'node:crypto';
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
-  rmSync,
   statSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   THOTH_OWNED_SKILL_NAMES,
   type ThothOwnedSkillName,
 } from '../harness/core/owned-skills';
 import { findPackageRoot } from './package-root';
+import { getConfigDir } from './paths';
 
 export interface OpenCodeOwnedSkillSyncOptions {
   dryRun?: boolean;
+  moveLegacyOpenCodeSkills?: boolean;
   homeDir?: string;
   packageRoot?: string;
 }
@@ -34,6 +35,9 @@ export interface OpenCodeOwnedSkillSyncResult {
   success: boolean;
   status: 'planned' | 'installed' | 'failed';
   skills: OpenCodeOwnedSkillSyncEntry[];
+  notices?: string[];
+  backupRoot?: string;
+  legacyMoves?: LegacyOpenCodeSkillMove[];
   error?: string;
 }
 export interface PiPackageSkillInspectionResult {
@@ -146,7 +150,7 @@ export function getOpenCodeOwnedSkillEntries(
   return THOTH_OWNED_SKILL_NAMES.map((name) => ({
     name,
     sourcePath: join(packageRoot, 'skills', name),
-    destinationPath: join(homeDir, '.config', 'opencode', 'skills', name),
+    destinationPath: join(getConfigDir(homeDir), 'skills', name),
   }));
 }
 
@@ -176,50 +180,136 @@ function validateCanonicalSkill(entry: OpenCodeOwnedSkillSyncEntry): void {
   }
 }
 
-function installOwnedSkills(skills: OpenCodeOwnedSkillSyncEntry[]): void {
-  const firstSkill = skills[0];
-  if (!firstSkill) return;
-  const globalRoot = dirname(firstSkill.destinationPath);
-  mkdirSync(globalRoot, { recursive: true });
-  const transactionRoot = mkdtempSync(join(globalRoot, '.thoth-agents-owned-'));
-  const stagedRoot = join(transactionRoot, 'staged');
-  const backupRoot = join(transactionRoot, 'backup');
-  mkdirSync(stagedRoot, { recursive: true });
-  mkdirSync(backupRoot, { recursive: true });
+export interface LegacyOpenCodeSkillMove {
+  sourcePath: string;
+  destinationPath: string;
+  status: 'planned' | 'moved' | 'failed';
+}
 
-  try {
-    for (const skill of skills) {
-      cpSync(skill.sourcePath, join(stagedRoot, skill.name), {
-        recursive: true,
-        force: true,
-      });
-    }
+export function getLegacyOpenCodeSkillBackupRoot(homeDir = homedir()): string {
+  return resolve(
+    process.env.XDG_DATA_HOME || join(homeDir, '.local', 'share'),
+    'thoth-agents',
+    '.opencode-legacy-skills',
+  );
+}
 
-    for (const skill of skills) {
-      const stagedPath = join(stagedRoot, skill.name);
-      const backupPath = join(backupRoot, skill.name);
-      const hadExistingDestination = existsSync(skill.destinationPath);
-      if (hadExistingDestination) {
-        renameSync(skill.destinationPath, backupPath);
-      }
-      try {
-        renameSync(stagedPath, skill.destinationPath);
-      } catch (error) {
-        if (existsSync(skill.destinationPath)) {
-          rmSync(skill.destinationPath, { recursive: true, force: true });
-        }
-        if (hadExistingDestination && existsSync(backupPath)) {
-          renameSync(backupPath, skill.destinationPath);
-        }
-        throw error;
-      }
-      if (existsSync(backupPath)) {
-        rmSync(backupPath, { recursive: true, force: true });
+export function inspectLegacyOpenCodeSkills(
+  homeDir = homedir(),
+): Array<{ name: ThothOwnedSkillName; sourcePath: string; label: string }> {
+  const seen = new Set<string>();
+  const copies: Array<{
+    name: ThothOwnedSkillName;
+    sourcePath: string;
+    label: string;
+  }> = [];
+  for (const [label, root] of [
+    ['resolved', getConfigDir(homeDir)],
+    ['legacy', join(homeDir, '.config', 'opencode')],
+  ]) {
+    for (const directory of ['skills', 'skill']) {
+      for (const name of THOTH_OWNED_SKILL_NAMES) {
+        const sourcePath = join(root, directory, name);
+        if (!existsSync(sourcePath)) continue;
+        const real = realpathSync(sourcePath);
+        if (seen.has(real)) continue;
+        seen.add(real);
+        copies.push({ name, sourcePath, label: `${label}-${directory}` });
       }
     }
-  } finally {
-    rmSync(transactionRoot, { recursive: true, force: true });
   }
+  return copies;
+}
+
+function planOrMoveLegacySkills(
+  options: OpenCodeOwnedSkillSyncOptions,
+): Pick<
+  OpenCodeOwnedSkillSyncResult,
+  'notices' | 'backupRoot' | 'legacyMoves'
+> {
+  const backupRoot = getLegacyOpenCodeSkillBackupRoot(options.homeDir);
+  const copies = inspectLegacyOpenCodeSkills(options.homeDir);
+  const notices: string[] = [];
+  const legacyMoves: LegacyOpenCodeSkillMove[] = [];
+  if (!copies.length) return { backupRoot, notices, legacyMoves };
+  const confirmed = options.moveLegacyOpenCodeSkills && !options.dryRun;
+  let run = join(backupRoot, '<new-run>');
+  if (confirmed) {
+    try {
+      if (!resolve(backupRoot).split(sep).includes('.opencode-legacy-skills'))
+        throw new Error(
+          'Backup path is missing the required hidden .opencode-legacy-skills segment',
+        );
+      mkdirSync(backupRoot, { recursive: true });
+      let created = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        run = join(
+          backupRoot,
+          `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(8).toString('hex')}`,
+        );
+        try {
+          mkdirSync(run, { mode: 0o700 });
+          created = true;
+          break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        }
+      }
+      if (!created)
+        throw new Error('Unable to create an exclusive backup run directory');
+    } catch (error) {
+      notices.push(`Legacy skill move refused: ${String(error)}`);
+      notices.push(
+        ...copies.map(({ sourcePath }) =>
+          legacyOpenCodeSkillNotice(sourcePath),
+        ),
+      );
+      return { backupRoot, notices, legacyMoves };
+    }
+  }
+  for (const copy of copies) {
+    const destinationPath = join(run, copy.label, copy.name);
+    const move: LegacyOpenCodeSkillMove = {
+      sourcePath: copy.sourcePath,
+      destinationPath,
+      status: 'planned',
+    };
+    legacyMoves.push(move);
+    if (!confirmed) {
+      notices.push(legacyOpenCodeSkillNotice(copy.sourcePath));
+      notices.push(
+        `Planned move: ${copy.sourcePath} -> ${destinationPath} (backup root: ${backupRoot})`,
+      );
+      continue;
+    }
+    try {
+      mkdirSync(dirname(destinationPath), { recursive: true });
+      // lstat catches even dangling links; the exclusive private run is never reused.
+      try {
+        lstatSync(destinationPath);
+        throw new Error(
+          `Backup destination already exists: ${destinationPath}`,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      renameSync(copy.sourcePath, destinationPath);
+      move.status = 'moved';
+      notices.push(
+        `Moved legacy OpenCode skill: ${copy.sourcePath} -> ${destinationPath} (backup: ${run})`,
+      );
+    } catch (error) {
+      move.status = 'failed';
+      notices.push(
+        `Legacy skill move failed; original left intact: ${copy.sourcePath}: ${String(error)}. ${legacyOpenCodeSkillNotice(copy.sourcePath)}`,
+      );
+    }
+  }
+  return { backupRoot, notices, legacyMoves };
+}
+
+export function legacyOpenCodeSkillNotice(path: string): string {
+  return `Warning: legacy OpenCode skill copies shadow the packaged skills: ${path}. Confirm the backup move interactively or pass --move-legacy-opencode-skills to install/update.`;
 }
 
 export function syncOpenCodeOwnedSkills(
@@ -228,9 +318,12 @@ export function syncOpenCodeOwnedSkills(
   const skills = getOpenCodeOwnedSkillEntries(options);
   try {
     for (const skill of skills) validateCanonicalSkill(skill);
-    if (options.dryRun) return { success: true, status: 'planned', skills };
-    installOwnedSkills(skills);
-    return { success: true, status: 'installed', skills };
+    return {
+      success: true,
+      status: options.dryRun ? 'planned' : 'installed',
+      skills,
+      ...planOrMoveLegacySkills(options),
+    };
   } catch (error) {
     return {
       success: false,

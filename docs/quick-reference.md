@@ -40,9 +40,11 @@ npx thoth-agents@latest install --agent=claude
 Every installation uses the thoth-agents CLI to install external skills through
 `npx skills add`; published installs then invoke provider-owned thoth-mem setup.
 An explicit local Pi package install omits the provider step and directs the
-operator to install local thoth-mem separately. For OpenCode the CLI also
-synchronizes the five packaged owned skills globally under
-`~/.config/opencode/skills/`. Only a consistent thoth-mem `complete` result
+operator to install local thoth-mem separately. OpenCode >=2.2.5 registers five
+owned skills from package paths; 2.2.5 config-discovered same-ID copies shadow
+them. The installer offers a confirmed backup move, never deletion; otherwise
+it warns. See [legacy skill recovery](installation.md#opencode-legacy-skill-copies).
+Only a consistent thoth-mem `complete` result
 completes a published installation; printed manual actions and receipts remain
 provider-owned. Codex also needs the CLI for thin global role TOMLs and config;
 trusted plugin hooks deliver root/role prompts instead of a global `AGENTS.md`
@@ -100,7 +102,8 @@ npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna -
 ```
 
 `@latest` selects the CLI release. OpenCode is configured with that release's
-exact version, never a `latest` plugin entry. `update` previews by default;
+exact version under `plugins`, never a `latest` plugin entry. Config honors
+`OPENCODE_CONFIG_DIR`, then `${XDG_CONFIG_HOME:-~/.config}/opencode`. `update` previews by default;
 `--apply` performs the complete selected-harness installation refresh, including
 native setup where applicable, managed surfaces, required skills, and provider
 setup. Rerunning `install --agent=<harness>` is the equivalent explicit update
@@ -111,8 +114,10 @@ The CLI records each harness's last fully completed version independently in
 failures do not advance it. Codex and Claude native marketplace updates do not
 advance it either; `status` reports the executing and recorded CLI versions.
 
-OpenCode runtime update checks only notify. They never rewrite the plugin pin,
-invalidate package state, or install the newer release.
+OpenCode runtime update checking and tmux are removed. Use explicit CLI updates.
+Native delegation uses `subagent`; foreground Oracle gate results carry a verdict,
+while background completions require the compact-validator fallback. See
+[runtime contracts](agent/runtime-integrations.md).
 
 ## Boundaries
 

@@ -456,7 +456,7 @@ describe('canonical workflow bundle contracts', () => {
       'Codex verdicts arrive only with multi-agent v1 `wait_agent` results when plugin hooks are enabled and trusted',
       '`agent` is the status-map key, not proof of Oracle provenance.',
       "Multi-agent v2 delivers the Oracle's `FINAL_ANSWER` as an inter-agent message with no hook, so no verdict arrives and root uses the explicit compact fallback below on the unchanged result.",
-      'Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent v2 delivery, or a Claude background run without hand-back)',
+      'Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent v2 delivery, an OpenCode background completion, or a Claude background run without hand-back)',
     ])
       expect(sdd).toContain(rule);
   });

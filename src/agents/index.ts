@@ -1,4 +1,3 @@
-import type { AgentConfig as SDKAgentConfig } from '@opencode-ai/sdk/v2';
 import {
   type AgentOverrideConfig,
   CONFIRMED_OPENAI_SUBAGENT_PRESET,
@@ -13,6 +12,7 @@ import {
   getAgentRole,
   renderAgentRoutingDescription,
 } from '../harness/core/agent-pack';
+import type { AgentConfig as SDKAgentConfig } from './agent-config';
 import { createDesignerAgent } from './designer';
 import { createExplorerAgent } from './explorer';
 import { createLibrarianAgent } from './librarian';

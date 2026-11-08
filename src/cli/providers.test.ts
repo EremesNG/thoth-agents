@@ -14,7 +14,6 @@ describe('providers', () => {
 
   test('generateLiteConfig always generates openai preset', () => {
     const config = generateLiteConfig({
-      hasTmux: false,
       reset: false,
     });
 
@@ -32,7 +31,6 @@ describe('providers', () => {
 
   test('generateLiteConfig uses the confirmed OpenAI subagent preset', () => {
     const config = generateLiteConfig({
-      hasTmux: false,
       reset: false,
     });
 
@@ -62,20 +60,20 @@ describe('providers', () => {
     });
   });
 
-  test('generateLiteConfig enables tmux when requested', () => {
+  test('generateLiteConfig omits removed runtime settings', () => {
     const config = generateLiteConfig({
-      hasTmux: true,
       reset: false,
     });
 
-    expect(config.tmux).toBeDefined();
-    expect((config.tmux as any).enabled).toBe(true);
-    expect((config.tmux as any).layout).toBe('main-vertical');
+    expect(config).not.toHaveProperty('tmux');
+    expect(config).not.toHaveProperty('auto_update');
+    expect(config).not.toHaveProperty('autoUpdate');
+    expect(config).not.toHaveProperty('update_check');
+    expect(config).not.toHaveProperty('auto-update-checker');
   });
 
   test('generateLiteConfig omits per-agent skills and mcps fields', () => {
     const config = generateLiteConfig({
-      hasTmux: false,
       reset: false,
     });
 
@@ -88,7 +86,6 @@ describe('providers', () => {
 
   test('generateLiteConfig includes the canonical six-role roster', () => {
     const config = generateLiteConfig({
-      hasTmux: false,
       reset: false,
     });
 
@@ -111,7 +108,6 @@ describe('providers', () => {
 
   test('worker preset remains a lean model-only config', () => {
     const config = generateLiteConfig({
-      hasTmux: false,
       reset: false,
     });
 

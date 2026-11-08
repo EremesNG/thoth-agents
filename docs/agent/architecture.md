@@ -13,10 +13,12 @@ persistence, receipts, state, and recovery remain outside this package.
 
 ## Runtime and delivery flows
 
-1. OpenCode CLI installation configures the plugin, materializes the five
-   thoth-owned skills under `~/.config/opencode/skills/`, installs external
-   skills, and registers `/thoth-init`; init itself only synchronizes project
-   minimum `.thoth/` governance.
+1. OpenCode >=2.2.5 installation pins the plugin under `plugins` and installs
+   external skills. `src/opencode/` registers native roles, permissions, tools,
+   MCPs, package-path skills and `/thoth-init`; init only synchronizes project
+   governance. Native `subagent` owns delegation; keyed instructions and
+   compaction carry state without per-call system/history rewrites. See
+   [runtime contracts](runtime-integrations.md).
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
@@ -148,8 +150,9 @@ subscription classification. See [controls and compatibility](harness-packaging.
 - OpenCode ships only the OpenAI preset.
 - Owned workflow contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during execution.
-  OpenCode's CLI materializes the packaged owned contracts in its global native
-  skill root because npm plugins do not expose package-relative skill roots.
+  OpenCode registers owned skills from package paths; 2.2.5 config-discovered
+  same-ID copies shadow them. The installer offers a confirmed backup move,
+  never deletion; see [CLI installation](cli-installation.md).
 - Every published harness install requires consistent thoth-mem `complete`
   evidence. An explicit local Pi package install records thoth-agents without
   provider setup; provider assets and recovery remain independently owned.

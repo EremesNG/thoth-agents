@@ -35,7 +35,7 @@ export const MODEL_MAPPINGS = {
 } as const;
 
 export function generateLiteConfig(
-  installConfig: InstallConfig,
+  _installConfig: InstallConfig,
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {
     $schema: THOTH_AGENTS_CONFIG_SCHEMA_URL,
@@ -65,14 +65,6 @@ export function generateLiteConfig(
 
   // Always use OpenAI as default
   (config.presets as Record<string, unknown>).openai = buildPreset('openai');
-
-  if (installConfig.hasTmux) {
-    config.tmux = {
-      enabled: true,
-      layout: 'main-vertical',
-      main_pane_size: 60,
-    };
-  }
 
   return config;
 }

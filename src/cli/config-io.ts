@@ -103,7 +103,37 @@ export async function addPluginToOpenCodeConfig(
 export interface OpenCodeMainConfigUpdate {
   ensurePlugin?: boolean;
   pluginVersion?: string;
-  disableDefaults?: boolean;
+}
+
+export function pluginEntries(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+export function isManagedOpenCodePlugin(entry: unknown): boolean {
+  const name =
+    typeof entry === 'string'
+      ? entry
+      : Array.isArray(entry)
+        ? entry[0]
+        : entry && typeof entry === 'object' && 'package' in entry
+          ? entry.package
+          : undefined;
+  return (
+    typeof name === 'string' &&
+    (name === PACKAGE_NAME || name.startsWith(`${PACKAGE_NAME}@`))
+  );
+}
+
+function hasManagedPluginOptions(entry: unknown): boolean {
+  if (!isManagedOpenCodePlugin(entry)) return false;
+  const options = Array.isArray(entry)
+    ? entry[1]
+    : entry && typeof entry === 'object' && 'options' in entry
+      ? entry.options
+      : undefined;
+  return (
+    !!options && typeof options === 'object' && Object.keys(options).length > 0
+  );
 }
 
 function mergeOpenCodeMainConfig(
@@ -111,32 +141,17 @@ function mergeOpenCodeMainConfig(
   update: OpenCodeMainConfigUpdate,
 ): OpenCodeConfig {
   if (update.ensurePlugin) {
-    const plugins = Array.isArray(config.plugin) ? config.plugin : [];
-    config.plugin = [
-      ...plugins.filter(
-        (plugin) =>
-          plugin !== PACKAGE_NAME && !plugin.startsWith(`${PACKAGE_NAME}@`),
+    const legacy = pluginEntries(config.plugin).filter(
+      (entry) => !isManagedOpenCodePlugin(entry),
+    );
+    if (legacy.length > 0) config.plugin = legacy as string[];
+    else delete config.plugin;
+    config.plugins = [
+      ...pluginEntries(config.plugins).filter(
+        (entry) => !isManagedOpenCodePlugin(entry),
       ),
       `${PACKAGE_NAME}@${update.pluginVersion}`,
     ];
-  }
-
-  if (update.disableDefaults) {
-    const agent =
-      config.agent && typeof config.agent === 'object'
-        ? { ...(config.agent as Record<string, unknown>) }
-        : {};
-    const explore =
-      agent.explore && typeof agent.explore === 'object'
-        ? { ...(agent.explore as Record<string, unknown>) }
-        : {};
-    const general =
-      agent.general && typeof agent.general === 'object'
-        ? { ...(agent.general as Record<string, unknown>) }
-        : {};
-    agent.explore = { ...explore, disable: true };
-    agent.general = { ...general, disable: true };
-    config.agent = agent;
   }
 
   return config;
@@ -174,10 +189,21 @@ export function updateOpenCodeMainConfig(
         error: `Failed to parse config: ${error}`,
       };
     }
+    const removedOptions =
+      update.ensurePlugin &&
+      [
+        ...pluginEntries(parsedConfig?.plugin),
+        ...pluginEntries(parsedConfig?.plugins),
+      ].some(hasManagedPluginOptions);
     writeConfig(
       configPath,
       mergeOpenCodeMainConfig(parsedConfig ?? {}, update),
     );
+    if (removedOptions) {
+      console.warn(
+        `[config-manager] Removed non-empty thoth-agents plugin options while pinning the v2 plugin. Original entries are preserved in ${configPath}.bak; configure the plugin via thoth-agents.json instead.`,
+      );
+    }
     return { success: true, configPath };
   } catch (err) {
     return {
@@ -281,10 +307,6 @@ export function writeLiteConfig(
   }
 }
 
-export function disableDefaultAgents(): ConfigMergeResult {
-  return updateOpenCodeMainConfig({ disableDefaults: true });
-}
-
 export function canModifyOpenCodeConfig(): boolean {
   try {
     const configPath = getExistingConfigPath();
@@ -301,14 +323,15 @@ export function detectCurrentConfig(): DetectedConfig {
   const result: DetectedConfig = {
     isInstalled: false,
     hasOpenAI: false,
-    hasTmux: false,
   };
 
   const { config } = parseConfig(getExistingConfigPath());
   if (!config) return result;
 
-  const plugins = config.plugin ?? [];
-  result.isInstalled = plugins.some((p) => p.startsWith(PACKAGE_NAME));
+  result.isInstalled = [
+    ...pluginEntries(config.plugin),
+    ...pluginEntries(config.plugins),
+  ].some(isManagedOpenCodePlugin);
 
   // Try to detect from lite config
   const { config: liteConfig } = parseConfig(getLiteConfig());
@@ -325,11 +348,6 @@ export function detectCurrentConfig(): DetectedConfig {
         .map((a) => a?.model)
         .filter(Boolean);
       result.hasOpenAI = models.some((m) => m?.startsWith('openai/'));
-    }
-
-    if (configObj.tmux && typeof configObj.tmux === 'object') {
-      const tmuxConfig = configObj.tmux as { enabled?: boolean };
-      result.hasTmux = tmuxConfig.enabled === true;
     }
   }
 

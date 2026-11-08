@@ -168,11 +168,25 @@ Focused delivery tests: `src/pi-gate-verdict.test.ts`, `src/pi.test.ts`,
 `src/harness/gate-hook-script.test.ts`. Prompt-rendering and bundled-skills tests
 cover root acceptance and fallback instructions; validator tests cover digest and
 CLI semantics. Regressions cover forged verdict markers, embedded OpenCode wrapper
-terminators, input preservation and freshly computed exact-tail deduplication.
-Unwrapped OpenCode output has no trusted boundary: always validate it whole and
-append, even on a hypothetical repeat (multiple verdicts fail closed).
+terminators, and input preservation. The OpenCode v2 hook appends verdicts to
+completed foreground Oracle `subagent` results, validating the structured raw
+child output as a bare envelope. String and host-normalized `Content[]` delivery
+are supported without rewriting existing parts; arrays receive a new text part.
+An existing adapter-owned verdict is preserved without appending another line.
+`running` and non-gate results are unchanged. Raw output is used only if it appears
+verbatim in the joined visible content; otherwise the hook validates that content
+using the native-wrapper fallback, also used
+by background completions through the compact CLI validator.
+The validator accepts a bare fence or a completed native wrapper whose envelope
+is anchored at the end. The header is opaque because native descriptions are
+unescaped: quotes, newlines, backticks, angle brackets, and wrapper-looking lines
+are ordinary header data. Header/body ambiguity is accepted, not resolved as
+prose or nesting. Apart from the native prefix and completed-state marker, only
+structural fence/verdict lines are rejected there. Exactly two structural fence
+lines and no verdict line are permitted across the complete input, recognizing
+LF, CRLF, and lone CR boundaries; marker words inside JSON strings are ordinary data.
 Pi covers completion notifications, `subagent_result`, and
-task-mode `subagent_run`; OpenCode covers Oracle `task` output. Claude covers
+task-mode `subagent_run`. Claude covers
 Subagent hand-back reports (foreground or background; `agent` is the agent id,
 match it to the Agent result's `agentId`) and completed foreground `Agent` results
 whose content carries the report. Other deliveries (e.g. background runs without
@@ -430,3 +444,24 @@ absolute install command is not valid Pi package identity evidence.
   `.github/workflows/release.yml`.
 - No mandatory external services are documented because the inspected Vitest
   configuration does not establish that requirement.
+
+## OpenCode v2 closeout
+
+After freezing inputs, run `pnpm run check:ci`, `pnpm run typecheck`,
+`pnpm run build`, then focused Vitest for `src/opencode src/cli src/agents
+src/harness src/hooks src/config src/tools src/plugin-node-runtime.test.ts`.
+Cache guards check structural system/tool/history immutability, deterministic
+keyed instructions and compaction carry-over, not provider cache-hit rates.
+
+For a no-model smoke, build first and use OpenCode >=2.2.5 in a new scratch
+project with isolated `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
+`XDG_STATE_HOME` and `OPENCODE_CONFIG_DIR`. Set project `opencode.json` to
+`{"plugins":[{"package":"<absolute built repository path>"}]}`. Start
+`opencode serve --stdio --hostname 127.0.0.1 --port 0`; use non-model API listing
+commands. Await `agent.list` first (activation barrier), then list commands,
+skills and plugins. Expect six Thoth roles, orchestrator default, no native
+explore/general, `/thoth-init`, five package-path skills and an active plugin
+without warnings. The pinned public API has no tool-list endpoint: six tool
+registrations are checked by the registration/cache suites, not host listing.
+Close server stdin and await exit. Never use the
+operator's real configuration or call a model for this check.

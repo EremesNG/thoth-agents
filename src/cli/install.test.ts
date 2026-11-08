@@ -73,7 +73,7 @@ vi.mock('./config-manager', async (importOriginal) => {
   return {
     ...actual,
     isOpenCodeInstalled: vi.fn(async () => true),
-    getOpenCodeVersion: vi.fn(async () => '1.0.0'),
+    getOpenCodeVersion: vi.fn(async () => 'opencode v2.2.5'),
     getOpenCodePath: vi.fn(() => 'C:/opencode/bin/opencode'),
   };
 });
@@ -504,7 +504,6 @@ describe('install', () => {
   test('createInstallConfig has no optional skill switch', () => {
     const config = createInstallConfig({
       tui: false,
-      tmux: 'no',
       reset: false,
     });
 
@@ -515,14 +514,12 @@ describe('install', () => {
   test('createInstallConfig keeps only harness install settings', () => {
     const config = createInstallConfig({
       tui: false,
-      tmux: 'yes',
       dryRun: true,
       reset: true,
     });
 
     expect(config).not.toHaveProperty('installSkills');
     expect(config).not.toHaveProperty('installCustomSkills');
-    expect(config.hasTmux).toBe(true);
     expect(config.dryRun).toBe(true);
     expect(config.reset).toBe(true);
   });
@@ -548,7 +545,6 @@ describe('install', () => {
         {
           agent: 'codex',
           tui: false,
-          tmux: 'no',
           dryRun: true,
           reset: false,
         },
@@ -585,7 +581,6 @@ describe('install', () => {
         {
           agent: 'codex',
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -616,7 +611,6 @@ describe('install', () => {
         {
           agent,
           tui: false,
-          tmux: 'no',
           dryRun: true,
           reset: false,
         },
@@ -646,7 +640,6 @@ describe('install', () => {
         {
           agent: 'opencode',
           tui: false,
-          tmux: 'no',
           dryRun: true,
           reset: false,
         },
@@ -705,7 +698,6 @@ describe('install', () => {
         {
           agent: 'opencode',
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -751,7 +743,6 @@ describe('install', () => {
         {
           agent: 'opencode',
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -773,7 +764,6 @@ describe('install', () => {
       expect(updateMainConfig).toHaveBeenCalledWith({
         ensurePlugin: true,
         pluginVersion: '0.4.8-beta.1',
-        disableDefaults: true,
       });
     } finally {
       console.log = originalLog;
@@ -801,7 +791,6 @@ describe('install', () => {
         {
           agent,
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -842,7 +831,6 @@ describe('install', () => {
           {
             agent,
             tui: false,
-            tmux: 'no',
             dryRun: false,
             reset: false,
           },
@@ -906,7 +894,6 @@ describe('install', () => {
         {
           agent: 'codex',
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -952,7 +939,6 @@ describe('install', () => {
         {
           agent: 'claude',
           tui: false,
-          tmux: 'no',
           dryRun: false,
           reset: false,
         },
@@ -989,7 +975,6 @@ describe('install', () => {
         {
           agent: 'opencode',
           tui: false,
-          tmux: 'no',
           dryRun: true,
           reset: false,
         },
@@ -1014,7 +999,6 @@ describe('install', () => {
         {
           agent: 'opencode',
           tui: false,
-          tmux: 'no',
           dryRun: true,
           reset: false,
         },
@@ -1033,4 +1017,95 @@ describe('install', () => {
       console.log = originalLog;
     }
   });
+});
+
+test.each([
+  '1.18.2',
+  'invalid',
+  null,
+  'missing',
+])('OpenCode install rejects %s before any write-capable operation', async (version) => {
+  const manager = await import('./config-manager');
+  const getVersion = vi.mocked(manager.getOpenCodeVersion);
+  const installed = vi.mocked(manager.isOpenCodeInstalled);
+  getVersion.mockResolvedValueOnce(version === 'missing' ? null : version);
+  installed.mockResolvedValueOnce(version !== 'missing');
+  const updateMain = vi.fn();
+  const finalize = vi.fn();
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  try {
+    expect(
+      await install(
+        {
+          agent: 'opencode',
+          tui: false,
+          dryRun: false,
+          reset: false,
+        },
+        {
+          updateOpenCodeMainConfig: updateMain,
+          finalizeHarnessInstall: finalize,
+        },
+      ),
+    ).toBe(1);
+    expect(updateMain).not.toHaveBeenCalled();
+    expect(finalize).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().join('\n')).toContain(
+      'OpenCode 2.2.5 or later',
+    );
+  } finally {
+    getVersion.mockReset().mockResolvedValue('opencode v2.2.5');
+    installed.mockReset().mockResolvedValue(true);
+    log.mockRestore();
+  }
+});
+
+test.each([
+  [true, false],
+  [false, false],
+  [true, true],
+  [false, true],
+])('OpenCode install dryRun=%s explicit move=%s preserves legacy bytes', async (dryRun, moveLegacyOpenCodeSkills) => {
+  const root = mkdtempSync(join(tmpdir(), 'thoth-legacy-notice-'));
+  const configDir = join(root, 'custom');
+  vi.stubEnv('OPENCODE_CONFIG_DIR', configDir);
+  const legacy = join(configDir, 'skills', 'thoth-sdd', 'SKILL.md');
+  mkdirSync(join(configDir, 'skills', 'thoth-sdd'), { recursive: true });
+  writeFileSync(legacy, 'user bytes');
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  try {
+    expect(
+      await install(
+        {
+          agent: 'opencode',
+          tui: false,
+          dryRun,
+          reset: false,
+          moveLegacyOpenCodeSkills,
+        },
+        {
+          homeDir: root,
+          runThothMemSetup: () => providerResult('opencode'),
+          installLedgerOptions: { configRoot: root },
+        },
+      ),
+    ).toBe(0);
+    if (moveLegacyOpenCodeSkills && !dryRun) {
+      expect(existsSync(legacy)).toBe(false);
+      expect(log.mock.calls.flat().join(' ')).toContain(
+        'Moved legacy OpenCode skill:',
+      );
+    } else {
+      expect(log.mock.calls.flat().join(' ')).toContain('shadow');
+      expect(log.mock.calls.flat().join(' ')).toContain(
+        '--move-legacy-opencode-skills',
+      );
+      expect(readFileSync(legacy, 'utf8')).toBe('user bytes');
+    }
+    expect(existsSync(join(configDir, 'skills', 'thoth-init'))).toBe(false);
+  } finally {
+    log.mockRestore();
+    vi.unstubAllEnvs();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

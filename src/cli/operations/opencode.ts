@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { ALL_AGENT_NAMES } from '../../config';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import {
+  isManagedOpenCodePlugin,
   type OpenCodeMainConfigUpdate,
   parseConfig,
+  pluginEntries,
   updateOpenCodeMainConfig,
   writeConfig,
   writeLiteConfig,
@@ -24,7 +26,9 @@ import {
 } from '../managed-state-io';
 import { resolveOpenCodeEffort } from '../opencode-effort';
 import {
+  getLegacyOpenCodeSkillBackupRoot,
   getOpenCodeOwnedSkillEntries,
+  inspectLegacyOpenCodeSkills,
   type OpenCodeOwnedSkillSyncOptions,
   type OpenCodeOwnedSkillSyncResult,
   syncOpenCodeOwnedSkills,
@@ -47,6 +51,11 @@ import {
   installRequiredSkill,
   REQUIRED_SKILLS,
 } from '../skills';
+import {
+  getOpenCodeVersionSync,
+  isSupportedOpenCodeVersion,
+  OPENCODE_VERSION_REQUIREMENT,
+} from '../system';
 import { getThothMemSetupCommand } from '../thoth-mem-install';
 import type { ConfigMergeResult, OpenCodeConfig } from '../types';
 import type {
@@ -85,6 +94,7 @@ interface NormalizedOpenCodeRoleOverride {
 }
 
 export interface OpenCodeOperationContext extends OperationContext {
+  getOpenCodeVersion?: () => string | null;
   resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
   updateOpenCodeMainConfig?: (
     update: OpenCodeMainConfigUpdate,
@@ -365,7 +375,8 @@ export const opencodeOperationAdapter = {
   id: 'opencode',
   displayName: 'OpenCode',
   available: true,
-  description: 'OpenCode plugin and configuration surfaces.',
+  description:
+    'OpenCode 2.2.5 or later: pinned plugin and configuration surfaces.',
   actions: openCodeActions,
 } as const satisfies HarnessOperationAdapter;
 
@@ -376,8 +387,8 @@ function targetForMainConfig(state?: ManagedState): ManagedTarget {
     label: 'OpenCode config',
     ...(state ? { state } : {}),
     expected: EXPECTED_PLUGIN
-      ? `plugin includes ${EXPECTED_PLUGIN}`
-      : 'plugin version unavailable',
+      ? `plugins includes ${EXPECTED_PLUGIN}`
+      : 'plugins version unavailable',
   };
 }
 
@@ -439,20 +450,25 @@ function openCodeSkillTargets(context: OperationContext): {
         : 'required global skill missing',
     };
   });
+  const legacyCopies = inspectLegacyOpenCodeSkills(homeDir);
   const ownedTargets: ManagedTarget[] = getOpenCodeOwnedSkillEntries({
     homeDir,
   }).map((skill) => {
-    const path = join(skill.destinationPath, 'SKILL.md');
+    const path = join(skill.sourcePath, 'SKILL.md');
     const installed = existsSync(path);
     return {
       kind: 'skill',
       path,
       label: titleCaseSkillName(skill.name),
       state: installed ? 'installed' : 'missing',
-      expected: 'required global OpenCode skill',
-      observed: installed
-        ? 'thoth-owned global skill installed'
-        : 'thoth-owned global skill missing',
+      expected: 'package-provided OpenCode skill',
+      observed: `${installed ? 'package-provided skill available' : 'package-provided skill missing'}${legacyCopies
+        .filter((copy) => copy.name === skill.name)
+        .map(
+          (copy) =>
+            `; Warning: ${copy.sourcePath} shadows packaged skills; planned move to ${getLegacyOpenCodeSkillBackupRoot(homeDir)}/<new-run>/${copy.label}/${copy.name}; confirm with --move-legacy-opencode-skills`,
+        )
+        .join('')}`,
     };
   });
   const diagnostics: OperationWarning[] = [];
@@ -475,28 +491,24 @@ function openCodeSkillTargets(context: OperationContext): {
 }
 
 function configPluginMarker(config: OpenCodeConfig | null): string {
-  const plugins = Array.isArray(config?.plugin) ? config.plugin : [];
-  return plugins.length > 0
-    ? `plugin: ${JSON.stringify(plugins)}`
-    : 'plugin: []';
+  return `plugins: ${JSON.stringify(pluginEntries(config?.plugins))}; legacy plugin: ${JSON.stringify(pluginEntries(config?.plugin))}`;
 }
 
 function hasExpectedPlugin(config: OpenCodeConfig | null): boolean {
+  const current = pluginEntries(config?.plugins);
   return (
     EXPECTED_PLUGIN !== null &&
-    Array.isArray(config?.plugin) &&
-    config.plugin.includes(EXPECTED_PLUGIN)
+    current.filter(isManagedOpenCodePlugin).length === 1 &&
+    current.includes(EXPECTED_PLUGIN) &&
+    !pluginEntries(config?.plugin).some(isManagedOpenCodePlugin)
   );
 }
 
 function hasManagedPluginDrift(config: OpenCodeConfig | null): boolean {
   return (
-    Array.isArray(config?.plugin) &&
-    config.plugin.some(
-      (plugin) =>
-        plugin === PACKAGE_NAME || plugin.startsWith(`${PACKAGE_NAME}@`),
-    ) &&
-    !hasExpectedPlugin(config)
+    [...pluginEntries(config?.plugins), ...pluginEntries(config?.plugin)].some(
+      isManagedOpenCodePlugin,
+    ) && !hasExpectedPlugin(config)
   );
 }
 
@@ -1077,6 +1089,7 @@ export function getOpenCodeStatus(
   const managedStatus = getOpenCodeManagedStatus(context);
   return {
     ...managedStatus,
+    summary: `${managedStatus.summary} Requires OpenCode 2.2.5 or later.`,
     targets: [
       ...managedStatus.targets,
       getCliManagedInstallVersionTarget('opencode', context),
@@ -1246,7 +1259,6 @@ function buildOpenCodeCompletePlan(
   const expectedPlugin = `${PACKAGE_NAME}@${version}`;
   const generatedConfig = generateLiteConfig({
     agent: 'opencode',
-    hasTmux: false,
     dryRun: true,
     reset: false,
   });
@@ -1267,16 +1279,10 @@ function buildOpenCodeCompletePlan(
         title: `Ensure OpenCode plugin points at ${expectedPlugin}`,
         target: {
           ...targetForMainConfig(),
-          expected: `plugin includes ${expectedPlugin}`,
+          expected: `plugins includes ${expectedPlugin}`,
         },
         state: getOpenCodeStatus(context).state,
-        preview: `plugin: ["${expectedPlugin}"]`,
-        backup: defaultBackup(getExistingConfigPath()),
-      },
-      {
-        title: 'Disable OpenCode default agents',
-        target: targetForMainConfig(),
-        preview: 'agent.explore.disable = true; agent.general.disable = true',
+        preview: `plugins: ["${expectedPlugin}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
@@ -1286,7 +1292,7 @@ function buildOpenCodeCompletePlan(
         backup: defaultBackup(getExistingLiteConfigPath()),
       },
       {
-        title: 'Synchronize global thoth-owned OpenCode skills',
+        title: 'Inspect package-provided thoth-owned OpenCode skills',
         target: {
           kind: 'skill',
           label: 'Thoth-owned OpenCode skills',
@@ -1358,7 +1364,6 @@ export function buildOpenCodeSyncPlan(
   }
   const generatedConfig = generateLiteConfig({
     agent: 'opencode',
-    hasTmux: false,
     dryRun: true,
     reset: false,
   });
@@ -1372,19 +1377,13 @@ export function buildOpenCodeSyncPlan(
     'opencode-sync-preview',
     'sync',
     'Sync OpenCode managed configuration',
-    'Preview OpenCode plugin entry, default-agent disablement, and thoth-agents config sync.',
+    'Preview pinned OpenCode plugins and thoth-agents config sync (requires OpenCode 2.2.5 or later).',
     [
       {
         title: `Ensure OpenCode plugin points at ${PACKAGE_NAME}@${packageVersion.version}`,
         target: targetForMainConfig(),
         state: getOpenCodeStatus(context).state,
-        preview: `plugin: ["${PACKAGE_NAME}@${packageVersion.version}"]`,
-        backup: defaultBackup(getExistingConfigPath()),
-      },
-      {
-        title: 'Disable OpenCode default agents',
-        target: targetForMainConfig(),
-        preview: 'agent.explore.disable = true; agent.general.disable = true',
+        preview: `plugins: ["${PACKAGE_NAME}@${packageVersion.version}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
@@ -1394,7 +1393,7 @@ export function buildOpenCodeSyncPlan(
         backup: defaultBackup(litePath),
       },
       {
-        title: 'Synchronize global thoth-owned OpenCode skills',
+        title: 'Inspect package-provided thoth-owned OpenCode skills',
         target: {
           kind: 'skill',
           label: 'Thoth-owned OpenCode skills',
@@ -1759,7 +1758,6 @@ function applyModelPlan(
   const parsed = parseConfig(targetPath);
   const generated = generateLiteConfig({
     agent: 'opencode',
-    hasTmux: false,
     dryRun: false,
     reset: false,
   }) as OpenCodeConfig;
@@ -1875,16 +1873,25 @@ function applyOwnedSkills(context: OpenCodeOperationContext): {
 } {
   const syncOwned = context.syncOpenCodeOwnedSkills ?? syncOpenCodeOwnedSkills;
   const result = syncOwned({
+    moveLegacyOpenCodeSkills: context.moveLegacyOpenCodeSkills,
     homeDir: homeDirFromContext(context),
   });
-  if (result.success) return { success: true, warnings: [] };
+  if (result.success)
+    return {
+      success: true,
+      warnings: (result.notices ?? []).map((message) => ({
+        severity: 'minor',
+        code: 'opencode-legacy-skill-copy',
+        message,
+      })),
+    };
   return {
     success: false,
     warnings: [
       {
         severity: 'critical',
         code: 'opencode-owned-skills-sync-failed',
-        message: `Failed to synchronize thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}.`,
+        message: `Failed to inspect package-provided thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}.`,
       },
     ],
   };
@@ -1943,6 +1950,19 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
     );
   }
 
+  const hostVersion = (
+    issued.runtimeContext.getOpenCodeVersion ?? getOpenCodeVersionSync
+  )();
+  if (!isSupportedOpenCodeVersion(hostVersion)) {
+    return rejectPlan(
+      plan,
+      `${OPENCODE_VERSION_REQUIREMENT} Detected: ${hostVersion ?? 'unavailable'}.`,
+      'critical',
+      'opencode-host-version-unsupported',
+      issued.context,
+    );
+  }
+
   if (issued.payload.kind === 'model') {
     const invalidPayload = invalidModelPayloadReason(issued.payload.roles);
     if (invalidPayload) {
@@ -1966,7 +1986,6 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   const mainConfigResult = updateMainConfig({
     ensurePlugin: true,
     pluginVersion: issued.payload.version,
-    disableDefaults: true,
   });
   if (!mainConfigResult.success) {
     return rejectPlan(
@@ -1979,7 +1998,7 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   }
   changedTargets.push({
     ...targetForMainConfig('installed'),
-    observed: `plugin includes ${PACKAGE_NAME}@${issued.payload.version}`,
+    observed: `plugins includes ${PACKAGE_NAME}@${issued.payload.version}`,
   });
   if (existsSync(`${mainConfigResult.configPath}.bak`)) {
     backups.push({
@@ -1992,7 +2011,6 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   const liteResult = writeLite(
     {
       agent: 'opencode',
-      hasTmux: false,
       dryRun: false,
       reset: false,
     },
@@ -2022,8 +2040,8 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
     label: 'Thoth-owned OpenCode skills',
     state: ownedSkills.success ? 'installed' : 'drift',
     observed: ownedSkills.success
-      ? 'thoth-owned global skills synchronized'
-      : 'thoth-owned global skill synchronization failed',
+      ? 'package-provided skills available'
+      : 'package-provided skill inspection failed',
   });
   if (!ownedSkills.success) {
     return {
@@ -2031,7 +2049,7 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
       action: plan.action,
       applied: false,
       summary:
-        'OpenCode configuration was written, but thoth-owned skills failed to synchronize.',
+        'OpenCode configuration was written, but package-provided skills failed inspection.',
       changedTargets,
       backups,
       warnings,

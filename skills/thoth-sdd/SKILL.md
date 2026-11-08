@@ -206,7 +206,13 @@ Validation is not authorization.
 
 Delivery differs by harness: Pi attaches verdicts to completion notifications,
 `subagent_result`, and task-mode `subagent_run` (match `taskId`); OpenCode appends
-them to Oracle `task` output. Claude Code verdicts arrive with Subagent hand-back
+them to completed foreground Oracle `subagent` tool output. OpenCode background
+completions arrive automatically as `<subagent sessionID=... state="completed">`
+messages without a `thoth-gate-verdict` line; root must use the explicit compact
+validator fallback below. Delegate with `subagent` arguments `agent`,
+`description`, `prompt`, optional `model`, `background:true` for independent work,
+and `sessionID` to continue or clarify a child, including while running. No
+status polling tool exists; default nesting depth is 1. Claude Code verdicts arrive with Subagent hand-back
 reports (foreground or background; `agent` is the agent id, match it to the Agent
 result's `agentId`) and completed foreground `Agent` results whose content carries
 the report. Other deliveries (e.g. background runs without hand-back) carry none;
@@ -220,7 +226,7 @@ result.
 ### Explicit compact fallback
 
 Only when no verdict was delivered (hook unavailable/untrusted, a Codex multi-agent
-v2 delivery, or a Claude background run without hand-back), resolve `<skill-dir>` from the installed
+v2 delivery, an OpenCode background completion, or a Claude background run without hand-back), resolve `<skill-dir>` from the installed
 thoth-sdd SKILL.md directory, exactly as for `scripts/validate.mjs`, and run:
 
 ```text

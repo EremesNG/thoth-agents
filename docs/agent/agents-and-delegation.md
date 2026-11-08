@@ -102,8 +102,22 @@ Root presents accepted results to the user as readable prose.
 - **Delivery surfaces:** Pi (`src/pi.ts`, `src/pi-gate-verdict.ts`) attaches verdicts
   on completion notifications, `subagent_result`, and task-mode `subagent_run`;
   match the delivered `taskId` to the assignment. OpenCode's
-  `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. Claude
-  Code's UserPromptSubmit hook validates Subagent hand-back reports (foreground or
+  `src/hooks/oracle-gate-verdict/` appends verdicts to completed foreground Oracle
+  `subagent` results only, validating structured raw child output as a bare
+  envelope only when it appears verbatim in visible content, otherwise falling
+  back to validating the visible native-wrapper content.
+  Native string or normalized text-part content is preserved; `running`
+  placeholders are unchanged. Background
+  completions admitted later as synthetic `<subagent ... state="completed">`
+  messages carry no verdict: root uses the explicit compact validator fallback
+  on the unchanged result (a bare fence or one native `<subagent ...>...</subagent>`
+  wrapper with an end-anchored fence). The native header is opaque because host
+  descriptions are unescaped; apart from the native prefix/completed-state marker,
+  only structural fence/verdict lines are rejected there. Header/body ambiguity
+  is accepted, without prose/nesting interpretation. This is the same fallback
+  used for Codex multi-agent v2 and Claude background
+  runs without hand-back. Claude Code's UserPromptSubmit hook validates
+  Subagent hand-back reports (foreground or
   background; `agent` is the agent id, match it to the Agent result's `agentId`). Its
   PostToolUse `Agent` hook covers completed foreground `thoth-agents:oracle`
   results whose content carries the report; it never reads `handbackReport`, so

@@ -692,7 +692,12 @@ describe('AI-first prompt rendering', () => {
     expect(codex).toContain('collaboration.wait_agent');
     expect(claude).toContain('Agent(run_in_background=true)');
     expect(claude).toContain('TaskOutput');
-    expect(opencode).toContain('task_status');
+    expect(opencode).toContain('subagent');
+    expect(opencode).toContain('sessionID');
+    expect(opencode).toContain('No status polling tool exists');
+    expect(opencode).not.toMatch(
+      /task_status|task_id|subagent_type|@(?:oracle|worker|explorer)/,
+    );
     expect(pi).toContain('subagent_run');
     expect(pi).toContain('subagent_status({ task_id })');
     expect(pi).toContain('subagent_result({ task_id })');
@@ -864,7 +869,7 @@ describe('AI-first prompt rendering', () => {
     [
       'OpenCode',
       () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
-      'Delivery verdicts are appended to Oracle `task` output.',
+      'Foreground Oracle `subagent` gates get one `thoth-gate-verdict` line; background completions have none: use the explicit compact validator fallback.',
     ],
     [
       'Codex',
@@ -994,7 +999,9 @@ describe('AI-first prompt rendering', () => {
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       const child = renderRolePrompt(sectionsFor(role), dialect);
       expect(child).toContain(
-        `Do not delegate further or call \`${tool}\`; root owns progress.`,
+        dialect.harness === 'opencode'
+          ? 'Do not delegate further; no `todowrite` (root-owned).'
+          : `Do not delegate further or call \`${tool}\`; root owns progress.`,
       );
       expect(child).not.toContain('Track requests with 3+ steps');
     }
@@ -1017,7 +1024,8 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_300],
+      // Trimmed mandatory v2 arguments/completion/gap text: 13,521 characters; cap +225.
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_525],
       [renderCodexRootInstructions(), 14_800],
       [renderClaudeCodeRootInstructions(), 14_200],
       // Pi tool schemas and the subagents-configuration skill own operator details.
@@ -1043,12 +1051,12 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "a4e3bae4d7935fc793065a552e83b51b6a925814134a453119f9f51c9e70364b",
-          "a10821acadc00a4da671aafd6b437fa9b6932d5e3e9a8e0bd1dfb610b42a52e4",
-          "634bafad130132eeb0b0a6ba1f3688922ea18439201b9adbd365fcb4685d2383",
-          "5a7e7a2d890e939bb5aa8ef1b2a5dd04c708894a15ca0d0b0beb81be6f8246ad",
-          "0476242cceae98297f02e907dc4b7a60d2c9bd13639d0437542e342f8c14fff6",
-          "0811e8267845070f61b486c6d1146d46523d8a8df58d98b9a1b8e01c55b1e010",
+          "c9dd4453c2045ddf21b7bf83ebd600d30b2743f42d3a9c3744829c9d530e0a93",
+          "d029170974c6f94c240dce85996ae6e069cd7c69671ddf17f6c2cce87c6eabf0",
+          "0e6be91686c66d89d423001ee2193a89575b5ed49ea99ce856547fdaf8352dd5",
+          "0dc2c5d406f99f68efd494001d64441c1db1b2ff38e072d7a2267b6d7fd74279",
+          "f2accd9af0006dd9161140d3223db823421ef20a406317d9cfd037c246fad8f3",
+          "fd93938daa2b96098c5ae0655d6ca7abea69bb4ee334de3657370ec91e0a1c0e",
         ],
       ],
       [
@@ -1081,7 +1089,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '4dabbfceffd81bf7703dc0e7d92d51cf9ecd2e87adfd58814b0d916d4291814a',
+    'd4607dcec4fc6708f8ab08aa4f96b0178cf85e6ed59c294b24b7f9d9c4f87495',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,

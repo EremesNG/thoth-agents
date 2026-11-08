@@ -2,10 +2,10 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-function getDefaultOpenCodeConfigDir(): string {
+function getDefaultOpenCodeConfigDir(homeDir: string): string {
   const userConfigDir = process.env.XDG_CONFIG_HOME
     ? process.env.XDG_CONFIG_HOME
-    : join(homedir(), '.config');
+    : join(homeDir, '.config');
 
   return join(userConfigDir, 'opencode');
 }
@@ -23,17 +23,17 @@ function getCustomOpenCodeConfigDir(): string | undefined {
  * 2. XDG_CONFIG_HOME/opencode
  * 3. ~/.config/opencode
  */
-export function getConfigDir(): string {
+export function getConfigDir(homeDir = homedir()): string {
   const customConfigDir = getCustomOpenCodeConfigDir();
   if (customConfigDir) {
     return customConfigDir;
   }
 
-  return getDefaultOpenCodeConfigDir();
+  return getDefaultOpenCodeConfigDir(homeDir);
 }
 
 export function getOpenCodeConfigPaths(): string[] {
-  const configDir = getDefaultOpenCodeConfigDir();
+  const configDir = getConfigDir();
   return [join(configDir, 'opencode.json'), join(configDir, 'opencode.jsonc')];
 }
 

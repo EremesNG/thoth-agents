@@ -8,14 +8,28 @@ execution does not.
 
 ## Invariants
 
-- OpenCode is the default CLI harness.
+- OpenCode is the default CLI harness and requires >=2.2.5; missing,
+  unparseable or older hosts fail before config writes. Config resolves via
+  `OPENCODE_CONFIG_DIR`, then `${XDG_CONFIG_HOME:-~/.config}/opencode`.
 - `@latest` is valid for selecting the CLI package to execute, but every
   OpenCode config mutation uses the executing package's exact semantic version.
   Package identity is resolved before managed writes and failure never falls
-  back to a `latest` plugin entry.
-- OpenCode installation synchronizes all five packaged thoth-owned skills into
-  `~/.config/opencode/skills/`; status, install, and sync share that inventory.
-  `/thoth-init` creates only missing `.thoth/` governance, preserving existing content.
+  back to a `latest` plugin entry. Managed entries from legacy `plugin` and
+  v2 `plugins` converge to one `thoth-agents@<version>` under `plugins`,
+  preserving unrelated entries. No `agent.*.disable` is written.
+- OpenCode registers the five owned skills from package `skills/<name>/SKILL.md`
+  paths. OpenCode 2.2.5 config-discovered copies shadow same-ID package skills.
+  Install/Update detects legacy copies; interactive CLI/TUI asks for confirmation,
+  or non-interactive runs require `--move-legacy-opencode-skills`. Only then does
+  same-volume rename move each copy to a new no-clobber hidden backup under
+  `$XDG_DATA_HOME/thoth-agents/.opencode-legacy-skills/` (default data root
+  `~/.local/share`), never deleting or overwriting. Without confirmation or on
+  failure, originals remain with a shadowing warning. Dry-run/status report
+  copies and planned moves. Restore by moving a backup to its original path
+  without overwriting; this restores shadowing too. Roots configured inside
+  the backup or non-dot symlinks into it can expose backups despite hidden
+  traversal protection. See [backup layout and recovery](../installation.md#opencode-legacy-skill-copies).
+  `/thoth-init` only initializes missing project governance.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
 - After owned setup and external skills, published harness installs invoke the
@@ -27,7 +41,7 @@ execution does not.
   reset never becomes provider `--force`, rollback, removal, or file repair.
 - Browser and QA executables remain project-owned.
 - Install and applied Update share the complete selected-harness orchestration:
-  OpenCode refreshes exact plugin/config plus owned skills; Codex performs
+  OpenCode refreshes exact plugin/config with package-provided skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
   refresh; Pi installs the exact executing first-party package before nine
   minimum-constrained selected packages and attributable resources. Every
@@ -172,10 +186,8 @@ execution does not.
   Partial native package state remains
   visible and is recovered by resolving the blocker and rerunning the complete
   flow.
-- OpenCode runtime update checks are notification-only. They do not rewrite
-  config, invalidate package state, or run package installation; the operator
-  recovery path is
-  the latest CLI installer or an explicitly applied Update.
+- OpenCode runtime update checking and tmux (including `--tmux`) are removed.
+  Updates require the latest CLI installer or explicitly applied Update.
 - CLI changes require parser/help/tests and public docs in the same change.
 
 ## Verification

@@ -86,13 +86,14 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).toContain('.thoth/changes/<id>/<id>.md');
     expect(root).toContain('Bundled `thoth-sdd` skill');
     expect(root).toContain(
-      'fresh read-only @oracle for substantial/material risk',
+      'fresh read-only subagent agent:"oracle" for substantial/material risk',
     );
     expect(root).toContain(
       'focused root checks for trivial deterministic low-risk work',
     );
     expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
-    expect(root).toContain('`task`');
+    expect(root).toContain('`subagent`');
+    expect(root).not.toMatch(/task_status|task_id|subagent_type|@oracle/);
     expect(root).toContain('`question`');
     expect(root).not.toContain('collaboration.spawn_agent');
     expect(root).not.toContain('requirements-interview');
@@ -105,11 +106,12 @@ describe('OpenCode harness adapter v0.3', () => {
   test('renders OpenCode-native fresh and continuation lifecycle guidance', () => {
     const root = renderOpenCodeAgentConfigs().orchestrator.prompt ?? '';
 
-    expect(root).toContain('`task` without `task_id`');
-    expect(root).toContain('`task` with the prior `task_id`');
+    expect(root).toContain('agent, description, prompt; omit sessionID');
     expect(root).toContain(
-      'omitting `task_id` creates an isolated child session',
+      'Use sessionID only to continue/clarify the same assignment, including while running',
     );
+    expect(root).toContain('background:true');
+    expect(root).toContain('No status polling tool exists');
     expect(root).not.toContain('collaboration.followup_task');
     expect(root).not.toContain('SendMessage');
     expect(root).not.toContain('fork_turns');

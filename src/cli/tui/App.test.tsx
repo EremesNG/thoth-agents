@@ -655,6 +655,33 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('Codex Models');
   });
 
+  test.each([
+    false,
+    true,
+  ])('OpenCode Update requires separate legacy skill move consent: %s', async (confirm) => {
+    const base = operations();
+    let consent: boolean | undefined;
+    const ops: TuiOperations = {
+      ...base,
+      legacyOpenCodeSkillCopies: () => ['/legacy/thoth-sdd'],
+      plan(harness, action, options) {
+        consent = options?.moveLegacyOpenCodeSkills;
+        return base.plan(harness, action);
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await openUpdatePreview(stdin);
+    expect(lastFrame()).toContain('Move legacy OpenCode skills?');
+    expect(base.planned).toHaveLength(0);
+    if (confirm) await press(stdin, 'j');
+    await press(stdin, '\r');
+    expect(consent).toBe(confirm);
+    expect(lastFrame()).toContain('Preview update');
+    expect(base.applied).toHaveLength(0);
+  });
+
   test('Manage missing OpenCode shows Install as primary action', async () => {
     const ops = operations(undefined, { opencode: missingStatus('opencode') });
     const { lastFrame, stdin } = render(

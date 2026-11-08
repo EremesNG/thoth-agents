@@ -50,12 +50,12 @@ describe('paths', () => {
     ]);
   });
 
-  test('getOpenCodeConfigPaths() ignores OPENCODE_CONFIG_DIR', () => {
+  test('getOpenCodeConfigPaths() honors OPENCODE_CONFIG_DIR', () => {
     process.env.OPENCODE_CONFIG_DIR = '/custom/directory';
     process.env.XDG_CONFIG_HOME = '/tmp/xdg-config';
     expect(getOpenCodeConfigPaths()).toEqual([
-      join('/tmp/xdg-config', 'opencode', 'opencode.json'),
-      join('/tmp/xdg-config', 'opencode', 'opencode.jsonc'),
+      join('/custom/directory', 'opencode.json'),
+      join('/custom/directory', 'opencode.jsonc'),
     ]);
   });
 

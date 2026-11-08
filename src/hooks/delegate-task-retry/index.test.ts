@@ -1,43 +1,47 @@
 import { describe, expect, test } from 'vitest';
-import { createDelegateTaskRetryHook } from './hook';
+import { createDelegateTaskRetryHook, type DelegationToolEvent } from './hook';
 
-describe('delegate-task-retry hook', () => {
-  test('appends guidance for task argument errors', async () => {
-    const hook = createDelegateTaskRetryHook({} as never);
-    const output = {
-      output:
-        '[ERROR] Invalid arguments: Must provide either category or subagent_type. Available categories: quick, unspecified-low',
-    };
-
-    await hook['tool.execute.after']({ tool: 'task' }, output);
-
-    expect(output.output).toContain('[delegate-task retry suggestion]');
-    expect(output.output).toContain('missing_category_or_agent');
-  });
-
-  test('appends background-policy guidance for native task allowlist errors', async () => {
-    const hook = createDelegateTaskRetryHook({} as never);
-    const output = {
-      output:
-        "Agent 'oracle' is not allowed. Allowed agents: explorer, librarian",
-    };
-
-    await hook['tool.execute.after']({ tool: 'task' }, output);
-
-    expect(output.output).toContain('[delegate-task retry suggestion]');
-    expect(output.output).toContain('background_agent_not_allowed');
-    expect(output.output).toContain(
-      'Use `background=true` only for `explorer` or `librarian`',
+describe('native subagent retry guidance', () => {
+  test.each([
+    'Unknown agent: missing',
+    'Invalid arguments: agent is required',
+    'Agent orchestrator cannot run as a subagent',
+    'Subagent depth limit reached (1)',
+    'Subagent denied: worker',
+  ])('explains %s once', async (message) => {
+    const event = {
+      tool: 'subagent',
+      status: 'error',
+      error: { message, metadata: { retained: true } },
+    } as DelegationToolEvent & { status: 'error' };
+    const hook = createDelegateTaskRetryHook();
+    await hook(event);
+    expect(event.error.message).toContain('[subagent retry suggestion]');
+    expect(event.error.message).not.toMatch(
+      /task_status|task_id|subagent_type/,
     );
-    expect(output.output).toContain('Available: explorer, librarian');
+    expect(event.error.metadata).toEqual({ retained: true });
+    const delivered = event.error.message;
+    await hook(event);
+    expect(event.error.message).toBe(delivered);
   });
 
-  test('does nothing for unrelated tool output', async () => {
-    const hook = createDelegateTaskRetryHook({} as never);
-    const output = { output: 'all good' };
-
-    await hook['tool.execute.after']({ tool: 'read' }, output);
-
-    expect(output.output).toBe('all good');
+  test('ignores successful child prose and unrelated tool errors', async () => {
+    const hook = createDelegateTaskRetryHook();
+    const success = {
+      tool: 'subagent',
+      status: 'completed',
+      result: { content: 'Unknown agent: quoted documentation' },
+    } as DelegationToolEvent;
+    const unrelated = {
+      tool: 'read',
+      status: 'error',
+      error: { message: 'Unknown agent: missing' },
+    } as DelegationToolEvent;
+    for (const event of [success, unrelated]) {
+      const original = structuredClone(event);
+      await hook(event);
+      expect(event).toEqual(original);
+    }
   });
 });

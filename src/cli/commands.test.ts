@@ -97,8 +97,8 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('thoth-agents CLI (npm binary: thoth-agents)');
     expect(output).toContain('Open the interactive TUI in a TTY');
     expect(output).toContain('fall back to OpenCode install in CI/non-TTY');
-    expect(output).toContain(`plugin: ["thoth-agents@${executing.version}"]`);
-    expect(output).not.toContain('plugin: ["thoth-agents@latest"]');
+    expect(output).toContain(`plugins: ["thoth-agents@${executing.version}"]`);
+    expect(output).not.toContain('plugins: ["thoth-agents@latest"]');
     expect(output).toContain(
       '@latest selects the CLI release; OpenCode receives that exact version pin.',
     );
@@ -118,6 +118,9 @@ describe('commands plain operation formatters', () => {
       'simplify, tdd, progressive-context-router, and grill-me',
     );
     expect(output).not.toContain('playwright-cli');
+    expect(output).toContain('OpenCode 2.2.5 or later');
+    expect(output).not.toContain('Runtime release checks');
+    expect(output).not.toContain('tmux');
     expect(output).toContain(
       'External required skills are installed for every harness',
     );
@@ -308,7 +311,7 @@ describe('commands plain operation formatters', () => {
             path: 'C:\\Users\\Ada\\opencode.jsonc',
           },
           state: 'outdated',
-          preview: 'plugin: ["thoth-agents@latest"]',
+          preview: 'plugins: ["thoth-agents@latest"]',
         },
       ],
       warnings: [

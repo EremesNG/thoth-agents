@@ -59,6 +59,7 @@ import type {
   OperationContext,
   OperationPlan,
 } from '../operations/types';
+import { inspectLegacyOpenCodeSkills } from '../owned-skills';
 import { getExistingLiteConfigPath } from '../paths';
 import { getModelOptions, type ModelOption } from './model-catalog';
 
@@ -71,6 +72,7 @@ export type TuiAction =
   | 'model';
 
 export interface TuiOperations {
+  legacyOpenCodeSkillCopies?: () => string[];
   status(
     harness: HarnessId,
     evidence?: ProviderEvidenceInput,
@@ -81,7 +83,7 @@ export interface TuiOperations {
   plan(
     harness: HarnessId,
     action: Exclude<TuiAction, 'status' | 'list'>,
-    options?: { trustHooks?: boolean },
+    options?: { trustHooks?: boolean; moveLegacyOpenCodeSkills?: boolean },
   ): OperationPlan;
   modelPlan(harness: HarnessId, roles: ModelRoleInput[]): OperationPlan;
   restoreModelPlan(
@@ -280,6 +282,8 @@ export function buildRestoreModelPlan(
 }
 
 export const defaultTuiOperations: TuiOperations = {
+  legacyOpenCodeSkillCopies: () =>
+    inspectLegacyOpenCodeSkills().map((copy) => copy.sourcePath),
   status(harness, evidence) {
     if (harness === 'opencode') return getOpenCodeStatus(context, evidence);
     if (harness === 'claude') {
@@ -301,8 +305,12 @@ export const defaultTuiOperations: TuiOperations = {
   },
   plan(harness, action, options) {
     if (harness === 'opencode') {
-      if (action === 'install') return buildOpenCodeInstallPlan(context);
-      if (action === 'update') return buildOpenCodeUpdatePlan(context);
+      const consentContext = {
+        ...context,
+        moveLegacyOpenCodeSkills: options?.moveLegacyOpenCodeSkills === true,
+      };
+      if (action === 'install') return buildOpenCodeInstallPlan(consentContext);
+      if (action === 'update') return buildOpenCodeUpdatePlan(consentContext);
       if (action === 'sync') return buildOpenCodeSyncPlan(context);
       return buildTuiModelPlan(harness, getOpenCodeModelRoles());
     }

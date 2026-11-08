@@ -34,6 +34,7 @@ import {
   recordHarnessInstallCompletion,
 } from './install-completion';
 import type { InstallLedgerOptions } from './install-ledger';
+import { requestOpenCodeSkillMoveConsent } from './opencode-skill-consent';
 import {
   inspectPiPackageSkills,
   syncOpenCodeOwnedSkills,
@@ -56,6 +57,10 @@ import {
   REQUIRED_SKILLS,
   type SkillInstallHarness,
 } from './skills';
+import {
+  isSupportedOpenCodeVersion,
+  OPENCODE_VERSION_REQUIREMENT,
+} from './system';
 import type {
   ThothMemSetupOptions,
   ThothMemSetupResult,
@@ -64,6 +69,7 @@ import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
 
 export interface InstallDependencies {
   homeDir?: string;
+  moveLegacyOpenCodeSkills?: boolean;
   opencodeOwnedSkillPackageRoot?: string;
   runThothMemSetup?: (options: ThothMemSetupOptions) => ThothMemSetupResult;
   resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
@@ -132,7 +138,7 @@ async function checkOpenCodeInstalled(): Promise<{
 }> {
   const installed = await isOpenCodeInstalled();
   if (!installed) {
-    printError('OpenCode is not installed on this system.');
+    printError(OPENCODE_VERSION_REQUIREMENT);
     printInfo('Install it with:');
     console.log(
       `     ${BLUE}curl -fsSL https://opencode.ai/install | bash${RESET}`,
@@ -144,6 +150,12 @@ async function checkOpenCodeInstalled(): Promise<{
     return { ok: false };
   }
   const version = await getOpenCodeVersion();
+  if (!isSupportedOpenCodeVersion(version)) {
+    printError(
+      `${OPENCODE_VERSION_REQUIREMENT} Detected: ${version ?? 'unavailable'}.`,
+    );
+    return { ok: false };
+  }
   const path = getOpenCodePath();
   const detectedVersion = version ?? '';
   const pathInfo = path ? ` (${DIM}${path}${RESET})` : '';
@@ -170,7 +182,7 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   lines.push(`${BOLD}Configuration Summary${RESET}`);
   lines.push('');
   lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
-  lines.push(`  ${SYMBOLS.check} Seven-role adaptive thoth-agents roster`);
+  lines.push(`  ${SYMBOLS.check} Six-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
   lines.push(
     `  ${SYMBOLS.check} Proportional SDD and ID-named substantial-change records`,
@@ -181,7 +193,7 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   lines.push(
     `  ${DIM}○ thoth-mem remains the owner of hooks, MCP, skill, lifecycle, persistence, receipts, and recovery.${RESET}`,
   );
-  lines.push(`  ${SYMBOLS.check} Global thoth-owned OpenCode skills`);
+  lines.push(`  ${SYMBOLS.check} Package-provided thoth-owned OpenCode skills`);
   lines.push(`  ${SYMBOLS.check} Required external skills for this harness`);
   return lines.join('\n');
 }
@@ -192,22 +204,26 @@ function installOwnedSkillsForOpenCode(
 ): boolean {
   const result = syncOpenCodeOwnedSkills({
     dryRun,
+    moveLegacyOpenCodeSkills: dependencies.moveLegacyOpenCodeSkills,
     homeDir: dependencies.homeDir ?? homedir(),
     packageRoot: dependencies.opencodeOwnedSkillPackageRoot,
   });
   for (const skill of result.skills) {
-    printInfo(`  - ${skill.name}: ${skill.destinationPath}`);
+    printInfo(`  - ${skill.name}: ${skill.sourcePath}`);
+  }
+  for (const notice of result.notices ?? []) {
+    printInfo(notice);
   }
   if (!result.success) {
     printError(
-      `Failed to synchronize global thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}`,
+      `Failed to inspect package-provided thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}`,
     );
     return false;
   }
   printSuccess(
     dryRun
-      ? 'Global thoth-owned OpenCode skills planned'
-      : 'Global thoth-owned OpenCode skills synchronized',
+      ? 'Package-provided thoth-owned OpenCode skills planned'
+      : 'Package-provided thoth-owned OpenCode skills available',
   );
   return true;
 }
@@ -366,7 +382,7 @@ async function runInstall(
   printStep(
     step++,
     totalSteps,
-    'Configuring the thoth-agents plugin and OpenCode default agents...',
+    'Configuring the pinned thoth-agents plugin (OpenCode 2.2.5+)...',
   );
   if (config.dryRun) {
     printInfo('Dry run mode - skipping main config update');
@@ -376,7 +392,6 @@ async function runInstall(
     const mainConfigResult = updateMainConfig({
       ensurePlugin: true,
       pluginVersion,
-      disableDefaults: true,
     });
     if (!handleStepResult(mainConfigResult, 'Main config updated')) return 1;
   }
@@ -413,8 +428,16 @@ async function runInstall(
   printStep(
     step++,
     totalSteps,
-    'Synchronizing global thoth-owned OpenCode skills...',
+    'Inspecting package-provided thoth-owned OpenCode skills...',
   );
+  dependencies = {
+    ...dependencies,
+    moveLegacyOpenCodeSkills: await requestOpenCodeSkillMoveConsent({
+      dryRun: config.dryRun,
+      homeDir: dependencies.homeDir,
+      moveLegacyOpenCodeSkills: dependencies.moveLegacyOpenCodeSkills,
+    }),
+  };
   if (!installOwnedSkillsForOpenCode(config.dryRun, dependencies)) return 1;
 
   printStep(step++, totalSteps, 'Installing required external skills...');
@@ -458,7 +481,7 @@ async function runInstall(
   const modelsInfo = 'Default configuration uses OpenAI models.';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the seven-role adaptive roster, native parallel delegation, and proportional SDD governance.${RESET}`,
+    `  ${DIM}Includes the six-role adaptive roster, native parallel delegation, and proportional SDD governance.${RESET}`,
   );
   return 0;
 }
@@ -569,7 +592,6 @@ async function runPiInstall(
 export function createInstallConfig(args: InstallArgs): InstallConfig {
   return {
     agent: args.agent ?? 'opencode',
-    hasTmux: args.tmux === 'yes',
     ...(args.localPackageRoot
       ? { localPackageRoot: args.localPackageRoot }
       : {}),
@@ -585,6 +607,10 @@ export async function install(
   args: InstallArgs,
   dependencies: InstallDependencies = {},
 ): Promise<number> {
+  dependencies = {
+    ...dependencies,
+    moveLegacyOpenCodeSkills: args.moveLegacyOpenCodeSkills,
+  };
   const config = createInstallConfig(args);
   const resolvePackageVersion =
     dependencies.resolveExecutingPackageVersion ??

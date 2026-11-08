@@ -150,55 +150,25 @@ OpenCode status and model-role readback MUST recognize a complete active `preset
 - **WHEN** a second valid model plan is built and applied
 - **THEN** it remains eligible and preserves the activated `agents` preset
 
-### Requirement: Install owned OpenCode workflow skills globally
+### Requirement: Provide owned OpenCode workflow skills from the plugin package
 
-The OpenCode installer MUST synchronize the five canonical thoth-owned workflow skill trees from the installed thoth-agents package into `~/.config/opencode/skills/` as a required global installation step.
+The OpenCode plugin MUST register the five canonical thoth-owned workflow skills from its installed package through the OpenCode skill domain; the OpenCode installer MUST NOT copy them into or delete anything from the OpenCode skills directory, and when legacy same-name copies exist there it MUST move them, only after explicit operator confirmation, into a new no-clobber backup below a hidden (dot-prefixed) directory segment that host skill scanning does not traverse, otherwise (including when a move fails) leaving them untouched with a warning that they shadow the packaged skills.
 
-#### Scenario: US1 - Complete the global OpenCode installation 1
+#### Scenario: Provide owned OpenCode workflow skills from the plugin package
 
-- **GIVEN** a complete published thoth-agents package
-- **WHEN** `install --agent=opencode` runs
-- **THEN** `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
-
-#### Scenario: US1 - Complete the global OpenCode installation 2
-
-- **GIVEN** an existing stale copy of a thoth-owned OpenCode skill
-- **WHEN** installation runs again
-- **THEN** the global owned copy matches the canonical packaged skill rather than remaining stale
-
-#### Scenario: US1 - Complete the global OpenCode installation 3
-
-- **GIVEN** dry-run installation
-- **WHEN** owned skill installation is planned
-- **THEN** the destination and five owned skills are reported without writing them
-
-#### Scenario: US1 - Complete the global OpenCode installation 4
-
-- **GIVEN** an incomplete canonical bundle or a failed global skill synchronization
-- **WHEN** OpenCode installation runs
-- **THEN** the overall installation fails and does not claim provider or combined installation completion
+- **GIVEN** a complete installed thoth-agents package and a stale `thoth-sdd` copy under `~/.config/opencode/skills/`
+- **WHEN** `install --agent=opencode` runs and the operator confirms the move
+- **THEN** the copy is moved unchanged into the backup directory and OpenCode 2.2.5 lists all five owned skills once with paths inside the installed package 
 
 ### Requirement: Pin the OpenCode plugin to the executing release
 
-Every OpenCode install or applied update MUST replace all managed thoth-agents plugin entry forms with exactly one `thoth-agents@<executing-package-version>` entry while preserving unrelated plugin entries.
+Every OpenCode install or applied update MUST replace all managed thoth-agents plugin entry forms in both the `plugins` and legacy `plugin` keys with exactly one `thoth-agents@<executing-package-version>` entry under `plugins` while preserving unrelated plugin entries and their relative order, and MUST fail without substituting `latest` or partially rewriting configuration when the executing version cannot be resolved.
 
-#### Scenario: US1 - Install the exact OpenCode plugin release 1
+#### Scenario: Pin the OpenCode plugin to the executing release
 
-- **GIVEN** the executing thoth-agents package version is `0.4.8`
-- **WHEN** OpenCode installation configures the plugin
-- **THEN** the resulting managed entry is exactly `thoth-agents@0.4.8` and is not `thoth-agents@latest`
-
-#### Scenario: US1 - Install the exact OpenCode plugin release 2
-
-- **GIVEN** OpenCode configuration contains a bare, tagged, or differently versioned thoth-agents entry plus unrelated plugins
-- **WHEN** installation runs again from version `0.4.8`
-- **THEN** every prior thoth-agents entry is replaced by one `thoth-agents@0.4.8` entry and unrelated plugins retain their relative order
-
-#### Scenario: US1 - Install the exact OpenCode plugin release 3
-
-- **GIVEN** the executing package version cannot be resolved as a non-empty valid package version
-- **WHEN** installation or update would write the OpenCode plugin entry
-- **THEN** the operation fails without substituting `latest` and without partially rewriting the configuration
+- **GIVEN** OpenCode configuration with a bare, tagged or differently versioned thoth-agents entry under `plugin` or `plugins` plus unrelated plugins
+- **WHEN** installation runs from version `0.4.8`
+- **THEN** `plugins` contains exactly one `thoth-agents@0.4.8` entry, no thoth-agents entry remains under `plugin`, and unrelated plugins keep their relative order 
 
 ### Requirement: Make applied Update installation-equivalent
 
@@ -338,47 +308,23 @@ One dedicated Pi-package receipt MUST be authoritative only for first-party sour
 
 ### Requirement: Prohibit runtime self-update mutation
 
-The OpenCode runtime version checker MAY notify about a newer release but MUST NOT rewrite plugin configuration, invalidate package-manager state, or invoke package installation; release changes MUST require an explicit CLI install or Update action.
+The OpenCode plugin MUST NOT run a runtime version checker, rewrite plugin configuration, invalidate package-manager state or invoke package installation; release changes MUST require an explicit CLI install or Update action.
 
-#### Scenario: US4 - Keep release changes operator-controlled 1
+#### Scenario: Prohibit runtime self-update mutation
 
 - **GIVEN** OpenCode is running a pinned release and a newer release exists
-- **WHEN** the background version check completes
-- **THEN** it only notifies the operator and does not rewrite the plugin entry, invalidate cached package state, or run an installation command
-
-#### Scenario: US4 - Keep release changes operator-controlled 2
-
-- **GIVEN** an operator wants the newer release
-- **WHEN** they follow CLI guidance or apply Update
-- **THEN** the selected harness receives the complete refresh and OpenCode, when selected, is pinned to the CLI release performing that refresh
-
-#### Scenario: US4 - Keep release changes operator-controlled 3
-
-- **GIVEN** installation and update help or documentation
-- **WHEN** an operator reads the OpenCode guidance
-- **THEN** it explains the exact-version pin and that re-running the latest CLI installer or applying Update is the supported update mechanism
+- **WHEN** the plugin runs
+- **THEN** it performs no version check, notification, configuration rewrite or installation, and the operator updates through the CLI 
 
 ### Requirement: Document the explicit update contract
 
-CLI help, status and operation messaging, and routed public installation guidance SHALL describe exact OpenCode version pinning, the last complete CLI-managed version, native marketplace independence, and the complete CLI-driven update path consistently.
+CLI help, status and operation messaging, and routed public installation guidance SHALL describe exact OpenCode version pinning, the minimum OpenCode host version, the last complete CLI-managed version, native marketplace independence, and the complete CLI-driven update path consistently.
 
-#### Scenario: US4 - Keep release changes operator-controlled 1
-
-- **GIVEN** OpenCode is running a pinned release and a newer release exists
-- **WHEN** the background version check completes
-- **THEN** it only notifies the operator and does not rewrite the plugin entry, invalidate cached package state, or run an installation command
-
-#### Scenario: US4 - Keep release changes operator-controlled 2
-
-- **GIVEN** an operator wants the newer release
-- **WHEN** they follow CLI guidance or apply Update
-- **THEN** the selected harness receives the complete refresh and OpenCode, when selected, is pinned to the CLI release performing that refresh
-
-#### Scenario: US4 - Keep release changes operator-controlled 3
+#### Scenario: Document the explicit update contract
 
 - **GIVEN** installation and update help or documentation
 - **WHEN** an operator reads the OpenCode guidance
-- **THEN** it explains the exact-version pin and that re-running the latest CLI installer or applying Update is the supported update mechanism
+- **THEN** it explains the exact-version pin, the OpenCode 2.2.5 minimum and that re-running the latest CLI installer or applying Update is the supported update mechanism 
 
 ### Requirement: Expose truthful Pi operations
 
@@ -535,3 +481,13 @@ The CLI MUST provide Codex `uninstall`, removing only attributable thoth-agents 
 - **GIVEN** an operator-edited agent TOML and an unrelated hook trust entry
 - **WHEN** `uninstall --agent=codex` runs
 - **THEN** the edited TOML and the unrelated entry are preserved and reported, and every unmodified thoth-owned surface is removed
+
+### Requirement: Require OpenCode 2.2.5 or later
+
+OpenCode installation and update MUST parse the detected host version and MUST fail before writing any configuration when OpenCode is missing, unparseable or older than 2.2.5.
+
+#### Scenario: Require OpenCode 2.2.5 or later
+
+- **GIVEN** an OpenCode host reporting version 1.18.2
+- **WHEN** `install --agent=opencode` runs
+- **THEN** it fails with a message requiring OpenCode 2.2.5 or later and writes no configuration 

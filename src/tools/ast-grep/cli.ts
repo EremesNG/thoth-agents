@@ -12,6 +12,7 @@ import { ensureAstGrepBinary } from './downloader';
 import type { CliLanguage, CliMatch, SgResult } from './types';
 
 export interface RunOptions {
+  signal?: AbortSignal;
   pattern: string;
   lang: CliLanguage;
   paths?: string[];
@@ -66,6 +67,7 @@ export function startBackgroundInit(): void {
 }
 
 export async function runSg(options: RunOptions): Promise<SgResult> {
+  options.signal?.throwIfAborted();
   const args = [
     'run',
     '-p',
@@ -105,6 +107,7 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
     }
   }
 
+  options.signal?.throwIfAborted();
   const timeout = DEFAULT_TIMEOUT_MS;
 
   const proc = spawn([cliPath, ...args], {
@@ -112,6 +115,9 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
     stdout: 'pipe',
     stderr: 'pipe',
   });
+
+  const onAbort = () => proc.kill();
+  options.signal?.addEventListener('abort', onAbort, { once: true });
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     const id = setTimeout(() => {
@@ -133,6 +139,7 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
     stderr = await new Response(proc.stderr).text();
     exitCode = await proc.exited;
   } catch (e) {
+    options.signal?.throwIfAborted();
     const error = e as Error;
     if (error.message?.includes('timeout')) {
       return {
@@ -175,7 +182,10 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
       truncated: false,
       error: `Failed to spawn ast-grep: ${error.message}`,
     };
+  } finally {
+    options.signal?.removeEventListener('abort', onAbort);
   }
+  options.signal?.throwIfAborted();
 
   if (exitCode !== 0 && stdout.trim() === '') {
     if (stderr.includes('No files found')) {

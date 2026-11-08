@@ -1,15 +1,18 @@
+import * as fs from 'node:fs';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import {
   getPiOwnedSkillEntries,
@@ -17,6 +20,13 @@ import {
   resolveOwnedSkillPackageRoot,
   syncOpenCodeOwnedSkills,
 } from './owned-skills';
+
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+}));
+vi.mock('node:path', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:path')>()),
+}));
 
 const temporaryRoots: string[] = [];
 
@@ -41,7 +51,15 @@ function writeCanonicalBundle(packageRoot: string): void {
   }
 }
 
+beforeEach(() => {
+  vi.stubEnv('OPENCODE_CONFIG_DIR', '');
+  vi.stubEnv('XDG_CONFIG_HOME', '');
+  vi.stubEnv('XDG_DATA_HOME', '');
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -87,7 +105,7 @@ describe('OpenCode owned skill synchronization', () => {
     );
   });
 
-  test('installs every canonical skill tree into the global root', () => {
+  test('uses package skills without copying trees into the global root', () => {
     const packageRoot = temporaryRoot('thoth-owned-package-');
     const homeDir = temporaryRoot('thoth-owned-home-');
     writeCanonicalBundle(packageRoot);
@@ -95,25 +113,13 @@ describe('OpenCode owned skill synchronization', () => {
     const result = syncOpenCodeOwnedSkills({ packageRoot, homeDir });
 
     expect(result).toMatchObject({ success: true, status: 'installed' });
-    for (const skillName of THOTH_OWNED_SKILL_NAMES) {
-      expect(
-        existsSync(
-          join(
-            homeDir,
-            '.config',
-            'opencode',
-            'skills',
-            skillName,
-            'references',
-            'contract.md',
-          ),
-        ),
-        skillName,
-      ).toBe(true);
-    }
+    expect(result.notices).toEqual([]);
+    expect(existsSync(join(homeDir, '.config', 'opencode', 'skills'))).toBe(
+      false,
+    );
   });
 
-  test('replaces stale owned skill trees instead of merging them', () => {
+  test('preserves pre-existing copies because historical sync recorded no ownership', () => {
     const packageRoot = temporaryRoot('thoth-owned-package-');
     const homeDir = temporaryRoot('thoth-owned-home-');
     writeCanonicalBundle(packageRoot);
@@ -131,8 +137,194 @@ describe('OpenCode owned skill synchronization', () => {
     const result = syncOpenCodeOwnedSkills({ packageRoot, homeDir });
 
     expect(result.success).toBe(true);
-    expect(existsSync(join(staleRoot, 'obsolete.txt'))).toBe(false);
+    expect(existsSync(join(staleRoot, 'obsolete.txt'))).toBe(true);
     expect(existsSync(join(staleRoot, 'SKILL.md'))).toBe(true);
+    expect(readFileSync(join(staleRoot, 'SKILL.md'), 'utf8')).toBe(
+      `stale${String.fromCharCode(10)}`,
+    );
+    expect(result.notices?.join(' ')).toContain('shadow the packaged skills');
+    expect(result.notices?.join(' ')).toContain(
+      '--move-legacy-opencode-skills',
+    );
+    const preview = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      dryRun: true,
+    });
+    expect(preview.notices).toEqual(result.notices);
+    expect(readFileSync(join(staleRoot, 'SKILL.md'), 'utf8')).toBe(
+      `stale${String.fromCharCode(10)}`,
+    );
+  });
+
+  test('confirmed move preserves bytes under a hidden backup and leaves unrelated skills', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const source = join(homeDir, '.config', 'opencode', 'skills', 'thoth-sdd');
+    mkdirSync(source, { recursive: true });
+    const bytes = Buffer.from([0, 255, 10, 13, 65]);
+    writeFileSync(join(source, 'SKILL.md'), bytes);
+    const result = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(existsSync(source)).toBe(false);
+    expect(result.legacyMoves).toHaveLength(1);
+    const moved = result.legacyMoves?.[0];
+    expect(moved?.status).toBe('moved');
+    expect(moved?.destinationPath).toContain('.opencode-legacy-skills');
+    if (!moved) throw new Error('Expected moved skill');
+    expect(readFileSync(join(moved.destinationPath, 'SKILL.md'))).toEqual(
+      bytes,
+    );
+  });
+
+  test.each([
+    'EPERM',
+    'EXDEV',
+  ])('failed %s rename leaves the original bytes intact and warns', (code) => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const source = join(homeDir, '.config', 'opencode', 'skill', 'thoth-sdd');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'original');
+    vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error(code), { code });
+    });
+    const result = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(readFileSync(join(source, 'SKILL.md'), 'utf8')).toBe('original');
+    expect(result.legacyMoves?.[0]?.status).toBe('failed');
+    expect(result.notices?.join(' ')).toContain(code);
+  });
+
+  test('distinct resolved/legacy and singular/plural sources retain same-name copies separately', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const config = join(homeDir, 'custom');
+    vi.stubEnv('OPENCODE_CONFIG_DIR', config);
+    for (const root of [config, join(homeDir, '.config', 'opencode')]) {
+      for (const directory of ['skill', 'skills']) {
+        const source = join(root, directory, 'thoth-sdd');
+        mkdirSync(source, { recursive: true });
+        writeFileSync(join(source, 'SKILL.md'), source);
+      }
+    }
+    const preview = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      dryRun: true,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(preview.legacyMoves).toHaveLength(4);
+    if (!preview.backupRoot) throw new Error('Expected backup root');
+    expect(existsSync(preview.backupRoot)).toBe(false);
+    const result = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(
+      new Set(result.legacyMoves?.map((move) => move.destinationPath)).size,
+    ).toBe(4);
+    for (const move of result.legacyMoves ?? []) {
+      expect(move.status).toBe('moved');
+      expect(readFileSync(join(move.destinationPath, 'SKILL.md'), 'utf8')).toBe(
+        move.sourcePath,
+      );
+    }
+  });
+
+  test('same-realpath aliases are moved once', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const root = join(homeDir, '.config', 'opencode');
+    const source = join(root, 'skills', 'thoth-sdd');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'same');
+    symlinkSync(
+      join(root, 'skills'),
+      join(root, 'skill'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    expect(
+      syncOpenCodeOwnedSkills({
+        packageRoot,
+        homeDir,
+        moveLegacyOpenCodeSkills: true,
+      }).legacyMoves,
+    ).toHaveLength(1);
+  });
+
+  test('pre-existing run directories are not reused and existing destinations are not overwritten', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const source = join(homeDir, '.config', 'opencode', 'skills', 'thoth-sdd');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'original');
+    const mkdir = fs.mkdirSync;
+    let collisions = 0;
+    vi.spyOn(fs, 'mkdirSync').mockImplementation(((
+      directory: string,
+      options: unknown,
+    ) => {
+      if ((options as { mode?: number })?.mode === 0o700 && collisions++ === 0)
+        throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+      const result = mkdir(
+        directory,
+        options as fs.MakeDirectoryOptions & { recursive: true },
+      );
+      if (String(directory).endsWith('resolved-skills')) {
+        mkdirSync(join(directory, 'thoth-sdd'));
+        writeFileSync(join(directory, 'thoth-sdd', 'SKILL.md'), 'keep');
+      }
+      return result;
+    }) as typeof fs.mkdirSync);
+    const result = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(collisions).toBe(2);
+    expect(result.legacyMoves?.[0]?.status).toBe('failed');
+    expect(readFileSync(join(source, 'SKILL.md'), 'utf8')).toBe('original');
+    const move = result.legacyMoves?.[0];
+    if (!move) throw new Error('Expected planned move');
+    expect(readFileSync(join(move.destinationPath, 'SKILL.md'), 'utf8')).toBe(
+      'keep',
+    );
+  });
+
+  test('refuses a computed backup path that lost the dot segment before writing', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    const homeDir = temporaryRoot('thoth-owned-home-');
+    writeCanonicalBundle(packageRoot);
+    const source = join(homeDir, '.config', 'opencode', 'skills', 'thoth-sdd');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'original');
+    const resolve = path.resolve;
+    vi.spyOn(path, 'resolve').mockImplementation((...parts) =>
+      parts.includes('.opencode-legacy-skills')
+        ? join(homeDir, 'unsafe')
+        : resolve(...parts),
+    );
+    const result = syncOpenCodeOwnedSkills({
+      packageRoot,
+      homeDir,
+      moveLegacyOpenCodeSkills: true,
+    });
+    expect(result.notices?.join(' ')).toContain('missing the required hidden');
+    expect(existsSync(join(homeDir, 'unsafe'))).toBe(false);
+    expect(readFileSync(join(source, 'SKILL.md'), 'utf8')).toBe('original');
   });
 
   test('rejects an incomplete canonical bundle before destination writes', () => {
@@ -156,7 +348,7 @@ describe('OpenCode owned skill synchronization', () => {
     );
   });
 
-  test('reports an unwritable global skill root without replacing it', () => {
+  test('does not require a writable global root for package skills', () => {
     const packageRoot = temporaryRoot('thoth-owned-package-');
     const homeDir = temporaryRoot('thoth-owned-home-');
     writeCanonicalBundle(packageRoot);
@@ -167,7 +359,7 @@ describe('OpenCode owned skill synchronization', () => {
 
     const result = syncOpenCodeOwnedSkills({ packageRoot, homeDir });
 
-    expect(result).toMatchObject({ success: false, status: 'failed' });
+    expect(result).toMatchObject({ success: true, status: 'installed' });
     expect(existsSync(skillRoot)).toBe(true);
   });
 

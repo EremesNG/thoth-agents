@@ -145,26 +145,35 @@ function piCapabilityDisclosure(
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'opencode',
   gateDeliveryInstruction:
-    'Delivery verdicts are appended to Oracle `task` output.',
+    'Foreground Oracle `subagent` gates get one `thoth-gate-verdict` line; background completions have none: use the explicit compact validator fallback.',
   tools: {
-    delegationTool: 'task',
-    backgroundDelegationTool: 'task(background=true)',
-    backgroundStatusTool: 'task_status',
+    delegationTool: 'subagent',
+    backgroundDelegationTool: 'subagent(background:true)',
+    backgroundWaitInstruction:
+      'Native `<subagent sessionID=... state="completed">` completion wakes root. No status polling tool exists; never poll/sleep.',
     userQuestionTool: 'question',
     progressTool: 'todowrite',
-    hostStatusSurface: 'task_status',
+    hostStatusSurface: 'native subagent completion messages',
     lifecycle: {
-      freshDelegation: '`task` without `task_id`',
-      sameAssignmentContinuation: '`task` with the prior `task_id`',
+      rootInstructions: [
+        '- New objectives, phases, work units, mutable surfaces or independent judgments require fresh specialist sessions via `subagent` (agent, description, prompt; omit sessionID). These are fresh-session boundaries, not permission for root execution; never pool completed agents.',
+        '- Use sessionID only to continue/clarify the same assignment, including while running. Optional model; background:true for independent work. Default nesting depth is 1.',
+        '- Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. Existing ones only clarify their findings.',
+      ].join('\n'),
+      freshDelegation:
+        '`subagent` with agent, description and prompt, omitting sessionID',
+      sameAssignmentContinuation:
+        '`subagent` with the prior sessionID, including while running',
       independentContext:
-        'omitting `task_id` creates an isolated child session',
-      statusAction: 'wait, poll, and collect',
-      terminalState: 'terminal task_status result',
-      nonterminalState: 'nonterminal task_status result',
-      sameSessionProbe: 'task_status on the same task session',
+        'omitting sessionID creates an isolated child session',
+      statusAction: 'receive native completion automatically; never poll',
+      terminalState: 'a completed subagent result/message',
+      nonterminalState: 'a running placeholder',
+      sameSessionProbe:
+        'continue or clarify with subagent and the same sessionID; never ask for status',
       enforcement: 'runtime-supported',
     },
-    roleReference: (role) => `@${role}`,
+    roleReference: (role) => `subagent agent:"${role}"`,
   },
   capabilities: supportedCapabilityProfile(OPENCODE_CAPABILITIES),
   dispatchLabel(method) {
@@ -172,11 +181,11 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'root coordinator';
       case 'task':
-        return 'task';
+        return 'subagent';
     }
   },
   renderRoleInvocation(role) {
-    return `@${role}`;
+    return `subagent agent:"${role}"`;
   },
 };
 

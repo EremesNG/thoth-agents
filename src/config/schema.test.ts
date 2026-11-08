@@ -90,3 +90,16 @@ test('accepts optional Pi role skill names/globs and empty catalogs', () => {
     ).toBe(false);
   }
 });
+
+test.each([
+  { tmux: { enabled: true, layout: 'tiled' } },
+  { tmux: 'obsolete config is not validated' },
+  { auto_update: true, autoUpdate: false, update_check: null },
+])('ignores removed runtime feature settings: %#', (removedSettings) => {
+  expect(
+    PluginConfigSchema.parse({
+      ...removedSettings,
+      agents: { worker: { model: 'openai/worker' } },
+    }),
+  ).toEqual({ agents: { worker: { model: 'openai/worker' } } });
+});

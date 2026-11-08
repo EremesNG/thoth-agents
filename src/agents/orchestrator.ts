@@ -1,4 +1,4 @@
-import type { AgentConfig } from '@opencode-ai/sdk/v2';
+import type { AgentConfig } from './agent-config';
 import { OPENCODE_PROMPT_DIALECT } from './prompt-dialects';
 import {
   createOrchestratorPromptSections,

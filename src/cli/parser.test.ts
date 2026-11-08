@@ -3,6 +3,17 @@ import { describe, expect, test } from 'vitest';
 import { parseInstallArgs, parseOperationArgs } from './parser';
 
 describe('operation role effort parsing', () => {
+  test.each([
+    '--tmux',
+    '--tmux=yes',
+    '--tmux=no',
+    '--tmux=invalid',
+  ])('rejects the removed install option %s', (flag) => {
+    expect(() => parseInstallArgs([flag])).toThrow(
+      `Unsupported install option: ${flag}`,
+    );
+  });
+
   test('accepts Pi explicitly for install and operation selection', () => {
     expect(parseInstallArgs(['--agent=pi']).agent).toBe('pi');
     expect(parseOperationArgs(['--harness=pi']).harness).toBe('pi');

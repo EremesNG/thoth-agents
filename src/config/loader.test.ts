@@ -366,17 +366,15 @@ describe('deepMerge behavior', () => {
     expect(config.agents?.designer?.model).toBe('project/designer-model');
   });
 
-  test('merges nested tmux configs', () => {
+  test('ignores removed feature settings in user and project configs', () => {
     const userOpencodeDir = path.join(userConfigDir, 'opencode');
     fs.mkdirSync(userOpencodeDir, { recursive: true });
     fs.writeFileSync(
       path.join(userOpencodeDir, 'thoth-agents.json'),
       JSON.stringify({
-        tmux: {
-          enabled: true,
-          layout: 'main-vertical',
-          main_pane_size: 60,
-        },
+        tmux: { enabled: true, layout: 'main-vertical' },
+        auto_update: true,
+        agents: { oracle: { model: 'user/oracle' } },
       }),
     );
 
@@ -386,47 +384,20 @@ describe('deepMerge behavior', () => {
     fs.writeFileSync(
       path.join(projectConfigDir, 'thoth-agents.json'),
       JSON.stringify({
-        tmux: {
-          enabled: false, // Override enabled
-          layout: 'tiled', // Override layout
-        },
+        tmux: 'obsolete settings are ignored even if malformed',
+        auto_update: false,
+        agents: { oracle: { temperature: 0.8 } },
       }),
     );
 
     const config = loadPluginConfig(projectDir);
 
-    expect(config.tmux?.enabled).toBe(false); // From project (override)
-    expect(config.tmux?.layout).toBe('tiled'); // From project
-    expect(config.tmux?.main_pane_size).toBe(60); // From user (preserved)
-  });
-
-  test("preserves user tmux.enabled when project doesn't specify", () => {
-    const userOpencodeDir = path.join(userConfigDir, 'opencode');
-    fs.mkdirSync(userOpencodeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(userOpencodeDir, 'thoth-agents.json'),
-      JSON.stringify({
-        tmux: {
-          enabled: true,
-          layout: 'main-vertical',
-        },
-      }),
-    );
-
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        agents: { oracle: { model: 'test' } }, // No tmux override
-      }),
-    );
-
-    const config = loadPluginConfig(projectDir);
-
-    expect(config.tmux?.enabled).toBe(true); // Preserved from user
-    expect(config.tmux?.layout).toBe('main-vertical'); // Preserved from user
+    expect(config).not.toHaveProperty('tmux');
+    expect(config).not.toHaveProperty('auto_update');
+    expect(config.agents?.oracle).toEqual({
+      model: 'user/oracle',
+      temperature: 0.8,
+    });
   });
 
   test('project config overrides top-level arrays', () => {
@@ -1031,7 +1002,7 @@ describe('JSONC config support', () => {
           },
         },
         "tmux": {
-          "enabled": true, // Enable tmux
+          "enabled": true, // Removed setting is ignored
           "layout": "main-vertical",
         },
       }`,
@@ -1041,8 +1012,7 @@ describe('JSONC config support', () => {
     expect(config.preset).toBe('dev');
     expect(config.agents?.oracle?.model).toBe('dev-oracle');
     expect(config.agents?.explorer?.model).toBe('dev-explorer');
-    expect(config.tmux?.enabled).toBe(true);
-    expect(config.tmux?.layout).toBe('main-vertical');
+    expect(config).not.toHaveProperty('tmux');
   });
 });
 

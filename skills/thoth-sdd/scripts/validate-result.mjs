@@ -122,12 +122,38 @@ function checkExpectations(options, issue) {
     );
 }
 
+const isFenceLine = (line) => /^(?:`{3,}|~{3,})/.test(line);
+const isVerdictLine = (line) => line.startsWith('thoth-gate-verdict ');
+
+function unwrapSubagent(message, lines) {
+  if (!message.startsWith('<subagent ')) return message;
+  if (lines.at(-1) !== '</subagent>') return '';
+  const opener = lines.lastIndexOf('```thoth-result');
+  if (opener < 1) return '';
+  const header = lines.slice(0, opener).join('\n').trimEnd();
+  // Native descriptions are interpolated verbatim, not escaped attributes.
+  // Only structural lines and the completed-state marker are authoritative.
+  if (
+    !header.includes('state="completed"') ||
+    lines
+      .slice(0, opener)
+      .some((line) => isFenceLine(line) || isVerdictLine(line))
+  )
+    return '';
+  return lines.slice(opener, -1).join('\n').trim();
+}
+
 function parseEnvelope(message) {
-  const trimmed = typeof message === 'string' ? message.trim() : '';
+  const complete = typeof message === 'string' ? message.trim() : '';
+  const lines = complete.split(/\r\n|\r|\n/);
+  // Check structural lines in the complete delivery, including the header.
+  const singleEnvelope =
+    lines.filter(isFenceLine).length === 2 && !lines.some(isVerdictLine);
+  const trimmed = singleEnvelope ? unwrapSubagent(complete, lines) : '';
   const block = new RegExp(
     `^\`\`\`${contract.fence}\\r?\\n([\\s\\S]*?)\\r?\\n\`\`\`$`,
   ).exec(trimmed);
-  if (!block || (trimmed.match(/^```.*$/gm) ?? []).length !== 2) {
+  if (!block) {
     return {
       issues: [
         {

@@ -29,8 +29,10 @@ SDD guide](sdd-pipeline.md).
 | `grill-me` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision. |
 
 Build copies the five owned skills to shared `plugin/skills` for Codex and
-Claude. OpenCode synchronizes them into its global discovery root. Pi discovers
-them via the package manifest, preserving unrelated provider and Pi assets.
+Claude. OpenCode registers them directly from absolute package paths, but in
+OpenCode 2.2.5 config-discovered same-ID copies shadow them. The installer offers
+a confirmed backup move, never deletion; see [legacy skill recovery](installation.md#opencode-legacy-skill-copies). Pi
+discovers them via the package manifest, preserving unrelated provider and Pi assets.
 `/thoth-init` creates only missing minimum `.thoth/` paths. Phase references,
 templates and maintained validators resolve relative to the installed
 `thoth-sdd` skill, never to a project-local template directory. Missing assets

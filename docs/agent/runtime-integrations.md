@@ -2,33 +2,74 @@
 
 ## Responsibility
 
-This route owns OpenCode plugin composition, six native role definitions,
-`/thoth-init`, thoth-agents hooks, research MCPs, LSP/ast-grep tools, tmux, and
-runtime model fallback. It does not own Codex/Claude manager state or provider
-memory lifecycle.
+This route owns the OpenCode >=2.2.5 plugin, native roles, tools, MCPs,
+`/thoth-init`, package skills, permissions and session hooks. Entrypoints:
+`src/index.ts` and `src/opencode/`. Provider memory lifecycle remains external.
 
-## Flow
+## Registration and delegation
 
-1. Load config and render six OpenCode roles.
-2. Register the offline `/thoth-init` command from the packaged skill.
-3. Compose MCPs, tools, fallback, retry/recovery, update, and optional tmux.
-4. Leave thoth-mem mechanics to the independent provider.
+The entry exports a plain object satisfying `Plugin.Plugin`; `@opencode/plugin`
+2.2.5 is a type-only devDependency, not a bundled runtime import. Setup composes
+agent, tool, MCP, command, skill, permission, delegation and session registrars.
+It registers six roles, defaults to `orchestrator`, and removes host `explore`
+and `general`. Models use `{providerID,id,variant}`; only the OpenAI preset ships.
 
-## Invariants
+The native `subagent` tool takes `agent`, `description`, `prompt`, optional
+`background`, `model` and continuation `sessionID`. Native completion wakes the
+owner; there is no `task`/`task_status` alias or `@role` dispatch contract.
+Completed foreground Oracle gate results receive exactly one
+`thoth-gate-verdict` line. Running placeholders and non-gate results are unchanged.
+Background completions enter as synthetic host messages without a mutable
+admission hook: root must run the explicit compact-validator fallback from the
+installed `thoth-sdd` skill on the unchanged result.
 
-The runtime preserves user agent/command overrides, honors `disabled_mcps`, and
-ships the built-in OpenAI preset. Owners: `src/index.ts`, `src/agents/index.ts`,
-`src/mcp/index.ts`, and `src/config/constants.ts`. Tests:
-`src/agents/index.test.ts` and `src/mcp/index.test.ts`.
+## Packaged skill precedence
 
-- No alternate-provider mapping, phase-agent reminder, or provider lifecycle
-  hook is bundled.
-- Tmux is OpenCode-only.
-- Pi runtime execution is not composed into `src/index.ts`. `src/pi.ts` is the
-  native package entry: `before_agent_start` replaces any earlier Thoth marker
-  with one current bounded root block, while `session_start` converges only
-  attributable specialist files and degrades without rejecting valid turns.
-  Hooks never install packages or use the network. External delegation,
-  Context7/Exa, grep MCP, credentials, and lifecycle remain separately owned.
-  Extension code still has invoking-user filesystem, credential, and network
-  authority; tool allowlists are not an OS sandbox.
+Skills register from absolute package `skills/<name>/SKILL.md` paths. OpenCode
+2.2.5 runs external plugin transforms before config skill discovery; discovered
+same-ID copies win, not the plugin. The installer detects legacy copies and
+moves them only after interactive CLI/TUI confirmation or the explicit
+`--move-legacy-opencode-skills` flag. Moves are rename-only, never delete or
+overwrite, into `$XDG_DATA_HOME/thoth-agents/.opencode-legacy-skills/<UTC>-<rand>/<source-label>/<name>`
+(default data root `~/.local/share`). Without consent, or on move failure,
+originals remain with a shadowing warning; dry-run/status report planned moves.
+Restore by moving the backup directory to its original path without overwriting;
+this restores shadowing too. The scanner skips the hidden backup even from an
+ancestor root. A root explicitly inside the backup or a non-dot symlink into it
+remains a documented residual. See [recovery](../installation.md#opencode-legacy-skill-copies).
+
+## Permissions
+
+Ordered `{action,resource,effect}` rules replace role defaults: broad rules first,
+narrow exceptions last; last match wins and unmatched actions ask. Translation
+uses host actions `read`, `glob`, `grep`, `edit`, `shell`, `subagent`, `webfetch`,
+`external_directory`, `skill`, `question`, `todowrite`, and `exa_*` MCP matching.
+Legacy list/codesearch/LSP read intent maps to `read`; write/patch maps to `edit`.
+The permission evaluation hook denies `subagent` from every Thoth specialist;
+only orchestrator may delegate. These are host permissions, not an OS sandbox.
+
+## Session and cache invariants
+
+- Retry uses `retry` + awaited `switchModel` over configured chains, bounded
+  without repetition and preserving operator-selected models. No abort/replay.
+- Active change records and running children live in keyed session instructions.
+  The host freezes the initial instructions and appends later updates; keyed
+  entries survive compaction's new instruction epoch. The compaction hook also
+  carries current state into the summary (or its request when no result exists).
+- Never mutate `context.system`, tools or prior messages per request. Evolving
+  state uses deterministic keyed entries; compaction is the accepted prefix reset.
+- Built-in MCPs honor `disabled_mcps`. Six LSP/AST tools keep their existing
+  implementations. OpenCode 2.2.5 has no plugin API for host LSP config overrides:
+  Thoth standalone LSP tools use built-in defaults and do not consume host
+  overrides. Configure host-native LSP separately; this is a capability gap.
+- Tmux and runtime auto-update checking are removed. There are no runtime
+  notifications, package installs or config rewrites; use explicit CLI updates.
+
+## Focused verification
+
+Run `src/opencode/`, `src/hooks/`, `src/agents/`, `src/tools/` and
+`src/plugin-node-runtime.test.ts`. See [testing](testing.md) for host smoke and
+cache-guard boundaries; [CLI installation](cli-installation.md) owns paths/pins.
+
+Pi runtime composition remains separate in `src/pi.ts`; see
+[harness packaging](harness-packaging.md). thoth-mem mechanics remain provider-owned.

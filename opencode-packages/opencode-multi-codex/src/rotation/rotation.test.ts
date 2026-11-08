@@ -2,7 +2,7 @@ import type { Plugin } from '@opencode/plugin';
 import { afterEach, expect, test, vi } from 'vitest';
 import { registerRequests } from '../request/requests.js';
 import { registerCodexRpc } from '../rpc-handlers.js';
-import { statusTable } from '../tui/flow.js';
+import { statusView } from '../tui/status.js';
 import { registerRotation } from './rotation.js';
 
 type Event = {
@@ -172,7 +172,9 @@ test('status reports the exact account block until expiry without changing rotat
     },
   });
   if (result.ok)
-    expect(statusTable(result.value)).toContain(new Date(reset).toISOString());
+    expect(statusView(result.value, Date.now())).toMatch(
+      /blocked until \d\d:\d\d/,
+    );
   f.quota.getQuota.mockClear();
   vi.setSystemTime(reset - 1);
   expect(f.rotation.blockedUntil(2)).toBe(reset);

@@ -6,6 +6,7 @@ const session = { sessionID: z.string().trim().min(1).optional() };
 const window = z.object({
   remainingPercent: z.number(),
   resetAt: z.number().optional(),
+  windowSeconds: z.number().optional(),
 });
 export const CodexStateSchema = z.object({
   accounts: z.array(
@@ -20,6 +21,7 @@ export const CodexStateSchema = z.object({
         primary: window.optional(),
         secondary: window.optional(),
         fetchedAt: z.number().optional(),
+        error: z.string().optional(),
       }),
     }),
   ),

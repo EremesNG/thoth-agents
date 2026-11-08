@@ -24,12 +24,18 @@ type Runtime = {
 };
 
 function quotaWindowView(
-  window: { usedPercent: number; resetAt?: number } | undefined,
+  window:
+    | { usedPercent: number; resetAt?: number; windowSeconds?: number }
+    | undefined,
 ) {
   return window && Number.isFinite(window.usedPercent)
     ? {
         remainingPercent: 100 - window.usedPercent,
         ...(Number.isFinite(window.resetAt) ? { resetAt: window.resetAt } : {}),
+        ...(Number.isFinite(window.windowSeconds) &&
+        (window.windowSeconds ?? 0) > 0
+          ? { windowSeconds: window.windowSeconds }
+          : {}),
       }
     : undefined;
 }
@@ -70,6 +76,7 @@ export async function registerCodexRpc(ctx: Plugin.Context, runtime: Runtime) {
               ...(Number.isFinite(quota.fetchedAt)
                 ? { fetchedAt: quota.fetchedAt }
                 : {}),
+              ...(quota.error ? { error: quota.error } : {}),
             },
           };
         }),

@@ -118,8 +118,8 @@ describe('multi-codex RPC', () => {
       state: 'fresh',
       fetchedAt: 123,
       snapshot: {
-        primary: { usedPercent: 25 },
-        secondary: { usedPercent: 50, resetAt: 456 },
+        primary: { usedPercent: 25, windowSeconds: 18000 },
+        secondary: { usedPercent: 50, resetAt: 456, windowSeconds: Number.NaN },
       },
     });
     const result = await f.handlers.refreshQuota({ number: 1 });
@@ -128,7 +128,7 @@ describe('multi-codex RPC', () => {
     expect(result.value.accounts[0]?.quota).toStrictEqual({
       state: 'fresh',
       fetchedAt: 123,
-      primary: { remainingPercent: 75 },
+      primary: { remainingPercent: 75, windowSeconds: 18000 },
       secondary: { remainingPercent: 50, resetAt: 456 },
     });
   });

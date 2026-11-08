@@ -5,9 +5,6 @@
     "$schema": {
       "type": "string"
     },
-    "preset": {
-      "type": "string"
-    },
     "setDefaultAgent": {
       "type": "boolean"
     },
@@ -163,73 +160,6 @@
         "worker"
       ],
       "additionalProperties": false
-    },
-    "presets": {
-      "type": "object",
-      "propertyNames": {
-        "type": "string"
-      },
-      "additionalProperties": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string",
-          "pattern": "^(?!quick$|deep$).+$"
-        },
-        "additionalProperties": {
-          "type": "object",
-          "properties": {
-            "model": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "variant": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["id"]
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            "skills": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "temperature": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 2
-            },
-            "steps": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            },
-            "variant": {
-              "type": "string"
-            }
-          }
-        }
-      }
     },
     "agents": {
       "type": "object",

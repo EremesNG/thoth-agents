@@ -83,6 +83,7 @@ async function host() {
       instructions: { entry: { put } },
     },
     event: { subscribe },
+    rpc: { register: vi.fn(async () => registration) },
   } satisfies {
     [D in TransformDomain]: Pick<Context[D], 'transform'>;
   } & {
@@ -93,6 +94,7 @@ async function host() {
       };
     };
     event: Pick<Context['event'], 'subscribe'>;
+    rpc: { register: ReturnType<typeof vi.fn> };
   };
   // Only the registration surface is needed; absent host APIs fail loudly.
   await plugin.setup({
@@ -170,6 +172,7 @@ describe('real v2 setup cache-stability guard', () => {
       'command.transform',
       'skill.transform',
       'permission.evaluate',
+      'tool.execute.before',
       'tool.execute.after',
       'session.retry',
       'session.prompt',

@@ -37,34 +37,5 @@ export const MODEL_MAPPINGS = {
 export function generateLiteConfig(
   _installConfig: InstallConfig,
 ): Record<string, unknown> {
-  const config: Record<string, unknown> = {
-    $schema: THOTH_AGENTS_CONFIG_SCHEMA_URL,
-    preset: 'openai',
-    presets: {},
-  };
-
-  const createAgentConfig = (modelInfo: {
-    model: string;
-    variant?: string;
-  }) => {
-    return {
-      model: modelInfo.model,
-      variant: modelInfo.variant,
-    };
-  };
-
-  const buildPreset = (mappingName: keyof typeof MODEL_MAPPINGS) => {
-    const mapping = MODEL_MAPPINGS[mappingName];
-    return Object.fromEntries(
-      Object.entries(mapping).map(([agentName, modelInfo]) => [
-        agentName,
-        createAgentConfig(modelInfo),
-      ]),
-    );
-  };
-
-  // Always use OpenAI as default
-  (config.presets as Record<string, unknown>).openai = buildPreset('openai');
-
-  return config;
+  return { $schema: THOTH_AGENTS_CONFIG_SCHEMA_URL };
 }

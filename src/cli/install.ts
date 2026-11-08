@@ -181,7 +181,7 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   const lines: string[] = [];
   lines.push(`${BOLD}Configuration Summary${RESET}`);
   lines.push('');
-  lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
+  lines.push(`  ${BOLD}Profile:${RESET} ${BLUE}openai${RESET}`);
   lines.push(`  ${SYMBOLS.check} Six-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
   lines.push(

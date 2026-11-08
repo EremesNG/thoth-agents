@@ -83,7 +83,7 @@ use `timeMs: 1800000` (30 minutes) and `caseUsd: 1`; the per-run USD cap remains
 5. The Vitest case timeout allows the selected wall-time cap plus cleanup margin.
 
 Changing the parent model does **not** change specialist pins: generated
-specialists retain the production `openai-codex/…` presets unless the temporary
+specialists retain the production `openai-codex/…` model assignments unless the temporary
 specialist override is set. Auth must support the models actually used; missing
 child credentials can make a case INCONCLUSIVE. Console output includes
 `modelsUsed`; the harness also records specialist pins internally.
@@ -448,7 +448,7 @@ absolute install command is not valid Pi package identity evidence.
 ## OpenCode v2 closeout
 
 After freezing inputs, run `pnpm run check:ci`, `pnpm run typecheck`,
-`pnpm run build`, then focused Vitest for `src/opencode src/cli src/agents
+`pnpm run build`, then focused Vitest for `src/opencode src/tui src/cli src/agents
 src/harness src/hooks src/config src/tools src/plugin-node-runtime.test.ts`.
 Cache guards check structural system/tool/history immutability, deterministic
 keyed instructions and compaction carry-over, not provider cache-hit rates.
@@ -465,3 +465,27 @@ without warnings. The pinned public API has no tool-list endpoint: six tool
 registrations are checked by the registration/cache suites, not host listing.
 Close server stdin and await exit. Never use the
 operator's real configuration or call a model for this check.
+
+### Model-profile checks
+
+- `src/opencode/profiles/*.test.ts`: paths, schema, atomic writes, name shadowing,
+  session → project pin → global → read-only `default` selection, missing pointers,
+  model/variant pair inheritance and draft editing.
+- `src/opencode/agents.test.ts`, `profile-runtime.test.ts` and
+  `profile-rpc.test.ts`: cold-start defaults, deduplicated fallback chains,
+  parent-session model injection (explicit models untouched), plugin-storage
+  session selections, activation/reload/switchModel, and unavailable-model safety.
+- `src/tui/*.test.ts`: native-dialog flows, markers, six-role model/variant rows,
+  draft/save/discard/conflict handling and home-route session-action guards.
+- `src/cli/operations/opencode.test.ts`, `config-io.test.ts` and CLI TUI tests:
+  global `openai` creation, complete `agents` apply/activation and status/readback,
+  update/restore and preservation of unrelated configuration.
+
+The no-model server smoke above cannot prove TUI discovery or model execution.
+For a separately authorized live smoke, use isolated configuration and a scratch
+project, build the package, open OpenCode's interactive TUI and verify
+`/subagents-model` loads through `./tui`. Save/activate a profile, then verify
+session data records its orchestrator model in a cold first session and its
+worker model on a native subagent call without an explicit model. Check session
+selection, project pin, global selection and clearing; never modify the
+operator's global config/auth. Real model calls require explicit authorization.

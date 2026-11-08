@@ -184,6 +184,27 @@ describe('session keyed state', () => {
     expect(input.result.metadata).toEqual({ other: true });
   });
 
+  it('uses refreshed profile retry chains instead of the setup-time copy', async () => {
+    const h = host();
+    await registerSessionHooks(h.ctx, h.deps);
+    h.deps.runtimeChains.worker = ['p/new', 'p/backup'];
+    h.deps.effectiveModelArrays.worker = [
+      { id: 'p/new' },
+      { id: 'p/backup', variant: 'low' },
+    ];
+    await h.call('retry', {
+      sessionID: 's',
+      agent: 'worker',
+      model: { providerID: 'p', id: 'new' },
+      error: { type: 'provider.rate-limit', message: 'limited' },
+      decision: { retry: false },
+    } as never);
+    expect(h.switchModel).toHaveBeenCalledWith({
+      sessionID: 's',
+      model: { providerID: 'p', id: 'backup', variant: 'low' },
+    });
+  });
+
   it('does not register fallback for non-thoth configured chains', async () => {
     const h = host();
     await registerSessionHooks(h.ctx, h.deps);

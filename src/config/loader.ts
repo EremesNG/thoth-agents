@@ -15,11 +15,21 @@ const PROMPTS_DIR_NAME = 'thoth-agents';
  * @param configPath - Absolute path to the config file
  * @returns Validated config object, or null if loading failed
  */
-function loadConfigFromPath(configPath: string): PluginConfig | null {
+function loadConfigFromPath(
+  configPath: string,
+  unsupportedKeyPaths: Set<string>,
+): PluginConfig | null {
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
     // Use stripJsonComments to support JSONC format (comments and trailing commas)
     const rawConfig = JSON.parse(stripJsonComments(content));
+    if (
+      rawConfig !== null &&
+      typeof rawConfig === 'object' &&
+      ('preset' in rawConfig || 'presets' in rawConfig)
+    ) {
+      unsupportedKeyPaths.add(configPath);
+    }
     const result = PluginConfigSchema.safeParse(rawConfig);
 
     if (!result.success) {
@@ -135,12 +145,13 @@ export function loadPluginConfig(directory: string): PluginConfig {
   const userConfigPath = findConfigPath(userConfigBasePath);
   const projectConfigPath = findConfigPath(projectConfigBasePath);
 
+  const unsupportedKeyPaths = new Set<string>();
   let config: PluginConfig = userConfigPath
-    ? (loadConfigFromPath(userConfigPath) ?? {})
+    ? (loadConfigFromPath(userConfigPath, unsupportedKeyPaths) ?? {})
     : {};
 
   const projectConfig = projectConfigPath
-    ? loadConfigFromPath(projectConfigPath)
+    ? loadConfigFromPath(projectConfigPath, unsupportedKeyPaths)
     : null;
   if (projectConfig) {
     config = {
@@ -153,29 +164,10 @@ export function loadPluginConfig(directory: string): PluginConfig {
     };
   }
 
-  // Override preset from environment variable if set
-  const envPreset = process.env.THOTH_AGENTS_PRESET;
-  if (envPreset) {
-    config.preset = envPreset;
-  }
-
-  // Resolve preset and merge with root agents
-  if (config.preset) {
-    const preset = config.presets?.[config.preset];
-    if (preset) {
-      // Merge preset agents with root agents (root overrides)
-      config.agents = deepMerge(preset, config.agents);
-    } else {
-      // Preset name specified but doesn't exist - warn user
-      const presetSource =
-        envPreset === config.preset ? 'environment variable' : 'config file';
-      const availablePresets = config.presets
-        ? Object.keys(config.presets).join(', ')
-        : 'none';
-      console.warn(
-        `[thoth-agents] Preset "${config.preset}" not found (from ${presetSource}). Available presets: ${availablePresets}`,
-      );
-    }
+  if (unsupportedKeyPaths.size > 0) {
+    console.warn(
+      `[thoth-agents] Config keys preset/presets are unsupported and ignored (${[...unsupportedKeyPaths].join(', ')}).`,
+    );
   }
 
   return config;
@@ -184,59 +176,40 @@ export function loadPluginConfig(directory: string): PluginConfig {
 /**
  * Load custom prompt for an agent from the prompts directory.
  * Checks for {agent}.md (replaces default) and {agent}_append.md (appends to default).
- * If preset is provided and safe for paths, it first checks {preset}/ subdirectory,
- * then falls back to the root prompts directory.
  *
  * @param agentName - Name of the agent (e.g., "orchestrator", "explorer")
- * @param preset - Optional preset name for preset-scoped prompt lookup
  * @returns Object with prompt and/or appendPrompt if files exist
  */
-export function loadAgentPrompt(
-  agentName: string,
-  preset?: string,
-): {
+export function loadAgentPrompt(agentName: string): {
   prompt?: string;
   appendPrompt?: string;
 } {
-  const presetDirName =
-    preset && /^[a-zA-Z0-9_-]+$/.test(preset) ? preset : undefined;
   const promptsDir = path.join(getConfigDir(), PROMPTS_DIR_NAME);
-  const promptSearchDirs = presetDirName
-    ? [path.join(promptsDir, presetDirName), promptsDir]
-    : [promptsDir];
   const result: { prompt?: string; appendPrompt?: string } = {};
 
-  const readFirstPrompt = (
+  const readPrompt = (
     fileName: string,
     errorPrefix: string,
   ): string | undefined => {
-    for (const dir of promptSearchDirs) {
-      const promptPath = path.join(dir, fileName);
-      if (!fs.existsSync(promptPath)) {
-        continue;
-      }
+    const promptPath = path.join(promptsDir, fileName);
+    if (!fs.existsSync(promptPath)) return undefined;
 
-      try {
-        return fs.readFileSync(promptPath, 'utf-8');
-      } catch (error) {
-        console.warn(
-          `[thoth-agents] ${errorPrefix} ${promptPath}:`,
-          error instanceof Error ? error.message : String(error),
-        );
-      }
+    try {
+      return fs.readFileSync(promptPath, 'utf-8');
+    } catch (error) {
+      console.warn(
+        `[thoth-agents] ${errorPrefix} ${promptPath}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return undefined;
     }
-
-    return undefined;
   };
 
   // Check for replacement prompt
-  result.prompt = readFirstPrompt(
-    `${agentName}.md`,
-    'Error reading prompt file',
-  );
+  result.prompt = readPrompt(`${agentName}.md`, 'Error reading prompt file');
 
   // Check for append prompt
-  result.appendPrompt = readFirstPrompt(
+  result.appendPrompt = readPrompt(
     `${agentName}_append.md`,
     'Error reading append prompt file',
   );

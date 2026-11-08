@@ -291,8 +291,12 @@ npx thoth-agents@latest
 ```
 
 Choose models your harness and provider account can access. OpenCode ships the
-**OpenAI preset**; per-role overrides let you customize it. Other harnesses use
-their own model configuration and capability rules.
+**`openai` model profile**. Run `/subagents-model` inside OpenCode to edit named
+model/variant profiles for all six roles, including orchestrator. Selection is
+session → project pin → global active → read-only `default`. Profiles live in
+`<opencode-config-dir>/thoth/profiles.json` and
+`<project>/.opencode/thoth/profiles.json`; the CLI manages global profiles only.
+Other harnesses use their own model configuration and capability rules.
 
 See [Provider Configuration](docs/provider-configurations.md) and
 [Codex Model Customization](docs/codex-model-customization.md).

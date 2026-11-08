@@ -12,6 +12,17 @@ execution does not.
   unparseable, prerelease or older hosts fail Install/applied Update before config
   writes. Config resolves via `OPENCODE_CONFIG_DIR`, then
   `${XDG_CONFIG_HOME:-~/.config}/opencode`.
+- `src/cli/opencode-profiles.ts` owns global OpenCode model profile I/O at
+  `<opencode-config-dir>/thoth/profiles.json`. Install/sync write `openai` and
+  activate it only without a valid global selection. The Ink model editor's
+  Apply materializes and activates a complete `agents` profile (including
+  unchanged roles and no-dirty applies); status/readback recognize it.
+  Update and shipped-default restore operate on profiles, retaining valid
+  operator overrides during update. CLI never manages project pins or session
+  selections; those use the auto-loaded TUI `/subagents-model` command.
+  Session → project pin → global → `default` precedence means a global apply
+  need not change a pinned session/project. See
+  [runtime profile contract](runtime-integrations.md#model-profiles-and-tui).
 - `@latest` is valid for selecting the CLI package to execute, but every
   OpenCode config mutation uses the executing package's exact semantic version.
   Package identity is resolved before managed writes and failure never falls

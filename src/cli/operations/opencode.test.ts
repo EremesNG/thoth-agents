@@ -18,8 +18,12 @@ import {
   recordCompletedInstall,
 } from '../install-ledger';
 import { getShippedModelRoles } from '../model-defaults';
+import {
+  effectiveOpenCodeProfile,
+  openCodeProfileStore,
+} from '../opencode-profiles';
 import { resolveExecutingPackageVersion } from '../package-version';
-import { generateLiteConfig } from '../providers';
+import { generateLiteConfig, MODEL_MAPPINGS } from '../providers';
 import {
   buildRestoreModelPlan,
   getOpenCodeModelRoles,
@@ -143,6 +147,9 @@ describe('OpenCode operations adapter v0.3', () => {
   function writeManagedConfig(): void {
     writeJson(mainConfigPath(), { plugins: [EXECUTING_PLUGIN] });
     writeJson(liteConfigPath(), validLiteConfig());
+    const store = openCodeProfileStore();
+    store.save('global', 'openai', { agents: MODEL_MAPPINGS.openai });
+    store.setGlobalActive('openai');
   }
 
   function writeRequiredSkill(
@@ -608,8 +615,12 @@ describe('OpenCode operations adapter v0.3', () => {
     };
 
     expect(result.applied).toBe(true);
-    expect(written.preset).toBe('openai');
-    expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
+    expect(written).not.toHaveProperty('preset');
+    expect(written).not.toHaveProperty('presets');
+    expect(openCodeProfileStore().read('global').active).toBe('openai');
+    expect(
+      openCodeProfileStore().read('global').profiles.openai.agents,
+    ).toEqual(MODEL_MAPPINGS.openai);
     expect(result.changedTargets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ observed: 'six-role roster written' }),
@@ -645,7 +656,7 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
-  test('applies sync with the built-in OpenAI preset active', () => {
+  test('applies sync with the built-in OpenAI profile active', () => {
     const result = applyOpenCodePlan(buildOpenCodeSyncPlan(context()));
     const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
       preset: string;
@@ -653,8 +664,12 @@ describe('OpenCode operations adapter v0.3', () => {
     };
 
     expect(result.applied).toBe(true);
-    expect(written.preset).toBe('openai');
-    expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
+    expect(written).not.toHaveProperty('preset');
+    expect(written).not.toHaveProperty('presets');
+    expect(openCodeProfileStore().read('global').active).toBe('openai');
+    expect(
+      openCodeProfileStore().read('global').profiles.openai.agents,
+    ).toEqual(MODEL_MAPPINGS.openai);
     expect(readInstallLedger({ configRoot: tempRoot }).status).toBe('missing');
   });
 
@@ -674,85 +689,65 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
-  test('activates a complete agents preset without losing effective fields', () => {
+  test('materializes a complete active profile preserving root keys and unrelated profiles', () => {
     writeManagedConfig();
     writeAllRequiredSkills();
-    const baseConfig = validLiteConfig();
-    const customPreset = {
-      librarian: {
-        model: 'custom/librarian',
-        variant: 'selected-librarian',
-        temperature: 0.4,
+    const store = openCodeProfileStore();
+    store.save('global', 'custom', {
+      agents: {
+        librarian: { model: 'custom/librarian', variant: 'selected-librarian' },
+        worker: { model: 'custom/worker' },
+        explorer: { variant: 'profile-explorer' },
       },
-      worker: { model: 'custom/worker', temperature: 0.5 },
+    });
+    store.setGlobalActive('custom');
+    const root = {
+      explorer: { variant: 'root-explorer', temperature: 0.25 },
+      worker: { temperature: 0.75 },
     };
     writeJson(liteConfigPath(), {
-      ...baseConfig,
-      preset: 'custom',
-      presets: {
-        ...(baseConfig.presets as Record<string, unknown>),
-        custom: customPreset,
-      },
-      agents: {
-        explorer: { variant: 'root-explorer', temperature: 0.25 },
-        worker: { temperature: 0.75 },
-      },
-      customRuntime: { enabled: true, layout: 'tiled', main_pane_size: 55 },
+      ...validLiteConfig(),
+      agents: root,
+      customRuntime: { enabled: true },
+      preset: 'ignored',
+      presets: {},
     });
     const plan = buildOpenCodeModelPlan(
       {
         harness: 'opencode',
         dryRun: true,
-        roles: [
-          {
-            role: 'worker',
-            provider: 'openai',
-            model: 'gpt-5.6-terra',
-          },
-        ],
+        roles: [{ role: 'worker', model: 'openai/gpt-5.6-terra' }],
       },
       context(),
     );
-
-    const result = applyOpenCodePlan(plan);
-    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
-      preset: string;
-      presets: Record<string, Record<string, Record<string, string | number>>>;
-      agents: Record<string, Record<string, string | number>>;
-      customRuntime: {
-        enabled: boolean;
-        layout: string;
-        main_pane_size: number;
-      };
-    };
-
-    expect(result.applied).toBe(true);
-    expect(written.preset).toBe('agents');
-    expect(Object.keys(written.presets.agents ?? {})).toEqual(ALL_AGENT_NAMES);
-    expect(written.presets.agents?.explorer).toEqual({
+    expect(
+      plan.items.some(({ target }) => target.path === store.paths.global),
+    ).toBe(true);
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+    const document = store.read('global');
+    expect(document.active).toBe('agents');
+    expect(Object.keys(document.profiles.agents.agents).sort()).toEqual(
+      [...ALL_AGENT_NAMES].sort(),
+    );
+    expect(document.profiles.agents.agents.explorer).toEqual({
       model: 'openai/gpt-6-luna',
-      variant: 'root-explorer',
-      temperature: 0.25,
+      variant: 'profile-explorer',
     });
-    expect(written.presets.agents?.worker).toEqual({
+    expect(document.profiles.agents.agents.worker).toEqual({
       model: 'openai/gpt-5.6-terra',
-      temperature: 0.75,
     });
-    expect(written.presets.agents?.librarian).toEqual({
+    expect(document.profiles.agents.agents.librarian).toEqual({
       model: 'custom/librarian',
       variant: 'selected-librarian',
-      temperature: 0.4,
     });
-    expect(written.presets.custom).toEqual(customPreset);
-    expect(written.agents.worker).toEqual({
-      model: 'openai/gpt-5.6-terra',
-      temperature: 0.75,
+    expect(document.profiles.custom.agents.worker).toEqual({
+      model: 'custom/worker',
     });
-    expect(written.customRuntime).toEqual({
-      enabled: true,
-      layout: 'tiled',
-      main_pane_size: 55,
-    });
+    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    expect(written).not.toHaveProperty('preset');
+    expect(written).not.toHaveProperty('presets');
+    expect(written.agents).toEqual(root);
+    expect(written.customRuntime).toEqual({ enabled: true });
   });
 
   test('clears the final managed effort without losing unrelated state', () => {
@@ -783,10 +778,48 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(state).not.toHaveProperty('configuredEfforts');
     expect(state.futureField).toEqual({ keep: true });
     const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
-    expect(written.agents.worker).not.toHaveProperty('variant');
+    expect(
+      openCodeProfileStore().read('global').profiles.agents.agents.worker,
+    ).not.toHaveProperty('variant');
+    expect(written.agents.worker.variant).toBe('high');
   });
 
-  test('activates all unchanged displayed roles as the agents preset', () => {
+  test('array model readback and materialization ignore the root scalar variant like runtime defaults', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    openCodeProfileStore().setGlobalActive(undefined);
+    writeJson(liteConfigPath(), {
+      ...validLiteConfig(),
+      agents: { worker: { model: ['openai/gpt-6-luna'], variant: 'high' } },
+    });
+    expect(
+      getOpenCodeModelRoles().find(({ role }) => role === 'worker')?.effort,
+    ).toEqual({ kind: 'inherit' });
+    expect(
+      effectiveOpenCodeProfile(
+        JSON.parse(readFileSync(liteConfigPath(), 'utf8')),
+      ).agents.worker,
+    ).toEqual({ model: 'openai/gpt-6-luna' });
+  });
+
+  test('applying with no role edits materializes every effective role and activates agents', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const before = getOpenCodeModelRoles();
+    const profilePath = openCodeProfileStore().paths.global;
+    const contents = readFileSync(profilePath, 'utf8');
+    const plan = buildOpenCodeModelPlan(
+      { harness: 'opencode', dryRun: true, roles: [] },
+      context(),
+    );
+    expect(readFileSync(profilePath, 'utf8')).toBe(contents);
+    expect(plan.canApply).toBe(true);
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+    expect(openCodeProfileStore().read('global').active).toBe('agents');
+    expect(getOpenCodeModelRoles()).toEqual(before);
+  });
+
+  test('activates all unchanged displayed roles as the agents profile', () => {
     writeManagedConfig();
     writeAllRequiredSkills();
     const displayedRoles = cataloguedOpenCodeRoles();
@@ -805,11 +838,14 @@ describe('OpenCode operations adapter v0.3', () => {
       agents: Record<string, Record<string, unknown>>;
     };
 
-    expect(written.preset).toBe('agents');
-    expect(Object.keys(written.presets.agents ?? {})).toEqual(ALL_AGENT_NAMES);
-    expect(Object.keys(written.agents)).toEqual(ALL_AGENT_NAMES);
+    expect(written).not.toHaveProperty('preset');
+    expect(written).not.toHaveProperty('presets');
+    expect(openCodeProfileStore().read('global').active).toBe('agents');
     for (const role of displayedRoles) {
-      const persisted = written.presets.agents?.[role.role];
+      const persisted =
+        openCodeProfileStore().read('global').profiles.agents.agents[
+          role.role as keyof typeof MODEL_MAPPINGS.openai
+        ];
       expect(persisted?.model).toBe(role.model);
       if (role.effort?.kind === 'effort') {
         expect(persisted?.variant).toBe(role.effort.value);
@@ -819,7 +855,7 @@ describe('OpenCode operations adapter v0.3', () => {
     }
   });
 
-  test('prefers a complete agents preset over the root-only legacy shape', () => {
+  test('prefers a complete agents profile over the root-only legacy shape', () => {
     writeManagedConfig();
     writeAllRequiredSkills();
     const plan = buildOpenCodeModelPlan(
@@ -855,14 +891,8 @@ describe('OpenCode operations adapter v0.3', () => {
       ]),
     );
 
-    const legacy = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as Record<
-      string,
-      unknown
-    > & {
-      presets: Record<string, unknown>;
-    };
-    delete legacy.presets.agents;
-    writeJson(liteConfigPath(), legacy);
+    openCodeProfileStore().delete('global', 'agents');
+    openCodeProfileStore().setGlobalActive();
     writeJson(mainConfigPath(), { plugins: [EXECUTING_PLUGIN] });
     const rootOnlyLegacy = getOpenCodeStatus(context());
     expect(rootOnlyLegacy.state).toBe('drift');
@@ -873,7 +903,7 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
-  test('recognizes and reapplies the activated agents preset', () => {
+  test('recognizes and reapplies the activated agents profile', () => {
     writeManagedConfig();
     writeAllRequiredSkills();
     const firstPlan = buildOpenCodeModelPlan(
@@ -933,10 +963,9 @@ describe('OpenCode operations adapter v0.3', () => {
       model: 'openai/gpt-5.6-sol',
       effort: { kind: 'inherit' },
     });
-    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
-      presets: { agents: Record<string, Record<string, unknown>> };
-    };
-    expect(written.presets.agents.explorer).not.toHaveProperty('variant');
+    expect(
+      openCodeProfileStore().read('global').profiles.agents.agents.explorer,
+    ).not.toHaveProperty('variant');
   });
 
   test('rejects unissued or mutated plans before writing', () => {

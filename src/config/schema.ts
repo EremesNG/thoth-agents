@@ -97,13 +97,6 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 /** Normalized model entry with optional per-model variant. */
 export type ModelEntry = { id: string; variant?: string };
 
-export const PresetSchema = z.record(
-  SupportedAgentRecordKeySchema,
-  AgentOverrideConfigSchema,
-);
-
-export type Preset = z.infer<typeof PresetSchema>;
-
 // MCP names
 export const AgentNameSchema = z.enum(AGENT_NAMES);
 export const McpNameSchema = z.enum(['exa', 'context7', 'grep_app']);
@@ -139,12 +132,10 @@ export type FailoverConfig = z.infer<typeof FailoverConfigSchema>;
 // Main plugin config
 export const PluginConfigSchema = z.object({
   $schema: z.string().optional(),
-  preset: z.string().optional(),
   setDefaultAgent: z.boolean().optional(),
   scoringEngineVersion: z.enum(['v1', 'v2-shadow', 'v2']).optional(),
   balanceProviderUsage: z.boolean().optional(),
   manualPlan: ManualPlanSchema.optional(),
-  presets: z.record(z.string(), PresetSchema).optional(),
   agents: z
     .record(SupportedAgentRecordKeySchema, AgentOverrideConfigSchema)
     .optional(),

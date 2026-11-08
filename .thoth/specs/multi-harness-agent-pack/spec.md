@@ -148,11 +148,15 @@ No generated package may bundle thoth-mem hooks, MCP lifecycle, protocol, or
 persistence implementation. Provider capability MUST be reported only from
 evidence as supported, degraded, or unsupported.
 
-### Requirement: Use OpenAI as the only OpenCode built-in preset
+### Requirement: Use OpenAI as the only OpenCode built-in profile
 
-Generated OpenCode configuration MUST contain only the `openai` built-in preset
-for the six-role roster. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or
-mixed-provider mappings.
+Generated OpenCode model configuration MUST contain only the `openai` built-in profile for the six-role roster in the global profiles file. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or mixed-provider mappings, and MUST NOT write `preset` or `presets` keys.
+
+#### Scenario: Use OpenAI as the only OpenCode built-in profile
+
+- **GIVEN** a fresh OpenCode install
+- **WHEN** thoth-agents writes model configuration
+- **THEN** the global profiles file contains the `openai` profile for all six roles and thoth-agents.json contains no `preset` or `presets` key 
 
 ### Requirement: Bundle the proportional SDD contract
 
@@ -589,4 +593,14 @@ The OpenCode integration MUST be a `@opencode/plugin` v2 plugin that registers t
 
 - **GIVEN** OpenCode 2.2.6 with thoth-agents installed
 - **WHEN** a session starts and the orchestrator delegates
-- **THEN** the six roles are listed with `orchestrator` as default, delegation uses `subagent`, a non-orchestrator `subagent` call is denied, and successive requests keep a byte-stable system prompt and message prefix 
+- **THEN** the six roles are listed with `orchestrator` as default, delegation uses `subagent`, a non-orchestrator `subagent` call is denied, and successive requests keep a byte-stable system prompt and message prefix
+
+### Requirement: Manage OpenCode subagent model profiles
+
+The OpenCode plugin MUST expose `/subagents-model` from its `./tui` entry using native dialogs to manage named profiles (model and variant per canonical role including `orchestrator`) stored in `<opencode-config-dir>/thoth/profiles.json` and `<project>/.opencode/thoth/profiles.json`, with a read-only virtual `default`, draft-until-save editing, project-over-global shadowing, and effective selection session → project pin → global active → `default`. The effective profile MUST set role default models at plugin setup, MUST fill the `model` of native `subagent` calls that omit it, MUST NOT override an explicit `model`, and MUST switch the current session's orchestrator on activation; unavailable models MUST leave state unchanged with a warning.
+
+#### Scenario: Manage OpenCode subagent model profiles
+
+- **GIVEN** a global active profile assigning the worker a different model
+- **WHEN** the orchestrator spawns the worker without a model argument
+- **THEN** the child session runs on the profile's worker model 

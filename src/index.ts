@@ -5,6 +5,8 @@ import { loadOpenCodeDependencies } from './opencode/context';
 import { registerDelegationHooks } from './opencode/delegation-hooks';
 import { registerMcp } from './opencode/mcp';
 import { registerPermissions } from './opencode/permissions';
+import { registerProfileRpc } from './opencode/profile-rpc-handlers';
+import { registerProfileRuntime } from './opencode/profile-runtime';
 import { registerSessionHooks } from './opencode/session-hooks';
 import { registerSkills } from './opencode/skills';
 import { registerTools } from './opencode/tools';
@@ -19,6 +21,8 @@ const plugin = {
     await registerCommand(ctx, deps);
     await registerSkills(ctx, deps);
     await registerPermissions(ctx, deps);
+    await registerProfileRuntime(ctx, deps);
+    await registerProfileRpc(ctx, deps);
     await registerDelegationHooks(ctx, deps);
     await registerSessionHooks(ctx, deps);
   },

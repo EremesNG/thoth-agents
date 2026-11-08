@@ -120,9 +120,31 @@ Native delegation uses `subagent`; foreground Oracle gate results carry a verdic
 while background completions require the compact-validator fallback. See
 [runtime contracts](agent/runtime-integrations.md).
 
+## OpenCode model profiles
+
+Run `/subagents-model` in OpenCode's TUI (auto-loaded package `./tui` entry).
+Native dialogs edit model/variant pairs for all six roles, including orchestrator.
+Use action rows to save drafts, activate/clear session or global selection, and
+pin/unpin the project. Markers: `●` effective, `S` session, `P` project, `G` global,
+`~` shadowed. Session-only actions require a session.
+
+- Global: `<opencode-config-dir>/thoth/profiles.json`; config directory resolves
+  `OPENCODE_CONFIG_DIR` → `$XDG_CONFIG_HOME/opencode` → `~/.config/opencode`.
+- Project: `<project>/.opencode/thoth/profiles.json`; same-name project profiles
+  shadow global profiles.
+- Selection: session → project pin → global active → virtual read-only `default`
+  (effective `thoth-agents.json` roster).
+- Model + variant are a pair: a model without a variant means none; a
+  variant-only entry uses the inherited model.
+- CLI model editing manages global profiles only; Apply materializes and
+  activates the complete `agents` profile. Project/session selections still win.
+
+See [Provider Configuration](provider-configurations.md) for schema and runtime
+semantics.
+
 ## Boundaries
 
-- OpenCode ships only the OpenAI built-in preset.
+- OpenCode ships only the `openai` built-in model profile.
 - Every `thoth-init` surface only initializes or synchronizes minimum `.thoth/`
   governance; installation owns skills, agents, plugins, harness configuration,
   and dependencies.

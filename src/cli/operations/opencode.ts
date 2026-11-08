@@ -26,6 +26,12 @@ import {
 } from '../managed-state-io';
 import { resolveOpenCodeEffort } from '../opencode-effort';
 import {
+  activeOpenCodeProfile,
+  effectiveOpenCodeProfile,
+  openCodeProfileStore,
+  withoutLegacyPresets,
+} from '../opencode-profiles';
+import {
   getLegacyOpenCodeSkillBackupRoot,
   getOpenCodeOwnedSkillEntries,
   inspectLegacyOpenCodeSkills,
@@ -43,7 +49,7 @@ import {
   getExistingLiteConfigPath,
   getOpenCodeManagedModelStatePath,
 } from '../paths';
-import { generateLiteConfig } from '../providers';
+import { generateLiteConfig, MODEL_MAPPINGS } from '../providers';
 import {
   getInstalledRequiredSkillPath,
   getRequiredSkillInstallCommand,
@@ -83,8 +89,8 @@ const EXECUTING_PACKAGE_VERSION = resolveExecutingPackageVersion();
 const EXPECTED_PLUGIN = EXECUTING_PACKAGE_VERSION.ok
   ? `${PACKAGE_NAME}@${EXECUTING_PACKAGE_VERSION.version}`
   : null;
-const OPENAI_PRESET = 'openai';
-const APPLIED_MODELS_PRESET = 'agents';
+const OPENAI_PROFILE = 'openai';
+const APPLIED_MODELS_PROFILE = 'agents';
 const ROLE_NAMES = [...ALL_AGENT_NAMES];
 
 interface NormalizedOpenCodeRoleOverride {
@@ -398,7 +404,29 @@ function targetForLiteConfig(state?: ManagedState): ManagedTarget {
     path: getExistingLiteConfigPath(),
     label: 'thoth-agents config',
     ...(state ? { state } : {}),
-    expected: `six-role ${OPENAI_PRESET} roster`,
+    expected: `six-role ${OPENAI_PROFILE} roster`,
+  };
+}
+
+function targetForProfiles(): ManagedTarget {
+  return {
+    kind: 'config',
+    path: openCodeProfileStore().paths.global,
+    label: 'OpenCode model profiles',
+    expected: 'complete active model profile',
+  };
+}
+
+function shippedProfilePlanItem(): OperationPlanItem {
+  return {
+    title:
+      'Sync built-in OpenAI model profile (preserve customized roles and valid active selection)',
+    target: targetForProfiles(),
+    preview: JSON.stringify(
+      { version: 1, profiles: { openai: { agents: MODEL_MAPPINGS.openai } } },
+      null,
+      2,
+    ),
   };
 }
 
@@ -512,74 +540,39 @@ function hasManagedPluginDrift(config: OpenCodeConfig | null): boolean {
   );
 }
 
-function liteConfigMarker(config: OpenCodeConfig | null): string {
-  const preset = typeof config?.preset === 'string' ? config.preset : undefined;
-  const presets = configRecord(config?.presets);
-  const managedPreset =
-    preset === OPENAI_PRESET || preset === APPLIED_MODELS_PRESET
-      ? configRecord(presets[preset])
-      : {};
-  const legacyAgents = configRecord(config?.agents);
-  const roles = ROLE_NAMES.filter(
-    (role) => role in managedPreset || role in legacyAgents,
-  );
-  return `preset: ${preset ?? 'none'}; observed roles: ${roles.join(', ')}`;
+function liteConfigMarker(_config: OpenCodeConfig | null): string {
+  const { name, profile } = activeOpenCodeProfile();
+  const roles = ROLE_NAMES.filter((role) => role in (profile?.agents ?? {}));
+  return `profile: ${name ?? 'none'}; observed roles: ${roles.join(', ')}`;
 }
 
-function hasManagedSevenAgentPreset(config: OpenCodeConfig | null): boolean {
-  if (
-    !config ||
-    (config.preset !== OPENAI_PRESET && config.preset !== APPLIED_MODELS_PRESET)
-  ) {
-    return false;
-  }
-  const presets = configRecord(config.presets);
-  return hasCompleteAgentRoster(presets[config.preset]);
-}
-
-function hasSelectedNamedPreset(config: OpenCodeConfig | null): boolean {
-  if (
-    !config ||
-    typeof config.preset !== 'string' ||
-    config.preset.length === 0 ||
-    config.preset === OPENAI_PRESET ||
-    config.preset === APPLIED_MODELS_PRESET
-  ) {
-    return false;
-  }
-  if (
-    !config.presets ||
-    typeof config.presets !== 'object' ||
-    Array.isArray(config.presets)
-  ) {
-    return false;
-  }
-  const presets = config.presets as Record<string, unknown>;
-  if (!Object.hasOwn(presets, config.preset)) return false;
-  const selectedPreset = presets[config.preset];
+function hasManagedProfile(_config: OpenCodeConfig | null): boolean {
+  const { name, profile } = activeOpenCodeProfile();
   return (
-    selectedPreset !== null &&
-    typeof selectedPreset === 'object' &&
-    !Array.isArray(selectedPreset)
+    (name === OPENAI_PROFILE || name === APPLIED_MODELS_PROFILE) &&
+    hasCompleteAgentRoster(profile?.agents)
+  );
+}
+
+function hasSelectedNamedProfile(_config: OpenCodeConfig | null): boolean {
+  const { name, profile } = activeOpenCodeProfile();
+  return (
+    !!profile && name !== OPENAI_PROFILE && name !== APPLIED_MODELS_PROFILE
   );
 }
 
 function hasLegacySevenAgentRoster(config: OpenCodeConfig | null): boolean {
-  return (
-    config?.preset === APPLIED_MODELS_PRESET &&
-    !hasManagedSevenAgentPreset(config) &&
-    hasCompleteAgentRoster(config.agents)
-  );
+  return !hasManagedProfile(config) && hasCompleteAgentRoster(config?.agents);
 }
 
-const ACTIVE_PRESET_SELECTED_CODE = 'opencode-active-preset-selected';
+const ACTIVE_PROFILE_SELECTED_CODE = 'opencode-active-profile-selected';
 
-function activePresetSelectedDiagnostic(): OperationWarning {
+function activeProfileSelectedDiagnostic(): OperationWarning {
   return {
     severity: 'important',
     message:
-      'A valid named preset is active; model configuration preserves it while sync or install may repair the managed roster.',
-    code: ACTIVE_PRESET_SELECTED_CODE,
+      'A valid named profile is active; model configuration preserves it while sync or install may repair the managed roster.',
+    code: ACTIVE_PROFILE_SELECTED_CODE,
   };
 }
 
@@ -588,7 +581,7 @@ const REPAIRABLE_DIAGNOSTIC_CODES = new Set([
   'opencode-main-config-missing',
   'opencode-lite-config-missing',
   'opencode-roster-drift',
-  ACTIVE_PRESET_SELECTED_CODE,
+  ACTIVE_PROFILE_SELECTED_CODE,
   'opencode-required-skills-missing',
 ]);
 
@@ -639,7 +632,7 @@ function targetsForBlockingDiagnostic(
   }
   if (
     code === 'opencode-roster-drift' ||
-    code === ACTIVE_PRESET_SELECTED_CODE ||
+    code === ACTIVE_PROFILE_SELECTED_CODE ||
     code === 'opencode-lite-config-missing' ||
     code === 'thoth-config-parse-error' ||
     code === 'opencode-roster-unrecognized'
@@ -682,7 +675,7 @@ function blockingDetails(
     if (
       !includeRepairable &&
       action === 'model-config' &&
-      diagnostic.code === ACTIVE_PRESET_SELECTED_CODE
+      diagnostic.code === ACTIVE_PROFILE_SELECTED_CODE
     ) {
       return false;
     }
@@ -788,17 +781,17 @@ function getOpenCodeManagedStatus(
 
   if (!mainExists || !hasExpectedPlugin(main.config)) {
     if (hasManagedPluginDrift(main.config)) {
-      const currentRoster = hasManagedSevenAgentPreset(lite.config);
+      const currentRoster = hasManagedProfile(lite.config);
       const legacyRoster = hasLegacySevenAgentRoster(lite.config);
-      const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
+      const selectedNamedProfile = hasSelectedNamedProfile(lite.config);
       const recognizedRoster =
-        currentRoster || legacyRoster || selectedNamedPreset;
+        currentRoster || legacyRoster || selectedNamedProfile;
       let liteState: ManagedState = 'unknown';
       if (!liteExists) {
         liteState = 'missing';
       } else if (currentRoster) {
         liteState = 'installed';
-      } else if (legacyRoster || selectedNamedPreset) {
+      } else if (legacyRoster || selectedNamedProfile) {
         liteState = 'drift';
       }
       return {
@@ -832,8 +825,8 @@ function getOpenCodeManagedStatus(
                 },
               ]
             : []),
-          ...(selectedNamedPreset && !currentRoster
-            ? [activePresetSelectedDiagnostic()]
+          ...(selectedNamedProfile && !currentRoster
+            ? [activeProfileSelectedDiagnostic()]
             : []),
           ...(!liteExists
             ? [
@@ -872,10 +865,10 @@ function getOpenCodeManagedStatus(
     }
 
     if (!mainExists && liteExists) {
-      const currentRoster = hasManagedSevenAgentPreset(lite.config);
+      const currentRoster = hasManagedProfile(lite.config);
       const legacyRoster = hasLegacySevenAgentRoster(lite.config);
-      const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
-      if (!currentRoster && !legacyRoster && !selectedNamedPreset) {
+      const selectedNamedProfile = hasSelectedNamedProfile(lite.config);
+      if (!currentRoster && !legacyRoster && !selectedNamedProfile) {
         return {
           harness: 'opencode',
           displayName: 'OpenCode',
@@ -899,13 +892,13 @@ function getOpenCodeManagedStatus(
           actions: openCodeActions,
         };
       }
-      if (selectedNamedPreset && !currentRoster) {
+      if (selectedNamedProfile && !currentRoster) {
         return {
           harness: 'opencode',
           displayName: 'OpenCode',
           state: 'drift',
           summary:
-            'OpenCode plugin is missing and a valid named preset is active.',
+            'OpenCode plugin is missing and a valid named profile is active.',
           targets: [
             { ...mainTarget, state: 'missing' },
             { ...liteTarget, state: 'drift' },
@@ -918,7 +911,7 @@ function getOpenCodeManagedStatus(
                 'The managed OpenCode main config is missing and must be restored by install or sync.',
               code: 'opencode-main-config-missing',
             },
-            activePresetSelectedDiagnostic(),
+            activeProfileSelectedDiagnostic(),
             ...skillStatus.diagnostics,
           ],
           actions: openCodeActions,
@@ -1033,14 +1026,14 @@ function getOpenCodeManagedStatus(
     };
   }
 
-  if (!hasManagedSevenAgentPreset(lite.config)) {
-    const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
+  if (!hasManagedProfile(lite.config)) {
+    const selectedNamedProfile = hasSelectedNamedProfile(lite.config);
     return {
       harness: 'opencode',
       displayName: 'OpenCode',
       state: 'drift',
-      summary: selectedNamedPreset
-        ? 'A valid named OpenCode preset is active outside the managed six-role roster.'
+      summary: selectedNamedProfile
+        ? 'A valid named OpenCode profile is active outside the managed six-role roster.'
         : 'thoth-agents config does not match the expected six-role roster.',
       targets: [
         { ...mainTarget, state: 'installed' },
@@ -1048,8 +1041,8 @@ function getOpenCodeManagedStatus(
         ...skillStatus.targets,
       ],
       diagnostics: [
-        selectedNamedPreset
-          ? activePresetSelectedDiagnostic()
+        selectedNamedProfile
+          ? activeProfileSelectedDiagnostic()
           : {
               severity: 'important',
               message:
@@ -1092,6 +1085,15 @@ export function getOpenCodeStatus(
     summary: `${managedStatus.summary} Requires OpenCode 2.2.6 or later.`,
     targets: [
       ...managedStatus.targets,
+      {
+        ...targetForProfiles(),
+        observed: JSON.stringify({
+          active: activeOpenCodeProfile().name ?? 'default',
+          agents: effectiveOpenCodeProfile(
+            parseConfig(getExistingLiteConfigPath()).config,
+          ).agents,
+        }),
+      },
       getCliManagedInstallVersionTarget('opencode', context),
     ],
     providerCapability: classifyProviderCapabilityEvidence(evidence),
@@ -1291,6 +1293,7 @@ function buildOpenCodeCompletePlan(
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(getExistingLiteConfigPath()),
       },
+      shippedProfilePlanItem(),
       {
         title: 'Inspect package-provided thoth-owned OpenCode skills',
         target: {
@@ -1392,6 +1395,7 @@ export function buildOpenCodeSyncPlan(
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
       },
+      shippedProfilePlanItem(),
       {
         title: 'Inspect package-provided thoth-owned OpenCode skills',
         target: {
@@ -1457,7 +1461,7 @@ export function buildOpenCodeModelPlan(
   const items = normalizedRoles.map(({ role, model, variant, effort }) => {
     return {
       title: `Set ${role} OpenCode model override`,
-      target: targetForLiteConfig(),
+      target: targetForProfiles(),
       preview: JSON.stringify({
         [role]: {
           model,
@@ -1482,8 +1486,21 @@ export function buildOpenCodeModelPlan(
     'opencode-model-config-preview',
     'model-config',
     'Configure OpenCode role model overrides',
-    'Preview thoth-agents role model overrides in the plugin config agents map.',
-    items,
+    'Preview complete agents profile materialization and global activation.',
+    [
+      ...items,
+      {
+        title: 'Materialize and globally activate the complete agents profile',
+        target: targetForProfiles(),
+        preview: 'All six effective roles; active: agents',
+      },
+      {
+        title: 'Remove unsupported preset keys, preserving root configuration',
+        target: targetForLiteConfig(),
+        preview: 'Retain unrelated config keys; remove preset/presets',
+        backup: defaultBackup(getExistingLiteConfigPath()),
+      },
+    ],
     _context,
   );
   const effortWarnings = items.flatMap((item) => item.warnings ?? []);
@@ -1510,7 +1527,7 @@ export function buildOpenCodeModelPlan(
   const unsupportedRoles = input.roles.filter(
     (role) => !ROLE_NAMES.includes(role.role as (typeof ROLE_NAMES)[number]),
   );
-  if (input.roles.length === 0 || unsupportedRoles.length > 0) {
+  if (unsupportedRoles.length > 0) {
     return {
       ...plan,
       canApply: false,
@@ -1518,12 +1535,7 @@ export function buildOpenCodeModelPlan(
         ...plan.warnings,
         {
           severity: 'critical' as const,
-          message:
-            input.roles.length === 0
-              ? 'Model plan must include at least one role override.'
-              : `Unsupported OpenCode model role(s): ${unsupportedRoles
-                  .map((role) => role.role)
-                  .join(', ')}.`,
+          message: `Unsupported OpenCode model role(s): ${unsupportedRoles.map((role) => role.role).join(', ')}.`,
           code: 'opencode-model-roster-incomplete',
         },
       ],
@@ -1677,8 +1689,8 @@ function validateApplyPlan(plan: OperationPlan): OperationApplyResult | null {
 function invalidModelPayloadReason(
   roles: readonly NormalizedOpenCodeRoleOverride[],
 ): string | undefined {
-  if (!Array.isArray(roles) || roles.length === 0) {
-    return 'Model payload must contain at least one role override.';
+  if (!Array.isArray(roles)) {
+    return 'Model payload must be a role override array.';
   }
   const seen = new Set<string>();
   for (const role of roles) {
@@ -1717,107 +1729,38 @@ function hasCompleteAgentRoster(value: unknown): boolean {
   );
 }
 
-function effectiveRolePreset(
-  base: OpenCodeConfig,
-  generated: OpenCodeConfig,
-): Record<string, Record<string, unknown>> {
-  const presets = configRecord(base.presets);
-  const generatedPresets = configRecord(generated.presets);
-  const defaults = configRecord(generatedPresets[OPENAI_PRESET]);
-  const selected =
-    typeof base.preset === 'string' ? configRecord(presets[base.preset]) : {};
-  const selectedIsMaterializedAgentsPreset =
-    base.preset === APPLIED_MODELS_PRESET && hasCompleteAgentRoster(selected);
-  const rootAgents = configRecord(base.agents);
-
-  return Object.fromEntries(
-    ROLE_NAMES.map((role) => [
-      role,
-      {
-        ...(selectedIsMaterializedAgentsPreset
-          ? {}
-          : configRecord(defaults[role])),
-        ...configRecord(selected[role]),
-        ...configRecord(rootAgents[role]),
-      },
-    ]),
-  );
-}
-
 function applyModelPlan(
   roles: readonly NormalizedOpenCodeRoleOverride[],
 ): OperationApplyResult {
-  const roleModels = new Map(
-    roles.map((role) => [
-      role.role,
-      { model: role.model, variant: role.variant },
-    ]),
-  );
   ensureConfigDir();
   const targetPath = getExistingLiteConfigPath();
   const parsed = parseConfig(targetPath);
-  const generated = generateLiteConfig({
-    agent: 'opencode',
-    dryRun: false,
-    reset: false,
-  }) as OpenCodeConfig;
-  const base = parsed.config ?? generated;
-  const agents = { ...configRecord(base.agents) };
-  const appliedPreset = effectiveRolePreset(base, generated);
-
+  if (parsed.error) throw new Error(parsed.error);
+  const base =
+    parsed.config ?? generateLiteConfig({ agent: 'opencode', reset: false });
+  const profile = effectiveOpenCodeProfile(base);
   const statePath = getOpenCodeManagedModelStatePath();
   const state = readManagedModelState(statePath, 1);
   const configuredEfforts = { ...(state.configuredEfforts ?? {}) };
   const warnings: OperationWarning[] = [];
-
-  for (const [role, override] of roleModels) {
-    const current = {
-      ...configRecord(agents[role]),
+  for (const override of roles) {
+    const role = override.role as keyof typeof profile.agents;
+    profile.agents[role] = {
+      model: override.model,
+      ...(override.variant !== null ? { variant: override.variant } : {}),
     };
-    const presetRole = {
-      ...configRecord(appliedPreset[role]),
-    };
-    const currentVariant =
-      typeof current.variant === 'string' ? current.variant : undefined;
-    const trackedVariant = configuredEfforts[role];
-    const userOwnsVariant =
-      override.variant === null &&
-      currentVariant !== undefined &&
-      (trackedVariant === undefined || currentVariant !== trackedVariant);
-
-    current.model = override.model;
-    presetRole.model = override.model;
-    if (userOwnsVariant) {
-      presetRole.variant = currentVariant;
-      delete configuredEfforts[role];
-      warnings.push({
-        severity: 'important',
-        code: 'opencode-effort-user-owned',
-        message: `Preserved user-owned OpenCode variant ${currentVariant} for ${role}.`,
-      });
-    } else if (override.variant === null) {
-      delete current.variant;
-      delete presetRole.variant;
-      delete configuredEfforts[role];
-    } else {
-      current.variant = override.variant;
-      presetRole.variant = override.variant;
-      configuredEfforts[role] = override.variant;
-    }
-    agents[role] = current;
-    appliedPreset[role] = presetRole;
+    if (override.variant === null) delete configuredEfforts[role];
+    else configuredEfforts[role] = override.variant;
   }
-  base.agents = agents;
-  base.presets = {
-    ...configRecord(base.presets),
-    [APPLIED_MODELS_PRESET]: appliedPreset,
-  };
-  base.preset = APPLIED_MODELS_PRESET;
-  writeConfig(targetPath, base);
+  const store = openCodeProfileStore();
+  store.save('global', APPLIED_MODELS_PROFILE, profile);
+  store.setGlobalActive(APPLIED_MODELS_PROFILE);
+  writeConfig(targetPath, withoutLegacyPresets(base));
   writeManagedModelState(statePath, 1, {
     models: state.models,
-    configuredEfforts:
-      Object.keys(configuredEfforts).length > 0 ? configuredEfforts : undefined,
+    configuredEfforts: Object.keys(configuredEfforts).length
+      ? configuredEfforts
+      : undefined,
   });
 
   return {
@@ -1828,7 +1771,12 @@ function applyModelPlan(
     changedTargets: [
       {
         ...targetForLiteConfig('installed'),
-        observed: 'agents role overrides updated',
+        observed:
+          'root configuration preserved; unsupported preset keys removed',
+      },
+      {
+        ...targetForProfiles(),
+        observed: 'complete agents profile activated',
       },
     ],
     backups: existsSync(`${targetPath}.bak`)
@@ -1974,7 +1922,17 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
         issued.context,
       );
     }
-    return applyModelPlan(issued.payload.roles);
+    try {
+      return applyModelPlan(issued.payload.roles);
+    } catch (error) {
+      return rejectPlan(
+        plan,
+        `Failed to apply OpenCode model profile: ${String(error)}`,
+        'critical',
+        'opencode-profile-write-failed',
+        issued.context,
+      );
+    }
   }
 
   const changedTargets: ManagedTarget[] = [];
@@ -2025,6 +1983,10 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   changedTargets.push({
     ...targetForLiteConfig('installed'),
     observed: 'six-role roster written',
+  });
+  changedTargets.push({
+    ...targetForProfiles(),
+    observed: 'built-in openai profile synchronized',
   });
   if (existsSync(`${liteResult.configPath}.bak`)) {
     backups.push({

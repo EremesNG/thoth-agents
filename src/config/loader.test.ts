@@ -524,309 +524,79 @@ describe('deepMerge behavior', () => {
   });
 });
 
-describe('preset resolution', () => {
+describe('unsupported legacy config keys', () => {
   let tempDir: string;
   let originalEnv: typeof process.env;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'preset-test-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-config-test-'));
     originalEnv = { ...process.env };
-    delete process.env.OPENCODE_CONFIG_DIR;
-    process.env.XDG_CONFIG_HOME = path.join(tempDir, 'user-config');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tempDir, 'global');
   });
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
     process.env = originalEnv;
+    vi.restoreAllMocks();
   });
 
-  test('backward compatibility: config with only agents works unchanged', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
+  test.each([
+    { preset: 'old' },
+    { presets: { old: { oracle: { model: 'ignored' } } } },
+    { preset: 42, presets: false },
+  ])('ignores unsupported keys without rejecting root agents: %#', (legacy) => {
+    const configDir = path.join(tempDir, '.opencode');
+    fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
+      path.join(configDir, 'thoth-agents.json'),
       JSON.stringify({
-        agents: { oracle: { model: 'direct-model' } },
+        ...legacy,
+        agents: { oracle: { model: 'root/model' } },
       }),
     );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('direct-model');
-    expect(config.preset).toBeUndefined();
+    expect(loadPluginConfig(tempDir)).toEqual({
+      agents: { oracle: { model: 'root/model' } },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      'preset/presets are unsupported and ignored',
+    );
   });
 
-  test("preset applied: preset + presets returns preset's agents", () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
+  test('warns once across both source files and preserves field-level merging', () => {
+    const globalDir = path.join(tempDir, 'global');
+    const projectDir = path.join(tempDir, '.opencode');
+    for (const dir of [globalDir, projectDir])
+      fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
+      path.join(globalDir, 'thoth-agents.jsonc'),
+      `{
+      // Unsupported keys do not prevent JSONC loading
+      "preset": "old", "agents": { "oracle": { "model": "root/model" } },
+    }`,
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'thoth-agents.json'),
       JSON.stringify({
-        preset: 'fast',
-        presets: {
-          fast: { oracle: { model: 'fast-model' } },
-        },
+        presets: null,
+        agents: { oracle: { temperature: 0.7 } },
       }),
     );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('fast-model');
+    expect(loadPluginConfig(tempDir).agents).toEqual({
+      oracle: { model: 'root/model', temperature: 0.7 },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  test('root agents override preset agents', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'fast',
-        presets: {
-          fast: {
-            oracle: { model: 'fast-model', temperature: 0.1 },
-            explorer: { model: 'explorer-model' },
-          },
-        },
-        agents: {
-          oracle: { temperature: 0.9 }, // Should override preset temperature
-        },
-      }),
-    );
-
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('fast-model');
-    expect(config.agents?.oracle?.temperature).toBe(0.9);
-    expect(config.agents?.explorer?.model).toBe('explorer-model');
-  });
-
-  test('missing preset: preset set but not in presets -> returns empty/root agents', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'nonexistent',
-        presets: {
-          other: { oracle: { model: 'other' } },
-        },
-        agents: { oracle: { model: 'root' } },
-      }),
-    );
-
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('root');
-  });
-
-  test('preset only: no root agents, just preset works', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'dev',
-        presets: {
-          dev: { oracle: { model: 'dev-model' } },
-        },
-      }),
-    );
-
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('dev-model');
-  });
-
-  test('invalid preset shape: bad agent config in preset fails schema validation', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-
-    // preset agents with invalid temperature
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'invalid',
-        presets: {
-          invalid: { oracle: { temperature: 5 } },
-        },
-      }),
-    );
-
-    // Should return empty config due to validation failure
-    expect(loadPluginConfig(projectDir)).toEqual({});
-  });
-
-  test('nonexistent preset from config warns and falls back to root agents', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'nonexistent',
-        presets: {
-          other: { oracle: { model: 'other' } },
-        },
-        agents: { oracle: { model: 'root' } },
-      }),
-    );
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn');
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents?.oracle?.model).toBe('root');
-    expect(consoleWarnSpy).toHaveBeenCalled();
-    const warningMessage = consoleWarnSpy.mock.calls[0][0] as string;
-    expect(warningMessage).toContain('Preset "nonexistent" not found');
-    expect(warningMessage).toContain('Available presets: other');
-  });
-
-  test('nonexistent preset with no root agents returns empty agents', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'nonexistent',
-        presets: {
-          other: { oracle: { model: 'other' } },
-        },
-      }),
-    );
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn');
-    const config = loadPluginConfig(projectDir);
-    expect(config.agents).toBeUndefined();
-    expect(consoleWarnSpy).toHaveBeenCalled();
-    const warningMessage = consoleWarnSpy.mock.calls[0][0] as string;
-    expect(warningMessage).toContain('Preset "nonexistent" not found');
-  });
-});
-
-describe('environment variable preset override', () => {
-  let tempDir: string;
-  let originalEnv: typeof process.env;
-
-  beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'env-preset-test-'));
-    originalEnv = { ...process.env };
-    delete process.env.OPENCODE_CONFIG_DIR;
-    process.env.XDG_CONFIG_HOME = path.join(tempDir, 'user-config');
-  });
-
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    process.env = originalEnv;
-  });
-
-  test('Env var overrides preset from config file', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'config-preset',
-        presets: {
-          'config-preset': { oracle: { model: 'config-model' } },
-          'env-preset': { oracle: { model: 'env-model' } },
-        },
-      }),
-    );
-
-    process.env.THOTH_AGENTS_PRESET = 'env-preset';
-    const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('env-preset');
-    expect(config.agents?.oracle?.model).toBe('env-model');
-  });
-
-  test('Env var works when config has no preset', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        presets: {
-          'env-preset': { oracle: { model: 'env-model' } },
-        },
-      }),
-    );
-
-    process.env.THOTH_AGENTS_PRESET = 'env-preset';
-    const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('env-preset');
-    expect(config.agents?.oracle?.model).toBe('env-model');
-  });
-
-  test('Env var is ignored if empty string', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'config-preset',
-        presets: {
-          'config-preset': { oracle: { model: 'config-model' } },
-        },
-      }),
-    );
-
-    process.env.THOTH_AGENTS_PRESET = '';
-    const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('config-preset');
-    expect(config.agents?.oracle?.model).toBe('config-model');
-  });
-
-  test('Env var is ignored if undefined', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'config-preset',
-        presets: {
-          'config-preset': { oracle: { model: 'config-model' } },
-        },
-      }),
-    );
-
-    delete process.env.THOTH_AGENTS_PRESET;
-    const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('config-preset');
-    expect(config.agents?.oracle?.model).toBe('config-model');
-  });
-
-  test('Env var with nonexistent preset warns and falls back', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        preset: 'config-preset',
-        presets: {
-          'config-preset': { oracle: { model: 'config-model' } },
-        },
-        agents: { oracle: { model: 'fallback' } },
-      }),
-    );
-
-    process.env.THOTH_AGENTS_PRESET = 'typo-preset';
-    const consoleWarnSpy = vi.spyOn(console, 'warn');
-    const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('typo-preset');
-    expect(config.agents?.oracle?.model).toBe('fallback');
-    expect(consoleWarnSpy).toHaveBeenCalled();
-    const calls = consoleWarnSpy.mock.calls as string[][];
-    const warningMessage =
-      calls.find((call) => call[0]?.includes('typo-preset'))?.[0] || '';
-    expect(warningMessage).toContain('Preset "typo-preset" not found');
-    expect(warningMessage).toContain('environment variable');
-    expect(warningMessage).toContain('config-preset');
+  test('does not read the removed environment selection', () => {
+    process.env.THOTH_AGENTS_PRESET = 'old';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(loadPluginConfig(tempDir)).toEqual({});
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
@@ -992,14 +762,10 @@ describe('JSONC config support', () => {
       path.join(projectConfigDir, 'thoth-agents.jsonc'),
       `{
         // Main configuration
-        "preset": "dev",
-        /* Presets definition */
-        "presets": {
-          "dev": {
-            // Development agents
-            "oracle": { "model": "dev-oracle", },
-            "explorer": { "model": "dev-explorer", },
-          },
+        /* Agent definitions */
+        "agents": {
+          "oracle": { "model": "dev-oracle", },
+          "explorer": { "model": "dev-explorer", },
         },
         "tmux": {
           "enabled": true, // Removed setting is ignored
@@ -1009,7 +775,6 @@ describe('JSONC config support', () => {
     );
 
     const config = loadPluginConfig(projectDir);
-    expect(config.preset).toBe('dev');
     expect(config.agents?.oracle?.model).toBe('dev-oracle');
     expect(config.agents?.explorer?.model).toBe('dev-explorer');
     expect(config).not.toHaveProperty('tmux');
@@ -1115,86 +880,18 @@ describe('loadAgentPrompt', () => {
     }
   });
 
-  test('prefers preset prompt files over root prompts', () => {
+  test('reads only root prompt files, not named subdirectories', () => {
     const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
-    const presetDir = path.join(promptsDir, 'test');
-    fs.mkdirSync(presetDir, { recursive: true });
-
+    const namedDir = path.join(promptsDir, 'test');
+    fs.mkdirSync(namedDir, { recursive: true });
     fs.writeFileSync(path.join(promptsDir, 'oracle.md'), 'root replacement');
-    fs.writeFileSync(path.join(presetDir, 'oracle.md'), 'preset replacement');
-    fs.writeFileSync(
-      path.join(promptsDir, 'oracle_append.md'),
-      'root append prompt',
-    );
-    fs.writeFileSync(
-      path.join(presetDir, 'oracle_append.md'),
-      'preset append prompt',
-    );
+    fs.writeFileSync(path.join(namedDir, 'oracle.md'), 'ignored replacement');
+    fs.writeFileSync(path.join(namedDir, 'oracle_append.md'), 'ignored append');
 
-    const result = loadAgentPrompt('oracle', 'test');
-    expect(result.prompt).toBe('preset replacement');
-    expect(result.appendPrompt).toBe('preset append prompt');
-  });
-
-  test('falls back to root prompt files when preset files are missing', () => {
-    const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
-    const presetDir = path.join(promptsDir, 'test');
-    fs.mkdirSync(presetDir, { recursive: true });
-
-    fs.writeFileSync(path.join(promptsDir, 'oracle.md'), 'root replacement');
-    fs.writeFileSync(
-      path.join(promptsDir, 'oracle_append.md'),
-      'root append prompt',
-    );
-
-    const result = loadAgentPrompt('oracle', 'test');
-    expect(result.prompt).toBe('root replacement');
-    expect(result.appendPrompt).toBe('root append prompt');
-  });
-
-  test('falls back independently between preset and root files', () => {
-    const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
-    const presetDir = path.join(promptsDir, 'test');
-    fs.mkdirSync(presetDir, { recursive: true });
-
-    fs.writeFileSync(path.join(presetDir, 'oracle.md'), 'preset replacement');
-    fs.writeFileSync(
-      path.join(promptsDir, 'oracle_append.md'),
-      'root append prompt',
-    );
-
-    const result = loadAgentPrompt('oracle', 'test');
-    expect(result.prompt).toBe('preset replacement');
-    expect(result.appendPrompt).toBe('root append prompt');
-  });
-
-  test('ignores unsafe preset names for prompt lookup', () => {
-    const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
-    fs.mkdirSync(promptsDir, { recursive: true });
-    fs.writeFileSync(path.join(promptsDir, 'oracle.md'), 'root replacement');
-
-    const result = loadAgentPrompt('oracle', '../test');
-    expect(result.prompt).toBe('root replacement');
-    expect(result.appendPrompt).toBeUndefined();
-  });
-
-  test('falls back to root when preset prompt file read fails', () => {
-    const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
-    const presetDir = path.join(promptsDir, 'test');
-    fs.mkdirSync(presetDir, { recursive: true });
-    const presetPromptPath = path.join(presetDir, 'oracle.md');
-    fs.mkdirSync(presetPromptPath);
-    fs.writeFileSync(path.join(promptsDir, 'oracle.md'), 'root replacement');
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn');
-
-    try {
-      const result = loadAgentPrompt('oracle', 'test');
-      expect(result.prompt).toBe('root replacement');
-      expect(consoleWarnSpy).toHaveBeenCalled();
-    } finally {
-      consoleWarnSpy.mockRestore();
-    }
+    expect(loadAgentPrompt('oracle')).toEqual({
+      prompt: 'root replacement',
+      appendPrompt: undefined,
+    });
   });
 
   test('works with XDG_CONFIG_HOME environment variable', () => {

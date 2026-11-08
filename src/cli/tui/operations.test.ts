@@ -7,13 +7,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   HarnessId,
   ProviderCapabilityEvidence,
   ProviderEvidenceInput,
 } from '../../harness/types';
 import { loadModelsDevCatalog } from '../model-catalog';
+import { openCodeProfileStore } from '../opencode-profiles';
 import type {
   HarnessStatusReport,
   OperationApplyResult,
@@ -207,13 +208,19 @@ function loadDeterministicModelCatalog() {
 }
 
 describe('TUI operations', () => {
+  let profileRoot: string;
+  let originalConfigDir: string | undefined;
   beforeEach(() => {
+    originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    profileRoot = mkdtempSync(join(tmpdir(), 'tui-opencode-profiles-'));
+    process.env.OPENCODE_CONFIG_DIR = profileRoot;
     vi.clearAllMocks();
     loadDeterministicModelCatalog();
     useOpenCodeConfig({
       preset: 'openai',
       agents: {
         explorer: { model: 'openai/current-explorer', variant: 'high' },
+        worker: { model: 'openai/current-worker' },
       },
       presets: {
         openai: {
@@ -221,6 +228,12 @@ describe('TUI operations', () => {
         },
       },
     });
+  });
+
+  afterEach(() => {
+    if (originalConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
+    else process.env.OPENCODE_CONFIG_DIR = originalConfigDir;
+    rmSync(profileRoot, { recursive: true, force: true });
   });
 
   test('OpenCode model roles read the installed plugin config when present', async () => {
@@ -253,36 +266,28 @@ describe('TUI operations', () => {
     });
   });
 
-  test('OpenCode model roles inherit from the selected preset with field-level root overrides', async () => {
+  test('OpenCode readback prefers the active profile pair and variant-only overrides', async () => {
     useOpenCodeConfig({
-      preset: 'custom',
       agents: {
         explorer: { model: 'root/explorer' },
-        worker: { variant: 'root-worker-variant' },
-      },
-      presets: {
-        custom: {
-          explorer: {
-            model: 'custom/explorer',
-            variant: 'custom-explorer-variant',
-          },
-          worker: { model: 'custom/worker', variant: 'custom-worker-variant' },
-          librarian: {
-            model: 'custom/librarian',
-            variant: 'custom-librarian-variant',
-          },
-        },
-        openai: {
-          explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
-          worker: { model: 'wrong/worker', variant: 'wrong-worker' },
-          librarian: { model: 'wrong/librarian', variant: 'wrong-librarian' },
+        worker: { model: 'root/worker', variant: 'root-worker-variant' },
+        librarian: {
+          model: 'root/librarian',
+          variant: 'root-librarian-variant',
         },
       },
     });
+    const store = openCodeProfileStore();
+    store.save('global', 'custom', {
+      agents: {
+        explorer: { variant: 'custom-explorer-variant' },
+        worker: { model: 'custom/worker', variant: 'custom-worker-variant' },
+        librarian: { model: 'custom/librarian' },
+      },
+    });
+    store.setGlobalActive('custom');
     const { getOpenCodeModelRoles } = await import('./operations');
-
     const roles = getOpenCodeModelRoles();
-
     expect(roles.find(({ role }) => role === 'explorer')).toEqual({
       role: 'explorer',
       model: 'root/explorer',
@@ -291,45 +296,12 @@ describe('TUI operations', () => {
     expect(roles.find(({ role }) => role === 'worker')).toEqual({
       role: 'worker',
       model: 'custom/worker',
-      effort: { kind: 'effort', value: 'root-worker-variant' },
+      effort: { kind: 'effort', value: 'custom-worker-variant' },
     });
     expect(roles.find(({ role }) => role === 'librarian')).toEqual({
       role: 'librarian',
       model: 'custom/librarian',
-      effort: { kind: 'effort', value: 'custom-librarian-variant' },
-    });
-  });
-
-  test('OpenCode model roles treat an empty string as a literal selected preset key', async () => {
-    useOpenCodeConfig({
-      preset: '',
-      agents: {
-        explorer: { model: 'root/explorer' },
-      },
-      presets: {
-        '': {
-          explorer: { model: 'empty/explorer', variant: 'empty-variant' },
-          worker: { model: 'empty/worker', variant: 'empty-worker-variant' },
-        },
-        openai: {
-          explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
-          worker: { model: 'wrong/worker', variant: 'wrong-worker' },
-        },
-      },
-    });
-    const { getOpenCodeModelRoles } = await import('./operations');
-
-    const roles = getOpenCodeModelRoles();
-
-    expect(roles.find(({ role }) => role === 'explorer')).toEqual({
-      role: 'explorer',
-      model: 'root/explorer',
-      effort: { kind: 'effort', value: 'empty-variant' },
-    });
-    expect(roles.find(({ role }) => role === 'worker')).toEqual({
-      role: 'worker',
-      model: 'empty/worker',
-      effort: { kind: 'effort', value: 'empty-worker-variant' },
+      effort: { kind: 'inherit' },
     });
   });
 
@@ -361,7 +333,7 @@ describe('TUI operations', () => {
         },
       },
     ],
-  ] as const)('OpenCode model roles with active preset %s use root overrides and defaults without openai fallback', async (_state, config) => {
+  ] as const)('OpenCode model roles ignore legacy preset %s and use root overrides and defaults', async (_state, config) => {
     useOpenCodeConfig(config);
     const { getOpenCodeModelRoles } = await import('./operations');
 

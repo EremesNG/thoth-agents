@@ -39,7 +39,6 @@ describe('v0.3 agent configuration schema', () => {
   });
 
   test.each([
-    { presets: { example: { quick: { model: 'openai/model' } } } },
     { agents: { deep: { model: 'openai/model' } } },
     { fallback: { chains: { quick: ['openai/model'] } } },
   ])('runtime and published schemas reject removed role keys: %#', (config) => {
@@ -52,7 +51,6 @@ describe('v0.3 agent configuration schema', () => {
 
   test('runtime and published schemas preserve supported custom keys', () => {
     const config = {
-      presets: { example: { custom: { model: 'openai/model' } } },
       agents: { custom: { model: 'openai/model' } },
       fallback: { chains: { custom: ['openai/model'] } },
     };
@@ -102,4 +100,26 @@ test.each([
       agents: { worker: { model: 'openai/worker' } },
     }),
   ).toEqual({ agents: { worker: { model: 'openai/worker' } } });
+});
+
+// Unsupported legacy-key values are deliberately not validated.
+test.each([
+  { preset: 'old' },
+  { presets: { old: { quick: { temperature: 100 } } } },
+  { preset: 42, presets: null },
+])('strips unsupported legacy keys from runtime config: %#', (legacy) => {
+  expect(
+    PluginConfigSchema.parse({
+      ...legacy,
+      agents: { oracle: { model: 'root/model' } },
+    }),
+  ).toEqual({ agents: { oracle: { model: 'root/model' } } });
+});
+
+test('published schema omits removed config keys', () => {
+  const published = JSON.parse(
+    readFileSync('thoth-agents.schema.json', 'utf8'),
+  );
+  expect(Object.keys(published.properties)).not.toContain('preset');
+  expect(Object.keys(published.properties)).not.toContain('presets');
 });

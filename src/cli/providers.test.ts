@@ -7,19 +7,20 @@ import {
 } from './providers';
 
 describe('providers', () => {
-  test('MODEL_MAPPINGS exposes only the OpenAI preset', () => {
+  test('MODEL_MAPPINGS exposes only the OpenAI profile', () => {
     const keys = Object.keys(MODEL_MAPPINGS);
     expect(keys).toEqual(['openai']);
   });
 
-  test('generateLiteConfig always generates openai preset', () => {
+  test('generateLiteConfig always generates openai profile', () => {
     const config = generateLiteConfig({
       reset: false,
     });
 
     expect(config.$schema).toBe(THOTH_AGENTS_CONFIG_SCHEMA_URL);
-    expect(config.preset).toBe('openai');
-    const agents = (config.presets as any).openai;
+    expect(config).not.toHaveProperty('preset');
+    expect(config).not.toHaveProperty('presets');
+    const agents = MODEL_MAPPINGS.openai;
     expect(agents).toBeDefined();
     expect(agents.orchestrator.model).toBe('openai/gpt-6.1-sol');
     expect(agents.orchestrator.variant).toBe('high');
@@ -29,15 +30,9 @@ describe('providers', () => {
     });
   });
 
-  test('generateLiteConfig uses the confirmed OpenAI subagent preset', () => {
-    const config = generateLiteConfig({
-      reset: false,
-    });
-
-    const agents = (config.presets as any).openai;
-    expect(agents.orchestrator.model).toBe(
-      MODEL_MAPPINGS.openai.orchestrator.model,
-    );
+  test('OpenAI profile uses the shipped role models and variants', () => {
+    const agents = MODEL_MAPPINGS.openai;
+    expect(agents.orchestrator.model).toBe('openai/gpt-6.1-sol');
     expect(agents.oracle).toEqual({
       model: 'openai/gpt-6.1-sol',
       variant: 'xhigh',
@@ -72,24 +67,20 @@ describe('providers', () => {
     expect(config).not.toHaveProperty('auto-update-checker');
   });
 
-  test('generateLiteConfig omits per-agent skills and mcps fields', () => {
-    const config = generateLiteConfig({
-      reset: false,
-    });
-
-    const agents = (config.presets as any).openai;
-    expect(agents.orchestrator.skills).toBeUndefined();
-    expect(agents.designer.skills).toBeUndefined();
-    expect(agents.orchestrator.mcps).toBeUndefined();
-    expect(agents.librarian.mcps).toBeUndefined();
+  test('OpenAI profile omits per-agent skills and mcps fields', () => {
+    const agents = MODEL_MAPPINGS.openai;
+    expect(
+      (agents.orchestrator as Record<string, unknown>).skills,
+    ).toBeUndefined();
+    expect((agents.designer as Record<string, unknown>).skills).toBeUndefined();
+    expect(
+      (agents.orchestrator as Record<string, unknown>).mcps,
+    ).toBeUndefined();
+    expect((agents.librarian as Record<string, unknown>).mcps).toBeUndefined();
   });
 
-  test('generateLiteConfig includes the canonical six-role roster', () => {
-    const config = generateLiteConfig({
-      reset: false,
-    });
-
-    const agents = Object.keys((config.presets as any).openai).sort();
+  test('OpenAI profile includes the canonical six-role roster', () => {
+    const agents = Object.keys(MODEL_MAPPINGS.openai).sort();
     expect(agents).toEqual([
       'designer',
       'explorer',
@@ -106,12 +97,8 @@ describe('providers', () => {
     }
   });
 
-  test('worker preset remains a lean model-only config', () => {
-    const config = generateLiteConfig({
-      reset: false,
-    });
-
-    const agents = (config.presets as any).openai;
+  test('worker profile remains a lean model-only config', () => {
+    const agents = MODEL_MAPPINGS.openai;
     expect(Object.keys(agents.worker).sort()).toEqual(['model', 'variant']);
   });
 });

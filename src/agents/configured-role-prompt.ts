@@ -22,7 +22,7 @@ export function renderConfiguredRolePrompt({
   config?: PluginConfig;
   model?: AgentOverrideConfig['model'] | string;
 }): string {
-  const promptOverrides = loadAgentPrompt(role, config?.preset);
+  const promptOverrides = loadAgentPrompt(role);
   const override = getAgentOverride(config, role);
   const modelSection = createModelFamilySection(role, model);
   const stepSection = createStepBudgetSection(override?.steps, role);

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Plugin } from '@opencode/plugin';
 import { afterEach, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { registerAgents } from './agents';
 import { loadOpenCodeDependencies, type OpenCodeDependencies } from './context';
 import {
@@ -13,7 +14,7 @@ import {
 } from './profile-rpc';
 import { registerProfileRpc } from './profile-rpc-handlers';
 import { registerProfileRuntime } from './profile-runtime';
-import { ModelProfileStore } from './profiles';
+import { ModelProfileStore, PROFILE_ROLES } from './profiles';
 
 type Handlers = {
   [M in ProfileRpcMethod]: (
@@ -101,7 +102,24 @@ async function setup(shared?: {
     },
     rpc: {
       register: vi.fn(async (_definition: unknown, value: Handlers) => {
-        handlers = value;
+        // OpenCode parses Standard Schema outputs before the HTTP layer
+        // requires JSON values. Optional Zod keys can still contain undefined.
+        handlers = Object.fromEntries(
+          Object.entries(value).map(([method, run]) => [
+            method,
+            async (input: never) => {
+              const output = await run(input);
+              const parsed =
+                await profileRpc.methods[method as ProfileRpcMethod].output[
+                  '~standard'
+                ].validate(output);
+              expect(parsed.issues).toBeUndefined();
+              if (parsed.issues) throw new Error('Invalid RPC output');
+              z.json().parse(parsed.value);
+              return parsed.value;
+            },
+          ]),
+        ) as Handlers;
       }),
     },
   };
@@ -114,6 +132,74 @@ async function setup(shared?: {
   );
   return { handlers, store, storage, switchModel, reload, refresh, ctx };
 }
+
+it.each([
+  undefined,
+  's',
+])('encodes a full agents profile and mixed provider catalog (session: %s)', async (sessionID) => {
+  const { handlers, store, ctx } = await setup();
+  const variants = ['low', 'medium', 'xhigh'];
+  store.create('global', 'agents', {
+    agents: Object.fromEntries(
+      PROFILE_ROLES.map((role, index) => [
+        role,
+        { model: 'openai/gpt-6.1-sol', variant: variants[index % 3] },
+      ]),
+    ),
+  });
+  store.setGlobalActive('agents');
+  ctx.provider.list.mockResolvedValue({
+    data: [
+      { id: 'openai', name: 'OpenAI' },
+      { id: 'opencode', name: 'OpenCode' },
+      { id: 'empty', name: 'No enabled models' },
+    ],
+  });
+  ctx.model.list.mockResolvedValue({
+    data: [
+      {
+        providerID: 'openai',
+        id: 'gpt-6.1-sol',
+        name: 'GPT 6.1 Sol',
+        enabled: true,
+        variants: variants.map((id) => ({ id })),
+      },
+      {
+        providerID: 'opencode',
+        id: 'free',
+        name: 'Free model',
+        enabled: true,
+        variants: [],
+      },
+      {
+        providerID: 'empty',
+        id: 'disabled',
+        name: 'Disabled model',
+        enabled: false,
+        variants: [],
+      },
+    ],
+  });
+  const result = await handlers.state(sessionID ? { sessionID } : {});
+  expect(result).toMatchObject({
+    ok: true,
+    value: {
+      selections: { global: 'agents' },
+      effective: { name: 'agents', selectedBy: 'global' },
+      providers: [
+        {
+          id: 'openai',
+          models: [{ id: 'gpt-6.1-sol', variants }],
+        },
+        { id: 'opencode', models: [{ id: 'free', variants: [] }] },
+        { id: 'empty', models: [] },
+      ],
+    },
+  });
+  if (!result.ok) throw new Error('Expected state');
+  expect(result.value.selections).toEqual({ global: 'agents' });
+  expect(Object.hasOwn(result.value, 'orchestrator')).toBe(!!sessionID);
+});
 
 it('activates a session selection durably and switches its orchestrator without reloading defaults', async () => {
   const { handlers, storage, switchModel, reload, store } = await setup();

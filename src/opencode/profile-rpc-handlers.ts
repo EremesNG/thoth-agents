@@ -83,12 +83,17 @@ export async function registerProfileRpc(
     const warnings: string[] = [];
     const global = store.read('global', warnings);
     const project = store.read('project', warnings);
-    const selections = {
+    // Zod accepts explicit undefined for optional keys, but OpenCode's HTTP
+    // JSON encoder does not. Absent selections must be omitted entirely.
+    const selections: ProfileState['selections'] = {
       ...(sessionName === undefined ? {} : { session: sessionName }),
-      project: project.active,
-      global: global.active,
+      ...(project.active === undefined ? {} : { project: project.active }),
+      ...(global.active === undefined ? {} : { global: global.active }),
     };
-    if (change) selections[change.scope] = change.name;
+    if (change) {
+      if (change.name === undefined) delete selections[change.scope];
+      else selections[change.scope] = change.name;
+    }
     let effective: ProfileState['effective'] = {
       name: 'default',
       selectedBy: 'default',

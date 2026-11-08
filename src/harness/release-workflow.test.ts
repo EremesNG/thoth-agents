@@ -292,12 +292,44 @@ ${script}`,
   });
 });
 
+describe('release workflow OpenCode packages', () => {
+  test('builds the OpenCode lane and verifies packed entries before publishing', () => {
+    expect(byName('Build OpenCode packages').run?.trim()).toBe(
+      'pnpm --filter "./opencode-packages/*" run build',
+    );
+    expect(indexOf('Build OpenCode packages')).toBeGreaterThan(
+      indexOf('Install dependencies'),
+    );
+    expect(indexOf('Build OpenCode packages')).toBeLessThan(
+      indexOf('Verify packed OpenCode entrypoints'),
+    );
+    expect(indexOf('Verify packed OpenCode entrypoints')).toBeLessThan(
+      indexOf('Publish Pi packages'),
+    );
+    expect(byName('Build OpenCode packages').if).toBeUndefined();
+    expect(byName('Verify packed OpenCode entrypoints').if).toBeUndefined();
+  });
+
+  test('checks each OpenCode package tarball for both runtime entrypoints', () => {
+    const script = byName('Verify packed OpenCode entrypoints').run ?? '';
+    expect(script).toContain('for dir in opencode-packages/*; do');
+    expect(script).toContain('[ -f "$dir/package.json" ] || continue');
+    expect(script).toContain('contents="$(cd "$dir" && pnpm pack --dry-run)"');
+    expect(script).toContain(
+      'for entry in dist/index.js dist/tui/index.js; do',
+    );
+    expect(script).toMatch(
+      /if ! grep -Fxq "\$entry" <<< "\$contents"; then\s+echo "Missing packed entrypoint[^\n]+\n\s+exit 1\s+fi/,
+    );
+  });
+});
+
 describe('release workflow Pi packages', () => {
   test('publishes Pi packages before root npm publish', () => {
     const pi = byName('Publish Pi packages');
     expect(pi.id).toBe('pi-publish');
     expect(pi.run?.trim()).toBe(
-      'pnpm publish -r --filter "./pi-packages/*" --ignore-scripts --no-git-checks',
+      'pnpm publish -r --filter "./pi-packages/*" --filter "./opencode-packages/*" --ignore-scripts --no-git-checks',
     );
     expect(indexOf('Check built plugin runtime')).toBeLessThan(
       indexOf('Publish Pi packages'),
@@ -322,6 +354,10 @@ describe('release workflow Pi packages', () => {
     );
 
     const script = step.run ?? '';
+    expect(script).toContain(
+      'for manifest in pi-packages/*/package.json opencode-packages/*/package.json; do',
+    );
+    expect(script).toContain('[ -f "$manifest" ] || continue');
     expect(script).toContain('npm view');
     expect(script).toContain('git ls-remote --tags origin');
     expect(script).toContain('gh release view');

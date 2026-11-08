@@ -131,7 +131,13 @@ jobs:
           pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
           pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
 
-  # Windows qualification for the vendored Pi packages only; the root suite stays on Ubuntu.
+      - name: Check opencode-multi-codex
+        run: |
+          pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
+          pnpm --filter @thoth-agents/opencode-multi-codex run test
+          pnpm --filter @thoth-agents/opencode-multi-codex run build
+
+  # Windows qualification for workspace packages; the root suite stays on Ubuntu.
   pi-packages-windows:
     runs-on: windows-latest
     # A healthy run takes ~20 minutes; fail a hung step instead of holding the runner for 6 hours.
@@ -237,3 +243,12 @@ jobs:
       # Offline unit tests only; the package `test` script runs live Claude integrations.
       - name: Test pi-claude-bridge
         run: pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
+
+      - name: Typecheck opencode-multi-codex
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
+
+      - name: Test opencode-multi-codex
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run test --retry=2
+
+      - name: Build opencode-multi-codex
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run build

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const RELEASE_LEVELS = ['patch', 'minor', 'major'];
@@ -11,17 +11,19 @@ const USAGE = `Usage: pnpm release:pi <package> <${RELEASE_LEVELS.join('|')}>
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function discoverPiPackages(projectRoot = defaultRoot) {
-  const base = join(projectRoot, 'pi-packages');
-  if (!existsSync(base)) return [];
-  return readdirSync(base, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const dir = join(base, entry.name);
-      const manifest = join(dir, 'package.json');
-      if (!existsSync(manifest)) return [];
-      const { name, version } = JSON.parse(readFileSync(manifest, 'utf8'));
-      return [{ directory: entry.name, dir, name, version }];
-    });
+  return ['pi-packages', 'opencode-packages'].flatMap((lane) => {
+    const base = join(projectRoot, lane);
+    if (!existsSync(base)) return [];
+    return readdirSync(base, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) => {
+        const dir = join(base, entry.name);
+        const manifest = join(dir, 'package.json');
+        if (!existsSync(manifest)) return [];
+        const { name, version } = JSON.parse(readFileSync(manifest, 'utf8'));
+        return [{ directory: entry.name, dir, name, version }];
+      });
+  });
 }
 
 export function resolvePiPackage(packages, identifier) {
@@ -76,7 +78,7 @@ export function releasePi(
   log(
     [
       'Next steps:',
-      `  1. Commit the bump (pi-packages/${pkg.directory}/package.json).`,
+      `  1. Commit the bump (${relative(projectRoot, join(pkg.dir, 'package.json')).replaceAll('\\', '/')}).`,
       '  2. Release from the repository root: pnpm release:patch|minor|major',
     ].join('\n'),
   );

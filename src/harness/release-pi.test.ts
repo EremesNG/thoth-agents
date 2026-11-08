@@ -14,8 +14,12 @@ let root: string;
 let logs: string[];
 const log = (message: string) => logs.push(message);
 
-function writePackage(directory: string, version: string) {
-  const dir = join(root, 'pi-packages', directory);
+function writePackage(
+  directory: string,
+  version: string,
+  lane = 'pi-packages',
+) {
+  const dir = join(root, lane, directory);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, 'package.json'),
@@ -53,6 +57,46 @@ describe('release-pi', () => {
     ).toEqual(['pi-core', 'pi-subagents']);
   });
 
+  test('discovers both lanes and skips directories without manifests', () => {
+    const dir = writePackage(
+      'opencode-multi-codex',
+      '0.1.0',
+      'opencode-packages',
+    );
+    mkdirSync(join(root, 'opencode-packages', 'not-a-package'));
+    expect(discoverPiPackages(root)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ directory: 'pi-core' }),
+        expect.objectContaining({ directory: 'opencode-multi-codex', dir }),
+      ]),
+    );
+    expect(discoverPiPackages(root)).toHaveLength(3);
+  });
+
+  test.each([
+    'opencode-multi-codex',
+    '@thoth-agents/opencode-multi-codex',
+  ])('bumps %s when the Pi lane is absent and prints the correct path', (identifier) => {
+    rmSync(join(root, 'pi-packages'), { recursive: true });
+    const dir = writePackage(
+      'opencode-multi-codex',
+      '0.1.0',
+      'opencode-packages',
+    );
+    const calls: Array<{ level: string; cwd: string }> = [];
+    expect(
+      releasePi([identifier, 'patch'], {
+        projectRoot: root,
+        runNpm: fakeNpm(calls),
+        log,
+      }),
+    ).toMatchObject({ ok: true, exitCode: 0, newVersion: '0.1.1' });
+    expect(calls).toEqual([{ level: 'patch', cwd: dir }]);
+    expect(logs.join('\n')).toContain(
+      'Commit the bump (opencode-packages/opencode-multi-codex/package.json).',
+    );
+  });
+
   test.each([
     'pi-subagents',
     '@thoth-agents/pi-subagents',
@@ -75,6 +119,9 @@ describe('release-pi', () => {
     const output = logs.join('\n');
     expect(output).toContain('0.1.0 -> 0.1.1');
     expect(output).toContain('pnpm release:patch|minor|major');
+    expect(output).toContain(
+      'Commit the bump (pi-packages/pi-subagents/package.json).',
+    );
   });
 
   test('rejects unknown packages and levels without running npm', () => {

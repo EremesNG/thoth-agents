@@ -148,9 +148,26 @@ jobs:
         timeout-minutes: 2
         run: pnpm run test:pi-extensions
 
+      - name: Build OpenCode packages
+        run: pnpm --filter "./opencode-packages/*" run build
+
+      - name: Verify packed OpenCode entrypoints
+        run: |
+          for dir in opencode-packages/*; do
+            [ -f "$dir/package.json" ] || continue
+            contents="$(cd "$dir" && pnpm pack --dry-run)"
+            printf '%s\n' "$contents"
+            for entry in dist/index.js dist/tui/index.js; do
+              if ! grep -Fxq "$entry" <<< "$contents"; then
+                echo "Missing packed entrypoint ${entry} in ${dir}."
+                exit 1
+              fi
+            done
+          done
+
       - name: Publish Pi packages
         id: pi-publish
-        run: pnpm publish -r --filter "./pi-packages/*" --ignore-scripts --no-git-checks
+        run: pnpm publish -r --filter "./pi-packages/*" --filter "./opencode-packages/*" --ignore-scripts --no-git-checks
 
       - name: Reconcile Pi releases
         if: ${{ always() && steps.install.outcome == 'success' }}
@@ -160,13 +177,14 @@ jobs:
         run: |
           set -uo pipefail
           failed=0
-          # Share one propagation deadline across all Pi packages.
+          # Share one propagation deadline across all workspace packages.
           publish_deadline=$((SECONDS + ${PI_PUBLISH_WAIT_SECONDS:-300}))
           notes_file="$(mktemp)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          for manifest in pi-packages/*/package.json; do
+          for manifest in pi-packages/*/package.json opencode-packages/*/package.json; do
+            [ -f "$manifest" ] || continue
             dir="$(dirname "$manifest")"
             name="$(node -p "require('./${manifest}').name")"
             version="$(node -p "require('./${manifest}').version")"

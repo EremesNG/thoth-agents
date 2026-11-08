@@ -75,6 +75,35 @@ Activation switches the current session's orchestrator; project/global changes
 also reload agent defaults. An unavailable model leaves activation state
 unchanged and produces a warning.
 
+## OpenCode fallback configuration
+
+Set `fallback` in `thoth-agents.json` (not in a profile file):
+
+```json
+{
+  "fallback": {
+    "enabled": true,
+    "timeoutMs": 15000,
+    "retryDelayMs": 500,
+    "chains": { "worker": ["provider/backup"] }
+  }
+}
+```
+
+The defaults are `enabled: true`, `timeoutMs: 15000`, `retryDelayMs: 500`,
+and empty per-role `chains`. OpenCode switches models on retryable provider
+errors; its retry hook switches immediately (`delay: 0`), rather than using
+these timeout/delay settings as a timer.
+
+With fallback enabled, each role's chain is its explicit `agents.<role>.model`
+array (or configured/shipped scalar primary), followed by `fallback.chains`
+for that role. A named project/global profile prepends its resolved model.
+Duplicate model IDs are removed, keeping the profile's variant when present.
+With `enabled: false`, profile/scalar roles do not switch models and
+`fallback.chains` is ignored. Explicit model arrays still allow retries,
+including a named profile's model first when selected. Profile injection itself
+is unchanged. The virtual `default` profile leaves the configured chain intact.
+
 ## Manage profiles inside OpenCode
 
 Run **`/subagents-model`** in OpenCode's interactive TUI. The package's `./tui`

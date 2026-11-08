@@ -19,15 +19,37 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-async function configuredHost(model: unknown = 'p/a', enabled = true) {
+async function configuredHost(
+  model: unknown = 'p/a',
+  enabled = true,
+  profileScope?: 'project' | 'global',
+) {
   await mkdir(join(directory, '.opencode'));
   await writeFile(
     join(directory, '.opencode', 'thoth-agents.json'),
     JSON.stringify({
-      agents: { worker: { model, variant: 'high' } },
+      agents: model === null ? {} : { worker: { model, variant: 'high' } },
       fallback: { enabled, chains: { worker: ['p/b', 'p/c', 'p/b'] } },
     }),
   );
+  const profilePath = join(
+    directory,
+    profileScope === 'global' ? 'user/thoth' : '.opencode/thoth',
+  );
+  async function writeProfile(model = 'profile/model') {
+    await mkdir(profilePath, { recursive: true });
+    await writeFile(
+      join(profilePath, 'profiles.json'),
+      JSON.stringify({
+        version: 1,
+        active: 'focused',
+        profiles: {
+          focused: { agents: { worker: { model, variant: 'low' } } },
+        },
+      }),
+    );
+  }
+  if (profileScope) await writeProfile();
   const registered: Record<string, { model?: SessionRetry['model'] }> = {};
   const switchModel = vi.fn(async () => {});
   let retryHook!: (input: SessionRetry) => Promise<void>;
@@ -69,10 +91,94 @@ async function configuredHost(model: unknown = 'p/a', enabled = true) {
     await retryHook(input);
     return input.decision;
   }
-  return { registered, switchModel, retry };
+  return {
+    registered,
+    switchModel,
+    retry,
+    async refreshProfile(model: string) {
+      await writeProfile(model);
+      deps.profileState.refresh();
+      await registerAgents(ctx, deps);
+    },
+  };
 }
 
 describe('configured OpenCode models through the real loader', () => {
+  it('does not retry a named profile onto the shipped scalar when fallback is disabled', async () => {
+    const h = await configuredHost(null, false, 'project');
+    expect(h.registered.worker.model).toEqual({
+      providerID: 'profile',
+      id: 'model',
+      variant: 'low',
+    });
+    expect(await h.retry()).toEqual({ retry: false });
+    expect(h.switchModel).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a named profile onto a configured scalar when fallback is disabled', async () => {
+    const h = await configuredHost('p/a', false, 'global');
+    expect(await h.retry()).toEqual({ retry: false });
+    expect(h.switchModel).not.toHaveBeenCalled();
+  });
+
+  it('preserves profile-first explicit fallbacks when enabled', async () => {
+    const h = await configuredHost('p/a', true, 'project');
+    expect(h.registered.worker.model).toEqual({
+      providerID: 'profile',
+      id: 'model',
+      variant: 'low',
+    });
+    expect(await h.retry()).toEqual({ retry: true, delay: 0 });
+    expect(await h.retry({ providerID: 'p', id: 'a' })).toEqual({
+      retry: true,
+      delay: 0,
+    });
+    expect(await h.retry({ providerID: 'p', id: 'b' })).toEqual({
+      retry: true,
+      delay: 0,
+    });
+    expect(await h.retry({ providerID: 'p', id: 'c' })).toEqual({
+      retry: false,
+    });
+    expect(h.switchModel.mock.calls.map(([call]) => call.model)).toEqual([
+      { providerID: 'p', id: 'a', variant: 'high' },
+      { providerID: 'p', id: 'b' },
+      { providerID: 'p', id: 'c' },
+    ]);
+  });
+
+  it('preserves profile-first explicit model-array retries when fallback is disabled', async () => {
+    const h = await configuredHost(
+      [{ id: 'p/a', variant: 'medium' }, 'p/b'],
+      false,
+      'project',
+    );
+    expect(await h.retry()).toEqual({ retry: true, delay: 0 });
+    expect(await h.retry({ providerID: 'p', id: 'a' })).toEqual({
+      retry: true,
+      delay: 0,
+    });
+    expect(await h.retry({ providerID: 'p', id: 'b' })).toEqual({
+      retry: false,
+    });
+    expect(h.switchModel.mock.calls.map(([call]) => call.model)).toEqual([
+      { providerID: 'p', id: 'a', variant: 'medium' },
+      { providerID: 'p', id: 'b' },
+    ]);
+  });
+
+  it('refreshing a named profile preserves disabled scalar retry eligibility', async () => {
+    const h = await configuredHost('p/a', false, 'project');
+    await h.refreshProfile('profile/updated');
+    expect(h.registered.worker.model).toEqual({
+      providerID: 'profile',
+      id: 'updated',
+      variant: 'low',
+    });
+    expect(await h.retry()).toEqual({ retry: false });
+    expect(h.switchModel).not.toHaveBeenCalled();
+  });
+
   it('advances from the scalar primary through each fallback once, then exhausts', async () => {
     const h = await configuredHost();
     expect(await h.retry()).toEqual({ retry: true, delay: 0 });

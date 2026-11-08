@@ -1,6 +1,7 @@
 import type { Plugin } from '@opencode/plugin';
 import type { OpenCodeDependencies } from './context';
 import { translatePermissionRules } from './permission-rules';
+import { appendOverrideRules, type SpecialistRole } from './tool-overrides';
 
 // v2 colors are literal hex values, not the v1 theme token names.
 const ROLE_COLORS: Record<string, string> = {
@@ -32,6 +33,13 @@ export async function registerAgents(
           : ROLE_COLORS[name];
         agent.steps = config.steps;
         agent.permissions = translatePermissionRules(config.permission);
+        if (name !== 'orchestrator') {
+          const overrides =
+            deps.toolState.state.effective[name as SpecialistRole]?.overrides;
+          if (overrides?.length) {
+            agent.permissions.push(...appendOverrideRules(overrides));
+          }
+        }
         // A bare model ID has no provider; leave it to host model inheritance.
         const separator = model?.indexOf('/') ?? -1;
         agent.model =

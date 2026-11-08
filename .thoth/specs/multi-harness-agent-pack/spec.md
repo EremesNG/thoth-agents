@@ -156,7 +156,7 @@ Generated OpenCode model configuration MUST contain only the `openai` built-in p
 
 - **GIVEN** a fresh OpenCode install
 - **WHEN** thoth-agents writes model configuration
-- **THEN** the global profiles file contains the `openai` profile for all six roles and thoth-agents.json contains no `preset` or `presets` key 
+- **THEN** the global profiles file contains the `openai` profile for all six roles and thoth-agents.json contains no `preset` or `presets` key
 
 ### Requirement: Bundle the proportional SDD contract
 
@@ -603,4 +603,14 @@ The OpenCode plugin MUST expose `/subagents-model` from its `./tui` entry using 
 
 - **GIVEN** a global active profile assigning the worker a different model
 - **WHEN** the orchestrator spawns the worker without a model argument
-- **THEN** the child session runs on the profile's worker model 
+- **THEN** the child session runs on the profile's worker model
+
+### Requirement: Manage OpenCode subagent tool permissions
+
+The OpenCode plugin MUST expose `/subagents-tools` from its `./tui` entry using native dialogs to manage, for each of the five specialists, ordered overrides mapping an action name or OpenCode wildcard pattern to allow, ask or deny, stored in `<opencode-config-dir>/thoth/tools.json` and `<project>/.opencode/thoth/tools.json` where a project entry for a role replaces the global entry. When a role has effective overrides they MUST be applied as `resource:"*"` permission rules after the role's shipped rules and before a final non-editable `subagent` deny; without overrides the registered permissions MUST equal the shipped ones exactly; saving MUST reload agents; the orchestrator MUST NOT be affected.
+
+#### Scenario: Manage OpenCode subagent tool permissions
+
+- **GIVEN** a global override denying `webfetch` for explorer
+- **WHEN** the orchestrator spawns explorer
+- **THEN** the explorer session is not offered `webfetch` and other roles keep their shipped access 

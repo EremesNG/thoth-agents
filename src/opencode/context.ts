@@ -13,6 +13,7 @@ import {
   type RoleProfile,
   resolveRoleProfile,
 } from './profiles';
+import { ToolsOverrideStore, type ToolsState } from './tool-overrides';
 
 type ModelEntry = { id: string; variant?: string };
 
@@ -25,6 +26,12 @@ export interface OpenCodeDependencies {
   modelArrayMap: Record<string, ModelEntry[]>;
   effectiveModelArrays: Record<string, ModelEntry[]>;
   runtimeChains: Record<string, string[]>;
+  toolState: {
+    store: ToolsOverrideStore;
+    state: ToolsState;
+    /** Re-read global/project overrides for the next agent transform. */
+    refresh(): void;
+  };
   profileState: {
     store: ModelProfileStore;
     roster: EffectiveRoster;
@@ -137,6 +144,18 @@ export function loadOpenCodeDependencies(
   }
   applyProfile();
 
+  const toolStore = new ToolsOverrideStore({
+    cwd: directory,
+    warn: (message) => console.warn(`[thoth-agents] ${message}`),
+  });
+  const toolState: OpenCodeDependencies['toolState'] = {
+    store: toolStore,
+    state: toolStore.resolve(),
+    refresh() {
+      this.state = toolStore.resolve();
+    },
+  };
+
   return {
     directory,
     // Both src/opencode/context.ts and dist/index.js (or a root chunk) resolve
@@ -154,5 +173,6 @@ export function loadOpenCodeDependencies(
     effectiveModelArrays,
     runtimeChains,
     profileState,
+    toolState,
   };
 }

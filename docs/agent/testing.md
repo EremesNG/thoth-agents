@@ -466,6 +466,43 @@ registrations are checked by the registration/cache suites, not host listing.
 Close server stdin and await exit. Never use the
 operator's real configuration or call a model for this check.
 
+### Tool-permission checks
+
+- `src/opencode/tool-overrides/store.test.ts`, `evaluator.test.ts` and
+  `wildcard.test.ts` cover file paths/schema, warnings, atomic revision-checked
+  writes, project replacement (including empty lists), reset inheritance,
+  ordered effects/origins and OpenCode wildcard behavior (`*` across `/`, `?`,
+  Windows case-insensitivity).
+- `src/opencode/agents.test.ts`: exact shipped-array parity without overrides,
+  ordered resource-`*` overrides before locked `subagent` deny, wildcard attempts
+  to re-enable delegation, unchanged orchestrator and intentional replacement of
+  designer/worker resource-specific `external_directory` allow.
+- `src/opencode/tool-rpc.test.ts`: inventory grouping, role effects/origins and
+  shipped base effects, state/save/reset, conflicts, reload, sessionless use,
+  schema-valid and JSON-encodable output (no explicit `undefined`).
+- `src/tui/tools/model.test.ts`, `src/tui/tools/flow.test.ts` and
+  `src/tui/index.test.ts`: scope/summary/row markers, action choices, manual
+  patterns and zero-match counts, locked subagent, drafts, conflict reload,
+  reset, home-route use and command registration.
+- `src/plugin-node-runtime.test.ts`: built entry registers tool-permission RPC;
+  build before running this check.
+
+Focused command: `pnpm vitest run src/opencode/tool-overrides
+src/opencode/agents.test.ts src/opencode/tool-rpc.test.ts src/tui/tools
+src/tui/index.test.ts`. Use the closeout gate above for runtime changes.
+
+For an authorized live smoke on isolated OpenCode 2.2.x, open the interactive
+TUI and verify `/subagents-tools` loads from `./tui`, including without a session.
+Save a global explorer `webfetch` deny, spawn explorer, and prove the tool is
+absent using actual session/tool data; then verify an allow takes effect. Check
+project replacement, pattern entries, locked subagent and reset inheritance.
+Changes apply from the next context selection after reload. Record the exact
+OpenCode version and observed Code Mode catalog-tool behavior: source/docs
+claims differ, so deny removal is a known limitation to verify, not a guaranteed
+outcome. Disconnected MCP inventory gaps need manual patterns; displayed effects
+are role-level and session policy may supersede them. Never modify operator
+config/auth; live model calls require authorization.
+
 ### Model-profile checks
 
 - `src/opencode/profiles/*.test.ts`: paths, schema, atomic writes, name shadowing,

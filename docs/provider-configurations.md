@@ -93,6 +93,91 @@ entry loads automatically; this is not a headless/server command.
 - On the home route without a session, profile management and project/global
   actions remain available; session-only actions are disabled.
 
+## Manage tool permissions inside OpenCode
+
+Run **`/subagents-tools`** in OpenCode's interactive TUI, beside
+`/subagents-model`. It works on the home route without a session and edits the
+five specialists: `explorer`, `librarian`, `oracle`, `designer`, and `worker`.
+The orchestrator is not editable. This is an OpenCode permission editor, not
+Pi's tool allowlist.
+
+1. Choose a specialist from the overview (`G` global, `P` project, override
+   count and effect summary), then choose the scope to edit.
+2. Select an action and choose **allow**, **ask**, **deny**, or **Inherit**.
+   Markers are `●` exact override, `○` via pattern, `·` default, `🔒` locked.
+   Inherit removes exact entries for that action; matching patterns still apply.
+3. Use **Add pattern** for an action name or wildcard such as `github_*`.
+   Match counts refer to registered actions, not individual tool names; zero
+   matches are allowed for tools that may connect later.
+4. **Save** to persist the draft. Leaving with edits offers Save, Discard, or
+   Keep editing. If another writer changed the file (`TOOLS_CONFLICT`), reload
+   before retrying. Saving reloads agents; changes apply from the next context
+   selection, not by mutating an in-flight request.
+
+### Tool override files and layering
+
+Tool overrides are independent of model profiles and `thoth-agents.json`:
+
+| Scope | File |
+| --- | --- |
+| Global | `<opencode-config-dir>/thoth/tools.json` |
+| Project | `<project>/.opencode/thoth/tools.json` |
+
+The config directory uses the same resolution as profile files above. Both
+files use this schema; omitted roles inherit:
+
+```json
+{
+  "version": 1,
+  "roles": {
+    "explorer": {
+      "overrides": [
+        { "action": "github_*", "effect": "ask" },
+        { "action": "webfetch", "effect": "deny" }
+      ]
+    }
+  }
+}
+```
+
+A project entry **replaces the entire global list for that role**, even when
+its `overrides` list is empty. Other roles are unaffected. Within the effective
+list, order matters: **last matching rule wins**. Patterns match the whole
+action: `*` includes `/`, `?` matches one character, and matching is
+case-insensitive on Windows.
+
+With no effective overrides, shipped permissions stay unchanged. Otherwise,
+rules are shipped role permissions → ordered overrides with `resource: "*"`
+→ final locked `subagent` deny. Specialists cannot delegate, even through an
+`*` allow pattern; the permission-evaluation hook also keeps that restriction.
+A `deny` at resource `*` hides the tool from the model; `ask` prompts for approval.
+These are host permissions, not an OS sandbox.
+
+**Reset to defaults** removes the selected scope's entry for that role and
+persists immediately after confirmation. Resetting project scope resumes global
+inheritance, so it need not restore shipped defaults. To suppress global
+customization for one project, use **Mask global overrides for this project
+(save empty list)** in the project scope; **Remove project entry (use global)**
+undoes it.
+
+### Permission caveats and inventory limits
+
+- Entries name **permission actions**, not necessarily tool names: `write`,
+  `patch`, and `edit` share `edit`; `bash` uses `shell`. The panel groups member
+  tools under each action. MCP tools use names such as `server_tool`.
+- Overrides always use resource `*`, not argument-level restrictions. A matching
+  `external_directory` override supersedes designer/worker's shipped
+  resource-specific allow: `ask` prompts, `deny` blocks, and `allow` broadens access.
+- Displayed effects are **role-level**. OpenCode session permissions can
+  supersede them; the panel is not a session-specific policy editor.
+- Disconnected or undiscovered MCP tools are absent from the inventory. Add a
+  manual action/pattern for them; a zero match count does not mean invalid.
+- **Code Mode catalog tools:** `deny` may not remove them. This is a known,
+  version-sensitive limitation to verify in a live smoke on your OpenCode version,
+  not a guaranteed tool-removal boundary.
+- Invalid files or entries produce warnings; inspect them before saving. Writes
+  are atomic and revision-checked to avoid silently overwriting another writer.
+
 ## CLI customization
 
 ```bash

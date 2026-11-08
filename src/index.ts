@@ -9,6 +9,7 @@ import { registerProfileRpc } from './opencode/profile-rpc-handlers';
 import { registerProfileRuntime } from './opencode/profile-runtime';
 import { registerSessionHooks } from './opencode/session-hooks';
 import { registerSkills } from './opencode/skills';
+import { registerToolRpc } from './opencode/tool-rpc-handlers';
 import { registerTools } from './opencode/tools';
 
 const plugin = {
@@ -23,6 +24,7 @@ const plugin = {
     await registerPermissions(ctx, deps);
     await registerProfileRuntime(ctx, deps);
     await registerProfileRpc(ctx, deps);
+    await registerToolRpc(ctx, deps);
     await registerDelegationHooks(ctx, deps);
     await registerSessionHooks(ctx, deps);
   },

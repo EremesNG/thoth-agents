@@ -573,10 +573,20 @@ The Codex plugin MUST deliver the ambient root prompt through a `SessionStart` h
 
 ### Requirement: Delivery-time Oracle gate verdicts
 
-Each harness integration MUST validate Oracle gate envelopes at native result delivery with the bundled validator and add exactly one compact `thoth-gate-verdict` line per delivered message (Pi background completion notifications, `subagent_result` and task-mode `subagent_run` results, OpenCode `task` results, Claude Code `SubagentHandback` reports delivered to the root as `<agent-message>` prompts and completed foreground `Agent` results whose content carries the report, Codex multi-agent v1 `wait_agent` results) without altering the envelope, MUST leave non-Oracle and non-gate results unchanged, and root MUST NOT re-emit an envelope to validate it when a verdict was delivered; where a delivery path exposes no native hook (Codex multi-agent v2 `FINAL_ANSWER` inter-agent messages, Claude Code background runs without hand-back), the integration MUST declare that capability gap and root MUST use the explicit validator fallback, which MUST print only the compact summary.
+Each harness integration MUST validate Oracle gate envelopes at native result delivery with the bundled validator and add exactly one compact `thoth-gate-verdict` line per delivered message (Pi background completion notifications, `subagent_result` and task-mode `subagent_run` results, completed foreground OpenCode `subagent` tool results, Claude Code `SubagentHandback` reports delivered to the root as `<agent-message>` prompts and completed foreground `Agent` results whose content carries the report, Codex multi-agent v1 `wait_agent` results) without altering the envelope, MUST leave non-Oracle and non-gate results unchanged, and root MUST NOT re-emit an envelope to validate it when a verdict was delivered; where a delivery path exposes no native hook (Codex multi-agent v2 `FINAL_ANSWER` inter-agent messages, Claude Code background runs without hand-back, OpenCode background `subagent` completions admitted as synthetic messages), the integration MUST declare that capability gap and root MUST use the explicit validator fallback, which MUST print only the compact summary.
 
 #### Scenario: Delivery-time Oracle gate verdicts
 
-- **GIVEN** a Claude Code root whose background Oracle plan review hands back a valid envelope
-- **WHEN** the hand-back `<agent-message>` reaches the root's `UserPromptSubmit` hook
-- **THEN** the root receives one `thoth-gate-verdict` line reporting valid, plan-review, the verdict and the agent id as additional context, and records OKAY without running the validator
+- **GIVEN** an OpenCode root whose foreground `subagent` call to the Oracle completes with a valid plan-review envelope
+- **WHEN** the tool result is delivered
+- **THEN** exactly one `thoth-gate-verdict` line reporting valid, plan-review and the verdict is appended without altering the envelope, while a background Oracle completion arrives without a verdict and root uses the explicit validator fallback 
+
+### Requirement: Native OpenCode v2 plugin integration
+
+The OpenCode integration MUST be a `@opencode/plugin` v2 plugin that registers the six roles, tools, MCP servers, `/thoth-init` and owned skills through OpenCode domain APIs, delegates through the native `subagent` tool, enforces role delegation boundaries through OpenCode permissions, and MUST NOT rewrite the system prompt, tool list or prior messages per request.
+
+#### Scenario: Native OpenCode v2 plugin integration
+
+- **GIVEN** OpenCode 2.2.5 with thoth-agents installed
+- **WHEN** a session starts and the orchestrator delegates
+- **THEN** the six roles are listed with `orchestrator` as default, delegation uses `subagent`, a non-orchestrator `subagent` call is denied, and successive requests keep a byte-stable system prompt and message prefix 

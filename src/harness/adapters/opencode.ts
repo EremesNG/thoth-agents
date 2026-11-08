@@ -1,5 +1,5 @@
-import type { AgentConfig } from '@opencode-ai/sdk/v2';
 import { getAgentConfigs } from '../../agents';
+import type { AgentConfig } from '../../agents/agent-config';
 import type { PluginConfig } from '../../config';
 import type {
   HarnessAdapter,

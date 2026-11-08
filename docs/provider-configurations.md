@@ -1,6 +1,6 @@
 # Provider Configuration
 
-OpenCode 0.3.0 ships one built-in preset: `openai`. Kimi, GitHub Copilot,
+The OpenCode >=2.2.5 integration ships one built-in preset: `openai`. Kimi, GitHub Copilot,
 ZAI/GLM, and mixed-provider mappings are intentionally absent.
 
 ## Default OpenAI mapping

@@ -8,23 +8,30 @@ import {
 } from './prompt-dialects';
 
 describe('prompt dialects', () => {
-  test('renders OpenCode-native tool and role wording explicitly', () => {
-    expect(OPENCODE_PROMPT_DIALECT.harness).toBe('opencode');
-    expect(OPENCODE_PROMPT_DIALECT.tools.delegationTool).toBe('task');
-    expect(OPENCODE_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
-      'task_status',
+  test('renders the native OpenCode subagent contract without legacy dispatch', () => {
+    const dialect = OPENCODE_PROMPT_DIALECT;
+    expect(dialect.tools.delegationTool).toBe('subagent');
+    expect(dialect.tools.backgroundDelegationTool).toBe(
+      'subagent(background:true)',
     );
-    expect(OPENCODE_PROMPT_DIALECT.tools.userQuestionTool).toBe('question');
-    expect(OPENCODE_PROMPT_DIALECT.tools.progressTool).toBe('todowrite');
-    expect(OPENCODE_PROMPT_DIALECT.tools.roleReference('worker')).toBe(
-      '@worker',
+    expect(dialect.tools.backgroundStatusTool).toBeUndefined();
+    expect(dialect.tools.userQuestionTool).toBe('question');
+    expect(dialect.tools.progressTool).toBe('todowrite');
+    expect(dialect.tools.roleReference('worker')).toBe(
+      'subagent agent:"worker"',
     );
-    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
-    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
-      'root coordinator',
+    expect(dialect.dispatchLabel('task')).toBe('subagent');
+    expect(dialect.renderRoleInvocation('oracle')).toContain('agent:"oracle"');
+    expect(dialect.tools.lifecycle.rootInstructions).toContain(
+      'nesting depth is 1',
     );
-    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
-    expect(OPENCODE_PROMPT_DIALECT.tools.hostStatusSurface).toBe('task_status');
+    expect(dialect.tools.lifecycle.rootInstructions).toContain('sessionID');
+    expect(dialect.gateDeliveryInstruction).toContain(
+      'compact validator fallback',
+    );
+    expect(JSON.stringify(dialect)).not.toMatch(
+      /task_status|task_id|subagent_type|@worker/,
+    );
   });
 
   test('renders Codex-native role-agent and status-surface wording explicitly', () => {
@@ -124,15 +131,11 @@ describe('prompt dialects', () => {
       sameSessionProbe: 'collaboration.list_agents on the same task path',
       enforcement: 'runtime-supported',
     });
-    expect(OPENCODE_PROMPT_DIALECT.tools.lifecycle).toEqual({
-      freshDelegation: '`task` without `task_id`',
-      sameAssignmentContinuation: '`task` with the prior `task_id`',
-      independentContext:
-        'omitting `task_id` creates an isolated child session',
-      statusAction: 'wait, poll, and collect',
-      terminalState: 'terminal task_status result',
-      nonterminalState: 'nonterminal task_status result',
-      sameSessionProbe: 'task_status on the same task session',
+    expect(OPENCODE_PROMPT_DIALECT.tools.lifecycle).toMatchObject({
+      freshDelegation:
+        '`subagent` with agent, description and prompt, omitting sessionID',
+      sameAssignmentContinuation:
+        '`subagent` with the prior sessionID, including while running',
       enforcement: 'runtime-supported',
     });
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.lifecycle).toEqual({

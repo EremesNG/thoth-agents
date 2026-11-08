@@ -29,6 +29,11 @@ const installRequiredSkillMock = vi.hoisted(() =>
   vi.fn(() => ({ status: 'installed' as const })),
 );
 
+vi.mock('../system', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../system')>()),
+  getOpenCodeVersionSync: vi.fn(() => 'opencode v2.2.5'),
+}));
+
 vi.mock('../skills', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../skills')>();
   return {
@@ -130,14 +135,13 @@ describe('OpenCode operations adapter v0.3', () => {
   function validLiteConfig(): Record<string, unknown> {
     return generateLiteConfig({
       agent: 'opencode',
-      hasTmux: false,
       dryRun: false,
       reset: false,
     });
   }
 
   function writeManagedConfig(): void {
-    writeJson(mainConfigPath(), { plugin: [EXECUTING_PLUGIN] });
+    writeJson(mainConfigPath(), { plugins: [EXECUTING_PLUGIN] });
     writeJson(liteConfigPath(), validLiteConfig());
   }
 
@@ -172,7 +176,7 @@ describe('OpenCode operations adapter v0.3', () => {
     custom.agents = {
       explorer: { model: 'custom/model', variant: 'high', temperature: 0.3 },
     };
-    custom.tmux = { enabled: true };
+    custom.customRuntime = { enabled: true };
     writeJson(liteConfigPath(), custom);
     const before = readFileSync(liteConfigPath(), 'utf8');
     const mainBefore = readFileSync(mainConfigPath(), 'utf8');
@@ -201,7 +205,7 @@ describe('OpenCode operations adapter v0.3', () => {
     ).toEqual(getShippedModelRoles('opencode'));
     const after = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
     expect(after.agents.explorer.temperature).toBe(0.3);
-    expect(after.tmux).toEqual({ enabled: true });
+    expect(after.customRuntime).toEqual({ enabled: true });
     expect(readFileSync(mainConfigPath(), 'utf8')).toBe(mainBefore);
   });
 
@@ -295,9 +299,8 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(titles).toEqual(
       expect.arrayContaining([
         'Ensure OpenCode plugin points at thoth-agents@0.4.8',
-        'Disable OpenCode default agents',
         'Write thoth-agents six-role config',
-        'Synchronize global thoth-owned OpenCode skills',
+        'Inspect package-provided thoth-owned OpenCode skills',
         'Install required external skills',
         'Plan provider-owned thoth-mem setup',
         'Record completed OpenCode CLI install',
@@ -314,7 +317,6 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(updateMainConfig).toHaveBeenCalledWith({
       ensurePlugin: true,
       pluginVersion: '0.4.8',
-      disableDefaults: true,
     });
     expect(effects).toEqual([
       'config',
@@ -329,6 +331,29 @@ describe('OpenCode operations adapter v0.3', () => {
       status: 'valid',
       ledger: { harnesses: { opencode: { version: '0.4.8' } } },
     });
+  });
+
+  test.each([
+    '1.18.2',
+    'invalid',
+    null,
+  ])('rejects host %s before Update/apply writes', (version) => {
+    writeManagedConfig();
+    const before = readFileSync(mainConfigPath(), 'utf8');
+    const updateMain = vi.fn();
+    const writeLite = vi.fn();
+    const plan = buildOpenCodeUpdatePlan({
+      ...context(),
+      getOpenCodeVersion: () => version,
+      updateOpenCodeMainConfig: updateMain,
+      writeLiteConfig: writeLite,
+    });
+    const result = applyOpenCodePlan(plan);
+    expect(result.applied).toBe(false);
+    expect(result.summary).toContain('OpenCode 2.2.5 or later');
+    expect(updateMain).not.toHaveBeenCalled();
+    expect(writeLite).not.toHaveBeenCalled();
+    expect(readFileSync(mainConfigPath(), 'utf8')).toBe(before);
   });
 
   test('rejects changed exact-version provenance before OpenCode mutation', () => {
@@ -484,15 +509,31 @@ describe('OpenCode operations adapter v0.3', () => {
       expect.arrayContaining([
         expect.objectContaining({ label: 'Simplify', state: 'installed' }),
         expect.objectContaining({ label: 'Tdd', state: 'missing' }),
-        expect.objectContaining({ label: 'Thoth-SDD', state: 'missing' }),
-        expect.objectContaining({ label: 'Plan-Reviewer', state: 'missing' }),
+        expect.objectContaining({ label: 'Thoth-SDD', state: 'installed' }),
+        expect.objectContaining({ label: 'Plan-Reviewer', state: 'installed' }),
       ]),
     );
     expect(
       skills.filter(({ observed }) =>
-        observed?.includes('thoth-owned global skill'),
+        observed?.includes('package-provided skill'),
       ),
     ).toHaveLength(5);
+  });
+
+  test('status reports superseded legacy copies only when present, without modifying them', () => {
+    writeManagedConfig();
+    expect(JSON.stringify(getOpenCodeStatus(context()))).not.toContain(
+      '--move-legacy-opencode-skills',
+    );
+    const legacyPath = join(configRoot, 'skills', 'thoth-sdd');
+    mkdirSync(legacyPath, { recursive: true });
+    writeFileSync(join(legacyPath, 'SKILL.md'), 'user bytes');
+    const status = getOpenCodeStatus(context());
+    expect(JSON.stringify(status)).toContain('shadow');
+    expect(JSON.stringify(status)).toContain('--move-legacy-opencode-skills');
+    expect(readFileSync(join(legacyPath, 'SKILL.md'), 'utf8')).toBe(
+      'user bytes',
+    );
   });
 
   test('accepts required external skills from both OpenCode global roots', () => {
@@ -502,7 +543,9 @@ describe('OpenCode operations adapter v0.3', () => {
       writeRequiredSkill('tdd', 'agents'),
       writeRequiredSkill('progressive-context-router'),
       writeRequiredSkill('grill-me', 'agents'),
-      ...THOTH_OWNED_SKILL_NAMES.map((name) => writeRequiredSkill(name)),
+      ...THOTH_OWNED_SKILL_NAMES.map((name) =>
+        join(process.cwd(), 'skills', name, 'SKILL.md'),
+      ),
     ];
 
     const status = getOpenCodeStatus(context());
@@ -530,7 +573,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect([...sync.items, ...install.items]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          title: 'Synchronize global thoth-owned OpenCode skills',
+          title: 'Inspect package-provided thoth-owned OpenCode skills',
         }),
       ]),
     );
@@ -583,7 +626,7 @@ describe('OpenCode operations adapter v0.3', () => {
           ),
         ),
         skillName,
-      ).toBe(true);
+      ).toBe(false);
     }
     expect(installRequiredSkillMock).toHaveBeenCalledWith(
       expect.objectContaining({ skillName: 'grill-me' }),
@@ -644,7 +687,7 @@ describe('OpenCode operations adapter v0.3', () => {
         explorer: { variant: 'root-explorer', temperature: 0.25 },
         worker: { temperature: 0.75 },
       },
-      tmux: { enabled: true, layout: 'tiled', main_pane_size: 55 },
+      customRuntime: { enabled: true, layout: 'tiled', main_pane_size: 55 },
     });
     const plan = buildOpenCodeModelPlan(
       {
@@ -666,7 +709,11 @@ describe('OpenCode operations adapter v0.3', () => {
       preset: string;
       presets: Record<string, Record<string, Record<string, string | number>>>;
       agents: Record<string, Record<string, string | number>>;
-      tmux: { enabled: boolean; layout: string; main_pane_size: number };
+      customRuntime: {
+        enabled: boolean;
+        layout: string;
+        main_pane_size: number;
+      };
     };
 
     expect(result.applied).toBe(true);
@@ -691,7 +738,7 @@ describe('OpenCode operations adapter v0.3', () => {
       model: 'openai/gpt-5.6-terra',
       temperature: 0.75,
     });
-    expect(written.tmux).toEqual({
+    expect(written.customRuntime).toEqual({
       enabled: true,
       layout: 'tiled',
       main_pane_size: 55,
@@ -806,7 +853,7 @@ describe('OpenCode operations adapter v0.3', () => {
     };
     delete legacy.presets.agents;
     writeJson(liteConfigPath(), legacy);
-    writeJson(mainConfigPath(), { plugin: [EXECUTING_PLUGIN] });
+    writeJson(mainConfigPath(), { plugins: [EXECUTING_PLUGIN] });
     const rootOnlyLegacy = getOpenCodeStatus(context());
     expect(rootOnlyLegacy.state).toBe('drift');
     expect(rootOnlyLegacy.diagnostics).toEqual(

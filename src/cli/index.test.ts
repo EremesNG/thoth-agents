@@ -67,7 +67,6 @@ describe('CLI harness surface', () => {
         '--dry-run',
         '--no-tui',
         '--reset',
-        '--tmux=yes',
       ]),
     ).toEqual({
       command: 'install',
@@ -76,12 +75,22 @@ describe('CLI harness surface', () => {
         agent: 'opencode',
         dryRun: true,
         reset: true,
-        tmux: 'yes',
       },
     });
     expect(parseCliArgs(['install', '--skills=no'])).toEqual({
       command: 'error',
       message: 'Unsupported install option: --skills=no',
+    });
+  });
+
+  test.each([
+    '--tmux',
+    '--tmux=yes',
+    '--tmux=no',
+  ])('reports the removed install flag %s as unsupported', (flag) => {
+    expect(parseCliArgs(['install', flag])).toEqual({
+      command: 'error',
+      message: `Unsupported install option: ${flag}`,
     });
   });
 

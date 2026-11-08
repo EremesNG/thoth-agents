@@ -12,13 +12,96 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { transpileModule } from 'typescript';
+import { describe, expect, test, vi } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from './harness/core/owned-skills';
 import { SUPPORTED_HARNESSES } from './harness/registry';
 
 const pluginSourcePath = fileURLToPath(new URL('./index.ts', import.meta.url));
 
+const registration = vi.hoisted(() => ({
+  deps: { config: {}, directory: '/project' },
+  load: vi.fn(),
+  agents: vi.fn(),
+  tools: vi.fn(),
+  mcp: vi.fn(),
+  command: vi.fn(),
+  skills: vi.fn(),
+  permissions: vi.fn(),
+  delegation: vi.fn(),
+  session: vi.fn(),
+}));
+vi.mock('./opencode/context', () => ({
+  loadOpenCodeDependencies: registration.load,
+}));
+vi.mock('./opencode/agents', () => ({ registerAgents: registration.agents }));
+vi.mock('./opencode/tools', () => ({ registerTools: registration.tools }));
+vi.mock('./opencode/mcp', () => ({ registerMcp: registration.mcp }));
+vi.mock('./opencode/command', () => ({
+  registerCommand: registration.command,
+}));
+vi.mock('./opencode/skills', () => ({ registerSkills: registration.skills }));
+vi.mock('./opencode/permissions', () => ({
+  registerPermissions: registration.permissions,
+}));
+vi.mock('./opencode/delegation-hooks', () => ({
+  registerDelegationHooks: registration.delegation,
+}));
+vi.mock('./opencode/session-hooks', () => ({
+  registerSessionHooks: registration.session,
+}));
+
 describe('plugin runtime compatibility', () => {
+  test('erases OpenCode plugin imports from entry and registration runtime code', () => {
+    const paths = [
+      pluginSourcePath,
+      ...readdirSync('src/opencode')
+        .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+        .map((name) => join('src/opencode', name)),
+    ];
+    for (const path of paths) {
+      const { outputText } = transpileModule(readFileSync(path, 'utf8'), {
+        compilerOptions: { removeComments: true, verbatimModuleSyntax: true },
+      });
+      expect(outputText, path).not.toContain('@opencode/plugin');
+    }
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+    expect(packageJson.dependencies).not.toHaveProperty('@opencode/plugin');
+    expect(packageJson.devDependencies['@opencode/plugin']).toBe('2.2.5');
+  });
+  test('exports the built plugin for native local and npm resolution', () => {
+    const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+    expect(manifest.exports['.']).toEqual({
+      types: './dist/index.d.ts',
+      default: './dist/index.js',
+    });
+    expect(manifest.exports['./package.json']).toBe('./package.json');
+    expect(manifest.exports['./dist/*']).toBe('./dist/*');
+    expect(manifest.bin['thoth-agents']).toBe('./dist/cli/index.js');
+  });
+  test('exports a v2 plugin definition and registers each domain once per setup', async () => {
+    const { default: plugin } = await import('./index');
+    expect(plugin).toMatchObject({
+      id: 'thoth-agents',
+      setup: expect.any(Function),
+    });
+    const ctx = { location: { directory: '/project' } };
+    registration.load.mockReturnValue(registration.deps);
+    await plugin.setup(ctx as never);
+    expect(registration.load).toHaveBeenCalledExactlyOnceWith(ctx);
+    for (const register of [
+      registration.agents,
+      registration.tools,
+      registration.mcp,
+      registration.command,
+      registration.skills,
+      registration.permissions,
+      registration.delegation,
+      registration.session,
+    ]) {
+      expect(register).toHaveBeenCalledExactlyOnceWith(ctx, registration.deps);
+    }
+  });
   test('publishes one native Pi extension, one skill root, and five specialist assets', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(packageJson.keywords).toContain('pi-package');
@@ -72,8 +155,8 @@ describe('plugin runtime compatibility', () => {
 
     expect(source).not.toContain('createPhaseReminderHook');
     expect(source).not.toContain('createPostReadNudgeHook');
-    expect(source).toContain('createJsonErrorRecoveryHook');
-    expect(source).toContain('createDelegateTaskRetryHook');
+    expect(source).toContain('registerDelegationHooks');
+    expect(source).toContain('registerSessionHooks');
     expect([...SUPPORTED_HARNESSES].sort()).toEqual([
       'claude',
       'codex',
@@ -157,7 +240,6 @@ describe('plugin runtime compatibility', () => {
             '--agent=opencode',
             '--dry-run',
             '--no-tui',
-            '--tmux=no',
           ],
           {
             windowsHide: true,
@@ -176,7 +258,7 @@ describe('plugin runtime compatibility', () => {
 
         expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
         expect(result.stdout).toContain(
-          'Global thoth-owned OpenCode skills planned',
+          'Package-provided thoth-owned OpenCode skills planned',
         );
         for (const skillName of THOTH_OWNED_SKILL_NAMES) {
           expect(result.stdout).toContain(skillName);

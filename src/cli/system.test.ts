@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 // Mock process spawning before importing the module under test so the
-// host-independent assertions (isOpenCodeInstalled / isTmuxInstalled /
+// host-independent assertions (isOpenCodeInstalled /
 // getOpenCodeVersion) never spawn real processes. The fake reports a clean
 // exit (exitCode 0) and an empty stdout stream that `new Response(...)` can read.
 vi.mock('../utils/subprocess', () => ({
@@ -28,7 +28,6 @@ import {
   getOpenCodeVersion,
   getOpenCodeVersionInvocation,
   isOpenCodeInstalled,
-  isTmuxInstalled,
 } from './system';
 
 describe('system', () => {
@@ -36,11 +35,6 @@ describe('system', () => {
     // We don't necessarily want to depend on the host system
     // but for a basic test we can just check it returns a boolean
     const result = await isOpenCodeInstalled();
-    expect(typeof result).toBe('boolean');
-  });
-
-  test('isTmuxInstalled returns boolean', async () => {
-    const result = await isTmuxInstalled();
     expect(typeof result).toBe('boolean');
   });
 

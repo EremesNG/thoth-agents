@@ -6,42 +6,32 @@ export interface DelegateTaskErrorPattern {
 
 export const DELEGATE_TASK_ERROR_PATTERNS: DelegateTaskErrorPattern[] = [
   {
-    pattern: 'load_skills',
-    errorType: 'missing_load_skills',
-    fixHint: 'Add load_skills=[] (empty array when no skill is needed).',
-  },
-  {
-    pattern: 'category OR subagent_type',
-    errorType: 'mutual_exclusion',
-    fixHint:
-      'Provide only one: category (e.g., "unspecified-low") OR subagent_type (e.g., "explorer").',
-  },
-  {
-    pattern: 'Must provide either category or subagent_type',
-    errorType: 'missing_category_or_agent',
-    fixHint:
-      'Add either category="unspecified-low" or subagent_type="explorer".',
-  },
-  {
-    pattern: 'Unknown category',
-    errorType: 'unknown_category',
-    fixHint: 'Use a valid category listed in the error output.',
-  },
-  {
-    pattern: 'Unknown agent',
+    pattern: 'Unknown agent:',
     errorType: 'unknown_agent',
-    fixHint: 'Use a valid agent name from the available list.',
+    fixHint: 'Use an available agent name in the agent argument.',
   },
   {
-    pattern: 'Skills not found',
-    errorType: 'unknown_skills',
-    fixHint: 'Use valid skill names listed in the error output.',
+    pattern: 'cannot run as a subagent',
+    errorType: 'primary_agent',
+    fixHint: 'Choose a specialist agent, not a primary agent.',
   },
   {
-    pattern: 'is not allowed. Allowed agents:',
-    errorType: 'background_agent_not_allowed',
+    pattern: 'Subagent depth limit reached',
+    errorType: 'depth_limit',
     fixHint:
-      'Use one of the allowed agents shown in the error or delegate from a parent agent that can call this subagent.',
+      'Return to the root coordinator; nesting depth is 1. Do not retry nested delegation.',
+  },
+  {
+    pattern: 'Subagent denied:',
+    errorType: 'permission_denied',
+    fixHint:
+      'Return the permission blocker to the root coordinator; do not bypass the denial.',
+  },
+  {
+    pattern: 'Invalid arguments',
+    errorType: 'invalid_arguments',
+    fixHint:
+      'Supply agent, description and prompt; optional model, sessionID and background must have the native types.',
   },
 ];
 
@@ -51,23 +41,10 @@ export interface DetectedError {
 }
 
 export function detectDelegateTaskError(output: string): DetectedError | null {
-  if (!output || typeof output !== 'string') return null;
-
-  const hasErrorSignal =
-    output.includes('[ERROR]') ||
-    output.includes('Invalid arguments') ||
-    output.includes('is not allowed. Allowed agents:');
-
-  if (!hasErrorSignal) return null;
-
-  for (const pattern of DELEGATE_TASK_ERROR_PATTERNS) {
-    if (output.includes(pattern.pattern)) {
-      return {
-        errorType: pattern.errorType,
-        originalOutput: output,
-      };
-    }
-  }
-
-  return null;
+  const pattern = DELEGATE_TASK_ERROR_PATTERNS.find((entry) =>
+    output.includes(entry.pattern),
+  );
+  return pattern
+    ? { errorType: pattern.errorType, originalOutput: output }
+    : null;
 }

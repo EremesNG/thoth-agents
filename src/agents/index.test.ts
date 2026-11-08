@@ -1,7 +1,7 @@
-import type { AgentConfig } from '@opencode-ai/sdk/v2';
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
 import { SUBAGENT_NAMES } from '../config';
+import type { AgentConfig } from './agent-config';
 import { createAgents, getAgentConfigs, isSubagent } from './index';
 
 type PermissionRecord = Exclude<
@@ -175,7 +175,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
   test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt.length).toBeLessThanOrEqual(13_300);
+    // Trimmed v2 arguments/completion/gap guidance needs 13,521 characters (+225 cap).
+    expect(prompt.length).toBeLessThanOrEqual(13_525);
     expect(prompt).toContain('Root:');
     expect(prompt).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
@@ -220,7 +221,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const agent of createAgents()) {
       const length = agent.config.prompt?.length ?? 0;
       if (agent.name === 'orchestrator') {
-        expect(length, agent.name).toBeLessThanOrEqual(13_500);
+        expect(length, agent.name).toBeLessThanOrEqual(13_525);
       } else {
         expect(length, agent.name).toBeLessThan(5_000);
       }

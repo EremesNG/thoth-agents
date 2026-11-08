@@ -123,7 +123,7 @@ describe('memory governance contract', () => {
 
     expect(openCode).toContain('`question`');
     expect(openCode).toContain('todowrite');
-    expect(openCode).toContain('@orchestrator');
+    expect(openCode).toContain('subagent agent:"orchestrator"');
     expect(codex).toContain('`request_user_input`');
     expect(codex).toContain('functions.update_plan');
     expect(codex).toContain('orchestrator role agent');

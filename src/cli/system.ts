@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { spawn } from '../utils/subprocess';
 
@@ -157,17 +158,38 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
   return false;
 }
 
-export async function isTmuxInstalled(): Promise<boolean> {
+export const OPENCODE_VERSION_REQUIREMENT =
+  'OpenCode 2.2.5 or later is required; install or upgrade OpenCode before applying configuration.';
+
+export function isSupportedOpenCodeVersion(output: string | null): boolean {
+  const match =
+    /^(?:opencode\s+)?v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[\w.-]+)?$/i.exec(
+      output?.trim() ?? '',
+    );
+  if (!match) return false;
+  const [, major, minor, patch] = match;
+  return (
+    Number(major) > 2 ||
+    (Number(major) === 2 &&
+      (Number(minor) > 2 || (Number(minor) === 2 && Number(patch) >= 5)))
+  );
+}
+
+// Operation apply is synchronous; use the same invocation and version policy as install.
+export function getOpenCodeVersionSync(): string | null {
   try {
-    const proc = spawn(['tmux', '-V'], {
+    const invocation = getOpenCodeVersionInvocation(resolveOpenCodePath());
+    const [command, ...args] = invocation.command;
+    if (!command) return null;
+    const result = spawnSync(command, args, {
+      shell: invocation.options.shell,
       windowsHide: true,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      encoding: 'utf8',
+      timeout: OPENCODE_PROBE_TIMEOUT_MS,
     });
-    await proc.exited;
-    return proc.exitCode === 0;
+    return result.status === 0 ? result.stdout.trim() : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

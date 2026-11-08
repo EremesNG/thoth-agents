@@ -43,6 +43,7 @@ local
 .opencode/
 .ignore
 opencode
+!src/opencode/
 oh-my-opencode
 opencode.jsonc
 

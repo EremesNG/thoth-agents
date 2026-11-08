@@ -1,7 +1,6 @@
-import type { ToolDefinition } from '@opencode-ai/plugin';
 import { ast_grep_replace, ast_grep_search } from './tools';
 
-export const builtinTools: Record<string, ToolDefinition> = {
+export const builtinTools = {
   ast_grep_search,
   ast_grep_replace,
 };

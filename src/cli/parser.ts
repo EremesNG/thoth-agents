@@ -2,7 +2,6 @@ import { isAbsolute, resolve } from 'node:path';
 import { normalizeEffortSelection } from './model-effort';
 import { isInteractiveRuntime, type RuntimeContext } from './runtime';
 import type {
-  BooleanArg,
   CliModelRoleArg,
   CliOperationCommand,
   CliParseResult,
@@ -27,13 +26,6 @@ const operationCommands = new Set<CliOperationCommand>([
   'sync',
   'model',
 ]);
-
-function parseBooleanArg(name: string, value: string): BooleanArg {
-  if (value !== 'yes' && value !== 'no') {
-    throw new Error(`${name} must be yes or no.`);
-  }
-  return value;
-}
 
 function parseOperationHarness(value: string): OperationHarnessArg {
   if (
@@ -130,6 +122,8 @@ export function parseOperationArgs(args: string[]): OperationArgs {
       result.apply = true;
     } else if (arg === '--replace-legacy-agents') {
       result.replaceLegacyAgents = true;
+    } else if (arg === '--move-legacy-opencode-skills') {
+      result.moveLegacyOpenCodeSkills = true;
     } else if (arg === '--trust-hooks') {
       result.trustHooks = true;
     } else if (arg === '--dry-run') {
@@ -181,8 +175,8 @@ export function parseInstallArgs(args: string[]): InstallArgs {
     if (arg === undefined) break;
     if (arg === '--no-tui') {
       result.tui = false;
-    } else if (arg.startsWith('--tmux=')) {
-      result.tmux = parseBooleanArg('--tmux', arg.split('=')[1] ?? '');
+    } else if (arg === '--move-legacy-opencode-skills') {
+      result.moveLegacyOpenCodeSkills = true;
     } else if (arg === '--trust-hooks') {
       result.trustHooks = true;
     } else if (arg === '--dry-run') {

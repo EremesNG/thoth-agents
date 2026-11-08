@@ -14,10 +14,14 @@
 
 ## Invariants
 
-- OpenCode remains default.
-- OpenCode npm plugin loading does not expose package-relative native skills;
-  the CLI synchronizes the five canonical owned skill trees into
-  `~/.config/opencode/skills/`. Init never creates project-local skill copies.
+- OpenCode remains default and requires >=2.2.5. `package.json#exports["."]`
+  points to `dist/index.js`: the host prefers `server`, then the root export
+  for both local directories and npm packages. The v2 domain plugin registers
+  six roles, six tools, MCPs, `/thoth-init` and five owned skills directly
+  from absolute package paths. OpenCode 2.2.5 config-discovered same-ID copies
+  shadow them. Installation offers a confirmed backup move of legacy copies,
+  never deletion; otherwise it warns. See [CLI installation](cli-installation.md)
+  for consent, backup and restoration. Init is project-only.
 - Codex uses plugin-hook developer context: `SessionStart` injects the ambient
   root on startup/resume/clear/compact; `SubagentStart` selects five role prompts
   by `agent_type`. The manifest explicitly references `codex-hooks/hooks.json`;
@@ -84,7 +88,9 @@
   referenced from their own manifests, outside the other's auto-discovery path.
 - Pi adds verdicts through `src/pi.ts` on completion notifications,
   `subagent_result`, and task-mode `subagent_run`. OpenCode's
-  `src/hooks/oracle-gate-verdict/` appends verdicts to Oracle `task` output. All
+  `src/hooks/oracle-gate-verdict/` appends verdicts only to completed foreground
+  Oracle `subagent` output. Background synthetic completions have no mutable
+  admission hook and require the explicit compact-validator fallback. All
   delivery paths preserve the envelope. Root accepts exactly one verdict outside
   the fence, checks the assignment and record-prefix digest, and copies verdict
   and `recordSha256` into the record. It never re-emits an envelope to validate

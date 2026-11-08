@@ -13,7 +13,6 @@ import { loadPluginConfig } from '../config/loader';
 import {
   addPluginToOpenCodeConfig,
   detectCurrentConfig,
-  disableDefaultAgents,
   parseConfig,
   parseConfigFile,
   stripJsonComments,
@@ -116,10 +115,11 @@ describe('config-io', () => {
     expect(result.success).toBe(true);
 
     const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
-    expect(saved.plugin).toContain('thoth-agents@0.4.8');
-    expect(saved.plugin).not.toContain('thoth-agents@1.0.0');
-    expect(saved.plugin).not.toContain('thoth-agents@latest');
-    expect(saved.plugin.length).toBe(2);
+    expect(saved.plugins).toContain('thoth-agents@0.4.8');
+    expect(saved.plugin).toEqual(['other']);
+    expect(saved.plugins).not.toContain('thoth-agents@1.0.0');
+    expect(saved.plugins).not.toContain('thoth-agents@latest');
+    expect(saved.plugins.length).toBe(1);
   });
 
   test('replaces every managed entry form while preserving unrelated plugin order', () => {
@@ -151,7 +151,6 @@ describe('config-io', () => {
       'second',
       'third',
       'fourth',
-      'thoth-agents@0.4.8-beta.1',
     ]);
   });
 
@@ -196,12 +195,10 @@ describe('config-io', () => {
         spare: { worker: { model: 'other/worker' } },
       },
       customSetting: { keep: true },
-      tmux: { enabled: false },
+      customRuntime: { enabled: false },
     });
     writeFileSync(litePath, original);
-    expect(
-      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
-    ).toBe(true);
+    expect(writeLiteConfig({ reset: false }, litePath).success).toBe(true);
     const saved = JSON.parse(readFileSync(litePath, 'utf8'));
     expect(saved.preset).toBe('personal');
     expect(saved.presets.personal.oracle).toEqual({
@@ -220,7 +217,7 @@ describe('config-io', () => {
     expect(saved.presets.personal.custom).toEqual({ model: 'other/custom' });
     expect(saved.presets.spare).toEqual({ worker: { model: 'other/worker' } });
     expect(saved.customSetting).toEqual({ keep: true });
-    expect(saved.tmux).toEqual({ enabled: false });
+    expect(saved.customRuntime).toEqual({ enabled: false });
     expect(readFileSync(`${litePath}.bak`, 'utf8')).toBe(original);
     const active = loadPluginConfig(join(tmpDir, 'no-project'));
     expect(active.agents?.oracle?.model).toBe(expectedModel);
@@ -230,9 +227,7 @@ describe('config-io', () => {
     expect(rendered.oracle.variant).toBe(expectedVariant);
     expect(rendered.orchestrator.variant).toBe('high');
     expect(rendered.worker.variant).toBe('max');
-    expect(
-      writeLiteConfig({ hasTmux: false, reset: true }, litePath).success,
-    ).toBe(true);
+    expect(writeLiteConfig({ reset: true }, litePath).success).toBe(true);
     const reset = loadPluginConfig(join(tmpDir, 'no-project'));
     expect(reset.preset).toBe('openai');
     expect(reset.agents?.oracle).toEqual({
@@ -261,9 +256,7 @@ describe('config-io', () => {
       }),
     );
 
-    expect(
-      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
-    ).toBe(true);
+    expect(writeLiteConfig({ reset: false }, litePath).success).toBe(true);
     const rendered = getAgentConfigs(
       loadPluginConfig(join(tmpDir, 'no-project')),
     );
@@ -297,9 +290,7 @@ describe('config-io', () => {
       }),
     );
     for (let sync = 0; sync < 2; sync++) {
-      expect(
-        writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
-      ).toBe(true);
+      expect(writeLiteConfig({ reset: false }, litePath).success).toBe(true);
       expect(
         loadPluginConfig(join(tmpDir, 'no-project')).agents?.[role],
       ).toEqual({
@@ -329,9 +320,7 @@ describe('config-io', () => {
         agents: { oracle: { variant, temperature: 0.7 } },
       }),
     );
-    expect(
-      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
-    ).toBe(true);
+    expect(writeLiteConfig({ reset: false }, litePath).success).toBe(true);
     const active = loadPluginConfig(join(tmpDir, 'no-project'));
     expect(active.agents?.oracle).toEqual({
       model: variant === 'medium' ? 'openai/gpt-6.1-sol' : 'openai/gpt-6-astra',
@@ -344,9 +333,7 @@ describe('config-io', () => {
     paths.ensureConfigDir();
     const litePath = paths.getLiteConfig();
     writeFileSync(litePath, '{ broken');
-    expect(
-      writeLiteConfig({ hasTmux: false, reset: false }, litePath).success,
-    ).toBe(false);
+    expect(writeLiteConfig({ reset: false }, litePath).success).toBe(false);
     expect(readFileSync(litePath, 'utf8')).toBe('{ broken');
     expect(existsSync(`${litePath}.bak`)).toBe(false);
   });
@@ -356,7 +343,6 @@ describe('config-io', () => {
     paths.ensureConfigDir();
 
     const result = writeLiteConfig({
-      hasTmux: true,
       reset: false,
     });
     expect(result.success).toBe(true);
@@ -367,23 +353,25 @@ describe('config-io', () => {
     );
     expect(saved.preset).toBe('openai');
     expect(saved.presets.openai).toBeDefined();
-    expect(saved.tmux.enabled).toBe(true);
+    expect(saved).not.toHaveProperty('tmux');
   });
 
-  test('disableDefaultAgents disables explore and general agents', () => {
+  test('plugin install does not write agent disables', () => {
     const configPath = join(tmpDir, 'opencode', 'opencode.json');
     paths.ensureConfigDir();
     writeFileSync(configPath, JSON.stringify({}));
 
-    const result = disableDefaultAgents();
+    const result = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      pluginVersion: '0.4.8',
+    });
     expect(result.success).toBe(true);
 
     const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
-    expect(saved.agent.explore.disable).toBe(true);
-    expect(saved.agent.general.disable).toBe(true);
+    expect(saved).not.toHaveProperty('agent');
   });
 
-  test('updateOpenCodeMainConfig merges plugin and default-agent changes in one backup-preserving write', () => {
+  test('updateOpenCodeMainConfig pins the plugin while preserving user agent settings in one backup-preserving write', () => {
     const configPath = join(tmpDir, 'opencode', 'opencode.json');
     paths.ensureConfigDir();
     const original = `${JSON.stringify(
@@ -404,24 +392,22 @@ describe('config-io', () => {
     const result = updateOpenCodeMainConfig({
       ensurePlugin: true,
       pluginVersion: '0.4.8',
-      disableDefaults: true,
     });
 
     expect(result.success).toBe(true);
     expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(original);
     expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({
-      plugin: ['user-plugin', 'thoth-agents@0.4.8'],
+      plugin: ['user-plugin'],
+      plugins: ['thoth-agents@0.4.8'],
       theme: 'user-owned',
       agent: {
         explore: {
           model: 'user/explorer',
           temperature: 0.2,
-          disable: true,
         },
         general: {
           model: 'user/general',
           prompt: 'keep me',
-          disable: true,
         },
         custom: { model: 'user/custom' },
       },
@@ -436,7 +422,6 @@ describe('config-io', () => {
     const result = updateOpenCodeMainConfig({
       ensurePlugin: true,
       pluginVersion: '0.4.8',
-      disableDefaults: true,
     });
 
     expect(result.success).toBe(false);
@@ -460,18 +445,12 @@ describe('config-io', () => {
             orchestrator: { model: 'openai/gpt-4' },
           },
         },
-        tmux: { enabled: true },
       }),
     );
 
     const detected = detectCurrentConfig();
     expect(detected.isInstalled).toBe(true);
     expect(detected.hasOpenAI).toBe(true);
-    expect(detected.hasTmux).toBe(true);
-    expect(Object.keys(detected).sort()).toEqual([
-      'hasOpenAI',
-      'hasTmux',
-      'isInstalled',
-    ]);
+    expect(Object.keys(detected).sort()).toEqual(['hasOpenAI', 'isInstalled']);
   });
 });

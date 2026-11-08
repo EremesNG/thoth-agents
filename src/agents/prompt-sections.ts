@@ -424,9 +424,11 @@ function renderSubagentRules(
   dialect: HarnessPromptDialect,
 ): string {
   const rules = [
-    dialect.tools.progressTool
-      ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
-      : '- Do not delegate further; root owns progress.',
+    dialect.harness === 'opencode'
+      ? '- Do not delegate further; no `todowrite` (root-owned).'
+      : dialect.tools.progressTool
+        ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
+        : '- Do not delegate further; root owns progress.',
     '- Use terminating checks; avoid watch processes and indefinite waits.',
     '- Preserve operator-selected model/effort. Stop after the assigned outcome and checks; never expand scope to fill a timeout.',
     '- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.',

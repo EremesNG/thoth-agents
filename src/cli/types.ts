@@ -1,12 +1,11 @@
-export type BooleanArg = 'yes' | 'no';
 export type InstallAgent = 'opencode' | 'codex' | 'claude' | 'pi';
 
 export interface InstallArgs {
+  moveLegacyOpenCodeSkills?: boolean;
   tui: boolean;
   agent?: InstallAgent;
   localPackageRoot?: string;
   localPiRuntimeRoot?: string;
-  tmux?: BooleanArg;
   dryRun?: boolean;
   trustHooks?: boolean;
   reset?: boolean;
@@ -28,6 +27,7 @@ export interface CliModelRoleArg {
 }
 
 export interface OperationArgs {
+  moveLegacyOpenCodeSkills?: boolean;
   replaceLegacyAgents?: boolean;
   harness?: OperationHarnessArg;
   all?: boolean;
@@ -63,7 +63,6 @@ export interface OpenCodeConfig {
 
 export interface InstallConfig {
   agent: InstallAgent;
-  hasTmux: boolean;
   localPackageRoot?: string;
   localPiRuntimeRoot?: string;
   dryRun?: boolean;
@@ -79,7 +78,6 @@ export interface ConfigMergeResult {
 export interface DetectedConfig {
   isInstalled: boolean;
   hasOpenAI: boolean;
-  hasTmux: boolean;
 }
 
 import type { EffortSelection } from './model-effort';

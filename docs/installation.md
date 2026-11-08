@@ -14,8 +14,8 @@ orchestration layer that its plugin manifest cannot provide.
   provider-owned thoth-mem setup
 
 The five thoth-owned workflow skills are packaged. Codex and Claude discover
-them through their native plugin managers; the OpenCode installer synchronizes
-them into `~/.config/opencode/skills/`. The installer obtains the four mandatory
+them through their native plugin managers; OpenCode >=2.2.5 registers them
+directly from the installed package. The installer obtains the four mandatory
 external skills from their canonical repositories with `npx skills add`, then
 published installs invoke thoth-mem's public setup command. An explicit local Pi
 package install omits that provider step. Once installed, workflow operations load local
@@ -31,7 +31,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 
 | Harness | Native/plugin step | Required completion step |
 | --- | --- | --- |
-| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
+| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, registers package-owned skills and installs external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 | Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0`, `npm:@thoth-agents/pi-background-tasks@>=0.3.0` and `npm:@thoth-agents/pi-sidebar@>=0.3.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
@@ -46,9 +46,14 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | `--dry-run` | Print native-manager and thoth-agents plans; published installs also invoke thoth-mem with its zero-write `--plan` mode. |
 | `--reset` | Repair only thoth-agents-managed targets; it never becomes thoth-mem `--force`. |
 | `--no-tui` | Force the non-interactive path. |
-| `--tmux=yes\|no` | Configure OpenCode tmux integration; it does not apply to Codex or Claude. |
 
 ## OpenCode
+
+OpenCode **>=2.2.5** is required (v1 is not supported). The installer rejects
+missing, unparseable or older hosts before writing configuration.
+Config lives in `OPENCODE_CONFIG_DIR` when set, otherwise
+`${XDG_CONFIG_HOME:-~/.config}/opencode`. Host data, cache and state also follow
+`XDG_DATA_HOME`, `XDG_CACHE_HOME` and `XDG_STATE_HOME` respectively.
 
 ```bash
 npx thoth-agents@latest install --agent=opencode --dry-run
@@ -57,21 +62,31 @@ npx thoth-agents@latest install --agent=opencode
 
 `@latest` selects the CLI release to execute. The CLI resolves that package's
 version before any managed write and puts the exact version in OpenCode
-configuration, for example `thoth-agents@0.4.8`. It replaces bare, tagged, or
-older thoth-agents entries with one exact entry while preserving unrelated
-plugins. If package identity or version cannot be verified, installation fails
+configuration under v2 `plugins`, for example
+`{"plugins":["thoth-agents@0.11.0"]}`. Managed bare, tagged and older entries
+from both `plugins` and legacy `plugin` converge to one exact entry; unrelated
+plugins retain relative order. It no longer writes `agent.*.disable`. If package identity or version cannot be verified, installation fails
 before changing configuration and never substitutes `latest`.
 
-The CLI also writes the six-role OpenAI preset, synchronizes all five packaged
-thoth-owned skills into `~/.config/opencode/skills/`, and installs all four
-external skills with `npx skills add`. Status and repair verify the resulting
-global discovery targets. It then requires provider-owned thoth-mem setup to
-complete. Restart OpenCode and invoke `/thoth-init`; it only preflights and
-initializes missing `.thoth/` governance, including `.thoth/constitution.md`
-and `.thoth/specs/`, while preserving existing project-owned content. It refuses
-a legacy active OpenSpec tree rather than creating a duplicate store. SDD phases
-resolve references, templates and validators directly from the globally
-installed `thoth-sdd` skill.
+The plugin registers the six-role OpenAI preset, makes orchestrator default,
+removes native explore/general, and exposes `/thoth-init` plus five owned
+skills at package `skills/<name>/SKILL.md` paths. OpenCode 2.2.5 applies
+config-discovered skills after external plugins, so same-ID copies shadow the
+packaged skills. The installer offers a confirmed backup move, never deletion
+(see [legacy skill recovery](#opencode-legacy-skill-copies)).
+It installs four external skills with `npx skills add`, then requires
+provider-owned thoth-mem setup to complete. Restart and invoke `/thoth-init` to
+initialize missing `.thoth/` governance, preserving project content. SDD loads
+its references, templates and validators from the packaged skill.
+
+Delegation uses native `subagent` with host permissions; only orchestrator may
+delegate. Foreground Oracle gate results receive a compact verdict; background
+synthetic completions require the explicit validator fallback. Retry fallback
+uses bounded `switchModel`; keyed instructions survive compaction without
+per-request system/history rewrites. Host LSP overrides have no plugin API in
+2.2.5 and must be configured separately. See
+[runtime contracts](agent/runtime-integrations.md) for details.
+
 An older globally materialized `thoth-work` skill may remain after upgrade and
 may still appear in native discovery. Inspect it and explicitly retire it if
 appropriate; setup never deletes unknown or modified global content. No Kimi,
@@ -705,11 +720,47 @@ This command requires Pi's interactive TUI and tool-discovery APIs; unsupported
 hosts receive a diagnostic without configuration writes. Reload Pi after updating
 the extension to register the command.
 
+## OpenCode legacy skill copies
+
+OpenCode 2.2.5 lets config-discovered same-ID copies shadow packaged skills.
+Install/Update detects the five owned names under `skills/` and `skill/` in the
+resolved OpenCode config directory and legacy `~/.config/opencode`, deduplicating
+identical realpaths. Interactive CLI/TUI asks before moving them. For an explicit
+non-interactive move, use:
+
+```bash
+npx thoth-agents@latest install --agent=opencode --move-legacy-opencode-skills
+```
+
+Without confirmation, originals stay untouched and the installer warns about
+shadowing. Dry-run and status report copies and planned moves without mutation.
+Confirmed moves use same-volume rename only, never deletion or overwrite, into:
+
+```text
+$XDG_DATA_HOME/thoth-agents/.opencode-legacy-skills/<UTC>-<rand>/<source-label>/<name>
+```
+
+The default data root is `~/.local/share`. Each run creates a new exclusive
+backup directory; failed moves (including cross-device renames) leave originals
+intact and warn. Results identify exactly which copies moved.
+
+To restore, stop OpenCode and move a backed-up `<name>` directory back to its
+reported original `skills/<name>` or `skill/<name>` location. Do not overwrite an
+existing directory: move it aside first. Restart OpenCode; restoring a copy
+intentionally restores its precedence over the packaged skill.
+
+The host scanner skips dot-prefixed entries, so the hidden backup is not
+rediscovered even when a skill root names the ancestor `thoth-agents` data
+directory. Residual limitation: explicitly configuring a skill root **inside**
+the backup, or creating a non-dot symlink into it, can expose the copies again.
+Do not configure either if you want package skills to remain authoritative.
+
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,
 `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer`.
-OpenCode installation materializes these five under its global user skill root;
+OpenCode registers these five from package paths; config-discovered same-ID
+copies shadow them in 2.2.5 (see [legacy skill recovery](#opencode-legacy-skill-copies));
 `thoth-init` never installs them or copies their workflow templates into a
 project.
 
@@ -762,7 +813,7 @@ constitution; historical material remains preserved. Project work is not mirrore
 
 | Harness | Limitation |
 | --- | --- |
-| OpenCode | CLI installation is required for global owned skills, external skills, and thoth-mem setup; npm plugins cannot declare package-relative native skill roots, and only the OpenAI built-in preset ships. |
+| OpenCode | Requires OpenCode >=2.2.5; package-owned skills register at runtime. CLI installation supplies external skills and thoth-mem setup. Only the OpenAI preset ships; host LSP overrides must be configured separately. |
 | Codex | Plugins cannot register agent roles; the CLI supplies thin global TOMLs and config, while trusted plugin hooks supply root/role prompts. CLI and provider setup remain mandatory. Installed-role selection and some permissions remain instruction-level. |
 | Claude Code | Native marketplace/install steps must precede the CLI and provider setup. Native tool denials protect read-only roles, but fine-grained write-path restriction remains instruction-level. |
 | Pi | Pi extensions execute with the invoking user's system permissions; tool allowlists are not an OS sandbox, project-local resources require trust, and continuation/live steering depend on the installed delegation runtime. |
@@ -787,7 +838,7 @@ Applied Update is installation-equivalent for the selected harness:
 
 | Harness | Complete refresh order |
 | --- | --- |
-| OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
+| OpenCode | Exact `plugins` pin and managed configuration, package-provided owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
 | Pi | Receipt-bound first-party package proof, five specialist synchronization, nine minimum-constrained selected packages (including task list, theme, background tasks and sidebar), exact grep.app entry, required external skills, provider setup, then the CLI record |
@@ -827,11 +878,9 @@ CLI-managed global agents, skills, configuration, or provider setup were
 refreshed. Use `status` to compare the executing CLI version with the recorded
 complete-install version.
 
-OpenCode runtime checks only notify when a newer release exists. They do not
-rewrite the exact plugin entry, invalidate package state, or install packages in
-the background. Follow the notification by rerunning
-`npx thoth-agents@latest install --agent=opencode` or applying interactive or
-command-line Update.
+OpenCode runtime update checking and tmux integration (including `--tmux`) are
+removed. The plugin never checks for releases, notifies, installs packages or
+rewrites its pin. Use the latest CLI installer or explicitly applied Update.
 
 ## Status, update, and repair
 

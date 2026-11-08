@@ -1,6 +1,7 @@
 // LSP Tools - 4 essential tools only
 
-import { type ToolDefinition, tool } from '@opencode-ai/plugin/tool';
+import { z } from 'zod';
+import { defineTool } from '../define-tool';
 import { DEFAULT_MAX_DIAGNOSTICS, DEFAULT_MAX_REFERENCES } from './constants';
 import type {
   Diagnostic,
@@ -20,16 +21,18 @@ import {
 const formatError = (e: unknown): string =>
   `Error: ${e instanceof Error ? e.message : String(e)}`;
 
-export const lsp_goto_definition: ToolDefinition = tool({
+export const lsp_goto_definition = defineTool({
+  name: 'lsp_goto_definition',
   description: 'Jump to symbol definition. Find WHERE something is defined.',
-  args: {
-    filePath: tool.schema.string().describe('Absolute path to the file'),
-    line: tool.schema.number().min(1).describe('1-based line number'),
-    character: tool.schema.number().min(0).describe('0-based character offset'),
-  },
-  execute: async (args) => {
+  input: z.object({
+    filePath: z.string().describe('Absolute path to the file'),
+    line: z.number().min(1).describe('1-based line number'),
+    character: z.number().min(0).describe('0-based character offset'),
+  }),
+  execute: async (args, context) => {
     try {
       const result = await withLspClient(args.filePath, async (client) => {
+        context.signal.throwIfAborted();
         return (await client.definition(
           args.filePath,
           args.line,
@@ -53,21 +56,23 @@ export const lsp_goto_definition: ToolDefinition = tool({
   },
 });
 
-export const lsp_find_references: ToolDefinition = tool({
+export const lsp_find_references = defineTool({
+  name: 'lsp_find_references',
   description:
     'Find ALL usages/references of a symbol across the entire workspace.',
-  args: {
-    filePath: tool.schema.string().describe('Absolute path to the file'),
-    line: tool.schema.number().min(1).describe('1-based line number'),
-    character: tool.schema.number().min(0).describe('0-based character offset'),
-    includeDeclaration: tool.schema
+  input: z.object({
+    filePath: z.string().describe('Absolute path to the file'),
+    line: z.number().min(1).describe('1-based line number'),
+    character: z.number().min(0).describe('0-based character offset'),
+    includeDeclaration: z
       .boolean()
       .optional()
       .describe('Include the declaration itself'),
-  },
-  execute: async (args) => {
+  }),
+  execute: async (args, context) => {
     try {
       const result = await withLspClient(args.filePath, async (client) => {
+        context.signal.throwIfAborted();
         return (await client.references(
           args.filePath,
           args.line,
@@ -98,19 +103,21 @@ export const lsp_find_references: ToolDefinition = tool({
   },
 });
 
-export const lsp_diagnostics: ToolDefinition = tool({
+export const lsp_diagnostics = defineTool({
+  name: 'lsp_diagnostics',
   description:
     'Get errors, warnings, hints from language server BEFORE running build.',
-  args: {
-    filePath: tool.schema.string().describe('Absolute path to the file'),
-    severity: tool.schema
+  input: z.object({
+    filePath: z.string().describe('Absolute path to the file'),
+    severity: z
       .enum(['error', 'warning', 'information', 'hint', 'all'])
       .optional()
       .describe('Filter by severity level'),
-  },
-  execute: async (args) => {
+  }),
+  execute: async (args, context) => {
     try {
       const result = await withLspClient(args.filePath, async (client) => {
+        context.signal.throwIfAborted();
         return (await client.diagnostics(args.filePath)) as
           | { items?: Diagnostic[] }
           | Diagnostic[]
@@ -150,18 +157,20 @@ export const lsp_diagnostics: ToolDefinition = tool({
   },
 });
 
-export const lsp_rename: ToolDefinition = tool({
+export const lsp_rename = defineTool({
+  name: 'lsp_rename',
   description:
     'Rename symbol across entire workspace. APPLIES changes to all files.',
-  args: {
-    filePath: tool.schema.string().describe('Absolute path to the file'),
-    line: tool.schema.number().min(1).describe('1-based line number'),
-    character: tool.schema.number().min(0).describe('0-based character offset'),
-    newName: tool.schema.string().describe('New symbol name'),
-  },
-  execute: async (args) => {
+  input: z.object({
+    filePath: z.string().describe('Absolute path to the file'),
+    line: z.number().min(1).describe('1-based line number'),
+    character: z.number().min(0).describe('0-based character offset'),
+    newName: z.string().describe('New symbol name'),
+  }),
+  execute: async (args, context) => {
     try {
       const edit = await withLspClient(args.filePath, async (client) => {
+        context.signal.throwIfAborted();
         return (await client.rename(
           args.filePath,
           args.line,
@@ -169,6 +178,7 @@ export const lsp_rename: ToolDefinition = tool({
           args.newName,
         )) as WorkspaceEdit | null;
       });
+      context.signal.throwIfAborted();
       const result = applyWorkspaceEdit(edit);
       return formatApplyResult(result);
     } catch (e) {

@@ -92,26 +92,6 @@ export const AgentOverrideConfigSchema = z.object({
   variant: z.string().optional().catch(undefined),
 });
 
-// Tmux layout options
-export const TmuxLayoutSchema = z.enum([
-  'main-horizontal', // Main pane on top, agents stacked below
-  'main-vertical', // Main pane on left, agents stacked on right
-  'tiled', // All panes equal size grid
-  'even-horizontal', // All panes side by side
-  'even-vertical', // All panes stacked vertically
-]);
-
-export type TmuxLayout = z.infer<typeof TmuxLayoutSchema>;
-
-// Tmux integration configuration
-export const TmuxConfigSchema = z.object({
-  enabled: z.boolean().default(false),
-  layout: TmuxLayoutSchema.default('main-vertical'),
-  main_pane_size: z.number().min(20).max(80).default(60), // percentage for main pane
-});
-
-export type TmuxConfig = z.infer<typeof TmuxConfigSchema>;
-
 export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 
 /** Normalized model entry with optional per-model variant. */
@@ -169,7 +149,6 @@ export const PluginConfigSchema = z.object({
     .record(SupportedAgentRecordKeySchema, AgentOverrideConfigSchema)
     .optional(),
   disabled_mcps: z.array(z.string()).optional(),
-  tmux: TmuxConfigSchema.optional(),
   fallback: FailoverConfigSchema.optional(),
   codex: CodexGenerationConfigSchema.optional(),
   claudeCode: ClaudeCodeGenerationConfigSchema.optional(),

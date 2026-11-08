@@ -8,6 +8,7 @@ import { requestCodexHookConsent } from './codex-hook-consent';
 import { CODEX_ROLE_NAMES } from './codex-install';
 import { doctorCodex, uninstallCodex } from './codex-lifecycle';
 import { install } from './install';
+import { requestOpenCodeSkillMoveConsent } from './opencode-skill-consent';
 import {
   getOperationHarness,
   listOperationHarnesses,
@@ -301,11 +302,12 @@ Commands:
   model                 Preview role model/provider settings
 
 Options:
-  --tmux=yes|no          Enable tmux integration (yes/no)
   --no-tui               Non-interactive mode
   --dry-run              Simulate install without writing files
   --apply                Apply a reviewed update, sync, or model plan
   --trust-hooks          Consent to Codex plugin hooks running outside the sandbox (install/update)
+  --move-legacy-opencode-skills
+                         Confirm backup move of shadowing owned OpenCode skills (install/update)
   --reset                Repair managed installer-owned targets
   --agent=opencode|codex|claude|pi
                          Select OpenCode plugin install (default), Codex/Claude setup, or complete Pi-native setup
@@ -322,7 +324,7 @@ Generate options:
 
 OpenCode plugin config and the npm binary are separate surfaces.
 OpenCode loads the plugin with config such as:
-  plugin: ["${exactPluginEntry}"]
+  plugins: ["${exactPluginEntry}"]
 
 That plugin entry does not create a global thoth-agents command.
 Run this CLI through a global install, npx, or pnpm dlx.
@@ -333,9 +335,11 @@ The official record is $XDG_CONFIG_HOME/thoth-agents/install-state.json,
 or ~/.config/thoth-agents/install-state.json when XDG_CONFIG_HOME is unset.
 Codex and Claude marketplace versions remain native-manager-owned and do not prove
 that CLI-managed agents, skills, configuration, or provider setup are aligned.
-Runtime release checks notify only; use the latest CLI install or interactive CLI Update.
+Use the latest CLI install or interactive CLI Update to change the pinned release.
 
-OpenCode install configures the adaptive six-role roster and native task delegation.
+OpenCode 2.2.5 or later is required before applying configuration.
+OpenCode install configures the adaptive six-role roster and native subagent delegation.
+The plugin provides its five owned skills from its installed package; no global copies are written.
 Provider capability is external and reported only from caller-supplied evidence.
 
 External required skills are installed for every harness:
@@ -355,7 +359,7 @@ Examples:
   pnpm dlx thoth-agents@latest install --agent=claude --dry-run
   pnpm dlx thoth-agents@latest install --agent=pi --dry-run
   node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path>"
-  pnpm dlx thoth-agents install --no-tui --tmux=no
+  pnpm dlx thoth-agents install --no-tui
   pnpm dlx thoth-agents install --dry-run
   pnpm dlx thoth-agents install --reset
   pnpm dlx thoth-agents generate --harness=codex --dry-run
@@ -631,6 +635,13 @@ async function runOperationCommand(
       buildOperationPlan(command, args, {
         ...services.operationContext(),
         trustHooks,
+        moveLegacyOpenCodeSkills:
+          selectedHarness(args) === 'opencode'
+            ? await requestOpenCodeSkillMoveConsent({
+                moveLegacyOpenCodeSkills: args.moveLegacyOpenCodeSkills,
+                dryRun: !args.apply || args.dryRun,
+              })
+            : false,
         replaceLegacyAgents: args.replaceLegacyAgents,
       }),
       args,

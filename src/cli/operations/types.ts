@@ -293,6 +293,7 @@ export interface OperationApplyResult {
 }
 
 export interface OperationContext {
+  moveLegacyOpenCodeSkills?: boolean;
   cwd: string;
   env?: Readonly<Record<string, string | undefined>>;
 }

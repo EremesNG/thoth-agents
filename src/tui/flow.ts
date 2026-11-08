@@ -151,12 +151,13 @@ export async function runModelProfilesFlow(ports: FlowPorts): Promise<void> {
       placeholder: 'Search models',
       current,
       options: provider.models.map((model) => ({
-        title: model.name,
+        // Names can collide across Codex/API models and dated snapshots. Put
+        // the exact local ID first; a non-shrinking footer crowds it out.
+        title: model.id.slice(provider.id.length + 1),
         value: model.id,
-        description: model.id,
-        footer: model.variants.length
-          ? `variants: ${model.variants.join(', ')}`
-          : undefined,
+        description: model.variants.length
+          ? `${model.name} · variants: ${model.variants.join(', ')}`
+          : model.name,
       })),
       search: searchOptions,
     });

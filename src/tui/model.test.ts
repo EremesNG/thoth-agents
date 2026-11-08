@@ -11,12 +11,23 @@ import {
   profileTitle,
   roleLabel,
   roleViews,
+  searchOptions,
   validateProfileName,
   variantsOf,
   withRole,
 } from './model';
 
 const state = makeState();
+it('searches model labels, variants and exact qualified IDs', () => {
+  const option = {
+    title: 'gpt-6.1-sol-codex',
+    value: 'openai-codex-2/gpt-6.1-sol-codex',
+    description: 'GPT-6.1 Sol · variants: low, high',
+  };
+  for (const query of ['GPT-6.1 Sol', 'codex high', option.value.toUpperCase()])
+    expect(searchOptions(query, [option])).toEqual([option]);
+  expect(searchOptions('missing', [option])).toEqual([]);
+});
 const rows = profileRows(state);
 const byKey = (key: string) => {
   const row = rows.find((item) => item.key === key);

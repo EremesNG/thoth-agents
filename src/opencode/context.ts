@@ -124,7 +124,7 @@ export function loadOpenCodeDependencies(
         roster,
       );
       // The virtual default is an exact no-op, including retry eligibility and
-      // variant-less arrays. Named profiles prepend to the same configured chain.
+      // variant-less arrays. Named profiles prepend to eligible retry tails.
       if (profileState.selection.name === 'default') {
         if (baseArrays[name])
           effectiveModelArrays[name] = structuredClone(baseArrays[name]);
@@ -135,7 +135,9 @@ export function loadOpenCodeDependencies(
       } else {
         const chain = mergeProfileModelChain(
           profileState.roles[role],
-          configuredChains[name],
+          config.fallback?.enabled === false && !modelArrayMap[name]
+            ? []
+            : configuredChains[name],
         );
         effectiveModelArrays[name] = chain;
         runtimeChains[name] = chain.map(({ id }) => id);

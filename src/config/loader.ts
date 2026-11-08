@@ -1,10 +1,34 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { z } from 'zod';
 import { stripJsonComments } from '../cli/config-io';
 import { getConfigDir } from '../cli/paths';
 import { type PluginConfig, PluginConfigSchema } from './schema';
 
 const PROMPTS_DIR_NAME = 'thoth-agents';
+type PluginConfigInput = z.input<typeof PluginConfigSchema>;
+
+/** Keep schema-normalized values only where the source explicitly supplied a key. */
+function withoutInjectedDefaults(parsed: unknown, raw: unknown): unknown {
+  if (
+    parsed === null ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    raw === null ||
+    typeof raw !== 'object'
+  ) {
+    return parsed;
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed)
+      .filter(([key]) => Object.hasOwn(raw, key))
+      .map(([key, value]) => [
+        key,
+        withoutInjectedDefaults(value, (raw as Record<string, unknown>)[key]),
+      ]),
+  );
+}
 
 /**
  * Load and validate plugin configuration from a specific file path.
@@ -13,12 +37,12 @@ const PROMPTS_DIR_NAME = 'thoth-agents';
  * Logs warnings for validation errors and unexpected read errors.
  *
  * @param configPath - Absolute path to the config file
- * @returns Validated config object, or null if loading failed
+ * @returns Validated config input without injected defaults, or null if loading failed
  */
 function loadConfigFromPath(
   configPath: string,
   unsupportedKeyPaths: Set<string>,
-): PluginConfig | null {
+): PluginConfigInput | null {
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
     // Use stripJsonComments to support JSONC format (comments and trailing commas)
@@ -38,7 +62,9 @@ function loadConfigFromPath(
       return null;
     }
 
-    return result.data;
+    // Preserve schema stripping/normalization, but defer injected defaults so
+    // omitted project fields cannot replace user values during merging.
+    return withoutInjectedDefaults(result.data, rawConfig) as PluginConfigInput;
   } catch (error) {
     // File doesn't exist or isn't readable - this is expected and fine
     if (
@@ -91,9 +117,9 @@ function deepMerge<T extends Record<string, unknown>>(
   if (!base) return override;
   if (!override) return base;
 
-  const result = { ...base } as T;
+  const result = Object.assign(Object.create(null), base) as T;
   for (const key of Object.keys(override) as (keyof T)[]) {
-    const baseVal = base[key];
+    const baseVal = Object.hasOwn(base, key) ? base[key] : undefined;
     const overrideVal = override[key];
 
     if (
@@ -146,7 +172,7 @@ export function loadPluginConfig(directory: string): PluginConfig {
   const projectConfigPath = findConfigPath(projectConfigBasePath);
 
   const unsupportedKeyPaths = new Set<string>();
-  let config: PluginConfig = userConfigPath
+  let config: PluginConfigInput = userConfigPath
     ? (loadConfigFromPath(userConfigPath, unsupportedKeyPaths) ?? {})
     : {};
 
@@ -170,7 +196,16 @@ export function loadPluginConfig(directory: string): PluginConfig {
     );
   }
 
-  return config;
+  const result = PluginConfigSchema.safeParse(config);
+  if (!result.success) {
+    const sourcePaths = [userConfigPath, projectConfigPath].filter(Boolean);
+    console.warn(
+      `[thoth-agents] Invalid merged config from ${sourcePaths.join(', ')}:`,
+    );
+    console.warn(result.error.format());
+    return {};
+  }
+  return result.data;
 }
 
 /**

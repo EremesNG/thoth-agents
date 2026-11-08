@@ -524,6 +524,162 @@ describe('deepMerge behavior', () => {
   });
 });
 
+describe('config defaults after merging', () => {
+  let tempDir: string;
+  let originalEnv: typeof process.env;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'config-defaults-test-'));
+    originalEnv = { ...process.env };
+    process.env.OPENCODE_CONFIG_DIR = path.join(tempDir, 'global');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    process.env = originalEnv;
+    vi.restoreAllMocks();
+  });
+
+  function writeConfigs(user: unknown, project: unknown) {
+    const paths = [
+      path.join(tempDir, 'global', 'thoth-agents.json'),
+      path.join(tempDir, '.opencode', 'thoth-agents.json'),
+    ];
+    for (const [index, config] of [user, project].entries()) {
+      fs.mkdirSync(path.dirname(paths[index]), { recursive: true });
+      fs.writeFileSync(paths[index], JSON.stringify(config));
+    }
+    return paths;
+  }
+
+  test('does not re-enable user fallback when project only sets timeout', () => {
+    writeConfigs(
+      { fallback: { enabled: false } },
+      { fallback: { timeoutMs: 5000 } },
+    );
+
+    expect(loadPluginConfig(tempDir).fallback).toEqual({
+      enabled: false,
+      timeoutMs: 5000,
+      retryDelayMs: 500,
+      chains: {},
+    });
+  });
+
+  test('strips unknown prototype keys before merging fallback config', () => {
+    writeConfigs(
+      { fallback: {} },
+      JSON.parse('{"fallback":{"__proto__":{"enabled":"invalid"}}}'),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(loadPluginConfig(tempDir).fallback).toEqual({
+      enabled: true,
+      timeoutMs: 15000,
+      retryDelayMs: 500,
+      chains: {},
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test('preserves stripping and catch normalization across merged agent overrides', () => {
+    writeConfigs(
+      { agents: { oracle: { model: 'user/model', variant: 'high' } } },
+      {
+        agents: {
+          oracle: { variant: 42, unknownSetting: 'ignored' },
+          constructor: { model: 'project/model' },
+        },
+        fallback: { constructor: { enabled: 'invalid' }, prototype: 'ignored' },
+      },
+    );
+
+    const config = loadPluginConfig(tempDir);
+
+    expect(config).toMatchObject({
+      agents: {
+        oracle: { model: 'user/model', variant: undefined },
+        constructor: { model: 'project/model' },
+      },
+      fallback: { enabled: true },
+    });
+    expect(config.agents?.oracle).not.toHaveProperty('unknownSetting');
+    expect(config.fallback).not.toHaveProperty('prototype');
+    expect(Object.hasOwn(config.fallback ?? {}, 'constructor')).toBe(false);
+  });
+
+  test('applies fallback defaults when neither source specifies enabled', () => {
+    writeConfigs({ fallback: {} }, { fallback: { timeoutMs: 5000 } });
+
+    expect(loadPluginConfig(tempDir).fallback).toEqual({
+      enabled: true,
+      timeoutMs: 5000,
+      retryDelayMs: 500,
+      chains: {},
+    });
+  });
+
+  test('allows the project to explicitly re-enable user fallback', () => {
+    writeConfigs(
+      { fallback: { enabled: false } },
+      { fallback: { enabled: true } },
+    );
+
+    expect(loadPluginConfig(tempDir).fallback?.enabled).toBe(true);
+  });
+
+  test('preserves all user defaulted settings omitted by project objects', () => {
+    const user = {
+      fallback: {
+        enabled: false,
+        timeoutMs: 7000,
+        retryDelayMs: 100,
+        chains: { oracle: ['user/model'] },
+      },
+      codex: { enabled: true, dryRun: false },
+      claudeCode: { enabled: true, dryRun: false },
+    };
+    writeConfigs(user, { fallback: {}, codex: {}, claudeCode: {} });
+
+    expect(loadPluginConfig(tempDir)).toEqual(user);
+  });
+
+  test('applies generation defaults only for configured objects', () => {
+    writeConfigs({ codex: {} }, { claudeCode: {} });
+
+    expect(loadPluginConfig(tempDir)).toEqual({
+      codex: { enabled: false, dryRun: true },
+      claudeCode: { enabled: false, dryRun: true },
+    });
+  });
+
+  test.each([
+    'user',
+    'project',
+  ])('attributes invalid %s config before merging', (source) => {
+    const valid = { fallback: { enabled: false } };
+    const invalid = {
+      fallback: { enabled: 'invalid' },
+      agents: { oracle: { model: 'invalid-file/model' } },
+    };
+    const paths = writeConfigs(
+      source === 'user' ? invalid : valid,
+      source === 'project' ? invalid : valid,
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const config = loadPluginConfig(tempDir);
+
+    expect(config.fallback?.enabled).toBe(false);
+    expect(config.agents).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      `[thoth-agents] Invalid config at ${paths[source === 'user' ? 0 : 1]}:`,
+    );
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[1]?.[0]).toHaveProperty('fallback.enabled._errors');
+  });
+});
+
 describe('unsupported legacy config keys', () => {
   let tempDir: string;
   let originalEnv: typeof process.env;

@@ -1,3 +1,4 @@
+export { createAdaptiveToolRegistrar } from './adaptive-tool-exposure.js';
 export type {
   AnimationEffectKind,
   AnimationLevel,

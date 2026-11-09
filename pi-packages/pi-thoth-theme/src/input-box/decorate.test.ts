@@ -13,6 +13,8 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadConfig } from '../shared/config.ts';
+import { applyLiveSettings } from '../shared/live-settings.ts';
 import type { StatusSnapshotProvider } from '../status-line/snapshot.ts';
 import {
   decorateEditor,
@@ -82,6 +84,39 @@ function mouse(overrides: Partial<TuiMouseEvent> = {}): TuiMouseEvent {
     ...overrides,
   };
 }
+
+describe('input-box live settings', () => {
+  it('refreshes a mounted native editor at the same width after icon changes', () => {
+    const { editor, deps, tui, decorate } = setup();
+    const config = loadConfig('missing-live-editor-fixture.json');
+    Object.defineProperty(deps, 'iconMode', { get: () => config.icons });
+    deps.getStatusSnapshot = () => ({
+      cwd: '/workspace',
+      gitBranch: 'main',
+      modelName: 'Test Model',
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    const initial = editor.render(80);
+    const invalidate = vi.spyOn(editor, 'invalidate');
+    applyLiveSettings(
+      config,
+      { icons: 'ascii' },
+      { requestRender: tui.requestRender },
+    );
+    const updated = editor.render(80);
+    expect(updated).not.toEqual(initial);
+    expect(updated.join('\n')).toContain('dir /workspace');
+    expect(invalidate).toHaveBeenCalledOnce();
+    applyLiveSettings(
+      config,
+      { icons: 'nerd' },
+      { requestRender: tui.requestRender },
+    );
+    expect(editor.render(80)).toEqual(initial);
+  });
+});
 
 describe('input-box mouse geometry', () => {
   it('leaves wheel events unhandled so Pi can route them natively', () => {

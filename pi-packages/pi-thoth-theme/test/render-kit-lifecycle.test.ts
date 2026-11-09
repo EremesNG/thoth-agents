@@ -8,7 +8,8 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { getRenderKit } from '@thoth-agents/pi-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import thothTheme from '../src/index.ts';
+import thothTheme, { applyLiveSettings } from '../src/index.ts';
+import * as themeConfig from '../src/shared/config.ts';
 
 type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
 let agentDir: string;
@@ -59,11 +60,57 @@ afterEach(async () => {
     await session.emit({ type: 'session_shutdown', reason: 'quit' });
   }
   sessions.length = 0;
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   rmSync(agentDir, { recursive: true, force: true });
 });
 
 describe('theme render-kit lifecycle', () => {
+  it('republishes only its own live kit, retaining init-only module enablement', async () => {
+    const config = themeConfig.loadConfig('missing-live-kit-fixture.json');
+    config.statusLine.enabled = false;
+    config.welcome.enabled = false;
+    vi.spyOn(themeConfig, 'loadConfig').mockReturnValueOnce(config);
+    const older = loadTheme();
+    await older.emit({ type: 'session_start', reason: 'startup' });
+    const oldKit = getRenderKit();
+    applyLiveSettings(
+      config,
+      { icons: 'ascii', tools: { enabled: false, collapsed: 'line' } },
+      { requestRender() {} },
+    );
+    expect(getRenderKit()).not.toBe(oldKit);
+    expect(getRenderKit()?.icon?.('branch')).toBe('git');
+    const newer = loadTheme();
+    await newer.emit({ type: 'session_start', reason: 'startup' });
+    const newerKit = getRenderKit();
+    applyLiveSettings(config, { icons: 'unicode' }, { requestRender() {} });
+    expect(getRenderKit()).toBe(newerKit);
+    await older.emit({ type: 'session_shutdown', reason: 'quit' });
+    expect(getRenderKit()).toBe(newerKit);
+  });
+
+  it('does not install saved module toggles on another session_start before reload', async () => {
+    const config = themeConfig.loadConfig('missing-live-kit-fixture.json');
+    config.tools.enabled = false;
+    config.statusLine.enabled = false;
+    config.welcome.enabled = false;
+    vi.spyOn(themeConfig, 'loadConfig').mockReturnValueOnce(config);
+    const session = loadTheme(false);
+    await session.emit({ type: 'session_start', reason: 'startup' });
+    applyLiveSettings(
+      config,
+      {
+        tools: { enabled: true },
+        statusLine: { enabled: true },
+        welcome: { enabled: true },
+      },
+      { requestRender() {} },
+    );
+    await session.emit({ type: 'session_start', reason: 'startup' });
+    expect(getRenderKit()).toBeUndefined();
+  });
+
   it('publishes only on interactive session start and withdraws on shutdown', async () => {
     const session = loadTheme();
     expect(getRenderKit()).toBeUndefined();

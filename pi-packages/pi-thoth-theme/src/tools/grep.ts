@@ -7,6 +7,7 @@ import type {
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, fitExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
@@ -156,60 +157,62 @@ function compactMatches(
 }
 
 export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GrepContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
-      const args = (rawArgs ?? {}) as GrepArgs;
-      const pattern = escapeControlCharacters(String(args.pattern ?? ''));
-      const rawPath = args.path ? String(args.path) : '';
-      const searchPath = rawPath
-        ? ` in ${escapeControlCharacters(formatDisplayPath(rawPath, context?.cwd ?? cwd))}`
-        : '';
-      const density = collapsedDensity(config, context?.expanded);
-      if (density) {
-        return compactCall(density, theme, context, config, {
-          title: 'Grep',
-          summary: `"${pattern}"${searchPath}`,
-        });
-      }
-      const icon = getToolIcon('search', config.icons);
-      const borderTone = getToolBorderTone(context);
-
-      const comp = createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Grep')) : theme.fg('toolTitle', 'Grep')} ${theme.fg('syntaxString', `"${pattern}"`)}${theme.fg('dim', searchPath)}`;
-
-        if (!isFramedContext(context)) {
-          return renderBox(theme, [], safeWidth, {
-            ellipsis,
-            title,
-            footer,
-            isError: borderTone === 'error',
-            isSuccess: borderTone === 'success',
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        syncElapsedTicker(context);
+        const args = (rawArgs ?? {}) as GrepArgs;
+        const pattern = escapeControlCharacters(String(args.pattern ?? ''));
+        const rawPath = args.path ? String(args.path) : '';
+        const searchPath = rawPath
+          ? ` in ${escapeControlCharacters(formatDisplayPath(rawPath, context?.cwd ?? cwd))}`
+          : '';
+        const density = collapsedDensity(config, context?.expanded);
+        if (density) {
+          return compactCall(density, theme, context, config, {
+            title: 'Grep',
+            summary: `"${pattern}"${searchPath}`,
           });
         }
+        const icon = getToolIcon('search', config.icons);
+        const borderTone = getToolBorderTone(context);
 
-        if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, borderTone);
+        const comp = createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Grep')) : theme.fg('toolTitle', 'Grep')} ${theme.fg('syntaxString', `"${pattern}"`)}${theme.fg('dim', searchPath)}`;
+
+          if (!isFramedContext(context)) {
+            return renderBox(theme, [], safeWidth, {
+              ellipsis,
+              title,
+              footer,
+              isError: borderTone === 'error',
+              isSuccess: borderTone === 'success',
+            });
+          }
+
+          if (hasToolResult(context)) {
+            return renderFrameTop(theme, title, safeWidth, borderTone);
+          }
+
+          return [
+            ...renderFrameTop(theme, title, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
+
+        if (context?.state) {
+          context.state.callComponent = comp;
         }
-
-        return [
-          ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        return comp;
       });
-
-      if (context?.state) {
-        context.state.callComponent = comp;
-      }
-      return comp;
     },
 
     renderResult(
@@ -235,211 +238,223 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
       }
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const status = options?.isPartial
-        ? 'running'
-        : isErr
-          ? 'failed'
-          : 'completed';
-      const footerOptions = {
-        status,
-        context: { ...context, isPartial: options?.isPartial },
-      } as const;
-      syncElapsedTicker(footerOptions.context);
-      const borderTone = getToolBorderTone({
-        isError: isErr,
-        isPartial: options?.isPartial,
-      });
-      const textOutput = getRawResultText(result);
-      const resultDensity = collapsedDensity(config, options?.expanded);
-      if (resultDensity) {
-        const grepArgs = (context?.args ?? {}) as GrepArgs;
-        const where = grepArgs.path
-          ? ` in ${formatDisplayPath(String(grepArgs.path), context?.cwd ?? cwd)}`
-          : '';
-        const found = isErr ? undefined : compactMatches(textOutput, result);
-        return compactResult(
-          resultDensity,
-          theme,
-          context,
-          config,
-          Boolean(options?.isPartial),
-          {
-            title: 'Grep',
-            summary: `"${String(grepArgs.pattern ?? '')}"${where}`,
-            counts: [found?.count],
-            continuation: found?.first ?? 'no matches found',
-            errorLine: firstLine(textOutput) || 'Grep failed',
-          },
-        );
-      }
-
-      if (isErr) {
-        return createComponent((width: number) => {
-          const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions, config.icons);
-          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Grep failed'))}`;
-          if (!isFramedContext(context)) {
-            return [
-              truncateToWidth(errText, safeWidth),
-              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-            ];
-          }
-          return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const isErr = Boolean(context?.isError);
+        const status = options?.isPartial
+          ? 'running'
+          : isErr
+            ? 'failed'
+            : 'completed';
+        const footerOptions = {
+          status,
+          context: { ...context, isPartial: options?.isPartial },
+        } as const;
+        syncElapsedTicker(footerOptions.context);
+        const borderTone = getToolBorderTone({
+          isError: isErr,
+          isPartial: options?.isPartial,
         });
-      }
-
-      const output = parseGrepOutput(textOutput, result.details);
-
-      return createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions, config.icons);
-        if (safeWidth === 0) return [];
-        if (output.raw) {
-          const { rawLines, notices } = output;
-          const visibleRawLines = options?.expanded
-            ? rawLines
-            : rawLines.slice(0, 8);
-          const lines = visibleRawLines.map((rawLine) =>
-            theme.fg('toolOutput', escapeControlCharacters(rawLine)),
+        const textOutput = getRawResultText(result);
+        const resultDensity = collapsedDensity(config, options?.expanded);
+        if (resultDensity) {
+          const grepArgs = (context?.args ?? {}) as GrepArgs;
+          const where = grepArgs.path
+            ? ` in ${formatDisplayPath(String(grepArgs.path), context?.cwd ?? cwd)}`
+            : '';
+          const found = isErr ? undefined : compactMatches(textOutput, result);
+          return compactResult(
+            resultDensity,
+            theme,
+            context,
+            config,
+            Boolean(options?.isPartial),
+            {
+              title: 'Grep',
+              summary: `"${String(grepArgs.pattern ?? '')}"${where}`,
+              counts: [found?.count],
+              continuation: found?.first ?? 'no matches found',
+              errorLine: firstLine(textOutput) || 'Grep failed',
+            },
           );
-          if (visibleRawLines.length < rawLines.length) {
-            lines.push(
-              theme.fg(
-                'dim',
-                `${semanticIcon('ellipsis', config.icons)} ${rawLines.length - visibleRawLines.length} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
-              ),
-            );
-          }
-          if (notices.length > 0) lines.push('');
-          for (const notice of notices) {
-            lines.push(theme.fg('warning', notice));
-          }
-          if (!isFramedContext(context)) {
-            const rawWithPrefix = lines.map((l) => (l ? `  ${l}` : '  '));
-            return renderBox(theme, rawWithPrefix, safeWidth, {
-              ellipsis,
-              footer,
-              isSuccess: borderTone === 'success',
-            });
-          }
-          return [
-            ...lines.flatMap((l) =>
-              renderFrameRow(
+        }
+
+        if (isErr) {
+          return createComponent((width: number) => {
+            const safeWidth = Math.max(0, width);
+            const footer = toolFooter(theme, footerOptions, config.icons);
+            const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Grep failed'))}`;
+            if (!isFramedContext(context)) {
+              return [
+                truncateToWidth(errText, safeWidth),
+                ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+              ];
+            }
+            return [
+              ...renderFrameRow(
                 theme,
-                l ? `  ${l}` : '  ',
+                errText,
                 safeWidth,
                 borderTone,
                 ellipsis,
               ),
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          });
         }
 
-        const { matches } = output;
-        const totalItems = matches.length;
-        if (totalItems === 0) {
-          if (!isFramedContext(context)) {
+        const output = parseGrepOutput(textOutput, result.details);
+
+        return createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const footer = toolFooter(theme, footerOptions, config.icons);
+          if (safeWidth === 0) return [];
+          if (output.raw) {
+            const { rawLines, notices } = output;
+            const visibleRawLines = options?.expanded
+              ? rawLines
+              : rawLines.slice(0, 8);
+            const lines = visibleRawLines.map((rawLine) =>
+              theme.fg('toolOutput', escapeControlCharacters(rawLine)),
+            );
+            if (visibleRawLines.length < rawLines.length) {
+              lines.push(
+                theme.fg(
+                  'dim',
+                  `${semanticIcon('ellipsis', config.icons)} ${rawLines.length - visibleRawLines.length} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+                ),
+              );
+            }
+            if (notices.length > 0) lines.push('');
+            for (const notice of notices) {
+              lines.push(theme.fg('warning', notice));
+            }
+            if (!isFramedContext(context)) {
+              const rawWithPrefix = lines.map((l) => (l ? `  ${l}` : '  '));
+              return renderBox(theme, rawWithPrefix, safeWidth, {
+                ellipsis,
+                footer,
+                isSuccess: borderTone === 'success',
+              });
+            }
             return [
-              truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+              ...lines.flatMap((l) =>
+                renderFrameRow(
+                  theme,
+                  l ? `  ${l}` : '  ',
+                  safeWidth,
+                  borderTone,
+                  ellipsis,
+                ),
+              ),
               ...renderFrameBottom(theme, footer, safeWidth, borderTone),
             ];
           }
-          return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('dim', 'no matches found'),
-              safeWidth,
-              borderTone,
-              ellipsis,
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
 
-        const groupEntries = groupMatches(matches);
-        const rawLines: string[] = [];
-
-        const maxGroups = options?.expanded ? groupEntries.length : 3;
-        const visibleGroups = groupEntries.slice(0, maxGroups);
-        let renderedItemCount = 0;
-
-        for (let gi = 0; gi < visibleGroups.length; gi++) {
-          const [file, fileMatches] = visibleGroups[gi];
-          const isLastGroup =
-            gi === visibleGroups.length - 1 &&
-            visibleGroups.length === groupEntries.length;
-          const groupBranch = isLastGroup ? '└─' : '├─';
-          const fileIcon = getFileIcon(file, config.icons);
-          const actualMatches = fileMatches.filter((m) => !m.isContext).length;
-          const matchCountLabel = `(${actualMatches} ${actualMatches === 1 ? 'match' : 'matches'})`;
-
-          const fileHeader = `${theme.fg('dim', groupBranch)} ${theme.fg('accent', fileIcon)} ${theme.fg('toolTitle', escapeControlCharacters(file))} ${theme.fg('dim', matchCountLabel)}`;
-          rawLines.push(fileHeader);
-
-          const maxMatches = options?.expanded ? fileMatches.length : 2;
-          const visibleMatches = fileMatches.slice(0, maxMatches);
-          renderedItemCount += visibleMatches.length;
-
-          const matchBranchPrefix = isLastGroup
-            ? '     '
-            : `  ${theme.fg('dim', '│')}  `;
-          for (const m of visibleMatches) {
-            const separator = m.isContext ? '- ' : ': ';
-            const lineNum = theme.fg(
-              'dim',
-              `${m.line.padStart(4, ' ')}${separator}`,
-            );
-            const content = theme.fg(
-              m.isContext ? 'dim' : 'toolOutput',
-              escapeControlCharacters(m.content),
-            );
-            rawLines.push(`${matchBranchPrefix}${lineNum}${content}`);
-          }
-
-          if (
-            fileMatches.length > visibleMatches.length &&
-            !options?.expanded
-          ) {
-            const moreFileMatches = fileMatches.length - visibleMatches.length;
-            rawLines.push(
-              `${matchBranchPrefix}${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${moreFileMatches} more`)}`,
-            );
-          }
-        }
-
-        const remainingItems = totalItems - renderedItemCount;
-        if (
-          !options?.expanded &&
-          (groupEntries.length > maxGroups || remainingItems > 0)
-        ) {
-          const hiddenFiles = groupEntries.length - visibleGroups.length;
-          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remainingItems} more matches across ${hiddenFiles} files${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
-          rawLines.push(summary);
-        }
-
-        if (!isFramedContext(context)) {
-          return [
-            ...rawLines.map((line) =>
-              truncateToWidth(
-                fitExpandHint(`  ${line}`, safeWidth, ellipsis),
+          const { matches } = output;
+          const totalItems = matches.length;
+          if (totalItems === 0) {
+            if (!isFramedContext(context)) {
+              return [
+                truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+                ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+              ];
+            }
+            return [
+              ...renderFrameRow(
+                theme,
+                theme.fg('dim', 'no matches found'),
                 safeWidth,
+                borderTone,
+                ellipsis,
               ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
+          const groupEntries = groupMatches(matches);
+          const rawLines: string[] = [];
+
+          const maxGroups = options?.expanded ? groupEntries.length : 3;
+          const visibleGroups = groupEntries.slice(0, maxGroups);
+          let renderedItemCount = 0;
+
+          for (let gi = 0; gi < visibleGroups.length; gi++) {
+            const [file, fileMatches] = visibleGroups[gi];
+            const isLastGroup =
+              gi === visibleGroups.length - 1 &&
+              visibleGroups.length === groupEntries.length;
+            const groupBranch = isLastGroup ? '└─' : '├─';
+            const fileIcon = getFileIcon(file, config.icons);
+            const actualMatches = fileMatches.filter(
+              (m) => !m.isContext,
+            ).length;
+            const matchCountLabel = `(${actualMatches} ${actualMatches === 1 ? 'match' : 'matches'})`;
+
+            const fileHeader = `${theme.fg('dim', groupBranch)} ${theme.fg('accent', fileIcon)} ${theme.fg('toolTitle', escapeControlCharacters(file))} ${theme.fg('dim', matchCountLabel)}`;
+            rawLines.push(fileHeader);
+
+            const maxMatches = options?.expanded ? fileMatches.length : 2;
+            const visibleMatches = fileMatches.slice(0, maxMatches);
+            renderedItemCount += visibleMatches.length;
+
+            const matchBranchPrefix = isLastGroup
+              ? '     '
+              : `  ${theme.fg('dim', '│')}  `;
+            for (const m of visibleMatches) {
+              const separator = m.isContext ? '- ' : ': ';
+              const lineNum = theme.fg(
+                'dim',
+                `${m.line.padStart(4, ' ')}${separator}`,
+              );
+              const content = theme.fg(
+                m.isContext ? 'dim' : 'toolOutput',
+                escapeControlCharacters(m.content),
+              );
+              rawLines.push(`${matchBranchPrefix}${lineNum}${content}`);
+            }
+
+            if (
+              fileMatches.length > visibleMatches.length &&
+              !options?.expanded
+            ) {
+              const moreFileMatches =
+                fileMatches.length - visibleMatches.length;
+              rawLines.push(
+                `${matchBranchPrefix}${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${moreFileMatches} more`)}`,
+              );
+            }
+          }
+
+          const remainingItems = totalItems - renderedItemCount;
+          if (
+            !options?.expanded &&
+            (groupEntries.length > maxGroups || remainingItems > 0)
+          ) {
+            const hiddenFiles = groupEntries.length - visibleGroups.length;
+            const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remainingItems} more matches across ${hiddenFiles} files${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
+            rawLines.push(summary);
+          }
+
+          if (!isFramedContext(context)) {
+            return [
+              ...rawLines.map((line) =>
+                truncateToWidth(
+                  fitExpandHint(`  ${line}`, safeWidth, ellipsis),
+                  safeWidth,
+                ),
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
+          return [
+            ...rawLines.flatMap((line) =>
+              renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
-        }
-
-        return [
-          ...rawLines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        });
       });
     },
   };

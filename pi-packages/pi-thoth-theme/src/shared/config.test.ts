@@ -9,7 +9,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, saveAnimationLevel } from './config.ts';
+import { loadConfig, saveAnimationLevel, saveThemeConfig } from './config.ts';
+
+vi.mock('node:crypto', () => ({ randomUUID: () => 'config-test-temp' }));
 
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof fs>()),
@@ -41,6 +43,73 @@ describe('collapsed tool density configuration', () => {
   }) => {
     writeFileSync(path, JSON.stringify({ tools: { collapsed } }));
     expect(loadConfig(path).tools.collapsed).toBe('frame');
+  });
+});
+
+describe('general settings persistence', () => {
+  it('never overwrites or cleans up a temporary file owned by another writer', () => {
+    writeFileSync(path, '{"unknown":true}');
+    const temporary = `${path}.config-test-temp.tmp`;
+    writeFileSync(temporary, 'another writer');
+    expect(() => saveThemeConfig({ icons: 'ascii' }, path)).toThrow();
+    expect(readFileSync(path, 'utf8')).toBe('{"unknown":true}');
+    expect(readFileSync(temporary, 'utf8')).toBe('another writer');
+  });
+
+  it('cleans its temporary file after a failed write without replacing disk settings', () => {
+    writeFileSync(path, '{"unknown":true}');
+    vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
+      throw new Error('write denied');
+    });
+    expect(() => saveThemeConfig({ icons: 'ascii' }, path)).toThrow(
+      'write denied',
+    );
+    expect(readFileSync(path, 'utf8')).toBe('{"unknown":true}');
+    expect(readdirSync(directory)).toEqual(['pi-thoth-theme.json']);
+  });
+  it('merges patches into the latest disk settings, including nested unknown fields', () => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        icons: 'nerd',
+        animation: 'full',
+        unknown: 42,
+        tools: { enabled: true, respectPackages: ['custom'], custom: true },
+        statusLine: { enabled: true, subscriptionProviders: ['custom'] },
+      }),
+    );
+    saveThemeConfig(
+      {
+        icons: 'ascii',
+        tools: { collapsed: 'line' },
+        statusLine: { enabled: false },
+      },
+      path,
+    );
+    saveThemeConfig(
+      {
+        animation: 'off',
+        inputBox: { enabled: false },
+        welcome: { enabled: false },
+        tools: { enabled: false },
+      },
+      path,
+    );
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      icons: 'ascii',
+      animation: 'off',
+      unknown: 42,
+      tools: {
+        enabled: false,
+        collapsed: 'line',
+        respectPackages: ['custom'],
+        custom: true,
+      },
+      statusLine: { enabled: false, subscriptionProviders: ['custom'] },
+      inputBox: { enabled: false },
+      welcome: { enabled: false },
+    });
+    expect(readdirSync(directory)).toEqual(['pi-thoth-theme.json']);
   });
 });
 
@@ -107,7 +176,7 @@ describe('animation configuration', () => {
     const before = readFileSync(path);
     const rename = vi.spyOn(fs, 'renameSync');
     expect(() => saveAnimationLevel('off', path)).toThrow(
-      `Cannot save animation to ${path}: fix the file first; expected valid JSON containing an object.`,
+      `Cannot save theme settings to ${path}: fix the file first; expected valid JSON containing an object.`,
     );
     expect(readFileSync(path)).toEqual(before);
     expect(rename).not.toHaveBeenCalled();

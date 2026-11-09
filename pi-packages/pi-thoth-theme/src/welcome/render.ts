@@ -150,8 +150,12 @@ function buildSessionRows(
       1,
       maxWidth - visibleWidth(bulletPrefix) - ageWidth,
     );
+    const title =
+      s.fullName && s.fullName.length > 45
+        ? `${s.fullName.slice(0, 44)}${icon('ellipsis', mode)}`
+        : s.name;
     const name = cMuted(
-      truncateToWidth(s.name, maxNameWidth, icon('ellipsis', mode)),
+      truncateToWidth(title, maxNameWidth, icon('ellipsis', mode)),
     );
     return ` ${cDim(bullet)} ${name}${cDim(age)}`;
   });

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
+  closeSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -85,9 +87,18 @@ export function isAnimationLevel(value: unknown): value is AnimationLevel {
   return ANIMATION_LEVELS.some((level) => level === value);
 }
 
-/** Replace just the setting, preserving producer-owned and unknown JSON fields. */
-export function saveAnimationLevel(
-  animation: AnimationLevel,
+export interface ThemeConfigPatch {
+  icons?: IconMode;
+  animation?: AnimationLevel;
+  statusLine?: { enabled?: boolean };
+  inputBox?: { enabled?: boolean };
+  tools?: { enabled?: boolean; collapsed?: ToolDensity };
+  welcome?: { enabled?: boolean };
+}
+
+/** Reread and patch settings without replacing producer-owned/unknown fields. */
+export function saveThemeConfig(
+  patch: ThemeConfigPatch,
   configPath = defaultConfigPath(),
 ): void {
   let contents = '{}';
@@ -104,21 +115,38 @@ export function saveAnimationLevel(
     config = value as Record<string, unknown>;
   } catch {
     throw new Error(
-      `Cannot save animation to ${configPath}: fix the file first; expected valid JSON containing an object.`,
+      `Cannot save theme settings to ${configPath}: fix the file first; expected valid JSON containing an object.`,
     );
+  }
+  const updated = { ...config, ...patch };
+  for (const key of ['statusLine', 'inputBox', 'tools', 'welcome'] as const) {
+    if (patch[key] !== undefined) {
+      updated[key] = { ...asObject(config[key]), ...patch[key] };
+    }
   }
   mkdirSync(dirname(configPath), { recursive: true });
   const temporary = `${configPath}.${randomUUID()}.tmp`;
+  // Acquire ownership before entering cleanup: an exclusive-open collision
+  // must not remove another writer's file.
+  const file = openSync(temporary, 'wx', 0o600);
   try {
-    writeFileSync(
-      temporary,
-      `${JSON.stringify({ ...config, animation }, null, 2)}\n`,
-      { flag: 'wx', mode: 0o600 },
-    );
+    try {
+      writeFileSync(file, `${JSON.stringify(updated, null, 2)}\n`);
+    } finally {
+      closeSync(file);
+    }
     renameSync(temporary, configPath);
   } finally {
     rmSync(temporary, { force: true });
   }
+}
+
+/** Backwards-compatible animation-only save. */
+export function saveAnimationLevel(
+  animation: AnimationLevel,
+  configPath = defaultConfigPath(),
+): void {
+  saveThemeConfig({ animation }, configPath);
 }
 
 export function loadConfig(configPath = defaultConfigPath()): ThemeConfig {

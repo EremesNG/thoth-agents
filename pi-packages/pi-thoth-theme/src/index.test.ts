@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -79,6 +73,7 @@ function loadTheme(config: Partial<ThemeConfig> = {}, hasUI = true) {
   };
   const ctx = {
     hasUI,
+    mode: 'tui',
     ui,
     get getSettings() {
       return settingsAccess();
@@ -88,13 +83,6 @@ function loadTheme(config: Partial<ThemeConfig> = {}, hasUI = true) {
   thothTheme(pi);
 
   return {
-    async animation(args: string) {
-      const command = registerCommand.mock.calls.find(
-        ([name]) => name === 'thoth-animation',
-      )?.[1];
-      if (!command) throw new Error('thoth-animation was not registered');
-      await command.handler(args, ctx as Parameters<typeof command.handler>[1]);
-    },
     registerCommand,
     registerTool,
     registerToolRenderer,
@@ -133,170 +121,11 @@ describe('animation control', () => {
     });
   });
 
-  it('marks the current level in the selector, saves its choice and applies without restart', async () => {
-    const session = loadTheme({ animation: 'reduced' });
-    await session.start();
-    session.ui.select.mockResolvedValue('minimal — only the working indicator');
-    await session.animation('');
-    expect(session.ui.select).toHaveBeenCalledWith('Thoth animation', [
-      'full — everything',
-      'reduced (current) — spinners and working indicator; no border breathing/shimmer',
-      'minimal — only the working indicator',
-      'off — nothing',
-    ]);
-    expect(getAnimationLevel()).toBe('minimal');
-    expect(
-      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8'))
-        .animation,
-    ).toBe('minimal');
-    expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
-      frames: ['△', '◭', '▲', '◮'],
-      intervalMs: 200,
-    });
-  });
-
-  it('describes effect levels in command and argument help without changing the full default', async () => {
-    const session = loadTheme({}, false);
-    expect(getAnimationLevel()).toBe('full');
-    const command = session.registerCommand.mock.calls.find(
-      ([name]) => name === 'thoth-animation',
-    )?.[1];
-    expect(command?.description).toContain('full: everything');
-    expect(command?.description).toContain(
-      'reduced: spinners and working indicator; no border breathing/shimmer',
-    );
-    expect(command?.description).toContain(
-      'minimal: only the working indicator',
-    );
-    expect(command?.description).toContain('off: nothing');
-    await session.animation('');
-    await session.animation('slow');
-    for (const [message, type] of session.ui.notify.mock.calls) {
-      expect(type).toBe('error');
-      expect(message).toContain('full: everything');
-      expect(message).toContain(
-        'reduced: spinners and working indicator; no border breathing/shimmer',
-      );
-      expect(message).toContain('minimal: only the working indicator');
-      expect(message).toContain('off: nothing');
-    }
-    expect(session.ui.notify).toHaveBeenCalledTimes(2);
-    expect(session.ui.select).not.toHaveBeenCalled();
-    expect(getAnimationLevel()).toBe('full');
-  });
-
-  it('applies a direct argument immediately and uses a mode-aware static native glyph', async () => {
-    const session = loadTheme({ icons: 'ascii' });
-    await session.start();
-    await session.animation('off');
-    expect(session.ui.select).not.toHaveBeenCalled();
-    expect(getAnimationLevel()).toBe('off');
-    expect(session.ui.setWorkingIndicator).toHaveBeenLastCalledWith({
-      frames: ['*'],
-      intervalMs: 500,
-    });
-    expect(
-      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')),
-    ).toEqual({ icons: 'ascii', animation: 'off' });
-  });
-
-  it('rejects invalid arguments visibly and leaves disk and the current level unchanged', async () => {
-    const session = loadTheme({ animation: 'reduced' });
-    const before = readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8');
-    await session.animation('slow');
-    expect(session.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining('full, reduced, minimal, off'),
-      'error',
-    );
-    expect(session.ui.select).not.toHaveBeenCalled();
-    expect(getAnimationLevel()).toBe('reduced');
-    expect(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')).toBe(
-      before,
-    );
-  });
-
-  it('saves a selection of the current marked level', async () => {
-    const session = loadTheme({ animation: 'reduced' });
-    session.ui.select.mockResolvedValue(
-      'reduced (current) — spinners and working indicator; no border breathing/shimmer',
-    );
-    await session.animation('');
-    expect(getAnimationLevel()).toBe('reduced');
-    expect(session.ui.notify).toHaveBeenLastCalledWith(
-      'Thoth animation: reduced',
-      'info',
-    );
-    expect(
-      JSON.parse(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')),
-    ).toEqual({ animation: 'reduced' });
-  });
-
-  it('reports a failed save without applying the new level or native indicator', async () => {
-    const session = loadTheme({ animation: 'reduced' });
-    const path = join(agentDir, 'pi-thoth-theme.json');
-    rmSync(path);
-    mkdirSync(path);
-    await session.animation('off');
-    expect(getAnimationLevel()).toBe('reduced');
-    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
-    expect(session.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining('Could not save animation'),
-      'error',
-    );
-  });
-
-  it.each([
-    '{ "icons": "ascii",\n',
-    '["hand-written", "settings"]\n',
-    '"hand-written settings"\n',
-    'null\n',
-    '42\n',
-    'false\n',
-  ])('reports invalid existing config %j without changing disk or the applied/persisted level', async (contents) => {
-    const session = loadTheme({ animation: 'reduced' });
-    const path = join(agentDir, 'pi-thoth-theme.json');
-    writeFileSync(path, contents);
-    const before = readFileSync(path);
-    await session.animation('off');
-    expect(readFileSync(path)).toEqual(before);
-    expect(getAnimationLevel()).toBe('reduced');
-    expect(session.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `Could not save animation: Cannot save animation to ${path}`,
-      ),
-      'error',
-    );
-    expect(session.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining('fix the file first'),
-      'error',
-    );
-    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
-    // Session startup reapplies the in-memory config, which must remain reduced.
-    setAnimationLevel('minimal');
-    await session.start();
-    expect(getAnimationLevel()).toBe('reduced');
-    expect(readFileSync(path)).toEqual(before);
-  });
-
-  it('creates a missing config with only animation and applies it immediately', async () => {
-    const session = loadTheme({ animation: 'reduced' });
-    const path = join(agentDir, 'pi-thoth-theme.json');
-    rmSync(path);
-    await session.animation('minimal');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
-      animation: 'minimal',
-    });
-    expect(getAnimationLevel()).toBe('minimal');
-  });
-
-  it('cancels the selector without changing configuration', async () => {
-    const session = loadTheme({ animation: 'minimal' });
-    session.ui.select.mockResolvedValue(undefined);
-    await session.animation('');
-    expect(getAnimationLevel()).toBe('minimal');
-    expect(readFileSync(join(agentDir, 'pi-thoth-theme.json'), 'utf8')).toBe(
-      '{"animation":"minimal"}',
-    );
+  it('registers /thoth-theme and no longer registers the retired animation command', () => {
+    const session = loadTheme();
+    const names = session.registerCommand.mock.calls.map(([name]) => name);
+    expect(names).toContain('thoth-theme');
+    expect(names).not.toContain('thoth-animation');
   });
 });
 

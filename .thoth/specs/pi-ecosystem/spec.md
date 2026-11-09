@@ -294,7 +294,7 @@ When Thoth theme tool rendering is enabled, the Pi `codemode` tool is drawn by t
 
 - **GIVEN** a codemode call whose details list nested calls and the default `frame` density
 - **WHEN** it renders collapsed
-- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors 
+- **THEN** it shows up to eight nested calls with name, status and duration and a count of the remaining calls, and expanded it shows the script, output and errors
 
 ### Requirement: Codemode default activation
 
@@ -538,13 +538,13 @@ Subagent tool results and progress updates MUST build task details through one e
 
 ### Requirement: Animation intensity
 
-`@thoth-agents/pi-thoth-theme` MUST offer an `animation` setting in `pi-thoth-theme.json` with the levels `full`, `reduced`, `minimal` and `off`, defaulting to `full` when missing or malformed, changeable at runtime through `/thoth-animation` and persisted. Levels MUST select which effects animate, never their speed: `full` animates continuous effects (input-border breathing and label shimmer), secondary running indicators (sidebar and work-panel rows, tool card footers, foreground subagent progress, AskCodex and AskAntigravity cards) and the primary working indicator (the input-box working glyph and the native Pi working indicator); `reduced` animates the secondary and primary indicators; `minimal` animates only the primary working indicator; `off` animates nothing. `@thoth-agents/pi-core` MUST drive first-party periodic animation through one shared clock ticking every 100 ms while an enabled effect is subscribed and not at all otherwise, and every enabled glyph or effect MUST advance by exactly one frame or step per fixed number of ticks derived from its intended cadence rather than from wall-clock time or per emission, so it keeps the same speed and frame order at every level that enables it; the theme-configured native Pi working indicator is the exception and MUST use Pi's loader at 200 ms at `full`, `reduced` and `minimal`. A disabled effect MUST be static without a clock subscription: disabled running indicators and tool footers show the mode-aware static running glyph, disabled continuous effects render in their active working colours rather than a dimmed phase, at `off` the native working indicator shows a single frame and the input-box working glyph and label use the active working colour, and elapsed times keep updating at least every second without animating.
+`@thoth-agents/pi-thoth-theme` MUST offer an `animation` setting in `pi-thoth-theme.json` with the levels `full`, `reduced`, `minimal` and `off`, defaulting to `full` when missing or malformed, changeable at runtime through the `/thoth-theme` settings panel and persisted. Levels MUST select which effects animate, never their speed: `full` animates continuous effects (input-border breathing and label shimmer), secondary running indicators (sidebar and work-panel rows, tool card footers, foreground subagent progress, AskCodex and AskAntigravity cards) and the primary working indicator (the input-box working glyph and the native Pi working indicator); `reduced` animates the secondary and primary indicators; `minimal` animates only the primary working indicator; `off` animates nothing. `@thoth-agents/pi-core` MUST drive first-party periodic animation through one shared clock ticking every 100 ms while an enabled effect is subscribed and not at all otherwise, and every enabled glyph or effect MUST advance by exactly one frame or step per fixed number of ticks derived from its intended cadence rather than from wall-clock time or per emission, so it keeps the same speed and frame order at every level that enables it; the theme-configured native Pi working indicator is the exception and MUST use Pi's loader at 200 ms at `full`, `reduced` and `minimal`. A disabled effect MUST be static without a clock subscription: disabled running indicators and tool footers show the mode-aware static running glyph, disabled continuous effects render in their active working colours rather than a dimmed phase, at `off` the native working indicator shows a single frame and the input-box working glyph and label use the active working colour, and elapsed times keep updating at least every second without animating.
 
 #### Scenario: Animation intensity
 
 - **GIVEN** Nerd icons and a running subagent
-- **WHEN** the user runs `/thoth-animation reduced`, then `/thoth-animation minimal` and later `/thoth-animation off`
-- **THEN** at `reduced` the braille indicator steps through all ten frames in order at its `full` per-frame cadence while the input border stops breathing and shimmering in its active colours, at `minimal` the subagent row shows a static `◐` with advancing elapsed time while the input-box working glyph keeps animating, and after `off` no animation timer remains and the input-box working glyph and label show in the active working colour
+- **WHEN** the user sets the animation to `reduced` in the `/thoth-theme` panel and saves, then `minimal` and later `off`
+- **THEN** at `reduced` the braille indicator steps through all ten frames in order at its `full` per-frame cadence while the input border stops breathing and shimmering in its active colours, at `minimal` the subagent row shows a static `◐` with advancing elapsed time while the input-box working glyph keeps animating, and after `off` no animation timer remains and the input-box working glyph and label show in the active working colour 
 
 ### Requirement: Subagent boundary-driven event processing
 
@@ -684,4 +684,14 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 - **GIVEN** `pi-thoth-theme.json` with `"tools": { "collapsed": "line" }`
 - **WHEN** a successful bash call and a todo call are shown collapsed
-- **THEN** each renders one content row with status glyph, tool name, summary and elapsed, and expanding either renders its framed card 
+- **THEN** each renders one content row with status glyph, tool name, summary and elapsed, and expanding either renders its framed card
+
+### Requirement: Thoth theme settings panel
+
+`@thoth-agents/pi-thoth-theme` MUST provide a `/thoth-theme` settings panel built on the pi-core list editor and panel overlay that edits icons, animation, tool density and module enablement, persists them atomically to `pi-thoth-theme.json` preserving unknown fields and other settings, applies animation, icons and tool density immediately including to already-mounted tool cards and render-kit producer cards, and marks module enablement as taking effect after `/reload`, notifying the user when such a setting changed.
+
+#### Scenario: Thoth theme settings panel
+
+- **GIVEN** the panel open with icons `nerd` and density `frame` and a bash card already shown
+- **WHEN** the user sets icons to `unicode`, density to `line`, disables the welcome header and saves
+- **THEN** the file holds the three changes, the shown bash card re-renders as a unicode one-row card without `/reload`, and the user is told that the welcome change applies after `/reload` 

@@ -19,6 +19,7 @@ import {
 } from '../input-box/decorate.ts';
 import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { settingsRevision } from '../shared/settings-revision.ts';
 import { type ActiveThemeLike, formatCwd, renderStatusLine } from './layout.ts';
 import { createOrcaChildHold } from './orca-child-hold.ts';
 import type { StatusSnapshot, StatusSnapshotProvider } from './snapshot.ts';
@@ -47,12 +48,12 @@ export function registerStatusLine(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   config: ThemeConfig,
+  inputBoxEnabled = config.inputBox?.enabled !== false,
 ): void {
   const subscriptionProviders = config.statusLine.subscriptionProviders ?? [
     'claude-bridge',
     'antigravity',
   ];
-  const inputBoxEnabled = config.inputBox?.enabled !== false;
   ctx.ui.setFooter((tui, theme, footerData) => {
     const unsubs: Array<() => void> = [];
     let disposed = false;
@@ -290,7 +291,7 @@ export function registerStatusLine(
         }
         if (width <= 0) return [];
         const data = getStatusSnapshot();
-        const key = `${width}\u0000${JSON.stringify(data)}`;
+        const key = `${settingsRevision()}\u0000${config.icons}\u0000${width}\u0000${JSON.stringify(data)}`;
         if (key === cachedKey) return cachedLines;
         const line = renderStatusLine(data, {
           width,

@@ -18,7 +18,7 @@ import {
   isAnimationEffectEnabled,
 } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
-import type { IconMode, ToolDensity } from '../shared/config.ts';
+import type { IconMode, ThemeConfig, ToolDensity } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
 import { resolveExpandHint } from '../shared/expand-hint.ts';
 import { frames, icon, statusIcon } from '../shared/icons.ts';
@@ -295,23 +295,29 @@ export function toolFooter(
 export function createRenderKit(
   owner: object,
   resolveToolRenderers?: ThothRenderKit['resolveToolRenderers'],
-  mode: IconMode = 'nerd',
+  settings: IconMode | ThemeConfig = 'nerd',
   density: ToolDensity = 'frame',
 ): ThothRenderKit {
-  const separator = icon('separator', mode);
-  const ellipsis = icon('ellipsis', mode);
+  const getMode = () =>
+    typeof settings === 'string' ? settings : settings.icons;
+  const getDensity = () =>
+    typeof settings === 'string'
+      ? density
+      : (settings.tools.collapsed ?? 'frame');
   const ownedToolFooter: NonNullable<ThothRenderKit['toolFooter']> = (
     theme,
     options,
-  ) => toolFooter(theme, options, mode, owner);
+  ) => toolFooter(theme, options, getMode(), owner);
 
   return {
     version: 1,
     ...(resolveToolRenderers ? { resolveToolRenderers } : {}),
     toolFooter: ownedToolFooter,
     card(theme, options, width) {
+      const mode = getMode();
+      const currentDensity = getDensity();
       if (
-        density !== 'frame' &&
+        currentDensity !== 'frame' &&
         options.surface === 'tool' &&
         options.expanded === false
       ) {
@@ -320,7 +326,7 @@ export function createRenderKit(
           options,
           Math.max(0, Math.floor(width)),
           mode,
-          density,
+          currentDensity,
           owner,
         );
       }
@@ -330,18 +336,20 @@ export function createRenderKit(
       return card(theme, options, width, ownedToolFooter, mode);
     },
     collapse(theme, rows, options = {}) {
+      const mode = getMode();
       const budget = Math.max(0, Math.floor(options.budget ?? 8));
       if (options.expanded || rows.length <= budget) return [...rows];
       return [
         ...rows.slice(0, budget),
         theme.fg(
           'dim',
-          `${ellipsis} ${rows.length - budget} more lines${options.expandHint ? ` ${separator} ${options.expandHint}` : ''}`,
+          `${icon('ellipsis', mode)} ${rows.length - budget} more lines${options.expandHint ? ` ${icon('separator', mode)} ${options.expandHint}` : ''}`,
         ),
       ];
     },
     cachedComponent,
     indicator(theme, context = {}, options = {}) {
+      const mode = getMode();
       const status = options.status ?? indicatorStatus(context);
       syncElapsedTicker(context, owner, status);
       const running = isRunning(status);
@@ -375,16 +383,18 @@ export function createRenderKit(
           ? ownedToolFooter(theme, { status, elapsedMs, context })
           : [theme.fg(role, label), elapsed ? theme.fg('dim', elapsed) : '']
               .filter(Boolean)
-              .join(theme.fg('dim', ` ${separator} `)),
+              .join(theme.fg('dim', ` ${icon('separator', mode)} `)),
       };
     },
     icon(name) {
+      const mode = getMode();
       return name === 'spinnerFrames' || name === 'workingFrames'
         ? frames(name, mode)
         : icon(name, mode);
     },
-    statusGlyph: (theme, status) => statusGlyph(theme, status, mode),
+    statusGlyph: (theme, status) => statusGlyph(theme, status, getMode()),
     widgetHeading(theme, options, width) {
+      const mode = getMode();
       const title = theme.fg('toolTitle', options.title);
       return truncateToWidth(
         [
@@ -403,10 +413,11 @@ export function createRenderKit(
           .filter(Boolean)
           .join(' '),
         Math.max(0, Math.floor(width)),
-        ellipsis,
+        icon('ellipsis', mode),
       );
     },
     treeRow(theme, options, width) {
+      const mode = getMode();
       const rail = `${'  '.repeat(Math.max(0, Math.floor(options.depth ?? 0)))}${options.last ? '└─' : '├─'} `;
       return truncateToWidth(
         [
@@ -418,7 +429,7 @@ export function createRenderKit(
           options.text,
         ].join(''),
         Math.max(0, Math.floor(width)),
-        ellipsis,
+        icon('ellipsis', mode),
       );
     },
     fg: (theme, role, text) => theme.fg(role, text),

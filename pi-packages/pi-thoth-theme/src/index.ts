@@ -1,21 +1,30 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { visibleWidth } from '@earendil-works/pi-tui';
 import {
+  getRenderKit,
   type RenderKitToken,
   registerRenderKit,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { registerAnimation } from './animation.ts';
 import { createRenderKit } from './render-kit/index.ts';
+import { registerThemeSettings } from './settings/index.ts';
 import { loadConfig } from './shared/config.ts';
 import { icon } from './shared/icons.ts';
+import { bindLiveSettings } from './shared/live-settings.ts';
 import { registerStatusLine } from './status-line/index.ts';
 import { createToolRendererResolver, registerTools } from './tools/index.ts';
 import { registerWelcome } from './welcome/index.ts';
 
+export { applyLiveSettings } from './shared/live-settings.ts';
+
 export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
+  const statusLineEnabled = config.statusLine.enabled;
+  const inputBoxEnabled = config.inputBox?.enabled !== false;
+  const welcomeEnabled = config.welcome.enabled;
   registerAnimation(pi, config);
+  registerThemeSettings(pi, config);
   pi.registerMarkdownTransformer((markdown, context) => {
     if (context.messageType !== 'user' || !markdown.trim()) return markdown;
     if (
@@ -39,6 +48,17 @@ export default function thothTheme(pi: ExtensionAPI): void {
     ? createToolRendererResolver(pi, config, cwd)
     : undefined;
   let kitToken: RenderKitToken | undefined;
+  const toolsEnabled = config.tools.enabled;
+  let publishedKit: ReturnType<typeof createRenderKit> | undefined;
+  const publishKit = () => {
+    publishedKit = createRenderKit(owner, resolveToolRenderers, config);
+    kitToken = registerRenderKit(publishedKit, owner);
+  };
+  bindLiveSettings(config, () => {
+    if (kitToken === undefined || getRenderKit() !== publishedKit) return;
+    withdrawRenderKit(kitToken);
+    publishKit();
+  });
   if (resolveToolRenderers) {
     registerTools(pi, config, cwd, owner, resolveToolRenderers);
   }
@@ -47,28 +67,16 @@ export default function thothTheme(pi: ExtensionAPI): void {
     if (!ctx.hasUI || kitToken === undefined) return;
     withdrawRenderKit(kitToken);
     kitToken = undefined;
+    publishedKit = undefined;
   });
 
   pi.on('session_start', (_event, ctx) => {
     if (!ctx.hasUI) return;
-    if (config.tools.enabled) {
-      kitToken = registerRenderKit(
-        createRenderKit(
-          owner,
-          resolveToolRenderers,
-          config.icons,
-          config.tools.collapsed,
-        ),
-        owner,
-      );
-    }
+    if (toolsEnabled) publishKit();
     if (!ctx.ui) return;
-    if (config.statusLine.enabled) {
-      if (config.inputBox?.enabled !== false) {
-        ctx.ui.setWorkingMessage?.(`working${icon('ellipsis', config.icons)}`);
-      }
-      registerStatusLine(pi, ctx, config);
+    if (statusLineEnabled) {
+      registerStatusLine(pi, ctx, config, inputBoxEnabled);
     }
-    if (config.welcome.enabled) registerWelcome(pi, ctx, config);
+    if (welcomeEnabled) registerWelcome(pi, ctx, config);
   });
 }

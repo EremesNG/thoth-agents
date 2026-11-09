@@ -261,25 +261,38 @@ separate, consented check.
 
 ## CI and release
 
-`.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
-`pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. Both jobs build
-and test the Pi extension bundles; CI does not run the full root build. The
-repository is a pnpm workspace: the root install also installs all ten
-`pi-packages/*` members, and CI then runs each package's `typecheck`
-plus offline tests through `pnpm --filter` (`test` for `@thoth-agents/pi-core`,
-`@thoth-agents/pi-todo`, `@thoth-agents/pi-questions-user`, `@thoth-agents/pi-subagents`,
-`@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`,
-`@thoth-agents/pi-openai-fast`, `@thoth-agents/pi-thoth-theme` and
-`@thoth-agents/pi-sidebar`,
-`test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
+`.github/workflows/ci.yml` keeps all checks in one workflow for the Release gate.
+Every job checks out the repository and uses `.github/actions/setup/action.yml`:
+Node `22.19`, pnpm `11.2.2`, Bun `1.3.14`, cached pnpm store and frozen installation.
+The root install includes all eleven `pi-packages/*` members and
+`opencode-packages/opencode-multi-codex`. The parallel graph has 19 job instances:
+
+- `static` on Linux: `pnpm run check:ci`, `pnpm run typecheck`, all twelve package
+  typechecks (Linux only), and the PR-only version-bump warning.
+- `root-tests`: three Linux shards of `pnpm exec vitest run --shard=i/3`, covering
+  both unit and eval projects without changing eval isolation. Every shard checks
+  out `EremesNG/thoth-plugins` and sets `THOTH_PLUGINS_ROOT`.
+- `bundles`: Linux and Windows each build and verify Pi extension bundles;
+  verification retains its two-minute timeout. CI does not run the full root build.
+- `packages-linux` and `packages-windows`: six lanes per OS, grouped as background;
+  subagents; Claude; Antigravity + OpenAI fast; AskCodex + theme; and core + todo +
+  questions + sidebar + OpenCode multi-codex. Each package has a separate
+  `!cancelled()`-guarded step so failures do not hide later packages. Every package
+  runs `test`, except Claude runs offline `test:unit` (never its live `test`).
+  OpenCode multi-codex also builds on both OSes.
+- `ci-ok`: always runs after all five job groups and fails unless every result is
+  `success`, including when a dependency was skipped or cancelled.
+
+All matrices use `fail-fast: false`, all jobs have timeouts, and workflow permissions
+are `contents: read`. Concurrency cancels superseded runs only within a PR; push
+and dispatch groups use `github.run_id`, preserving a CI run for every release SHA.
+`src/harness/ci-workflow.test.ts` derives workspace package coverage from disk so
+new packages must acquire both OS test lanes and a Linux typecheck.
 Pi-core provides typed, versioned `pi.events` channels. Pi-todo is a first-party
 fork of `@juicesharp/rpiv-todo` `2.12.0` with session-state publication through
 pi-core and open-task reinjection. Pi-questions-user is the first-party
 `ask_user_question` extension with typed questions and structured per-id answers.
-A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
-install), runs those ten package typechecks, offline tests and bundle checks,
-one step per command so a failure cannot be masked; the root suite runs only on Ubuntu.
-Its vitest steps pass `--retry=2` so an isolated slow-runner failure does not block
+The Windows package lanes' Vitest steps pass `--retry=2` so an isolated slow-runner failure does not block
 a release, while a consistent failure still fails; fix flakes at their cause
 rather than relying on retries. `workflow_dispatch` allows manual CI runs (for
 example repeated Windows stability checks); `release.yml` only waits for `push` runs
@@ -288,14 +301,16 @@ up to 270 times at 10-second intervals (roughly 45 minutes), within a 90-minute
 publish-job timeout. It fails immediately on a completed non-success CI run or
 a completed failed/cancelled/timed-out job while other CI jobs are still running;
 skipped/neutral jobs alone do not fail the gate.
-Both CI jobs provision Bun `1.3.14` for the pi-subagents Bun runtime compatibility test.
+The shared setup provisions Bun for the pi-subagents Bun runtime compatibility test.
 
 CI also runs a PR-only, non-blocking "Pi version bump" warning step
 (`scripts/check-pi-version-bumps.mjs`); skipped runs emit a `::notice`.
 
-`.github/workflows/release.yml` waits for successful CI for the commit, installs
-again, runs `pnpm run build`, then
-`pnpm exec vitest run src/plugin-node-runtime.test.ts`. It then publishes the Pi
+`.github/workflows/release.yml` installs, builds and verifies artifacts/runtime
+before waiting for successful CI for the commit. Every publish, tag, release and
+git-write step requires `steps.wait-ci.outcome == 'success'`, including the
+`always()` reconciliation that preserves recovery after a partial publish failure.
+After the gate succeeds, it publishes the Pi
 packages (only versions not yet on npm), reconciles per-package `<name>@<version>`
 tags and GitHub releases (idempotent on rerun), generates root notes that exclude
 Pi-only commits and list the released Pi versions, publishes the root npm package
@@ -415,7 +430,7 @@ locally only when the change touches their inputs:
 
 Select tooling tests for the affected inputs; unrelated release/packaging suites
 do not block product-change closeout. Full `pnpm test` is the safety net after
-push/PR in Linux CI, alongside the `pi-packages-windows` job; it does not block
+push/PR across the Linux root-test shards, alongside the package lanes on both OSes; it does not block
 local closeout. Report unrelated environment failures (such as Windows timing)
 with evidence, rather than treating them as change failures. Failures caused by
 the change must still be fixed before closeout.
@@ -439,7 +454,8 @@ Codex alias parity, quota parsing/freshness, config validation, RPC/TUI commands
 and account-state rotation with concurrent auxiliary traffic. Add repository
 `check:ci`, `typecheck`, `build` and `git diff --check` for closeout.
 
-Linux CI and `pi-packages-windows` both run this package's typecheck/test/build.
+The Linux `static` job typechecks this package; its Linux and Windows package
+lanes both run test/build.
 Release explicitly builds `opencode-packages/*` before publishing with scripts
 disabled, verifies packed entrypoints, and publishes/reconciles both workspace
 lanes. Lane/workspace/release changes require focused root tests:
@@ -475,7 +491,7 @@ absolute install command is not valid Pi package identity evidence.
 
 ## Evidence and uncertainty
 
-- Verified in `package.json`, `vitest.config.ts`, `.github/workflows/ci.yml`, and
+- Verified in `package.json`, `vitest.config.ts`, `.github/actions/setup/action.yml`, `.github/workflows/ci.yml`, and
   `.github/workflows/release.yml`.
 - No mandatory external services are documented because the inspected Vitest
   configuration does not establish that requirement.

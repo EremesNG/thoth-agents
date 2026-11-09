@@ -7,62 +7,25 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Every push/dispatch needs its own run: Release gates on same-SHA push CI.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
+  static:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [22.19]
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.2
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: pnpm
-
-      # Match Pi's Bun-compiled release binaries and exercise the bun:sqlite fallback.
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Pi extension bundles
-        run: pnpm run build:pi-extensions
-
-      - name: Load Pi bundles and verify packed contents
-        timeout-minutes: 2
-        run: pnpm run test:pi-extensions
-
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - name: Check
         run: pnpm run check:ci
-
       - name: Run typecheck
         run: pnpm run typecheck
-
-      - name: Checkout marketplace
-        uses: actions/checkout@v4
-        with:
-          repository: EremesNG/thoth-plugins
-          path: thoth-plugins
-
-      - name: Run tests
-        run: pnpm test
-        env:
-          THOTH_PLUGINS_ROOT: ${{ github.workspace }}/thoth-plugins
 
       # Warn-only. The PR checkout is a depth-1 merge commit; deepen both the
       # base ref and that merge commit so the three-dot diff finds a merge base.
@@ -75,180 +38,183 @@ jobs:
             echo "::notice title=Pi version check skipped::fetch failed"
           fi
 
-      - name: Check pi-core
-        run: |
-          pnpm --filter @thoth-agents/pi-core run typecheck
-          pnpm --filter @thoth-agents/pi-core run test
+      # Typechecks run once, on the case-sensitive Linux filesystem.
+      - name: Typecheck pi-core
+        run: pnpm --filter @thoth-agents/pi-core run typecheck
+      - name: Typecheck pi-todo
+        run: pnpm --filter @thoth-agents/pi-todo run typecheck
+      - name: Typecheck pi-questions-user
+        run: pnpm --filter @thoth-agents/pi-questions-user run typecheck
+      - name: Typecheck pi-subagents
+        run: pnpm --filter @thoth-agents/pi-subagents run typecheck
+      - name: Typecheck pi-antigravity-bridge
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+      - name: Typecheck pi-askcodex
+        run: pnpm --filter @thoth-agents/pi-askcodex run typecheck
+      - name: Typecheck pi-background-tasks
+        run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck
+      - name: Typecheck pi-openai-fast
+        run: pnpm --filter @thoth-agents/pi-openai-fast run typecheck
+      - name: Typecheck pi-thoth-theme
+        run: pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
+      - name: Typecheck pi-sidebar
+        run: pnpm --filter @thoth-agents/pi-sidebar run typecheck
+      - name: Typecheck pi-claude-bridge
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
+      - name: Typecheck opencode-multi-codex
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
 
-      - name: Check pi-todo
-        run: |
-          pnpm --filter @thoth-agents/pi-todo run typecheck
-          pnpm --filter @thoth-agents/pi-todo run test
-
-      - name: Check pi-questions-user
-        run: |
-          pnpm --filter @thoth-agents/pi-questions-user run typecheck
-          pnpm --filter @thoth-agents/pi-questions-user run test
-
-      - name: Check pi-subagents
-        run: |
-          pnpm --filter @thoth-agents/pi-subagents run typecheck
-          pnpm --filter @thoth-agents/pi-subagents run test
-
-      - name: Check pi-antigravity-bridge
-        run: |
-          pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
-          pnpm --filter @thoth-agents/pi-antigravity-bridge run test
-
-      - name: Check pi-askcodex
-        run: |
-          pnpm --filter @thoth-agents/pi-askcodex run typecheck
-          pnpm --filter @thoth-agents/pi-askcodex run test
-
-      - name: Check pi-background-tasks
-        run: |
-          pnpm --filter @thoth-agents/pi-background-tasks run typecheck
-          pnpm --filter @thoth-agents/pi-background-tasks run test
-
-      - name: Check pi-openai-fast
-        run: |
-          pnpm --filter @thoth-agents/pi-openai-fast run typecheck
-          pnpm --filter @thoth-agents/pi-openai-fast run test
-
-      - name: Check pi-thoth-theme
-        run: |
-          pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
-          pnpm --filter @thoth-agents/pi-thoth-theme run test
-
-      - name: Check pi-sidebar
-        run: |
-          pnpm --filter @thoth-agents/pi-sidebar run typecheck
-          pnpm --filter @thoth-agents/pi-sidebar run test
-
-      # Offline unit tests only; the package `test` script runs live Claude integrations.
-      - name: Check pi-claude-bridge
-        run: |
-          pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
-          pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
-
-      - name: Check opencode-multi-codex
-        run: |
-          pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
-          pnpm --filter @thoth-agents/opencode-multi-codex run test
-          pnpm --filter @thoth-agents/opencode-multi-codex run build
-
-  # Windows qualification for workspace packages; the root suite stays on Ubuntu.
-  pi-packages-windows:
-    runs-on: windows-latest
-    # A healthy run takes ~20 minutes; fail a hung step instead of holding the runner for 6 hours.
-    timeout-minutes: 45
-
+  root-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
-      - name: Checkout code
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Checkout marketplace
         uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
         with:
-          version: 11.2.2
-          run_install: false
+          repository: EremesNG/thoth-plugins
+          path: thoth-plugins
+      # No project filter: includes unit and evals with their existing isolation.
+      - name: Run tests
+        run: pnpm exec vitest run --shard=${{ matrix.shard }}/3
+        env:
+          THOTH_PLUGINS_ROOT: ${{ github.workspace }}/thoth-plugins
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.19
-          cache: pnpm
-
-      # Match Pi's Bun-compiled release binaries and exercise the bun:sqlite fallback.
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      # Windows runners are slow and timing-sensitive: vitest retries a failing test up to
-      # twice so isolated runner hiccups do not block releases; consistent failures still fail.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+  bundles:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - name: Build Pi extension bundles
         run: pnpm run build:pi-extensions
-
       - name: Load Pi bundles and verify packed contents
         timeout-minutes: 2
         run: pnpm run test:pi-extensions
 
-      - name: Typecheck pi-core
-        run: pnpm --filter @thoth-agents/pi-core run typecheck
-
-      - name: Test pi-core
-        run: pnpm --filter @thoth-agents/pi-core run test --retry=2
-
-      - name: Typecheck pi-todo
-        run: pnpm --filter @thoth-agents/pi-todo run typecheck
-
-      - name: Test pi-todo
-        run: pnpm --filter @thoth-agents/pi-todo run test --retry=2
-
-      - name: Typecheck pi-questions-user
-        run: pnpm --filter @thoth-agents/pi-questions-user run typecheck
-
-      - name: Test pi-questions-user
-        run: pnpm --filter @thoth-agents/pi-questions-user run test --retry=2
-
-      - name: Typecheck pi-subagents
-        run: pnpm --filter @thoth-agents/pi-subagents run typecheck
-
-      - name: Test pi-subagents
-        run: pnpm --filter @thoth-agents/pi-subagents run test --retry=2
-
-      - name: Typecheck pi-antigravity-bridge
-        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
-
-      - name: Test pi-antigravity-bridge
-        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test --retry=2
-
-      - name: Typecheck pi-askcodex
-        run: pnpm --filter @thoth-agents/pi-askcodex run typecheck
-
-      - name: Test pi-askcodex
-        run: pnpm --filter @thoth-agents/pi-askcodex run test --retry=2
-
-      - name: Typecheck pi-background-tasks
-        run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck
-
+  packages-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [background, subagents, claude, antigravity, codex-theme, utilities]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Continue other packages after a failure without concealing the failed step.
       - name: Test pi-background-tasks
-        run: pnpm --filter @thoth-agents/pi-background-tasks run test --retry=2
-
-      - name: Typecheck pi-openai-fast
-        run: pnpm --filter @thoth-agents/pi-openai-fast run typecheck
-
-      - name: Test pi-openai-fast
-        run: pnpm --filter @thoth-agents/pi-openai-fast run test --retry=2
-
-      - name: Typecheck pi-thoth-theme
-        run: pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
-
-      - name: Test pi-thoth-theme
-        run: pnpm --filter @thoth-agents/pi-thoth-theme run test --retry=2
-
-      - name: Typecheck pi-sidebar
-        run: pnpm --filter @thoth-agents/pi-sidebar run typecheck
-
-      - name: Test pi-sidebar
-        run: pnpm --filter @thoth-agents/pi-sidebar run test --retry=2
-
-      - name: Typecheck pi-claude-bridge
-        run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
-
-      # Offline unit tests only; the package `test` script runs live Claude integrations.
+        if: ${{ !cancelled() && matrix.lane == 'background' }}
+        run: pnpm --filter @thoth-agents/pi-background-tasks run test
+      - name: Test pi-subagents
+        if: ${{ !cancelled() && matrix.lane == 'subagents' }}
+        run: pnpm --filter @thoth-agents/pi-subagents run test
+      # Offline unit tests only; `test` runs live Claude integrations.
       - name: Test pi-claude-bridge
+        if: ${{ !cancelled() && matrix.lane == 'claude' }}
         run: pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
-
-      - name: Typecheck opencode-multi-codex
-        run: pnpm --filter @thoth-agents/opencode-multi-codex run typecheck
-
+      - name: Test pi-antigravity-bridge
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+      - name: Test pi-openai-fast
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-openai-fast run test
+      - name: Test pi-askcodex
+        if: ${{ !cancelled() && matrix.lane == 'codex-theme' }}
+        run: pnpm --filter @thoth-agents/pi-askcodex run test
+      - name: Test pi-thoth-theme
+        if: ${{ !cancelled() && matrix.lane == 'codex-theme' }}
+        run: pnpm --filter @thoth-agents/pi-thoth-theme run test
+      - name: Test pi-core
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-core run test
+      - name: Test pi-todo
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-todo run test
+      - name: Test pi-questions-user
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-questions-user run test
+      - name: Test pi-sidebar
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-sidebar run test
       - name: Test opencode-multi-codex
-        run: pnpm --filter @thoth-agents/opencode-multi-codex run test --retry=2
-
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run test
       - name: Build opencode-multi-codex
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
         run: pnpm --filter @thoth-agents/opencode-multi-codex run build
+
+  packages-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [background, subagents, claude, antigravity, codex-theme, utilities]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Retry isolated Windows timing hiccups; persistent failures still fail.
+      - name: Test pi-background-tasks
+        if: ${{ !cancelled() && matrix.lane == 'background' }}
+        run: pnpm --filter @thoth-agents/pi-background-tasks run test --retry=2
+      - name: Test pi-subagents
+        if: ${{ !cancelled() && matrix.lane == 'subagents' }}
+        run: pnpm --filter @thoth-agents/pi-subagents run test --retry=2
+      # Node's test runner, not Vitest: keep test:unit unchanged.
+      - name: Test pi-claude-bridge
+        if: ${{ !cancelled() && matrix.lane == 'claude' }}
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
+      - name: Test pi-antigravity-bridge
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test --retry=2
+      - name: Test pi-openai-fast
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-openai-fast run test --retry=2
+      - name: Test pi-askcodex
+        if: ${{ !cancelled() && matrix.lane == 'codex-theme' }}
+        run: pnpm --filter @thoth-agents/pi-askcodex run test --retry=2
+      - name: Test pi-thoth-theme
+        if: ${{ !cancelled() && matrix.lane == 'codex-theme' }}
+        run: pnpm --filter @thoth-agents/pi-thoth-theme run test --retry=2
+      - name: Test pi-core
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-core run test --retry=2
+      - name: Test pi-todo
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-todo run test --retry=2
+      - name: Test pi-questions-user
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-questions-user run test --retry=2
+      - name: Test pi-sidebar
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/pi-sidebar run test --retry=2
+      - name: Test opencode-multi-codex
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run test --retry=2
+      - name: Build opencode-multi-codex
+        if: ${{ !cancelled() && matrix.lane == 'utilities' }}
+        run: pnpm --filter @thoth-agents/opencode-multi-codex run build
+
+  ci-ok:
+    needs: [static, root-tests, bundles, packages-linux, packages-windows]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Require every CI job to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          node --input-type=module -e "const needs = JSON.parse(process.env.NEEDS_JSON); console.log(needs); if (!Object.values(needs).every(job => job.result === 'success')) process.exit(1);"

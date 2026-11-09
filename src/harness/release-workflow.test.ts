@@ -122,6 +122,112 @@ ${byName('Reconcile Pi releases').run}`,
 
 describe('release workflow CI gate', () => {
   const script = byName('Wait for CI').run ?? '';
+  const writeSteps = [
+    'Publish Pi packages',
+    'Reconcile Pi releases',
+    'Publish to npm',
+    'Create GitHub release',
+    'Publish marketplace version',
+  ];
+
+  function eligible(
+    name: string,
+    outcomes: Record<string, string>,
+    success: boolean,
+  ): boolean {
+    const expression = (byName(name).if ?? 'success()')
+      .replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '')
+      .replace(/steps\.([\w-]+)\.outcome/g, (_, id: string) =>
+        JSON.stringify(outcomes[id] ?? 'skipped'),
+      );
+    // Actions implicitly adds success() unless a status-check function is used.
+    if (
+      !/\b(always|success|failure|cancelled)\(/.test(expression) &&
+      !success
+    ) {
+      return false;
+    }
+    return Boolean(
+      new Function('always', 'success', `return (${expression});`)(
+        () => true,
+        () => success,
+      ),
+    );
+  }
+
+  test('builds and verifies artifacts before waiting, with every write after the gate', () => {
+    const wait = indexOf('Wait for CI');
+    expect(byName('Wait for CI').id).toBe('wait-ci');
+    for (const name of [
+      'Checkout code',
+      'Verify release branch',
+      'Setup pnpm',
+      'Setup Node.js',
+      'Update npm',
+      'Install dependencies',
+      'Build package',
+      'Check built plugin runtime',
+      'Load Pi bundles and verify packed contents',
+      'Build OpenCode packages',
+      'Verify packed OpenCode entrypoints',
+    ]) {
+      expect(indexOf(name), name).toBeGreaterThanOrEqual(0);
+      expect(indexOf(name), name).toBeLessThan(wait);
+    }
+    // Include tag/push and marketplace git writes embedded in multi-command steps.
+    expect(
+      steps
+        .filter((step) =>
+          /\b(?:npm|pnpm) publish\b|\bgit (?:tag|push)\b|\bgh release create\b|release:marketplace/.test(
+            step.run ?? '',
+          ),
+        )
+        .map((step) => step.name),
+    ).toEqual(writeSteps);
+    for (const name of writeSteps) {
+      expect(indexOf(name), name).toBeGreaterThan(wait);
+      expect(byName(name).if, name).toContain(
+        "steps.wait-ci.outcome == 'success'",
+      );
+    }
+  });
+
+  test.each([
+    'failure',
+    'skipped',
+    'cancelled',
+  ])('disables every write when the CI gate outcome is %s, even after successful install', (outcome) => {
+    for (const success of [false, true]) {
+      for (const name of writeSteps) {
+        expect(
+          eligible(name, { install: 'success', 'wait-ci': outcome }, success),
+          name,
+        ).toBe(false);
+      }
+    }
+  });
+
+  test('permits normal writes after CI success and reconciliation after partial publish failure', () => {
+    const outcomes = { install: 'success', 'wait-ci': 'success' };
+    for (const name of writeSteps) {
+      expect(eligible(name, outcomes, true), name).toBe(true);
+    }
+    expect(
+      eligible(
+        'Reconcile Pi releases',
+        { ...outcomes, 'pi-publish': 'failure' },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      eligible(
+        'Reconcile Pi releases',
+        { ...outcomes, install: 'failure' },
+        false,
+      ),
+    ).toBe(false);
+    expect(eligible('Publish to npm', outcomes, false)).toBe(false);
+  });
 
   function runWait({
     status = 'completed',
@@ -337,8 +443,12 @@ describe('release workflow Pi packages', () => {
     expect(indexOf('Publish Pi packages')).toBeLessThan(
       indexOf('Publish to npm'),
     );
-    expect(byName('Publish Pi packages').if).toBeUndefined();
-    expect(byName('Publish to npm').if).toBeUndefined();
+    expect(byName('Publish Pi packages').if).toContain(
+      "steps.wait-ci.outcome == 'success'",
+    );
+    expect(byName('Publish to npm').if).toContain(
+      "steps.wait-ci.outcome == 'success'",
+    );
   });
 
   test('reconciles tags and releases independently, even after publish failure', () => {

@@ -2468,6 +2468,7 @@ export default function (pi: ExtensionAPI) {
 		selectedTools?: string[];
 		hiddenTools?: string[];
 		toolGuidelines?: Record<string, string[]>;
+		promptGuidelines?: string[];
 	} | undefined) {
 		if (!systemPrompt) return;
 		const hasRead = !options?.selectedTools || options.selectedTools.includes("read");
@@ -2478,6 +2479,7 @@ export default function (pi: ExtensionAPI) {
 			selectedTools: options?.selectedTools,
 			hiddenTools: options?.hiddenTools,
 			toolGuidelines: options?.toolGuidelines,
+			promptGuidelines: options?.promptGuidelines,
 			contextFiles: options?.contextFiles ?? [],
 			skills: hasRead ? options?.skills ?? [] : [],
 		}, source);

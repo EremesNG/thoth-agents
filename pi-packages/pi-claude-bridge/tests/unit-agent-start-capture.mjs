@@ -20,6 +20,8 @@ import assert from "node:assert/strict";
 import { activateWithMockPi } from "./lib/mock-pi.mjs";
 import { buildSystemPrompt, buildSystemPromptSections } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { PI_PREAMBLE, projectPromptCapture } from "../src/prompt-capture.js";
+import { AppendInstructions } from "../src/append-instructions.js";
+import { diffBlocks } from "../src/append-blocks.js";
 
 const { __test } = await import("../src/index.js");
 
@@ -28,6 +30,80 @@ const PRE_WIDEN = "You are pi.\n# Tools\n- read: Read a file\n\npi packages (doc
 const WIDENED = "You are pi.\n# Tools\n- read: Read a file\n- Agent: Launch a subagent with a very long description ... \n\npi packages (docs/packages.md)";
 
 describe("section snapshots at recording boundaries", () => {
+	it("captures prompt guidelines pushed by later handlers at agent_start and turn_start", () => {
+		const handlers = activateWithMockPi();
+		const options = { cwd: "/late-prompt-guidelines", contextFiles: [], skills: [], selectedTools: [], promptGuidelines: [] };
+		const projected = (key) => projectPromptCapture(__test.promptCaptures.resolve(key), { hasReadTool: false });
+		const before = buildSystemPrompt(options);
+		handlers.get("before_agent_start")({ systemPrompt: before, systemPromptOptions: options });
+
+		// A before_agent_start handler loaded after the bridge pushes into the shared array.
+		options.promptGuidelines.push("Recall memory before exploring.");
+		const started = buildSystemPrompt(options);
+		handlers.get("agent_start")({}, { getSystemPrompt: () => started });
+		assert.equal(projected(started), "<tool_guidelines>\n- Recall memory before exploring.\n</tool_guidelines>");
+		assert.equal(projected(before), undefined);
+
+		options.promptGuidelines.push("Save verified findings.");
+		const turn = buildSystemPrompt(options);
+		handlers.get("turn_start")({}, { getSystemPrompt: () => turn });
+		assert.equal(projected(turn), "<tool_guidelines>\n- Recall memory before exploring.\n- Save verified findings.\n</tool_guidelines>");
+		options.promptGuidelines.push("Unrecorded guidance.");
+		assert.doesNotMatch(projected(turn), /Unrecorded/);
+		assert.equal(projected(started), "<tool_guidelines>\n- Recall memory before exploring.\n</tool_guidelines>");
+	});
+	it("keeps repeated prompt guidelines cache-stable and sends only a keyed update for a new bullet", async () => {
+		const handlers = activateWithMockPi();
+		const options = {
+			cwd: "/cache-stable-guidelines", contextFiles: [], skills: [], selectedTools: ["read"],
+			customPrompt: "<policy>STABLE POLICY</policy>",
+			toolGuidelines: { read: ["Read carefully."] }, promptGuidelines: [],
+		};
+		const projected = (key) => projectPromptCapture(__test.promptCaptures.resolve(key), { hasReadTool: false });
+		const boundary = (name) => {
+			const key = buildSystemPrompt(options);
+			if (name === "before_agent_start") handlers.get(name)({ systemPrompt: key, systemPromptOptions: options });
+			else handlers.get(name)({}, { getSystemPrompt: () => key });
+			return projected(key);
+		};
+		boundary("before_agent_start");
+		options.promptGuidelines.push("Recall memory before exploring.");
+		const initial = boundary("agent_start");
+		assert.equal(boundary("turn_start"), initial, "first query boundaries agree");
+		const appends = new AppendInstructions();
+		const epoch = appends.start("guideline-cache", initial);
+		assert.equal(appends.hooks("guideline-cache", initial, () => true), undefined);
+
+		for (let turn = 0; turn < 2; turn++) {
+			assert.equal(boundary("before_agent_start"), initial);
+			// Memory extensions can push the same bullet again on each start.
+			options.promptGuidelines.push("Recall memory before exploring.");
+			for (const name of ["agent_start", "turn_start"]) {
+				const current = boundary(name);
+				assert.equal(current, initial, `${name} stays byte-identical on turn ${turn}`);
+				assert.equal(appends.hooks("guideline-cache", current, () => true), undefined, "no new update block");
+			}
+		}
+
+		options.promptGuidelines.push("Save verified findings.");
+		const changed = boundary("turn_start");
+		assert.deepEqual(diffBlocks(initial, changed), {
+			full: false, removed: [], blocks: [{ key: "xml:tool_guidelines", text: "<tool_guidelines>\n- Read carefully.\n- Recall memory before exploring.\n- Save verified findings.\n</tool_guidelines>" }],
+		});
+		const hooks = appends.hooks("guideline-cache", changed, () => true);
+		const outputs = await Promise.all(hooks.UserPromptSubmit.flatMap(({ hooks }) => hooks).map((hook) => hook(
+			{ hook_event_name: "UserPromptSubmit", session_id: "guideline-cache" }, undefined, { signal: new AbortController().signal },
+		)));
+		assert.equal(outputs.length, 1);
+		const update = outputs[0].hookSpecificOutput.additionalContext;
+		assert.match(update, /^<claude-bridge-appended-instructions>\nPart 1\/1 of one update\./);
+		assert.match(update, /Added or changed block "xml:tool_guidelines":/);
+		assert.doesNotMatch(update, /STABLE POLICY|full current appended instructions/);
+		assert.equal(epoch.recorded, initial, "cached session-start prefix is never rewritten");
+		assert.equal(epoch.state.base, initial);
+		assert.equal(appends.hooks("guideline-cache", boundary("turn_start"), () => true), undefined);
+	});
+
 	it("captures late handler mutations at agent_start and turn_start without mutating prior keys", () => {
 		const handlers = activateWithMockPi();
 		const options = { cwd: "/late-sections", contextFiles: [], skills: [], selectedTools: [], sections: { recovery: "BEFORE" } };

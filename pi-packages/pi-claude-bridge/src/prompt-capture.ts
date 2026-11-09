@@ -13,6 +13,7 @@ export type PromptCaptureInput = {
 	selectedTools?: string[];
 	hiddenTools?: string[];
 	toolGuidelines?: Record<string, string[]>;
+	promptGuidelines?: string[];
 	contextFiles: { path: string; content: string }[];
 	skills: Skill[];
 };
@@ -95,6 +96,7 @@ export class PromptCaptures {
 		capture.toolGuidelines = Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
 		);
+		capture.promptGuidelines = input.promptGuidelines ? [...input.promptGuidelines] : undefined;
 		capture.contextFiles = input.contextFiles.map((file) => ({ ...file }));
 		capture.skills = [...input.skills];
 		capture.source = source;
@@ -386,13 +388,12 @@ function projectCapture(
 			if (text) parts.push({ label: `the ${name} section`, text });
 		}
 		const guidelines: string[] = [];
-		// An explicit rules override replaces Pi's generated rules, including tool guidance.
-		const selectedTools = sections.rules !== undefined || sections.tool_guidelines !== undefined
-			? []
-			: capture.selectedTools ?? [];
-		for (const name of selectedTools) {
-			if (capture.hiddenTools?.includes(name)) continue;
-			for (const guideline of capture.toolGuidelines?.[name] ?? []) {
+		// Explicit overrides replace Pi's generated rules, including tool and prompt guidance.
+		if (sections.rules === undefined && sections.tool_guidelines === undefined) {
+			const toolGuidelines = (capture.selectedTools ?? [])
+				.filter((name) => !capture.hiddenTools?.includes(name))
+				.flatMap((name) => capture.toolGuidelines?.[name] ?? []);
+			for (const guideline of [...toolGuidelines, ...(capture.promptGuidelines ?? [])]) {
 				const trimmed = guideline.trim();
 				if (trimmed && !seenGuidelines.has(trimmed)) {
 					guidelines.push(trimmed);

@@ -70,10 +70,26 @@ describe("PromptCaptures", () => {
 				unselected: ["Unselected guidance."],
 				mem_save: ["Recall first.", " Save findings. "],
 			},
-			promptGuidelines: ["Do not forward promptGuidelines."],
+			promptGuidelines: ["Recall first.", " Keep memory current. ", "", " \t", "Keep memory current."],
 		}));
 		assert.equal(project(captures, "filtered"),
-			"<tool_guidelines>\n- Recall first.\n- Save findings.\n</tool_guidelines>");
+			"<tool_guidelines>\n- Recall first.\n- Save findings.\n- Keep memory current.\n</tool_guidelines>");
+	});
+
+	it("preserves pre-change append bytes when prompt guidelines are absent or empty", () => {
+		const fixtures = [
+			[{}, undefined],
+			[{ custom: "CUSTOM", append: "APPEND", sections: { extra: "EXTRA" } }, "CUSTOM\n\nAPPEND\n\n<extra>\nEXTRA\n</extra>"],
+			[{ selectedTools: ["read"], toolGuidelines: { read: [" Read carefully. ", "Read carefully."] } }, "<tool_guidelines>\n- Read carefully.\n</tool_guidelines>"],
+			[{ sections: { rules: "RULES" }, selectedTools: ["read"], toolGuidelines: { read: ["Read carefully."] } }, '<pi_prompt_section name="rules">\nRULES\n</pi_prompt_section>'],
+		];
+		for (const [options, preChangeRendering] of fixtures) {
+			for (const promptGuidelines of [undefined, []]) {
+				const captures = new PromptCaptures();
+				captures.record("unchanged", capture({ ...options, promptGuidelines }));
+				assert.equal(project(captures, "unchanged"), preChangeRendering);
+			}
+		}
 	});
 
 	it("omits tool guidelines when none apply", () => {
@@ -107,11 +123,12 @@ describe("PromptCaptures", () => {
 		assert.ok(result.startsWith(project(captures, PARENT_KEY)));
 	});
 
-	it("lets explicit rules overrides replace generated tool guidance, including empty overrides", () => {
+	it("lets explicit rules overrides replace generated tool and prompt guidance, including empty overrides", () => {
 		const captures = new PromptCaptures();
 		for (const rules of ["User rules.", ""]) {
 			captures.record(`override ${rules}`, capture({
 				sections: { rules },
+				promptGuidelines: ["Prompt guidance."],
 				selectedTools: ["mem_recall"],
 				toolGuidelines: { mem_recall: ["Recall first."] },
 			}));
@@ -123,7 +140,7 @@ describe("PromptCaptures", () => {
 
 	it("deduplicates repeated inherited tool guidance and custom section blocks", () => {
 		const captures = new PromptCaptures();
-		const guidelines = { selectedTools: ["read"], toolGuidelines: { read: ["Read carefully."] } };
+		const guidelines = { selectedTools: ["read"], toolGuidelines: { read: ["Read carefully."] }, promptGuidelines: ["Read carefully."] };
 		captures.record(PARENT_KEY, capture(guidelines));
 		captures.record("repeated guidelines", capture({ custom: `${PARENT_KEY}\nseparator\n${PARENT_KEY}`, ...guidelines }));
 		assert.equal(occurrences(project(captures, "repeated guidelines"), "- Read carefully."), 1);
@@ -132,6 +149,8 @@ describe("PromptCaptures", () => {
 		assert.equal(project(captures, "custom guidelines"), block);
 		captures.record("section guidelines", capture({ sections: { tool_guidelines: "User guidance." }, ...guidelines }));
 		assert.equal(project(captures, "section guidelines"), "<tool_guidelines>\nUser guidance.\n</tool_guidelines>");
+		captures.record("empty section guidelines", capture({ sections: { tool_guidelines: "" }, ...guidelines }));
+		assert.equal(project(captures, "empty section guidelines"), undefined);
 	});
 
 	it("snapshots tool options and refreshes guidelines on re-record", () => {

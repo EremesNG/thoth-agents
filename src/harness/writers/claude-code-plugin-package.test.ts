@@ -56,7 +56,7 @@ describe('renderClaudeCodePluginPackage', () => {
     });
     expect(roundTrip.artifacts[0].content).toBe(manifest?.content);
 
-    // Components are sorted by path: worker is the sole non-visual writer.
+    // Components are sorted by path: worker is the sole engineering writer.
     const componentPaths = result.artifacts
       .filter((a) => a.kind === 'agent-config')
       .map((a) => a.path);

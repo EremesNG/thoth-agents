@@ -318,13 +318,13 @@ A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi'
 
 ### Requirement: Codemode delegation boundary
 
-Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work. Occasional first-party tools (`bg_task_list`, `bg_task_log`, `bg_task_stop`, `bg_task_clear`, `AskCodex`, `AskAntigravity`, `agy_web_search`, `agy_read_url`) MUST register with `deferred` exposure in a package namespace, and the installer MUST enable `tool_search` next to `codemode` unless the operator explicitly disabled it.
+Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work. Occasional first-party tools (`bg_task_list`, `bg_task_log`, `bg_task_stop`, `bg_task_clear`, `AskCodex`, `AskAntigravity`, `agy_web_search`, `agy_read_url`) MUST register in a package namespace with `deferred` exposure when the session has `codemode` or `tool_search` active and the `THOTH_AGENTS_PI_EXPOSURE` override is not `direct`, and MUST otherwise register as active `direct` tools; the installer MUST enable `tool_search` next to `codemode` unless the operator explicitly disabled it.
 
 #### Scenario: Codemode delegation boundary
 
-- **GIVEN** a Pi session with the first-party packages
-- **WHEN** tools are registered
-- **THEN** delegation and question tools are declared model-only and the occasional tools are absent from declarations but discoverable by `tool_search` and callable from codemode
+- **GIVEN** a Pi session where neither `codemode` nor `tool_search` is active
+- **WHEN** the session starts
+- **THEN** the occasional tools are declared directly to the model, and with either one active they are deferred
 
 ### Requirement: Named Pi subagent model profiles
 

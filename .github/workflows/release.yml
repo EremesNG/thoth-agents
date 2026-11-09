@@ -61,7 +61,7 @@ jobs:
         id: install
         run: pnpm install --frozen-lockfile
 
-      # The root build also generates all eight Pi extension bundles.
+      # The root build also generates all first-party Pi extension bundles.
       - name: Build package
         run: pnpm run build
 

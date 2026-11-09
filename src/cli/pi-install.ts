@@ -107,6 +107,12 @@ export const PI_PACKAGE_SPECS = [
     version: '0.3.0',
     preserveUserCopy: true,
   },
+  {
+    id: 'contained-shell',
+    source: 'npm:@thoth-agents/pi-contained-shell@>=0.1.0',
+    packageName: '@thoth-agents/pi-contained-shell',
+    version: '0.1.0',
+  },
 ] as const;
 
 export const PI_GREP_MCP_ENTRY = {

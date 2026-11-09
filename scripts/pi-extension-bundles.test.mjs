@@ -38,6 +38,11 @@ const packages = {
     tool: 'AskCodex',
     assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
   },
+  'pi-contained-shell': {
+    tools: process.platform === 'win32' ? ['bash', 'powershell'] : [],
+    noop: process.platform !== 'win32',
+    assets: ['dist/launcher.cs', 'dist/launcher.ps1', 'CHANGELOG.md'],
+  },
   'pi-claude-bridge': {
     provider: 'claude-bridge',
     assets: ['CHANGELOG.md'],
@@ -239,6 +244,12 @@ test(
               }
               if (expected.tool)
                 assert.ok(extension.tools.has(expected.tool), name);
+              if (expected.tools)
+                assert.deepEqual(
+                  [...extension.tools.keys()],
+                  expected.tools,
+                  name,
+                );
               if (expected.command)
                 assert.ok(extension.commands.has(expected.command), name);
               if (expected.event)
@@ -257,6 +268,29 @@ test(
           },
         );
       }
+
+      await t.test(
+        'theme renderers still apply to contained shell tool names',
+        async () => {
+          const theme = await loadPackage(
+            join(install, 'node_modules/@thoth-agents/pi-thoth-theme'),
+            install,
+            agentDir,
+            discoverAndLoadExtensions,
+          );
+          try {
+            const resolvers = theme.extensions[0].toolRenderers ?? [];
+            assert.ok(resolvers.length > 0);
+            for (const name of ['bash', 'powershell']) {
+              const renderers = resolvers[0](name, () => undefined);
+              assert.equal(typeof renderers?.renderCall, 'function', name);
+              assert.equal(typeof renderers?.renderResult, 'function', name);
+            }
+          } finally {
+            theme.runtime.invalidate();
+          }
+        },
+      );
 
       await t.test(
         'Pi aliases preserve host export identity from the isolated install',

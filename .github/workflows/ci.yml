@@ -51,6 +51,8 @@ jobs:
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
       - name: Typecheck pi-askcodex
         run: pnpm --filter @thoth-agents/pi-askcodex run typecheck
+      - name: Typecheck pi-contained-shell
+        run: pnpm --filter @thoth-agents/pi-contained-shell run typecheck
       - name: Typecheck pi-background-tasks
         run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck
       - name: Typecheck pi-openai-fast
@@ -112,6 +114,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       # Continue other packages after a failure without concealing the failed step.
+      - name: Test pi-contained-shell
+        if: ${{ !cancelled() && matrix.lane == 'background' }}
+        run: pnpm --filter @thoth-agents/pi-contained-shell run test
       - name: Test pi-background-tasks
         if: ${{ !cancelled() && matrix.lane == 'background' }}
         run: pnpm --filter @thoth-agents/pi-background-tasks run test
@@ -164,6 +169,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       # Retry isolated Windows timing hiccups; persistent failures still fail.
+      - name: Test pi-contained-shell
+        if: ${{ !cancelled() && matrix.lane == 'background' }}
+        run: pnpm --filter @thoth-agents/pi-contained-shell run test --retry=2
       - name: Test pi-background-tasks
         if: ${{ !cancelled() && matrix.lane == 'background' }}
         run: pnpm --filter @thoth-agents/pi-background-tasks run test --retry=2

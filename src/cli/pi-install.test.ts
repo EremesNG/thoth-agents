@@ -855,6 +855,7 @@ describe('Pi setup', () => {
     'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
     'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
     'npm:@thoth-agents/pi-sidebar@>=0.3.0',
+    'npm:@thoth-agents/pi-contained-shell@>=0.1.0',
   ])('fresh install requires individual verification of %s before managed completion', (source) => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
@@ -865,7 +866,7 @@ describe('Pi setup', () => {
           const result = native.commandExecutor(command, args);
           if (args[0] === 'install' && args[1] === source) {
             const name = source.slice(4).replace(/@>=.*$/, '');
-            native.seed(name, source, '0.2.9');
+            native.seed(name, source, '0.0.9');
           }
           return result;
         },
@@ -1167,10 +1168,11 @@ describe('Pi setup', () => {
       'npm:@thoth-agents/pi-thoth-theme@>=0.3.0',
       'npm:@thoth-agents/pi-background-tasks@>=0.3.0',
       'npm:@thoth-agents/pi-sidebar@>=0.3.0',
+      'npm:@thoth-agents/pi-contained-shell@>=0.1.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('1.5.0');
     expect(plan.items[0]?.description).toContain('Pi >=1.5.0');
-    expect(PI_PACKAGE_SPECS).toHaveLength(8);
+    expect(PI_PACKAGE_SPECS).toHaveLength(9);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
         'npm:@feniix/pi-exa@5.1.1',
@@ -1179,6 +1181,7 @@ describe('Pi setup', () => {
     );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
+      'package',
       'package',
       'package',
       'package',

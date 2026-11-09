@@ -27,6 +27,13 @@ const packages = {
       '../pi-core/src/windows-job/launcher.ps1',
     ],
   },
+  'pi-contained-shell': {
+    entry: 'src/index.ts',
+    assets: [
+      '../pi-core/src/windows-job/launcher.cs',
+      '../pi-core/src/windows-job/launcher.ps1',
+    ],
+  },
   'pi-claude-bridge': {
     entry: 'src/index.ts',
     // The SDK locates its native executable relative to its own module.

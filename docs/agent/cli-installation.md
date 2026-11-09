@@ -108,13 +108,15 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill copies and install the eight
+  then may it migrate attributable legacy root/skill copies and install the nine
   selected sources as `npm:@thoth-agents/pi-subagents@>=0.3.0`,
   `pi-web-access@>=0.27.0`,
   `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`,
   `@thoth-agents/pi-todo@>=0.3.0`, `@thoth-agents/pi-thoth-theme@>=0.3.0`,
   `@thoth-agents/pi-background-tasks@>=0.3.0`, and
-  `@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right sidebar.
+  `@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right sidebar,
+  plus `@thoth-agents/pi-contained-shell@>=0.1.0` for Windows shell containment
+  (no tool overrides on other platforms).
   Theme, background tasks and sidebar opt into
   `preserveUserCopy`: an existing copy from any source at or above the floor is
   preserved and individually verified without reinstalling; an older copy is

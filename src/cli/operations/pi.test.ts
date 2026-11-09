@@ -223,6 +223,7 @@ describe('Pi operations', () => {
     for (const source of [
       'npm:@thoth-agents/pi-subagents@>=0.3.0',
       'npm:@thoth-agents/pi-sidebar@>=0.3.0',
+      'npm:@thoth-agents/pi-contained-shell@>=0.1.0',
     ])
       expect(
         install.items.some(({ preview }) => preview?.includes(source)),

@@ -48,12 +48,13 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   eight selected packages, including
+   nine selected packages, including
    `npm:@thoth-agents/pi-subagents@>=0.3.0`,
    `npm:@thoth-agents/pi-todo@>=0.3.0`,
    `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and
    `npm:@thoth-agents/pi-background-tasks@>=0.3.0` and
-   `npm:@thoth-agents/pi-sidebar@>=0.3.0`, plus four external skills.
+   `npm:@thoth-agents/pi-sidebar@>=0.3.0` and
+   `npm:@thoth-agents/pi-contained-shell@>=0.1.0`, plus four external skills.
    Published installs also invoke provider-owned thoth-mem; an
    explicit local Pi package install leaves thoth-mem to its separate local
    installer. Pi and the separate `@thoth-agents/pi-subagents` runtime retain

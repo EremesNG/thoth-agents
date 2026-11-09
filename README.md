@@ -164,7 +164,7 @@ for both `claude-bridge` and `antigravity`. See
 
 ### Pi package inventory
 
-The eleven first-party `@thoth-agents/pi-*` packages are:
+The twelve first-party `@thoth-agents/pi-*` packages are:
 
 | Package | Setup |
 | --- | --- |
@@ -172,6 +172,7 @@ The eleven first-party `@thoth-agents/pi-*` packages are:
 | [`@thoth-agents/pi-askcodex`](pi-packages/pi-askcodex/README.md) | Optional/manual |
 | [`@thoth-agents/pi-background-tasks`](pi-packages/pi-background-tasks/README.md) | Installer-managed |
 | [`@thoth-agents/pi-claude-bridge`](pi-packages/pi-claude-bridge/README.md) | Optional/manual |
+| [`@thoth-agents/pi-contained-shell`](pi-packages/pi-contained-shell/README.md) | Installer-managed |
 | [`@thoth-agents/pi-core`](pi-packages/pi-core/README.md) | Shared library; not installer-managed |
 | [`@thoth-agents/pi-openai-fast`](pi-packages/pi-openai-fast/README.md) | Optional/manual |
 | [`@thoth-agents/pi-questions-user`](pi-packages/pi-questions-user/README.md) | Installer-managed |
@@ -351,11 +352,13 @@ diagnostics. To remove attributable Codex surfaces, preview with
 to apply.
 
 For Pi, the first-party `thoth-agents` package remains exact and receipt-verified.
-The nine selected extensions use stable minimum-only `>=` ranges, so
+The nine selected external packages use stable minimum-only `>=` ranges, so
 Pi's native package manager can update them independently without waiting for a
 Thoth release. Install and applied Update now include
 `@thoth-agents/pi-thoth-theme`, `@thoth-agents/pi-background-tasks` and
-`@thoth-agents/pi-sidebar` at `>=0.3.0`.
+`@thoth-agents/pi-sidebar` at `>=0.3.0`, plus
+`@thoth-agents/pi-contained-shell` at `>=0.1.0` for Windows shell containment
+(a no-op on other platforms).
 Existing copies of these three packages from any source are preserved and verified
 without reinstalling when compatible; older copies are left untouched and block
 completion with manual upgrade guidance. Ambiguous sources fail closed. Status

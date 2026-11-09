@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, registers package-owned skills and installs external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0`, `npm:@thoth-agents/pi-background-tasks@>=0.3.0` and `npm:@thoth-agents/pi-sidebar@>=0.3.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=0.3.0`, the research/interaction and task-list packages, plus `npm:@thoth-agents/pi-thoth-theme@>=0.3.0`, `npm:@thoth-agents/pi-background-tasks@>=0.3.0`, `npm:@thoth-agents/pi-sidebar@>=0.3.0` and `npm:@thoth-agents/pi-contained-shell@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -289,7 +289,10 @@ The CLI installs and verifies these Pi packages in order:
    line (selecting the `thoth` color theme remains an operator choice);
 8. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs;
 9. `npm:@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right
-    sidebar in fullscreen and regular Pi modes.
+    sidebar in fullscreen and regular Pi modes;
+10. `npm:@thoth-agents/pi-contained-shell@>=0.1.0` for Windows Job Object
+    containment of `bash` and `powershell`, including pipeline descendants. It
+    preserves the tool names and theme renderers and is a no-op on other platforms.
 
 The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
 Session, Workspace, Cost and discovered work-source panels, with themed
@@ -332,7 +335,7 @@ returns input to the expanded question or otherwise the editor. Collapse and
 question teardown never take focus from a still-visible foreign overlay. See
 [the question controls](../pi-packages/pi-questions-user/README.md#keyboard-controls).
 
-These are eight selected packages after root-package verification. The task-list
+These are nine selected packages after root-package verification. The task-list
 extension is the fifth selected package. Install and applied Update install and
 individually verify it;
 status reports it as a managed target. Progress tracking never replaces native
@@ -897,7 +900,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact `plugins` pin and managed configuration, package-provided owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, five specialist synchronization, eight minimum-constrained selected packages (including task list, theme, background tasks and sidebar), exact Context7 and grep.app entries, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, nine minimum-constrained selected packages (including task list, theme, background tasks, sidebar and Windows shell containment), exact Context7 and grep.app entries, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

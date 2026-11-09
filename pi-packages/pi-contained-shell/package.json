@@ -1,0 +1,51 @@
+{
+  "name": "@thoth-agents/pi-contained-shell",
+  "version": "0.1.0",
+  "description": "Windows Job Object containment for Pi shell tools.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "windows",
+    "shell"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-contained-shell"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.ts",
+  "pi": {
+    "extensions": [
+      "./dist/index.ts"
+    ]
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@thoth-agents/pi-core": "workspace:^",
+    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+  }
+}

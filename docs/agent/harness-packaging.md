@@ -106,7 +106,7 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
-  The root package and all eleven `pi-packages/*` members declare Pi SDK peers
+  The root package and all twelve `pi-packages/*` members declare Pi SDK peers
   `>=1.5.0`, pin development SDK/TUI dependencies to `1.5.0`, and require Node
   `>=22.19.0`. Features requiring APIs above this Pi floor must be runtime-guarded.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
@@ -140,12 +140,18 @@
   right sidebar with guarded fullscreen/regular adapters. Existing
   compatible copies from any source are preserved and verified without
   reinstalling; older copies remain untouched and block completion with manual
-  upgrade guidance, and ambiguous identity fails closed. Jobs survive `/reload`
-  of their session and stop on any other shutdown, including subagent teardown.
+  upgrade guidance, and ambiguous identity fails closed.
+  Background jobs survive `/reload` of their session and stop on any other shutdown, including subagent teardown.
   It registers only the standalone tools `bg_task_spawn`, `bg_task_watch`,
   `bg_task_list`, `bg_task_status`, `bg_task_log`, `bg_task_stop` and
   `bg_task_clear`; there are no action wrappers and no `maxBytes`/`tail_lines`
-  aliases. Model-facing tool definitions of pi-background-tasks,
+  aliases.
+  `@thoth-agents/pi-contained-shell@>=0.1.0` is the tenth selected package
+  (including the root). On Windows it replaces `bash` and `powershell` execution
+  with pi-core Job Objects while retaining their names and theme renderers; on
+  other platforms it registers nothing. Its bundle ships its own `launcher.cs`
+  and `launcher.ps1` beside `dist/index.ts`, like AskCodex and Antigravity.
+  Model-facing tool definitions of pi-background-tasks,
   pi-questions-user, pi-todo, pi-antigravity-bridge, pi-askcodex and pi-subagents
   are size-budgeted by each package's `tool-budget.test.ts`, which serializes
   name, description, parameters, snippet and guidelines; raise a budget only with
@@ -805,7 +811,11 @@ npm view @thoth-agents/<pkg> version
 
 Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
 pi-background-tasks, pi-claude-bridge, pi-askcodex, pi-openai-fast, pi-thoth-theme,
-pi-sidebar.
+pi-sidebar, pi-contained-shell.
+
+The contained-shell package starts at 0.1.0 and follows the same manual first
+publish and trusted-publisher setup. Installer-managed npm setup cannot complete
+until that version is visible in the registry. Its bundle inlines pi-core.
 
 New packages can take a few minutes to appear in public registry reads
 (`npm view` returns `E404` meanwhile; `npm access list packages @thoth-agents`

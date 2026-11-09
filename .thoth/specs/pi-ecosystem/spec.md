@@ -695,3 +695,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 - **GIVEN** the panel open with icons `nerd` and density `frame` and a bash card already shown
 - **WHEN** the user sets icons to `unicode`, density to `line`, disables the welcome header and saves
 - **THEN** the file holds the three changes, the shown bash card re-renders as a unicode one-row card without `/reload`, and the user is told that the welcome change applies after `/reload`
+
+### Requirement: Job-contained Pi shell tools on Windows
+
+On Windows, the thoth Pi `bash` and `powershell` tools run each command inside a kill-on-close Job Object so timeout, abort, or shell exit terminate every descendant, falling back to Pi default execution with a warning when the launcher is unavailable.
+
+#### Scenario: Job-contained Pi shell tools on Windows
+
+- **GIVEN** a Windows Pi session with the thoth contained-shell package
+- **WHEN** a `bash` command `sleep N | head -1` exceeds its timeout
+- **THEN** the tool reports the timeout and no process from that command remains running

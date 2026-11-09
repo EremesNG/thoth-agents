@@ -49,6 +49,16 @@ function fakeNpm(calls: Array<{ level: string; cwd: string }>) {
 }
 
 describe('release-pi', () => {
+  test('discovers the contained-shell package for release without a separate allowlist', () => {
+    expect(discoverPiPackages(process.cwd())).toContainEqual(
+      expect.objectContaining({
+        directory: 'pi-contained-shell',
+        name: '@thoth-agents/pi-contained-shell',
+        version: '0.1.0',
+      }),
+    );
+  });
+
   test('discovers packages from pi-packages/*/package.json', () => {
     expect(
       discoverPiPackages(root)

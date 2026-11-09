@@ -137,12 +137,8 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 ```
 
 `animation` accepts `"full"` (default), `"reduced"`, `"minimal"`, or `"off"`.
-Missing or malformed values use `"full"`. Run `/thoth-animation` to select a
-level (the current level is marked), or `/thoth-animation minimal` to apply one
-directly. Changes are saved atomically, preserve other configuration fields, and
-apply immediately without a restart. Invalid arguments leave the setting unchanged.
-Malformed or non-object configuration files must be fixed before the command can
-save; they are never overwritten with defaults.
+Missing or malformed values use `"full"`. Change it from the `/thoth-theme`
+settings panel (see below); it applies immediately without a restart.
 Levels select which effects animate, never their speed:
 
 - `"full"`: everything, including input-border breathing and label shimmer.
@@ -202,9 +198,44 @@ walking upward from the tool's source directory. Built-ins always use the
 themed frames; tools absent from Pi's registry keep their own renderers.
 
 Configuration is read at extension load; use `/reload` after manual file edits
-(or `/thoth-animation` for immediate animation changes). Missing,
+(or change the live settings from `/thoth-theme`). Missing,
 malformed or invalid values use defaults unless noted above. Pi settings are
 never read for package configuration.
+
+### Settings panel
+
+Run `/thoth-theme` (interactive TUI only) to edit the common settings in an
+overlay:
+
+```text
+╭ Thoth theme settings ───────────────────────────────╮
+│ pending: 2 changes                                  │
+│ Space toggle · ←/→ change · Enter save · Esc cancel │
+│ › * Icons         ‹ unicode ›                       │
+│     Animation     ‹ full ›                          │
+│     Tool density  ‹ frame ›                         │
+│     [x] Status line  (requires /reload)             │
+│     [x] Input box  (requires /reload)               │
+│     [x] Tool cards  (requires /reload)              │
+│   * [ ] Welcome  (requires /reload)                 │
+╰─────────────────────────────────────────────────────╯
+```
+
+- `↑`/`↓` move; `←`/`→` cycle the enum rows (icons `nerd|unicode|ascii`,
+  animation `full|reduced|minimal|off`, tool density `frame|compact|line`);
+  `Space` toggles a module; `*` marks changed rows.
+- `Enter` or `s` saves, `Esc` or `q` cancels without changes. A failed save
+  (for example a malformed config file) shows the error in the panel and leaves
+  the file and the running settings untouched.
+- Saving writes `pi-thoth-theme.json` atomically, preserving unknown fields and
+  settings the panel does not edit.
+- **Live now:** icons, animation and tool density apply immediately, including
+  to tool cards already on screen.
+- **After `/reload`:** the status line, input box, tool cards and welcome
+  toggles are saved at once but only take effect after `/reload`; the panel marks
+  them and Pi reminds you after saving.
+- `tools.respectPackages` is not editable in the panel; edit it in the JSON file
+  (and `/reload`). The panel preserves it when saving.
 
 ### Collapsed tool rows
 

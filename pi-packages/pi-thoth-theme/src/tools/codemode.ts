@@ -10,6 +10,7 @@ import {
   renderToolFooter,
 } from '@thoth-agents/pi-core';
 import { createRenderKit } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { escapeControlCharacters, getResultText } from './box.ts';
@@ -97,166 +98,173 @@ function displayCalls(details: unknown): DisplayCall[] {
 /** Presentation only: Pi retains codemode's execution, schema and exposure. */
 export function createCodemodeRenderer(config: ThemeConfig): ToolRenderers {
   // Replay can render before session_start has published the shared kit.
-  const fallbackKit = createRenderKit({}, undefined, config.icons);
   return {
     renderShell: 'self',
     renderCall(_args, theme, context) {
       context = detachRenderContext(context);
       if (context?.state) {
         context.state[RESULT_PRESENT] = false;
+        context.state.hasResult = false;
         context.state[RESULT_BORDER] = undefined;
       }
-      const density = collapsedDensity(config, context?.expanded);
-      if (density) {
-        return compactCall(density, theme, context, config, {
-          title: 'codemode',
-        });
-      }
-      const memo = createKitRenderMemo();
-      const component = {
-        invalidate: () => memo.invalidate(),
-        render(width: number) {
-          return memo.render(width, (registeredKit) => {
-            const kit = registeredKit ?? fallbackKit;
-            const hasResult = context?.state?.[RESULT_PRESENT] === true;
-            const status = context?.executionStarted ? 'running' : 'pending';
-            return kit.card(
-              theme,
-              {
-                title: theme.fg('toolTitle', 'codemode'),
-                footer: hasResult
-                  ? ''
-                  : renderToolFooter(kit, theme, { status, context }),
-                part: hasResult ? 'start' : 'full',
-                ...context?.state?.[RESULT_BORDER],
-              },
-              width,
-            );
+      return settingsComponent(() => {
+        const fallbackKit = createRenderKit({}, undefined, config);
+        const density = collapsedDensity(config, context?.expanded);
+        if (density) {
+          return compactCall(density, theme, context, config, {
+            title: 'codemode',
           });
-        },
-      };
-      if (context?.state) context.state[CALL_COMPONENT] = component;
-      return component;
+        }
+        const memo = createKitRenderMemo();
+        const component = {
+          invalidate: () => memo.invalidate(),
+          render(width: number) {
+            return memo.render(width, (registeredKit) => {
+              const kit = registeredKit ?? fallbackKit;
+              const hasResult = context?.state?.[RESULT_PRESENT] === true;
+              const status = context?.executionStarted ? 'running' : 'pending';
+              return kit.card(
+                theme,
+                {
+                  title: theme.fg('toolTitle', 'codemode'),
+                  footer: hasResult
+                    ? ''
+                    : renderToolFooter(kit, theme, { status, context }),
+                  part: hasResult ? 'start' : 'full',
+                  ...context?.state?.[RESULT_BORDER],
+                },
+                width,
+              );
+            });
+          },
+        };
+        if (context?.state) context.state[CALL_COMPONENT] = component;
+        return component;
+      });
     },
     renderResult(result, options, theme, context) {
       context = detachRenderContext(context);
-      const status = options.isPartial
-        ? 'running'
-        : context?.isError
-          ? 'failed'
-          : 'completed';
-      const border = {
-        isError: status === 'failed',
-        isSuccess:
-          status === 'completed' && context?.executionStarted !== false,
-      };
-      if (context?.state) {
-        context.state[RESULT_PRESENT] = true;
-        // Result contexts can be new snapshots; share the tone with the header.
-        context.state[RESULT_BORDER] = border;
-        context.state[CALL_COMPONENT]?.invalidate?.();
-      }
-      const calls = displayCalls(result.details);
-      const density = collapsedDensity(config, options.expanded);
-      if (density) {
-        if (context?.state) context.state.hasResult = true;
-        const text = getResultText(result);
-        const firstError = calls.find((call) => call.error);
-        return compactResult(
-          density,
-          theme,
-          context,
-          config,
-          Boolean(options.isPartial),
-          {
-            title: 'codemode',
-            summary: calls.length ? plural(calls.length, 'call') : undefined,
-            continuation:
-              calls.map((call) => call.name).join(', ') ||
-              firstLine(text) ||
-              '(no output)',
-            errorLine: firstError
-              ? firstLine(`${firstError.name}: ${firstError.error}`)
-              : firstLine(text),
-          },
+      return settingsComponent(() => {
+        const fallbackKit = createRenderKit({}, undefined, config);
+        const status = options.isPartial
+          ? 'running'
+          : context?.isError
+            ? 'failed'
+            : 'completed';
+        const border = {
+          isError: status === 'failed',
+          isSuccess:
+            status === 'completed' && context?.executionStarted !== false,
+        };
+        if (context?.state) {
+          context.state[RESULT_PRESENT] = true;
+          context.state.hasResult = true;
+          // Result contexts can be new snapshots; share the tone with the header.
+          context.state[RESULT_BORDER] = border;
+          context.state[CALL_COMPONENT]?.invalidate?.();
+        }
+        const calls = displayCalls(result.details);
+        const density = collapsedDensity(config, options.expanded);
+        if (density) {
+          if (context?.state) context.state.hasResult = true;
+          const text = getResultText(result);
+          const firstError = calls.find((call) => call.error);
+          return compactResult(
+            density,
+            theme,
+            context,
+            config,
+            Boolean(options.isPartial),
+            {
+              title: 'codemode',
+              summary: calls.length ? plural(calls.length, 'call') : undefined,
+              continuation:
+                calls.map((call) => call.name).join(', ') ||
+                firstLine(text) ||
+                '(no output)',
+              errorLine: firstError
+                ? firstLine(`${firstError.name}: ${firstError.error}`)
+                : firstLine(text),
+            },
+          );
+        }
+        const visibleCalls = options.expanded
+          ? calls
+          : calls.slice(0, COLLAPSED_CALLS);
+        const output = displayLines(getResultText(result) || '(no output)');
+        const errors = calls.flatMap((call) =>
+          call.error
+            ? displayLines(`${call.name}: ${call.error}`).map((line) =>
+                theme.fg('error', line),
+              )
+            : [],
         );
-      }
-      const visibleCalls = options.expanded
-        ? calls
-        : calls.slice(0, COLLAPSED_CALLS);
-      const output = displayLines(getResultText(result) || '(no output)');
-      const errors = calls.flatMap((call) =>
-        call.error
-          ? displayLines(`${call.name}: ${call.error}`).map((line) =>
-              theme.fg('error', line),
-            )
-          : [],
-      );
-      const memo = createKitRenderMemo();
-      return {
-        invalidate: () => memo.invalidate(),
-        render(width) {
-          return memo.render(width, (registeredKit) => {
-            const kit = registeredKit ?? fallbackKit;
-            return kit.card(
-              theme,
-              {
-                part: context?.state?.[CALL_COMPONENT] ? 'end' : 'full',
-                title: theme.fg('toolTitle', 'codemode'),
-                body: (bodyWidth) => {
-                  if (calls.length === 0) {
-                    return options.expanded
-                      ? []
-                      : kit.collapse(theme, output, {
-                          ...options,
-                          expandHint: resolveExpandHint(context),
-                        });
-                  }
-                  const rows = visibleCalls.map((call, i) => {
-                    const duration =
-                      call.durationMs === undefined
-                        ? ''
-                        : ` · ${formatDuration(call.durationMs)}`;
-                    return kit.treeRow(
-                      theme,
-                      {
-                        text: `${kit.statusGlyph(theme, CALL_STATUS[call.status])} ${escapeControlCharacters(call.name)}${duration}`,
-                        last: i === visibleCalls.length - 1,
-                      },
-                      bodyWidth,
-                    );
-                  });
-                  if (!options.expanded && calls.length > COLLAPSED_CALLS) {
-                    rows.push(
-                      theme.fg(
-                        'dim',
-                        `+${calls.length - COLLAPSED_CALLS} more${expandHintSuffix(context)}`,
-                      ),
-                    );
-                  }
-                  return rows;
+        const memo = createKitRenderMemo();
+        return {
+          invalidate: () => memo.invalidate(),
+          render(width) {
+            return memo.render(width, (registeredKit) => {
+              const kit = registeredKit ?? fallbackKit;
+              return kit.card(
+                theme,
+                {
+                  part: context?.state?.[CALL_COMPONENT] ? 'end' : 'full',
+                  title: theme.fg('toolTitle', 'codemode'),
+                  body: (bodyWidth) => {
+                    if (calls.length === 0) {
+                      return options.expanded
+                        ? []
+                        : kit.collapse(theme, output, {
+                            ...options,
+                            expandHint: resolveExpandHint(context),
+                          });
+                    }
+                    const rows = visibleCalls.map((call, i) => {
+                      const duration =
+                        call.durationMs === undefined
+                          ? ''
+                          : ` · ${formatDuration(call.durationMs)}`;
+                      return kit.treeRow(
+                        theme,
+                        {
+                          text: `${kit.statusGlyph(theme, CALL_STATUS[call.status])} ${escapeControlCharacters(call.name)}${duration}`,
+                          last: i === visibleCalls.length - 1,
+                        },
+                        bodyWidth,
+                      );
+                    });
+                    if (!options.expanded && calls.length > COLLAPSED_CALLS) {
+                      rows.push(
+                        theme.fg(
+                          'dim',
+                          `+${calls.length - COLLAPSED_CALLS} more${expandHintSuffix(context)}`,
+                        ),
+                      );
+                    }
+                    return rows;
+                  },
+                  sections: options.expanded
+                    ? [
+                        {
+                          title: 'Script',
+                          rows: displayLines(scriptText(context?.args)),
+                        },
+                        { title: 'Output', rows: output },
+                        ...(errors.length
+                          ? [{ title: 'Errors', rows: errors }]
+                          : []),
+                      ]
+                    : undefined,
+                  wrap: options.expanded,
+                  footer: renderToolFooter(kit, theme, { status, context }),
+                  ...border,
                 },
-                sections: options.expanded
-                  ? [
-                      {
-                        title: 'Script',
-                        rows: displayLines(scriptText(context?.args)),
-                      },
-                      { title: 'Output', rows: output },
-                      ...(errors.length
-                        ? [{ title: 'Errors', rows: errors }]
-                        : []),
-                    ]
-                  : undefined,
-                wrap: options.expanded,
-                footer: renderToolFooter(kit, theme, { status, context }),
-                ...border,
-              },
-              width,
-            );
-          });
-        },
-      };
+                width,
+              );
+            });
+          },
+        };
+      });
     },
   };
 }

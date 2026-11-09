@@ -6,6 +6,7 @@ import type {
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, fitExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
@@ -67,60 +68,62 @@ function parseFindOutput(
 }
 
 export function createCustomFindTool(cwd: string, config: ThemeConfig) {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: FindContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
-      const args = (rawArgs ?? {}) as FindArgs;
-      const pattern = escapeControlCharacters(String(args.pattern ?? '*'));
-      const rawPath = String(args.path ?? '.');
-      const searchPath = escapeControlCharacters(
-        formatDisplayPath(rawPath, context?.cwd ?? cwd),
-      );
-      const density = collapsedDensity(config, context?.expanded);
-      if (density) {
-        return compactCall(density, theme, context, config, {
-          title: 'Find',
-          summary: `"${pattern}" in ${searchPath}`,
-        });
-      }
-      const icon = getToolIcon('search', config.icons);
-      const borderTone = getToolBorderTone(context);
-
-      const comp = createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Find')) : theme.fg('toolTitle', 'Find')} ${theme.fg('syntaxString', `"${pattern}"`)} ${theme.fg('dim', 'in')} ${theme.fg('text', searchPath)}`;
-
-        if (!isFramedContext(context)) {
-          return renderBox(theme, [], safeWidth, {
-            ellipsis,
-            title,
-            footer,
-            isError: borderTone === 'error',
-            isSuccess: borderTone === 'success',
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        syncElapsedTicker(context);
+        const args = (rawArgs ?? {}) as FindArgs;
+        const pattern = escapeControlCharacters(String(args.pattern ?? '*'));
+        const rawPath = String(args.path ?? '.');
+        const searchPath = escapeControlCharacters(
+          formatDisplayPath(rawPath, context?.cwd ?? cwd),
+        );
+        const density = collapsedDensity(config, context?.expanded);
+        if (density) {
+          return compactCall(density, theme, context, config, {
+            title: 'Find',
+            summary: `"${pattern}" in ${searchPath}`,
           });
         }
+        const icon = getToolIcon('search', config.icons);
+        const borderTone = getToolBorderTone(context);
 
-        if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, borderTone);
+        const comp = createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Find')) : theme.fg('toolTitle', 'Find')} ${theme.fg('syntaxString', `"${pattern}"`)} ${theme.fg('dim', 'in')} ${theme.fg('text', searchPath)}`;
+
+          if (!isFramedContext(context)) {
+            return renderBox(theme, [], safeWidth, {
+              ellipsis,
+              title,
+              footer,
+              isError: borderTone === 'error',
+              isSuccess: borderTone === 'success',
+            });
+          }
+
+          if (hasToolResult(context)) {
+            return renderFrameTop(theme, title, safeWidth, borderTone);
+          }
+
+          return [
+            ...renderFrameTop(theme, title, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
+
+        if (context?.state) {
+          context.state.callComponent = comp;
         }
-
-        return [
-          ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        return comp;
       });
-
-      if (context?.state) {
-        context.state.callComponent = comp;
-      }
-      return comp;
     },
 
     renderResult(
@@ -146,134 +149,146 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
       }
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const status = options?.isPartial
-        ? 'running'
-        : isErr
-          ? 'failed'
-          : 'completed';
-      const footerOptions = {
-        status,
-        context: { ...context, isPartial: options?.isPartial },
-      } as const;
-      syncElapsedTicker(footerOptions.context);
-      const borderTone = getToolBorderTone({
-        isError: isErr,
-        isPartial: options?.isPartial,
-      });
-      const textOutput = getRawResultText(result);
-      const resultDensity = collapsedDensity(config, options?.expanded);
-      if (resultDensity) {
-        const findArgs = (context?.args ?? {}) as FindArgs;
-        const { entries } = isErr
-          ? { entries: [] }
-          : parseFindOutput(textOutput, result.details);
-        const searched = formatDisplayPath(
-          String(findArgs.path ?? '.'),
-          context?.cwd ?? cwd,
-        );
-        return compactResult(
-          resultDensity,
-          theme,
-          context,
-          config,
-          Boolean(options?.isPartial),
-          {
-            title: 'Find',
-            summary: `"${String(findArgs.pattern ?? '*')}" in ${searched}`,
-            counts: [plural(entries.length, 'file')],
-            continuation: entries[0] ?? 'no matches found',
-            errorLine: firstLine(textOutput) || 'Find failed',
-          },
-        );
-      }
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const isErr = Boolean(context?.isError);
+        const status = options?.isPartial
+          ? 'running'
+          : isErr
+            ? 'failed'
+            : 'completed';
+        const footerOptions = {
+          status,
+          context: { ...context, isPartial: options?.isPartial },
+        } as const;
+        syncElapsedTicker(footerOptions.context);
+        const borderTone = getToolBorderTone({
+          isError: isErr,
+          isPartial: options?.isPartial,
+        });
+        const textOutput = getRawResultText(result);
+        const resultDensity = collapsedDensity(config, options?.expanded);
+        if (resultDensity) {
+          const findArgs = (context?.args ?? {}) as FindArgs;
+          const { entries } = isErr
+            ? { entries: [] }
+            : parseFindOutput(textOutput, result.details);
+          const searched = formatDisplayPath(
+            String(findArgs.path ?? '.'),
+            context?.cwd ?? cwd,
+          );
+          return compactResult(
+            resultDensity,
+            theme,
+            context,
+            config,
+            Boolean(options?.isPartial),
+            {
+              title: 'Find',
+              summary: `"${String(findArgs.pattern ?? '*')}" in ${searched}`,
+              counts: [plural(entries.length, 'file')],
+              continuation: entries[0] ?? 'no matches found',
+              errorLine: firstLine(textOutput) || 'Find failed',
+            },
+          );
+        }
 
-      if (isErr) {
+        if (isErr) {
+          return createComponent((width: number) => {
+            const safeWidth = Math.max(0, width);
+            const footer = toolFooter(theme, footerOptions, config.icons);
+            const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Find failed'))}`;
+            if (!isFramedContext(context)) {
+              return [
+                truncateToWidth(errText, safeWidth),
+                ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+              ];
+            }
+            return [
+              ...renderFrameRow(
+                theme,
+                errText,
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          });
+        }
+
+        const { entries, notices } = parseFindOutput(
+          textOutput,
+          result.details,
+        );
+        const total = entries.length;
+
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           const footer = toolFooter(theme, footerOptions, config.icons);
-          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Find failed'))}`;
-          if (!isFramedContext(context)) {
+          if (safeWidth === 0) return [];
+          if (total === 0 && notices.length === 0) {
+            if (!isFramedContext(context)) {
+              return [
+                truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+                ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+              ];
+            }
             return [
-              truncateToWidth(errText, safeWidth),
+              ...renderFrameRow(
+                theme,
+                theme.fg('dim', 'no matches found'),
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
               ...renderFrameBottom(theme, footer, safeWidth, borderTone),
             ];
           }
+
+          const rawLines: string[] = [];
+          const visible = options?.expanded
+            ? entries
+            : entries.slice(0, COLLAPSED_ENTRY_LIMIT);
+          const remaining = total - visible.length;
+
+          for (let i = 0; i < visible.length; i++) {
+            const entry = visible[i];
+            const isLast = i === visible.length - 1 && remaining === 0;
+            const branch = isLast ? '└─' : '├─';
+            const icon = getFileIcon(entry, config.icons);
+            const line = `${theme.fg('dim', branch)} ${theme.fg('accent', icon)} ${theme.fg('toolOutput', escapeControlCharacters(entry))}`;
+            rawLines.push(line);
+          }
+
+          if (remaining > 0) {
+            const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remaining} more matches${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
+            rawLines.push(more);
+          }
+
+          for (const notice of notices) {
+            rawLines.push(theme.fg('warning', notice));
+          }
+
+          if (!isFramedContext(context)) {
+            return [
+              ...rawLines.map((line) =>
+                truncateToWidth(
+                  fitExpandHint(`  ${line}`, safeWidth, ellipsis),
+                  safeWidth,
+                ),
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
           return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
+            ...rawLines.flatMap((line) =>
+              renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
+            ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
-      }
-
-      const { entries, notices } = parseFindOutput(textOutput, result.details);
-      const total = entries.length;
-
-      return createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions, config.icons);
-        if (safeWidth === 0) return [];
-        if (total === 0 && notices.length === 0) {
-          if (!isFramedContext(context)) {
-            return [
-              truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
-              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-            ];
-          }
-          return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('dim', 'no matches found'),
-              safeWidth,
-              borderTone,
-              ellipsis,
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
-
-        const rawLines: string[] = [];
-        const visible = options?.expanded
-          ? entries
-          : entries.slice(0, COLLAPSED_ENTRY_LIMIT);
-        const remaining = total - visible.length;
-
-        for (let i = 0; i < visible.length; i++) {
-          const entry = visible[i];
-          const isLast = i === visible.length - 1 && remaining === 0;
-          const branch = isLast ? '└─' : '├─';
-          const icon = getFileIcon(entry, config.icons);
-          const line = `${theme.fg('dim', branch)} ${theme.fg('accent', icon)} ${theme.fg('toolOutput', escapeControlCharacters(entry))}`;
-          rawLines.push(line);
-        }
-
-        if (remaining > 0) {
-          const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remaining} more matches${expandHintSuffix(context, semanticIcon('separator', config.icons))}`)}`;
-          rawLines.push(more);
-        }
-
-        for (const notice of notices) {
-          rawLines.push(theme.fg('warning', notice));
-        }
-
-        if (!isFramedContext(context)) {
-          return [
-            ...rawLines.map((line) =>
-              truncateToWidth(
-                fitExpandHint(`  ${line}`, safeWidth, ellipsis),
-                safeWidth,
-              ),
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
-
-        return [
-          ...rawLines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
       });
     },
   };

@@ -19,6 +19,8 @@ export interface WelcomeProvider {
 
 export interface WelcomeSession {
   readonly name: string;
+  /** Keep the source title so live icon changes can reformat its ellipsis. */
+  readonly fullName?: string;
   readonly timeAgo: string;
 }
 
@@ -139,7 +141,11 @@ export async function fetchRecentSessions(
       const timeAgo = formatAge(
         session.modified ? session.modified.getTime() : Date.now(),
       );
-      out.push({ name: title, timeAgo });
+      out.push({
+        name: title,
+        timeAgo,
+        ...(cleanTitle.length > 45 ? { fullName: cleanTitle } : {}),
+      });
     }
     return out;
   } catch {

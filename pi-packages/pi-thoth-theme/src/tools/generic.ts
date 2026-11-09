@@ -6,6 +6,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { IconMode, ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
@@ -93,71 +94,73 @@ export function createGenericTool(
   toolName: string,
   config: ThemeConfig,
 ): ToolRenderers {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
-  const toolIcon = semanticIcon('tool', config.icons);
   const name = escapeControlCharacters(toolName);
-  const density = config.tools.collapsed ?? 'frame';
 
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GenericContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
-      if (density !== 'frame' && !context?.expanded) {
-        const argsText = summarizeArgs(rawArgs, config.icons);
-        const collapsed = createComponent((width: number) =>
-          hasToolResult(context)
-            ? []
-            : buildCompactRows(
-                theme,
-                {
-                  density,
-                  state: 'running',
-                  mode: config.icons,
-                  title: toolName,
-                  summary: argsText,
-                  tail: [compactElapsed(context, 'running')],
-                  frame: context?.state?.animationFrame,
-                },
-                width,
-              ),
-        );
-        if (context?.state) context.state.callComponent = collapsed;
-        return collapsed;
-      }
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const toolIcon = semanticIcon('tool', config.icons);
+        const density = config.tools.collapsed ?? 'frame';
+        syncElapsedTicker(context);
+        if (density !== 'frame' && !context?.expanded) {
+          const argsText = summarizeArgs(rawArgs, config.icons);
+          const collapsed = createComponent((width: number) =>
+            hasToolResult(context)
+              ? []
+              : buildCompactRows(
+                  theme,
+                  {
+                    density,
+                    state: 'running',
+                    mode: config.icons,
+                    title: toolName,
+                    summary: argsText,
+                    tail: [compactElapsed(context, 'running')],
+                    frame: context?.state?.animationFrame,
+                  },
+                  width,
+                ),
+          );
+          if (context?.state) context.state.callComponent = collapsed;
+          return collapsed;
+        }
 
-      const borderTone = context?.isPartial
-        ? 'accent'
-        : getToolBorderTone(context);
-      const argsSummary = summarizeArgs(rawArgs, config.icons);
+        const borderTone = context?.isPartial
+          ? 'accent'
+          : getToolBorderTone(context);
+        const argsSummary = summarizeArgs(rawArgs, config.icons);
 
-      const comp = createComponent((width: number) => {
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', toolIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', name)) : theme.fg('toolTitle', name)}`;
-        const lines = [
-          ...renderFrameTop(theme, title, width, borderTone),
-          ...(argsSummary
-            ? renderFrameRow(
-                theme,
-                theme.fg('dim', argsSummary),
-                width,
-                borderTone,
-                ellipsis,
-              )
-            : []),
-        ];
-        if (hasToolResult(context)) return lines;
-        return [
-          ...lines,
-          ...renderFrameBottom(theme, footer, width, borderTone),
-        ];
+        const comp = createComponent((width: number) => {
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', toolIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', name)) : theme.fg('toolTitle', name)}`;
+          const lines = [
+            ...renderFrameTop(theme, title, width, borderTone),
+            ...(argsSummary
+              ? renderFrameRow(
+                  theme,
+                  theme.fg('dim', argsSummary),
+                  width,
+                  borderTone,
+                  ellipsis,
+                )
+              : []),
+          ];
+          if (hasToolResult(context)) return lines;
+          return [
+            ...lines,
+            ...renderFrameBottom(theme, footer, width, borderTone),
+          ];
+        });
+
+        if (context?.state) context.state.callComponent = comp;
+        return comp;
       });
-
-      if (context?.state) context.state.callComponent = comp;
-      return comp;
     },
 
     renderResult(
@@ -173,85 +176,89 @@ export function createGenericTool(
       context?.lastComponent?.invalidate?.();
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const isPartial = Boolean(options?.isPartial);
-      const borderTone = isPartial
-        ? 'accent'
-        : getToolBorderTone({ isError: isErr, isPartial });
-      syncElapsedTicker({ ...context, isPartial });
-      const text = prettifyJson(getResultText(result));
-      const allLines = text ? text.split('\n') : [];
-      const lineCount = allLines.length;
-      const hasImage = hasImageContent(result);
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const density = config.tools.collapsed ?? 'frame';
+        const isErr = Boolean(context?.isError);
+        const isPartial = Boolean(options?.isPartial);
+        const borderTone = isPartial
+          ? 'accent'
+          : getToolBorderTone({ isError: isErr, isPartial });
+        syncElapsedTicker({ ...context, isPartial });
+        const text = prettifyJson(getResultText(result));
+        const allLines = text ? text.split('\n') : [];
+        const lineCount = allLines.length;
+        const hasImage = hasImageContent(result);
 
-      if (density !== 'frame' && !options?.expanded) {
-        const state = isPartial ? 'running' : isErr ? 'error' : 'success';
-        const firstLine =
-          allLines.map((line) => line.trim()).find(Boolean) ??
-          (hasImage ? '' : '(no output)');
-        return createComponent((width: number) =>
-          buildCompactRows(
-            theme,
-            {
-              density,
-              state,
-              mode: config.icons,
-              title: toolName,
-              summary: summarizeArgs(context?.args, config.icons),
-              tail: [
-                compactElapsed({ ...context, isPartial }, state),
-                ...(isPartial
-                  ? []
-                  : [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`]),
-              ],
-              frame: context?.state?.animationFrame,
-              continuation: firstLine,
-              errorLine: firstLine,
-              expandHint: isPartial ? '' : resolveExpandHint(context),
-            },
-            width,
-          ),
-        );
-      }
-
-      return createComponent((width: number) => {
-        const footer = toolFooter(
-          theme,
-          {
-            status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
-            context: { ...context, isPartial },
-            summary: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
-          },
-          config.icons,
-        );
-
-        const visible = options?.expanded
-          ? allLines
-          : allLines.slice(0, COLLAPSED_OUTPUT_LINES);
-        const body = visible.map((line) => {
-          const sanitized = escapeControlCharacters(line);
-          return isErr
-            ? theme.fg('error', sanitized)
-            : theme.fg('toolOutput', sanitized);
-        });
-        if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
-          body.push(
-            theme.fg(
-              'dim',
-              `${semanticIcon('ellipsis', config.icons)} ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+        if (density !== 'frame' && !options?.expanded) {
+          const state = isPartial ? 'running' : isErr ? 'error' : 'success';
+          const firstLine =
+            allLines.map((line) => line.trim()).find(Boolean) ??
+            (hasImage ? '' : '(no output)');
+          return createComponent((width: number) =>
+            buildCompactRows(
+              theme,
+              {
+                density,
+                state,
+                mode: config.icons,
+                title: toolName,
+                summary: summarizeArgs(context?.args, config.icons),
+                tail: [
+                  compactElapsed({ ...context, isPartial }, state),
+                  ...(isPartial
+                    ? []
+                    : [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`]),
+                ],
+                frame: context?.state?.animationFrame,
+                continuation: firstLine,
+                errorLine: firstLine,
+                expandHint: isPartial ? '' : resolveExpandHint(context),
+              },
+              width,
             ),
           );
         }
-        if (body.length === 0 && !hasImage) {
-          body.push(theme.fg('dim', '(no output)'));
-        }
 
-        return [
-          ...body.flatMap((line) =>
-            renderFrameRow(theme, line, width, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, width, borderTone),
-        ];
+        return createComponent((width: number) => {
+          const footer = toolFooter(
+            theme,
+            {
+              status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
+              context: { ...context, isPartial },
+              summary: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+            },
+            config.icons,
+          );
+
+          const visible = options?.expanded
+            ? allLines
+            : allLines.slice(0, COLLAPSED_OUTPUT_LINES);
+          const body = visible.map((line) => {
+            const sanitized = escapeControlCharacters(line);
+            return isErr
+              ? theme.fg('error', sanitized)
+              : theme.fg('toolOutput', sanitized);
+          });
+          if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
+            body.push(
+              theme.fg(
+                'dim',
+                `${semanticIcon('ellipsis', config.icons)} ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+              ),
+            );
+          }
+          if (body.length === 0 && !hasImage) {
+            body.push(theme.fg('dim', '(no output)'));
+          }
+
+          return [
+            ...body.flatMap((line) =>
+              renderFrameRow(theme, line, width, borderTone, ellipsis),
+            ),
+            ...renderFrameBottom(theme, footer, width, borderTone),
+          ];
+        });
       });
     },
   };

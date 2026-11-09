@@ -33,6 +33,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { decorateEditor } from '../input-box/decorate.ts';
 import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { applyLiveSettings } from '../shared/live-settings.ts';
 import { registerStatusLine } from './index.ts';
 
 describe('registerStatusLine', () => {
@@ -167,6 +168,31 @@ describe('registerStatusLine', () => {
     if (!factory) throw new Error('Footer factory was not registered');
     return factory(mocks.tui, mocks.theme, mocks.footerData);
   }
+
+  it('refreshes mounted same-width status glyphs after live settings without changing data', () => {
+    const mocks = createMocks();
+    const config = structuredClone(defaultConfig);
+    const footer = createFooter(mocks, config);
+    try {
+      const initial = footer.render(200);
+      applyLiveSettings(
+        config,
+        { icons: 'ascii' },
+        { requestRender: mocks.tui.requestRender },
+      );
+      const updated = footer.render(200);
+      expect(updated).not.toEqual(initial);
+      expect(updated.join('\n')).toContain('^10 v10');
+      applyLiveSettings(
+        config,
+        { icons: 'nerd' },
+        { requestRender: mocks.tui.requestRender },
+      );
+      expect(footer.render(200)).toEqual(initial);
+    } finally {
+      footer.dispose();
+    }
+  });
 
   function publishUsage(
     events: ReturnType<typeof createEventBus>,

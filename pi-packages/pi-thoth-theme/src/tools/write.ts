@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
@@ -48,48 +49,49 @@ interface WriteContext extends ElapsedRenderContext {
 }
 
 export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: WriteContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
-      const args = (rawArgs ?? {}) as WriteArgs;
-      const rawPath = String(args.path ?? args.file_path ?? '');
-      const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
-      const density = collapsedDensity(config, context?.expanded);
-      if (density) {
-        return compactCall(density, theme, context, config, {
-          title: 'Write',
-          summary: filePath,
-        });
-      }
-      const icon = getFileIcon(filePath, config.icons);
-      const writeIcon = getToolIcon('write', config.icons);
-      const borderTone = getToolBorderTone(context);
-
-      const comp = createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', writeIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Write')) : theme.fg('toolTitle', 'Write')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
-
-        if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, borderTone);
+      return settingsComponent(() => {
+        syncElapsedTicker(context);
+        const args = (rawArgs ?? {}) as WriteArgs;
+        const rawPath = String(args.path ?? args.file_path ?? '');
+        const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
+        const density = collapsedDensity(config, context?.expanded);
+        if (density) {
+          return compactCall(density, theme, context, config, {
+            title: 'Write',
+            summary: filePath,
+          });
         }
+        const icon = getFileIcon(filePath, config.icons);
+        const writeIcon = getToolIcon('write', config.icons);
+        const borderTone = getToolBorderTone(context);
 
-        return [
-          ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        const comp = createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', writeIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Write')) : theme.fg('toolTitle', 'Write')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
+
+          if (hasToolResult(context)) {
+            return renderFrameTop(theme, title, safeWidth, borderTone);
+          }
+
+          return [
+            ...renderFrameTop(theme, title, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
+
+        if (context?.state) {
+          context.state.callComponent = comp;
+        }
+        return comp;
       });
-
-      if (context?.state) {
-        context.state.callComponent = comp;
-      }
-      return comp;
     },
 
     renderResult(
@@ -115,116 +117,128 @@ export function createCustomWriteTool(cwd: string, config: ThemeConfig) {
       }
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const status = options?.isPartial
-        ? 'running'
-        : isErr
-          ? 'failed'
-          : 'completed';
-      const footerOptions = {
-        status,
-        context: { ...context, isPartial: options?.isPartial },
-      } as const;
-      syncElapsedTicker(footerOptions.context);
-      const borderTone = getToolBorderTone({
-        isError: isErr,
-        isPartial: options?.isPartial,
-      });
-      const textOutput = getResultText(result);
-
-      // Check content lines from context args or result
-      const writeArgs = context?.args as WriteArgs | undefined;
-      const content = String(writeArgs?.content ?? '');
-      const contentLines = content ? content.split('\n') : [];
-      if (contentLines.length > 1 && contentLines.at(-1) === '') {
-        contentLines.pop();
-      }
-      const lineCount = contentLines.length || 1;
-
-      const resultDensity = collapsedDensity(config, options?.expanded);
-      if (resultDensity) {
-        const path = String(writeArgs?.path ?? writeArgs?.file_path ?? '');
-        return compactResult(
-          resultDensity,
-          theme,
-          context,
-          config,
-          Boolean(options?.isPartial),
-          {
-            title: 'Write',
-            summary: formatDisplayPath(path, context?.cwd ?? cwd),
-            counts: [`${plural(lineCount, 'line')} written`],
-            continuation: firstLine(content) || textOutput || 'File written',
-            errorLine: firstLine(textOutput) || 'Write failed',
-          },
-        );
-      }
-
-      if (isErr) {
-        return createComponent((width: number) => {
-          const safeWidth = Math.max(0, width);
-          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Write failed')}`;
-          return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
-            ...renderFrameBottom(
-              theme,
-              toolFooter(theme, footerOptions, config.icons),
-              safeWidth,
-              borderTone,
-            ),
-          ];
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const isErr = Boolean(context?.isError);
+        const status = options?.isPartial
+          ? 'running'
+          : isErr
+            ? 'failed'
+            : 'completed';
+        const footerOptions = {
+          status,
+          context: { ...context, isPartial: options?.isPartial },
+        } as const;
+        syncElapsedTicker(footerOptions.context);
+        const borderTone = getToolBorderTone({
+          isError: isErr,
+          isPartial: options?.isPartial,
         });
-      }
+        const textOutput = getResultText(result);
 
-      return createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const addedStr = theme.fg('toolDiffAdded', `+${lineCount} lines`);
-        const footer = toolFooter(
-          theme,
-          {
-            ...footerOptions,
-            summary: [addedStr, '1 file'],
-          },
-          config.icons,
-        );
-
-        if (contentLines.length === 0) {
-          const defaultMsg = textOutput || 'File written';
-          return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('toolOutput', defaultMsg),
-              safeWidth,
-              borderTone,
-              ellipsis,
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
+        // Check content lines from context args or result
+        const writeArgs = context?.args as WriteArgs | undefined;
+        const content = String(writeArgs?.content ?? '');
+        const contentLines = content ? content.split('\n') : [];
+        if (contentLines.length > 1 && contentLines.at(-1) === '') {
+          contentLines.pop();
         }
+        const lineCount = contentLines.length || 1;
 
-        const visibleLines = options?.expanded
-          ? contentLines
-          : contentLines.slice(0, COLLAPSED_WRITE_LINES);
-        const bodyLines: string[] = visibleLines.map((l) =>
-          theme.fg('toolOutput', l),
-        );
-
-        if (!options?.expanded && contentLines.length > COLLAPSED_WRITE_LINES) {
-          const remaining = contentLines.length - COLLAPSED_WRITE_LINES;
-          bodyLines.push(
-            theme.fg(
-              'dim',
-              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
-            ),
+        const resultDensity = collapsedDensity(config, options?.expanded);
+        if (resultDensity) {
+          const path = String(writeArgs?.path ?? writeArgs?.file_path ?? '');
+          return compactResult(
+            resultDensity,
+            theme,
+            context,
+            config,
+            Boolean(options?.isPartial),
+            {
+              title: 'Write',
+              summary: formatDisplayPath(path, context?.cwd ?? cwd),
+              counts: [`${plural(lineCount, 'line')} written`],
+              continuation: firstLine(content) || textOutput || 'File written',
+              errorLine: firstLine(textOutput) || 'Write failed',
+            },
           );
         }
 
-        return [
-          ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        if (isErr) {
+          return createComponent((width: number) => {
+            const safeWidth = Math.max(0, width);
+            const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Write failed')}`;
+            return [
+              ...renderFrameRow(
+                theme,
+                errText,
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(
+                theme,
+                toolFooter(theme, footerOptions, config.icons),
+                safeWidth,
+                borderTone,
+              ),
+            ];
+          });
+        }
+
+        return createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const addedStr = theme.fg('toolDiffAdded', `+${lineCount} lines`);
+          const footer = toolFooter(
+            theme,
+            {
+              ...footerOptions,
+              summary: [addedStr, '1 file'],
+            },
+            config.icons,
+          );
+
+          if (contentLines.length === 0) {
+            const defaultMsg = textOutput || 'File written';
+            return [
+              ...renderFrameRow(
+                theme,
+                theme.fg('toolOutput', defaultMsg),
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
+          const visibleLines = options?.expanded
+            ? contentLines
+            : contentLines.slice(0, COLLAPSED_WRITE_LINES);
+          const bodyLines: string[] = visibleLines.map((l) =>
+            theme.fg('toolOutput', l),
+          );
+
+          if (
+            !options?.expanded &&
+            contentLines.length > COLLAPSED_WRITE_LINES
+          ) {
+            const remaining = contentLines.length - COLLAPSED_WRITE_LINES;
+            bodyLines.push(
+              theme.fg(
+                'dim',
+                `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+              ),
+            );
+          }
+
+          return [
+            ...bodyLines.flatMap((l) =>
+              renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
+            ),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
       });
     },
   };

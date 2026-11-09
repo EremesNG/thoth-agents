@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix } from '../shared/expand-hint.ts';
 import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
@@ -58,48 +59,49 @@ function readRange(args: ReadArgs): string {
 }
 
 export function createCustomReadTool(cwd: string, config: ThemeConfig) {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ToolContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
-      const args = (rawArgs ?? {}) as ReadArgs;
-      const rawPath = String(args.path ?? args.file_path ?? '');
-      const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
-      const range = readRange(args);
-      const density = collapsedDensity(config, context?.expanded);
-      if (density) {
-        return compactCall(density, theme, context, config, {
-          title: 'Read',
-          summary: `${filePath}${range}`,
-        });
-      }
-      const icon = getFileIcon(filePath, config.icons);
-      const borderTone = getToolBorderTone(context);
-
-      const comp = createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Read')) : theme.fg('toolTitle', 'Read')} ${theme.fg('text', `${filePath}${range}`)}`;
-
-        if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, borderTone);
+      return settingsComponent(() => {
+        syncElapsedTicker(context);
+        const args = (rawArgs ?? {}) as ReadArgs;
+        const rawPath = String(args.path ?? args.file_path ?? '');
+        const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
+        const range = readRange(args);
+        const density = collapsedDensity(config, context?.expanded);
+        if (density) {
+          return compactCall(density, theme, context, config, {
+            title: 'Read',
+            summary: `${filePath}${range}`,
+          });
         }
+        const icon = getFileIcon(filePath, config.icons);
+        const borderTone = getToolBorderTone(context);
 
-        return [
-          ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        const comp = createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Read')) : theme.fg('toolTitle', 'Read')} ${theme.fg('text', `${filePath}${range}`)}`;
+
+          if (hasToolResult(context)) {
+            return renderFrameTop(theme, title, safeWidth, borderTone);
+          }
+
+          return [
+            ...renderFrameTop(theme, title, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
+
+        if (context?.state) {
+          context.state.callComponent = comp;
+        }
+        return comp;
       });
-
-      if (context?.state) {
-        context.state.callComponent = comp;
-      }
-      return comp;
     },
 
     renderResult(
@@ -125,117 +127,126 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       }
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const status = options?.isPartial
-        ? 'running'
-        : isErr
-          ? 'failed'
-          : 'completed';
-      const footerOptions = {
-        status,
-        context: { ...context, isPartial: options?.isPartial },
-      } as const;
-      syncElapsedTicker(footerOptions.context);
-      const borderTone = getToolBorderTone({
-        isError: isErr,
-        isPartial: options?.isPartial,
-      });
-      const textOutput = getResultText(result);
-      const resultDensity = collapsedDensity(config, options?.expanded);
-      if (resultDensity) {
-        const readArgs = (context?.args ?? {}) as ReadArgs;
-        const path = String(readArgs.path ?? readArgs.file_path ?? '');
-        const lineCount = textOutput ? textOutput.split('\n').length : 0;
-        const isImage = hasImageContent(result);
-        return compactResult(
-          resultDensity,
-          theme,
-          context,
-          config,
-          Boolean(options?.isPartial),
-          {
-            title: 'Read',
-            summary: `${formatDisplayPath(path, context?.cwd ?? cwd)}${readRange(readArgs)}`,
-            counts: [isImage ? 'image' : plural(lineCount, 'line')],
-            continuation: firstLine(textOutput) || '(empty file)',
-            errorLine: firstLine(textOutput) || 'Failed to read file',
-          },
-        );
-      }
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const isErr = Boolean(context?.isError);
+        const status = options?.isPartial
+          ? 'running'
+          : isErr
+            ? 'failed'
+            : 'completed';
+        const footerOptions = {
+          status,
+          context: { ...context, isPartial: options?.isPartial },
+        } as const;
+        syncElapsedTicker(footerOptions.context);
+        const borderTone = getToolBorderTone({
+          isError: isErr,
+          isPartial: options?.isPartial,
+        });
+        const textOutput = getResultText(result);
+        const resultDensity = collapsedDensity(config, options?.expanded);
+        if (resultDensity) {
+          const readArgs = (context?.args ?? {}) as ReadArgs;
+          const path = String(readArgs.path ?? readArgs.file_path ?? '');
+          const lineCount = textOutput ? textOutput.split('\n').length : 0;
+          const isImage = hasImageContent(result);
+          return compactResult(
+            resultDensity,
+            theme,
+            context,
+            config,
+            Boolean(options?.isPartial),
+            {
+              title: 'Read',
+              summary: `${formatDisplayPath(path, context?.cwd ?? cwd)}${readRange(readArgs)}`,
+              counts: [isImage ? 'image' : plural(lineCount, 'line')],
+              continuation: firstLine(textOutput) || '(empty file)',
+              errorLine: firstLine(textOutput) || 'Failed to read file',
+            },
+          );
+        }
 
-      if (isErr) {
+        if (isErr) {
+          return createComponent((width: number) => {
+            const safeWidth = Math.max(0, width);
+            const footer = toolFooter(theme, footerOptions, config.icons);
+            const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Failed to read file')}`;
+            return [
+              ...renderFrameRow(
+                theme,
+                errText,
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          });
+        }
+
+        if (hasImageContent(result)) {
+          // Image content preserved untouched for Pi's native image pass
+          const firstTextBlock = result.content?.find(
+            (c) => c && typeof c === 'object' && c.type === 'text',
+          ) as { text?: string } | undefined;
+          const note = firstTextBlock?.text ?? 'Read image file';
+          return createComponent((width: number) => {
+            const safeWidth = Math.max(0, width);
+            const footer = toolFooter(theme, footerOptions, config.icons);
+            return [
+              ...renderFrameRow(
+                theme,
+                theme.fg('dim', note),
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          });
+        }
+
+        const lines = textOutput ? textOutput.split('\n') : [];
+        const lineCount = lines.length;
+
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           const footer = toolFooter(theme, footerOptions, config.icons);
-          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Failed to read file')}`;
-          return [
-            ...renderFrameRow(theme, errText, safeWidth, borderTone, ellipsis),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        });
-      }
+          if (!options?.expanded) {
+            const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}${expandHintSuffix(context, semanticIcon('separator', config.icons))}`;
+            return [
+              ...renderFrameRow(
+                theme,
+                theme.fg('dim', summary),
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
 
-      if (hasImageContent(result)) {
-        // Image content preserved untouched for Pi's native image pass
-        const firstTextBlock = result.content?.find(
-          (c) => c && typeof c === 'object' && c.type === 'text',
-        ) as { text?: string } | undefined;
-        const note = firstTextBlock?.text ?? 'Read image file';
-        return createComponent((width: number) => {
-          const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions, config.icons);
+          if (lines.length === 0) {
+            return [
+              ...renderFrameRow(
+                theme,
+                theme.fg('dim', '(empty file)'),
+                safeWidth,
+                borderTone,
+                ellipsis,
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
           return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('dim', note),
-              safeWidth,
-              borderTone,
-              ellipsis,
+            ...lines.flatMap((line) =>
+              renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
             ),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
-      }
-
-      const lines = textOutput ? textOutput.split('\n') : [];
-      const lineCount = lines.length;
-
-      return createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions, config.icons);
-        if (!options?.expanded) {
-          const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}${expandHintSuffix(context, semanticIcon('separator', config.icons))}`;
-          return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('dim', summary),
-              safeWidth,
-              borderTone,
-              ellipsis,
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
-
-        if (lines.length === 0) {
-          return [
-            ...renderFrameRow(
-              theme,
-              theme.fg('dim', '(empty file)'),
-              safeWidth,
-              borderTone,
-              ellipsis,
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
-
-        return [
-          ...lines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
       });
     },
   };

@@ -5,6 +5,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
+import { settingsRevision } from '../shared/settings-revision.ts';
 import {
   type ActiveThemeLike,
   formatBranchSegment,
@@ -31,6 +32,7 @@ export const MIN_INPUT_BOX_WIDTH = 16;
 
 interface EditorLike {
   render(width: number): string[];
+  invalidate?(): void;
   renderTopBorder(width: number, hiddenLineCount: number): string;
   renderBottomBorder(width: number, hiddenLineCount: number): string;
   getText(): string;
@@ -131,6 +133,7 @@ export function decorateEditor(
   let renderFrame: BreathingFrame | undefined;
   // Mouse hit-testing follows the last render's boxed or native geometry.
   let boxRendered = false;
+  let revision = settingsRevision();
   const muted = (text: string) => deps.theme.fg?.('muted', text) ?? text;
 
   function nativeRender(receiver: EditorLike, width: number): string[] {
@@ -148,6 +151,12 @@ export function decorateEditor(
       writable: true,
       value(this: EditorLike, width: number): string[] {
         boxRendered = false;
+        if (revision !== settingsRevision()) {
+          revision = settingsRevision();
+          top = undefined;
+          bottom = undefined;
+          this.invalidate?.();
+        }
         if (!active || width < MIN_INPUT_BOX_WIDTH)
           return nativeRender(this, width);
         const boxWidth = Math.floor(width);

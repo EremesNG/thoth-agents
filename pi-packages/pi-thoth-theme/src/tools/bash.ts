@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { detachRenderContext } from '@thoth-agents/pi-core';
 import { toolFooter } from '../render-kit/index.ts';
+import { settingsComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { expandHintSuffix, resolveExpandHint } from '../shared/expand-hint.ts';
 import { icon as semanticIcon } from '../shared/icons.ts';
@@ -104,78 +105,81 @@ function firstOutputLine(output: string): string {
 }
 
 function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
-  const ellipsis = semanticIcon('ellipsis', config.icons);
-  const density = config.tools.collapsed ?? 'frame';
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
       context = detachRenderContext(context);
-      syncElapsedTicker(context);
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const density = config.tools.collapsed ?? 'frame';
+        syncElapsedTicker(context);
 
-      if (density !== 'frame' && !context?.expanded) {
-        const collapsed = createComponent((width: number) =>
-          hasToolResult(context)
-            ? []
-            : buildCompactRows(
-                theme,
-                {
-                  density,
-                  state: 'running',
-                  mode: config.icons,
-                  title: shellConfig.title,
-                  summary: summarizeCommand(rawArgs, ellipsis),
-                  tail: [compactElapsed(context, 'running')],
-                  frame: context?.state?.animationFrame,
-                },
-                width,
+        if (density !== 'frame' && !context?.expanded) {
+          const collapsed = createComponent((width: number) =>
+            hasToolResult(context)
+              ? []
+              : buildCompactRows(
+                  theme,
+                  {
+                    density,
+                    state: 'running',
+                    mode: config.icons,
+                    title: shellConfig.title,
+                    summary: summarizeCommand(rawArgs, ellipsis),
+                    tail: [compactElapsed(context, 'running')],
+                    frame: context?.state?.animationFrame,
+                  },
+                  width,
+                ),
+          );
+          if (context?.state) context.state.callComponent = collapsed;
+          return collapsed;
+        }
+
+        const args = (rawArgs ?? {}) as ShellArgs;
+        const command = String(args.command ?? '').trim();
+        const icon = getToolIcon(shellConfig.toolName, config.icons);
+        const borderTone = context?.isPartial
+          ? 'accent'
+          : getToolBorderTone(context);
+
+        const comp = createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+          const cmdLines = command ? command.split('\n') : [''];
+          const footer =
+            context?.executionStarted && context.isPartial
+              ? toolFooter(theme, { status: 'running', context }, config.icons)
+              : undefined;
+          const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', shellConfig.title)) : theme.fg('toolTitle', shellConfig.title)}`;
+          const preview = cmdLines.map(
+            (l) =>
+              `${theme.fg('dim', shellConfig.prompt)}${theme.fg('text', l)}`,
+          );
+
+          if (hasToolResult(context)) {
+            return [
+              ...renderFrameTop(theme, title, safeWidth, borderTone),
+              ...preview.flatMap((l) =>
+                renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
               ),
-        );
-        if (context?.state) context.state.callComponent = collapsed;
-        return collapsed;
-      }
+              ...renderFrameDivider(theme, 'Output', safeWidth, borderTone),
+            ];
+          }
 
-      const args = (rawArgs ?? {}) as ShellArgs;
-      const command = String(args.command ?? '').trim();
-      const icon = getToolIcon(shellConfig.toolName, config.icons);
-      const borderTone = context?.isPartial
-        ? 'accent'
-        : getToolBorderTone(context);
-
-      const comp = createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-        const cmdLines = command ? command.split('\n') : [''];
-        const footer =
-          context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context }, config.icons)
-            : undefined;
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', shellConfig.title)) : theme.fg('toolTitle', shellConfig.title)}`;
-        const preview = cmdLines.map(
-          (l) => `${theme.fg('dim', shellConfig.prompt)}${theme.fg('text', l)}`,
-        );
-
-        if (hasToolResult(context)) {
           return [
             ...renderFrameTop(theme, title, safeWidth, borderTone),
             ...preview.flatMap((l) =>
               renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
             ),
-            ...renderFrameDivider(theme, 'Output', safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
+        });
+
+        if (context?.state) {
+          context.state.callComponent = comp;
         }
-
-        return [
-          ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...preview.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        return comp;
       });
-
-      if (context?.state) {
-        context.state.callComponent = comp;
-      }
-      return comp;
     },
 
     renderResult(
@@ -201,114 +205,118 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       }
 
       context = detachRenderContext(context);
-      const isErr = Boolean(context?.isError);
-      const isPartial = Boolean(options?.isPartial);
-      const borderTone = isPartial
-        ? 'accent'
-        : getToolBorderTone({ isError: isErr, isPartial });
-      syncElapsedTicker({ ...context, isPartial });
-      const textOutput = getResultText(result);
-      // An empty failed run carries the SDK sentinel before its status appendix.
-      const isEmptyOutput =
-        textOutput.trim() === '(no output)' ||
-        (isErr &&
-          /^\s*\(no output\)\s*\nCommand exited with code \d+\s*$/.test(
-            textOutput,
-          ));
-      const output = isEmptyOutput ? '' : textOutput;
-      const allLines = output ? output.split('\n') : [];
-      const lineCount = allLines.length;
+      return settingsComponent(() => {
+        const ellipsis = semanticIcon('ellipsis', config.icons);
+        const density = config.tools.collapsed ?? 'frame';
+        const isErr = Boolean(context?.isError);
+        const isPartial = Boolean(options?.isPartial);
+        const borderTone = isPartial
+          ? 'accent'
+          : getToolBorderTone({ isError: isErr, isPartial });
+        syncElapsedTicker({ ...context, isPartial });
+        const textOutput = getResultText(result);
+        // An empty failed run carries the SDK sentinel before its status appendix.
+        const isEmptyOutput =
+          textOutput.trim() === '(no output)' ||
+          (isErr &&
+            /^\s*\(no output\)\s*\nCommand exited with code \d+\s*$/.test(
+              textOutput,
+            ));
+        const output = isEmptyOutput ? '' : textOutput;
+        const allLines = output ? output.split('\n') : [];
+        const lineCount = allLines.length;
 
-      const exitNum = extractShellExitCode(result, textOutput, isErr);
-      const exitStr = `Exit ${exitNum}`;
+        const exitNum = extractShellExitCode(result, textOutput, isErr);
+        const exitStr = `Exit ${exitNum}`;
 
-      const words = output.trim() ? output.trim().split(/\s+/).length : 0;
-      const wordsStr = words > 0 ? `~${words} words` : '';
+        const words = output.trim() ? output.trim().split(/\s+/).length : 0;
+        const wordsStr = words > 0 ? `~${words} words` : '';
 
-      if (density !== 'frame' && !options?.expanded) {
-        const failed = !isPartial && (isErr || exitNum !== 0);
-        const state = isPartial ? 'running' : failed ? 'error' : 'success';
-        return createComponent((width: number) =>
-          buildCompactRows(
-            theme,
-            {
-              density,
-              state,
-              mode: config.icons,
-              title: shellConfig.title,
-              summary: summarizeCommand(context?.args, ellipsis),
-              tail: [
-                compactElapsed({ ...context, isPartial }, state),
-                ...(isPartial
-                  ? []
-                  : [
-                      exitStr,
-                      `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
-                    ]),
-              ],
-              frame: context?.state?.animationFrame,
-              continuation: firstOutputLine(output) || '(no output)',
-              errorLine: firstOutputLine(textOutput),
-              expandHint: isPartial ? '' : resolveExpandHint(context),
-            },
-            width,
-          ),
-        );
-      }
-
-      return createComponent((width: number) => {
-        const safeWidth = Math.max(0, width);
-
-        const footer = toolFooter(
-          theme,
-          {
-            status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
-            context: { ...context, isPartial },
-            summary: [
-              exitStr,
-              `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
-              wordsStr,
-            ],
-          },
-          config.icons,
-        );
-
-        if (allLines.length === 0) {
-          const emptyBody = [theme.fg('dim', '(no output)')];
-          return [
-            ...emptyBody.flatMap((l) =>
-              renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
-            ),
-            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-          ];
-        }
-
-        const visibleLines = options?.expanded
-          ? allLines
-          : allLines.slice(0, COLLAPSED_OUTPUT_LINES);
-        const bodyLines: string[] = visibleLines.map((l) => {
-          const sanitized = escapeOutputRow(l);
-          return isErr
-            ? theme.fg('error', sanitized)
-            : theme.fg('toolOutput', sanitized);
-        });
-
-        if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
-          const remaining = allLines.length - COLLAPSED_OUTPUT_LINES;
-          bodyLines.push(
-            theme.fg(
-              'dim',
-              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+        if (density !== 'frame' && !options?.expanded) {
+          const failed = !isPartial && (isErr || exitNum !== 0);
+          const state = isPartial ? 'running' : failed ? 'error' : 'success';
+          return createComponent((width: number) =>
+            buildCompactRows(
+              theme,
+              {
+                density,
+                state,
+                mode: config.icons,
+                title: shellConfig.title,
+                summary: summarizeCommand(context?.args, ellipsis),
+                tail: [
+                  compactElapsed({ ...context, isPartial }, state),
+                  ...(isPartial
+                    ? []
+                    : [
+                        exitStr,
+                        `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+                      ]),
+                ],
+                frame: context?.state?.animationFrame,
+                continuation: firstOutputLine(output) || '(no output)',
+                errorLine: firstOutputLine(textOutput),
+                expandHint: isPartial ? '' : resolveExpandHint(context),
+              },
+              width,
             ),
           );
         }
 
-        return [
-          ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
-          ),
-          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
-        ];
+        return createComponent((width: number) => {
+          const safeWidth = Math.max(0, width);
+
+          const footer = toolFooter(
+            theme,
+            {
+              status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
+              context: { ...context, isPartial },
+              summary: [
+                exitStr,
+                `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+                wordsStr,
+              ],
+            },
+            config.icons,
+          );
+
+          if (allLines.length === 0) {
+            const emptyBody = [theme.fg('dim', '(no output)')];
+            return [
+              ...emptyBody.flatMap((l) =>
+                renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
+              ),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
+          }
+
+          const visibleLines = options?.expanded
+            ? allLines
+            : allLines.slice(0, COLLAPSED_OUTPUT_LINES);
+          const bodyLines: string[] = visibleLines.map((l) => {
+            const sanitized = escapeOutputRow(l);
+            return isErr
+              ? theme.fg('error', sanitized)
+              : theme.fg('toolOutput', sanitized);
+          });
+
+          if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
+            const remaining = allLines.length - COLLAPSED_OUTPUT_LINES;
+            bodyLines.push(
+              theme.fg(
+                'dim',
+                `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines${expandHintSuffix(context, semanticIcon('separator', config.icons))}`,
+              ),
+            );
+          }
+
+          return [
+            ...bodyLines.flatMap((l) =>
+              renderFrameRow(theme, l, safeWidth, borderTone, ellipsis),
+            ),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
+        });
       });
     },
   };

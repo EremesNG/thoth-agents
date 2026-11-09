@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-08
+
+### Added
+
+- Todo tool cards opt into the theme's collapsed tool row density.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

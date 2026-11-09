@@ -4,6 +4,17 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-08
+
+### Added
+
+- Opt-in `tools.collapsed` density (`frame` | `compact` | `line`): collapsed tool cards render one row (compact adds a continuation row) and terminal errors show the first error line; expanded and `frame` output are unchanged.
+- `/thoth-theme` settings panel to edit icons, animation, tool density and module toggles; icons, animation and density apply live, module toggles take effect after `/reload`.
+
+### Removed
+
+- `/thoth-animation`; use `/thoth-theme` instead.
+
 ## [0.8.0] - 2026-11-03
 
 ### Changed

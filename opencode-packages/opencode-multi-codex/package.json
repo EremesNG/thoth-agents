@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/opencode-multi-codex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Per-agent ChatGPT Codex accounts for OpenCode v2.",
   "type": "module",
   "license": "MIT",

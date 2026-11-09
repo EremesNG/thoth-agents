@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-08
+
+### Changed
+
+- First release published from CI with npm provenance; no functional changes since 0.1.0.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added

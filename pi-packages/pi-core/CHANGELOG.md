@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-08
+
+### Added
+
+- Optional `RenderCardOptions` tool-density hints (`surface: 'tool'`, `expanded`, `row`) so render kits can apply collapsed tool rows; the v1 kit contract is unchanged.
+
 ## [0.7.0] - 2026-11-03
 
 ### Added

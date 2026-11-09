@@ -5,6 +5,12 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-08
+
+### Added
+
+- Subagent tool cards opt into the theme's collapsed tool row density, with task summary, model, effort and the first error line on failure; message cards stay framed.
+
 ## [0.11.0] - 2026-11-03
 
 ### Added

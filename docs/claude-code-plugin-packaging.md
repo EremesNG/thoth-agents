@@ -51,7 +51,7 @@ fresh read-only Oracle.
 
 Semantic triggers keep the complete roster actionable: `librarian` handles
 current or external facts, `designer` handles material UI/UX, interaction,
-accessibility, or visual quality, and `worker` handles delegated implementation,
+accessibility, visual quality, or creative/artistic work, and `worker` handles engineering implementation,
 including coupled or high-risk work. Root may retain narrow low-risk work when
 continuity outweighs delegation overhead. Native Claude execution and lifecycle
 are authoritative for dispatch, status/wait, steering, cancellation, and

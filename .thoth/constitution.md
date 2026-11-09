@@ -1,17 +1,17 @@
 <!--
 Sync Impact Report
-- Version change: 10.0.0 -> 10.1.0
-- Modified principles: Principle 1 establishes safe deferral for unresolved human-owned choices and prohibits fabricating missing facts or secrets; Principle 3 extends the recommendation/retry policy to every orchestrator choice and makes the ready-stage Oracle review offer mandatory with explicit selection provenance.
+- Version change: 10.1.0 -> 10.2.0
+- Modified principles: Principle 3 expands designer ownership from material UI/UX work to material UI/UX and creative/artistic work, and redefines worker ownership as bounded engineering implementation regardless of complexity.
 - Added sections: None
 - Removed sections: None
-- Templates: ✅ skills/thoth-constitution/templates/constitution.md; ✅ skills/thoth-sdd/templates/change.md and closeout validator; ✅ skills/thoth-sdd; ✅ skills/plan-reviewer; ✅ skills/thoth-init; ✅ skills/thoth-constitution; ✅ skills/thoth-archive; ✅ root prompts and active documentation
-- Follow-up TODOs: None
+- Templates: ✅ skills/thoth-constitution/templates/constitution.md (no role-boundary text); ⚠ role contracts, root prompts, generated artifacts and docs/sdd-pipeline.md pending in change designer-creative-scope
+- Follow-up TODOs: Propagate through change designer-creative-scope
 -->
 # thoth-agents Project Constitution
 
-**Version**: 10.1.0<br>
+**Version**: 10.2.0<br>
 **Ratified**: 2026-06-16<br>
-**Last amended**: 2026-09-29
+**Last amended**: 2026-11-09
 
 ## Principles
 
@@ -57,8 +57,8 @@ auto-incremented as part of workflow execution.
 
 The pack contains `orchestrator`, `explorer`, `librarian`, `oracle`, `designer`,
 and `worker`. Explorer, librarian, and Oracle are read-only; designer owns
-material UI/UX work; worker owns bounded nonvisual implementation regardless of
-complexity. Delegation depth is one, each mutable surface has one writer, and no
+material UI/UX and creative/artistic work; worker owns bounded engineering
+implementation regardless of complexity. Delegation depth is one, each mutable surface has one writer, and no
 writer approves their own work.
 
 For substantial work, optional read-only Oracle plan review follows ready only

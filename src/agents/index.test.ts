@@ -176,7 +176,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
     // Trimmed v2 arguments/completion/gap guidance needs 13,521 characters (+225 cap).
-    expect(prompt.length).toBeLessThanOrEqual(13_525);
+    expect(prompt.length).toBeLessThanOrEqual(13_825);
     expect(prompt).toContain('Root:');
     expect(prompt).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
@@ -221,7 +221,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const agent of createAgents()) {
       const length = agent.config.prompt?.length ?? 0;
       if (agent.name === 'orchestrator') {
-        expect(length, agent.name).toBeLessThanOrEqual(13_525);
+        expect(length, agent.name).toBeLessThanOrEqual(13_825);
       } else {
         expect(length, agent.name).toBeLessThan(5_000);
       }

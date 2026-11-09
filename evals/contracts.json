@@ -637,6 +637,42 @@
           "designer-project-skill"
         ]
       }
+    },
+    {
+      "id": "designer-non-web-creative-routing",
+      "contract": "delegated-memory",
+      "polarity": "positive",
+      "scenario": "Create a game character sprite and animation plus its movement mechanic: route creative assets to thoth-designer and engineering logic/scripts to thoth-worker, splitting ownership with an agreed interface and specification-owned rules/balance.",
+      "productPatterns": [
+        {
+          "source": "orchestration",
+          "pattern": "split mixed creative/engineering units between designer and worker with an agreed interface"
+        },
+        {
+          "source": "orchestration",
+          "pattern": "User/root spec owns system/game rules and balance; worker implements"
+        }
+      ],
+      "rootPatterns": [
+        "designer[^\\n]*creative/artistic work[^\\n]*motion/animation[^\\n]*layouts/levels/maps",
+        "worker[^\\n]*Known bounded engineering implementation[^\\n]*Not for visual-only or artistic/creative work",
+        "split mixed creative/engineering units between designer and worker with an agreed interface",
+        "User/root spec owns system/game rules and balance; worker implements"
+      ],
+      "input": {
+        "role": "designer",
+        "authorization": "none"
+      },
+      "expected": {
+        "availableAuthorizations": ["none", "recall", "observe"],
+        "requiresParentContext": true,
+        "ownsRootLifecycle": false,
+        "workspaceMode": "write-capable"
+      },
+      "memoryPatterns": [
+        "none forbids provider work",
+        "Root lifecycle ownership never transfers to this delegate"
+      ]
     }
   ]
 }

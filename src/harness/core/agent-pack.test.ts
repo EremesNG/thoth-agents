@@ -191,14 +191,33 @@ describe('agent-pack contract', () => {
     );
   });
 
-  test('routes bounded nonvisual implementation to Worker regardless of complexity', () => {
+  test('routes creative work to Designer and bounded engineering to Worker', () => {
     const worker = getAgentRole('worker');
     const contract = JSON.stringify(worker);
     expect(contract).toContain('regardless of complexity');
-    expect(contract).toContain('Known bounded nonvisual implementation');
+    expect(contract).toContain('Known bounded engineering implementation');
     expect(contract).not.toContain('narrow known low-risk edits');
     expect(contract).not.toContain('bulk mechanical changes');
-    expect(getAgentRole('designer').scope).toContain('UI/UX');
+    expect(contract).toContain(
+      'business logic, backend, systems, mechanic scripts, calculations, AI',
+    );
+    expect(worker.doNotUseWhen.join(' ')).toContain(
+      'visual-only or artistic/creative work',
+    );
+    const designer = getAgentRole('designer');
+    expect(designer.scope).toContain('UI/UX');
+    expect(designer.useWhen.join(' ')).toContain(
+      'visual style, motion/animation, layouts/levels/maps, characters, visual/audio assets, branding, creative copy, narrative',
+    );
+    expect(designer.escalateWhen.join(' ')).toContain(
+      'coupled contracts, migrations, or high risk to worker',
+    );
+    expect(designer.toolGovernance.join(' ')).toContain(
+      'visual and creative QA',
+    );
+    expect(getAgentPackContract().verificationProtocol.join(' ')).toContain(
+      'Visual and creative output',
+    );
   });
 
   test('keeps one writer and read-only judgment boundaries', () => {

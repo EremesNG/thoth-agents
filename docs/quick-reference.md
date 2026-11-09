@@ -59,8 +59,8 @@ block. Work execution never calls either CLI.
 | `explorer` | read-only | Repository discovery for real uncertainty |
 | `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
 | `oracle` | read-only | Optional plan review and fresh independent final judgment when risk or persistence requires it |
-| `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
-| `worker` | writer | Delegated implementation, including coupled, edge-case-heavy, or high-risk changes |
+| `designer` | writer | Material UI/UX, interaction, accessibility, visual quality, and creative/artistic work |
+| `worker` | writer | Engineering implementation, including coupled, edge-case-heavy, or high-risk changes |
 
 ## Workflow
 

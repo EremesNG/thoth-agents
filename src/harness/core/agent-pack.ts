@@ -223,39 +223,40 @@ export const AGENT_ROLES = [
     mode: 'write-capable',
     dispatch: 'task',
     canMutateWorkspace: true,
-    scope: 'UI/UX decisions, implementation, and visual verification',
+    scope:
+      'UI/UX and creative/artistic decisions, implementation, and verification',
     responsibility:
-      'Own user-facing implementation choices and visual quality for UI work.',
+      'Own UI/UX, creative/artistic output, and aesthetic quality.',
     useWhen: [
-      'User-facing UI/UX, interaction, accessibility, or visual quality is material.',
+      'Material UI/UX, interaction, accessibility, visual quality, or creative/artistic work: visual style, motion/animation, layouts/levels/maps, characters, visual/audio assets, branding, creative copy, narrative.',
     ],
     doNotUseWhen: [
-      'Not for backend-only, non-visual, or correctness-heavy cross-cutting work.',
+      'Not for engineering-only or correctness-heavy cross-cutting work.',
     ],
     escalateWhen: [
       'Escalate coupled contracts, migrations, or high risk to worker.',
     ],
     toolGovernance: [
-      'may edit focused UI/UX files',
-      'owns screenshots and visual QA',
+      'may edit focused UI/UX and creative/artistic files',
+      'owns visual and creative QA, including screenshots',
       'does not delegate further',
     ],
-    verification: ['includes visual verification when applicable'],
+    verification: ['includes visual and creative verification when applicable'],
   },
   {
     name: 'worker',
     mode: 'write-capable',
     dispatch: 'task',
     canMutateWorkspace: true,
-    scope: 'bounded nonvisual implementation and verification',
+    scope: 'bounded engineering implementation and verification',
     responsibility:
-      'Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
+      'Handle bounded engineering implementation (business logic, backend, systems, mechanic scripts, calculations, AI) with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
     useWhen: [
-      'Known bounded nonvisual implementation is ready, regardless of complexity; root direct work is limited to the bounded implementation-ownership exceptions.',
+      'Known bounded engineering implementation, regardless of complexity; root direct work only under bounded implementation-ownership exceptions.',
       'Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
     ],
     doNotUseWhen: [
-      'Not for visual-only work, reviewed commits, or work explicitly retained by the user in root.',
+      'Not for visual-only or artistic/creative work, reviewed commits, or work explicitly retained by the user in root.',
     ],
     escalateWhen: ['Return product or architecture choices to root.'],
     toolGovernance: [
@@ -292,6 +293,7 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
   ],
   writerRouting: [
     'Known bounded implementation: directly to designer/worker, no mandatory Explorer; librarian: external evidence; Oracle: independent judgment; no fixed all-role pipeline.',
+    'Split mixed creative/engineering units between designer and worker with an agreed interface. User/root spec owns system/game rules and balance; worker implements.',
   ],
   evidenceHandling: [
     'Conclusions/localized evidence/uncertainty, not files/source/log dumps; next action only from Oracle/Worker/Designer. Never repeat delegated discovery; fill gaps via targeted requests or bounded identified-evidence inspection. Independent verification stays mandatory.',
@@ -441,7 +443,7 @@ function cloneReturnContract(
 export const VERIFICATION_PROTOCOL = [
   'Completion reports identify changed files and verification evidence.',
   'Behavior changes receive the smallest sufficient automated check or a declared manual check.',
-  'Visual changes receive designer-owned visual QA when applicable.',
+  'Visual and creative output receives designer-owned visual and creative QA when applicable.',
 ] as const;
 
 export const AGENT_PACK_CONTRACT: AgentPackContract = {

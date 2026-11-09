@@ -171,6 +171,33 @@ describe('AI-first prompt rendering', () => {
     );
   });
 
+  test('OpenAI designer profile verifies creative intent and style without named tools', () => {
+    const prompt = renderConfiguredRolePrompt({
+      role: 'designer',
+      dialect: OPENCODE_PROMPT_DIALECT,
+      model: 'openai/gpt-5.6-sol',
+    });
+    expect(prompt).toContain(
+      'Make concrete UX and creative choices; verify intent/style consistency.',
+    );
+    expect(prompt).not.toMatch(/codex_generate_image|blender/i);
+  });
+
+  test.each(
+    HARNESS_RENDERERS,
+  )('renders tool-agnostic creative ownership in $harness', ({ render }) => {
+    const prompt = render('designer');
+    expect(prompt).toContain('UI/UX and creative/artistic');
+    expect(prompt).toContain(
+      'Self-check creative assets for intent/style consistency',
+    );
+    expect(prompt).toContain(
+      'Use the creative tools the harness or project provides; report a capability gap otherwise',
+    );
+    expect(prompt).not.toMatch(/codex_generate_image|blender/i);
+    expect(prompt).toContain('responsive and interaction states');
+  });
+
   test.each(
     HARNESS_RENDERERS,
   )('excludes planning records from writers in $harness', ({ render }) => {
@@ -244,7 +271,7 @@ describe('AI-first prompt rendering', () => {
     expect
       .soft(prompt)
       .toContain(
-        'root direct work is limited to the bounded implementation-ownership exceptions',
+        'root direct work only under bounded implementation-ownership exceptions',
       );
   });
 
@@ -412,6 +439,12 @@ describe('AI-first prompt rendering', () => {
     );
     expect(prompt).toMatch(/not runtime enforcement/i);
     expect(prompt).toMatch(/independent verification stays mandatory/i);
+    expect(prompt).toContain(
+      'Split mixed creative/engineering units between designer and worker with an agreed interface.',
+    );
+    expect(prompt).toContain(
+      'User/root spec owns system/game rules and balance; worker implements.',
+    );
     expect(prompt).toContain(
       'no rediscovery; minimal authorized low-risk edits with known scope/verification, no discovery/independent judgment',
     );
@@ -1024,12 +1057,12 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      // Trimmed mandatory v2 arguments/completion/gap text: 13,521 characters; cap +225.
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_525],
-      [renderCodexRootInstructions(), 14_800],
-      [renderClaudeCodeRootInstructions(), 14_200],
+      // Creative routing and split ownership add ~290 characters; retain tight caps.
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_825],
+      [renderCodexRootInstructions(), 15_100],
+      [renderClaudeCodeRootInstructions(), 14_500],
       // Pi tool schemas and the subagents-configuration skill own operator details.
-      [piRoot, 16_700],
+      [piRoot, 16_975],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
@@ -1051,53 +1084,53 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "c9dd4453c2045ddf21b7bf83ebd600d30b2743f42d3a9c3744829c9d530e0a93",
+          "918ac1c9b1458823ccc720c03e76e3d35fb6e0f660c9a90629ba2c5bc28b1eee",
           "d029170974c6f94c240dce85996ae6e069cd7c69671ddf17f6c2cce87c6eabf0",
           "0e6be91686c66d89d423001ee2193a89575b5ed49ea99ce856547fdaf8352dd5",
           "0dc2c5d406f99f68efd494001d64441c1db1b2ff38e072d7a2267b6d7fd74279",
-          "f2accd9af0006dd9161140d3223db823421ef20a406317d9cfd037c246fad8f3",
-          "fd93938daa2b96098c5ae0655d6ca7abea69bb4ee334de3657370ec91e0a1c0e",
+          "e2828bed679607a87b837573a3f3531c8534f2034b53ba56c50a7972698a8648",
+          "d2b05e9a931130eae481e0f4acf918888e5b599c73edccf14fcb4290c758a55b",
         ],
       ],
       [
         "codex",
         [
-          "366190d2a93b2f21ecd1df2e600bdb22950cdc0ea91fd50a6537a42ac11655de",
+          "e5e549d2c916f6269385ee56a42410100c017718b279d0c97c54ab794e5632c8",
           "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
           "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
           "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
-          "46a252d0f16845ab95e8f74056c85875fb8c644219dfa011b5345955b43555c6",
-          "2b7698286428b015aaf7f09fe6fbf8e45a31196d521802d80b15956afffd6ebd",
+          "3786d0f0ca44840640a493a30e52dc61b88e9b252f7140f589ac01e329ab3f2c",
+          "6817eedbe330eb0ea309b708039d35a78192052b072bbfa3610966cb90be3ac3",
         ],
       ],
       [
         "claude",
         [
-          "7144bba293c8e7d3a4295e8db30d31db451cc5ddf29c5d5e460b7cece24b2f6b",
+          "0a41a1f0e463b19c82fc73cac957f89d2a81f9649d5533ed2877fd30c2b43fbb",
           "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
           "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
           "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
-          "eddee278b6626b9f3ed71535cc0f7674c209996001538f7b1f14ec3692081265",
-          "55fb8ec51d7e910042e68b28af8dc1f273775c75a827bbb1d752db3a927fdc3e",
+          "be436b000185790a21e97974a76a1f7bbf5d5d1250a60b34506bcfaadd6868b0",
+          "4bd0c2caac9a84c98a17212c84196e4d5cc538858012f7cda2abb408e01f8b5c",
         ],
       ],
     ]
   `);
 });
 
-// Planning ownership changes root and write-capable specialists only.
+// Creative ownership changes root and write-capable specialists only.
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    'd4607dcec4fc6708f8ab08aa4f96b0178cf85e6ed59c294b24b7f9d9c4f87495',
+    '433aa29335d6e7b287953be3a8a11dc4014da6f6cce1f21c0290f988b0e74f7c',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    'f9be64af82a1ca54fc081669f05f1f941e0abffcace2a3835cc4a708b162d1f9',
+    'a196d3d19dd730dfc80b297d1fb1993dde3fbb50baf3d87a6df7749fbc31be26',
   ],
   [
     PI_PROMPT_DIALECT,
-    'c3c872ae5ff5f55d2e4aae5dfef4edb73149a716a801814b3135519c15dd3a5c',
+    '0819f1fd9f0ed70697887a3034d17f80e01c5f3604c44cad9b967b9fb374029a',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>
@@ -1121,7 +1154,7 @@ test('Codex hook root enforces capacity-aware scoped continuation', () => {
     'utf8',
   );
   expect(shippedPayload).toBe(payload);
-  expect(shippedPayload.length).toBeLessThanOrEqual(14_800);
+  expect(shippedPayload.length).toBeLessThanOrEqual(15_025);
   for (const rule of [
     'fork_turns: "none"',
     'role instructions from the plugin hook, not inherited history',

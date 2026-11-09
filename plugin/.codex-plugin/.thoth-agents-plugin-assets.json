@@ -17,7 +17,7 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/designer.md",
       "reference": "./codex-hooks/payloads/designer.md",
-      "sha256": "sha256:56655c30d8f82d50ba6dc6ae3c66e1fe0e2e6a034af95a1d15e3da0f9fbe99af"
+      "sha256": "sha256:10a7993ede31daca1ab701f47c1f9186d5f37f62d00b8b2d4ef21e028f24fa7f"
     },
     {
       "field": "hooks",
@@ -41,13 +41,13 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/root.md",
       "reference": "./codex-hooks/payloads/root.md",
-      "sha256": "sha256:723979f87838ce6adbff521feea40c55a91317136af88d8cb23a5b9267e1ccf3"
+      "sha256": "sha256:d77b4530d945feae4620d119427c45a97e19a616e42b6192f3cc7cb231dea4a9"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/worker.md",
       "reference": "./codex-hooks/payloads/worker.md",
-      "sha256": "sha256:8f00c5ca5285d39ed61a49219a9129b616477242ad1af0fa42c836663e90f2d5"
+      "sha256": "sha256:765757b4f639bd06e759a7f1c67fad235d6d46243ddd778d8c20520252391a44"
     },
     {
       "field": "mcpServers",

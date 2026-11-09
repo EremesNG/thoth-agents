@@ -43,7 +43,8 @@ const ROUTING_CASES: RoutingCase[] = [
     id: 'writer-designer-ui',
     expectedOwner: 'designer',
     forbiddenOwners: ['orchestrator', 'worker'],
-    ownerTrigger: /user-facing UI\/UX|visual quality/i,
+    ownerTrigger:
+      /UI\/UX.*creative\/artistic.*visual style.*motion\/animation.*visual\/audio assets.*creative copy.*narrative/i,
     classification: 'small',
     phase: 'implement',
   },
@@ -61,7 +62,7 @@ const ROUTING_CASES: RoutingCase[] = [
     expectedOwner: 'worker',
     forbiddenOwners: ['orchestrator', 'designer'],
     ownerTrigger:
-      /known bounded nonvisual implementation.*regardless of complexity/i,
+      /known bounded engineering implementation.*regardless of complexity/i,
     classification: 'small',
     phase: 'implement',
   },
@@ -325,10 +326,14 @@ describe('canonical agent routing', () => {
   });
 
   test.each([
-    ['designer', /user-facing|UI\/UX|visual/i, /backend-only|non-visual/i],
+    [
+      'designer',
+      /UI\/UX|creative\/artistic/i,
+      /engineering-only|correctness-heavy/i,
+    ],
     [
       'worker',
-      /bounded nonvisual|multi-file|edge-case|high-risk/i,
+      /bounded engineering|multi-file|edge-case|high-risk/i,
       /visual.*only/i,
     ],
   ] as const)('%s exposes deterministic positive and negative writer routing', (name, use, nonUse) => {
@@ -399,7 +404,9 @@ describe('canonical agent routing', () => {
       expect(root, harness).not.toMatch(
         /artifact-backed implementation always selects/i,
       );
-      expect(root, harness).not.toMatch(/all visual or UX work goes through/i);
+      expect(root, harness).not.toMatch(
+        /all work goes through (?:the )?designer/i,
+      );
       expect(root, harness).not.toMatch(/delegate only for net\s+gain/i);
       expect(root, harness).not.toMatch(/prefer root continuity/i);
       expect(root, harness).not.toMatch(/another search or dependency ends/i);

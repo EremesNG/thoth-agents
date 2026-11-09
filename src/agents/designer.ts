@@ -32,7 +32,7 @@ export function createDesignerAgent(
   return {
     name: 'designer',
     description:
-      'Write-capable UI/UX implementation agent with ownership of approach, execution, and visual verification.',
+      'Write-capable UI/UX and creative/artistic specialist owning approach, execution, and visual and creative verification.',
     config: {
       model,
       temperature: 0.4,

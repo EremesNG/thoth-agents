@@ -92,7 +92,7 @@ Unsafe IDs, collisions, and symlinked ancestors fail closed.
 Root owns user intent, classification, material decisions, semantic acceptance,
 and synthesis. Specialists are selected by task shape, never mechanically:
 Explorer handles uncertain local discovery, Librarian external evidence,
-Designer material UI/UX, Worker bounded nonvisual implementation, and Oracle
+Designer material UI/UX and creative/artistic work, Worker bounded engineering implementation, and Oracle
 independent judgment. Keep one writer per mutable surface. Native harness
 lifecycle and terminal evidence remain authoritative; Thoth supplies no
 scheduler, lifecycle mirror, or per-change execution tooling.

@@ -97,7 +97,7 @@ and keeps one writer per mutable surface. Claude's native `Agent` fan-out sends
 all ready conflict-free lanes before waiting; fan-in accepts only terminal
 native results before releasing dependents. Semantic triggers select `librarian`
 for current or external facts, `designer` for material UI/UX, interaction,
-accessibility, or visual quality, and `worker` for known bounded non-visual
+accessibility, visual quality, or creative/artistic work, and `worker` for known bounded engineering
 implementation regardless of complexity. Specialists execute by default; root
 may act directly only under the documented known-source bounded exception.
 Native Agent, status/wait, steering, cancellation, and terminal-result behavior is authoritative; missing

@@ -13,6 +13,10 @@ import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLegacyCodexAgentArtifacts } from '../harness/adapters/codex';
 import {
+  getAgentRole,
+  renderAgentRoutingDescription,
+} from '../harness/core/agent-pack';
+import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
   buildCodexSetupPlan,
@@ -1611,14 +1615,15 @@ max_concurrent_threads_per_session = 3
       applyFreshCodexSetup(dir, home);
       const target = rolePath(home, 'designer');
       const installed = readFileSync(target, 'utf8');
+      const designer = getAgentRole('designer');
+      const description = `description = ${JSON.stringify(renderAgentRoutingDescription(designer))}`;
+      expect(installed).toContain(description);
+      expect(installed).toContain(`Use when: ${designer.useWhen.join(' ')}`);
       writeFileSync(
         target,
         replaceRoleModel(installed, 'designer-user-model')
           .replace('name = "designer"', 'name = "renamed"')
-          .replace(
-            'description = "Own user-facing implementation choices and visual quality for UI work."',
-            'description = "user edited"',
-          )
+          .replace(description, 'description = "user edited"')
           .replace(
             'model_reasoning_effort = "max"',
             'model_reasoning_effort = "high"',
@@ -1634,10 +1639,7 @@ max_concurrent_threads_per_session = 3
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('designer-user-model');
       expect(updated).toContain('name = "renamed"');
-      expect(updated).toContain(
-        'description = "Own user-facing implementation choices',
-      );
-      expect(updated).toContain('Use when: User-facing UI/UX');
+      expect(updated).toContain('description = "user edited"');
       expect(parseRoleTomlEffort(updated)).toBe('high');
       expect(updated).not.toContain('USER EDIT');
     } finally {

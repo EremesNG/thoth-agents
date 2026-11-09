@@ -301,61 +301,13 @@ Pi root guidance MUST use one direct subagent_run with explicit canonical agent 
 
 ### Requirement: Expose routable role contracts
 
-Every root MUST present the complete specialist roster with equally salient positive and negative semantic triggers, MUST consider all five specialists during task shaping, and MUST distinguish role existence from an actual dispatch decision.
+Every root MUST present the complete specialist roster with equally salient positive and negative semantic triggers, MUST consider all five specialists during task shaping, and MUST distinguish role existence from an actual dispatch decision: broad or uncertain local repository discovery selects `explorer` with a read-only assignment; current, unfamiliar, version-sensitive or externally sourced facts select `librarian`, while stable facts already established locally do not; material UI/UX, interaction, accessibility, visual-quality or creative/artistic work selects `designer` with bounded ownership and designer-owned visual and creative verification; known bounded engineering implementation, regardless of complexity, selects `worker` with one independently checkable outcome and bounded mutable surface when delegation has a concrete benefit and is permitted by the user's ownership instruction, not a narrow-versus-complex writer tier; when source, scope and checks are known for a minimal authorized low-risk edit and no discovery or independent judgment is needed, root retains the bounded work, including commits of already reviewed changes, and an additional targeted search or file count does not force delegation; material architecture, security, persistent diagnosis, contradictory evidence or high-cost uncertainty that would change confidence or authorization selects a fresh read-only `oracle`. When the user requests direct work without delegation, root performs the authorized scope directly, preserves operator-selected model and effort, and reports any unavailable independent review without claiming independent PASS or archive. For a delegated assignment with one checkable outcome, exact known entrypoints and skill paths, focused checks and a return/stop condition, when native attention fires, an agreed milestone is missed, or two consecutive attempts make no evidential progress, root inspects and steers, narrows, or safely stops the assignment instead of waiting for a generous timeout, with native notifications/waits authoritative and no polling or custom scheduler. When relevant inputs are stable after implementation, the writer reuses fresh evidence, reruns only checks invalidated by changes, reconciles background commands, and preserves the substantive handoff across late notifications.
 
-#### Scenario: US2 - Activate the complete specialist roster 1
+#### Scenario: Expose routable role contracts
 
-- **GIVEN** broad or uncertain local repository discovery
-- **WHEN** the root selects a specialist
-- **THEN** it selects `explorer` and keeps the assignment read-only
-
-#### Scenario: US2 - Activate the complete specialist roster 2
-
-- **GIVEN** current, unfamiliar, version-sensitive, or externally sourced facts are required
-- **WHEN** the root selects a specialist
-- **THEN** it selects `librarian`; stable facts already established locally do not trigger it
-
-#### Scenario: US2 - Activate the complete specialist roster 3
-
-- **GIVEN** material UI/UX, interaction, accessibility, or visual-quality work
-- **WHEN** the root selects a writer
-- **THEN** it selects `designer` with bounded user-facing ownership and visual verification
-
-#### Scenario: US2 - Activate the complete specialist roster 4
-
-- **GIVEN** known bounded nonvisual implementation, regardless of complexity
-- **WHEN** delegation has a concrete benefit and is permitted by the user's ownership instruction
-- **THEN** it selects `worker` with one independently checkable outcome and bounded mutable surface, not a narrow-versus-complex writer tier
-
-#### Scenario: US2 - Activate the complete specialist roster 5
-
-- **GIVEN** source, scope and checks are known for a minimal authorized low-risk edit
-- **WHEN** no discovery or independent judgment is needed
-- **THEN** root retains the bounded work, including commits of already reviewed changes; an additional targeted search or file count does not force delegation
-
-#### Scenario: Explicit direct ownership
-
-- **GIVEN** the user requests direct work without delegation
-- **WHEN** root executes the authorized scope
-- **THEN** it performs the work directly, preserves operator-selected model and effort, and reports any unavailable independent review without claiming independent PASS or archive
-
-#### Scenario: Bounded implementation supervision
-
-- **GIVEN** a delegated assignment with one checkable outcome, exact known entrypoints and skill paths, focused checks and a return/stop condition
-- **WHEN** native attention fires, an agreed milestone is missed, or two consecutive attempts make no evidential progress
-- **THEN** root inspects and steers, narrows, or safely stops the assignment instead of waiting for a generous timeout; native notifications/waits remain authoritative without polling or a custom scheduler
-
-#### Scenario: Stable validation and handoff
-
-- **GIVEN** relevant inputs are stable after implementation
-- **WHEN** the writer performs final validation and returns
-- **THEN** it reuses fresh evidence, reruns only checks invalidated by changes, reconciles background commands, and preserves the substantive handoff across late notifications
-
-#### Scenario: US2 - Activate the complete specialist roster 6
-
-- **GIVEN** material architecture, security, persistent diagnosis, contradictory evidence, or high-cost uncertainty
-- **WHEN** independent judgment would change confidence or authorization
-- **THEN** the root selects a fresh read-only `oracle`
+- **GIVEN** a request for a level's visual layout, a character animation or narrative copy together with its gameplay logic
+- **WHEN** the root selects writers
+- **THEN** it selects `designer` for the creative output and `worker` for the engineering logic, never routing creative work to `worker` as nonvisual implementation 
 
 ### Requirement: Use the strongest truthful native role selector
 
@@ -613,4 +565,14 @@ The OpenCode plugin MUST expose `/subagents-tools` from its `./tui` entry using 
 
 - **GIVEN** a global override denying `webfetch` for explorer
 - **WHEN** the orchestrator spawns explorer
-- **THEN** the explorer session is not offered `webfetch` and other roles keep their shipped access 
+- **THEN** the explorer session is not offered `webfetch` and other roles keep their shipped access
+
+### Requirement: Split creative and engineering ownership
+
+Every root MUST route creative, artistic and aesthetic work (visual style, motion, layouts/levels, characters, visual/audio assets, branding, creative copy and narrative) to `designer` and engineering work (business logic, backend, systems, mechanic scripts, calculations, AI) to `worker`, MUST split a unit that mixes both into separate designer and worker units with an agreed interface, MUST keep system rules and balance decisions in the user/root specification, and designer guidance MUST use whatever creative tools the harness or project provides and report a capability gap otherwise without naming specific tools.
+
+#### Scenario: Split creative and engineering ownership
+
+- **GIVEN** a request to create a game character sprite and its movement mechanic
+- **WHEN** the root shapes work
+- **THEN** the sprite and animation go to `designer`, the mechanic script goes to `worker`, and both share an agreed interface 

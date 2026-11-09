@@ -213,7 +213,7 @@
       "phase": "implement",
       "expected_owner": "worker",
       "forbidden_owners": ["orchestrator", "designer"],
-      "ownership_rationale": "The coupled multi-harness contract is substantive bounded nonvisual work; specialist-default execution routes it to one Worker regardless of persistence.",
+      "ownership_rationale": "The coupled multi-harness contract is substantive bounded engineering work; specialist-default execution routes it to one Worker regardless of persistence.",
       "decision": {
         "kind": "role-selection",
         "expected": "worker"

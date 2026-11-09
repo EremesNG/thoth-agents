@@ -108,7 +108,7 @@ describe('Codex adapter v0.3', () => {
     const root = renderCodexRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Codex dialect.
-    expect(root.length).toBeLessThanOrEqual(14_800);
+    expect(root.length).toBeLessThanOrEqual(15_100);
     expect(root).toContain('Root:');
     expect(root).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
@@ -257,7 +257,7 @@ describe('Codex adapter v0.3', () => {
         .replace(/^<!-- thoth-agents:codex-root:start -->\n/, '')
         .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
-    expect(root.length).toBeLessThanOrEqual(14_800);
+    expect(root.length).toBeLessThanOrEqual(15_025);
     for (const rule of [
       'multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only',
       '`agent` = status-map key, not provenance',

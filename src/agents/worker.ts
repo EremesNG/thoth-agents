@@ -32,7 +32,7 @@ export function createWorkerAgent(
   return {
     name: 'worker',
     description:
-      'Write-capable agent for bounded nonvisual implementation regardless of complexity, with thorough context analysis, edge-case handling, and correctness verification.',
+      'Write-capable agent for bounded engineering implementation regardless of complexity, with thorough context analysis, edge-case handling, and correctness verification.',
     config: {
       model,
       temperature: 0.1,

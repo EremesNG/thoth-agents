@@ -165,7 +165,7 @@ describe('Claude Code adapter v0.3', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
     // Includes canonical discovery/navigation guidance and the Claude dialect.
-    expect(instructions.length).toBeLessThanOrEqual(14_200);
+    expect(instructions.length).toBeLessThanOrEqual(14_500);
     expect(instructions).toContain('Root:');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(

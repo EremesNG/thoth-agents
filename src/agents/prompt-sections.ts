@@ -277,8 +277,9 @@ const ROLE_SPECIFIC_RULES: Record<
     'Reject self-review: implementing root/writer cannot substitute for independent oracle judgment.',
   ],
   designer: [
-    'Own user-facing choices, implementation, and visual verification.',
-    'Check relevant responsive and interaction states when feasible.',
+    'Own UI/UX and creative/artistic choices, implementation, and verification.',
+    'Check relevant responsive and interaction states when feasible. Self-check creative assets for intent/style consistency.',
+    'Use the creative tools the harness or project provides; report a capability gap otherwise.',
   ],
   worker: [
     'Start at supplied entrypoints; read further only to resolve a concrete missing fact. Use tests first for behavior changes.',
@@ -487,7 +488,7 @@ function getRoleModelProfile(role: AgentPromptRole): string {
     case 'oracle':
       return 'Challenge assumptions and return evidence-backed judgment.';
     case 'designer':
-      return 'Make concrete UX choices and verify the visible result.';
+      return 'Make concrete UX and creative choices; verify intent/style consistency.';
     case 'worker':
       return 'Trace shared behavior, test assumptions, and verify edge cases.';
   }

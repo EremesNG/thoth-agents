@@ -322,9 +322,9 @@ async function registerTool(modelEntries: typeof entries = []): Promise<Register
 	return tools[0];
 }
 
-test("registers deferred delegation in the discoverable Antigravity namespace", async () => {
+test("registers delegation in the discoverable Antigravity namespace", async () => {
 	const tool = await registerTool();
-	assert.equal(tool.exposure, "deferred");
+	assert.equal(tool.exposure ?? "direct", "direct");
 	assert.equal(tool.namespace?.name, "antigravity");
 	assert.match(tool.namespace?.description ?? "", /delegat.*web/i);
 	assert.match(tool.namespace?.instructions ?? "", /AskAntigravity/);

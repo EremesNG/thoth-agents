@@ -2,15 +2,17 @@ import {
   getPublishedToolDefinition,
   getToolDefinitionRegistryVersion,
 } from '@thoth-agents/pi-core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lifecycleHost } from './test-support/lifecycle-harness.js';
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe('background tool definition publication', () => {
-  it('keeps core tools direct and groups deferred tools with discoverable usage guidance', () => {
+  it('starts all tools direct and groups occasional tools with discoverable usage guidance', () => {
     const host = lifecycleHost('tool-exposure');
     const expected = {
       bg_task_spawn: 'direct', bg_task_watch: 'direct', bg_task_status: 'direct',
-      bg_task_list: 'deferred', bg_task_log: 'deferred', bg_task_stop: 'deferred', bg_task_clear: 'deferred',
+      bg_task_list: 'direct', bg_task_log: 'direct', bg_task_stop: 'direct', bg_task_clear: 'direct',
     };
     expect([...host.tools.keys()].sort()).toEqual(Object.keys(expected).sort());
     for (const [name, exposure] of Object.entries(expected)) {
@@ -27,6 +29,32 @@ describe('background tool definition publication', () => {
       expect(definition.namespace.instructions).toContain('describeTool');
       expect(definition.namespace.instructions).toContain('terminal');
       expect(definition.namespace.instructions).toContain('all:true');
+    }
+  });
+  it.each([
+    [undefined, undefined, 'direct'],
+    ['codemode', undefined, 'deferred'],
+    ['tool_search', undefined, 'deferred'],
+    ['codemode', 'direct', 'direct'],
+  ])('reconciles exposure with %s active and override %s', async (discovery, override, exposure) => {
+    vi.stubEnv('THOTH_AGENTS_PI_EXPOSURE', override);
+    const host = lifecycleHost('adaptive-exposure', true);
+    let active = [...host.tools.keys(), 'read', ...(discovery ? [discovery] : [])];
+    host.pi.getActiveTools = () => active;
+    host.pi.setActiveTools = names => { active = names; };
+    const direct = host.tools.get('bg_task_spawn');
+    try {
+      await host.emit('session_start');
+      expect(host.tools.get('bg_task_spawn')).toBe(direct);
+      for (const name of ['bg_task_list', 'bg_task_log', 'bg_task_stop', 'bg_task_clear']) {
+        expect(host.tools.get(name)).toMatchObject({ exposure, defaultActive: exposure === 'direct' });
+        expect(active.includes(name)).toBe(exposure === 'direct');
+        expect(getPublishedToolDefinition(name)).toBe(host.tools.get(name));
+      }
+      expect(active).toContain('read');
+      expect(active).toContain('bg_task_spawn');
+    } finally {
+      await host.emit('session_shutdown', 'reload');
     }
   });
   it('publishes enum-only shell schemas with bash default and rejects boolean calls', async () => {

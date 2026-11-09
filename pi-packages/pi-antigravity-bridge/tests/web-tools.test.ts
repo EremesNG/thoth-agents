@@ -197,7 +197,7 @@ describe("sweepStaleWebAgents", () => {
 });
 
 describe("registerWebTools", () => {
-	test("registers deferred web tools in the discoverable Antigravity namespace with quota disclosures", () => {
+	test("registers web tools in the discoverable Antigravity namespace with quota disclosures", () => {
 		const { api, registered } = fakePi();
 		registerWebTools(api, { bin: FIXTURE, cwd: tmp });
 		expect(registered.map((t) => t.name)).toEqual(["agy_web_search", "agy_read_url"]);
@@ -205,7 +205,6 @@ describe("registerWebTools", () => {
 		expect(registered[1].description).toContain("quota");
 		for (const tool of registered) {
 			expect(tool).toMatchObject({
-				exposure: "deferred",
 				namespace: {
 					name: "antigravity",
 					description: expect.stringMatching(/web search.*URL/i),

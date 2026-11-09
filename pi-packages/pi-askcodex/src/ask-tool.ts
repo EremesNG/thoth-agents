@@ -87,7 +87,6 @@ export function registerAskCodexTool(
   if (!config.enabled) return;
   pi.registerTool({
     name: 'AskCodex',
-    exposure: 'deferred',
     namespace: {
       name: 'askcodex',
       description: 'Local OpenAI Codex harness delegation and Computer Use.',

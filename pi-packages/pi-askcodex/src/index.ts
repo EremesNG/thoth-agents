@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import {
+  createAdaptiveToolRegistrar,
   publishToolDefinitions,
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
@@ -7,17 +8,20 @@ import {
 import { registerAskCodexTool } from './ask-tool.js';
 
 export default function askCodex(pi: ExtensionAPI): void {
-  const definitions: ToolDefinitionLike[] = [];
-  registerAskCodexTool({
-    registerTool: (tool) => {
-      definitions.push(tool);
+  const definitions = new Map<string, ToolDefinitionLike>();
+  let publication: ToolDefinitionHandle | undefined;
+  const occasional = createAdaptiveToolRegistrar({
+    ...pi,
+    registerTool(tool) {
       pi.registerTool(tool);
+      definitions.set(tool.name, tool);
+      publication?.publish([tool]);
     },
   });
-  let publication: ToolDefinitionHandle | undefined;
+  registerAskCodexTool({ registerTool: occasional.register });
   pi.on('session_start', (_event, ctx) => {
-    if (ctx.hasUI && definitions.length)
-      publication ??= publishToolDefinitions(definitions);
+    if (ctx.hasUI && definitions.size)
+      publication ??= publishToolDefinitions([...definitions.values()]);
   });
   pi.on('session_shutdown', () => {
     publication?.withdraw();

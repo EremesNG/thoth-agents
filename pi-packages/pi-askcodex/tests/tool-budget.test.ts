@@ -2,7 +2,7 @@ import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 import { registerAskCodexTool } from '../src/ask-tool.js';
 
-it('keeps the deferred AskCodex definition within its activation size budget', () => {
+it('keeps the AskCodex definition within its activation size budget', () => {
   const tools: Pick<
     ToolDefinition,
     | 'name'
@@ -25,7 +25,6 @@ it('keeps the deferred AskCodex definition within its activation size budget', (
   );
   expect(tools.map(({ name }) => name)).toEqual(['AskCodex']);
   expect(tools[0]).toMatchObject({
-    exposure: 'deferred',
     namespace: { name: 'askcodex' },
   });
 

@@ -142,7 +142,7 @@ function setDimStatus(ui: ExtensionUIContext | null, key: string, text: string |
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
-	const registerTool = createPublishedToolRegistrar(pi);
+	const { registerTool, registerAdaptiveTool } = createPublishedToolRegistrar(pi);
 	// Claim the AskAntigravity tool for this process. pi-ask-antigravity (if also
 	// installed) checks this in-process flag OR the bridge's package.json on disk
 	// and defers. See that extension's isBridgeInstalled().
@@ -628,10 +628,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// Note: the active flag below is set regardless of askTool, so
 	// pi-ask-antigravity keeps deferring even then: off means NO delegation
 	// tool from either package, not a fallback to pi-ask-antigravity.
-	if (loadConfig().askTool) await registerAskAntigravityTool({ registerTool }, toolModels, fileLog.log.bind(fileLog), bridgeDiscovery);
+	if (loadConfig().askTool) await registerAskAntigravityTool({ registerTool: registerAdaptiveTool }, toolModels, fileLog.log.bind(fileLog), bridgeDiscovery);
 	// Web tools are opt-in (config.webTools, default off): Antigravity sessions
 	// already have native web tools; these serve NON-Antigravity providers.
-	if (loadConfig().webTools) registerWebTools({ registerTool }, { log: fileLog.log.bind(fileLog) });
+	if (loadConfig().webTools) registerWebTools({ registerTool: registerAdaptiveTool }, { log: fileLog.log.bind(fileLog) });
 
 	// Display-only wrapper tool: the provider emits mutating agy steps as
 	// toolCalls against it (never re-executed - execute() replays the output

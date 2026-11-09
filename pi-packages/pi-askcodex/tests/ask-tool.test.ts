@@ -459,10 +459,9 @@ describe('AskCodex', () => {
     expect(setup().tool.name).toBe('AskCodex');
     expect(setup('normal', { enabled: false }).tool).toBeUndefined();
   });
-  it('registers deferred delegation in a discoverable Codex namespace', () => {
+  it('registers delegation in a discoverable Codex namespace', () => {
     expect(setup().tool).toMatchObject({
       name: 'AskCodex',
-      exposure: 'deferred',
       namespace: {
         name: 'askcodex',
         description: expect.stringMatching(/Codex.*delegat/i),

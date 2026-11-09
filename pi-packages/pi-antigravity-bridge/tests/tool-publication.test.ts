@@ -17,7 +17,7 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 });
 
-function session(hasUI: boolean) {
+function session(hasUI: boolean, active: string[] = []) {
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();
 	const tools: ToolDefinitionLike[] = [];
 	const ctx = {
@@ -26,9 +26,13 @@ function session(hasUI: boolean) {
 	};
 	const pi = {
 		on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, [...handlers.get(name) ?? [], fn]),
-		registerTool: (tool: ToolDefinitionLike) => { tools.push(tool); },
+		registerTool: (tool: ToolDefinitionLike) => {
+			const index = tools.findIndex(entry => entry.name === tool.name);
+			if (index < 0) tools.push(tool); else tools[index] = tool;
+		},
 		registerProvider() {}, registerCommand() {}, registerEntryRenderer() {},
-		getAllTools: () => [], getActiveTools: () => [],
+		getAllTools: () => [], getActiveTools: () => active,
+		setActiveTools: (names: string[]) => { active = names; },
 	} as unknown as ExtensionAPI;
 	const s = {
 		pi, tools, ctx,
@@ -59,7 +63,8 @@ test("UI session_start publishes the exact host definitions, including opt-in de
 	for (const tool of s.tools) assert.strictEqual(getPublishedToolDefinition(tool.name), tool);
 	for (const name of ["AskAntigravity", "agy_web_search", "agy_read_url"]) {
 		expect(getPublishedToolDefinition(name)).toMatchObject({
-			exposure: "deferred",
+			exposure: "direct",
+			defaultActive: true,
 			namespace: { name: "antigravity", instructions: expect.stringContaining(name) },
 		});
 	}
@@ -138,3 +143,27 @@ test("withdrawing a newer UI instance reveals the earlier instance's same-name t
 	await first.emit("session_shutdown");
 	for (const tool of first.tools) assert.equal(getPublishedToolDefinition(tool.name), undefined);
 });
+
+ test.each([
+  [undefined, undefined, "direct"],
+  ["codemode", undefined, "deferred"],
+  ["tool_search", undefined, "deferred"],
+  ["codemode", "direct", "direct"],
+ ])("occasional tools reconcile with %s active and override %s", async (discovery, override, exposure) => {
+  configure();
+  vi.stubEnv("THOTH_AGENTS_PI_EXPOSURE", override);
+  const names = ["AskAntigravity", "agy_web_search", "agy_read_url"];
+  const s = session(true, [...names, "antigravity", "read", ...(discovery ? [discovery] : [])]);
+  await extension(s.pi);
+  for (const name of names) expect(s.tools.find(tool => tool.name === name)).toMatchObject({ exposure: "direct", defaultActive: true });
+  const display = s.tools.find(tool => tool.name === "antigravity");
+  await s.emit("session_start");
+  for (const name of names) {
+   const tool = s.tools.find(tool => tool.name === name);
+   expect(tool).toMatchObject({ exposure, defaultActive: exposure === "direct" });
+   expect(s.pi.getActiveTools().includes(name)).toBe(exposure === "direct");
+   expect(getPublishedToolDefinition(name)).toBe(tool);
+  }
+  expect(s.tools.find(tool => tool.name === "antigravity")).toBe(display);
+  expect(s.pi.getActiveTools()).toEqual(expect.arrayContaining(["antigravity", "read"]));
+ });

@@ -1,3 +1,4 @@
+import { createAdaptiveToolRegistrar } from "@thoth-agents/pi-core";
 import { Type } from "typebox";
 import { detectShells } from './shell.js';
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -130,6 +131,7 @@ const BACKGROUND_NAMESPACE = {
 };
 
 export function registerTools(pi: ExtensionAPI): void {
+  const occasional = createAdaptiveToolRegistrar(pi);
   const detection = detectShells(undefined, { registration: true });
   const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
   const shellGuidance = `Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||.' : ''} Revalidated at launch.`;
@@ -205,9 +207,8 @@ export function registerTools(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerTool({
+  occasional.register({
     name: "bg_task_list",
-    exposure: "deferred",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_list"),
     label: "BG List",
@@ -233,9 +234,8 @@ export function registerTools(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerTool({
+  occasional.register({
     name: "bg_task_log",
-    exposure: "deferred",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_log"),
     label: "BG Log",
@@ -247,9 +247,8 @@ export function registerTools(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerTool({
+  occasional.register({
     name: "bg_task_stop",
-    exposure: "deferred",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_stop"),
     label: "BG Stop",
@@ -263,9 +262,8 @@ export function registerTools(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerTool({
+  occasional.register({
     name: "bg_task_clear",
-    exposure: "deferred",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_clear"),
     label: "BG Clear",

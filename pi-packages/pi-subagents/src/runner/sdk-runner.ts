@@ -474,6 +474,20 @@ async function emitChildSessionStart(
   }
 }
 
+function selectedBuiltinExtensionFactories(
+  piSdk: Awaited<ReturnType<typeof loadPiSdkModule>>,
+  tools: readonly string[],
+) {
+  return [
+    ...(tools.includes('codemode')
+      ? [piSdk.createCodemodeExtension({ mode: 'on' })]
+      : []),
+    ...(tools.includes('tool_search')
+      ? [piSdk.createToolSearchExtension()]
+      : []),
+  ];
+}
+
 async function createSession(
   model: any,
   cwd: string,
@@ -557,9 +571,7 @@ async function createSession(
       agentDir,
       settingsManager: resources.loaderSettings,
       noExtensions: true,
-      extensionFactories: tools.includes('codemode')
-        ? [piSdk.createCodemodeExtension({ mode: 'on' })]
-        : [],
+      extensionFactories: selectedBuiltinExtensionFactories(piSdk, tools),
       additionalExtensionPaths: resources.additionalExtensionPaths,
       additionalSkillPaths: resources.additionalSkillPaths,
       skillsOverride: resources.skillsOverride,
@@ -600,6 +612,7 @@ async function createSession(
       agentDir,
       settingsManager,
       noExtensions: true,
+      extensionFactories: selectedBuiltinExtensionFactories(piSdk, tools),
       additionalExtensionPaths: excludeOrcaManagedExtensions(
         resolved.extensions
           .filter((entry) => entry.enabled)

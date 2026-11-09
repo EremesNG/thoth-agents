@@ -1113,16 +1113,44 @@ it('keeps orchestration controls model-visible and refuses nested execution befo
   }
 }, 30_000);
 
-it.each([
-  true,
-  false,
-])('loads codemode only when selected in a lean child (selected=%s)', async (selected) => {
+it.each(
+  (['lean', 'full'] as const).flatMap((sessionResources) =>
+    [
+      { selected: true, builtin: 'codemode' },
+      { selected: false, builtin: 'codemode' },
+      { selected: true, builtin: 'tool_search' },
+      { selected: false, builtin: 'tool_search' },
+      { selected: true, builtin: 'both' },
+    ].map((testCase) => ({ ...testCase, sessionResources })),
+  ),
+)('loads $builtin only when selected in a $sessionResources child (selected=$selected)', async ({
+  selected,
+  builtin,
+  sessionResources,
+}) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-codemode-'));
   const agentDir = path.join(root, 'agent');
   const cwd = path.join(root, 'workspace');
   fs.mkdirSync(agentDir, { recursive: true });
   fs.mkdirSync(cwd, { recursive: true });
   fs.writeFileSync(path.join(cwd, 'selected.txt'), 'selected read marker');
+  const extensionPath = path.join(agentDir, 'deferred-tool.ts');
+  fs.writeFileSync(
+    extensionPath,
+    `export default function (pi) {
+      pi.registerTool({
+        name: 'fixture_deferred', label: 'Deferred fixture',
+        description: 'Retrieves the deferred fixture marker.', exposure: 'deferred',
+        defaultActive: false,
+        parameters: { type: 'object', properties: {} },
+        execute: async () => ({ content: [{ type: 'text', text: 'deferred marker' }] }),
+      });
+    }`,
+  );
+  fs.writeFileSync(
+    path.join(agentDir, 'settings.json'),
+    JSON.stringify({ extensions: [extensionPath] }),
+  );
   vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
   vi.stubEnv('PI_SUBAGENTS_HISTORY_HOME', path.join(root, 'history'));
   const { AgentSession, ModelRuntime, SettingsManager } = await import(
@@ -1130,8 +1158,14 @@ it.each([
   );
   const { runToolCall } = await import('@earendil-works/pi-agent-core');
   const tools = selected
-    ? ['read', 'codemode', 'ask_orchestrator', 'notify_orchestrator']
+    ? [
+        'read',
+        ...(builtin === 'both' ? ['codemode', 'tool_search'] : [builtin]),
+        'ask_orchestrator',
+        'notify_orchestrator',
+      ]
     : ['read', 'ask_orchestrator', 'notify_orchestrator'];
+  if (tools.includes('tool_search')) tools.push('fixture_deferred');
   const askQuestion = vi.fn(async () => 'direct alignment reply');
   const reportProgress = vi.fn();
   const modelRuntime = await ModelRuntime.create({
@@ -1191,7 +1225,31 @@ it.each([
               afterToolCall: this.agent.afterToolCall,
             },
           );
-        if (selected) {
+        if (tools.includes('tool_search')) {
+          // The allowlist initially activates every selected tool. Defer this
+          // permitted extension tool again to exercise discovery and activation.
+          this.setActiveToolsByName(
+            this.getActiveToolNames().filter(
+              (name) => name !== 'fixture_deferred',
+            ),
+          );
+          expect(this.getActiveToolNames()).not.toContain('fixture_deferred');
+          const search = await executeTool('tool_search', {
+            query: 'fixture_deferred',
+          });
+          expect(search.isError).toBe(false);
+          expect(search.result.details).toEqual({
+            loaded: ['fixture_deferred'],
+          });
+          expect(this.getActiveToolNames()).toContain('fixture_deferred');
+          const deferred = await executeTool('fixture_deferred', {});
+          expect(deferred.isError).toBe(false);
+          expect(deferred.result.content).toContainEqual({
+            type: 'text',
+            text: 'deferred marker',
+          });
+        }
+        if (tools.includes('codemode')) {
           const executeScript = (code: string) =>
             executeTool('codemode', { code });
           const read = await executeScript(
@@ -1272,6 +1330,7 @@ it.each([
       ctx: {
         modelRuntime,
         settingsManager: SettingsManager.inMemory({
+          extensions: [extensionPath],
           codemode: { mode: 'only' },
         }),
         pi: {
@@ -1285,7 +1344,7 @@ it.each([
         stall_timeout_ms: 10000,
         max_concurrency: 1,
         default_tools: [],
-        session_resources: 'lean',
+        session_resources: sessionResources,
         enable_ask_orchestrator: true,
       },
       signal: new AbortController().signal,

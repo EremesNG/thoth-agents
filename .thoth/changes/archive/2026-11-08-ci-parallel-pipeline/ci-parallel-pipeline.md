@@ -68,7 +68,7 @@ Verification seams: actionlint if available (else YAML parse), focused vitest fo
 
 ## Tasks
 
-- [ ] AC-1: Parallel CI job graph in ci.yml with balanced lanes, sharded root tests, Linux-only typechecks, composite setup action
+- [x] AC-1: Parallel CI job graph in ci.yml with balanced lanes, sharded root tests, Linux-only typechecks, composite setup action
   - Outcome: new `ci.yml` + `.github/actions/setup/action.yml` covering every existing check in parallel jobs
   - Known entrypoints and skill paths: `.github/workflows/ci.yml`, `package.json`, `vitest.config.ts`, `pi-packages/*/package.json`, `opencode-packages/opencode-multi-codex/package.json`
   - Inputs: Exploration timings and step list in this record
@@ -80,7 +80,7 @@ Verification seams: actionlint if available (else YAML parse), focused vitest fo
   - Focused check and PASS evidence: actionlint (or YAML parse) clean; old-step -> new-job coverage table shows no dropped command
   - Return milestone: workflow files written and coverage table produced
   - Stop / reassessment: any check that cannot run without a prior build or shared state between jobs
-- [ ] AC-2: Best-practice controls in ci.yml (permissions, PR-only concurrency cancel, timeouts, ci-ok aggregate)
+- [x] AC-2: Best-practice controls in ci.yml (permissions, PR-only concurrency cancel, timeouts, ci-ok aggregate)
   - Outcome: controls present in the same `ci.yml` rewrite
   - Known entrypoints and skill paths: `.github/workflows/ci.yml`
   - Inputs: Decisions D1, D5
@@ -92,7 +92,7 @@ Verification seams: actionlint if available (else YAML parse), focused vitest fo
   - Focused check and PASS evidence: actionlint clean; workflow-content test asserts concurrency group is per-PR for pull_request and `github.run_id` otherwise, and `cancel-in-progress` true only for pull_request
   - Return milestone: same as AC-1
   - Stop / reassessment: none expected
-- [ ] AC-4: Workflow-content tests and agent docs aligned with new ci.yml
+- [x] AC-4: Workflow-content tests and agent docs aligned with new ci.yml
   - Outcome: tests asserting CI content pass; docs describe the new job graph
   - Known entrypoints and skill paths: `src/plugin-node-runtime.test.ts`, `src/harness/check-pi-version-bumps.test.ts`, `AGENTS.md`, `docs/agent/testing.md`
   - Inputs: new ci.yml
@@ -104,7 +104,7 @@ Verification seams: actionlint if available (else YAML parse), focused vitest fo
   - Focused check and PASS evidence: `pnpm exec vitest run src/plugin-node-runtime.test.ts src/harness/check-pi-version-bumps.test.ts` passes; `pnpm run check:ci` and `pnpm run typecheck` pass
   - Return milestone: checks green
   - Stop / reassessment: an assertion whose intent cannot be preserved
-- [ ] AC-3: Release builds and verifies before waiting for CI; gate stays before publish
+- [x] AC-3: Release builds and verifies before waiting for CI; gate stays before publish
   - Outcome: reordered `release.yml` with unchanged gate semantics
   - Known entrypoints and skill paths: `.github/workflows/release.yml`, `src/harness/release-workflow.test.ts`, `src/harness/publish-marketplace.test.ts`
   - Inputs: Exploration release gate evidence
@@ -116,7 +116,7 @@ Verification seams: actionlint if available (else YAML parse), focused vitest fo
   - Focused check and PASS evidence: `pnpm exec vitest run src/harness/release-workflow.test.ts src/harness/publish-marketplace.test.ts` passes, including new regression cases (failed/skipped gate => no write step eligible; successful gate + partial publish failure => reconciliation eligible); actionlint clean
   - Return milestone: checks green
   - Stop / reassessment: a pre-gate step that writes or publishes
-- [ ] AC-5: Real CI run on ci-time succeeds faster than baseline
+- [x] AC-5: Real CI run on ci-time succeeds faster than baseline
   - Outcome: green workflow_dispatch run with per-job durations
   - Known entrypoints and skill paths: `gh workflow run ci.yml --ref ci-time`, `gh run view --json jobs`
   - Inputs: accepted AC-1..AC-4 outputs committed on ci-time
@@ -147,27 +147,152 @@ Verdict: `PASS`; Reviewed record SHA-256: 64 lowercase hex characters hashing
 exact UTF-8 bytes before the case-sensitive `## Authorization` heading. Use
 exactly one SHA field line; put notes on separate lines below the fields.
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 4e0e8759ff93cfce31457a7007263cf9de9269e18ef8f76fb986c0c6d31bcdc4
 
 **Oracle envelope**:
 
 ```thoth-result
-PENDING
+{
+  "schemaVersion": 1,
+  "role": "oracle",
+  "status": "complete",
+  "conclusion": "PASS: HEAD f2ff16ffbc1d1de6f86a312ec44210f4a3bd439f satisfies AC-1 through AC-5 and D1-D8. No blocking findings.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "baseline-comparison",
+      "locator": "master:.github/workflows/ci.yml versus HEAD",
+      "claim": "All 59 baseline pnpm commands accounted for: 47 preserved/mapped and 12 authorized duplicate Windows typechecks consolidated onto Linux. Both OSes retain every package test, Windows retries, Claude test:unit, OpenCode build, and bundle build/verification. PR version checking and workflow triggers are preserved.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "E2",
+      "kind": "workflow-controls",
+      "locator": ".github/workflows/ci.yml; .github/actions/setup/action.yml",
+      "claim": "Verified exact D5 concurrency expressions, contents:read, timeouts, fail-fast:false, 19 job instances, complete ci-ok dependencies and always(). Executing the actual aggregate command returned 0 for success and 1 for failure, skipped, cancelled, timed_out, neutral and empty results. Checkout precedes composite setup; its install uses explicit bash and frozen dependencies.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "E3",
+      "kind": "shard-verification",
+      "locator": "Vitest 4.1.6 createVitest/globTestSpecifications/BaseSequencer; vitest.config.ts",
+      "claim": "Actual sequencer produced disjoint exhaustive shards of 52/52/51 files: unit 47/47/47 and evals 5/5/4, totaling 155. Eval forks, fileParallelism:false and maxWorkers:1 remain unchanged. Each workflow shard checks out thoth-plugins and supplies THOTH_PLUGINS_ROOT.",
+      "basis": "observed",
+      "uncertainty": ""
+    },
+    {
+      "id": "E4",
+      "kind": "release-safety",
+      "locator": ".github/workflows/release.yml; src/harness/release-workflow.test.ts",
+      "claim": "Build/runtime/bundle/packed-entry verification precedes wait-ci. All five publish/tag/release/git-write steps explicitly require gate success, including always() reconciliation. The complete Wait for CI step and workflow permissions exactly equal master. Regression tests cover failed/skipped/cancelled gates and successful-gate partial-publish recovery.",
+      "basis": "observed",
+      "uncertainty": "No live publishing was performed."
+    },
+    {
+      "id": "E5",
+      "kind": "local-validation",
+      "locator": "Assigned five-file focused Vitest run; pnpm run check:ci; pnpm run typecheck",
+      "claim": "Five test files passed: 66 tests passed, three existing built-artifact-only tests skipped. check:ci and typecheck exited successfully. Biome reported warnings but no errors. Changed docs accurately describe the implemented graph.",
+      "basis": "observed",
+      "uncertainty": "Built-root artifact tests were not exercised locally."
+    },
+    {
+      "id": "E6",
+      "kind": "github-execution",
+      "locator": "https://github.com/EremesNG/thoth-agents/actions/runs/42549665594",
+      "claim": "workflow_dispatch on ci-time matches reviewed HEAD; all 19 jobs succeeded in 260 seconds versus the stated 16-minute baseline. Job seconds: static 129; root shards 98/152/52; bundles Linux/Windows 40/78; Linux background/subagents/claude/antigravity/codex-theme/utilities 66/92/94/129/125/73; Windows same lane order 197/227/162/140/151/141; ci-ok 24. Each package test and both OpenCode builds executed successfully.",
+      "basis": "observed",
+      "uncertainty": "Single-run performance evidence; runner timing varies."
+    },
+    {
+      "id": "E7",
+      "kind": "freshness-and-governance",
+      "locator": ".thoth/changes/ci-parallel-pipeline/ci-parallel-pipeline.md; git working tree",
+      "claim": "Installed verify validator passed without errors or warnings. All eight recorded implementation source hashes match. Implementation files match HEAD, diff whitespace checks pass, and record-prefix digest remained unchanged throughout review.",
+      "basis": "observed",
+      "uncertainty": ""
+    }
+  ],
+  "verification": [
+    {
+      "check": "AC-1; D1-D4, D6-D7",
+      "method": "Baseline command mapping, workflow inspection, actual shard sequencing and GitHub job/step evidence",
+      "outcome": "pass",
+      "evidenceIds": ["E1", "E2", "E3", "E6"],
+      "reason": "Coverage preserved within the authorized typecheck consolidation; balanced parallel graph meets job-count and lane-duration targets."
+    },
+    {
+      "check": "AC-2; D5",
+      "method": "Expression/control inspection and aggregate command execution with injected dependency results",
+      "outcome": "pass",
+      "evidenceIds": ["E2"],
+      "reason": "Concurrency, permissions, timeouts and fail-closed aggregation satisfy the contract."
+    },
+    {
+      "check": "AC-3; D8",
+      "method": "Exact master comparison, write-step inventory and failure-path regression tests",
+      "outcome": "pass",
+      "evidenceIds": ["E4", "E5"],
+      "reason": "Reordering preserves gate selection and permissions without exposing writes before gate success or disabling partial-publish reconciliation."
+    },
+    {
+      "check": "AC-4",
+      "method": "Focused tests, static checks, typecheck and documentation/diff inspection",
+      "outcome": "pass",
+      "evidenceIds": ["E5", "E7"],
+      "reason": "Required local checks pass and tests/docs reflect the implementation."
+    },
+    {
+      "check": "AC-5",
+      "method": "Read GitHub run metadata, every job conclusion and executed check steps",
+      "outcome": "pass",
+      "evidenceIds": ["E6"],
+      "reason": "Matching-HEAD dispatch succeeded with all 19 jobs green in 4m20s, materially below baseline."
+    }
+  ],
+  "risks": [
+    {
+      "description": "Release safety is supported by source comparison and offline regressions, not a live tag/publish run.",
+      "severity": "low",
+      "blocking": false,
+      "evidenceIds": ["E4", "E5"]
+    }
+  ],
+  "openQuestions": [],
+  "nextAction": "Root should validate this result, record the unchanged envelope and digest, then run closeout before archive.",
+  "review": {
+    "kind": "final-verification",
+    "verdict": "PASS",
+    "reviewedRecord": ".thoth/changes/ci-parallel-pipeline/ci-parallel-pipeline.md",
+    "reviewedRecordSha256": "4e0e8759ff93cfce31457a7007263cf9de9269e18ef8f76fb986c0c6d31bcdc4"
+  }
+}
 ```
 
 After PASS, root pastes the Oracle's unchanged final-verification envelope here.
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+- AC-1: PASS | coverage table (59 old pnpm commands mapped), vitest shard sequencer 52/52/51 disjoint = 155 files | run 42549665594: 19 jobs green
+- AC-2: PASS | src/harness/ci-workflow.test.ts asserts concurrency/cancel/package coverage | focused vitest 5 files 66 passed
+- AC-3: PASS | release-workflow.test.ts regressions (5 red first, then green) | vitest 37 passed
+- AC-4: PASS | pnpm run check:ci (0 errors), pnpm run typecheck | AGENTS.md, docs/agent/testing.md updated
+- AC-5: PASS | gh run 42549665594 (workflow_dispatch, ci-time, commit pushed) | success, wall 4m20s vs 16m baseline; longest job packages-windows (subagents) 3m47s
+
+- Source: .github/workflows/ci.yml | sha256:9a1718d3b147d5b6be8f825bc2c7f11d072347890a324feee36ae4f7128a0bc6
+- Source: .github/actions/setup/action.yml | sha256:c2ca0f126a0686dbf38865b6f5929f988dff0adc980954141cb267e0796b9864
+- Source: .github/workflows/release.yml | sha256:07f7cf745098015a50f9b98f31728ba3533fc2ee21fc3b22deba8a17c482d4cb
+- Source: src/harness/ci-workflow.test.ts | sha256:4580be7f8f95b8a6d3f54bcfb7ad27a7e153736dd9b1342103b830b9c24af303
+- Source: src/harness/release-workflow.test.ts | sha256:e1c3e53f8482a13588bd316a717e24f62923719bad5d990dcf6e67116ddae88c
+- Source: src/plugin-node-runtime.test.ts | sha256:f7e9a1b3c8dcf44b623d78c91e4ba71beb582658177456a3657dc748b95f8009
+- Source: AGENTS.md | sha256:f3c09b7111fdb4e542fa8b4d45d00b6f2e1e7c39296e6dca4b823897b4caed82
+- Source: docs/agent/testing.md | sha256:aaccdf62f97960f547061bc6b1fbdbbc8eb35b970b3ee65a9cd1076b96a20de1
 
 ## Closeout
 
 Accepted value: Archive: `READY`. Put notes on separate lines below the field.
 
-**Archive**: PENDING
+**Archive**: READY

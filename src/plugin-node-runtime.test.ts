@@ -184,6 +184,7 @@ describe('plugin runtime compatibility', () => {
     const paths = [
       'package.json',
       '.github/workflows/ci.yml',
+      '.github/actions/setup/action.yml',
       '.github/workflows/release.yml',
       ...THOTH_OWNED_SKILL_NAMES.flatMap((name) => [
         `skills/${name}/SKILL.md`,
@@ -193,8 +194,8 @@ describe('plugin runtime compatibility', () => {
     const content = paths.map((path) => readFileSync(path, 'utf8')).join('\n');
     expect(content).not.toContain('22.13');
     expect(readFileSync('package.json', 'utf8')).toContain('"node": ">=22.19"');
-    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain(
-      'node-version: [22.19]',
+    expect(readFileSync('.github/actions/setup/action.yml', 'utf8')).toContain(
+      'node-version: 22.19',
     );
     expect(readFileSync('.github/workflows/release.yml', 'utf8')).toContain(
       'node-version: 22.19',

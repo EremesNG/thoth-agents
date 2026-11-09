@@ -57,6 +57,38 @@ jobs:
       - name: Update npm
         run: npm install -g npm@11
 
+      - name: Install dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
+
+      # The root build also generates all eight Pi extension bundles.
+      - name: Build package
+        run: pnpm run build
+
+      - name: Check built plugin runtime
+        run: pnpm exec vitest run src/plugin-node-runtime.test.ts
+
+      - name: Load Pi bundles and verify packed contents
+        timeout-minutes: 2
+        run: pnpm run test:pi-extensions
+
+      - name: Build OpenCode packages
+        run: pnpm --filter "./opencode-packages/*" run build
+
+      - name: Verify packed OpenCode entrypoints
+        run: |
+          for dir in opencode-packages/*; do
+            [ -f "$dir/package.json" ] || continue
+            contents="$(cd "$dir" && pnpm pack --dry-run)"
+            printf '%s\n' "$contents"
+            for entry in dist/index.js dist/tui/index.js; do
+              if ! grep -Fxq "$entry" <<< "$contents"; then
+                echo "Missing packed entrypoint ${entry} in ${dir}."
+                exit 1
+              fi
+            done
+          done
+
       - name: Wait for CI
         id: wait-ci
         env:
@@ -133,44 +165,13 @@ jobs:
           echo "Timed out waiting for CI to complete for ${HEAD_SHA}."
           exit 1
 
-      - name: Install dependencies
-        id: install
-        run: pnpm install --frozen-lockfile
-
-      # The root build also generates all eight Pi extension bundles.
-      - name: Build package
-        run: pnpm run build
-
-      - name: Check built plugin runtime
-        run: pnpm exec vitest run src/plugin-node-runtime.test.ts
-
-      - name: Load Pi bundles and verify packed contents
-        timeout-minutes: 2
-        run: pnpm run test:pi-extensions
-
-      - name: Build OpenCode packages
-        run: pnpm --filter "./opencode-packages/*" run build
-
-      - name: Verify packed OpenCode entrypoints
-        run: |
-          for dir in opencode-packages/*; do
-            [ -f "$dir/package.json" ] || continue
-            contents="$(cd "$dir" && pnpm pack --dry-run)"
-            printf '%s\n' "$contents"
-            for entry in dist/index.js dist/tui/index.js; do
-              if ! grep -Fxq "$entry" <<< "$contents"; then
-                echo "Missing packed entrypoint ${entry} in ${dir}."
-                exit 1
-              fi
-            done
-          done
-
       - name: Publish Pi packages
         id: pi-publish
+        if: ${{ steps.wait-ci.outcome == 'success' }}
         run: pnpm publish -r --filter "./pi-packages/*" --filter "./opencode-packages/*" --ignore-scripts --no-git-checks
 
       - name: Reconcile Pi releases
-        if: ${{ always() && steps.install.outcome == 'success' }}
+        if: ${{ always() && steps.install.outcome == 'success' && steps.wait-ci.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PI_PUBLISH_OUTCOME: ${{ steps.pi-publish.outcome }}
@@ -262,9 +263,11 @@ jobs:
           release-notes.md
 
       - name: Publish to npm
+        if: ${{ steps.wait-ci.outcome == 'success' }}
         run: npm publish --ignore-scripts
 
       - name: Create GitHub release
+        if: ${{ steps.wait-ci.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
@@ -284,6 +287,7 @@ jobs:
           permission-contents: write
 
       - name: Publish marketplace version
+        if: ${{ steps.wait-ci.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ steps.marketplace-token.outputs.token }}
         run: |

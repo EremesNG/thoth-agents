@@ -98,7 +98,9 @@ To close locally, run touched-package/area typechecks and focused tests, plus
 output or packaging changes. Release/packaging tooling tests are required only
 when their inputs change; see the [verification guide](docs/agent/testing.md#local-closeout-gate)
 for triggers and CI/release details. Full `pnpm test` is the post-push/PR CI safety
-net (Linux CI plus `pi-packages-windows`), not a local closeout blocker. Report
+net (three Linux root-test shards plus six package lanes per OS), not a local
+closeout blocker. CI runs static checks/typechecks once on Linux, bundle checks
+on Linux and Windows, and requires every job through `ci-ok`. Report
 unrelated environment failures, such as Windows timing, rather than treating them
 as change failures.
 

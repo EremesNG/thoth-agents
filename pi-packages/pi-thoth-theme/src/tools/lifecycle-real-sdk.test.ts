@@ -103,6 +103,87 @@ function createHostComponent(name: string) {
 }
 
 describe.each([
+  'compact',
+  'line',
+] as const)('%s pending argument summaries', (collapsed) => {
+  it.each([
+    {
+      name: 'edit',
+      title: 'Edit',
+      summary: 'src/streamed.ts',
+      updates: [
+        { path: 'src/streamed.ts' },
+        { path: 'src/streamed.ts', edits: [{}] },
+        {
+          path: 'src/streamed.ts',
+          edits: [{ newText: 'partial replacement\n'.repeat(40) }],
+        },
+        {
+          path: 'src/streamed.ts',
+          edits: [{ oldText: 'old', newText: 'replacement\n'.repeat(400) }],
+        },
+      ],
+    },
+    {
+      name: 'write',
+      title: 'Write',
+      summary: 'src/streamed.ts',
+      updates: [
+        { path: 'src/streamed.ts' },
+        { path: 'src/streamed.ts', content: 'partial' },
+        { path: 'src/streamed.ts', content: 'written\n'.repeat(1000) },
+      ],
+    },
+    {
+      name: 'bash',
+      title: 'Bash',
+      summary: 'echo streaming',
+      updates: [
+        { command: 'echo streaming' },
+        { command: 'echo streaming\necho done' },
+      ],
+    },
+  ])('shows $name arguments on the next render without a result', ({
+    name,
+    title,
+    summary,
+    updates,
+  }) => {
+    const resolved = createToolRendererResolver(
+      { getAllTools: () => [] },
+      { ...config, tools: { enabled: true, collapsed } },
+    )(name, () => undefined);
+    const component = new ToolExecutionComponent(
+      name,
+      'streamed-call',
+      {},
+      { showImages: false },
+      resolved,
+      { requestRender() {} } as TUI,
+      process.cwd(),
+    );
+    const row = () =>
+      component.render(120).map(stripTerminalSequences).filter(Boolean);
+    expect(row()).toHaveLength(1);
+    expect(row()[0]).toContain(title);
+    expect(row()[0]).not.toContain(summary);
+
+    // Pi supplies incrementally parsed objects, not raw incomplete JSON.
+    // No timer tick, argsComplete, or tool result is needed to show a path.
+    for (const args of updates) {
+      component.updateArgs(args);
+      expect(row()).toHaveLength(1);
+      expect(row()[0]).toContain(title);
+      expect(row()[0]).toContain(summary);
+    }
+    component.setArgsComplete();
+    expect(row()[0]).toContain(summary);
+    component.markExecutionStarted();
+    expect(row()[0]).toContain(summary);
+  });
+});
+
+describe.each([
   { name: 'bash', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
   { name: 'powershell', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
   { name: 'custom_tool', successFooter: '\uf00c', errorFooter: '\uf00d' },

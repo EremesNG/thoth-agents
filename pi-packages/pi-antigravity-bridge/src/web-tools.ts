@@ -25,6 +25,7 @@ import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { emitLifecycle } from "./lifecycle.js";
 import { resolveAgyCommand } from "./agy-runtime.js";
+import { ANTIGRAVITY_NAMESPACE } from "./tool-namespace.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const WEB_AGENT_PREFIX = "pi-bridge-web-";
@@ -270,6 +271,8 @@ export function registerWebTools(
 
 	pi.registerTool({
 		name: "agy_web_search",
+		exposure: "deferred",
+		namespace: ANTIGRAVITY_NAMESPACE,
 		label: "Antigravity Web Search",
 		description: `Search the live web via Google Antigravity. Returns a short cited answer, not raw results. Use when the question needs current information. ${QUOTA_NOTE}`,
 		parameters: Type.Object({
@@ -297,6 +300,8 @@ export function registerWebTools(
 
 	pi.registerTool({
 		name: "agy_read_url",
+		exposure: "deferred",
+		namespace: ANTIGRAVITY_NAMESPACE,
 		label: "Antigravity Read URL",
 		description: `Fetch the content of a public http(s) URL via Google Antigravity and get its main content back as text. Use for pages you need to read. ${QUOTA_NOTE}`,
 		parameters: Type.Object({

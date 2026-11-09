@@ -51,6 +51,8 @@ test("opt-in tool definitions stay within their serialized size budget", async (
 		// Baseline: 4,434 chars. Compacted: 1,856, with <5% headroom.
 		assert.ok(total <= 1_930, `Serialized tool definitions use ${total} chars: ${JSON.stringify(lengths)}`);
 		assert.equal(tools[0].parameters.properties.effort, undefined, "thinking is the only effort-level parameter");
+		assert.equal(tools[0].exposure, "deferred", "delegation must not add an initial model declaration");
+		assert.equal(tools[0].namespace?.name, "antigravity");
 	});
 });
 

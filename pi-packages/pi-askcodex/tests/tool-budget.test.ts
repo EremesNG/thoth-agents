@@ -2,10 +2,16 @@ import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 import { registerAskCodexTool } from '../src/ask-tool.js';
 
-it('keeps the enabled AskCodex definition within its model-facing size budget', () => {
+it('keeps the deferred AskCodex definition within its activation size budget', () => {
   const tools: Pick<
     ToolDefinition,
-    'name' | 'description' | 'parameters' | 'promptSnippet' | 'promptGuidelines'
+    | 'name'
+    | 'description'
+    | 'parameters'
+    | 'promptSnippet'
+    | 'promptGuidelines'
+    | 'exposure'
+    | 'namespace'
   >[] = [];
   registerAskCodexTool(
     { registerTool: (tool) => tools.push(tool) },
@@ -18,6 +24,10 @@ it('keeps the enabled AskCodex definition within its model-facing size budget', 
     },
   );
   expect(tools.map(({ name }) => name)).toEqual(['AskCodex']);
+  expect(tools[0]).toMatchObject({
+    exposure: 'deferred',
+    namespace: { name: 'askcodex' },
+  });
 
   const size = tools.reduce(
     (

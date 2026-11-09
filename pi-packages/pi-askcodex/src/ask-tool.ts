@@ -87,13 +87,16 @@ export function registerAskCodexTool(
   if (!config.enabled) return;
   pi.registerTool({
     name: 'AskCodex',
-    exposure: 'model-only',
+    exposure: 'deferred',
+    namespace: {
+      name: 'askcodex',
+      description: 'Local OpenAI Codex harness delegation and Computer Use.',
+      instructions:
+        'Use AskCodex to delegate a self-contained task to the local Codex harness. Reuse the returned conversationId to continue. Plan: read-only shell sandbox, not MCP or Computer Use actions. Native-app Computer Use requires Codex Desktop running.',
+    },
     label: 'Ask Codex',
     renderShell: 'self',
     description: DESCRIPTION,
-    promptGuidelines: [
-      'Plan: read-only shell sandbox, not MCP or Computer Use actions.',
-    ],
     parameters: Type.Object({
       prompt: Type.String({
         description: 'Self-contained task with all context.',

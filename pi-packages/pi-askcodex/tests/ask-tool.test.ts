@@ -459,10 +459,15 @@ describe('AskCodex', () => {
     expect(setup().tool.name).toBe('AskCodex');
     expect(setup('normal', { enabled: false }).tool).toBeUndefined();
   });
-  it('registers delegation as a model-only direct tool', () => {
+  it('registers deferred delegation in a discoverable Codex namespace', () => {
     expect(setup().tool).toMatchObject({
       name: 'AskCodex',
-      exposure: 'model-only',
+      exposure: 'deferred',
+      namespace: {
+        name: 'askcodex',
+        description: expect.stringMatching(/Codex.*delegat/i),
+        instructions: expect.stringContaining('AskCodex'),
+      },
     });
   });
   it('exposes thinking with supported values and no effort alias', () => {
@@ -483,7 +488,8 @@ describe('AskCodex', () => {
     });
   });
   it('keeps task, continuation and context guidance in the parameter docs', () => {
-    const { description, parameters, promptGuidelines } = setup().tool;
+    const { description, parameters, promptGuidelines, namespace } =
+      setup().tool;
     expect(parameters).toMatchObject({
       properties: {
         prompt: {
@@ -503,7 +509,7 @@ describe('AskCodex', () => {
     expect(`${description} ${promptGuidelines?.join(' ')}`).not.toMatch(
       /self-contained|conversationId|digest|Pi context/i,
     );
-    expect(promptGuidelines?.join(' ')).toContain(
+    expect(namespace?.instructions).toContain(
       'Plan: read-only shell sandbox, not MCP or Computer Use actions.',
     );
   });

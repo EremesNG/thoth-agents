@@ -12,7 +12,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { beforeAll, test, vi } from "vitest";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildFinalPrompt, resolveModel, reviewerAgentMd, stageReviewerAgent, toolModelsFromRaw } from "../src/ask-tool.js";
 import { toAgyEffort } from "../src/models.js";
 import * as ownedProcess from "../src/owned-process.js";
@@ -297,7 +297,7 @@ test("stageReviewerAgent: creates a unique pid-marked agent dir under root", () 
 
 // --- Execute wiring (argv captured through the fake-binary seam) -----------
 
-type RegisteredTool = {
+type RegisteredTool = Pick<ToolDefinition, "exposure" | "namespace"> & {
 	name: string;
 	execute: (
 		id: string,
@@ -321,6 +321,14 @@ async function registerTool(modelEntries: typeof entries = []): Promise<Register
 	assert.equal(tools.length, 1);
 	return tools[0];
 }
+
+test("registers deferred delegation in the discoverable Antigravity namespace", async () => {
+	const tool = await registerTool();
+	assert.equal(tool.exposure, "deferred");
+	assert.equal(tool.namespace?.name, "antigravity");
+	assert.match(tool.namespace?.description ?? "", /delegat.*web/i);
+	assert.match(tool.namespace?.instructions ?? "", /AskAntigravity/);
+});
 
 /** Fake agy that records its argv (NUL-delimited) and exits 0 with a stub answer. */
 function makeArgvCapturingAgyBin(argvFile: string): string {

@@ -66,7 +66,7 @@ Only the four environment overrides listed above are supported. Per-call paramet
 
 ## AskCodex tool
 
-`AskCodex` is registered with `model-only` exposure; UI sessions also publish its tool definition through pi-core.
+`AskCodex` is registered with `deferred` exposure in the `askcodex` namespace. Discover and activate it with Pi's `tool_search`, or find it through codemode's `searchTools()` and inspect it with `describeTool()`. Namespace instructions include plan-mode safety guidance. UI sessions also publish its tool definition through pi-core.
 
 Give Codex a self-contained task, including relevant paths and constraints. For example:
 

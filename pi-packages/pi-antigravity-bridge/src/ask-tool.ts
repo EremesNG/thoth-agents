@@ -34,6 +34,7 @@ import { emitLifecycle } from "./lifecycle.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
 import { AGY_EFFORT_ORDER, spawnAgyModelsRaw, toAgyEffort } from "./models.js";
 import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
+import { ANTIGRAVITY_NAMESPACE } from "./tool-namespace.js";
 
 // --- Constants -------------------------------------------------------------
 
@@ -451,6 +452,8 @@ export async function registerAskAntigravityTool(
 	}
 	pi.registerTool({
 		name: "AskAntigravity",
+		exposure: "deferred",
+		namespace: ANTIGRAVITY_NAMESPACE,
 		label: "Ask Antigravity",
 		renderShell: "self",
 		description: AGY_DESCRIPTION,

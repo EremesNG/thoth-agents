@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getPublishedToolDefinition, getToolDefinitionRegistryVersion, type ToolDefinitionLike } from "@thoth-agents/pi-core";
 import extension from "../extensions/index.js";
@@ -57,6 +57,12 @@ test("UI session_start publishes the exact host definitions, including opt-in de
 	for (const tool of s.tools) assert.equal(getPublishedToolDefinition(tool.name), undefined, "loading alone must not publish");
 	await s.emit("session_start");
 	for (const tool of s.tools) assert.strictEqual(getPublishedToolDefinition(tool.name), tool);
+	for (const name of ["AskAntigravity", "agy_web_search", "agy_read_url"]) {
+		expect(getPublishedToolDefinition(name)).toMatchObject({
+			exposure: "deferred",
+			namespace: { name: "antigravity", instructions: expect.stringContaining(name) },
+		});
+	}
 	const version = getToolDefinitionRegistryVersion();
 	await s.emit("session_start");
 	assert.equal(getToolDefinitionRegistryVersion(), version, "repeated starts must not create another owner");

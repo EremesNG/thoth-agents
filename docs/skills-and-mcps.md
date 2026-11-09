@@ -44,9 +44,10 @@ install fails setup.
 
 The shared harness bundle may expose `exa`, `context7` and `grep_app` research
 MCPs. OpenCode composes them at runtime; Codex reads `plugin/codex.mcp.json`
-and Claude `plugin/.mcp.json`. Pi uses native
-`@upstash/context7-pi@0.1.2` and `pi-web-access@0.27.0` extensions, while
-`pi-mcp-adapter@2.32.1` exposes only the global grep.app server. Provider
+and Claude `plugin/.mcp.json`. Pi uses the native `pi-web-access@0.27.0`
+extension, while `pi-mcp-adapter@2.32.1` exposes lazy global Context7 and
+grep.app servers. Context7 uses the optional `CONTEXT7_API_KEY` environment
+header and is available to the librarian through `mcp__context7`. Provider
 settings, tool aliases, disabled tools and credentials are operator-owned;
 installation does not prove live provider availability.
 

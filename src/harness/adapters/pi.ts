@@ -152,7 +152,7 @@ function diagnostics(): HarnessDiagnostic[] {
       harness: 'pi',
       surface: 'grep.app',
       message:
-        'Pi has no generic native MCP client in this contract; only grep.app is exposed through pi-mcp-adapter, while Context7 and pi-web-access remain native extensions.',
+        'Pi has no generic native MCP client in this contract; grep.app and Context7 are exposed through pi-mcp-adapter, while pi-web-access remains a native extension.',
       fallback: 'diagnostic-only',
     },
   ];

@@ -108,9 +108,9 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill copies and install the nine
+  then may it migrate attributable legacy root/skill copies and install the eight
   selected sources as `npm:@thoth-agents/pi-subagents@>=0.3.0`,
-  `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
+  `pi-web-access@>=0.27.0`,
   `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`,
   `@thoth-agents/pi-todo@>=0.3.0`, `@thoth-agents/pi-thoth-theme@>=0.3.0`,
   `@thoth-agents/pi-background-tasks@>=0.3.0`, and
@@ -138,12 +138,18 @@ execution does not.
   `Ctrl+]` collapses to an editor-input dock and re-expands while open. See the
   [dock and focus contract](harness-packaging.md#pi-question-dock-and-editor-slot).
   Setup and applied Update
-  remove an installed user-scope `@juicesharp/rpiv-ask-user-question` through
+  remove an installed user-scope `@juicesharp/rpiv-ask-user-question` or
+  `@upstash/context7-pi` through
   native `pi remove <configured-source> --no-approve` after root-package
   verification and before selected-package installation. Removal is verified;
-  failure stops completion. Project-scope question conflicts block before
+  failure stops completion. Project-scope replaced-package conflicts block before
   mutation with manual `pi remove <configured-source> --local --approve`
   guidance, requiring the operator to review ownership and trust first.
+  Context7 now uses the lazy global `context7` MCP entry through pi-mcp-adapter
+  (`https://mcp.context7.com/mcp`, protocol `auto`, no `directTools`, optional
+  `CONTEXT7_API_KEY` environment header). Status reports its entry evidence
+  separately from web access and grep, without claiming live provider success.
+  Setup enables `tool_search` beside `codemode`, preserving explicit disables.
   Dry-run previews configured user removals and project blockers without
   executing commands or changing settings. The first-party task-list extension supplies
   the session-owned `todo` tool, `/todos`, and current-session editor widget.

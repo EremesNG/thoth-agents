@@ -48,7 +48,7 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   nine selected packages, including
+   eight selected packages, including
    `npm:@thoth-agents/pi-subagents@>=0.3.0`,
    `npm:@thoth-agents/pi-todo@>=0.3.0`,
    `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` and

@@ -275,20 +275,20 @@ The CLI installs and verifies these Pi packages in order:
 2. `npm:@thoth-agents/pi-subagents@>=0.3.0` for native direct specialist
    execution, task-ID lifecycle control and `/subagents-tools` ownership (local
    development can provide the fork path through `--local-pi-runtime-root`);
-3. `npm:@upstash/context7-pi@>=0.1.2` as a native Context7 extension;
-4. `npm:pi-web-access@>=0.27.0` as the native web extension exposing the default
+3. `npm:pi-web-access@>=0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
-5. `npm:pi-mcp-adapter@>=2.32.1` only for the anonymous grep.app MCP endpoint;
-6. `npm:@thoth-agents/pi-questions-user@>=0.3.0` for the root's interactive
+4. `npm:pi-mcp-adapter@>=2.32.1` for the lazy Context7 and anonymous grep.app
+   MCP endpoints;
+5. `npm:@thoth-agents/pi-questions-user@>=0.3.0` for the root's interactive
    `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
    recommendations, previews, notes and structured per-id answers; no fixed
    maximum on questions or options;
-7. `npm:@thoth-agents/pi-todo@>=0.3.0` for the first-party session task list:
+6. `npm:@thoth-agents/pi-todo@>=0.3.0` for the first-party session task list:
    the `todo` tool, `/todos`, and Todos section in the shared Work panel;
-8. `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` for the theme, Render KIT and status
+7. `npm:@thoth-agents/pi-thoth-theme@>=0.3.0` for the theme, Render KIT and status
    line (selecting the `thoth` color theme remains an operator choice);
-9. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs;
-10. `npm:@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right
+8. `npm:@thoth-agents/pi-background-tasks@>=0.3.0` for local shell/process jobs;
+9. `npm:@thoth-agents/pi-sidebar@>=0.3.0` for the first-party read-only right
     sidebar in fullscreen and regular Pi modes.
 
 The [sidebar](../pi-packages/pi-sidebar/README.md) starts in auto mode with
@@ -332,8 +332,9 @@ returns input to the expanded question or otherwise the editor. Collapse and
 question teardown never take focus from a still-visible foreign overlay. See
 [the question controls](../pi-packages/pi-questions-user/README.md#keyboard-controls).
 
-These are nine selected packages after root-package verification. The task-list
-extension remains the sixth selected package. Install and applied Update install and individually verify it;
+These are eight selected packages after root-package verification. The task-list
+extension is the fifth selected package. Install and applied Update install and
+individually verify it;
 status reports it as a managed target. Progress tracking never replaces native
 delegation or `.thoth/` change records. Unrelated task extensions remain
 operator-owned and untouched.
@@ -425,7 +426,8 @@ and `/reload` to retain subagent cost display; there is no old-event fallback.
 
 Install and applied Update individually verify the first-party question package
 at its configured minimum after root-package verification. An installed
-user-scope `@juicesharp/rpiv-ask-user-question` is removed first through native
+user-scope `@juicesharp/rpiv-ask-user-question` or `@upstash/context7-pi` is
+removed first through native
 `pi remove <configured-source> --no-approve`; failed or unverifiable removal
 stops setup. Project-scope conflicts block before mutation: review the project's
 ownership and trust, then run
@@ -506,6 +508,10 @@ the five package skills only to the receipt-validated root reported by Pi;
 Sync refuses to proceed without that evidence and never copies those skills to
 a global skill directory.
 
+Complete setup also enables `codemode` and `tool_search` in global `defaultTools`
+using existing additive or explicit-list semantics; explicit `-codemode` and
+`-tool_search` choices are preserved.
+
 Direct `pi install npm:thoth-agents@<version> --no-approve` activates the root
 and package skills but may remain degraded until delegation, research, external
 skills, and provider setup are completed. Applied Update reruns the complete
@@ -515,11 +521,15 @@ modified content remains with a manual action. A failed pre-commit replacement
 is compensated to the prior receipt-owned source (or removed if new); failed
 compensation prints the exact recovery command and never rewrites the receipt.
 
-Only grep.app uses the MCP adapter. The global
+Context7 and grep.app use the MCP adapter. The global
 `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` entry is
 `mcpServers.grep = {"url":"https://mcp.grep.app","protocolVersion":"legacy","lifecycle":"lazy"}`;
-`directTools` is omitted. Unrelated top-level fields and servers are preserved,
-while a different existing `grep` definition blocks the operation rather than
+the adjacent managed entry is
+`mcpServers.context7 = {"url":"https://mcp.context7.com/mcp","protocolVersion":"auto","lifecycle":"lazy","headers":{"CONTEXT7_API_KEY":"${CONTEXT7_API_KEY:-}"}}`.
+The optional environment key falls back to Context7's public rate limit.
+`directTools` is omitted for both servers. Unrelated top-level fields and
+servers are preserved, while a different existing `grep` or `context7`
+definition blocks the operation rather than
 being overwritten. Project `.mcp.json` or `.pi/mcp.json` files can shadow the
 global entry and are reported, never edited, by global setup.
 
@@ -527,7 +537,8 @@ pi-web-access supports Exa as one provider and can use its keyless public MCP
 path when no `EXA_API_KEY` is configured. It does not preserve dedicated pi-exa
 answer, similarity, or research-planner tools. Installation never solicits,
 copies, or writes provider credentials or configuration. Status reports an
-installed web package as unverified until explicit runtime evidence is supplied;
+installed web package and configured Context7 MCP entry as unverified until
+explicit runtime evidence is supplied;
 missing or version-drifted package evidence remains drifted. Context7, web
 access, and grep.app network/schema health is reported independently from
 package and managed-file health. Research output is untrusted data. Every Pi
@@ -886,7 +897,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact `plugins` pin and managed configuration, package-provided owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, five specialist synchronization, nine minimum-constrained selected packages (including task list, theme, background tasks and sidebar), exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, eight minimum-constrained selected packages (including task list, theme, background tasks and sidebar), exact Context7 and grep.app entries, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

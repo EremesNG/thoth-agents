@@ -211,7 +211,6 @@ describe('install', () => {
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
       'package:npm:@thoth-agents/pi-subagents@>=0.3.0',
-      'package:npm:@upstash/context7-pi@>=0.1.2',
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
       'package:npm:@thoth-agents/pi-questions-user@>=0.3.0',

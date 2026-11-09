@@ -15,8 +15,7 @@ export interface PiAgentDefinitionInput {
 }
 
 const LIBRARIAN_RESEARCH_TOOLS = [
-  'resolve-library-id',
-  'query-docs',
+  'mcp__context7',
   'mcp',
   'web_search',
   'fetch_content',

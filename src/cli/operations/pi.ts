@@ -37,6 +37,8 @@ import {
   hasExactInstalledPiPackage,
   inspectPiSetupPackage,
   isVersionAtLeast,
+  PI_CONTEXT7_MCP_ENTRY,
+  PI_GREP_MCP_ENTRY,
   PI_MINIMUM_VERSION,
   PI_NODE_MINIMUM,
   PI_PACKAGE_SPECS,
@@ -244,7 +246,7 @@ function researchRuntimeState(
   const observed = evidence.research?.[provider];
   if (observed) return observed;
 
-  const packageId = provider === 'grep' ? 'grep-adapter' : provider;
+  const packageId = provider === 'web-access' ? provider : 'grep-adapter';
   const packageSource = PI_PACKAGE_SPECS.find(
     ({ id }) => id === packageId,
   )?.source;
@@ -252,11 +254,11 @@ function researchRuntimeState(
     ({ path, state }) => path === packageSource && state === 'installed',
   );
   const configReady =
-    provider !== 'grep' ||
+    provider === 'web-access' ||
     targets.some(
       ({ kind, label, state }) =>
         kind === 'config' &&
-        label?.includes('grep.app') &&
+        label === `${RESEARCH_PROVIDER_LABEL[provider]} MCP entry` &&
         state === 'installed',
     );
 
@@ -267,19 +269,12 @@ function researchRuntimeState(
         'managed package or configuration preconditions are not satisfied',
       ],
     };
-  return provider === 'web-access'
-    ? {
-        state: 'unverified',
-        basis: [
-          'exact package is installed; no live provider request was observed',
-        ],
-      }
-    : {
-        state: 'ready',
-        basis: [
-          'managed package and configuration preconditions are satisfied; no live probe was requested',
-        ],
-      };
+  return {
+    state: 'unverified',
+    basis: [
+      'managed package/configuration evidence is present; no live provider request was observed',
+    ],
+  };
 }
 
 function runtimeTarget(
@@ -366,6 +361,32 @@ function statusFromPlan(
           ? 'Validated installed-package manifest evidence; this does not prove live tool availability.'
           : undefined,
     }));
+  let mcpServers: Record<string, unknown> | undefined;
+  try {
+    const config = JSON.parse(readFileSync(plan.paths.mcpConfigPath, 'utf8'));
+    mcpServers = config.mcpServers;
+  } catch {
+    // Missing or malformed config is evidence only, never a provider probe.
+  }
+  for (const [provider, entry] of Object.entries({
+    context7: PI_CONTEXT7_MCP_ENTRY,
+    grep: PI_GREP_MCP_ENTRY,
+  })) {
+    const existing = mcpServers?.[provider];
+    targets.push({
+      kind: 'config',
+      path: plan.paths.mcpConfigPath,
+      label: `${RESEARCH_PROVIDER_LABEL[provider as PiResearchProviderId]} MCP entry`,
+      state:
+        existing === undefined
+          ? 'missing'
+          : JSON.stringify(existing) === JSON.stringify(entry)
+            ? 'installed'
+            : 'drift',
+      description:
+        'Managed MCP entry evidence only; no live provider request was observed.',
+    });
+  }
   const execute: PiCommandExecutor =
     context.piCommandExecutor ??
     ((command, args) => {

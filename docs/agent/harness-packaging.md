@@ -311,8 +311,9 @@
   `subagent_*` exclusions provide runtime-verified registry filtering. Delegation
   depth and behavioral role limits are instruction-level; neither these role
   boundaries nor registry filtering form an OS or process sandbox.
-- Pi's Context7 and web-access integrations are native extensions. Only grep.app
-  uses `pi-mcp-adapter`, through the exact attributable global server entry.
+- Pi's web-access integration remains a native extension. Context7 and grep.app
+  use `pi-mcp-adapter`, through attributable lazy global server entries.
+  Context7 is proxy-only (`mcp__context7`) with an optional environment API key.
 - Pi safely merges `session_resources: "lean"` and `enable_continue: false`
   into global `subagents.json` without replacing unrelated keys, including an
   operator's `lean_skills` choice; Thoth does not write that default. Detected

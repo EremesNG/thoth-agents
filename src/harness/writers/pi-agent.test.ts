@@ -42,8 +42,7 @@ describe('Pi agent writer', () => {
           'mem_recall',
           'mem_get',
           'codemode',
-          'resolve-library-id',
-          'query-docs',
+          'mcp__context7',
           'mcp',
           'web_search',
           'fetch_content',
@@ -110,7 +109,7 @@ describe('Pi agent writer', () => {
       'agents/thoth-explorer.md':
         'read, bash, grep, find, ls, mem_recall, mem_get, codemode',
       'agents/thoth-librarian.md':
-        'read, bash, grep, find, ls, mem_recall, mem_get, codemode, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+        'read, bash, grep, find, ls, mem_recall, mem_get, codemode, mcp__context7, mcp, web_search, fetch_content, get_search_content, source_check',
       'agents/thoth-oracle.md':
         'read, bash, grep, find, ls, mem_recall, mem_get',
       'agents/thoth-designer.md':

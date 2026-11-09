@@ -45,6 +45,13 @@ function seedManagedGrepConfig(homeDir: string): void {
     `${JSON.stringify(
       {
         mcpServers: {
+          context7: {
+            url: 'https://mcp.context7.com/mcp',
+            protocolVersion: 'auto',
+            lifecycle: 'lazy',
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: MCP adapter environment expansion, not JavaScript interpolation.
+            headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
+          },
           grep: {
             url: 'https://mcp.grep.app',
             protocolVersion: 'legacy',
@@ -928,12 +935,17 @@ describe('Pi operations', () => {
   });
 
   test.each([
-    'user',
-    'project',
-  ])('reports the first-party question package as missing and previews safe retired-provider migration (%s)', (scope) => {
+    { scope: 'user', packageName: '@juicesharp/rpiv-ask-user-question' },
+    { scope: 'project', packageName: '@juicesharp/rpiv-ask-user-question' },
+    { scope: 'user', packageName: '@upstash/context7-pi' },
+    { scope: 'project', packageName: '@upstash/context7-pi' },
+  ])('reports the first-party question package as missing and previews safe retired-provider migration ($scope, $packageName)', ({
+    scope,
+    packageName,
+  }) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-question-migration-'));
     roots.push(homeDir);
-    const source = 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0';
+    const source = `npm:${packageName}@>=2.9.0`;
     const settingsPath =
       scope === 'user'
         ? join(homeDir, '.pi', 'agent', 'settings.json')
@@ -942,14 +954,13 @@ describe('Pi operations', () => {
       dirname(settingsPath),
       'npm',
       'node_modules',
-      '@juicesharp',
-      'rpiv-ask-user-question',
+      ...packageName.split('/'),
     );
     mkdirSync(installedPath, { recursive: true });
     writeFileSync(
       join(installedPath, 'package.json'),
       JSON.stringify({
-        name: '@juicesharp/rpiv-ask-user-question',
+        name: packageName,
         version: '2.9.0',
       }),
     );
@@ -1213,7 +1224,43 @@ describe('Pi operations', () => {
     );
   });
 
-  test('reports installed web access as unverified without live runtime evidence', () => {
+  test('reports Context7 MCP entry evidence independently of grep configuration', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-context7-'));
+    roots.push(homeDir);
+    seedManagedGrepConfig(homeDir);
+    const path = join(homeDir, '.config', 'mcp', 'mcp.json');
+    const config = JSON.parse(readFileSync(path, 'utf8'));
+    delete config.mcpServers.context7;
+    writeFileSync(path, JSON.stringify(config));
+    const report = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: installedRuntime(homeDir),
+    });
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Context7 MCP entry',
+          state: 'missing',
+        }),
+        expect.objectContaining({
+          label: 'grep.app MCP entry',
+          state: 'installed',
+        }),
+        expect.objectContaining({
+          label: 'Context7 runtime availability',
+          observed: 'drifted',
+        }),
+        expect.objectContaining({
+          label: 'grep.app runtime availability',
+          observed: 'unverified',
+        }),
+      ]),
+    );
+  });
+
+  test('reports all installed research providers as unverified without live runtime evidence', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-research-ready-'));
     roots.push(homeDir);
     seedManagedGrepConfig(homeDir);
@@ -1229,9 +1276,9 @@ describe('Pi operations', () => {
         .filter(({ label }) => label?.endsWith('runtime availability'))
         .map(({ label, observed }) => ({ label, observed })),
     ).toEqual([
-      { label: 'Context7 runtime availability', observed: 'ready' },
+      { label: 'Context7 runtime availability', observed: 'unverified' },
       { label: 'Web access runtime availability', observed: 'unverified' },
-      { label: 'grep.app runtime availability', observed: 'ready' },
+      { label: 'grep.app runtime availability', observed: 'unverified' },
     ]);
     expect(report.targets).toEqual(
       expect.arrayContaining([
@@ -1243,10 +1290,12 @@ describe('Pi operations', () => {
     );
     expect(report.diagnostics).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          code: 'pi-web-access-runtime-unverified',
-          severity: 'minor',
-        }),
+        ...['context7', 'web-access', 'grep'].map((provider) =>
+          expect.objectContaining({
+            code: `pi-${provider}-runtime-unverified`,
+            severity: 'minor',
+          }),
+        ),
       ]),
     );
   });
@@ -1286,7 +1335,17 @@ describe('Pi operations', () => {
     );
   });
 
-  test('honors explicit ready web evidence and reports a missing package as drifted', () => {
+  test.each([
+    { provider: 'context7' as const, label: 'Context7 runtime availability' },
+    {
+      provider: 'web-access' as const,
+      label: 'Web access runtime availability',
+    },
+    { provider: 'grep' as const, label: 'grep.app runtime availability' },
+  ])('honors explicit ready $provider evidence and reports missing preconditions as drifted', ({
+    provider,
+    label,
+  }) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-web-evidence-'));
     roots.push(homeDir);
     const missing = getPiStatus({
@@ -1302,9 +1361,7 @@ describe('Pi operations', () => {
       },
     });
     expect(
-      missing.targets.find(
-        ({ label }) => label === 'Web access runtime availability',
-      )?.observed,
+      missing.targets.find((target) => target.label === label)?.observed,
     ).toBe('drifted');
 
     const observed = getPiStatus(
@@ -1316,14 +1373,12 @@ describe('Pi operations', () => {
       },
       {
         research: {
-          'web-access': { state: 'ready', basis: ['observed live request'] },
+          [provider]: { state: 'ready', basis: ['observed live request'] },
         },
       },
     );
     expect(
-      observed.targets.find(
-        ({ label }) => label === 'Web access runtime availability',
-      ),
+      observed.targets.find((target) => target.label === label),
     ).toMatchObject({ state: 'installed', observed: 'ready' });
   });
 

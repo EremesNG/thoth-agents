@@ -174,6 +174,79 @@ function nativeInstallerFixture(paths: ReturnType<typeof fixture>) {
 }
 
 describe('Pi setup', () => {
+  test.each([
+    'apply',
+    'dry-run',
+    'project',
+  ])('migrates the Context7 extension safely (%s)', (mode) => {
+    const paths = fixture();
+    const native = nativeInstallerFixture(paths);
+    const source = 'npm:@upstash/context7-pi@0.1.2';
+    const baseDir =
+      mode === 'project'
+        ? join(paths.cwd, '.pi')
+        : join(paths.homeDir, '.pi', 'agent');
+    const installedPath = join(
+      baseDir,
+      'npm',
+      'node_modules',
+      '@upstash',
+      'context7-pi',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: '@upstash/context7-pi', version: '0.1.2' }),
+    );
+    native.packages.set('@upstash/context7-pi', { source, installedPath });
+    const settingsPath =
+      mode === 'project'
+        ? join(paths.cwd, '.pi', 'settings.json')
+        : join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({ packages: [source] });
+    writeFileSync(settingsPath, settings);
+    const commandExecutor: typeof native.commandExecutor = (command, args) => {
+      if (args[0] === 'remove' && args[1] === source) {
+        native.packages.delete('@upstash/context7-pi');
+        writeFileSync(settingsPath, JSON.stringify({ packages: [] }));
+        rmSync(installedPath, { recursive: true });
+      }
+      return native.commandExecutor(command, args);
+    };
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: mode === 'dry-run',
+      commandExecutor,
+    });
+    if (mode === 'project') {
+      expect(plan.ready).toBe(false);
+      expect(plan.blockers.join('; ')).toContain(
+        `pi remove ${source} --local --approve`,
+      );
+      expect(applyPiSetup(plan).success).toBe(false);
+      expect(native.mutations).toEqual([]);
+    } else {
+      expect(plan.items).toContainEqual(
+        expect.objectContaining({
+          command: { command: 'pi', args: ['remove', source, '--no-approve'] },
+        }),
+      );
+      expect(applyPiSetup(plan).success).toBe(true);
+      if (mode === 'dry-run') {
+        expect(native.mutations).toEqual([]);
+        expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+        expect(existsSync(installedPath)).toBe(true);
+      } else {
+        expect(native.mutations.slice(0, 3)).toEqual([
+          ['install', 'npm:thoth-agents@0.3.12', '--no-approve'],
+          ['remove', source, '--no-approve'],
+          ['install', PI_PACKAGE_SPECS[0].source, '--no-approve'],
+        ]);
+      }
+    }
+  });
+
   test('fills absent global codemode settings', () => {
     const paths = fixture();
     const native = nativeInstallerFixture(paths);
@@ -183,18 +256,33 @@ describe('Pi setup', () => {
     });
     expect(applyPiSetup(plan).success).toBe(true);
     expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual({
-      defaultTools: ['+codemode'],
+      defaultTools: ['+codemode', '+tool_search'],
       codemode: { mode: 'on' },
     });
   });
 
   test.each([
-    { tools: ['+read', '-bash'], expected: ['+read', '-bash', '+codemode'] },
-    { tools: [], expected: ['codemode'] },
-    { tools: ['read', '+grep'], expected: ['read', '+grep', 'codemode'] },
-    { tools: ['+codemode'], expected: ['+codemode'] },
-    { tools: ['codemode'], expected: ['codemode'] },
-    { tools: ['-codemode', '+read'], expected: ['-codemode', '+read'] },
+    {
+      tools: ['+read', '-bash'],
+      expected: ['+read', '-bash', '+codemode', '+tool_search'],
+    },
+    { tools: [], expected: ['codemode', 'tool_search'] },
+    {
+      tools: ['read', '+grep'],
+      expected: ['read', '+grep', 'codemode', 'tool_search'],
+    },
+    {
+      tools: ['+codemode'],
+      expected: ['+codemode', '+tool_search'],
+    },
+    { tools: ['codemode'], expected: ['codemode', 'tool_search'] },
+    {
+      tools: ['-codemode', '+read'],
+      expected: ['-codemode', '+read', '+tool_search'],
+    },
+    { tools: ['-tool_search'], expected: ['-tool_search', '+codemode'] },
+    { tools: ['tool_search'], expected: ['tool_search', 'codemode'] },
+    { tools: ['+tool_search'], expected: ['+tool_search', '+codemode'] },
   ])('preserves tool selection when filling codemode defaults: $tools', ({
     tools,
     expected,
@@ -246,7 +334,7 @@ describe('Pi setup', () => {
     });
     expect(applyPiSetup(plan).success).toBe(true);
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
-      defaultTools: ['+codemode'],
+      defaultTools: ['+codemode', '+tool_search'],
       codemode: expected,
       theme: 'operator-theme',
       custom: { enabled: false },
@@ -302,7 +390,7 @@ describe('Pi setup', () => {
     const plan = buildPiSetupPlan(options);
     const preview = plan.items.find(({ target }) => target === settingsPath);
     expect(JSON.parse(preview?.content ?? '{}')).toEqual({
-      defaultTools: ['+codemode'],
+      defaultTools: ['+codemode', '+tool_search'],
       codemode: { mode: 'on' },
     });
     expect(existsSync(settingsPath)).toBe(false);
@@ -313,7 +401,7 @@ describe('Pi setup', () => {
         ...PI_PACKAGE_SPECS.map(({ source }) => source),
       ],
       theme: 'written-by-native-install',
-      defaultTools: ['read', 'codemode'],
+      defaultTools: ['read', 'codemode', 'tool_search'],
       codemode: { mode: 'only', inlineBudget: 512 },
     });
   });
@@ -758,7 +846,7 @@ describe('Pi setup', () => {
     }
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
       ...JSON.parse(settings),
-      defaultTools: ['+codemode'],
+      defaultTools: ['+codemode', '+tool_search'],
       codemode: { mode: 'on' },
     });
   });
@@ -1072,7 +1160,6 @@ describe('Pi setup', () => {
     ).toEqual([
       'npm:thoth-agents@0.3.12',
       'npm:@thoth-agents/pi-subagents@>=0.3.0',
-      'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
       'npm:@thoth-agents/pi-questions-user@>=0.3.0',
@@ -1083,7 +1170,7 @@ describe('Pi setup', () => {
     ]);
     expect(PI_MINIMUM_VERSION).toBe('1.5.0');
     expect(plan.items[0]?.description).toContain('Pi >=1.5.0');
-    expect(PI_PACKAGE_SPECS).toHaveLength(9);
+    expect(PI_PACKAGE_SPECS).toHaveLength(8);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
         'npm:@feniix/pi-exa@5.1.1',
@@ -1092,7 +1179,6 @@ describe('Pi setup', () => {
     );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
-      'package',
       'package',
       'package',
       'package',
@@ -1751,7 +1837,10 @@ describe('Pi setup', () => {
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
       ...JSON.parse(settings),
       ...(scope === 'user'
-        ? { defaultTools: ['+codemode'], codemode: { mode: 'on' } }
+        ? {
+            defaultTools: ['+codemode', '+tool_search'],
+            codemode: { mode: 'on' },
+          }
         : {}),
     });
     expect(readFileSync(promptPath, 'utf8')).toBe('Review this code.');
@@ -2072,6 +2161,82 @@ describe('Pi setup', () => {
     expect(calls).toEqual([]);
   });
 
+  test.each([
+    'preview',
+    'dry-run',
+    'apply-recheck',
+  ])('blocks an unmapped project Context7 extension without granting trust (%s)', (mode) => {
+    const paths = fixture();
+    const calls: string[][] = [];
+    const options = {
+      ...paths,
+      dryRun: mode === 'dry-run',
+      commandExecutor: (command: string, args: readonly string[]) => {
+        calls.push([command, ...args]);
+        return {
+          exitCode: 0,
+          stdout:
+            command === 'node'
+              ? 'v22.19.0'
+              : args[0] === '--version'
+                ? '1.5.0'
+                : 'No packages installed.',
+          stderr: '',
+        };
+      },
+    };
+    const preview =
+      mode === 'apply-recheck' ? buildPiSetupPlan(options) : undefined;
+    if (preview) expect(preview.ready).toBe(true);
+    const installedPath = join(
+      paths.cwd,
+      '.pi',
+      'npm',
+      'node_modules',
+      '@upstash',
+      'context7-pi',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    const manifestPath = join(installedPath, 'package.json');
+    const manifest = JSON.stringify({
+      name: '@upstash/context7-pi',
+      version: '0.1.2',
+    });
+    writeFileSync(manifestPath, manifest);
+    const plan = preview ?? buildPiSetupPlan(options);
+    const guidance = 'pi remove <source> --local --approve';
+    if (!preview) {
+      expect(plan.ready).toBe(false);
+      expect(plan.blockers.join('; ')).toContain('Context7 extension');
+      expect(plan.blockers.join('; ')).toContain(
+        'no configured settings source maps',
+      );
+      expect(plan.blockers.join('; ')).toContain(guidance);
+    }
+    expect(
+      plan.items.some(({ command }) => command?.args[0] === 'remove'),
+    ).toBe(false);
+    const result = applyPiSetup(plan);
+    expect(result).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+    });
+    if (preview) expect(result.manualRecovery).toContain(guidance);
+    expect(
+      calls.some(
+        (call) =>
+          call.includes('--approve') ||
+          call.includes('install') ||
+          call.includes('remove'),
+      ),
+    ).toBe(false);
+    expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
+    expect(existsSync(join(paths.cwd, '.pi', 'settings.json'))).toBe(false);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
+  });
+
   test('rechecks project question conflicts after preview and blocks before native mutation', () => {
     const paths = fixture();
     const mutations: string[] = [];
@@ -2365,7 +2530,7 @@ describe('Pi setup', () => {
     ).toBe(true);
     expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual({
       ...settings,
-      defaultTools: ['+codemode'],
+      defaultTools: ['+codemode', '+tool_search'],
       codemode: { mode: 'on' },
     });
     expect(JSON.parse(readFileSync(subagentsConfigPath, 'utf8'))).toEqual({
@@ -2384,6 +2549,14 @@ describe('Pi setup', () => {
       lifecycle: 'lazy',
     });
     expect(mcp.mcpServers.grep).not.toHaveProperty('directTools');
+    expect(mcp.mcpServers.context7).toEqual({
+      url: 'https://mcp.context7.com/mcp',
+      protocolVersion: 'auto',
+      lifecycle: 'lazy',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: MCP adapter environment expansion, not JavaScript interpolation.
+      headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
+    });
+    expect(mcp.mcpServers.context7).not.toHaveProperty('directTools');
     const mutations = commands.filter(
       ([, action]) => action === 'install' || action === 'remove',
     );
@@ -3312,7 +3485,6 @@ describe('Pi setup', () => {
       installedPackages: [
         'npm:thoth-agents@0.3.12',
         'npm:@thoth-agents/pi-subagents@>=0.3.0',
-        'npm:@upstash/context7-pi@>=0.1.2',
       ],
     },
     {
@@ -3321,7 +3493,6 @@ describe('Pi setup', () => {
       installedPackages: [
         'npm:thoth-agents@0.3.12',
         'npm:@thoth-agents/pi-subagents@>=0.3.0',
-        'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
       ],
@@ -3332,7 +3503,6 @@ describe('Pi setup', () => {
       installedPackages: [
         'npm:thoth-agents@0.3.12',
         'npm:@thoth-agents/pi-subagents@>=0.3.0',
-        'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
         'npm:@thoth-agents/pi-questions-user@>=0.3.0',
@@ -3578,7 +3748,10 @@ describe('Pi setup', () => {
     ).toBe(true);
   });
 
-  test('fails before package mutation on an unowned grep conflict and preserves unrelated config', () => {
+  test.each([
+    'grep',
+    'context7',
+  ])('fails before package mutation on an unowned %s conflict and preserves unrelated config', (server) => {
     const paths = fixture();
     const mcpPath = join(paths.homeDir, '.config', 'mcp', 'mcp.json');
     mkdirSync(join(paths.homeDir, '.config', 'mcp'), { recursive: true });
@@ -3588,7 +3761,10 @@ describe('Pi setup', () => {
         theme: 'dark',
         mcpServers: {
           other: { url: 'https://example.test' },
-          grep: { url: 'https://wrong.test' },
+          [server]: {
+            url: 'https://wrong.test',
+            headers: { Authorization: 'operator-secret' },
+          },
         },
       }),
     );
@@ -3604,6 +3780,10 @@ describe('Pi setup', () => {
     expect(applyPiSetup(plan).success).toBe(false);
     expect(calls).toBe(0);
     expect(JSON.parse(readFileSync(mcpPath, 'utf8')).theme).toBe('dark');
+    expect(
+      JSON.parse(readFileSync(mcpPath, 'utf8')).mcpServers[server].headers
+        .Authorization,
+    ).toBe('operator-secret');
   });
 
   test('inspects canonical names only inside agent frontmatter', () => {
@@ -3657,6 +3837,13 @@ describe('Pi setup', () => {
       imports: ['shared.json'],
       mcpServers: {
         other: { command: 'x' },
+        context7: {
+          url: 'https://mcp.context7.com/mcp',
+          protocolVersion: 'auto',
+          lifecycle: 'lazy',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: MCP adapter environment expansion, not JavaScript interpolation.
+          headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
+        },
         grep: {
           url: 'https://mcp.grep.app',
           protocolVersion: 'legacy',

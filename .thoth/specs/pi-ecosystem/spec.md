@@ -318,13 +318,13 @@ A Thoth Pi subagent child whose tool selection includes `codemode` registers Pi'
 
 ### Requirement: Codemode delegation boundary
 
-Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work.
+Thoth delegation controls, the child `ask_orchestrator` and `notify_orchestrator` tools and `ask_user_question` are `model-only` direct calls that codemode scripts cannot invoke, and root guidance directs batching only of script-callable work. Occasional first-party tools (`bg_task_list`, `bg_task_log`, `bg_task_stop`, `bg_task_clear`, `AskCodex`, `AskAntigravity`, `agy_web_search`, `agy_read_url`) MUST register with `deferred` exposure in a package namespace, and the installer MUST enable `tool_search` next to `codemode` unless the operator explicitly disabled it.
 
 #### Scenario: Codemode delegation boundary
 
-- **GIVEN** codemode is active in mode `on` or `only`
-- **WHEN** the root delegates, replies to a child or asks the user, or a child asks or notifies the orchestrator
-- **THEN** those are direct tool calls that scripts cannot invoke, and independent reads, research or memory calls may be batched in one script
+- **GIVEN** a Pi session with the first-party packages
+- **WHEN** tools are registered
+- **THEN** delegation and question tools are declared model-only and the occasional tools are absent from declarations but discoverable by `tool_search` and callable from codemode
 
 ### Requirement: Named Pi subagent model profiles
 
@@ -544,7 +544,7 @@ Subagent tool results and progress updates MUST build task details through one e
 
 - **GIVEN** Nerd icons and a running subagent
 - **WHEN** the user sets the animation to `reduced` in the `/thoth-theme` panel and saves, then `minimal` and later `off`
-- **THEN** at `reduced` the braille indicator steps through all ten frames in order at its `full` per-frame cadence while the input border stops breathing and shimmering in its active colours, at `minimal` the subagent row shows a static `◐` with advancing elapsed time while the input-box working glyph keeps animating, and after `off` no animation timer remains and the input-box working glyph and label show in the active working colour 
+- **THEN** at `reduced` the braille indicator steps through all ten frames in order at its `full` per-frame cadence while the input border stops breathing and shimmering in its active colours, at `minimal` the subagent row shows a static `◐` with advancing elapsed time while the input-box working glyph keeps animating, and after `off` no animation timer remains and the input-box working glyph and label show in the active working colour
 
 ### Requirement: Subagent boundary-driven event processing
 
@@ -694,4 +694,4 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 - **GIVEN** the panel open with icons `nerd` and density `frame` and a bash card already shown
 - **WHEN** the user sets icons to `unicode`, density to `line`, disables the welcome header and saves
-- **THEN** the file holds the three changes, the shown bash card re-renders as a unicode one-row card without `/reload`, and the user is told that the welcome change applies after `/reload` 
+- **THEN** the file holds the three changes, the shown bash card re-renders as a unicode one-row card without `/reload`, and the user is told that the welcome change applies after `/reload`

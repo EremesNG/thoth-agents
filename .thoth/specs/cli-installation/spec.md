@@ -68,7 +68,7 @@ Applying any valid OpenCode model configuration plan MUST materialize a complete
 
 - **GIVEN** the global active profile is `openai`
 - **WHEN** the user applies one edited role
-- **THEN** the global profiles file activates `agents` and its `agents` profile contains the change plus every unchanged effective role 
+- **THEN** the global profiles file activates `agents` and its `agents` profile contains the change plus every unchanged effective role
 
 ### Requirement: Materialize the complete effective roster
 
@@ -78,7 +78,7 @@ Before activation, the system MUST derive all six effective role configurations 
 
 - **GIVEN** no role is dirty and the TUI sends every displayed role
 - **WHEN** the user selects Apply
-- **THEN** the same complete `agents` profile is materialized and activated 
+- **THEN** the same complete `agents` profile is materialized and activated
 
 ### Requirement: Recognize the managed agents profile
 
@@ -88,7 +88,7 @@ OpenCode status and model-role readback MUST recognize a complete active `agents
 
 - **GIVEN** a complete applied `agents` profile is globally active
 - **WHEN** managed status is evaluated
-- **THEN** the roster is recognized without an `opencode-roster-drift` blocker 
+- **THEN** the roster is recognized without an `opencode-roster-drift` blocker
 
 ### Requirement: Provide owned OpenCode workflow skills from the plugin package
 
@@ -326,41 +326,23 @@ CLI and TUI status, install, Update, Sync, and specialist model/effort operation
 
 ### Requirement: Provide a bounded hybrid research stack
 
-Complete Pi setup MUST install and verify pinned Context7, pi-web-access, and the grep-only pi-mcp-adapter. Context7 and web research MUST remain native extensions; the managed global grep entry MUST retain https://mcp.grep.app, legacy protocol, lazy lifecycle, and proxy-only tools. Unrelated MCP configuration and operator credentials MUST remain untouched. Status MUST distinguish Context7, web access, and grep evidence independently, MUST NOT require EXA_API_KEY merely for web package availability, and MUST NOT infer live provider success from package presence.
+Complete Pi setup MUST install and verify pinned pi-web-access and pi-mcp-adapter. Web research MUST remain a native extension; the managed global grep entry MUST retain https://mcp.grep.app, legacy protocol, lazy lifecycle, and proxy-only tools, and the managed global context7 entry MUST use https://mcp.context7.com/mcp, auto protocol, lazy lifecycle, proxy-only tools and an optional `CONTEXT7_API_KEY` header read from the environment. Unrelated MCP configuration and operator credentials MUST remain untouched. Status MUST distinguish Context7, web access, and grep evidence independently, MUST NOT require EXA_API_KEY merely for web package availability, and MUST NOT infer live provider success from package or entry presence.
 
-#### Scenario: US1 - Install one web extension 1
+#### Scenario: Provide a bounded hybrid research stack
 
-- **GIVEN** valid first-party setup
-- **WHEN** Install or applied Update runs
-- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
-
-#### Scenario: US1 - Install one web extension 2
-
-- **GIVEN** a web package failure or dry-run
-- **WHEN** setup executes
-- **THEN** failure prevents completion recording and dry-run writes nothing
-
-#### Scenario: US1 - Install one web extension 3
-
-- **GIVEN** a configured alternative web provider without EXA_API_KEY
-- **WHEN** status runs
-- **THEN** it does not declare missing Exa credentials and distinguishes installed evidence from unobserved live availability
-
-#### Scenario: US1 - Install one web extension 4
-
-- **GIVEN** an installation containing the replaced web package
-- **WHEN** the operator follows the documented transition
-- **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved
+- **GIVEN** a global MCP config with an unrelated server
+- **WHEN** complete Pi setup runs
+- **THEN** context7 and grep entries are written, the unrelated server is unchanged and no Context7 extension package is requested
 
 ### Requirement: Install selected Pi interaction and web extensions
 
-Complete Pi installation and applied Update MUST install and individually verify the selected Pi-native delegation, Context7, web-access and grep-adapter packages after first-party verification, using their configured minimum versions; the interactive question tool MUST come from the first-party `@thoth-agents/pi-questions-user` package, which MUST likewise be installed and individually verified at its configured minimum version after root-package verification. The juicesharp rpiv task-list, web-tools and question packages and `@feniix/pi-exa` MUST NOT be required or installed by the selected inventory, and a user-scope installed juicesharp rpiv question package MUST be removed natively before installation, while a project-scope one MUST block completion with explicit manual removal guidance instead of granting project trust. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
+Complete Pi installation and applied Update MUST install and individually verify the selected Pi-native delegation, web-access and grep-adapter packages after first-party verification, using their configured minimum versions; the interactive question tool MUST come from the first-party `@thoth-agents/pi-questions-user` package, which MUST likewise be installed and individually verified at its configured minimum version after root-package verification. The juicesharp rpiv task-list, web-tools and question packages, `@feniix/pi-exa` and `@upstash/context7-pi` MUST NOT be required or installed by the selected inventory, and a user-scope installed juicesharp rpiv question package or `@upstash/context7-pi` MUST be removed natively before installation, while a project-scope one MUST block completion with explicit manual removal guidance instead of granting project trust. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
 
 #### Scenario: Install selected Pi interaction and web extensions
 
-- **GIVEN** a Pi profile with the juicesharp rpiv question package installed at user scope
-- **WHEN** Install or applied Update runs
-- **THEN** that package is natively removed, `@thoth-agents/pi-questions-user` is installed and verified, and dry-run performs no mutation
+- **GIVEN** an existing complete install with user-scope `@upstash/context7-pi`
+- **WHEN** applied Update runs
+- **THEN** the package is removed natively, context7 is reachable as a managed MCP entry and dry-run only reports the planned removal
 
 ### Requirement: Pi minimum version floor
 

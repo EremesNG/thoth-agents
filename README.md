@@ -52,8 +52,8 @@ verification you can follow—without manually coordinating every agent.
   successful; see [provider outcomes](docs/installation.md#thoth-mem-companion-setup).
 
 > [!NOTE]
-> OpenCode is the CLI's default harness. Pi is our recommendation for the best
-> Thoth-Agents experience. All four harnesses share the workflow and role design,
+> OpenCode is the CLI's default harness, fully supported on OpenCode v2 (`>=2.2.6`).
+> All four harnesses share the workflow and role design,
 > but their permissions, delegation, and runtime capabilities are not identical.
 > Your harness's trust and approval rules still apply.
 
@@ -68,7 +68,7 @@ The commands below install at **global/user scope**.
 | <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | OpenCode >=2.2.6 native v2 plugin, package skills, agent team, and memory setup. | `npx thoth-agents@latest install --agent=opencode` |
 | <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
 | <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. | `npx thoth-agents@latest install --agent=claude` |
-| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation, research, theme, sidebar and background-task extensions, workflow skills, and memory setup. **Recommended for the best experience.** | `npx thoth-agents@latest install --agent=pi` |
+| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation, research, theme, sidebar and background-task extensions, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=pi` |
 
 Codex hooks require your trust; installation does not silently grant it. Consent
 during setup, or review and trust them in Codex via `/hooks` or the startup
@@ -109,7 +109,8 @@ direct calls, independently controlled by `enable_ask_orchestrator` and
 `enable_notify_orchestrator` (default true, global/project cascade) and denials. See
 [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
 
-Pi setup currently supports the default `~/.pi/agent` root. See the
+Pi setup requires **Pi `>=1.5.0`** and currently supports the default
+`~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,
 existing-package conflicts, and recovery. Thoth manages its separate Pi
 delegation runtime as package `@thoth-agents/pi-subagents` through
@@ -121,6 +122,19 @@ before setup. Local checkout development uses `pnpm run setup:pi:local`, which
 points Pi at the fork under `pi-packages/pi-subagents`; publishing the fork is
 not required for that path. Pi extensions run with your user's system
 permissions; agent tool allowlists are not an OS sandbox.
+
+### Optional OpenCode multi-account plugin (manual install)
+
+[`@thoth-agents/opencode-multi-codex`](opencode-packages/opencode-multi-codex/README.md)
+lets you use ChatGPT accounts concurrently: account 1 uses `openai`,
+with additional accounts exposed as numbered providers such as `openai-codex-2`.
+Pin agents to different accounts, inspect quota, and rotate around usage-limit
+429s. Manage accounts with `/codex-add`, `/codex-remove`, `/codex-switch`, and
+`/codex-status`.
+
+Install it separately using the package guide; the thoth-agents CLI does **not**
+install or manage it. It requires OpenCode's legacy ChatGPT/Codex OAuth login;
+API keys and the newer ChatGPT token-sharing flow are not supported.
 
 ### Optional Pi extensions (manual install)
 
@@ -290,6 +304,14 @@ Use the interactive CLI to inspect setup and configure role models:
 npx thoth-agents@latest
 ```
 
+Other CLI commands (run with `npx thoth-agents@latest <command>`):
+
+- `list`: list managed surfaces and actions.
+- `sync`: preview managed configuration sync.
+- `model`: preview role model/provider settings.
+
+Add `--apply` to apply a reviewed `sync` or `model` plan.
+
 Choose models your harness and provider account can access. OpenCode ships the
 **`openai` model profile**. Run `/subagents-model` inside OpenCode to edit named
 model/variant profiles for all six roles, including orchestrator. Selection is
@@ -350,17 +372,27 @@ The status line uses `thoth:subagents:usage`, not the removed raw
 `>=0.3.0` together and `/reload` to retain subagent cost display; the usage
 checkpoint discriminator is unchanged.
 
+In Pi, `/thoth-theme` opens settings for icons, animation intensity, tool density,
+and module toggles. Visual settings apply live; module toggles require `/reload`.
+Opt-in `tools.collapsed` settings (`frame` | `compact` | `line`) let you keep framed
+cards or use compact tool rows, including subagent and todo cards. Expanded output
+is unchanged. See the [theme guide](pi-packages/pi-thoth-theme/README.md).
+
 The shared Pi Work panel uses pi-core's v2 data-only provider contract and
 [discovery/action API](pi-packages/pi-core/README.md#discovery-and-actions).
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then
 `/reload`; first-owner arbitration hides incompatible sections in mixed v1/v2
 installs. Subagent state is v2; background state, usage, requests and Render KIT remain v1.
+Todos support grouping, ordering, and archiving in compact views; completed-row
+limits preserve pending work. A compact Work summary remains visible when another
+component replaces the editor.
 
 The [Pi sidebar](pi-packages/pi-sidebar/README.md) adds read-only Session,
 Workspace, Cost and discovered Todos/Subagents/Background panels in fullscreen and
 regular mode. `/sidebar` toggles, `/sidebar panels` lists ids for show/hide/order
-commands, and `/sidebar resize` resizes. `/sidebar settings` edits panel order,
-visibility, startup and default width; `/sidebar cost` opens task-cost curves
+commands. Todo rows share compact counts with Work, group by status, and respect
+archive and completed-row limits. `/sidebar resize` resizes. `/sidebar settings`
+edits panel order, visibility, startup and default width; `/sidebar cost` opens task-cost curves
 against elapsed time per task, labeled by display name or a short task-summary name.
 Themed Agents/Background headers show static status-icon counts, omitting zero
 counts (Todos keeps completed/total), and detail commands; Workspace shows a
@@ -374,8 +406,12 @@ state v2 adds up to 100 cost-ranked persisted session summaries in `history`. Pr
 have guarded fallback; regular mode covers the live viewport, not historical
 scrollback. Update related extensions together to avoid mixed old UI owners.
 
-Pi's question UI replaces the editor without covering chat. `Ctrl+]` collapses it
-to a one-line dock and returns input to the editor; during an active run, `Enter`
+Pi's question UI replaces the editor without covering chat. Panels size to content,
+capped at 45% of terminal height. Narrow previews start collapsed; `p` toggles them
+outside editors, and Alt+arrow keys scroll context. Tool `context` is limited to
+500 characters; longer proposals belong in the response before the question.
+`Ctrl+]` collapses the question UI to a one-line dock and returns input to the
+editor; during an active run, `Enter`
 queues a steering message without answering the question. `Ctrl+]` re-expands
 with answers and drafts preserved, and the open tool-call card shows collapsed
 state. While open, `Ctrl+]` shadows editor `jumpForward`; collapsed `Esc` belongs

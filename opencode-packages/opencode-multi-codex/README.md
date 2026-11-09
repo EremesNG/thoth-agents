@@ -23,7 +23,7 @@ preserve any existing entries:
 {
   "plugins": [
     {
-      "package": "@thoth-agents/opencode-multi-codex@0.1.0",
+      "package": "@thoth-agents/opencode-multi-codex@0.1.1",
       "options": { "autoSwitchOn429": true }
     }
   ]
@@ -38,7 +38,7 @@ in your terminal's `cli.json`:
 
 ```json
 {
-  "plugins": ["@thoth-agents/opencode-multi-codex@0.1.0"]
+  "plugins": ["@thoth-agents/opencode-multi-codex@0.1.1"]
 }
 ```
 

@@ -141,6 +141,12 @@ describe('registration-time PowerShell detection cache', () => {
   });
 });
 
+it('retains watch conditions, first-check reporting, and error-safe structured checks', () => {
+  const description = register().get('bg_task_watch').description;
+  for (const guidance of ['success_when', 'failure_when', 'timeout', '15s', 'exit/tails', 'reports running', 'Never mask check errors', '`exit 0`', '`|| true`', 'non-zero exits escalate', 'Unknown/unparseable states must fail', 'Prefer structured output'])
+    expect(description).toContain(guidance);
+});
+
 describe.each(['win32', 'linux'] as const)('registration-time shell disclosure on %s', platform => {
   it.each(['Core', 'Desktop', 'missing'] as const)('discloses bash path and %s PowerShell once in each command tool description', edition => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
@@ -156,7 +162,7 @@ describe.each(['win32', 'linux'] as const)('registration-time shell disclosure o
       expect(tool.parameters.properties.shell.description).not.toContain('Detected shells');
       const text = tool.description;
       expect(text).toContain('D:/Git/bin/bash.exe');
-      expect(text).toContain('without fallback');
+      expect(tool.parameters.properties.shell.description).toContain('Unavailable shells fail without fallback');
       expect(text).toContain('Revalidated at launch');
       // Desktop 5.1 is Windows-only; a successful probe must not advertise it on POSIX.
       if (edition === 'missing' || (edition === 'Desktop' && platform === 'linux')) {

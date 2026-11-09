@@ -26,14 +26,14 @@ export { formatLaunch } from "./output.js";
 
 const JsonPathSchema = Type.String({
   pattern: "^\\$",
-  description: "JSON path from $ (e.g. $.steps[0].status); no bare keys or wildcards.",
+  description: "JSON path from $; no bare keys/wildcards.",
 });
 
 // Runtime validates per-kind fields before launch; retain the discriminated TypeScript API.
 const ConditionSchema = Type.Unsafe<Condition>(Type.Object({
   type: Type.String({ enum: ["exit_code", "stdout_contains", "stderr_contains", "json_path_equals", "json_path_exists"] }),
   equals: Type.Optional(Type.Number({ description: "Required for exit_code." })),
-  value: Type.Optional(Type.Any({ description: "Required for contains (string) or json_path_equals (any JSON)." })),
+  value: Type.Optional(Type.Any({ description: "contains: string; json_path_equals: JSON." })),
   path: Type.Optional(JsonPathSchema),
 }));
 
@@ -52,29 +52,29 @@ function StringMap(description: string) {
 // JSON Schema `anyOf` (Type.Unsafe), not Type.Union: Pi 0.82 converts a null to "" or [] through a
 // TypeBox union, and a Null-first union reports a malformed array as "must be null".
 const IntentFields = {
-  operation_id: Type.Optional(Type.Unsafe<string | null>({ anyOf: [{ type: "null" }, { type: "string" }], description: "Stable operation id (letters/digits . _ : / -; max 64). Reuse across retries, even with changed command/scope/timeout; a later success recovers earlier failures with this id in this session." })),
-  expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Declare distinct intentional exit codes before launch (e.g. [1] for no match); recorded as expected failures, not actionable incidents. 0 is allowed but ignored (already success); signals/timeouts are never expected." })),
+  operation_id: Type.Optional(Type.Unsafe<string | null>({ anyOf: [{ type: "null" }, { type: "string" }], description: "Retry-stable id: letters/digits . _ : / -; max 64. Same-session success recovers prior failures, even with changed inputs." })),
+  expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Intentional distinct exit codes: expected, not actionable. 0 ignored; signals/timeouts never expected." })),
 };
 
-const SHELL_GUIDANCE = 'shell:"bash" defaults to Pi bash syntax; "powershell" uses PowerShell syntax; "none" requires argv (no shell parsing). Unavailable shells fail without fallback.';
+const SHELL_GUIDANCE = 'shell: bash (default), powershell, or none (argv, no parsing). Unavailable shells fail without fallback.';
 
 const CommandFields = {
-  name: Type.Optional(Type.String({ description: "Human-readable task label." })),
-  argv: Type.Optional(Type.Array(Type.String(), { description: 'Direct argument vector for shell:"none".' })),
-  cwd: Type.Optional(Type.String({ description: "Working directory; default current pi cwd." })),
-  env: Type.Optional(StringMap("Extra environment variables.")),
-  max_log_bytes: Type.Optional(Type.Number({ description: "Raw-log retention: default 4194304 bytes (4 MiB); older output compacted while running." })),
-  callback: Type.Optional(Type.Boolean({ description: "Queue a terminal-state follow-up; default true." })),
-  timeout_seconds: Type.Optional(Type.Number({ description: "Timeout in seconds; watch default 900, spawn no default; 0 disables." })),
+  name: Type.Optional(Type.String({ description: "Task label." })),
+  argv: Type.Optional(Type.Array(Type.String(), { description: 'Arguments for shell:none.' })),
+  cwd: Type.Optional(Type.String({ description: "Directory; default pi cwd." })),
+  env: Type.Optional(StringMap("Extra environment.")),
+  max_log_bytes: Type.Optional(Type.Number({ description: "Log retention bytes; default 4194304; older output compacted." })),
+  callback: Type.Optional(Type.Boolean({ description: "Terminal callback; default true." })),
+  timeout_seconds: Type.Optional(Type.Number({ description: "Seconds; watch default 900, spawn unlimited; 0 disables." })),
   ...IntentFields,
 };
 
-const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Consecutive exit-zero checks with stderr and no match before an actionable possibly-blind incident with latest stderr line. Watch continues; no stderr or a match recovers it. Default 3; 0 turns it off. Redirect expected stderr if appropriate." }));
+const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Consecutive exit-zero checks with stderr/no match before a possibly-blind incident (latest stderr). Continues; match/no stderr recovers. Default 3; 0 disables. Redirect expected stderr." }));
 
 // A check that swallows its own errors can report pending forever.
-const WATCH_CHECK_GUIDANCE = "Waits up to 15s for first-check exit code and stdout/stderr tails; reports if still running. "
-  + "Expose check errors: do not end it with `exit 0` or `|| true`; non-zero exits are recorded and escalated. "
-  + "Map unknown/unparseable states to failure (non-zero), not pending. Prefer structured output (e.g. `--format=json | jq -er '.status'`) over fragile format strings.";
+const WATCH_CHECK_GUIDANCE = "Waits up to 15s for first-check exit/tails; else reports running. "
+  + "Never mask check errors with `exit 0`/`|| true`; non-zero exits escalate. "
+  + "Unknown/unparseable states must fail, not stay pending. Prefer structured output (JSON/jq -er), not fragile format strings.";
 
 const CursorFields = {
   cursor: Type.Optional(Type.String({ description: "Caller-owned, session-scoped; same cursor replays page/change notice, nextCursor continues. Independent callers." })),
@@ -115,19 +115,33 @@ const BACKGROUND_ORCHESTRATION_GUIDELINES = [
   "Launch is not parent-milestone completion: relevant background work must be terminal, inspected, and integrated before verification/completion.",
 ];
 
+const BACKGROUND_NAMESPACE = {
+  name: "bg_tasks",
+  description: "Background processes and watches; discover bg_task_list (inventory), bg_task_log (output), bg_task_stop (cancel), bg_task_clear (dismiss).",
+  instructions: [
+    ...BACKGROUND_ORCHESTRATION_GUIDELINES,
+    "Deferred tools: use tool_search, or codemode searchTools/describeTool, to discover and call them.",
+    "bg_task_list lists newest tasks without blocking; nextCursor pages inventory, statusCursor tracks changes/failures.",
+    "After a terminal callback, inspect bg_task_status first. Use bg_task_log only if insufficient: default 10-line tail; lines:0 pages retained raw bytes. Retention/capture loss cannot be recovered.",
+    "bg_task_stop cancels a watcher or terminates an owned process; foreign/unverifiable ownership requires all:true.",
+    "bg_task_clear dismisses terminal tasks without deleting history; stop running tasks first. Bulk clear stays current-session only.",
+    "Cursors are caller-owned/session-scoped: replay with the same cursor, continue with nextCursor. Default scope is the current session; all:true includes others where supported.",
+  ].join(" "),
+};
+
 export function registerTools(pi: ExtensionAPI): void {
   const detection = detectShells(undefined, { registration: true });
   const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
-  const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||; use 5.1-compatible syntax.' : ''} Revalidated at launch.`;
+  const shellGuidance = `Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||.' : ''} Revalidated at launch.`;
   const fields = {
     ...CommandFields,
-    command: Type.Optional(Type.String({ description: 'Command in the declared shell syntax; required unless shell:"none" with argv.' })),
-    shell: Type.Optional(Type.Union([Type.Literal('bash'), Type.Literal('powershell'), Type.Literal('none')], { default: 'bash', description: 'Command shell; use none for direct argv execution.' })),
+    command: Type.Optional(Type.String({ description: 'Shell command; required unless shell:none with argv.' })),
+    shell: Type.Optional(Type.Union([Type.Literal('bash'), Type.Literal('powershell'), Type.Literal('none')], { default: 'bash', description: SHELL_GUIDANCE })),
   };
   const SpawnParams = Type.Object(fields);
   const WatchParams = Type.Object({
     ...fields,
-    interval_seconds: Type.Optional(Type.Number({ description: "Polling interval in seconds. Default 30." })),
+    interval_seconds: Type.Optional(Type.Number({ description: "Poll seconds; default 30." })),
     success_when: ConditionSchema,
     failure_when: Type.Optional(ConditionSchema),
     blind_checks: BlindChecksField,
@@ -160,9 +174,11 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_spawn",
+    exposure: "direct",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_spawn"),
     label: "BG Spawn",
-    description: `Start a long-running process; return its task id immediately. ${shellGuidance}`,
+    description: `Start a long process; return task id immediately. ${shellGuidance}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: SpawnParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -175,6 +191,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_watch",
+    exposure: "direct",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_watch"),
     label: "BG Watch",
     description: `Poll a command until success_when, failure_when, or timeout. ${WATCH_CHECK_GUIDANCE} ${shellGuidance}`,
@@ -189,6 +207,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_list",
+    exposure: "deferred",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_list"),
     label: "BG List",
     description: "List durable tasks as compact rows, newest first, nonblocking. nextCursor pages all tasks; statusCursor gives no-change/failure-only updates. Increase limit/max_bytes for larger pages.",
@@ -201,6 +221,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_status",
+    exposure: "direct",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_status"),
     label: "BG Status",
     description: "Inspect a compact model-facing summary: matched condition, exit/signal, stop error, failure counts before progress. Use verbose:true only for metadata recovery. Accepts raw-log nextCursor or incidentCursor as cursor. After a terminal callback, call this first; bg_task_log only if insufficient.",
@@ -213,6 +235,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_log",
+    exposure: "deferred",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_log"),
     label: "BG Log",
     description: "Read a compact 10-line terminal-aware tail, nonblocking; lines:0 pages the retained raw log. Capture/retention loss is disclosed, not recoverable as full history.",
@@ -225,6 +249,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_stop",
+    exposure: "deferred",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_stop"),
     label: "BG Stop",
     description: "Cancel a watcher or terminate a task owned by this session; foreign/unverifiable ownership requires all:true.",
@@ -239,6 +265,8 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_clear",
+    exposure: "deferred",
+    namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_clear"),
     label: "BG Clear",
     description: "Dismiss terminal tasks without deleting their history; stop running tasks first.",

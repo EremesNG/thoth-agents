@@ -6,6 +6,29 @@ import { describe, expect, it } from 'vitest';
 import { lifecycleHost } from './test-support/lifecycle-harness.js';
 
 describe('background tool definition publication', () => {
+  it('keeps core tools direct and groups deferred tools with discoverable usage guidance', () => {
+    const host = lifecycleHost('tool-exposure');
+    const expected = {
+      bg_task_spawn: 'direct', bg_task_watch: 'direct', bg_task_status: 'direct',
+      bg_task_list: 'deferred', bg_task_log: 'deferred', bg_task_stop: 'deferred', bg_task_clear: 'deferred',
+    };
+    expect([...host.tools.keys()].sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, exposure] of Object.entries(expected)) {
+      const definition = host.tools.get(name);
+      expect(definition.exposure, name).toBe(exposure);
+      expect(definition.namespace).toEqual(host.tools.get('bg_task_spawn').namespace);
+      expect(definition.namespace.name).toBe('bg_tasks');
+      for (const deferred of ['bg_task_list', 'bg_task_log', 'bg_task_stop', 'bg_task_clear']) {
+        expect(definition.namespace.description).toContain(deferred);
+        expect(definition.namespace.instructions).toContain(deferred);
+      }
+      expect(definition.namespace.instructions).toContain('tool_search');
+      expect(definition.namespace.instructions).toContain('searchTools');
+      expect(definition.namespace.instructions).toContain('describeTool');
+      expect(definition.namespace.instructions).toContain('terminal');
+      expect(definition.namespace.instructions).toContain('all:true');
+    }
+  });
   it('publishes enum-only shell schemas with bash default and rejects boolean calls', async () => {
     const host = lifecycleHost('shell-enum');
     for (const name of ['bg_task_spawn', 'bg_task_watch']) {

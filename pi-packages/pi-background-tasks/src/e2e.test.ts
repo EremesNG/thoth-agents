@@ -72,12 +72,12 @@ describe("extension e2e", () => {
   it("#359 documents watch checks and blind detection only on bg_task_watch", async () => {
     const harness = createHarness();
     const tool = harness.tools.get("bg_task_watch");
-    expect(tool?.description).toContain("do not end it with `exit 0` or `|| true`");
-    expect(tool?.description).toContain("Map unknown/unparseable states to failure (non-zero), not pending");
+    expect(tool?.description).toContain("Never mask check errors with `exit 0`/`|| true`");
+    expect(tool?.description).toContain("Unknown/unparseable states must fail, not stay pending");
     expect(tool?.description).toContain("jq -er");
-    expect(tool?.parameters?.properties?.blind_checks?.description).toContain("0 turns it off");
+    expect(tool?.parameters?.properties?.blind_checks?.description).toContain("0 disables");
     const definitions = JSON.stringify([...harness.tools.values()]);
-    expect(definitions.match(/do not end it with/g)).toHaveLength(1);
+    expect(definitions.match(/Never mask check errors/g)).toHaveLength(1);
     expect(definitions.match(/possibly-blind incident/g)).toHaveLength(1);
     expect([...harness.tools.values()].filter(tool => tool.promptGuidelines?.length).map(tool => tool.name)).toEqual(["bg_task_spawn"]);
     const launch = await harness.execute("bg_task_watch", {

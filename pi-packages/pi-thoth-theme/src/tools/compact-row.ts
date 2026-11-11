@@ -78,6 +78,17 @@ function clean(text: string | undefined): string {
   return escapeControlCharacters((text ?? '').replace(/\s+/g, ' ').trim());
 }
 
+function styleTail(theme: CompactRowTheme, part: string): string {
+  // Recognize complete tail parts, not signed numbers embedded in other counts.
+  const diff = /^(\+\d+) ([-−]\d+)$/.exec(part);
+  if (diff) {
+    return `${theme.fg('success', diff[1])}${theme.fg('dim', ' ')}${theme.fg('error', diff[2])}`;
+  }
+  const exit = /^exit (-?\d+)$/i.exec(part);
+  if (exit) return theme.fg(Number(exit[1]) === 0 ? 'success' : 'error', part);
+  return theme.fg('dim', part);
+}
+
 /**
  * Build the collapsed rows of one tool card.
  * `line`: one row (running/success); `compact`: row 1 plus an optional dim
@@ -115,7 +126,7 @@ export function buildCompactRows(
   const tailParts = (input.tail ?? [])
     .map(clean)
     .filter(Boolean)
-    .map((part) => theme.fg('dim', part));
+    .map((part) => styleTail(theme, part));
   const summaryText = clean(input.summary);
   const rowHint = hasSecondRow || state === 'running' ? '' : hintText;
   const fits = (row: string) => visibleWidth(row) <= max;

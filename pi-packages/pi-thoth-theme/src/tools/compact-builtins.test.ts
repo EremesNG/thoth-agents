@@ -139,6 +139,25 @@ const cases: Case[] = [
 ];
 
 describe.each(cases)('$name collapsed rendering', (c) => {
+  if (c.name === 'edit') {
+    it.each([
+      'compact',
+      'line',
+    ] as const)('colors builtin diff stats in %s', (density) => {
+      const tool = c.make(config(density));
+      const rows = tool
+        .renderResult(
+          text(c.output, c.details),
+          { expanded: false, isPartial: false },
+          theme,
+          ctx(c.args),
+        )
+        .render(100);
+      expect(rows[0]).toContain(theme.fg('success', '+2'));
+      expect(rows[0]).toContain(theme.fg('error', '−1'));
+    });
+  }
+
   it.each([
     'line',
     'compact',

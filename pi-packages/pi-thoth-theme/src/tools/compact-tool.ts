@@ -20,7 +20,7 @@ interface CompactContext extends ElapsedRenderContext {
 export interface CompactParts {
   title: string;
   summary?: string;
-  /** Dim tail parts after the elapsed time; omitted while running. */
+  /** Tail parts after elapsed time; diff stats and exit codes use semantic colors. Omitted while running. */
   counts?: readonly (string | undefined)[];
   continuation?: string;
   errorLine?: string;

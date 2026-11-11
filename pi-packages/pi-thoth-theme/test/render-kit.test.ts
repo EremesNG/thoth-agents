@@ -18,6 +18,31 @@ afterEach(() => setAnimationLevel('full'));
 
 describe('theme render kit', () => {
   it.each([
+    'compact',
+    'line',
+  ] as const)('colors sanitized diff and exit tails in %s cards', (density) => {
+    const local = createRenderKit({}, undefined, 'unicode', density);
+    for (const legacy of [false, true]) {
+      const tail = ['\x1b[90m+13 -10\x1b[39m', 'exit 0', 'Exit 7', '3 lines'];
+      const rows = local.card(
+        styledTheme,
+        {
+          surface: 'tool',
+          expanded: false,
+          title: 'Edit',
+          ...(legacy ? { summary: tail } : { row: { title: 'Edit', tail } }),
+        },
+        300,
+      );
+      expect(rows[0]).toContain('<success>+13</success>');
+      expect(rows[0]).toContain('<error>-10</error>');
+      expect(rows[0]).toContain('<success>exit 0</success>');
+      expect(rows[0]).toContain('<error>Exit 7</error>');
+      expect(rows[0]).toContain('<dim>3 lines</dim>');
+    }
+  });
+
+  it.each([
     'nerd',
     'unicode',
     'ascii',

@@ -45,6 +45,61 @@ describe('buildCompactRows', () => {
     expect(rows[0]).toContain('[90m2s[39m');
   });
 
+  it.each([
+    'compact',
+    'line',
+  ] as const)('colors diff stats and exit status in %s tails', (density) => {
+    for (const minus of ['-', '−']) {
+      const [row] = buildCompactRows(
+        theme,
+        base({
+          density,
+          tail: ['2s', `+13 ${minus}10`, 'Exit 0', 'exit 7', '3 lines'],
+        }),
+        120,
+      );
+      expect(row).toContain(theme.fg('success', '+13'));
+      expect(row).toContain(theme.fg('error', `${minus}10`));
+      expect(row).toContain(theme.fg('success', 'Exit 0'));
+      expect(row).toContain(theme.fg('error', 'exit 7'));
+      expect(row).toContain(theme.fg('dim', '2s'));
+      expect(row).toContain(theme.fg('dim', ' · '));
+      expect(row).toContain(theme.fg('dim', '3 lines'));
+    }
+  });
+
+  it.each([
+    'compact',
+    'line',
+  ] as const)('fits colored tails with wide summaries in %s', (density) => {
+    for (let width = 1; width <= 100; width++) {
+      const rows = buildCompactRows(
+        theme,
+        base({
+          density,
+          summary: '文件'.repeat(30),
+          tail: ['2s', '+13 -10', 'Exit 7'],
+        }),
+        width,
+      );
+      for (const row of rows) {
+        expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+        expect(stripTerminalSequences(row)).not.toContain('\x1b');
+      }
+    }
+  });
+
+  it('keeps non-stat tail text dim', () => {
+    const [row] = buildCompactRows(
+      theme,
+      base({ tail: ['+13 files', 'path-10', 'Exit 0 pending', '~7 words'] }),
+      120,
+    );
+    for (const part of ['+13 files', 'path-10', 'Exit 0 pending', '~7 words']) {
+      expect(row).toContain(theme.fg('dim', part));
+    }
+  });
+
   it('adds a dim tree continuation in compact success', () => {
     const rows = buildCompactRows(theme, base({ density: 'compact' }), 80);
     expect(plain(rows)).toEqual([
@@ -208,6 +263,31 @@ describe.each([
     expect(rows).toHaveLength(1);
     expect(rows[0]).toContain(name === 'bash' ? 'echo hi' : 'q="hi"');
   });
+
+  if (name === 'bash') {
+    it.each([
+      'compact',
+      'line',
+    ] as const)('colors shell exit codes in %s', (density) => {
+      for (const exitCode of [0, 7]) {
+        const tool: any = make(config(density));
+        const out = renderAll(
+          tool,
+          args,
+          text(
+            exitCode === 0
+              ? 'hello'
+              : `hello\nCommand exited with code ${exitCode}`,
+          ),
+          ctx({ args, isError: exitCode !== 0 }),
+          done,
+        );
+        expect(out.result[0]).toContain(
+          theme.fg(exitCode === 0 ? 'success' : 'error', `Exit ${exitCode}`),
+        );
+      }
+    });
+  }
 
   it('line success: empty call slot, one result row', () => {
     const tool: any = make(config('line'));

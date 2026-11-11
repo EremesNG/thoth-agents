@@ -751,8 +751,7 @@ describe('registration', () => {
       'background-completion-batch',
       'background-task-failure',
     ]);
-    // Cold import of the whole extension exceeds 5s on loaded CI runners.
-  }, 30_000);
+  });
 });
 
 it('mounted background notifications resolve UI separators without changing packed model notifications', () => {

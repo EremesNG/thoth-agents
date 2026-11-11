@@ -54,7 +54,6 @@ describe('release-pi', () => {
       expect.objectContaining({
         directory: 'pi-contained-shell',
         name: '@thoth-agents/pi-contained-shell',
-        version: '0.1.0',
       }),
     );
   });

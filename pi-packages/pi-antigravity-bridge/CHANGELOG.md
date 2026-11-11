@@ -5,6 +5,12 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-10
+
+### Changed
+
+- `AskAntigravity`, `agy_web_search` and `agy_read_url` use adaptive exposure in the `antigravity` namespace with their usage guidance: deferred when `codemode` or `tool_search` is active, direct otherwise.
+
 ## [0.7.0] - 2026-11-03
 
 ### Changed

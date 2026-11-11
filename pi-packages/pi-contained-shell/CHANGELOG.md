@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-10
+
+### Changed
+
+- First CI release through npm trusted publishing; no runtime changes.
+
 ## [0.1.0] - 2026-11-09
 
 ### Added

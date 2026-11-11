@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-10
+
+### Added
+
+- `createAdaptiveToolRegistrar`: registers occasional tools directly at load and, on `session_start`, defers them only when `codemode` or `tool_search` is active (`THOTH_AGENTS_PI_EXPOSURE=direct` opts out), falling back to direct registration on failure.
+
 ## [0.8.0] - 2026-11-08
 
 ### Added

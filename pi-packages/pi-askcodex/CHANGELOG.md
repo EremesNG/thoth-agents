@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-10
+
+### Changed
+
+- `AskCodex` uses adaptive exposure in the `askcodex` namespace with its usage guidance: deferred when `codemode` or `tool_search` is active, direct otherwise.
+
 ## [3.0.0] - 2026-11-03
 
 ### Changed

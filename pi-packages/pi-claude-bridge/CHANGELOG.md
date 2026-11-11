@@ -5,6 +5,13 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-10
+
+### Fixed
+
+- Forward extension `promptGuidelines` (for example thoth-mem rules) to Claude after tool guidance, with ordered dedup.
+- Stream tolerant partial tool arguments so tool rows show path/command while long arguments stream.
+
 ## [0.5.0] - 2026-11-07
 
 ### Changed

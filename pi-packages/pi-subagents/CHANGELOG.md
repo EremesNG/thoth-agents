@@ -5,6 +5,12 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-10
+
+### Fixed
+
+- Child sessions load the selected `codemode` and `tool_search` built-ins in both lean and full modes.
+
 ## [0.12.0] - 2026-11-08
 
 ### Added

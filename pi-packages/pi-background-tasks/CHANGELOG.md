@@ -4,6 +4,13 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-10
+
+### Changed
+
+- `bg_task_list`, `bg_task_log`, `bg_task_stop` and `bg_task_clear` use adaptive exposure in the `bg_tasks` namespace: deferred when `codemode` or `tool_search` is active, direct otherwise.
+- Shorter `bg_task_spawn` and `bg_task_watch` descriptions.
+
 ## [0.6.0] - 2026-11-03
 
 ### Fixed

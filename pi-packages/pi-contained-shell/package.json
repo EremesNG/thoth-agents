@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-contained-shell",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Windows Job Object containment for Pi shell tools.",
   "license": "MIT",
   "type": "module",

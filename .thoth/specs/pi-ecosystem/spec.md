@@ -715,3 +715,13 @@ The `/subagents` history panel MUST group executions as Needs attention, Running
 - **GIVEN** a session with one running task near its deadline, one completed and one failed task
 - **WHEN** the user opens `/subagents`
 - **THEN** the running task appears under Needs attention with extend and cancel hints, selecting the completed task shows its Result view first, and `y` copies that result through OSC 52 with a confirmation
+
+### Requirement: Project subagent tool overlay
+
+pi-subagents MUST honor a per-agent tool overlay `agents.<name>.tools` with `add` and `remove` pattern arrays read only from `<cwd>/.pi/subagents.json`; `add` MUST join the winning definition's tools (or inherited `default_tools`) before glob expansion, `remove` MUST subtract every matching tool after expansion and before `disallowed_tools` and native exclusions, invalid overlay entries MUST be ignored without breaking loading, the overlay MUST NOT affect injected orchestrator controls, and `/subagents-tools` MUST offer a Global/Project scope whose Project saves losslessly edit only that overlay while preserving other keys, starting in Project when a project overlay or a shadowing project definition exists, and MUST offer an explicit confirmed conversion of a shadowing project definition copy into a selection-equivalent overlay, refusing conversion when equivalence cannot be achieved.
+
+#### Scenario: Project subagent tool overlay
+
+- **GIVEN** a global thoth-worker with tools `read, bash` and a project `.pi/subagents.json` with `agents.thoth-worker.tools.add=["mcp__blender*"]` while the project registers the Blender MCP server
+- **WHEN** the user launches thoth-worker in that project and in another project
+- **THEN** the child receives the Blender tools only in the first project, the other project receives `read, bash` without dropped-tool warnings, and saving a Project-scope change in `/subagents-tools` rewrites only `agents` in `.pi/subagents.json`

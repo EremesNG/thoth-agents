@@ -9,6 +9,7 @@ import { expandToolPatterns } from '../../src/tool-patterns.js';
 
 interface PermittedChildRegistryCase {
   selection: string;
+  overlay?: { add?: string[]; remove?: string[] };
   tools?: string[];
   expected: string[];
   enabled?: boolean;
@@ -30,6 +31,51 @@ interface PermittedChildRegistryCase {
 }
 
 it.each<PermittedChildRegistryCase>([
+  {
+    selection:
+      'overlay exact missing add is reported but unmatched globs are silent',
+    tools: ['read'],
+    overlay: {
+      add: ['missing_*', 'not_installed_fixture'],
+      remove: ['unmatched_*'],
+    },
+    dropped: ['not_installed_fixture'],
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'overlay removes matching tools from a base glob',
+    tools: ['*'],
+    overlay: { remove: ['ba*'] },
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'overlay remove wins over add and defaults',
+    defaultTools: ['read'],
+    overlay: { add: ['bash'], remove: ['read', 'ba*'] },
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'overlay cannot strip injected orchestrator controls',
+    tools: ['*'],
+    overlay: { remove: ['*'] },
+    notifyEnabled: true,
+    expected: ['ask_orchestrator', 'notify_orchestrator'],
+  },
+  {
+    selection:
+      'overlay additions remain subject to denials and native exclusions',
+    tools: ['read'],
+    overlay: { add: ['bash', 'subagent_run', 'notify_orchestrator'] },
+    denials: 'disallowed_tools: bash',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'overlay add glob expands registered tools',
+    tools: ['read'],
+    active: ['read'],
+    overlay: { add: ['ba*'] },
+    expected: ['read', 'bash', 'ask_orchestrator'],
+  },
   {
     selection: 'notify with ask disabled',
     tools: ['read'],
@@ -319,6 +365,7 @@ it.each<PermittedChildRegistryCase>([
   closing = '---',
   newline = '\n',
   blockedOverride,
+  overlay,
 }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-ask-sdk-'));
   const cwd = path.join(root, 'workspace');
@@ -327,7 +374,10 @@ it.each<PermittedChildRegistryCase>([
   fs.mkdirSync(agentDir, { recursive: true });
   fs.writeFileSync(
     path.join(cwd, '.pi', 'subagents.json'),
-    JSON.stringify({ default_tools: defaultTools }),
+    JSON.stringify({
+      default_tools: defaultTools,
+      agents: { analyst: { tools: overlay } },
+    }),
   );
   fs.writeFileSync(
     path.join(cwd, '.pi', 'subagents', 'analyst.md'),
@@ -659,6 +709,12 @@ it.each([
 }, 30_000);
 
 it.each([
+  {
+    enabled: false,
+    tools: ['read'],
+    denied: [],
+    toolOverlay: { add: ['bash'], remove: ['*'] },
+  },
   { enabled: false, tools: ['ask_orchestrator'], denied: [] },
   { enabled: true, tools: ['read'], denied: ['read', 'ask_orchestrator'] },
   { enabled: false, tools: ['*'], denied: [] },
@@ -667,6 +723,7 @@ it.each([
   enabled,
   tools,
   denied,
+  toolOverlay,
 }) => {
   await expect(
     sdkSubagentRunner({
@@ -677,6 +734,7 @@ it.each([
         instructions: 'Reply.',
         tools,
         disallowed_tools: denied,
+        toolOverlay,
       },
       task: 'reply',
       cwd: '.',

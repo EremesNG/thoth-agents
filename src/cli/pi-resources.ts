@@ -138,7 +138,7 @@ export function syncPiSpecialists(
   for (const root of options.projectRoots ?? [])
     if (existsSync(root))
       diagnostics.push(
-        `Project-local Pi specialists may shadow package-owned global definitions: ${root}`,
+        `Project-local Pi specialists may shadow package-owned global definitions: ${root}. Prefer the project tool overlay in .pi/subagents.json (agents.<name>.tools); use /subagents-tools Project scope and c to convert a shadowing copy.`,
       );
   try {
     const prepared: Array<{

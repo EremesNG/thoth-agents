@@ -134,3 +134,63 @@ export function writeDefinitionText(
   }
   return true;
 }
+
+/** Atomic project JSON replacement; a null desired value is a stale-checked no-op. */
+export function writeProjectOverlayText(
+  cwd: string,
+  content: string | null,
+  expected: string | null,
+): boolean {
+  const path = resolve(cwd, '.pi', 'subagents.json');
+  assertSafeDefinitionPath(path);
+  if (content === null) {
+    if (snapshot(path).exists)
+      throw new Error(`Subagent target changed since preflight: ${path}`);
+    return false;
+  }
+  return writeDefinitionText(path, content, expected);
+}
+
+/** Node has no RENAME_NOREPLACE: reserve a unique backup exclusively, then
+ * replace only our still-empty reservation. Never unlink or truncate the source. */
+export function retireDefinitionText(
+  path: string,
+  expected: string,
+  io: Pick<typeof fs, 'renameSync'> = fs,
+): string {
+  assertSafeDefinitionPath(path);
+  const before = snapshot(path);
+  if (!before.content?.equals(Buffer.from(expected)))
+    throw new Error(`Subagent target changed since preflight: ${path}`);
+  const backup = `${path}.bak-${process.pid}-${randomUUID()}`;
+  fs.writeFileSync(backup, '', { flag: 'wx' });
+  const reservation = snapshot(backup);
+  try {
+    const maxAttempts = process.platform === 'win32' ? 11 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      assertSafeDefinitionPath(path);
+      assertSafeDefinitionPath(backup);
+      if (!snapshotsEqual(before, snapshot(path)))
+        throw new Error(`Subagent target changed before retirement: ${path}`);
+      if (!snapshotsEqual(reservation, snapshot(backup)))
+        throw new Error(`Subagent backup reservation changed: ${backup}`);
+      try {
+        io.renameSync(path, backup);
+        return backup;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (
+          process.platform !== 'win32' ||
+          !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '') ||
+          attempt === maxAttempts
+        )
+          throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
+    }
+    throw new Error(`Cannot retire subagent file: ${path}`);
+  } catch (error) {
+    if (snapshotsEqual(reservation, snapshot(backup))) fs.rmSync(backup);
+    throw error;
+  }
+}

@@ -192,14 +192,40 @@
   for panel and storage details.
   pi-subagents registers both `/subagents-model` and `/subagents-tools`; the
   tools command lives in `pi-packages/pi-subagents/src/tools-panel/`, not the
-  root extension. It edits the resolved global/project definitions, changing
-  only `tools` while preserving unrelated frontmatter and body bytes, with
-  stale-write detection and partial-save retry. The root registers an optional
+  root extension. Tab switches Global/Project scope; initial scope is Project
+  when project `.pi/subagents.json` has a non-empty `agents` object or a project
+  definition shadows a global one, otherwise Global. Global save edits only the
+  global definition's `tools`, preserving other bytes, even when a copy shadows
+  it (with a warning). Project save edits only `agents.<name>.tools.{add,remove}`
+  arrays in `<project>/.pi/subagents.json`, preserving untouched entries and
+  other JSON keys, pruning empty overlays and never editing Markdown. Global
+  `agents` is ignored; no ancestor config search occurs. Add joins the winning
+  definition/inherited defaults before expansion; remove subtracts matches
+  afterward, before denials/native exclusions. Case-sensitive `*` globs expand
+  against registered active/inactive tools; unmatched patterns are silent.
+  Injected orchestrator controls are unaffected, still flag/denial controlled.
+  Project's base is read-only: `a` adds an add-pattern, `x` adds a remove-pattern,
+  `d`/Delete deletes an overlay entry, `r` clears the overlay. Remove-glob-blocked
+  toggles explain the blocker. Writes are atomic with backups, stale-write
+  detection and partial-save retry. Project overview `c` converts only a copy
+  shadowing a global counterpart, after drafts are saved/discarded. Confirmation
+  summarizes candidate add/remove entries and names lost description/body/other-frontmatter
+  aspects (including denials), not values or body text, with a `.bak` recovery note
+  and future global-glob warning; `d` converts, `k`/Esc cancels unchanged.
+  Refuse if another same-name project definition would remain or the candidate
+  changes the current selection against either global or copy with the current
+  inventory. After stale checks, write the overlay first, then retire the copy
+  to `.bak-<pid>-<uuid>`; overlay failure leaves the copy untouched, retirement
+  failure reports selection-equivalent partial state.
+  Example: `agents.thoth-worker.tools.add: ["mcp__blender*"]` grants Blender only
+  here if its MCP server is configured only here too, not globally. Never grant
+  the generic `mcp` gateway as a substitute; a glob alone cannot scope a globally
+  configured server. The root registers an optional
   Thoth adapter through `Symbol.for('thoth-agents.pi-subagents.tools-panel.v1')`.
   Its `appliesTo`/`validate` checks and optional `defaultTools` apply only to
   marked canonical global `agents/thoth-*.md` specialists; project and unmanaged
-  definitions use generic persistence. Reset is unavailable without adapter
-  defaults. `/subagents-tools` discovers registered tools (active and inactive)
+  definitions use generic persistence. Global defaults reset is unavailable
+  without adapter defaults; Project clear-overlay reset is always available. `/subagents-tools` discovers registered tools (active and inactive)
   and toggles exact names as checkboxes. Globs and unrecognized names appear as
   `Manual entries` with session match counts and case-only hints; `a` adds and
   `d`/Delete removes them in the draft. They are retained on normal save and
@@ -212,7 +238,7 @@
   `ask_orchestrator` and `notify_orchestrator` notes describe the channels as
   subject to their respective `enable_ask_orchestrator` and
   `enable_notify_orchestrator` flags and `disallowed_tools`; they are not checkboxes. The panel does not read runtime
-  configuration or edit denials.
+  flags or edit denials.
   Generated defaults are explicit:
   `read, bash, grep, find, ls, mem_recall, mem_get` for Oracle; Explorer adds
   `codemode`; Designer and Worker add `edit, write` before the search tools;

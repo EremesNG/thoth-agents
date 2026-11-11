@@ -1,3 +1,43 @@
+import type { SubagentToolOverlay } from './types.js';
+
+/** Compose project patterns before orchestrator injection and permission filtering. */
+export function composeToolSelection(
+  patterns: readonly string[],
+  registeredToolNames?: readonly string[],
+  overlay?: SubagentToolOverlay,
+): string[] {
+  const expanded = expandToolPatterns(
+    [...patterns, ...(overlay?.add ?? [])],
+    registeredToolNames,
+  );
+  const removals = overlay?.remove ?? [];
+  return expanded.filter(
+    (name) => !removals.some((pattern) => matchesToolPattern(name, pattern)),
+  );
+}
+
+/** Resolve child permissions, including controls injected after overlay removal. */
+export function resolveEffectiveToolSelection(
+  patterns: readonly string[],
+  registeredToolNames: readonly string[] | undefined,
+  disallowedTools: readonly string[],
+  enableAskOrchestrator: boolean,
+  enableNotifyOrchestrator: boolean,
+  overlay?: SubagentToolOverlay,
+): string[] {
+  const expanded = composeToolSelection(patterns, registeredToolNames, overlay);
+  if (enableAskOrchestrator) expanded.push('ask_orchestrator');
+  if (enableNotifyOrchestrator) expanded.push('notify_orchestrator');
+  const denied = new Set(disallowedTools);
+  return [...new Set(expanded)].filter(
+    (name) =>
+      (enableAskOrchestrator || name !== 'ask_orchestrator') &&
+      (enableNotifyOrchestrator || name !== 'notify_orchestrator') &&
+      !denied.has(name) &&
+      !name.startsWith('subagent_'),
+  );
+}
+
 export function hasToolGlob(pattern: string): boolean {
   return pattern.includes('*');
 }

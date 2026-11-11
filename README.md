@@ -94,11 +94,31 @@ subagents and the orchestrator, stored separately from definitions at global or
 project scope. See [subagent profile configuration](docs/installation.md#configure-subagent-model-profiles-inside-pi).
 Both commands are registered by pi-subagents on pi-core's shared list-editor
 shell, with native CSI-u/kitty and legacy navigation keys and wheel support in
-regular and fullscreen TUI mode. Use `/subagents-tools` to edit resolved global/project definitions' tool
-lists, including registered active and inactive extension and MCP tools. Thoth
-supplies managed-specialist validation and reset defaults through an optional adapter. In a tool picker,
-`a` adds a name or glob; `d`/Delete removes a selected Manual entries row, and `s`
-saves from the overview. Manual rows show session match counts and case hints.
+regular and fullscreen TUI mode. `/subagents-tools` uses Tab to switch Global/Project
+scope, starting in Project when `.pi/subagents.json` has a non-empty `agents` object
+or a project definition shadows a global one; otherwise Global. Global save edits
+the global definition's `tools` even when a copy shadows it (with a warning).
+Project save edits only `.pi/subagents.json` `agents.<name>.tools`, e.g.
+`{"add":["mcp__blender*"],"remove":["write"]}`, preserving other JSON keys;
+global `agents` is ignored. Add patterns join definition/inherited defaults before
+expansion; remove patterns subtract afterward, before denials/native exclusions.
+Injected orchestrator controls remain governed by flags and `disallowed_tools`.
+In Project's picker the base is read-only: `a` adds an add-pattern, `x` adds a
+remove-pattern, `d`/Delete deletes an overlay entry, and `r` clears the overlay.
+Global `a`/`d` edit manual entries; Thoth supplies optional reset defaults and
+managed-specialist validation. `s` saves from the overview. Writes are atomic,
+stale-checked and backed up. Project `c` converts a shadowing copy after summarizing
+candidate add/remove entries and naming lost non-tools aspects (not their content),
+with a warning about future global-glob matches: `d`
+confirms, `k`/Esc cancels. It refuses if another same-name project copy would remain
+or the overlay would change the current selection against either global or copy.
+It writes the overlay before retiring the copy to `.bak-<pid>-<uuid>`; failure to
+retire reports selection-equivalent partial state. See the
+[overlay reference](pi-packages/pi-subagents/README.md#subagents-tools).
+For Blender only here, add `mcp__blender*` in this project's overlay and configure
+the server only here, not globally; a glob alone cannot scope a globally configured
+server. Never grant the generic `mcp` gateway as a substitute.
+Manual rows show session match counts and case hints.
 Globs (including `*`) remain advanced, case-sensitive selections over all registered
 root tools; unmatched globs contribute nothing when a tool/server is not registered. Edit `disallowed_tools` manually for injected tools and trimming
 globs; only Oracle denies `ask_orchestrator` by default, while all five roles keep

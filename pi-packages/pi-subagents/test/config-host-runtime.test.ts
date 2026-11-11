@@ -15,6 +15,24 @@ beforeEach(() => {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.mkdirSync(path.join(cwd, '.pi', 'subagents'), { recursive: true });
 
+  // Include the SDK/YAML-free debug dependency, retaining its back-reference to
+  // this isolated config rather than importing the repository's config module.
+  const debugSource = fs.readFileSync(
+    new URL('../src/debug.ts', import.meta.url),
+    'utf8',
+  );
+  const debug = transpileModule(debugSource, {
+    compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2022 },
+  });
+  fs.writeFileSync(
+    path.join(path.dirname(configPath), 'debug.js'),
+    debug.outputText.replace("'./config.js'", "'./config.mjs'"),
+  );
+  fs.writeFileSync(
+    path.join(path.dirname(configPath), 'package.json'),
+    JSON.stringify({ type: 'module' }),
+  );
+
   const source = fs.readFileSync(
     new URL('../src/config.ts', import.meta.url),
     'utf8',

@@ -875,7 +875,7 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toEqual(retry.roles[0]?.tools);
     if (reset) panel.handleInput('r');
     panel.handleInput('s'); // retry save
-    expect(save.mock.calls[1]?.[0]).toBe(retry);
+    expect(save.mock.calls[1]?.[0]).toEqual({ ...retry, editScope: 'global' });
     expect(save.mock.calls[1]?.[1][0]?.tools).toEqual(
       reset ? ['read', 'write'] : retry.roles[0]?.tools,
     );
@@ -905,4 +905,265 @@ describe('global Pi tools panel', () => {
     const scrolled = panel.render(80).join('\n');
     expect(scrolled).toContain('tool_12');
   });
+});
+
+test('Project overlay globs share Global manual match details without adding row height', () => {
+  const snapshot = sampleSnapshot(['mcp__Roblox*']);
+  snapshot.globalRoles = structuredClone(snapshot.roles);
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = {
+      add: ['mcp__Roblox*', 'read'],
+      remove: ['*', 'mcp__roblox*'],
+    };
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [
+      { name: 'read', active: true },
+      { name: 'mcp__Roblox_Studio', active: true },
+      { name: 'mcp__Roblox_Other', active: false },
+      { name: 'subagent_run', active: true },
+      { name: 'ask_orchestrator', active: false },
+      { name: 'mcp__Roblox_Studio', active: true },
+    ],
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  expect(panel.render(300).join('\n')).toContain(
+    'Manual entries · mcp__Roblox* · 2 matches',
+  );
+  panel.handleInput('q');
+  panel.handleInput('tab');
+  panel.handleInput('\r');
+  const lines = panel.render(300);
+  const text = lines.join('\n');
+  expect(text).toContain('add · mcp__Roblox* · 2 matches');
+  expect(text).toContain('remove · * · 5 matches');
+  expect(text).toContain('remove · mcp__roblox* · 0 matches');
+  expect(text).toContain(
+    'Case-sensitive; check: mcp__Roblox_Studio, mcp__Roblox_Other',
+  );
+  expect(text).not.toContain('add · read ·');
+  expect(
+    lines.filter((line) => line.includes('add · mcp__Roblox*')),
+  ).toHaveLength(1);
+});
+
+test('Project scope shows read-only base and losslessly toggles tools under globs, blocks remove globs, edits add/remove manually and resets', () => {
+  const snapshot = sampleSnapshot(['mcp__*', 'read']);
+  snapshot.initialScope = 'project';
+  snapshot.globalRoles = structuredClone(snapshot.roles);
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = {
+      add: ['future*', 'mcp__one'],
+      remove: ['not_from_base', 'bash*'],
+    };
+  const save = vi.fn((base, _draft) => ({
+    success: true,
+    changedRoles: ['explorer'],
+    snapshot: base,
+  }));
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [
+      { name: 'mcp__one', active: true },
+      { name: 'bash', active: true },
+      { name: 'read', active: true },
+    ],
+    save,
+    onDone: vi.fn(),
+  });
+  expect(panel.render(120).join('\n')).toContain('Project');
+  panel.handleInput('\r');
+  expect(panel.render(120).join('\n')).toContain('Base (read-only)');
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['future*'],
+    remove: ['not_from_base', 'bash*', 'mcp__one'],
+  });
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['future*'],
+    remove: ['not_from_base', 'bash*'],
+  });
+  panel.handleInput('j');
+  panel.handleInput(' ');
+  expect(panel.render(120).join('\n')).toContain('bash*');
+  expect(panel.getState().draft[0]?.overlay?.add).not.toContain('bash');
+  panel.handleInput('a');
+  panel.handleInput('manual*');
+  panel.handleInput('\r');
+  panel.handleInput('x');
+  panel.handleInput('remove*');
+  panel.handleInput('\r');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['future*', 'manual*'],
+    remove: ['not_from_base', 'bash*', 'remove*'],
+  });
+  panel.handleInput('q');
+  panel.handleInput('s');
+  expect(save.mock.calls[0]?.[0].editScope).toBe('project');
+  expect(save.mock.calls[0]?.[1][0].overlay.remove).toContain('not_from_base');
+});
+
+test('scope toggle shows global shadow warning and Project reset clears overlay', () => {
+  const snapshot = sampleSnapshot();
+  snapshot.globalRoles = structuredClone(snapshot.roles);
+  Object.assign(snapshot.globalRoles[0] ?? {}, {
+    shadowedBy: '/project/.pi/agents/explorer.md',
+  });
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = { add: ['future*'], remove: ['read'] };
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: sampleDiscovered,
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  expect(panel.render(120).join('\n')).toContain('hides');
+  panel.handleInput('tab');
+  expect(panel.getState().scope).toBe('project');
+  panel.handleInput('r');
+  expect(panel.getState().draft[0]?.overlay).toEqual({ add: [], remove: [] });
+  panel.handleInput('tab');
+  expect(panel.getState().scope).toBe('global');
+});
+
+test('Project manual deletion removes only its chosen add/remove entry and no-edit save never recomputes overlay', () => {
+  const snapshot = sampleSnapshot(['*']);
+  snapshot.initialScope = 'project';
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = {
+      add: ['future*', 'future*'],
+      remove: ['unrelated*', 'read'],
+    };
+  const save = vi.fn();
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [{ name: 'read', active: true }],
+    save,
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput('G');
+  panel.handleInput('d');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['future*', 'future*'],
+    remove: ['unrelated*'],
+  });
+  panel.handleInput('k');
+  panel.handleInput('k');
+  panel.handleInput('d');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['future*'],
+    remove: ['unrelated*'],
+  });
+  const clean = createToolsPanel({
+    snapshot,
+    discoveredTools: [],
+    save,
+    onDone: vi.fn(),
+  });
+  clean.handleInput('s');
+  expect(save).not.toHaveBeenCalled();
+});
+
+test('Project exact toggles drop add-only entries and restore removed exact names before adding new names', () => {
+  const snapshot = sampleSnapshot(['read']);
+  snapshot.initialScope = 'project';
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = { add: ['bash'], remove: ['read', 'future*'] };
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [
+      { name: 'bash', active: true },
+      { name: 'read', active: true },
+      { name: 'new', active: true },
+    ],
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: [],
+    remove: ['read', 'future*'],
+  });
+  panel.handleInput('j');
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: [],
+    remove: ['future*'],
+  });
+  panel.handleInput('j');
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: ['new'],
+    remove: ['future*'],
+  });
+});
+
+test.each([
+  ['x', 'remove'],
+  ['a', 'add'],
+] as const)('Project manual %s accepts an exact base tool and saves only its overlay lane', (key, lane) => {
+  const snapshot = sampleSnapshot(['read']);
+  snapshot.initialScope = 'project';
+  const save = vi.fn((base, draft) => successfulSave(base, draft));
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: sampleDiscovered,
+    save,
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput(key);
+  panel.handleInput('read');
+  panel.handleInput('\r');
+  expect(panel.getState().draft[0]?.overlay).toEqual({
+    add: lane === 'add' ? ['read'] : [],
+    remove: lane === 'remove' ? ['read'] : [],
+  });
+  expect(panel.getState().draft[0]?.tools).toEqual(['read']);
+  panel.handleInput('q');
+  panel.handleInput('s');
+  expect(save.mock.calls[0]?.[1][0].overlay?.[lane]).toEqual(['read']);
+});
+
+test.each([
+  'add',
+  'remove',
+] as const)('Project manual %s preserves existing duplicates when appending a distinct candidate', (lane) => {
+  const snapshot = sampleSnapshot();
+  snapshot.initialScope = 'project';
+  if (snapshot.roles[0])
+    snapshot.roles[0].overlay = {
+      add: [],
+      remove: [],
+      [lane]: ['future*', 'future*'],
+    };
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [],
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput(lane === 'add' ? 'a' : 'x');
+  panel.handleInput('new*');
+  panel.handleInput('\r');
+  expect(panel.getState().draft[0]?.overlay?.[lane]).toEqual([
+    'future*',
+    'future*',
+    'new*',
+  ]);
+  panel.handleInput(lane === 'add' ? 'a' : 'x');
+  panel.handleInput('new*');
+  panel.handleInput('\r');
+  expect(panel.render(160).join('\n')).toContain('Duplicate');
+  expect(panel.getState().draft[0]?.overlay?.[lane]).toEqual([
+    'future*',
+    'future*',
+    'new*',
+  ]);
 });

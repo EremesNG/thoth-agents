@@ -273,3 +273,39 @@ test('does not warn for one owner or an unavailable command API', async () => {
   await handlers.get('session_start')({}, { ui: { notify } });
   expect(notify).not.toHaveBeenCalled();
 });
+
+test('command preserves initial Project scope and routes overlay edits without touching global drafts', async () => {
+  const { commands, read, save } = setup();
+  read.mockReturnValue({
+    ...snapshot,
+    initialScope: 'project',
+    globalRoles: snapshot.roles,
+  } as typeof snapshot);
+  const custom = async (factory: any) => {
+    let result: unknown;
+    const panel = factory(
+      { requestRender() {}, terminal: { rows: 40, write() {} } },
+      { fg: (_: string, text: string) => text },
+      {},
+      (value: unknown) => {
+        result = value;
+      },
+    );
+    expect(panel.render(100).join('\n')).toContain('Scope: Project');
+    panel.handleInput('\r');
+    panel.handleInput(' ');
+    panel.handleInput('q');
+    panel.handleInput('s');
+    return result;
+  };
+  await commands.get('subagents-tools').handler('', {
+    cwd: '/project',
+    mode: 'tui',
+    ui: { custom, notify: vi.fn() },
+  });
+  expect(save.mock.calls[0]?.[0].editScope).toBe('project');
+  expect(save.mock.calls[0]?.[1][0]).toMatchObject({
+    tools: ['read'],
+    overlay: { add: [], remove: ['read'] },
+  });
+});

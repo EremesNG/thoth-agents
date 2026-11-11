@@ -316,3 +316,42 @@ export function replaceToolsField(
     );
   return next;
 }
+
+/** Include unknown frontmatter too: conversion discards the entire project copy. */
+export function nonToolsDifferences(copy: string, global: string): string[] {
+  const fields = (
+    content: string,
+  ): { data: Record<string, unknown>; body: string } => {
+    if (!/^(?:\uFEFF)?---/.test(content)) return { data: {}, body: content };
+    const parsed = parseFrontmatter(content);
+    const closing = content
+      .slice(parsed.blockStart + parsed.source.length)
+      .match(/^\r?\n---[^\r\n]*(?:\r?\n|$)/);
+    return {
+      data: parsed.mapping.toJSON() as Record<string, unknown>,
+      body: content.slice(
+        parsed.blockStart + parsed.source.length + (closing?.[0].length ?? 0),
+      ),
+    };
+  };
+  const left = fields(copy);
+  const right = fields(global);
+  const differences: string[] = [];
+  const frontmatter: string[] = [];
+  for (const key of new Set([
+    ...Object.keys(left.data),
+    ...Object.keys(right.data),
+  ])) {
+    if (
+      key === 'tools' ||
+      JSON.stringify(left.data[key]) === JSON.stringify(right.data[key])
+    )
+      continue;
+    if (key === 'description') differences.push('description differs');
+    else frontmatter.push(key);
+  }
+  if (frontmatter.length)
+    differences.push(`frontmatter: ${frontmatter.join(', ')}`);
+  if (left.body !== right.body) differences.push('instructions (body) differ');
+  return differences;
+}

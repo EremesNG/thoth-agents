@@ -6,6 +6,7 @@ import {
   getPackageDir,
   parseFrontmatter as parseYamlFrontmatter,
 } from '@earendil-works/pi-coding-agent';
+import { writeSubagentsDebugLog } from './debug.js';
 import type {
   ModelRef,
   SubagentDefinition,
@@ -13,6 +14,7 @@ import type {
   SubagentMode,
   SubagentSessionResources,
   SubagentsConfig,
+  SubagentToolOverlay,
   ThinkingEffort,
 } from './types.js';
 
@@ -570,7 +572,7 @@ interface BlockedSubagentDefinition {
   issues: string[];
 }
 
-function loadSubagentsFromDir(
+export function loadSubagentsFromDir(
   dir: string,
   scope: SubagentDefinitionScope,
   onBlocked?: (blocked: BlockedSubagentDefinition) => void,
@@ -637,7 +639,7 @@ function loadSubagentsFromDir(
     });
 }
 
-function agentsDirSources(cwd: string): Array<{
+export function agentsDirSources(cwd: string): Array<{
   scope: 'global' | 'project';
   kind: 'agents' | 'subagents';
   dir: string;
@@ -703,8 +705,64 @@ export function subagentSourceWarnings(cwd: string): string[] {
   return warnings;
 }
 
+export function parseToolOverlay(
+  value: unknown,
+  onInvalid?: (message: string) => void,
+): SubagentToolOverlay | undefined {
+  if (!isPlainObject(value)) {
+    onInvalid?.('expected an object with optional add/remove arrays');
+    return undefined;
+  }
+  const parsePatterns = (key: 'add' | 'remove'): string[] => {
+    if (!Object.hasOwn(value, key)) return [];
+    const entries = value[key];
+    if (!Array.isArray(entries)) {
+      onInvalid?.(`${key} must be an array`);
+      return [];
+    }
+    return entries.filter((entry): entry is string => {
+      if (
+        typeof entry === 'string' &&
+        entry.trim() &&
+        entry.trim() !== '@active'
+      )
+        return true;
+      onInvalid?.(`${key} contains an invalid tool pattern`);
+      return false;
+    });
+  };
+  return { add: parsePatterns('add'), remove: parsePatterns('remove') };
+}
+
+export function readProjectToolOverlays(
+  cwd: string,
+): Record<string, SubagentToolOverlay> {
+  const raw = readJson(path.join(cwd, '.pi', 'subagents.json'));
+  const overlays: Record<string, SubagentToolOverlay> = Object.create(null);
+  const diagnostic = (field: string, message: string) =>
+    writeSubagentsDebugLog(cwd, 'tool-overlay', { field, message });
+  if (!isPlainObject(raw) || !Object.hasOwn(raw, 'agents')) return overlays;
+  if (!isPlainObject(raw.agents)) {
+    diagnostic('agents', 'expected an object');
+    return overlays;
+  }
+  for (const [name, agent] of Object.entries(raw.agents)) {
+    if (!isPlainObject(agent)) {
+      diagnostic(`agents.${name}`, 'expected an object');
+      continue;
+    }
+    if (!Object.hasOwn(agent, 'tools')) continue;
+    const overlay = parseToolOverlay(agent.tools, (message) =>
+      diagnostic(`agents.${name}.tools`, message),
+    );
+    if (overlay) overlays[name] = overlay;
+  }
+  return overlays;
+}
+
 export function loadSubagents(cwd: string): SubagentDefinition[] {
   const { default_tools: defaultTools } = readSubagentsConfig(cwd);
+  const overlays = readProjectToolOverlays(cwd);
   const byName = new Map<string, SubagentDefinition>();
   for (const source of agentsDirSources(cwd)) {
     const blockedNames = new Set<string>();
@@ -715,6 +773,7 @@ export function loadSubagents(cwd: string): SubagentDefinition[] {
     );
     for (const agent of definitions) {
       if (!agent.tools.length) agent.tools = [...defaultTools];
+      if (overlays[agent.name]) agent.toolOverlay = overlays[agent.name];
       if (!blockedNames.has(agent.name)) byName.set(agent.name, agent);
     }
     for (const name of blockedNames) byName.delete(name);

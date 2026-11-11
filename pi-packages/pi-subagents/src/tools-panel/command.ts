@@ -58,18 +58,21 @@ export function registerToolsCommand(
           ctx.cwd ?? process.cwd(),
         );
         const active = new Set(pi.getActiveTools());
-        const discoveredTools = pi
-          .getAllTools()
-          .map((tool: { name: string; description?: string }) => ({
+        const getAllTools = pi.getAllTools.bind(pi);
+        const discoveredTools = getAllTools().map(
+          (tool: { name: string; description?: string }) => ({
             ...tool,
             active: active.has(tool.name),
-          }));
+          }),
+        );
         const result = await openPanelOverlay<ToolsPanelResult>(
           ctx,
           (_tui, theme, _keys, done, host) =>
             createToolsPanel({
               snapshot,
               discoveredTools,
+              getRegisteredToolNames: () =>
+                getAllTools().map((tool) => tool.name),
               save: options.save ?? saveToolsConfig,
               onDone: done,
               theme,
@@ -81,7 +84,7 @@ export function registerToolsCommand(
             ? ` Updated: ${result.changedRoles.join(', ')}.`
             : ' No file content changed.';
           ui.notify(
-            `Saved subagent definition tools.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Native settings or project definitions may override them.`,
+            `Saved subagent tools.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Project overlays and project definitions can override global selections.`,
             'info',
           );
         }

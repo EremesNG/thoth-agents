@@ -36,6 +36,20 @@ function fixture() {
 }
 
 describe('Pi specialist synchronization', () => {
+  test('recommends project tool overlays when project definitions may shadow globals', () => {
+    const options = fixture();
+    const projectRoot = join(options.packageRoot, '.pi', 'agents');
+    mkdirSync(projectRoot, { recursive: true });
+    const result = syncPiSpecialists({
+      ...options,
+      projectRoots: [projectRoot, join(options.packageRoot, 'missing')],
+    });
+    expect(result.success).toBe(true);
+    expect(result.diagnostics).toEqual([
+      `Project-local Pi specialists may shadow package-owned global definitions: ${projectRoot}. Prefer the project tool overlay in .pi/subagents.json (agents.<name>.tools); use /subagents-tools Project scope and c to convert a shadowing copy.`,
+    ]);
+  });
+
   test.each([
     ['openai-codex/gpt-6-astra', 'medium', 'openai-codex/gpt-6.1-sol', 'xhigh'],
     ['custom/model', 'medium', 'custom/model', 'medium'],

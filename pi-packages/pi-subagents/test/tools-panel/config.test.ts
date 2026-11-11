@@ -49,6 +49,9 @@ test('panel additions and removals round-trip through the unchanged config save 
   const { root, target } = fixture(
     '---\nname: worker\ntools: "read, retired_tool" # keep\n---\nBody.\n',
   );
+  const globalTarget = path.join(root, 'global', 'agents', 'worker.md');
+  fs.mkdirSync(path.dirname(globalTarget), { recursive: true });
+  fs.renameSync(target, globalTarget);
   const panel = createToolsPanel({
     snapshot: readToolsConfig(root),
     discoveredTools: [{ name: 'read', active: true }],
@@ -74,7 +77,7 @@ test('panel additions and removals round-trip through the unchanged config save 
     'mcp__Roblox_Studio*',
     'mcp__Other__Tool',
   ]);
-  expect(fs.readFileSync(target, 'utf8')).toBe(
+  expect(fs.readFileSync(globalTarget, 'utf8')).toBe(
     '---\nname: worker\ntools: "read, mcp__Roblox_Studio*, mcp__Other__Tool" # keep\n---\nBody.\n',
   );
 });
@@ -319,4 +322,176 @@ test('rejects a definition directory replaced with a junction instead of writing
   expect(fs.readFileSync(path.join(external, 'worker.md'), 'utf8')).toBe(
     snapshot.contents.worker,
   );
+});
+
+test('scope snapshot distinguishes global targets and project shadows and starts by presence', () => {
+  const { root, target } = fixture(
+    '---\nname: worker\ntools: bash\n---\nCopy\n',
+  );
+  const global = path.join(root, 'global', 'agents', 'worker.md');
+  fs.mkdirSync(path.dirname(global), { recursive: true });
+  fs.writeFileSync(global, '---\nname: worker\ntools: read\n---\nGlobal\n');
+  const snapshot = readToolsConfig(root);
+  expect(snapshot.initialScope).toBe('project');
+  expect(snapshot.globalRoles?.[0]).toMatchObject({
+    filePath: global,
+    shadowedBy: target,
+  });
+  const result = saveToolsConfig({ ...snapshot, editScope: 'global' }, [
+    { role: 'worker', tools: ['write'] },
+  ]);
+  expect(result.success).toBe(true);
+  expect(fs.readFileSync(global, 'utf8')).toContain('tools: "write"');
+  expect(fs.readFileSync(target, 'utf8')).toContain('tools: bash');
+  fs.rmSync(target);
+  expect(readToolsConfig(root).initialScope).toBe('global');
+  fs.writeFileSync(
+    path.join(root, '.pi', 'subagents.json'),
+    JSON.stringify({ agents: { absent: { tools: { remove: ['future'] } } } }),
+  );
+  expect(readToolsConfig(root).initialScope).toBe('project');
+});
+
+test('project overlays save losslessly, preserve unrelated keys/removals and Markdown, prune and reject stale content', () => {
+  const original = '---\nname: worker\ntools: read\n---\nBody\n';
+  const { root, target } = fixture(original);
+  const config = path.join(root, '.pi', 'subagents.json');
+  const raw = {
+    future: { keep: true },
+    agents: {
+      worker: {
+        custom: 42,
+        tools: { add: ['future*', 'future*'], remove: ['not_from_base'] },
+      },
+      absent: { tools: { add: ['other'] } },
+    },
+  };
+  fs.writeFileSync(config, JSON.stringify(raw));
+  const snapshot = { ...readToolsConfig(root), editScope: 'project' as const };
+  expect(saveToolsConfig(snapshot, snapshot.roles).success).toBe(true);
+  expect(fs.readFileSync(config, 'utf8')).toBe(JSON.stringify(raw));
+  const result = saveToolsConfig(snapshot, [
+    {
+      role: 'worker',
+      tools: ['read'],
+      overlay: { add: ['future*'], remove: ['not_from_base', 'read'] },
+    },
+  ]);
+  expect(result.success).toBe(true);
+  expect(JSON.parse(fs.readFileSync(config, 'utf8'))).toEqual({
+    ...raw,
+    agents: {
+      ...raw.agents,
+      worker: {
+        custom: 42,
+        tools: { add: ['future*'], remove: ['not_from_base', 'read'] },
+      },
+    },
+  });
+  expect(fs.readFileSync(target, 'utf8')).toBe(original);
+  expect(
+    saveToolsConfig(snapshot, [
+      { role: 'worker', tools: [], overlay: { add: [], remove: [] } },
+    ]).success,
+  ).toBe(false);
+  const clear = saveToolsConfig(result.snapshot, [
+    { role: 'worker', tools: [], overlay: { add: [], remove: [] } },
+  ]);
+  expect(clear.success).toBe(true);
+  expect(JSON.parse(fs.readFileSync(config, 'utf8')).agents.worker).toEqual({
+    custom: 42,
+  });
+});
+
+test('project save creates .pi and prunes empty agents', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'overlay-create-'));
+  roots.push(root);
+  vi.stubEnv('PI_CODING_AGENT_DIR', path.join(root, 'global'));
+  const target = path.join(root, 'global', 'agents', 'worker.md');
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, '---\nname: worker\ntools: read\n---\nBody\n');
+  const snapshot = { ...readToolsConfig(root), editScope: 'project' as const };
+  const saved = saveToolsConfig(snapshot, [
+    { role: 'worker', tools: [], overlay: { add: ['bash'], remove: [] } },
+  ]);
+  expect(saved.success).toBe(true);
+  const cleared = saveToolsConfig(saved.snapshot, [
+    { role: 'worker', tools: [], overlay: { add: [], remove: [] } },
+  ]);
+  expect(cleared.success).toBe(true);
+  expect(
+    JSON.parse(
+      fs.readFileSync(path.join(root, '.pi', 'subagents.json'), 'utf8'),
+    ),
+  ).toEqual({});
+});
+
+test('Global save refuses changed global precedence even while original file still exists', () => {
+  const { root } = fixture('---\nname: worker\ntools: bash\n---\nCopy\n');
+  const global = path.join(root, 'global', 'agents', 'worker.md');
+  fs.mkdirSync(path.dirname(global), { recursive: true });
+  fs.writeFileSync(global, '---\nname: worker\ntools: read\n---\nGlobal\n');
+  const snapshot = { ...readToolsConfig(root), editScope: 'global' as const };
+  const replacement = path.join(root, 'global', 'subagents', 'worker.md');
+  fs.mkdirSync(path.dirname(replacement), { recursive: true });
+  fs.writeFileSync(
+    replacement,
+    '---\nname: worker\ntools: write\n---\nReplacement\n',
+  );
+  expect(
+    saveToolsConfig(snapshot, [{ role: 'worker', tools: ['edit'] }]),
+  ).toMatchObject({ success: false, changedRoles: [] });
+  expect(fs.readFileSync(global, 'utf8')).toContain('tools: read');
+});
+
+test.each([
+  'winner',
+  'content',
+  'defaults',
+  'flags',
+])('Project save refuses stale base %s before writing the overlay', (change) => {
+  const { root, target } = fixture('---\nname: worker\n---\nCopy\n');
+  const snapshot = { ...readToolsConfig(root), editScope: 'project' as const };
+  if (change === 'winner') {
+    const replacement = path.join(root, '.pi', 'subagents', 'worker.md');
+    fs.mkdirSync(path.dirname(replacement), { recursive: true });
+    fs.copyFileSync(target, replacement);
+  } else if (change === 'content') fs.appendFileSync(target, 'Changed\n');
+  else {
+    const globalConfig = path.join(root, 'global', 'subagents.json');
+    fs.mkdirSync(path.dirname(globalConfig), { recursive: true });
+    fs.writeFileSync(
+      globalConfig,
+      JSON.stringify(
+        change === 'defaults'
+          ? { default_tools: ['bash'] }
+          : { enable_ask_orchestrator: false },
+      ),
+    );
+  }
+  const result = saveToolsConfig(snapshot, [
+    { role: 'worker', tools: [], overlay: { add: ['new*'], remove: [] } },
+  ]);
+  expect(result).toMatchObject({ success: false, changedRoles: [] });
+  expect(result.error).toMatch(/changed|stale/i);
+  expect(fs.existsSync(path.join(root, '.pi', 'subagents.json'))).toBe(false);
+});
+
+test('Global then Project save uses the updated baseline for an unshadowed global winner', () => {
+  const { root, target } = fixture(
+    '---\nname: worker\ntools: read\n---\nBody\n',
+  );
+  const global = path.join(root, 'global', 'agents', 'worker.md');
+  fs.mkdirSync(path.dirname(global), { recursive: true });
+  fs.renameSync(target, global);
+  const snapshot = readToolsConfig(root);
+  const saved = saveToolsConfig({ ...snapshot, editScope: 'global' }, [
+    { role: 'worker', tools: ['read', 'bash'] },
+  ]);
+  expect(saved.success).toBe(true);
+  const project = saveToolsConfig({ ...saved.snapshot, editScope: 'project' }, [
+    { role: 'worker', tools: [], overlay: { add: ['new*'], remove: [] } },
+  ]);
+  expect(project).toMatchObject({ success: true, changedRoles: ['worker'] });
+  expect(project.snapshot.roles[0]?.tools).toEqual(['read', 'bash']);
 });

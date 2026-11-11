@@ -148,6 +148,24 @@ Use `/reload` after changing extension code, skill files, config, or markdown su
 
 Package installation scope and configuration scope are independent. A globally installed extension can still use project-local `.pi/subagents.json` and `.pi/subagents/*.md`; a project-local package installation does not require every subagent setting to be project-local.
 
+For project-only tool changes, prefer an overlay in `<project>/.pi/subagents.json` instead of copying a global definition:
+
+```json
+{
+  "agents": {
+    "thoth-worker": {
+      "tools": { "add": ["mcp__blender*"], "remove": ["write"] }
+    }
+  }
+}
+```
+
+`agents.<name>.tools` accepts optional `add` and `remove` string arrays. Only the current project's file is read (no ancestor search); global `subagents.json` `agents` is ignored. Invalid shapes, non-string/empty entries and `@active` are ignored with debug diagnostics. Other settings retain their global/project cascade.
+
+The overlay applies to the winning definition, including a project copy: use its non-empty `tools` or inherited `default_tools`, append `add` before expansion, then subtract `remove` matches, `disallowed_tools` and native `subagent_*` exclusions. Globs use case-sensitive `*` matching against all registered tools, active and inactive; unmatched patterns are silent. Missing exact additions follow normal dropped-tool reporting. Enabled injected `ask_orchestrator`/`notify_orchestrator` are unaffected by overlays; their flags and `disallowed_tools` still control them.
+
+For Blender, add `mcp__blender*` only in that project's overlay and configure the Blender MCP server only there. Never grant the generic `mcp` gateway as a substitute: it can expose other servers. A glob alone scopes access only if that MCP server is not also configured globally.
+
 ## Subagent definitions
 
 Subagents are markdown files with optional strict YAML frontmatter. Each definition's identity is its filename stem, trimmed and normalized to lowercase. If frontmatter `name` is present, it must match that identity case-insensitively; otherwise loading fails with a diagnostic telling you to rename the file or change `name`.
@@ -212,15 +230,27 @@ Supported frontmatter:
 
 Pi-subagents owns `/subagents-tools` (from `0.3.0`). In interactive TUI mode it
 opens the shared pi-core list-editor shell: arrows/j/k, g/G or wheel navigate;
-enter/e edits a definition, space toggles a registered exact tool, and `a` adds
-a name or glob. In the picker, `d`/Delete removes the selected manual entry;
+enter/e opens a tool picker, space toggles a registered exact tool, and `a` adds
+a name or glob. Tab switches the visible Global/Project scope. Project starts
+selected when the project config has a non-empty `agents` object or a project
+definition shadows a global one; otherwise Global starts selected.
+In the picker, `d`/Delete removes the selected manual entry;
 enter/esc/q returns, s saves, and esc/q cancels with dirty-draft discard confirmation.
 The add input supports Enter to confirm, Esc to cancel, Backspace to delete,
 and Ctrl+U to clear. The wide table
 starts at 84 columns and the cursor-centered viewport follows terminal height.
 
-The editor targets the global/project definitions currently resolved by this
-extension, including project overrides. It discovers all registered root tools
+Global edits target the global definition even when a project copy shadows it;
+a warning explains that the copy hides the change here. Project edits target only
+`agents.<name>.tools` in `.pi/subagents.json`, with the winning base shown read-only.
+In Project's picker, `a` adds an `add` pattern, `x` adds a `remove` pattern, and
+`d`/Delete deletes a selected overlay entry; `r` clears that agent's overlay.
+Manual patterns are checked only against their target add/remove list; an explicit
+add of a base entry is retained, and an exact base entry can be removed with `x`.
+Exact-name toggles update the overlay, but cannot enable a tool blocked by a
+remove glob (the blocking pattern is shown).
+
+The panel discovers all registered root tools
 (active and inactive) on each open and identifies the child-provided
 `ask_orchestrator` and `notify_orchestrator` separately. Native `subagent_*` controls are not selectable.
 There is no dynamic `*` mode, and `@active` is rejected. The navigable Manual
@@ -230,13 +260,33 @@ registered tools; unmatched globs contribute nothing at launch, which is expecte
 when a tool/server is not registered. Adding a registered eligible exact name
 checks its checkbox instead. All edits remain drafts until save.
 
-Saving edits only the definition's `tools` field, preserving unrelated
-frontmatter, `disallowed_tools` and body bytes. Stale files and pre-write races
-fail safely; partial saves report already-changed definitions and allow retry
-with the original draft. Running children and ambient root tools are unchanged.
+Global save edits only the definition's `tools` field, preserving unrelated
+frontmatter, `disallowed_tools` and body bytes. Project save preserves untouched
+add/remove entries and other JSON keys, prunes empty overlays, and never edits
+Markdown. Writes are atomic with stale-content detection and `.bak-<pid>-<uuid>`
+backups; partial saves report changes and allow retry with the original draft.
+Running children and ambient root tools are unchanged.
+
+In Project's overview, `c` converts only a copy shadowing a same-name global
+definition. Save or discard drafts first. Confirmation summarizes candidate add/remove
+entries and names every lost non-tools aspect (description, instructions/body and
+other frontmatter fields, including `disallowed_tools`), without dumping values or
+body text. Lost content stays in the `.bak` copy. It warns that future tools matched
+by global globs now apply.
+The candidate adds copy entries absent from the global list and removes exact
+names in expanded global tools absent from expanded copy tools (current inventory).
+Press `d` to convert or `k`/Esc to cancel without changes. Conversion refuses if
+another same-name project definition would remain, or if the candidate overlay
+fails to preserve the current effective selection against either the global
+definition or the still-present copy, using the current registered inventory.
+This comparison includes enabled orchestrator controls and their `disallowed_tools` denials.
+After stale checks, it writes the overlay first, then retires the copy to an
+exclusive `.bak-<pid>-<uuid>` backup. Overlay-write failure leaves the copy alone;
+retirement failure reports partial state with an equivalent tool selection.
 
 An optional host adapter supplies reset defaults and managed-file validation.
-Without one, the command works generically and `r defaults` is unavailable.
+Without one, the command works generically and Global `r defaults` is unavailable;
+Project `r clear overlay` remains available.
 Thoth's adapter applies only to its marked, canonical global `agents/thoth-*.md`
 specialists; project and unmanaged definitions stay generic. Explicit reset may
 remove manual entries in favor of the adapter's defaults.

@@ -60,6 +60,11 @@ export type EffectiveSubagentProfile = {
   effort: ResolvedProfileField<ThinkingEffort>;
 };
 
+export type SubagentToolOverlay = {
+  add: string[];
+  remove: string[];
+};
+
 export type SubagentDefinition = {
   name: string;
   description: string;
@@ -68,6 +73,7 @@ export type SubagentDefinition = {
   model?: ModelRef;
   effort?: ThinkingEffort;
   tools: string[];
+  toolOverlay?: SubagentToolOverlay;
   disallowed_tools?: string[];
   skills?: string[];
   scope?: SubagentDefinitionScope;

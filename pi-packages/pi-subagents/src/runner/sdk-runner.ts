@@ -8,7 +8,10 @@ import {
 import { SubagentStructuredError } from '../error-metadata.js';
 import { resolveSubagentsHistoryHome } from '../history.js';
 import { resolveEffectiveSubagentProfile } from '../profile-resolver.js';
-import { expandToolPatterns, hasToolGlob } from '../tool-patterns.js';
+import {
+  hasToolGlob,
+  resolveEffectiveToolSelection,
+} from '../tool-patterns.js';
 import type {
   EffectiveSubagentProfile,
   ModelRef,
@@ -17,6 +20,7 @@ import type {
   SubagentOrchestratorChannel,
   SubagentRunner,
   SubagentsConfig,
+  SubagentToolOverlay,
   ThinkingEffort,
 } from '../types.js';
 import {
@@ -90,22 +94,20 @@ function resolveConfiguredTools(
   disallowedTools: readonly string[],
   enableAskOrchestrator: boolean,
   enableNotifyOrchestrator: boolean,
+  overlay?: SubagentToolOverlay,
 ): string[] {
-  const registered = patterns.some(hasToolGlob)
+  const registered = [...patterns, ...(overlay?.add ?? [])].some(hasToolGlob)
     ? readToolNames(context, ['getAllTools'])
     : undefined;
 
   try {
-    const expanded = expandToolPatterns(patterns, registered);
-    if (enableAskOrchestrator) expanded.push('ask_orchestrator');
-    if (enableNotifyOrchestrator) expanded.push('notify_orchestrator');
-    const denied = new Set(disallowedTools);
-    const permitted = [...new Set(expanded)].filter(
-      (name) =>
-        (enableAskOrchestrator || name !== 'ask_orchestrator') &&
-        (enableNotifyOrchestrator || name !== 'notify_orchestrator') &&
-        !denied.has(name) &&
-        !name.startsWith('subagent_'),
+    const permitted = resolveEffectiveToolSelection(
+      patterns,
+      registered,
+      disallowedTools,
+      enableAskOrchestrator,
+      enableNotifyOrchestrator,
+      overlay,
     );
     if (!permitted.length)
       throw new Error(
@@ -779,6 +781,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     definition.disallowed_tools ?? [],
     config.enable_ask_orchestrator !== false,
     config.enable_notify_orchestrator !== false,
+    definition.toolOverlay,
   );
   const systemPrompt = definition.instructions;
   const prompt =

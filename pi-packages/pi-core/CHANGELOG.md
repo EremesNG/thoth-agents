@@ -4,6 +4,21 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-11
+
+### Added
+
+- History panel shell opt-ins: list summary slot (receives width), variable-height header rows, item groups with collapsible headers, `/` filter, numbered views with a tab row, and confirmed item actions with transient notices.
+- `copyToClipboardOsc52` panel primitive (best-effort, size-capped, no tmux passthrough).
+
+### Changed
+
+- Shared English chrome for every history panel: one contextual footer hint row built from adapter hint metadata, a clickable `✕ Close` in the top border, a `?` keyboard-shortcuts overlay (modal-aware footer), and a `line A/B` position indicator with `● live` / `↓ N new`.
+
+### Fixed
+
+- Action notices are validated and unknown theme roles fall back to a safe color instead of throwing.
+
 ## [0.9.0] - 2026-11-10
 
 ### Added

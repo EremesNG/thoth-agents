@@ -5,6 +5,20 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-11
+
+### Added
+
+- Redesigned `/subagents` panel: executions grouped as Needs attention, Running, Completed and Failed with distinct status glyphs, compact duration/cost and a summary row; `/` filter by name, agent or status.
+- Two-line header card (status, agent, duration with effective timeout, cost, model, effort, turns, context bar) and an `i` details block available in every view.
+- Views `1`-`5`: Result, Transcript, Prompt, Tools and Metrics, with an explicit state when execution detail is no longer retained; theme tool density keeps applying in Transcript.
+- Actions `x` cancel and `e` extend with Enter confirmation, and `y` copy of the result through OSC 52. Replies and continuations stay in the main chat.
+
+### Fixed
+
+- Cancelling from the panel no longer crashes Pi with "Unknown theme color: undefined".
+- The displayed timeout reflects deadline extensions.
+
 ## [0.12.1] - 2026-11-10
 
 ### Fixed

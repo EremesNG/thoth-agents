@@ -4,6 +4,16 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-11
+
+### Added
+
+- `/bg` history rows show a status glyph per state, elapsed duration and the exit code or signal of failed tasks.
+
+### Changed
+
+- The `/bg` panel uses the shared history panel chrome (single hint row, `✕ Close`, `?` help); stop and paging bindings are unchanged.
+
 ## [0.7.0] - 2026-11-10
 
 ### Changed

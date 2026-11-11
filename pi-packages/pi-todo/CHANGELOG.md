@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-11
+
+### Changed
+
+- The `/todos` panel uses the shared history panel chrome (single hint row, `✕ Close`, `?` help).
+
 ## [0.6.0] - 2026-11-08
 
 ### Added

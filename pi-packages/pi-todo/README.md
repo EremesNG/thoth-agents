@@ -68,6 +68,15 @@ Open-task reinjection uses the append-only approach demonstrated by
   system prompt, preserving Pi/Claude bridge prompt sections. Repeated hooks
   replace the extension's own block instead of duplicating it.
 
+## Todos panel controls
+
+`/todos` retains its task/detail navigation: ←/→ selects, ↑/↓, PgUp/PgDn,
+Home/End or the wheel scrolls. `?` toggles binding help; Esc, `q`, Ctrl+C or the
+clickable `✕ Close` closes the panel (Esc dismisses help first). The shared shell
+shows one footer hint row and a `line A/B` position for overflowing content.
+Subagents-only groups, `/` filtering, numbered views and operational actions are
+not enabled here.
+
 ## Work-panel compatibility and discovery
 
 Upgrade pi-subagents, pi-background-tasks and pi-todo together to `>=0.3.0`, then

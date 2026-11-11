@@ -703,7 +703,14 @@ width helpers, key normalization, SGR/urxvt/X10 mouse and wheel parsing,
 cursor-centered viewports, selectedBg rows, hints, dirty-discard confirmation,
 and a list-editor shell. Both list editors use that shell with height-aware
 viewports (tools wide at 84 columns, models at 102). History panels and Work
-detail use the primitives without changing navigation, scrolling or folding.
+detail use the primitives. `/subagents`, `/todos` and `/bg` share one footer hint
+row, clickable `✕ Close`, `?` binding help and `line A/B` live/unseen-line position.
+Only `/subagents` opts into Needs attention/Running/Completed/Failed groups, `/`
+filtering, views `1`–`5` (Result/Transcript/Prompt/Tools/Metrics), `g/G` jumps, `i`
+details in every view and eligible `x` cancel / `e` extend / `y` copy actions. Copy is
+best-effort OSC 52 without tmux passthrough; replies, messages and continuation
+stay in main chat. Todo/background interaction models stay unchanged, including
+background `x` stop and bracket log paging. See [panel controls](../../pi-packages/pi-subagents/README.md#history-panel).
 Panel overlays open through `openOwnedOverlay`, including background history.
 The list editors and background history use its shared `openPanelOverlay` host,
 which enables mouse reporting in regular TUI mode and balances cleanup on close,

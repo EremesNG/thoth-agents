@@ -193,6 +193,12 @@ describe('subagents smoke', () => {
       await Promise.resolve();
       await Promise.resolve();
       expect(fixture.ui.custom).toHaveBeenCalledOnce();
+      fixture.panelRender();
+      fixture.key('2');
+      expect(fixture.panelRender().join(' ')).toContain(
+        'Execution detail no longer retained',
+      );
+      fixture.key('3');
       expect(fixture.panelRender().join(' ')).toContain('task old-done');
       fixture.key('q');
       await Promise.resolve();
@@ -302,9 +308,16 @@ describe('subagents smoke', () => {
       fixture.key('\r');
       await Promise.resolve();
       await Promise.resolve();
+      fixture.panelRender();
+      fixture.key('2');
+      expect(fixture.panelRender().join(' ')).toContain(
+        'Execution detail no longer retained',
+      );
+      fixture.key('3');
       expect(fixture.panelRender().join(' ')).toContain(
         'retained history task',
       );
+      fixture.key('1');
       expect(fixture.panelRender().join(' ')).toContain('retained result');
       fixture.key('q');
       await Promise.resolve();
@@ -312,6 +325,12 @@ describe('subagents smoke', () => {
       const opening = commands.get('subagents')!.handler('', fixture.ctx);
       await Promise.resolve();
       await Promise.resolve();
+      fixture.panelRender();
+      fixture.key('2');
+      expect(fixture.panelRender().join(' ')).toContain(
+        'Execution detail no longer retained',
+      );
+      fixture.key('3');
       expect(fixture.panelRender().join(' ')).toContain(
         'retained history task',
       );
@@ -666,14 +685,26 @@ describe('subagents smoke', () => {
       fixture.key('\u001b[B');
       expect(fixture.key('\r')).toEqual({ consume: true });
       await vi.waitFor(() => expect(fixture.ui.custom).toHaveBeenCalledOnce());
+      fixture.panelRender();
+      fixture.key('2');
+      expect(fixture.panelRender().join(' ')).toContain(
+        'Execution detail no longer retained',
+      );
+      fixture.key('3');
       expect(fixture.panelRender().join(' ')).toContain('task second');
       expect(fixture.key('x')).toBeUndefined();
-      expect(fixture.key('x')).toBeUndefined();
+      expect(fixture.key('\r')).toBeUndefined();
       expect(managerInstance.cancel).toHaveBeenCalledWith(
         'second',
         'cancelled from subagents detail view',
       );
       expect(fixture.key('\u001b[D')).toBeUndefined();
+      fixture.panelRender();
+      fixture.key('2');
+      expect(fixture.panelRender().join(' ')).toContain(
+        'Execution detail no longer retained',
+      );
+      fixture.key('3');
       expect(fixture.panelRender().join(' ')).toContain('task first');
       // Even if focus/overlay hooks transiently report the root, open() must stay pending.
       fixture.focusEditor();

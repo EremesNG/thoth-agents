@@ -1,6 +1,6 @@
 import { appendFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
-import type { Component, OverlayHandle } from '@earendil-works/pi-tui';
+import { type Component, type OverlayHandle, stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,7 @@ import {
 import { logPathFor, taskDir, writeMeta } from './registry.js';
 import { lifecycleHost } from './test-support/lifecycle-harness.js';
 import type { BackgroundTaskMeta } from './types.js';
+import { icon, statusIcon } from '../../pi-thoth-theme/src/shared/icons.js';
 
 function task(
   host: ReturnType<typeof lifecycleHost>,
@@ -48,7 +49,14 @@ function panelFor(
       cwd: host.ctx.cwd,
       sessionId: host.ctx.sessionManager.getSessionId(),
     },
-    { onClose() {}, maxLines: 42, initialSelectedId: selectedTaskId },
+    {
+      onClose() {}, maxLines: 42, initialSelectedId: selectedTaskId,
+      theme: { fg(role: string, text: string) {
+        if (!['accent', 'border', 'borderMuted', 'dim', 'muted', 'text', 'success', 'warning', 'error', 'mdHeading', 'toolTitle'].includes(role))
+          throw new Error(`Unknown theme color: ${role}`);
+        return text;
+      } },
+    },
   );
 }
 
@@ -199,6 +207,112 @@ describe('Background history overlay ownership', () => {
 });
 
 describe('Background task history', () => {
+  it.each([
+    ['running', '◐', 'accent'],
+    ['succeeded', '✓', 'success'],
+    ['failed', '✗', 'error'],
+    ['cancelled', '■', 'muted'],
+    ['timed_out', '◷', 'error'],
+  ] as const)('lists %s status before the name with a semantic role', (status, glyph, role) => {
+    const host = lifecycleHost(`history-list-${status}`);
+    const meta = task(host, `bg_history_list_${status}`, { name: 'Build', status });
+    const fg = vi.fn((_role: string, text: string) => text);
+    const panel = new BackgroundTasksHistoryPanel(host.pi, meta.callbackOrigin!, {
+      onClose() {}, maxLines: 42, theme: { fg },
+    });
+    try {
+      const cells = panel.render(120).map(stripTerminalSequences).map((row) => row.split('│')[1]?.slice(1, -1) ?? '');
+      expect(cells.some((row) => row.startsWith(`›${glyph} Build`))).toBe(true);
+      expect(fg).toHaveBeenCalledWith(role, glyph);
+    } finally {
+      panel.dispose();
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+  it.each(['nerd', 'unicode', 'ascii'] as const)('keeps all statuses distinct without color in %s mode', (mode) => {
+    const host = lifecycleHost(`history-mode-${mode}`);
+    const statuses = ['running', 'succeeded', 'failed', 'cancelled', 'timed_out'] as const;
+    const metas = statuses.map((status, i) => task(host, `bg_history_mode_${i}`, { name: 'Build', status, startedAt: i * 1000 }));
+    const token = registerRenderKit({
+      ...createTestRenderKit({ icon: (name) =>
+        name === 'spinnerFrames' || name === 'workingFrames' ? [] : icon(name, mode),
+      }),
+      statusGlyph: (_theme, status) => statusIcon(status, mode),
+    }, {});
+    const panel = panelFor(host);
+    try {
+      const rows = panel.render(120).map(stripTerminalSequences).map((row) => row.split(icon('boxVertical', mode))[1]?.slice(1, -1) ?? '').filter((row) => row.includes('Build'));
+      const prefixes = rows.map((row) => row.slice(1).split(' Build')[0]);
+      expect(rows).toHaveLength(5);
+      expect(new Set(prefixes).size).toBe(5);
+      panel.handleInput('\x1b[C');
+      const selected = panel.render(120).map(stripTerminalSequences).find((row) => row.includes(`${icon('selection', mode)}${statusIcon('cancelled', mode)} Build`));
+      expect(selected).toBeDefined();
+    } finally {
+      panel.dispose();
+      withdrawRenderKit(token);
+      for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
+  it('shows live elapsed time and failure signals in the error role without treating cancellation as failure', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(46_000);
+    const host = lifecycleHost('history-list-signal');
+    const meta = task(host, 'bg_history_signal', { name: 'Build', status: 'running', endedAt: undefined });
+    const fg = vi.fn((_role: string, text: string) => text);
+    const panel = new BackgroundTasksHistoryPanel(host.pi, meta.callbackOrigin!, { onClose() {}, maxLines: 42, theme: { fg } });
+    const row = () => panel.render(120).map(stripTerminalSequences).map((row) => row.split('│')[1]?.slice(1, -1) ?? '').find((row) => row.includes(' Build'))!;
+    try {
+      expect(row()).toMatch(/45s$/);
+      writeMeta({ ...meta, status: 'failed', endedAt: 46_000, lastSignal: 'SIGTERM', lastExitCode: null });
+      expect(row()).toMatch(/45s SIGTERM$/);
+      expect(fg).toHaveBeenCalledWith('error', 'SIGTERM');
+      writeMeta({ ...meta, status: 'cancelled', endedAt: 46_000, lastSignal: 'SIGTERM' });
+      expect(row()).not.toContain('SIGTERM');
+    } finally {
+      vi.restoreAllMocks();
+      panel.dispose();
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [45_000, '45s'], [299_000, '4m'], [3_930_000, '1h5m'],
+  ])('right-aligns compact elapsed time for %i ms', (elapsed, expected) => {
+    const host = lifecycleHost('history-list-duration');
+    const meta = task(host, 'bg_history_duration', { name: 'Build', endedAt: 1000 + elapsed });
+    const panel = panelFor(host);
+    try {
+      const row = panel.render(120).map(stripTerminalSequences).map((row) => row.split('│')[1]?.slice(1, -1) ?? '').find((row) => row.startsWith('›✓'));
+      expect(row).toMatch(new RegExp(`Build +${expected}$`));
+    } finally {
+      panel.dispose();
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
+  it('truncates wide names before dropping duration, then exit metadata at narrow widths', () => {
+    const host = lifecycleHost('history-list-width');
+    const meta = task(host, 'bg_history_width', { name: '日本語🚀'.repeat(20), status: 'failed', lastExitCode: 123456, endedAt: 46_000 });
+    const panel = panelFor(host);
+    const rowAt = (width: number) => {
+      const rows = panel.render(width);
+      expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
+      return rows.map(stripTerminalSequences).map((row) => row.split('│')[1]?.slice(1, -1) ?? '').find((row) => row.startsWith('›✗'))!;
+    };
+    try {
+      expect(rowAt(120)).toMatch(/… +45s exit 123456$/);
+      expect(rowAt(90)).toMatch(/… +exit 123456$/);
+      expect(rowAt(90)).not.toContain('45s');
+      writeMeta({ ...meta, lastExitCode: Number.MAX_SAFE_INTEGER });
+      expect(rowAt(90)).not.toContain('exit');
+      for (const width of [12, 20, 40, 60, 80, 160]) rowAt(width);
+    } finally {
+      panel.dispose();
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
   it('/bg and summary Enter open full session history; row Enter selects that task', async () => {
     const host = lifecycleHost('history-entrypoints', true);
     await host.emit('session_start');
@@ -234,7 +348,7 @@ describe('Background task history', () => {
       expect(host.panel.detailRender(160).join('\n')).toContain(
         'selected running task · running',
       );
-      expect(host.panel.detailRender(160).join('\n')).toContain('[/] log page');
+      expect(host.panel.detailRender(160).join('\n')).toContain('? help');
       host.panel.detailKey('q');
       writeMeta({ ...running, status: 'cancelled', endedAt: Date.now() });
     } finally {
@@ -253,13 +367,13 @@ describe('Background task history', () => {
     let token: ReturnType<typeof registerRenderKit> | undefined;
     try {
       const native = panel.render(160);
-      expect(native.join('\n')).toContain('› icon task');
+      expect(native.join('\n')).toContain('›✓ icon task');
       expect(native.join('\n')).toContain('Status: succeeded · dismissed');
       token = registerRenderKit(createTestRenderKit({
         icon: (name) => name === 'selection' ? '>' : name === 'separator' ? '|' : '',
       }), {});
       const themed = panel.render(160).join('\n');
-      expect(themed).toContain('> icon task');
+      expect(themed).toContain('>✓ icon task');
       expect(themed).toContain('icon task | succeeded');
       expect(themed).toContain('Status: succeeded | dismissed');
       expect(themed).toContain('Retained log | bytes');
@@ -350,6 +464,10 @@ describe('Background task history', () => {
     );
     const panel = panelFor(host, meta.id);
     try {
+      expect(panel.render(160).at(-1)).toContain('] next page');
+      panel.handleInput('?');
+      expect(panel.render(160).join(String.fromCharCode(10))).toContain('Keyboard shortcuts');
+      panel.handleInput('?');
       expect(panel.render(160).join('\n')).not.toContain('final retained line');
       panel.handleInput('\x1b[H');
       expect(panel.render(160).join('\n')).toContain('first retained line');
@@ -389,6 +507,7 @@ describe('Background task history', () => {
       expect(panel.selectedItem()?.stopRequestedAt).toBeUndefined();
       expect(panel.render(160).join('\n')).toContain('x again to stop');
       panel.handleInput('x');
+      expect(() => panel.render(160)).not.toThrow();
       await expect
         .poll(() => panel.selectedItem()?.status, { timeout: 10_000 })
         .toBe('cancelled');

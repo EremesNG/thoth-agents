@@ -35,7 +35,7 @@ const task: SubagentTask = {
   },
 };
 function asciiKit(separator = '|') {
-  return createTestRenderKit({
+  const kit = createTestRenderKit({
     icon: (name) =>
       new Map([
         ['separator', separator],
@@ -62,6 +62,8 @@ function asciiKit(separator = '|') {
         ['warning', '!'],
       ]).get(name) ?? '',
   });
+  kit.statusGlyph = (_theme, status) => (status === 'completed' ? '+' : '?');
+  return kit;
 }
 
 it('custom truncators reserve the entire resolved ellipsis and stay cell-bounded at tiny widths', () => {
@@ -138,19 +140,21 @@ it('mounted history navigation, selection and scroll re-resolve while literal re
     25,
   );
   const native = panel.render(80);
-  expect(native.join('\n')).toContain('●');
-  expect(native.join('\n')).toContain('○');
+  expect(native.join('\n')).toContain('›✓ Worker 0');
+  expect(native.join('\n')).toContain(' ✓ Worker 1');
   const token = registerRenderKit(asciiKit(), {});
   onTestFinished(() => withdrawRenderKit(token));
   const themed = panel.render(80).join('\n');
   expect(themed).toContain('@ subagents');
-  expect(themed).toContain('</> select | ^/v scroll');
+  panel.handleInput('?');
+  expect(panel.render(80).join(String.fromCharCode(10))).toContain('</>');
+  panel.handleInput('?');
   expect(themed).toContain('^/v');
-  expect(themed).toContain('1/9 | agent: worker | status: completed');
+  expect(themed).toContain('+ Worker 0  worker | completed');
   expect(themed).not.toContain('┃');
-  expect(themed).toContain('+- delegated task');
-  expect(themed).toContain('* 1. Worker');
-  expect(themed).toContain('o 2. Worker');
+  expect(themed).toContain('[1 Result]');
+  expect(themed).toContain('>+ Worker 0');
+  expect(themed).toContain(' + Worker 1');
   expect(themed).not.toContain('●');
   expect(themed).not.toContain('○');
   expect(themed).toContain('literal · … response');

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
 import { expect, it } from 'vitest';
 import { HistoryPanel } from '../src/history-panel.js';
 import {
@@ -21,7 +22,7 @@ const theme = {
 it.each([
   false,
   true,
-])('preserves history frame bytes at empty, narrow and split layouts (kit: %s)', (themed) => {
+])('shares English history chrome at empty, narrow and split layouts (kit: %s)', (themed) => {
   const token = themed
     ? registerRenderKit(createTestRenderKit(), {})
     : undefined;
@@ -48,35 +49,27 @@ it.each([
       },
     );
   try {
-    const hashes = [true, false].flatMap((empty) =>
-      [30, 60, 120].map((width) => {
+    for (const empty of [true, false]) {
+      for (const width of [30, 60, 120]) {
         const panel = history(empty);
         try {
-          return digest(panel.render(width));
+          const rows = panel.render(width).map(stripTerminalSequences);
+          expect(rows).toHaveLength(14);
+          expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
+          expect(rows[0]).toContain('Close');
+          expect(rows.slice(1).join(String.fromCharCode(10))).not.toContain(
+            'Close',
+          );
+          expect(rows.join(String.fromCharCode(10))).not.toContain('x cancel');
+          if (!empty && width >= 60) {
+            expect(rows.join(String.fromCharCode(10))).toContain('metadata');
+            expect(rows.join(String.fromCharCode(10))).toContain('界 evidence');
+          }
         } finally {
           panel.dispose();
         }
-      }),
-    );
-    expect(hashes).toEqual(
-      themed
-        ? [
-            '8c2bafe3271cd32939aa5f89315e1f99bc002237e578e9cb0f440b1ccc352ab5',
-            'f9b4f15d29a87a1c889b0d9bb6ea820f37f2ce181caa299d1a527c9e530d37c0',
-            '0567da72cb49145eb0a9974b0dea1cceb55fe99f4f93cf62979893df141c9e1b',
-            'c41b94e448bbf7294ab34a1e58f9cea2c05cbe1bd36b87fd98c497384cce0474',
-            '2da81b8404f23b9d3296006d1a307f8596ddd6f51c2bca7ee7731f8473d6a557',
-            '616228e90959ef4995cd4fa3f79f6a3822c4bdcec9695edcf12c3f67d11d8403',
-          ]
-        : [
-            '94330909480431561033984c53c28de2da8c9ddaac7716df99d87583c8cf0659',
-            '169cbb63395ad0c6936ee989b36f7d9de0e7fb55b7a08dd0db80bf4beeee6291',
-            'c79e3557f66c46d5d0877b22eda865ea7d4337c0684bd1ef49e147932037b78d',
-            'fc074fabab70e4d29690c14866ebb43f92965ee1454ab73402f260f3fa06ce55',
-            'e35fe5485b3e51facb59952614692e8ab194cbedb440b7f0622e2ad0e8df28a5',
-            'a9613e3b11696705a4d5aa7961ac038d34031ad1fe34d5e80e2e797f7351bebb',
-          ],
-    );
+      }
+    }
   } finally {
     if (token) withdrawRenderKit(token);
   }

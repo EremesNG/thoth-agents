@@ -7,6 +7,8 @@ export type {
 export { isEditorReplaced, registerEditorSlot } from './editor-slot.js';
 export { settleOwnedOverlays } from './owned-overlay.js';
 
+export { copyToClipboardOsc52 } from './panel-clipboard.js';
+
 export { PanelDiscardConfirmation } from './panel-discard.js';
 export type {
   PanelFrameBorderPart,

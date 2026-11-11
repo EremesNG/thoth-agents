@@ -116,7 +116,11 @@ cwd/session, newest first, including dismissed tasks and older outcomes. Task
 metadata and retained logs are shown in bounded pages of up to 64 KiB, with
 visible capture/retention loss notices. ←/→ selects a task, ↑/↓, PgUp/PgDn,
 Home/End and the mouse wheel scroll the current page; `[`/`]` pages the log.
-Press `x` twice to stop a running task; Esc, `q` or Ctrl+C closes history.
+Press `x` twice to stop a running task. `?` toggles binding help; Esc, `q`, Ctrl+C
+or the clickable `✕ Close` closes history (Esc dismisses help first). One footer
+hint row shows eligible bindings and `line A/B`, with `● live` while following
+output or `↓ N new` for unseen lines. Subagents-only groups, `/` filtering,
+numbered views and cancel/extend/copy actions are not enabled here.
 The shared pi-core overlay host enables mouse reporting in regular TUI mode and
 releases it on close, rejection or disposal; fullscreen-owned tracking is untouched.
 Dismissing a terminal Work-panel row does not remove it from history or totals.

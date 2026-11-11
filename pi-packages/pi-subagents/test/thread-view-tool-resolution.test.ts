@@ -167,7 +167,7 @@ function completedToolPanel(name: string): SubagentsHistoryPanel {
       ],
     },
   };
-  return new SubagentsHistoryPanel(
+  const panel = new SubagentsHistoryPanel(
     [task],
     { fg: (_role: string, text: string) => text },
     () => {},
@@ -181,6 +181,8 @@ function completedToolPanel(name: string): SubagentsHistoryPanel {
         resolveRegisteredToolDefinition({}, {}, toolName),
     },
   );
+  panel.handleInput('2');
+  return panel;
 }
 
 beforeEach(() => {
@@ -663,4 +665,69 @@ describe('viewer tool resolution', () => {
     ).toBe(definition);
     expect(getToolDefinition).not.toHaveBeenCalled();
   });
+});
+
+it('keeps thoth-theme tools.collapsed frame/compact/line density in the Transcript view', async () => {
+  // Runtime imports keep this package's production typecheck independent of theme internals.
+  const kitPath = new URL(
+    '../../pi-thoth-theme/src/render-kit/index.ts',
+    import.meta.url,
+  ).href;
+  const toolsPath = new URL(
+    '../../pi-thoth-theme/src/tools/index.ts',
+    import.meta.url,
+  ).href;
+  const { createRenderKit } = await import(kitPath);
+  const { createToolRendererResolver } = await import(toolsPath);
+  const outputs: string[] = [];
+  setPiComponentProviderForSubagentRendering({
+    createReadToolDefinition: () => ({ name: 'read' }),
+    ToolExecutionComponent: class {
+      constructor(
+        _name: string,
+        _id: string,
+        private args: unknown,
+        _options: unknown,
+        private definition: Definition,
+      ) {}
+      render(width: number) {
+        return (
+          this.definition
+            .renderCall?.(
+              this.args,
+              { fg: (_role: string, text: string) => text },
+              {},
+            )
+            .render(width) ?? []
+        );
+      }
+    },
+  });
+  const panel = completedToolPanel('read');
+  try {
+    for (const collapsed of ['frame', 'compact', 'line']) {
+      uninstallKit();
+      const config = {
+        icons: 'unicode',
+        animation: 'off',
+        tools: { enabled: true, collapsed },
+        statusLine: { enabled: false },
+        welcome: { enabled: false },
+      };
+      installKit(
+        createRenderKit(
+          {},
+          createToolRendererResolver({ getAllTools: () => [] }, config, tmp),
+          config,
+        ),
+      );
+      const output = panel.render(160).join('\n');
+      expect(output).toContain('[2 Transcript]');
+      outputs.push(output);
+    }
+    expect(outputs[0]).not.toEqual(outputs[1]);
+    expect(outputs[0]).not.toEqual(outputs[2]);
+  } finally {
+    panel.dispose();
+  }
 });

@@ -434,7 +434,8 @@ describe('diagnostics and debug logging', () => {
         'No subagent tasks recorded in this session yet.',
       );
       expect(serialized).not.toContain('session execution flow');
-      expect(requestRender).toHaveBeenCalledTimes(3);
+      // The shell owns input refresh; dismissal does not render a disposed panel.
+      expect(requestRender).toHaveBeenCalledTimes(2);
       expect(preload).toHaveBeenCalledOnce();
       expect(vi.getTimerCount()).toBe(0);
     } finally {

@@ -579,6 +579,27 @@ callbacks fire once. Dirty cancellation asks for d discard or k/esc resume.
 Height fitting prioritizes save messages, hints and the selected row over metadata
 and footers; a terminal too short for a frame shows only its title.
 
+### History panels
+
+`HistoryPanel` from `./history-panel` provides shared `/subagents`, `/todos` and
+`/bg` chrome: one selection-aware footer hint row, clickable `✕ Close`, `?` binding
+help, and `line A/B` with `● live` or `↓ N new` for live scrolling content.
+Esc closes (or dismisses help first); mouse selection and wheel scrolling remain
+available. Adapters provide `hints` for both the footer and help, optional
+`renderListSummary`, and variable-height header rows via `variableRows`.
+
+Groups (`groupOf`), `/` filtering (`matchesFilter`), numbered views
+(`views`/`renderView`) and confirmed actions (`actions`) are opt-in. Only
+`/subagents` enables these: Needs attention/Running/Completed/Failed groups,
+Result/Transcript/Prompt/Tools/Metrics views (`1`–`5`), `g/G` jumps, `i` details
+in every view, and eligible `x` cancel, `e` extend and `y` copy. `/todos` and `/bg` retain
+their existing interaction models, including background `x` stop and `[`/`]`
+log paging. See [subagents panel controls](../pi-subagents/README.md#history-panel).
+
+`copyToClipboardOsc52` from `./panel` writes a bounded OSC 52 payload through an
+injected terminal writer and returns `ok`, `unsupported` or `too-large`. It is
+best-effort (terminals may silently reject it), with no tmux passthrough.
+
 ## Development
 
 From the repository root:

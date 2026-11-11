@@ -5,6 +5,8 @@ export {
 } from './panel-input.js';
 
 const RAW_KEYS: Record<string, readonly string[]> = {
+  enter: ['\r', '\n'],
+  backspace: ['\u007f', '\b'],
   escape: ['\u001b'],
   'ctrl+c': ['\u0003'],
   'ctrl+o': ['\u000f'],

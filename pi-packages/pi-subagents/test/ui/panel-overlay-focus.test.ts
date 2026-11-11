@@ -148,3 +148,88 @@ it.each([
   if (mountedEditor !== editor)
     expect(editor.handleInput).not.toHaveBeenCalled();
 });
+
+it('routes confirmed cancel/extend to the manager and OSC 52 to the owned TUI writer', async () => {
+  vi.useFakeTimers();
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'subagents-overlay-actions-'),
+  );
+  cleanups.push(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const { ctx, tui } = ownedOverlaySession();
+  cleanups.push(() => tui.stop());
+  const custom = ctx.ui.custom;
+  ctx.ui.custom = (factory, options) =>
+    custom(
+      (tui, _theme, keys, done) =>
+        factory(
+          tui,
+          {
+            fg: (_role: string, text: string) => text,
+            bold: (text: string) => text,
+          } as never,
+          keys,
+          done,
+        ),
+      options,
+    );
+  const writes = vi.spyOn(tui.terminal, 'write');
+  const task: SubagentTask = {
+    id: 'action-task',
+    agent: 'worker',
+    display_name: 'Action worker',
+    mode: 'background',
+    status: 'running',
+    task: 'Task',
+    created_at: new Date().toISOString(),
+    session_id: 'panel-session',
+    timeout_deadline_at: Date.now() + 60000,
+  };
+  const cancel = vi.fn();
+  const extendDeadline = vi.fn();
+  const opening = showSubagentsPanel({
+    ctx: { ...ctx, cwd, sessionId: 'panel-session' },
+    pi: {},
+    manager: {
+      listSessionTasks: () => [task],
+      getTask: () => task,
+      getDeadlineExtension: () => ({ incrementMs: 120000, remaining: 2 }),
+      cancel,
+      extendDeadline,
+    } as unknown as SubagentManager,
+    setActivePanelCancelSelected: () => {},
+    setActivePanelRequestRender: () => {},
+  });
+  await Promise.resolve();
+  const panel = tui.getFocusedComponent()!;
+  cleanups.push(() => {
+    panel.handleInput?.('\x1b');
+    panel.handleInput?.('q');
+  });
+  panel.handleInput?.('e');
+  expect(panel.render(160).join('\n')).toContain('Extend Action worker by 2m?');
+  panel.handleInput?.('\r');
+  expect(extendDeadline).toHaveBeenCalledExactlyOnceWith(
+    task.id,
+    undefined,
+    'panel-session',
+  );
+  panel.handleInput?.('x');
+  panel.handleInput?.('\x1b');
+  expect(cancel).not.toHaveBeenCalled();
+  expect(tui.getFocusedComponent()).toBe(panel);
+  panel.handleInput?.('x');
+  panel.handleInput?.('\r');
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(
+    task.id,
+    'cancelled from subagents detail view',
+  );
+  task.status = 'completed';
+  task.result = '\x1b[31mResult\x1b[0m\ntext';
+  panel.handleInput?.('y');
+  expect(writes).toHaveBeenCalledWith('\x1b]52;c;UmVzdWx0CnRleHQ=\x07');
+  expect(panel.render(160).join('\n')).toContain('✓ Result copied');
+  vi.advanceTimersByTime(3000);
+  expect(panel.render(160).join('\n')).not.toContain('✓ Result copied');
+  panel.handleInput?.('q');
+  await opening;
+});

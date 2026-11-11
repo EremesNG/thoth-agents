@@ -991,7 +991,7 @@ function memoryArgumentSummary(
   );
 }
 
-function toolArgumentSummary(name: string, args: unknown): string {
+export function toolArgumentSummary(name: string, args: unknown): string {
   const input = isRecord(args) ? args : {};
   if (name === 'read') return pathRangeSummary(input);
   if (name === 'edit' || name === 'write')

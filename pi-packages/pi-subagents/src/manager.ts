@@ -1305,6 +1305,23 @@ export class SubagentManager {
     );
   }
 
+  /** Read-only active deadline defaults for operational UI; validation stays in extendDeadline. */
+  getDeadlineExtension(
+    taskId: string,
+  ): { incrementMs: number; remaining: number } | undefined {
+    const state = this.deadlines.get(taskId);
+    const task = this.tasks.get(taskId);
+    if (!state || !task) return undefined;
+    return {
+      incrementMs: state.config.timeout_ms,
+      remaining: Math.max(
+        0,
+        (state.config.max_timeout_extensions ??
+          DEFAULT_MAX_TIMEOUT_EXTENSIONS) - (task.timeout_extensions_used ?? 0),
+      ),
+    };
+  }
+
   extendDeadline(
     taskId: string,
     extraMs: number | undefined,

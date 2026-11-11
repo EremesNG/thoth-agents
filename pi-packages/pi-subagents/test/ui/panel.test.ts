@@ -276,6 +276,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
       const rendered = panel.render(160).join('\n');
       expect(rendered).toContain(
         'captured:engram-call:Fix render:engram-result:saved',
@@ -347,6 +348,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
       const rendered = panel.render(160).join('\n');
       expect(rendered).toContain('native-tool:read:false:AGENTS.md:body');
       expect(rendered).not.toContain('read completed');
@@ -513,6 +515,7 @@ describe('subagents panel and extension ui', () => {
           return id === fullTask.id ? fullTask : undefined;
         },
       );
+      panel.handleInput('2');
 
       expect(panel.render(120).join('\n')).toContain(
         'assistant-render:83:hydrated snapshot body',
@@ -609,6 +612,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
 
       expect(panel.render(160).join('\n')).toContain(
         'native-bash-render:1:npm test',
@@ -646,7 +650,7 @@ describe('subagents panel and extension ui', () => {
       );
 
     expect(makePanel(baseTask).render(160).join('\n')).toContain(
-      'legacy transcript line',
+      'legacy error line',
     );
     expect(
       makePanel({
@@ -688,10 +692,14 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => text.slice(0, width),
     );
+    panel.handleInput('2');
     const rendered = panel.render(160).join('\n');
-    expect(rendered).toContain('retained final response');
-    expect(rendered.includes('execution detail expired')).toBe(
-      !['queued', 'running', 'stopping'].includes(status),
+    expect(rendered).toContain('Execution detail');
+    panel.handleInput('1');
+    expect(panel.render(160).join(String.fromCharCode(10))).toContain(
+      ['queued', 'running', 'stopping'].includes(status)
+        ? 'Still running'
+        : 'retained final response',
     );
   });
 
@@ -727,6 +735,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const rendered = panel.render(160).join('\n');
 
     expect(rendered).toContain('structured snapshot wins');
@@ -800,6 +809,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const rendered = panel.render(160).join('\n');
 
     expect(rendered).toContain(steeringText);
@@ -863,8 +873,12 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
       );
 
-    const failedRendered = makePanel(failedTask).render(160).join('\n');
-    const cancelledRendered = makePanel(cancelledTask).render(160).join('\n');
+    const failedPanel = makePanel(failedTask);
+    failedPanel.handleInput('2');
+    const failedRendered = failedPanel.render(160).join('\n');
+    const cancelledPanel = makePanel(cancelledTask);
+    cancelledPanel.handleInput('2');
+    const cancelledRendered = cancelledPanel.render(160).join('\n');
 
     expect(failedRendered).toContain('structured snapshot body');
     expect(failedRendered).toContain('# error');
@@ -897,6 +911,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const rendered = panel.render(160).join('\n');
 
     expect(rendered.match(/provider api error/g)).toHaveLength(1);
@@ -934,6 +949,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const rendered = panel.render(160).join('\n');
     const bounded = boundThreadSnapshot(
       {
@@ -1027,6 +1043,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
       const rendered = panel.render(40).join('\n');
 
       expect(rendered).toContain('\u001b[42m');
@@ -1139,6 +1156,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
       const rendered = panel.render(160).join('\n');
 
       expect(rendered).toContain('╭──── read tool ────╮');
@@ -1233,6 +1251,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
       const rendered = panel.render(48);
 
       expect(
@@ -1322,6 +1341,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
 
       expect(panel.render(160).join('\n')).toContain(
         'bash-expanded:false:npm test:long output',
@@ -1419,6 +1439,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
+      panel.handleInput('2');
 
       expect(panel.render(160).join('\n')).toContain(
         'bash-expanded:false:npm test:long output',
@@ -1433,7 +1454,7 @@ describe('subagents panel and extension ui', () => {
     }
   });
 
-  it('shows ctrl+t thinking shortcut in the panel header', () => {
+  it('shows view shortcuts once in the footer and help, not the header', () => {
     const task: SubagentTask = {
       id: 'subtask_header_shortcuts',
       agent: 'analyst',
@@ -1452,11 +1473,17 @@ describe('subagents panel and extension ui', () => {
       (text, width) => (text.length > width ? text.slice(0, width) : text),
       { cwd: tmp },
     );
+    panel.handleInput('2');
 
-    const header = panel.render(180)[0];
-
-    expect(header).toContain('ctrl+o expand');
-    expect(header).toContain('ctrl+t thinking');
+    const rows = panel.render(180);
+    expect(rows[0]).not.toContain('ctrl+o');
+    expect(rows[0]).not.toContain('ctrl+t');
+    expect(rows.at(-1)).toContain('ctrl+o expand');
+    expect(rows.at(-1)).toContain('ctrl+t thinking');
+    panel.handleInput('?');
+    expect(panel.render(180).join(String.fromCharCode(10))).toContain(
+      'Keyboard shortcuts',
+    );
   });
 
   it('toggles thinking visibility with injected app.thinking.toggle keybindings and ctrl+t', () => {
@@ -1533,6 +1560,7 @@ describe('subagents panel and extension ui', () => {
         (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp },
       );
+      panel.handleInput('2');
 
       expect(panel.render(160).join('\n')).toContain(
         'thinking-hidden:false:private reasoning',
@@ -1591,7 +1619,7 @@ describe('subagents panel and extension ui', () => {
         mode: 'task',
         status: 'completed',
         task: 'first task',
-        created_at: new Date().toISOString(),
+        created_at: '2026-01-01T00:00:00Z',
         thread_snapshot: {
           version: 1,
           source: 'events',
@@ -1607,7 +1635,7 @@ describe('subagents panel and extension ui', () => {
         mode: 'task',
         status: 'completed',
         task: 'second task',
-        created_at: new Date().toISOString(),
+        created_at: '2026-01-01T00:00:00Z',
         thread_snapshot: {
           version: 1,
           source: 'events',
@@ -1636,9 +1664,10 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
-    expect(body()).toContain('agent: analyst');
+    expect(body()).toContain('analyst  analyst · completed');
     expect(body()).toContain('first line 159');
 
     panel.handleInput('keyHome');
@@ -1651,11 +1680,13 @@ describe('subagents panel and extension ui', () => {
     expect(body()).toContain('first line 013');
 
     panel.handleInput('keyRight');
-    expect(body()).toContain('agent: reviewer');
+    panel.handleInput('2');
+    expect(body()).toContain('reviewer  reviewer · completed');
     expect(body()).toContain('second task body');
 
     panel.handleInput('keyLeft');
-    expect(body()).toContain('agent: analyst');
+    panel.handleInput('2');
+    expect(body()).toContain('analyst  analyst · completed');
 
     panel.handleInput('keyHome');
     expect(body()).toContain('first line 000');
@@ -1671,7 +1702,7 @@ describe('subagents panel and extension ui', () => {
       mode: 'task',
       status: 'completed',
       task: `task ${i + 1}`,
-      created_at: new Date().toISOString(),
+      created_at: '2026-01-01T00:00:00Z',
       thread_snapshot: {
         version: 1,
         source: 'events',
@@ -1698,16 +1729,19 @@ describe('subagents panel and extension ui', () => {
       {},
       24,
     );
+    panel.handleInput('2');
 
     for (let i = 0; i < 9; i++) panel.handleInput('right');
     const rendered = panel.render(130).join('\n');
 
     expect(rendered).toContain('/12');
-    expect(rendered).toContain('○ agent-09:completed');
-    expect(rendered).toContain('● agent-10:completed');
-    expect(rendered).toContain('○ agent-11:completed');
+    expect(rendered).toContain(' <success>✓</success> agent-09');
+    expect(rendered).toContain('›<success>✓</success> agent-10');
+    expect(rendered).toContain(' <success>✓</success> agent-11');
     expect(
-      warningSelections.some((text) => text.includes('● agent-10:completed')),
+      warningSelections.some((text) =>
+        text.includes('›<success>✓</success> agent-10'),
+      ),
     ).toBe(true);
   });
 
@@ -1720,13 +1754,13 @@ describe('subagents panel and extension ui', () => {
     [12_499, '12s'],
     [12_500, '13s'],
     [59_499, '59s'],
-    [59_500, '1m 00s'],
-    [845_499, '14m 05s'],
-    [845_500, '14m 06s'],
-    [3_599_499, '59m 59s'],
-    [3_599_500, '1h 00m'],
-    [7_439_999, '2h 04m'],
-  ])('rounds history duration %s to whole seconds before formatting as %s', (elapsedMs, expected) => {
+    [59_500, '1m'],
+    [845_499, '14m'],
+    [845_500, '14m'],
+    [3_599_499, '59m'],
+    [3_599_500, '1h'],
+    [7_439_999, '2h4m'],
+  ])('rounds history duration %s to whole seconds before compact formatting as %s', (elapsedMs, expected) => {
     const started_at = '2026-01-01T00:00:00.000Z';
     const task: SubagentTask = {
       id: 'duration',
@@ -1747,8 +1781,9 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => text.slice(0, width),
     );
+    panel.handleInput('2');
     for (const width of [76, 160]) {
-      expect(panel.render(width).join('\n')).toContain(`duration: ${expected}`);
+      expect(panel.render(width).join('\n')).toContain(`· ${expected}`);
     }
   });
 
@@ -1802,18 +1837,22 @@ describe('subagents panel and extension ui', () => {
         contextWindowForTask: () => 200_000,
       },
     );
+    panel.handleInput('2');
     const rendered = panel.render(180).join('\n');
 
     expect(rendered).toContain('subagents');
-    expect(rendered).toContain('agent: reviewer');
-    expect(rendered).toContain('status: running');
-    expect(rendered).toContain('effort: high (ctrl+shift+q cancel)');
-    expect(rendered).toContain('model: mock/model');
-    expect(rendered).toContain('duration: 14m 06s (timeout 43m20s)');
-    expect(rendered).toContain('usage: 2 turns ↑1.0k ↓500 ctx:50k (25%)');
-    expect(rendered).toContain('last: rendering snapshot (stall 2m)');
-    expect(rendered).toContain('task: keep shell visible');
-    expect(rendered).toContain('● reviewer:running effort:high');
+    expect(rendered).toContain('reviewer  reviewer · running');
+    expect(rendered).toContain('mock/model · high · 2 turns · ctx');
+    expect(rendered).toContain('ctrl+shift+q cancel active');
+    expect(rendered).toContain('running 14m / 43m20s');
+    expect(rendered).toContain('25%');
+    expect(rendered).not.toContain('stall');
+    panel.handleInput('i');
+    expect(panel.render(180).join('\n')).toContain(
+      'Task        keep shell visible',
+    );
+    expect(panel.render(180).join('\n')).toContain('Timeout     43m20s');
+    expect(rendered).toContain('›◐ reviewer');
     expect(rendered).toContain('thread body visible');
   });
 
@@ -1844,10 +1883,11 @@ describe('subagents panel and extension ui', () => {
       {},
       () => 60,
     );
+    panel.handleInput('2');
     const lines = panel.render(100);
 
     expect(lines).toHaveLength(60);
-    expect(lines.at(-1)).toMatch(/\d+-\d+\/83/);
+    expect(lines.at(-1)).toMatch(/line 83\/83/);
     expect(lines.join('\n')).toContain('viewport line 79');
 
     panel.handleInput('g');
@@ -1890,6 +1930,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('thread line 159');
@@ -1936,6 +1977,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('normalized mouse line 159');
@@ -1979,6 +2021,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('mouse sgr line 159');
@@ -2014,6 +2057,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('mouse x10 line 159');
@@ -2051,6 +2095,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('tail line 079');
@@ -2266,10 +2311,11 @@ describe('subagents panel and extension ui', () => {
       undefined,
       'task-2',
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(120).join('\n');
     expect(rendered).toContain('2/2');
-    expect(rendered).toContain('agent: second');
+    expect(rendered).toContain('second  second · running');
   });
 
   it('cancels only the active task currently selected in the history panel with the configured detail shortcut', () => {
@@ -2320,11 +2366,14 @@ describe('subagents panel and extension ui', () => {
       },
       'w',
     );
+    panel.handleInput('2');
 
     const header = panel.render(120).join('\n');
     expect(header).toContain('w cancel active');
 
     panel.handleInput('w');
+    expect(cancelled).toEqual([]);
+    panel.handleInput('\r');
     expect(cancelled).toEqual(['task-1']);
 
     panel.handleInput('\u001b[C');
@@ -2504,7 +2553,7 @@ describe('subagents panel and extension ui', () => {
 
   it.each([
     160, 76, 40,
-  ])('renders fallback model and usage on separate width-bounded lines at width %i', (width) => {
+  ])('keeps retained model and usage in Metrics when execution detail is unavailable at width %i', (width) => {
     const task: SubagentTask = {
       id: 'subtask_fallback_model_usage',
       agent: 'analyst',
@@ -2534,14 +2583,14 @@ describe('subagents panel and extension ui', () => {
       {},
       40,
     );
+    panel.handleInput('2');
     const rendered = panel.render(width).map(stripAnsi);
-    const modelRow = rendered.findIndex((line) =>
-      line.includes('│ model: mock/model'),
-    );
-
-    expect(modelRow).toBeGreaterThan(0);
-    expect(rendered[modelRow]).toMatch(/│ model: mock\/model\s+│$/);
-    expect(rendered[modelRow + 1]).toMatch(/│ usage: 2 turns ↑1\.0k ↓500\s+│$/);
+    expect(rendered.join('\n')).toContain('Execution detail');
+    panel.handleInput('5');
+    const metrics = panel.render(width).map(stripAnsi).join('\n');
+    expect(metrics).toContain('Model         mock/model');
+    expect(metrics).toContain('Input         1.0k');
+    expect(metrics).toContain('Output        500');
     expect(rendered).toHaveLength(40);
     expect(rendered.every((line) => line.length <= width)).toBe(true);
   });
@@ -2557,7 +2606,7 @@ describe('subagents panel and extension ui', () => {
       contextTokens: 0,
       turns: 0,
     },
-  ])('omits empty fallback usage and keeps the default model (case %#)', (usage) => {
+  ])('keeps default model and zero usage in Metrics without inventing execution detail (case %#)', (usage) => {
     const task: SubagentTask = {
       id: 'subtask_fallback_without_usage',
       agent: 'analyst',
@@ -2575,15 +2624,15 @@ describe('subagents panel and extension ui', () => {
       (text) => stripAnsi(text).length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
     const rendered = panel.render(120).map(stripAnsi);
-    const modelRow = rendered.findIndex((line) =>
-      line.includes('│ model: default/current'),
+    expect(rendered.join('\n')).toContain(
+      'Execution detail no longer retained',
     );
-
-    expect(modelRow).toBeGreaterThan(0);
-    expect(rendered[modelRow]).toMatch(/│ model: default\/current\s+│$/);
-    expect(rendered[modelRow + 1]).toContain('╭─ delegated task');
-    expect(rendered.join('\n')).not.toContain('usage:');
+    panel.handleInput('5');
+    const metrics = panel.render(120).map(stripAnsi).join('\n');
+    expect(metrics).toContain('Model         default/current');
+    expect(metrics).toContain('Input         0');
   });
 
   it('renders fallback execution flow with boxed section headers and no background fills for tool lines', () => {
@@ -2617,6 +2666,7 @@ describe('subagents panel and extension ui', () => {
       {},
       40,
     );
+    panel.handleInput('2');
     const rendered = panel.render(120).join('\n');
 
     // Section headings are boxed/framed with ╭─ ... ─╮
@@ -2629,7 +2679,12 @@ describe('subagents panel and extension ui', () => {
     expect(rendered).toContain('FG(accent:│ )');
     expect(rendered).toContain('FG(toolTitle:read src/ui/theme.ts)');
     expect(rendered).not.toContain('toolPendingBg');
-    expect(rendered).not.toContain('BG(');
+    expect(
+      rendered
+        .split('\n')
+        .filter((line) => line.includes('FG(toolTitle:'))
+        .join('\n'),
+    ).not.toContain('BG(');
   });
 
   it('renders friendly display_name in panel header, hides raw task IDs, and omits response heading when empty', () => {
@@ -2658,6 +2713,7 @@ describe('subagents panel and extension ui', () => {
       {},
       30,
     );
+    panel.handleInput('2');
     const rendered = panel.render(120).join('\n');
 
     // Friendly name is shown in header
@@ -2717,10 +2773,11 @@ describe('subagents panel and extension ui', () => {
       {},
       20,
     );
+    panel.handleInput('2');
     const tail = panel.render(width).map(stripAnsi);
     expect(tail).toHaveLength(20);
     expect(tail.join('\n')).toContain('subagent usage started');
-    if (width === 160) expect(tail.at(-1)).toContain('[22-36/36]');
+    if (width === 160) expect(tail.at(-1)).toContain('line 36/36 ● live');
 
     panel.handleInput('home');
     const start = panel.render(width).map(stripAnsi);
@@ -2789,6 +2846,7 @@ describe('subagents panel and extension ui', () => {
       {},
       30,
     );
+    panel.handleInput('2');
 
     const initialRender = panel.render(120);
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
@@ -2806,7 +2864,7 @@ describe('subagents panel and extension ui', () => {
     const secondRender = panel.render(120).join('\n');
     expect(secondRender).toContain('2/2');
     expect(secondRender).toContain('Apply Feature');
-    expect(secondRender).toContain('subagent: sdd-apply');
+    expect(secondRender).toContain('Apply Feature  sdd-apply');
   });
 
   it('navigates to referenced subagent execution from structured thread snapshot and hides raw IDs', () => {
@@ -2878,6 +2936,7 @@ describe('subagents panel and extension ui', () => {
       { cwd: tmp, tui: { requestRender() {} } },
       30,
     );
+    panel.handleInput('2');
 
     const initialLines = panel.render(120);
     const initialText = initialLines.join('\n');
@@ -2941,6 +3000,7 @@ describe('subagents panel and extension ui', () => {
       {},
       30,
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(120);
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
@@ -2968,7 +3028,7 @@ describe('subagents panel and extension ui', () => {
 
     // Task strip row
     const taskStripRow = rendered.findIndex((line) =>
-      line.includes('executions 1-2/2'),
+      line.includes('executions 1-3/3'),
     );
     expect(taskStripRow).toBeGreaterThan(0);
     expect(panel.handleMouse({ type: 'click', row: taskStripRow })).toEqual({
@@ -3044,6 +3104,7 @@ describe('subagents panel and extension ui', () => {
       {},
       30,
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(120);
     // Raw task ID must remain hidden from user-visible lines
@@ -3109,6 +3170,7 @@ describe('subagents panel and extension ui', () => {
       (id) => cancelled.push(id),
       'x',
     );
+    panel.handleInput('2');
 
     // Toggle ctrl+o and ctrl+t via keyboard
     panel.handleInput('\u000f'); // toolOutputExpanded = true
@@ -3129,6 +3191,8 @@ describe('subagents panel and extension ui', () => {
 
     // Keyboard cancellation on newly selected task works as expected
     panel.handleInput('x');
+    expect(cancelled).toEqual([]);
+    panel.handleInput('\r');
     expect(cancelled).toEqual(['task_active_2']);
   });
 
@@ -3142,7 +3206,7 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'root task',
         created_at: now,
-        transcript: '󰣇 sdd-apply tool completed: bash\n',
+        transcript: 'subagent sdd-apply tool completed: bash\n',
       },
       {
         id: 'task_b',
@@ -3167,6 +3231,7 @@ describe('subagents panel and extension ui', () => {
       {},
       30,
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(120);
     const flowRow = rendered.findIndex((line) =>
@@ -3175,7 +3240,7 @@ describe('subagents panel and extension ui', () => {
     expect(flowRow).toBeGreaterThan(0);
 
     // Send SGR mouse click: \x1b[<button;col;rowM (1-based row = flowRow + 1)
-    const sgrInput = `\x1b[<0;10;${flowRow + 1}M`;
+    const sgrInput = `\x1b[<0;80;${flowRow + 1}M`;
     panel.handleInput(sgrInput);
 
     expect(panel.getRenderDebugState().selectedIndex).toBe(1);
@@ -3247,24 +3312,30 @@ describe('subagents panel and extension ui', () => {
       {},
       24,
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(60);
     expect(rendered.every((line) => visible(line) <= 60)).toBe(true);
 
     const fullText = rendered.join('\n');
     // Header must contain close button
-    expect(rendered[0]).toContain('[✕ Cerrar]');
-    // Footer must contain close button
-    expect(rendered[rendered.length - 1]).toContain('[✕ Cerrar]');
+    expect(rendered[0]).toContain('✕ Close');
+    // Footer must not repeat the close button
+    expect(rendered[rendered.length - 1]).not.toContain('Close');
 
     // Bottom section must show the executions list
-    expect(fullText).toContain('executions [1-4/4]');
-    expect(fullText).toContain('orchestrator · completed');
-    expect(fullText).toContain('Deep Analysis · running');
-    expect(fullText).toContain('sdd-apply · queued');
+    expect(fullText).toContain('executions [3-6/6]');
+    expect(fullText).toContain('›✓ orchestrator');
+    expect(fullText).toContain('↓ Completed');
+    expect(fullText).toContain(' ○ sdd-apply');
 
-    // Click on the second subagent row in the bottom list to select it
-    const analystRow = rendered.findIndex((line) =>
+    // Group headers count toward the four-row viewport; scroll to the running group.
+    const listRow = rendered.findIndex((line) =>
+      line.includes('›✓ orchestrator'),
+    );
+    panel.handleMouse({ type: 'wheel', row: listRow, col: 10, wheelDelta: -2 });
+    const scrolledRows = panel.render(60);
+    const analystRow = scrolledRows.findIndex((line) =>
       line.includes('Deep Analysis'),
     );
     expect(analystRow).toBeGreaterThan(0);
@@ -3280,10 +3351,10 @@ describe('subagents panel and extension ui', () => {
     panel.handleMouse({ type: 'click', row: 0, col: 55 });
     expect(closed).toBe(true);
 
-    // Reset and click on footer close button closes panel
+    // The footer no longer has a close target
     closed = false;
     panel.handleMouse({ type: 'click', row: rendered.length - 1, col: 55 });
-    expect(closed).toBe(true);
+    expect(closed).toBe(false);
   });
 
   it('supports scrolling the bottom subagents list with mouse wheel in narrow view', () => {
@@ -3317,10 +3388,11 @@ describe('subagents panel and extension ui', () => {
       {},
       24,
     );
+    panel.handleInput('2');
 
     const initial = panel.render(60);
     const listRowIndex = initial.findIndex((line) =>
-      line.includes('● 1. agent-1'),
+      line.includes('›✓ agent-1'),
     );
     expect(listRowIndex).toBeGreaterThan(0);
 
@@ -3334,7 +3406,7 @@ describe('subagents panel and extension ui', () => {
     expect(wheelResult).toEqual({ handled: true, render: true });
 
     const scrolled = panel.render(60).join('\n');
-    expect(scrolled).toContain('executions [2-5/6]');
+    expect(scrolled).toContain('executions [2-5/7]');
   });
 
   it('renders clean narrow view at minimum width (40) with no line exceeding 40 columns', () => {
@@ -3365,12 +3437,13 @@ describe('subagents panel and extension ui', () => {
       {},
       20,
     );
+    panel.handleInput('2');
 
     const rendered = panel.render(40);
     expect(rendered.every((line) => visible(line) <= 40)).toBe(true);
-    expect(rendered[0]).toContain('[✕ Cerrar]');
-    expect(rendered[rendered.length - 1]).toContain('[✕ Cerrar]');
-    expect(rendered.join('\n')).toContain('executions [1-1/1]');
+    expect(rendered[0]).toContain('✕ Close');
+    expect(rendered[rendered.length - 1]).not.toContain('Close');
+    expect(rendered.join('\n')).toContain('executions [1-2/2]');
   });
 
   it.each([
@@ -3458,6 +3531,7 @@ describe('subagents panel and extension ui', () => {
         {},
         maxLines,
       );
+      panel.handleInput('2');
       const renderFrame = () => {
         const lines = panel.render(width);
         expect(lines.length).toBeLessThanOrEqual(maxLines);
@@ -3465,7 +3539,10 @@ describe('subagents panel and extension ui', () => {
           expect(line).not.toMatch(/[\n\r\t]/);
           expect(realVisible(line)).toBeLessThanOrEqual(width);
         }
-        const bodyRows = lines.slice(4, width >= 90 ? -1 : -3);
+        const listDivider = lines.findIndex((line) =>
+          stripAnsi(line).startsWith('├─ executions'),
+        );
+        const bodyRows = lines.slice(5, listDivider >= 0 ? listDivider : -1);
         expect(bodyRows.length).toBeGreaterThan(0);
         for (const row of bodyRows) {
           expect(stripAnsi(row).startsWith('│')).toBe(true);
@@ -3601,6 +3678,7 @@ describe('subagents panel and extension ui', () => {
         { tui: { requestRender() {} } },
         30,
       );
+      panel.handleInput('2');
 
       const width = 76;
       const rendered = panel.render(width);
@@ -3614,39 +3692,42 @@ describe('subagents panel and extension ui', () => {
         ).toBeLessThanOrEqual(width);
       }
 
-      // 2. Top frame must end with [✕ Cerrar] and right corner
-      expect(rendered[0]).toContain('[✕ Cerrar]');
+      // 2. Top frame must end with ✕ Close and right corner
+      expect(rendered[0]).toContain('✕ Close');
       expect(rendered[0]).toContain('─╮');
 
-      // 3. Subheader Row 1 must have completed status, agent, and right border
-      expect(rendered[1]).toContain('sdd-apply');
+      // 3. Narrow card drops agent before truncating the name.
+      expect(rendered[1]).toContain(
+        'Archive verified definitive mobile redesign',
+      );
       expect(rendered[1]).toContain('completed');
       expect(stripAnsi(rendered[1]!).trimEnd().endsWith('│')).toBe(true);
 
-      // 4. Subheader Row 2 must have clean non-duplicated task description
-      expect(rendered[2]).toContain(
-        'Archive verified definitive mobile redesign',
-      );
+      // 4. Second card row carries model/context rather than repeating the task.
+      expect(rendered[2]).toContain('default/cur…');
       expect(rendered[2]).not.toContain(
         'Archive verified definitive mobile redesign: Archive verified',
       );
       expect(stripAnsi(rendered[2]!).trimEnd().endsWith('│')).toBe(true);
 
       // 5. Divider line must connect properly
-      expect(rendered[3]).toContain('├');
-      expect(rendered[3]).toContain('┤');
+      expect(rendered[4]).toContain('├');
+      expect(rendered[4]).toContain('┤');
 
       // 6. Body rows must have left and right borders
-      const bodyRows = rendered.slice(4, rendered.length - 3);
+      const listDivider = rendered.findIndex((line) =>
+        stripAnsi(line).startsWith('├─ executions'),
+      );
+      const bodyRows = rendered.slice(5, listDivider);
       expect(bodyRows.length).toBeGreaterThan(0);
       for (const row of bodyRows) {
         expect(stripAnsi(row).startsWith('│')).toBe(true);
         expect(stripAnsi(row).trimEnd().endsWith('│')).toBe(true);
       }
 
-      // 7. Footer line must end with [✕ Cerrar] and bottom right corner
+      // 7. Footer keeps its bottom right corner without repeating close
       const lastLine = rendered[rendered.length - 1]!;
-      expect(lastLine).toContain('[✕ Cerrar]');
+      expect(lastLine).not.toContain('Close');
       expect(stripAnsi(lastLine!).trimEnd().endsWith('─╯')).toBe(true);
     } finally {
       resetPiComponentCacheForTests();
@@ -3727,6 +3808,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
 
     panel.handleInput('G');
     expect(panel.render(120).join('\n')).toContain('TAIL_SENTINEL');
@@ -3781,6 +3863,7 @@ describe('subagents panel and extension ui', () => {
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
     );
+    panel.handleInput('2');
 
     panel.handleInput('G');
     expect(panel.render(120).join('\n')).toContain('TAIL_SENTINEL');

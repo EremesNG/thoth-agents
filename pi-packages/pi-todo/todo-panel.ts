@@ -86,6 +86,8 @@ export class TodoPanel extends HistoryPanel<PanelTask> {
     super(
       {
         items: ordered,
+        // Todos uses only the shell navigation/panel bindings; it has no item actions.
+        hints: () => [],
         id: (task) => String(task.id),
         // The shell tones the label by selection; group prefixes stay dim.
         renderItemLabel: (task, context) =>

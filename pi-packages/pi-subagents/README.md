@@ -745,10 +745,36 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `/subagents-model` | Manage named model profiles and select them for the session, project, or globally. |
 | `/subagents-tools` | Toggle tools and add/remove manual names or globs in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
-| `x` | Cancel the currently selected queued/running subagent from the open history/detail panel by default. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
+| `x` | Confirm cancellation of the selected queued/running subagent. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
 | `ctrl+h` | Send the running task-mode subagent task to the background by default. Configurable via `background_handoff_shortcut` in `subagents.json`. |
-| `ctrl+o` | Expand or collapse rendered tool output and subagent responses in the active execution/detail view. |
-| `ctrl+t` | Show or hide assistant thinking blocks in the open subagent execution panel, using Pi's `app.thinking.toggle` keybinding. |
+| `ctrl+o` | Expand or collapse rendered tool output and subagent responses in Transcript. |
+| `ctrl+t` | Show or hide assistant thinking blocks in Transcript, using Pi's `app.thinking.toggle` keybinding. |
+
+### History panel
+
+`/subagents` groups executions under Needs attention, Running, Completed and
+Failed, newest first within each group. Select with ←/→ or the mouse; Enter/Space
+on a group header collapses or expands it. `/` filters by name, agent or status;
+Enter keeps the filter and Esc clears it before closing.
+
+Views: `1` Result, `2` Transcript, `3` Prompt, `4` Tools, `5` Metrics. Terminal
+tasks open in Result; active tasks open in Transcript. Tools shows retained calls
+with failures first; missing execution detail is explicitly marked unavailable.
+↑/↓, PgUp/PgDn and the wheel scroll; `g`/`G` or Home/End jump to top/bottom.
+Transcript follows live output at the bottom. In every view, `i` toggles labeled
+usage, timeout, session and full-task details.
+
+Eligible actions appear in the footer: `x` cancel (queued/running), `e` extend
+(running, current session, extensions remaining), and `y` copy Result text.
+Cancel and extend require Enter to confirm or Esc to back out; extend uses the
+configured default increment. Copy uses OSC 52, best-effort: terminals may silently
+reject it, and no tmux passthrough is attempted. Outcomes or failures appear
+briefly in the panel. Pending questions are read-only: answer, send messages or
+continue tasks from the main chat with root, never from this panel.
+
+`?` toggles binding help. Esc, `q`, Ctrl+C or the clickable `✕ Close` closes the
+panel (Esc first dismisses help or clears a filter). `/todos` and `/bg` share this
+close/help chrome, not the subagents groups, filter, views or actions.
 
 `/subagents-model` shows profiles with global/local scope, shadowing and session/project/global active markers. Its sidebar appears at 90 columns or wider; narrower terminals use a stacked layout. The sidebar's “markers (not keys)” legend describes state: ● effective, S session, P project pin, G global active, ~ shadowed. Browsing does not activate a profile. The orchestrator is the first detail row (read-only in `default`, shown as “session model” when unset); a drift indicator shows when the effective profile's orchestrator differs from the current session model/effort.
 

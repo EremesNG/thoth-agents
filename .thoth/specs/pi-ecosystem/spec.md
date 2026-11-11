@@ -218,13 +218,13 @@ The `ask_user_question` TUI MUST occupy the editor area without covering the cha
 
 ### Requirement: Shared Pi panel shell
 
-pi-core MUST export panel primitives (titled frame, cell-width truncation, keyboard plus SGR/urxvt/X10 mouse and wheel parsing, cursor-centered viewport, selectedBg row, hint rows, dirty-discard confirmation, owned-overlay host) and a list-editor shell; Pi list editors MUST render through the shell, and history panels and the work-panel detail card MUST use the primitives without changing their interaction model.
+pi-core MUST export panel primitives (titled frame, cell-width truncation, keyboard plus SGR/urxvt/X10 mouse and wheel parsing, cursor-centered viewport, selectedBg row, hint rows, dirty-discard confirmation, owned-overlay host) and a list-editor shell; Pi list editors MUST render through the shell, and history panels and the work-panel detail card MUST use the primitives; the history panel shell MUST render one English footer hint row built from adapter-provided hint metadata for the current selection without duplicating hints in the header, an English clickable `✕ Close` that never overlaps header content, a `?` help overlay of all bindings and a position indicator showing tail-follow or unseen new lines, and MUST offer a list-summary slot, variable-height header rows, item groups, a `/` filter, numbered views and item actions as adapter opt-ins; apart from that shared chrome, history panels that do not opt in MUST keep their interaction model, and every panel overlay MUST open through `openOwnedOverlay`.
 
 #### Scenario: Shared Pi panel shell
 
-- **GIVEN** the tools, model, history and work-detail panels
-- **WHEN** each renders and receives keyboard or wheel input
-- **THEN** they share the primitives' frame, width handling and input parsing, the list editors share the shell, and every panel overlay opens through `openOwnedOverlay`
+- **GIVEN** the todo, background-task and subagents history panels
+- **WHEN** each opens and receives keyboard or wheel input
+- **THEN** all share the primitives, the English footer, `✕ Close` and `?` help and open through `openOwnedOverlay`, the background panel keeps its stop and paging bindings, and only the subagents panel shows groups, filter, views and actions
 
 ### Requirement: Pi task state channels
 
@@ -705,3 +705,13 @@ On Windows, the thoth Pi `bash` and `powershell` tools run each command inside a
 - **GIVEN** a Windows Pi session with the thoth contained-shell package
 - **WHEN** a `bash` command `sleep N | head -1` exceeds its timeout
 - **THEN** the tool reports the timeout and no process from that command remains running
+
+### Requirement: Subagents history panel UX
+
+The `/subagents` history panel MUST group executions as Needs attention, Running, Completed and Failed with a distinct status glyph and theme color per status, MUST render a two-line header card with labeled usage details on demand, MUST offer Result, Transcript, Prompt, Tools and Metrics views with Result as the default for terminal tasks and Transcript for active ones, MUST filter executions with `/`, MUST offer cancel, extend (default increment, current-session owner only) and OSC 52 copy actions only when eligible, and MUST NOT accept replies, messages or continuations, which stay in the main chat.
+
+#### Scenario: Subagents history panel UX
+
+- **GIVEN** a session with one running task near its deadline, one completed and one failed task
+- **WHEN** the user opens `/subagents`
+- **THEN** the running task appears under Needs attention with extend and cancel hints, selecting the completed task shows its Result view first, and `y` copies that result through OSC 52 with a confirmation

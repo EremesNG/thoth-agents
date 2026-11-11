@@ -271,6 +271,12 @@ export async function showSubagentsPanel(input: {
           config.detail_cancel_shortcut ?? 'x',
           {
             providerLimits,
+            currentSessionId: sessionId,
+            extensionForTask: (id) => manager.getDeadlineExtension?.(id),
+            extendDeadline: (id, extra, session) =>
+              manager.extendDeadline(id, extra, session),
+            clipboardWrite: tui?.terminal?.write?.bind(tui.terminal),
+            requestRender: () => tui.requestRender?.(),
             timeoutMs: config.timeout_ms,
             stallTimeoutMs: config.stall_timeout_ms,
             contextWindowForTask: (task: SubagentTask) =>
@@ -348,9 +354,7 @@ export async function showSubagentsPanel(input: {
               event: 'render_requested',
               reason: nextRenderReason,
             });
-            const result = panel.handleMouse(event);
-            if (result?.render !== false) tui.requestRender?.();
-            return result;
+            return panel.handleMouse(event);
           },
           handleInput: (data: string) => {
             renderLogger.log({
@@ -363,7 +367,6 @@ export async function showSubagentsPanel(input: {
               reason: nextRenderReason,
             });
             panel.handleInput(data);
-            tui.requestRender?.();
           },
         };
       },

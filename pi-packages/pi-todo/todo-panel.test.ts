@@ -196,3 +196,21 @@ it('resolves glyphs through the render kit semantic names', () => {
   expect(text).toContain('>>');
   expect(text).toContain('== Completed');
 });
+
+it('shares footer navigation and help without adding task actions', () => {
+  const { panel, lines } = open(tasks);
+  const before = panel.selectedItem()?.id;
+  expect(lines().at(-1)).toContain('? help');
+  expect(lines()[0]).toContain('✕ Close');
+  panel.handleInput('?');
+  const help = lines().join('\n');
+  expect(help).toContain('Keyboard shortcuts');
+  expect(help).toContain('Navigate');
+  expect(help).not.toContain('x stop');
+  panel.handleInput('x');
+  panel.handleInput('\u001b');
+  expect(lines().join('\n')).not.toContain('Keyboard shortcuts');
+  expect(panel.selectedItem()?.id).toBe(before);
+  panel.handleInput('\u001b[C');
+  expect(panel.selectedItem()?.id).not.toBe(before);
+});

@@ -2,8 +2,8 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
-import { wrapTextWithAnsi } from '@earendil-works/pi-tui';
-import { resolveIcon } from '@thoth-agents/pi-core';
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui';
+import { getRenderKit, resolveIcon, resolveStatusGlyph } from '@thoth-agents/pi-core';
 import { openPanelOverlay } from '@thoth-agents/pi-core/panel';
 import {
   createHistoryPanelKeyMatcher,
@@ -158,13 +158,51 @@ export class BackgroundTasksHistoryPanel extends HistoryPanel<BackgroundTaskMeta
       {
         items: () => listMetasForOrigin(origin),
         id: (meta) => meta.id,
-        renderItemLabel: (meta, context) =>
-          `${context.selected ? resolveIcon('selection', '›') : ' '} ${meta.name || meta.id}`,
+        renderItemLabel: (meta, context) => {
+          const statuses = {
+            running: ['running', 'accent'],
+            succeeded: ['completed', 'success'],
+            failed: ['failed', 'error'],
+            cancelled: ['cancelled', 'muted'],
+            timed_out: ['timedOut', 'error'],
+          } as const;
+          const [status, role] = statuses[meta.status] ?? ['unknown', 'dim'];
+          const fg = (tone: typeof role | 'dim', text: string) => options.theme
+            ? (getRenderKit()?.fg(options.theme, tone, text) ?? options.theme.fg(tone, text))
+            : text;
+          const prefix = `${context.selected ? resolveIcon('selection', '›') : ' '}${fg(role, resolveStatusGlyph(status))} `;
+          const seconds = Math.floor(Math.max(0, (meta.endedAt ?? Date.now()) - meta.startedAt) / 1000);
+          let duration = seconds < 60 ? `${seconds}s`
+            : seconds < 3600 ? `${Math.floor(seconds / 60)}m`
+              : `${Math.floor(seconds / 3600)}h${Math.floor(seconds / 60) % 60}m`;
+          const failure = meta.status === 'failed' || meta.status === 'timed_out';
+          let exit = failure
+            ? meta.lastSignal || (meta.lastExitCode != null ? `exit ${meta.lastExitCode}` : '')
+            : '';
+          const metadata = () => [duration, exit].filter(Boolean).join(' ');
+          const available = context.width - visibleWidth(prefix);
+          const name = (meta.name || meta.id).replace(/[\r\n\t]/g, ' ');
+          // Preserve a useful name before shedding metadata, with failure detail last.
+          const minimumName = Math.min(4, visibleWidth(name));
+          if (visibleWidth(metadata()) + 1 + minimumName > available) duration = '';
+          if (visibleWidth(metadata()) + 1 + minimumName > available) exit = '';
+          const metaWidth = visibleWidth(metadata());
+          const nameWidth = Math.max(0, available - (metaWidth ? metaWidth + 1 : 0));
+          const clipped = truncateToWidth(name, nameWidth, resolveIcon('ellipsis', '…'));
+          const padding = ' '.repeat(Math.max(0, nameWidth - visibleWidth(clipped)));
+          const styledMeta = [duration && fg('dim', duration), exit && fg('error', exit)].filter(Boolean).join(' ');
+          return `${prefix}${clipped}${padding}${metaWidth ? ` ${styledMeta}` : ''}`;
+        },
         renderContent: (meta, width) => [
           ...contentFor(meta, width, currentPage(meta)),
           ...(actionError?.id === meta.id
             ? [`Stop error: ${actionError.message}`]
             : []),
+        ],
+        hints: (meta) => [
+          { key: '[', label: 'previous page', group: 'navigate', eligible: index > 0 },
+          { key: ']', label: 'next page', group: 'navigate', eligible: hasNext },
+          { key: 'x', label: 'stop', group: 'actions', eligible: meta?.status === 'running' },
         ],
         canClose: (meta) => meta.status === 'running',
         close: (meta) => {
@@ -186,7 +224,6 @@ export class BackgroundTasksHistoryPanel extends HistoryPanel<BackgroundTaskMeta
           ];
           return {
             badge: meta.status,
-            shortcuts: meta.status === 'running' ? `x stop ${resolveIcon('separator', '·')} ` : '',
             wideRows: metadata,
             narrowRows: metadata,
           };
@@ -214,7 +251,6 @@ export class BackgroundTasksHistoryPanel extends HistoryPanel<BackgroundTaskMeta
         listLabel: 'tasks',
         emptyText: 'No background tasks recorded in this session yet.',
         closeConfirmationHint: 'x again to stop',
-        footerActions: () => '[/] log page',
       },
     );
   }

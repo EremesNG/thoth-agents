@@ -933,7 +933,7 @@ test('Project overlay globs share Global manual match details without adding row
     'Manual entries · mcp__Roblox* · 2 matches',
   );
   panel.handleInput('q');
-  panel.handleInput('tab');
+  panel.handleInput('\t');
   panel.handleInput('\r');
   const lines = panel.render(300);
   const text = lines.join('\n');
@@ -1006,6 +1006,66 @@ test('Project scope shows read-only base and losslessly toggles tools under glob
   expect(save.mock.calls[0]?.[1][0].overlay.remove).toContain('not_from_base');
 });
 
+test.each([
+  'p',
+  '\t',
+  '\x1b[9u',
+  '\x1b[9;1u',
+  '\x1b[9;1:1u',
+  '\x1b[112u',
+])('scope key %j switches overview and picker without losing drafts', (key) => {
+  const snapshot = sampleSnapshot();
+  snapshot.globalRoles = structuredClone(snapshot.roles);
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: sampleDiscovered,
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  panel.handleInput(key);
+  expect(panel.getState().scope).toBe('project');
+  expect(panel.render(160).join('\n')).toContain('p scope');
+  expect(panel.render(160).join('\n')).toContain('Scope: Project · p switch');
+  panel.handleInput('\r');
+  expect(panel.render(160).join('\n')).toContain('p scope');
+  panel.handleInput(' ');
+  expect(panel.getState().draft[0]?.overlay?.remove).toEqual(['read']);
+  panel.handleInput(key);
+  expect(panel.getState().scope).toBe('global');
+  expect(panel.getState().screen).toBe('tools');
+  expect(panel.render(160).join('\n')).toContain(
+    'Choose tools · explorer · Global',
+  );
+  expect(panel.render(160).join('\n')).toContain('[x] read');
+  panel.handleInput(key);
+  expect(panel.getState().scope).toBe('project');
+  expect(panel.getState().draft[0]?.overlay?.remove).toEqual(['read']);
+  expect(panel.render(160).join('\n')).toContain('[ ] read');
+  panel.handleInput('q');
+  panel.handleInput(key);
+  expect(panel.getState().scope).toBe('global');
+});
+
+test('p remains tool-entry text and does not switch scope during discard confirmation', () => {
+  const panel = createToolsPanel({
+    snapshot: sampleSnapshot(),
+    discoveredTools: sampleDiscovered,
+    save: vi.fn(),
+    onDone: vi.fn(),
+  });
+  panel.handleInput('\r');
+  panel.handleInput('a');
+  panel.handleInput('p');
+  panel.handleInput('\r');
+  expect(panel.getState().scope).toBe('global');
+  expect(panel.getState().draft[0]?.tools).toContain('p');
+  panel.handleInput('q');
+  panel.handleInput('q');
+  panel.handleInput('p');
+  expect(panel.getState().scope).toBe('global');
+  expect(panel.render(160).join('\n')).toContain('Discard unsaved draft?');
+});
+
 test('scope toggle shows global shadow warning and Project reset clears overlay', () => {
   const snapshot = sampleSnapshot();
   snapshot.globalRoles = structuredClone(snapshot.roles);
@@ -1021,11 +1081,11 @@ test('scope toggle shows global shadow warning and Project reset clears overlay'
     onDone: vi.fn(),
   });
   expect(panel.render(120).join('\n')).toContain('hides');
-  panel.handleInput('tab');
+  panel.handleInput('\t');
   expect(panel.getState().scope).toBe('project');
   panel.handleInput('r');
   expect(panel.getState().draft[0]?.overlay).toEqual({ add: [], remove: [] });
-  panel.handleInput('tab');
+  panel.handleInput('\t');
   expect(panel.getState().scope).toBe('global');
 });
 

@@ -322,7 +322,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     editor.openPicker({
       title: `Choose tools · ${role.role} · ${scope === 'project' ? 'Project' : 'Global'}`,
       hints: () =>
-        `↑/↓/j/k move · space toggle · a add · d/delete remove${defaultsHint(role)} · enter/esc/q back`,
+        `↑/↓/j/k move · space toggle · p scope · a add · d/delete remove${defaultsHint(role)} · enter/esc/q back`,
       navigation: 'wrap',
       maxVisibleRows: 10,
       header: () => [
@@ -345,6 +345,10 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         return [{ text: `selected: ${selected ?? '(none)'}`, tone: 'accent' }];
       },
       onAction: (key, row) => {
+        if (key === 'p' || key === 'tab') {
+          switchScope(editor);
+          return true;
+        }
         if (key === 'a' || (scope === 'project' && key === 'x')) {
           entryInput = {
             input: new Input({ prompt: key === 'x' ? 'remove: ' : 'add: ' }),
@@ -381,6 +385,16 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         return false;
       },
     });
+  };
+  const switchScope = (editor: ListEditor) => {
+    const inPicker = editor.getState().view === 'picker';
+    if (inPicker) editor.showOverview();
+    scope = scope === 'global' ? 'project' : 'global';
+    draft = drafts[scope];
+    invalidateDerived();
+    blocked = undefined;
+    // Rebuild the picker: its callbacks close over the scope's role object.
+    if (inPicker) openRole(editor);
   };
   const editor = createListEditor({
     wideBreakpoint: 84,
@@ -422,11 +436,11 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     overview: {
       title: 'Subagent tools',
       hints: () =>
-        `↑/↓/j/k move · enter/e edit · tab scope${defaultsHint(draft[editor.getState().selectedIndex])}${convertible(draft[editor.getState().selectedIndex]) ? ' · c convert' : ''} · s save · esc/q cancel`,
+        `↑/↓/j/k move · enter/e edit · p scope${defaultsHint(draft[editor.getState().selectedIndex])}${convertible(draft[editor.getState().selectedIndex]) ? ' · c convert' : ''} · s save · esc/q cancel`,
       header: ({ layout }) => [
         ...(conversionMessage ? [panelHintRow(conversionMessage)] : []),
         panelHintRow(
-          `Scope: ${scope === 'project' ? 'Project' : 'Global'} · tab switch · target: ${scope === 'project' ? 'project tools overlay' : 'global definition tools'}`,
+          `Scope: ${scope === 'project' ? 'Project' : 'Global'} · p switch · target: ${scope === 'project' ? 'project tools overlay' : 'global definition tools'}`,
         ),
         layout === 'wide'
           ? `${'agent'.padEnd(18)}  ${'selected tools'.padEnd(18)}  tools`
@@ -510,11 +524,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           }
           return true;
         }
-        if (key === 'tab') {
-          scope = scope === 'global' ? 'project' : 'global';
-          draft = drafts[scope];
-          invalidateDerived();
-          blocked = undefined;
+        if (key === 'p' || key === 'tab') {
+          switchScope(editor);
           return true;
         }
         if (key === 'enter' || key === 'e') {
@@ -593,7 +604,13 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         return;
       }
       const active = entryInput;
-      if (!active) return editor.handleInput(data);
+      if (!active) {
+        // Tab is adapter-owned, not a pi-core PanelKey. Decode native terminal
+        // sequences here, but leave entry input and confirmations untouched.
+        return editor.handleInput(
+          matchesKey(data, 'tab') ? 'tab' : matchesKey(data, 'p') ? 'p' : data,
+        );
+      }
       const key = normalizePanelKey(data);
       if (key === 'escape') entryInput = undefined;
       else if (key === 'enter') {

@@ -5,6 +5,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Fixed
+
+- `/subagents-tools` scope switching now accepts real Tab and CSI-u/kitty keys; `p` switches Global/Project from both the overview and picker.
+
 ## [0.14.0] - 2026-11-11
 
 ### Added

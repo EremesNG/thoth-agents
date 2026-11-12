@@ -258,6 +258,9 @@ test('Project c conversion confirms lost differences and future globs; cancel is
   expect(confirmation).not.toContain('Copy body');
   expect(confirmation).not.toContain('Global body');
   expect(confirmation).toContain('Future tools matched by global globs');
+  panel.handleInput('p');
+  expect(panel.getState().scope).toBe('project');
+  expect(panel.render(180).join('\n')).toBe(confirmation);
   panel.handleInput('\x1b');
   expect(fs.existsSync(f.copy)).toBe(true);
   expect(fs.existsSync(path.join(f.root, '.pi', 'subagents.json'))).toBe(false);

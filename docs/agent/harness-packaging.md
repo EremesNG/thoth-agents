@@ -192,7 +192,7 @@
   for panel and storage details.
   pi-subagents registers both `/subagents-model` and `/subagents-tools`; the
   tools command lives in `pi-packages/pi-subagents/src/tools-panel/`, not the
-  root extension. Tab switches Global/Project scope; initial scope is Project
+  root extension. `p` switches Global/Project scope; initial scope is Project
   when project `.pi/subagents.json` has a non-empty `agents` object or a project
   definition shadows a global one, otherwise Global. Global save edits only the
   global definition's `tools`, preserving other bytes, even when a copy shadows

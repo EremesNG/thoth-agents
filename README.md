@@ -94,7 +94,7 @@ subagents and the orchestrator, stored separately from definitions at global or
 project scope. See [subagent profile configuration](docs/installation.md#configure-subagent-model-profiles-inside-pi).
 Both commands are registered by pi-subagents on pi-core's shared list-editor
 shell, with native CSI-u/kitty and legacy navigation keys and wheel support in
-regular and fullscreen TUI mode. `/subagents-tools` uses Tab to switch Global/Project
+regular and fullscreen TUI mode. `/subagents-tools` uses `p` to switch Global/Project
 scope, starting in Project when `.pi/subagents.json` has a non-empty `agents` object
 or a project definition shadows a global one; otherwise Global. Global save edits
 the global definition's `tools` even when a copy shadows it (with a warning).

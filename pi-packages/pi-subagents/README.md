@@ -231,7 +231,7 @@ Supported frontmatter:
 Pi-subagents owns `/subagents-tools` (from `0.3.0`). In interactive TUI mode it
 opens the shared pi-core list-editor shell: arrows/j/k, g/G or wheel navigate;
 enter/e opens a tool picker, space toggles a registered exact tool, and `a` adds
-a name or glob. Tab switches the visible Global/Project scope. Project starts
+a name or glob. `p` switches the visible Global/Project scope. Project starts
 selected when the project config has a non-empty `agents` object or a project
 definition shadows a global one; otherwise Global starts selected.
 In the picker, `d`/Delete removes the selected manual entry;

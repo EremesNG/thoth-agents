@@ -2,6 +2,7 @@ import { Input, matchesKey, wrapTextWithAnsi } from '@earendil-works/pi-tui';
 import {
   createListEditor,
   type ListEditor,
+  type ListEditorRow,
   normalizePanelKey,
   PanelDiscardConfirmation,
   type PanelTheme,
@@ -76,6 +77,29 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     })),
   };
   let draft: ToolsRoleSnapshot[] = drafts[scope];
+  // Navigation changes only the viewport. Rebuild domain-derived rows on edits,
+  // never on cursor movement (the list editor also requests rows for input).
+  let overviewRows: ListEditorRow[] | undefined;
+  let pickerRows: ListEditorRow[] | undefined;
+  let pendingChanges: number | undefined;
+  let globalRoleNames = new Set(baseline.globalRoles?.map((role) => role.role));
+  const selections = new Map<
+    ToolsRoleSnapshot,
+    {
+      names: Set<string>;
+      count: number;
+      summary: string;
+      base: string;
+      manual: string;
+    }
+  >();
+  const invalidateDerived = () => {
+    overviewRows = undefined;
+    pickerRows = undefined;
+    pendingChanges = undefined;
+    globalRoleNames = new Set(baseline.globalRoles?.map((role) => role.role));
+    selections.clear();
+  };
   let blocked: string | undefined;
   let changedRoles: string[] = [];
   let failedSave = false;
@@ -161,7 +185,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   const convertible = (role?: ToolsRoleSnapshot) =>
     scope === 'project' &&
     role?.scope === 'project' &&
-    baseline.globalRoles?.some((global) => global.role === role.role);
+    globalRoleNames.has(role.role);
   const editableNames = new Set<string>();
   const tools = options.discoveredTools.filter((tool) => {
     if (
@@ -222,11 +246,26 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           role.overlay,
         ).filter((name) => !role.disallowedTools.includes(name))
       : role.tools;
-  const summary = (role: ToolsRoleSnapshot) =>
-    effective(role).join(', ') || '(none)';
+  const selection = (role: ToolsRoleSnapshot) => {
+    let cached = selections.get(role);
+    if (!cached) {
+      const names = effective(role);
+      cached = {
+        names: new Set(names),
+        count: names.length,
+        summary: names.join(', ') || '(none)',
+        base: baseTools(role).join(', '),
+        manual: manualEntries(role).join(', '),
+      };
+      selections.set(role, cached);
+    }
+    return cached;
+  };
+  const summary = (role: ToolsRoleSnapshot) => selection(role).summary;
   const reset = (role: ToolsRoleSnapshot) => {
     if (scope === 'project') role.overlay = { add: [], remove: [] };
     else if (role.defaultTools) role.tools = [...role.defaultTools];
+    invalidateDerived();
   };
   const defaultsHint = (role?: ToolsRoleSnapshot) =>
     scope === 'project'
@@ -241,6 +280,19 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         label: `${lane} · ${entry}${hasToolGlob(entry) ? ` · ${matchDetail(entry)}` : ''}`,
       })),
     );
+  const toolRows = (role: ToolsRoleSnapshot): ListEditorRow[] =>
+    (pickerRows ??= [
+      ...tools.map((tool) => ({
+        id: tool.name,
+        label: `${selection(role).names.has(tool.name) ? '[x]' : '[ ]'} ${tool.name}${tool.active ? '' : ' (inactive)'}${tool.description ? ` · ${tool.description}` : ''}`,
+      })),
+      ...(scope === 'project'
+        ? overlayRows(role)
+        : manualEntries(role).map((entry) => ({
+            id: entry,
+            label: manualLabel(entry),
+          }))),
+    ]);
   const toggleProject = (role: ToolsRoleSnapshot, name: string) => {
     role.overlay ??= { add: [], remove: [] };
     const overlay = role.overlay;
@@ -266,6 +318,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     const role = draft[selectedRole];
     if (!role) return;
     blocked = undefined;
+    pickerRows = undefined;
     editor.openPicker({
       title: `Choose tools · ${role.role} · ${scope === 'project' ? 'Project' : 'Global'}`,
       hints: () =>
@@ -274,33 +327,23 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       maxVisibleRows: 10,
       header: () => [
         {
-          text: `row: ${role.role} · ${effective(role).length} selected`,
+          text: `row: ${role.role} · ${selection(role).count} selected`,
           tone: 'accent',
         },
         ...(scope === 'project'
-          ? [panelHintRow(`Base (read-only): ${baseTools(role).join(', ')}`)]
+          ? [panelHintRow(`Base (read-only): ${selection(role).base}`)]
           : []),
         ...(blocked ? [panelHintRow(blocked)] : []),
         ...ORCHESTRATOR_NOTES.map((note) => panelHintRow(note)),
       ],
-      rows: () => [
-        ...tools.map((tool) => ({
-          id: tool.name,
-          label: `${effective(role).includes(tool.name) ? '[x]' : '[ ]'} ${tool.name}${tool.active ? '' : ' (inactive)'}${tool.description ? ` · ${tool.description}` : ''}`,
-        })),
-        ...(scope === 'project'
-          ? overlayRows(role)
-          : manualEntries(role).map((entry) => ({
-              id: entry,
-              label: manualLabel(entry),
-            }))),
-      ],
-      footer: () => [
-        {
-          text: `selected: ${tools[editor.getState().selectedIndex]?.name ?? (scope === 'project' ? overlayRows(role)[editor.getState().selectedIndex - tools.length]?.label : manualEntries(role)[editor.getState().selectedIndex - tools.length]) ?? '(none)'}`,
-          tone: 'accent',
-        },
-      ],
+      rows: () => toolRows(role),
+      footer: () => {
+        const index = editor.getState().selectedIndex;
+        const row = toolRows(role)[index];
+        const selected =
+          tools[index]?.name ?? (scope === 'project' ? row?.label : row?.id);
+        return [{ text: `selected: ${selected ?? '(none)'}`, tone: 'accent' }];
+      },
       onAction: (key, row) => {
         if (key === 'a' || (scope === 'project' && key === 'x')) {
           entryInput = {
@@ -319,6 +362,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
             if (lane === 'add' || lane === 'remove')
               role.overlay?.[lane].splice(Number(index), 1);
           } else role.tools = role.tools.filter((name) => name !== row.id);
+          invalidateDerived();
           return true;
         }
         if (key === 'space' && row && editableNames.has(row.id)) {
@@ -327,6 +371,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
             role.tools = role.tools.includes(row.id)
               ? role.tools.filter((name) => name !== row.id)
               : [...role.tools, row.id];
+          invalidateDerived();
           return true;
         }
         if (key.toLowerCase() === 'r') {
@@ -343,8 +388,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     theme: options.theme,
     requestRender: options.requestRender,
     pendingCount: () =>
-      drafts.global.filter((role) => changed(role, 'global')).length +
-      drafts.project.filter((role) => changed(role, 'project')).length,
+      (pendingChanges ??=
+        drafts.global.filter((role) => changed(role, 'global')).length +
+        drafts.project.filter((role) => changed(role, 'project')).length),
     onCancel: () => options.onDone({ kind: 'cancelled' }),
     onSaved: () => options.onDone({ kind: 'saved', changedRoles }),
     onSave: () => {
@@ -359,6 +405,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           structuredClone(drafts[editScope]),
         );
         baseline = result.snapshot;
+        invalidateDerived();
         changedRoles = [...new Set([...changedRoles, ...result.changedRoles])];
         failedSave = !result.success;
         if (!result.success)
@@ -386,13 +433,16 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           : 'agent · selected tools',
       ],
       rows: () =>
-        draft.map((role) => ({
-          id: role.role,
-          dirty: changed(role),
-          label: ({ layout }) =>
-            layout === 'wide'
-              ? `${role.role.padEnd(16)}  ${`${effective(role).length} selected`.padEnd(18)}  ${summary(role)}`
-              : `${role.role} · ${effective(role).length} selected · ${summary(role)}`,
+        (overviewRows ??= draft.map((role) => {
+          const selected = selection(role);
+          return {
+            id: role.role,
+            dirty: changed(role),
+            label: ({ layout }) =>
+              layout === 'wide'
+                ? `${role.role.padEnd(16)}  ${`${selected.count} selected`.padEnd(18)}  ${selected.summary}`
+                : `${role.role} · ${selected.count} selected · ${selected.summary}`,
+          };
         })),
       footer: () => {
         const role = draft[editor.getState().selectedIndex];
@@ -420,10 +470,10 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           ...(role
             ? [
                 panelHintRow(`Definition: ${role.scope} · ${role.filePath}`),
-                ...(manualEntries(role).length
+                ...(selection(role).manual.length
                   ? [
                       panelHintRow(
-                        `Manual entries: ${manualEntries(role).join(', ')} (edit in picker)`,
+                        `Manual entries: ${selection(role).manual} (edit in picker)`,
                       ),
                     ]
                   : []),
@@ -463,6 +513,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         if (key === 'tab') {
           scope = scope === 'global' ? 'project' : 'global';
           draft = drafts[scope];
+          invalidateDerived();
           blocked = undefined;
           return true;
         }
@@ -528,6 +579,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
               overlay: role.overlay ?? { add: [], remove: [] },
             }));
             draft = drafts[scope];
+            invalidateDerived();
             changedRoles = [
               ...new Set([...changedRoles, ...result.changedRoles]),
             ];
@@ -561,6 +613,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
             if (scope === 'project')
               role.overlay?.[active.lane ?? 'add'].push(candidate);
             else role.tools = next;
+            invalidateDerived();
             entryInput = undefined;
           } catch (error) {
             active.error =

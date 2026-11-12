@@ -52,6 +52,7 @@ type ReviewRow =
 const MIN_PREVIEW_BODY_ROWS = 2;
 const MAX_PROMPT_ROWS = 3;
 const MAX_CONTEXT_ROWS = 6;
+const MAX_MEASURED_PREVIEWS = 1024;
 /** Label, native editor borders and cursor row, even before an editor opens. */
 const EDITOR_ROWS = 4;
 const REVIEW_ACTIONS = ['submit', 'back', 'cancel'] as const;
@@ -557,18 +558,25 @@ export class QuestionnaireComponent implements Component {
       this.listLabels(q, wide ? left : inner),
     );
     const listNeed = Math.max(0, ...lists.map(listHeight));
-    const previewNeed = Math.max(
-      0,
-      ...interactive.flatMap((q) =>
-        (q.options ?? []).map(
-          (option) =>
-            this.markdown.render(
-              this.previewSource(option),
-              wide ? right : inner,
-            ).length,
-        ),
-      ),
-    );
+    // All previews use one width in this geometry pass. Retain only heights
+    // locally so repeated sources cannot thrash the smaller rendered-line cache.
+    // Stop admitting new sources at the cap rather than evicting shared ones.
+    const previewWidth = wide ? right : inner;
+    const previewHeights = new Map<string, number>();
+    let previewNeed = 0;
+    for (const question of interactive) {
+      for (const option of question.options ?? []) {
+        const source = this.previewSource(option);
+        let height = previewHeights.get(source);
+        if (height === undefined) {
+          height = this.markdown.render(source, previewWidth).length;
+          if (previewHeights.size < MAX_MEASURED_PREVIEWS) {
+            previewHeights.set(source, height);
+          }
+        }
+        previewNeed = Math.max(previewNeed, height);
+      }
+    }
     const review =
       this.reviewIndex === undefined ? 0 : questions.length + 3 + 2;
     const compactPreview = interactive.some((q) =>

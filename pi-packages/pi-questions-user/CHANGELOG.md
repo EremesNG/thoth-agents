@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Fixed
+
+- Avoid repeated markdown rendering when measuring questionnaires with shared option previews, while keeping measurement memory bounded.
+
 ## [0.6.0] - 2026-11-03
 
 ### Changed

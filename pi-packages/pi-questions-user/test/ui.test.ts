@@ -6,6 +6,7 @@ import { initTheme } from '@earendil-works/pi-coding-agent';
 import {
   CURSOR_MARKER,
   getKeybindings,
+  Markdown,
   stripTerminalSequences,
   type TUI,
   visibleWidth,
@@ -1814,7 +1815,14 @@ describe('questionnaire UI', () => {
       }
     }
     const { component, send } = setup({ questions }, 40, undefined, state);
+    const markdownRender = vi.spyOn(Markdown.prototype, 'render');
     const first = component.render(120);
+    // Shared previews should be measured once, not once per option. Allow one
+    // additional focused render after the bounded persistent cache evicts it.
+    expect(markdownRender.mock.calls.length).toBeLessThanOrEqual(
+      optionCount + 1,
+    );
+    markdownRender.mockRestore();
     expect(first).toHaveLength(18);
     expect(first.join('\n')).toContain('› 1. ○   Option 1');
     // Cold geometry may scan all options, but only a bounded number of times.

@@ -1,3 +1,4 @@
+import '../test-support/mock-shell-discovery.js';
 import { visibleWidth } from '@earendil-works/pi-tui';
 import {
   type RenderKitToken,
@@ -13,6 +14,7 @@ import {
   packUrgentCallback,
   type UrgentCallbackEvent,
 } from '../shared-callback-batcher.js';
+import extension from '../index.js';
 import { renderBackgroundMessage } from './messages.js';
 
 const NOTIFICATION_MARKER =
@@ -737,8 +739,7 @@ describe('background message renderer', () => {
 });
 
 describe('registration', () => {
-  it('registers both renderers', async () => {
-    const { default: extension } = await import('../index.js');
+  it('registers both renderers', () => {
     const registerMessageRenderer = vi.fn();
     extension({
       on: vi.fn(),

@@ -1,3 +1,4 @@
+import './test-support/mock-shell-discovery.js';
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";

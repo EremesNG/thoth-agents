@@ -1,3 +1,4 @@
+import './test-support/mock-shell-discovery.js';
 import { appendFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { type Component, type OverlayHandle, stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';

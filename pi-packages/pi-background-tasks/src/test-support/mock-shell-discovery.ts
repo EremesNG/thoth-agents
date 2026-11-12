@@ -1,16 +1,16 @@
 import { vi } from 'vitest';
 
 // UI/output tests register tools, but do not test host shell discovery. The real
-// registration probe can start PowerShell and wait up to 15 s per candidate.
+// registration lookup is host-dependent even though it never probes versions.
 // Keep launch-time resolution real (history tests also launch direct argv jobs).
-// Shell discovery and registration caching have their own shell/powershell tests.
+// Shell discovery and launch validation have their own shell/powershell tests.
 vi.mock('../shell.js', async (original) => ({
   ...await original<typeof import('../shell.js')>(),
-  detectShells: (): import('../shell.js').ShellDetection => ({
+  detectShells: (): import('../shell.js').ShellRegistrationDetection => ({
     available: [{
       kind: 'none',
       executable: '',
-      args: [],
+      unverified: true,
       label: 'none (direct argv)',
     }],
     unavailable: {

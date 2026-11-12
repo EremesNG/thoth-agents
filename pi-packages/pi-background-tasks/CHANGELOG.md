@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+
+- Discover unverified shell candidate paths during tool registration without starting PowerShell version probes; retain full validation and diagnostics at launch.
+
 ## [0.8.0] - 2026-11-11
 
 ### Added

@@ -134,7 +134,7 @@ export function registerTools(pi: ExtensionAPI): void {
   const occasional = createAdaptiveToolRegistrar(pi);
   const detection = detectShells(undefined, { registration: true });
   const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
-  const shellGuidance = `Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Desktop 5.1 lacks &&/||.' : ''} Revalidated at launch.`;
+  const shellGuidance = `Shell candidates at registration (unverified; validated at launch): ${detected.join('; ')}. Desktop 5.1 lacks &&/||.`;
   const fields = {
     ...CommandFields,
     command: Type.Optional(Type.String({ description: 'Shell command; required unless shell:none with argv.' })),

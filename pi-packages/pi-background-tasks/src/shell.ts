@@ -11,10 +11,12 @@ export interface ResolvedShell {
   version?: string;
 }
 export interface ShellDetection { available: ResolvedShell[]; unavailable: Partial<Record<ShellKind, string>> }
+export interface ShellRegistrationHint { kind: ShellKind; executable: string; label: string; unverified: true }
+export interface ShellRegistrationDetection { available: ShellRegistrationHint[]; unavailable: Partial<Record<ShellKind, string>> }
 
-function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string, powerShellConfig = resolvePowerShellConfig): ResolvedShell {
+function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string): ResolvedShell {
   if (kind === 'powershell') {
-    const config = powerShellConfig();
+    const config = resolvePowerShellConfig();
     return { kind, ...config, label: `PowerShell ${config.edition} ${config.version} (${config.executable})` };
   }
   const setting = SettingsManager.create(cwd).getShellPath();
@@ -28,15 +30,24 @@ function discoverShell(kind: Exclude<ShellKind, 'none'>, cwd: string, powerShell
   return { kind, executable: config.shell, args: [...config.args], label: `bash (${config.shell})` };
 }
 
-export function detectShells(cwd = process.cwd(), { registration = false }: { registration?: boolean } = {}): ShellDetection {
-  const powerShellConfig = registration ? resolvePowerShellConfigForRegistration : resolvePowerShellConfig;
-  const detection: ShellDetection = { available: [], unavailable: {} };
+export function detectShells(cwd?: string, options?: { registration?: false }): ShellDetection;
+export function detectShells(cwd: string | undefined, options: { registration: true }): ShellRegistrationDetection;
+export function detectShells(cwd = process.cwd(), { registration = false }: { registration?: boolean } = {}): ShellDetection | ShellRegistrationDetection {
+  const detection: { available: (ResolvedShell | ShellRegistrationHint)[]; unavailable: Partial<Record<ShellKind, string>> } = { available: [], unavailable: {} };
   for (const kind of ['bash', 'powershell'] as const) {
-    try { detection.available.push(discoverShell(kind, cwd, powerShellConfig)); }
+    try {
+      if (registration) {
+        const candidate = kind === 'powershell' ? resolvePowerShellConfigForRegistration() : discoverShell(kind, cwd);
+        detection.available.push({ kind, executable: candidate.executable, unverified: true,
+          label: `${kind === 'powershell' ? 'PowerShell candidate' : 'bash'} (${candidate.executable})` });
+      } else detection.available.push(discoverShell(kind, cwd));
+    }
     catch (error) { detection.unavailable[kind] = error instanceof Error ? error.message : String(error); }
   }
-  detection.available.push({ kind: 'none', executable: '', args: [], label: 'none (direct argv)' });
-  return detection;
+  detection.available.push(registration
+    ? { kind: 'none', executable: '', unverified: true, label: 'none (direct argv)' }
+    : { kind: 'none', executable: '', args: [], label: 'none (direct argv)' });
+  return detection as ShellDetection | ShellRegistrationDetection;
 }
 
 export class ShellUnavailableError extends Error {

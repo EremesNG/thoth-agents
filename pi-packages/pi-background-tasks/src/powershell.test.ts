@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolvePowerShell, resolvePowerShellConfig } from './powershell.js';
+import { resolvePowerShell, resolvePowerShellConfig, resolvePowerShellConfigForRegistration } from './powershell.js';
 vi.mock('node:child_process',async original=>({...await original<typeof import('node:child_process')>(),spawnSync:vi.fn()}));
 vi.mock('node:fs',async original=>({...await original<typeof import('node:fs')>(),existsSync:vi.fn()}));
 beforeEach(()=>{vi.mocked(existsSync).mockReturnValue(false);vi.stubEnv('PI_BACKGROUND_TASKS_PWSH','');vi.spyOn(process,'platform','get').mockReturnValue('win32');});
@@ -13,6 +13,42 @@ const timedResult=(stdout:string,elapsedMs:number,timeout?:number):ReturnType<ty
     ? {...result(''),status:null,signal:'SIGTERM',error:Object.assign(new Error('spawnSync ETIMEDOUT'),{code:'ETIMEDOUT'})}
     : result(stdout);
 describe('PowerShell discovery',()=>{
+  it('finds an unverified registration candidate without spawning a version probe',()=>{
+    vi.mocked(existsSync).mockImplementation(file=>String(file)==='D:/PATH/pwsh.exe');
+    vi.mocked(spawnSync).mockReturnValue(result('D:/PATH/pwsh.exe\r\n'));
+    expect(resolvePowerShellConfigForRegistration()).toEqual({executable:'D:/PATH/pwsh.exe',unverified:true});
+    expect(vi.mocked(spawnSync).mock.calls.every(([,args])=>!args?.includes('-EncodedCommand'))).toBe(true);
+  });
+  it.each([
+    {override:'D:/override/pwsh.exe',existing:['D:/override/pwsh.exe','D:/PATH/pwsh.exe'],expected:'D:/override/pwsh.exe'},
+    {override:'D:/missing.exe',existing:['D:/PATH/pwsh.exe','C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'],expected:'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'},
+    {override:'',existing:['D:/PATH/pwsh.exe','C:/Programs/PowerShell/7/pwsh.exe'],expected:'D:/PATH/pwsh.exe'},
+    {override:'',existing:['C:/Programs/PowerShell/7/pwsh.exe','C:/Local/Microsoft/WindowsApps/pwsh.exe'],expected:'C:/Programs/PowerShell/7/pwsh.exe'},
+    {override:'',existing:['C:/Local/Microsoft/WindowsApps/pwsh.exe'],expected:'C:/Local/Microsoft/WindowsApps/pwsh.exe'},
+  ])('preserves candidate precedence with override $override and $existing',({override,existing,expected})=>{
+    vi.stubEnv('PI_BACKGROUND_TASKS_PWSH',override);
+    vi.stubEnv('SystemRoot','C:/Windows');
+    vi.stubEnv('ProgramFiles','C:/Programs');
+    vi.stubEnv('LOCALAPPDATA','C:/Local');
+    vi.mocked(existsSync).mockImplementation(file=>existing.includes(String(file).replaceAll('\\','/')));
+    vi.mocked(spawnSync).mockReturnValue(result('D:/PATH/pwsh.exe\n'));
+    expect(resolvePowerShellConfigForRegistration().executable.replaceAll('\\','/')).toBe(expected);
+    expect(vi.mocked(spawnSync).mock.calls.every(([,args])=>!args?.includes('-EncodedCommand'))).toBe(true);
+    if(override) expect(spawnSync).not.toHaveBeenCalled();
+  });
+  it.each(['linux','win32'] as const)('reports missing registration paths on %s without version probes',platform=>{
+    vi.spyOn(process,'platform','get').mockReturnValue(platform);
+    vi.mocked(spawnSync).mockReturnValue(result('',1));
+    expect(()=>resolvePowerShellConfigForRegistration()).toThrow(/candidate is unavailable/);
+    expect(vi.mocked(spawnSync).mock.calls.every(([,args])=>!args?.includes('-EncodedCommand'))).toBe(true);
+  });
+  it('resolves a bare override on PATH without probing or discovering other pwsh candidates',()=>{
+    vi.stubEnv('PI_BACKGROUND_TASKS_PWSH','custom-pwsh');
+    vi.mocked(spawnSync).mockReturnValue(result('D:/Tools/custom-pwsh.exe\n'));
+    vi.mocked(existsSync).mockImplementation(file=>String(file)==='D:/Tools/custom-pwsh.exe');
+    expect(resolvePowerShellConfigForRegistration()).toEqual({executable:'D:/Tools/custom-pwsh.exe',unverified:true});
+    expect(spawnSync).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/where\.exe$/),['custom-pwsh'],expect.objectContaining({timeout:5000}));
+  });
   it.each([
     {platform:'win32' as const,edition:'Desktop',major:5,minor:1,version:'5.1.19041'},
     {platform:'win32' as const,edition:'Core',major:7,minor:5,version:'7.5.2'},

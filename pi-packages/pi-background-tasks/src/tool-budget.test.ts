@@ -8,7 +8,7 @@ vi.mock('./shell.js', async original => ({
   detectShells: () => ({
     available: [
       { kind: 'bash', label: 'bash (D:/Git/bin/bash.exe)' },
-      { kind: 'powershell', label: 'PowerShell Desktop 5.1.19041 (C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe)', edition: 'Desktop' },
+      { kind: 'powershell', label: 'PowerShell candidate (C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe)', unverified: true },
       { kind: 'none', label: 'none (direct argv)' },
     ],
     unavailable: {},

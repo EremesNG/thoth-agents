@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-11
+
 ### Added
 
 - `/subagents-tools` picker `e` edits Global manual entries and Project add/remove patterns in place, preserving order and untouched duplicates. The prefilled input supports Enter to confirm, Esc to cancel, and Ctrl+U to clear; empty edits require explicit deletion.

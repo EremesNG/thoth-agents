@@ -105,7 +105,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   let failedSave = false;
   let selectedRole = 0;
   let entryInput:
-    | { input: Input; lane?: 'add' | 'remove'; error?: string }
+    | { input: Input; lane?: 'add' | 'remove'; index?: number; error?: string }
     | undefined;
   const confirmation = new PanelDiscardConfirmation();
   let conversion:
@@ -288,10 +288,16 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       })),
       ...(scope === 'project'
         ? overlayRows(role)
-        : manualEntries(role).map((entry) => ({
-            id: entry,
-            label: manualLabel(entry),
-          }))),
+        : role.tools.flatMap((entry, index) =>
+            editableNames.has(entry)
+              ? []
+              : [
+                  {
+                    id: `manual:${index}`,
+                    label: manualLabel(entry),
+                  },
+                ],
+          )),
     ]);
   const toggleProject = (role: ToolsRoleSnapshot, name: string) => {
     role.overlay ??= { add: [], remove: [] };
@@ -313,6 +319,15 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     }
   };
 
+  const entryTarget = (
+    row?: ListEditorRow,
+  ): { lane?: 'add' | 'remove'; index: number } | undefined => {
+    if (!row) return undefined;
+    const [lane, index] = row.id.split(':');
+    if (lane !== 'manual' && lane !== 'add' && lane !== 'remove')
+      return undefined;
+    return { lane: lane === 'manual' ? undefined : lane, index: Number(index) };
+  };
   const openRole = (editor: ListEditor) => {
     selectedRole = editor.getState().selectedIndex;
     const role = draft[selectedRole];
@@ -322,7 +337,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     editor.openPicker({
       title: `Choose tools · ${role.role} · ${scope === 'project' ? 'Project' : 'Global'}`,
       hints: () =>
-        `↑/↓/j/k move · space toggle · p scope · a add · d/delete remove${defaultsHint(role)} · enter/esc/q back`,
+        `↑/↓/j/k move · space toggle · p scope · a add${entryTarget(toolRows(role)[editor.getState().selectedIndex]) ? ' · e edit' : ''} · d/delete remove${defaultsHint(role)} · enter/esc/q back`,
       navigation: 'wrap',
       maxVisibleRows: 10,
       header: () => [
@@ -340,8 +355,12 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       footer: () => {
         const index = editor.getState().selectedIndex;
         const row = toolRows(role)[index];
+        const target = entryTarget(row);
         const selected =
-          tools[index]?.name ?? (scope === 'project' ? row?.label : row?.id);
+          tools[index]?.name ??
+          (scope === 'global' && target
+            ? role.tools[target.index]
+            : row?.label);
         return [{ text: `selected: ${selected ?? '(none)'}`, tone: 'accent' }];
       },
       onAction: (key, row) => {
@@ -356,16 +375,24 @@ export function createToolsPanel(options: ToolsPanelOptions) {
           };
           return true;
         }
-        if (
-          (key === 'd' || matchesKey(key, 'delete')) &&
-          row &&
-          !editableNames.has(row.id)
-        ) {
-          if (scope === 'project') {
-            const [lane, index] = row.id.split(':');
-            if (lane === 'add' || lane === 'remove')
-              role.overlay?.[lane].splice(Number(index), 1);
-          } else role.tools = role.tools.filter((name) => name !== row.id);
+        const target = entryTarget(row);
+        if (key === 'e' && target) {
+          const entries =
+            scope === 'project'
+              ? role.overlay?.[target.lane ?? 'add']
+              : role.tools;
+          const input = new Input({ prompt: 'edit: ' });
+          // Paste into the fresh input so the native cursor ends after the value.
+          input.handleInput(
+            `\x1b[200~${entries?.[target.index] ?? ''}\x1b[201~`,
+          );
+          entryInput = { input, ...target };
+          return true;
+        }
+        if ((key === 'd' || matchesKey(key, 'delete')) && target) {
+          if (scope === 'project')
+            role.overlay?.[target.lane ?? 'add'].splice(target.index, 1);
+          else role.tools.splice(target.index, 1);
           invalidateDerived();
           return true;
         }
@@ -547,7 +574,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         ? renderConversion(width)
         : entryInput
           ? renderPanelFrame({
-              title: `Add tool entry · ${draft[selectedRole]?.role}`,
+              title: `${entryInput.index === undefined ? 'Add' : 'Edit'} tool entry · ${draft[selectedRole]?.role}`,
               rows: [
                 panelHintRow(
                   'type a name or glob · ctrl+u clear · enter confirm · esc cancel',
@@ -616,7 +643,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       else if (key === 'enter') {
         const candidate = active.input.getValue().trim();
         const role = draft[selectedRole];
-        if (!candidate || !role) entryInput = undefined;
+        if (!candidate && active.index !== undefined)
+          active.error = 'Empty entry: use d/Delete to remove it.';
+        else if (!candidate || !role) entryInput = undefined;
         else {
           try {
             const entries =
@@ -624,13 +653,18 @@ export function createToolsPanel(options: ToolsPanelOptions) {
                 ? (role.overlay?.[active.lane ?? 'add'] ?? [])
                 : role.tools;
             validateTools([candidate]);
-            if (entries.includes(candidate))
-              throw new Error(`Duplicate Subagent tool name: ${candidate}.`);
-            const next = [...entries, candidate];
-            if (scope === 'project')
-              role.overlay?.[active.lane ?? 'add'].push(candidate);
-            else role.tools = next;
-            invalidateDerived();
+            if (candidate !== entries[active.index ?? -1]) {
+              if (
+                entries.some(
+                  (entry, index) =>
+                    entry === candidate && index !== active.index,
+                )
+              )
+                throw new Error(`Duplicate Subagent tool name: ${candidate}.`);
+              if (active.index !== undefined) entries[active.index] = candidate;
+              else entries.push(candidate);
+              invalidateDerived();
+            }
             entryInput = undefined;
           } catch (error) {
             active.error =

@@ -104,8 +104,10 @@ global `agents` is ignored. Add patterns join definition/inherited defaults befo
 expansion; remove patterns subtract afterward, before denials/native exclusions.
 Injected orchestrator controls remain governed by flags and `disallowed_tools`.
 In Project's picker the base is read-only: `a` adds an add-pattern, `x` adds a
-remove-pattern, `d`/Delete deletes an overlay entry, and `r` clears the overlay.
-Global `a`/`d` edit manual entries; Thoth supplies optional reset defaults and
+remove-pattern, `e` edits an overlay entry, `d`/Delete deletes it, and `r` clears the overlay.
+Global `a`/`e`/`d` add/edit/delete manual entries. The edit input is prefilled;
+Enter commits, Esc cancels, and Ctrl+U clears (empty edits require `d`/Delete instead).
+Picker Enter still goes back, and Project base entries remain read-only; Thoth supplies optional reset defaults and
 managed-specialist validation. `s` saves from the overview. Writes are atomic,
 stale-checked and backed up. Project `c` converts a shadowing copy after summarizing
 candidate add/remove entries and naming lost non-tools aspects (not their content),

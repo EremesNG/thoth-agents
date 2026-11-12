@@ -5,6 +5,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Added
+
+- `/subagents-tools` picker `e` edits Global manual entries and Project add/remove patterns in place, preserving order and untouched duplicates. The prefilled input supports Enter to confirm, Esc to cancel, and Ctrl+U to clear; empty edits require explicit deletion.
+
 ### Fixed
 
 - `/subagents-tools` scope switching now accepts real Tab and CSI-u/kitty keys; `p` switches Global/Project from both the overview and picker.

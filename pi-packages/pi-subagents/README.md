@@ -234,10 +234,13 @@ enter/e opens a tool picker, space toggles a registered exact tool, and `a` adds
 a name or glob. `p` switches the visible Global/Project scope. Project starts
 selected when the project config has a non-empty `agents` object or a project
 definition shadows a global one; otherwise Global starts selected.
-In the picker, `d`/Delete removes the selected manual entry;
+In the picker, `e` edits the selected Global manual or Project overlay entry in place;
+`d`/Delete removes it. Project base entries stay read-only;
 enter/esc/q returns, s saves, and esc/q cancels with dirty-draft discard confirmation.
-The add input supports Enter to confirm, Esc to cancel, Backspace to delete,
-and Ctrl+U to clear. The wide table
+The add/edit input supports Enter to confirm, Esc to cancel, Backspace to delete,
+and Ctrl+U to clear. Editing prefills the current value with the cursor at the end
+and preserves its position and add/remove lane. Unchanged edits are no-ops;
+empty edits are rejected (use `d`/Delete to remove). The wide table
 starts at 84 columns and the cursor-centered viewport follows terminal height.
 
 Global edits target the global definition even when a project copy shadows it;
@@ -793,7 +796,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 | `/subagents` | Open the session-focused TUI subagent history panel. |
 | `/subagents-history-compact` | Explicitly prune expired execution detail and reclaim database disk space with VACUUM; report database + WAL sizes before and after. |
 | `/subagents-model` | Manage named model profiles and select them for the session, project, or globally. |
-| `/subagents-tools` | Toggle tools and add/remove manual names or globs in resolved global or project definitions; reset requires adapter defaults. |
+| `/subagents-tools` | Toggle tools and add/edit/remove manual names or globs in resolved global or project definitions; reset requires adapter defaults. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
 | `x` | Confirm cancellation of the selected queued/running subagent. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
 | `ctrl+h` | Send the running task-mode subagent task to the background by default. Configurable via `background_handoff_shortcut` in `subagents.json`. |

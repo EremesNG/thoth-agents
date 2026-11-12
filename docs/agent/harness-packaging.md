@@ -286,8 +286,14 @@
   subset. An empty effective permitted selection or unexpected extra child tools
   still fails; either injected orchestrator tool alone can keep the selection nonempty.
   Explicit names and tools matched by globs reach the child even when inactive
-  in the root, allowing roles to activate deferred or advanced tools. Globs are
-  edited manually in definition frontmatter. Native TUI/AI modules are declared public peers and
+  in the root, allowing roles to activate deferred or advanced tools. Globs can be
+  edited in definition frontmatter or `/subagents-tools`: `a` adds a manual entry,
+  Project `x` adds a removal pattern, `e` edits the selected Global manual or Project
+  overlay row in place, and `d`/Delete removes it. The isolated add/edit input uses
+  Enter to confirm, Esc to cancel, and Ctrl+U to clear; edits are prefilled with the
+  cursor at the end and preserve the index and lane. Unchanged edits are no-ops;
+  empty edits are rejected with a deletion hint. Picker Enter still returns to the
+  overview, space toggles registered tools, and Project base entries stay read-only. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

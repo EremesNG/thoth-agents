@@ -5,6 +5,18 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-11
+
+### Added
+
+- Project tool overlay: `agents.<name>.tools.{add,remove}` in `<project>/.pi/subagents.json` grants or withholds tools for one project without copying agent definitions. `add` joins before glob expansion, `remove` subtracts after it; `ask_orchestrator`/`notify_orchestrator` are unaffected.
+- `/subagents-tools` Global/Project scope (Tab). Project scope edits the overlay (`a` add, `x` remove, `d` delete, `r` clear) and glob rows show their match count; Global always edits the global definition and warns when a project copy shadows it.
+- `c` converts a shadowing project copy into an equivalent overlay, with a colored summary of added/removed tools and lost differences; the copy is kept as `.bak`. Conversion is refused when the tool selection would change.
+
+### Fixed
+
+- Holding arrow keys in `/subagents-tools` no longer lags.
+
 ## [0.13.0] - 2026-11-11
 
 ### Added

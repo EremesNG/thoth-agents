@@ -1779,21 +1779,69 @@ describe('questionnaire UI', () => {
     expect(host.session.state).toBe(recorded);
   });
 
-  it('renders large questionnaires quickly', () => {
-    const questions = Array.from({ length: 200 }, (_, i) => ({
+  it('bounds large-questionnaire layout work and reuses it while navigating', () => {
+    const questionCount = 200;
+    const optionCount = 300;
+    const questions = Array.from({ length: questionCount }, (_, i) => ({
       id: `q${i}`,
       header: `H${i}`,
       prompt: 'p',
       type: 'single' as const,
-      options: options(300),
+      options: options(optionCount),
     }));
-    const { component, send } = setup({ questions });
-    const start = performance.now();
-    for (let i = 0; i < 20; i++) {
-      component.render(120);
-      send(KEY.down);
+    const state = createState({ questions });
+    let labelReads = 0;
+    let previewReads = 0;
+    // Observe real content access after createState's structured clone. Getters
+    // return the original data; wrapping, markdown and layout still run normally.
+    for (const question of state.questions) {
+      for (const option of question.options ?? []) {
+        const { label, preview } = option;
+        Object.defineProperties(option, {
+          label: {
+            get: () => {
+              labelReads++;
+              return label;
+            },
+          },
+          preview: {
+            get: () => {
+              previewReads++;
+              return preview;
+            },
+          },
+        });
+      }
     }
-    expect(performance.now() - start).toBeLessThan(1500);
+    const { component, send } = setup({ questions }, 40, undefined, state);
+    const first = component.render(120);
+    expect(first).toHaveLength(18);
+    expect(first.join('\n')).toContain('› 1. ○   Option 1');
+    // Cold geometry may scan all options, but only a bounded number of times.
+    // A wall-clock budget here conflated 60,000-option setup with navigation
+    // and failed on shared CI runners. Count work instead of machine speed.
+    const totalOptions = questionCount * optionCount;
+    expect(labelReads).toBeGreaterThan(0);
+    expect(labelReads).toBeLessThanOrEqual(2 * totalOptions);
+    expect(previewReads).toBeGreaterThan(0);
+    expect(previewReads).toBeLessThanOrEqual(2 * totalOptions);
+
+    for (let i = 1; i < 20; i++) {
+      labelReads = 0;
+      previewReads = 0;
+      send(KEY.down);
+      const frame = component.render(120);
+      expect(frame).toHaveLength(first.length);
+      expect(
+        frame.some(
+          (line) => line.includes('›') && line.includes(` Option ${i + 1} `),
+        ),
+      ).toBe(true);
+      // Navigation can scan the active list, not every question's options.
+      // Allow up to three label passes and a handful of focused preview reads.
+      expect(labelReads).toBeLessThanOrEqual(3 * optionCount);
+      expect(previewReads).toBeLessThanOrEqual(6);
+    }
   });
 
   describe('frame', () => {

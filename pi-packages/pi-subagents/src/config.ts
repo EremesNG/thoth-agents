@@ -33,6 +33,7 @@ export const OPENAI_FAST_PACKAGE = '@thoth-agents/pi-openai-fast';
 export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
   '@thoth-agents/pi-claude-bridge',
   '@thoth-agents/pi-antigravity-bridge',
+  '@thoth-agents/pi-junie-bridge',
   '@thoth-agents/pi-background-tasks',
   OPENAI_FAST_PACKAGE,
 ];

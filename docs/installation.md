@@ -363,6 +363,7 @@ Use Pi's native package manager for whichever providers you want:
 ```bash
 pi install npm:@thoth-agents/pi-claude-bridge
 pi install npm:@thoth-agents/pi-antigravity-bridge
+pi install npm:@thoth-agents/pi-junie-bridge
 pi install npm:@thoth-agents/pi-openai-fast
 ```
 
@@ -372,8 +373,17 @@ engine (the optional ACP engine has its own setup). pi-openai-fast adds priority
 model variants to existing OpenAI Responses/Codex providers; it does not provide
 credentials or Codex quota reporting. See the package READMEs for
 [Claude](../pi-packages/pi-claude-bridge/README.md#install),
-[Antigravity](../pi-packages/pi-antigravity-bridge/README.md#install) and
+[Antigravity](../pi-packages/pi-antigravity-bridge/README.md#install),
+[Junie](../pi-packages/pi-junie-bridge/README.md#install) and
 [OpenAI priority variants](../pi-packages/pi-openai-fast/README.md#install).
+
+Junie requires the Junie CLI installed and logged in with your JetBrains Account.
+It provides an ACP model provider with Pi tools over loopback MCP. Native Junie
+tools cannot be disabled: Pi permission dialogs gate them, headless requests are
+rejected, and brave mode is forced off. `/junie models` refreshes the model catalog;
+`/junie quota` checks balance through `/stats` in an isolated session. This is
+inferred non-consuming behavior, not a billing guarantee; live behavior depends
+on the Junie version. See the [Junie limitations](../pi-packages/pi-junie-bridge/README.md#limitations).
 
 Claude SDK rate-limit events from root and in-process child sessions report to
 pi-core's process-wide provider-limits registry, **not** a bus channel. Limits
@@ -404,7 +414,7 @@ Antigravity message, session and subagent costs are **API-equivalent estimates**
 not subscription billing: an explicit model mapping uses pi-ai catalog prices;
 unmapped models remain $0 and log once as unpriced. ACP token estimates remain
 estimates and exact usage replaces them with recomputed cost. The theme defaults
-`statusLine.subscriptionProviders` to `["claude-bridge", "antigravity"]` and
+`statusLine.subscriptionProviders` to `["claude-bridge", "antigravity", "junie"]` and
 marks the displayed total `(sub)` based on the current provider, not a per-message
 billing split. Explicit user lists remain unchanged. See
 [pricing mappings](../pi-packages/pi-antigravity-bridge/README.md#what-it-cannot-do)
@@ -562,8 +572,8 @@ Setup safely merges `session_resources: "lean"` and `enable_continue: false`
 into the global `<agent-dir>/subagents.json` (normally
 `~/.pi/agent/subagents.json`), preserving unrelated settings. Lean resources
 filter `before_agent_start` and `session_start` from child sessions, except for
-trusted packages in `lifecycle_passthrough` (default: the Claude and Antigravity
-bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
+trusted packages in `lifecycle_passthrough` (default: the Claude, Antigravity and
+Junie bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
 thoth-agents), which keep their full lifecycle with prompt-shaping events
 observe-only, except that a `before_provider_request` return replaces the
 provider payload (so `-fast` variants send `service_tier: "priority"` in

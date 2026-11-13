@@ -11,7 +11,7 @@ const defaults = {
   icons: 'nerd',
   statusLine: {
     enabled: true,
-    subscriptionProviders: ['claude-bridge', 'antigravity'],
+    subscriptionProviders: ['claude-bridge', 'antigravity', 'junie'],
   },
   tools: {
     collapsed: 'frame',
@@ -208,6 +208,7 @@ describe('loadConfig', () => {
     expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([
       'claude-bridge',
       'antigravity',
+      'junie',
     ]);
   });
 });

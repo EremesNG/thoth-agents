@@ -34,6 +34,16 @@ const packages = {
     command: 'agy',
     assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
   },
+  'pi-junie-bridge': {
+    provider: 'junie',
+    command: 'junie',
+    assets: [
+      'dist/launcher.cs',
+      'dist/launcher.ps1',
+      'README.md',
+      'CHANGELOG.md',
+    ],
+  },
   'pi-askcodex': {
     tool: 'AskCodex',
     assets: ['dist/launcher.cs', 'dist/launcher.ps1'],
@@ -160,6 +170,18 @@ test(
     try {
       mkdirSync(install);
       mkdirSync(agentDir);
+      // Junie discovers models on first load without a cache. Keep this smoke
+      // test offline: registration must not launch an operator's installed CLI.
+      mkdirSync(join(agentDir, 'junie-bridge'));
+      writeFileSync(
+        join(agentDir, 'junie-bridge/models.json'),
+        JSON.stringify({
+          version: 1,
+          refreshedAt: '2026-11-12T00:00:00.000Z',
+          models: [{ id: 'mix.auto', name: 'Auto' }],
+          efforts: ['low', 'medium', 'high'],
+        }),
+      );
       process.env.PI_CODING_AGENT_DIR = agentDir;
       process.chdir(install);
       const { discoverAndLoadExtensions, getAgentDir } = await import(

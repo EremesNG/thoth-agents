@@ -20,6 +20,13 @@ const packages = {
       '../pi-core/src/windows-job/launcher.ps1',
     ],
   },
+  'pi-junie-bridge': {
+    entry: 'extensions/index.ts',
+    assets: [
+      '../pi-core/src/windows-job/launcher.cs',
+      '../pi-core/src/windows-job/launcher.ps1',
+    ],
+  },
   'pi-askcodex': {
     entry: 'src/index.ts',
     assets: [

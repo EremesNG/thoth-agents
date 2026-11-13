@@ -455,6 +455,7 @@ describe('config and workflow loading', () => {
     expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
       '@thoth-agents/pi-claude-bridge',
       '@thoth-agents/pi-antigravity-bridge',
+      '@thoth-agents/pi-junie-bridge',
       '@thoth-agents/pi-background-tasks',
       '@thoth-agents/pi-openai-fast',
     ]);

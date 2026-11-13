@@ -258,13 +258,13 @@ pi-core MUST provide a process-wide, version-tolerant registry of provider rate-
 
 ### Requirement: Subscription provider cost and on-demand quota
 
-the Antigravity bridge MUST report API-equivalent message cost through an explicit model-to-catalog price mapping, the theme MUST treat `antigravity` as a default subscription provider, and provider quota MUST only be fetched on demand through `/agy quota` and `/claude quota`, never periodically.
+the Antigravity bridge MUST report API-equivalent message cost through an explicit model-to-catalog price mapping, the Junie bridge MUST report per-message cost from Junie usage deltas, the theme MUST treat `antigravity` and `junie` as default subscription providers, and provider quota MUST only be fetched on demand through `/agy quota`, `/claude quota` and `/junie quota`, never periodically, and `/junie quota` MUST NOT spend model inference.
 
 #### Scenario: Subscription provider cost and on-demand quota
 
-- **GIVEN** an Antigravity session using a mapped Gemini model
-- **WHEN** a turn completes and the user runs `/claude quota`
-- **THEN** the message cost equals the catalog price for its tokens, the status line includes it marked `(sub)`, and the quota command prints the plan windows without sending a prompt
+- **GIVEN** an Antigravity session using a mapped Gemini model and a Junie session
+- **WHEN** turns complete and the user runs `/claude quota` and `/junie quota`
+- **THEN** the Antigravity message cost equals the catalog price for its tokens, Junie message cost equals its usage delta, the status line marks both `(sub)`, and each quota command prints without sending a model prompt
 
 ### Requirement: Thoth Pi sidebar
 
@@ -725,3 +725,33 @@ pi-subagents MUST honor a per-agent tool overlay `agents.<name>.tools` with `add
 - **GIVEN** a global thoth-worker with tools `read, bash` and a project `.pi/subagents.json` with `agents.thoth-worker.tools.add=["mcp__blender*"]` while the project registers the Blender MCP server
 - **WHEN** the user launches thoth-worker in that project and in another project
 - **THEN** the child receives the Blender tools only in the first project, the other project receives `read, bash` without dropped-tool warnings, and saving a Project-scope change in `/subagents-tools` rewrites only `agents` in `.pi/subagents.json`
+
+### Requirement: Junie bridge provider
+
+`@thoth-agents/pi-junie-bridge` MUST register the `junie` provider from a prompt-free model discovery of the installed Junie CLI over ACP, MUST expose Pi tools to Junie only through a loopback token-protected MCP server whose calls become exactly one Pi-executed `toolUse` resuming the same Junie turn, MUST end every stream with exactly one terminal event, and MUST resume the mapped Junie session across Pi processes unless Pi history diverged.
+
+#### Scenario: Junie bridge provider
+
+- **GIVEN** an authenticated Junie CLI and a Pi session on a `junie` model
+- **WHEN** Junie calls a Pi tool and Pi is later restarted and the session continued
+- **THEN** Pi executes the tool once, the same Junie turn receives its result, and the next turn resumes the same Junie session
+
+### Requirement: Junie bridge native tool permissions
+
+The Junie bridge MUST force Junie `brave_mode` off on every new, resumed or forked session, MUST present each Junie native-tool permission request in the Pi UI with Junie's options, MUST reject when no dialog-capable UI exists or the dialog is dismissed or times out, and MUST never execute Junie native tool activity in Pi.
+
+#### Scenario: Junie bridge native tool permissions
+
+- **GIVEN** a headless Pi run on a `junie` model
+- **WHEN** Junie requests permission to run a terminal command
+- **THEN** the request is rejected and nothing is executed by Pi
+
+### Requirement: Junie bridge Windows job containment
+
+On Windows the Junie bridge MUST launch Junie with piped stdin inside its own kill-on-close Job Object through the pi-core job launcher and MUST end it and its descendants only through that job, falling back to terminating only its leader with a warning when the launcher is unavailable.
+
+#### Scenario: Junie bridge Windows job containment
+
+- **GIVEN** a Windows Pi session whose Junie process spawned a descendant
+- **WHEN** the session shuts down
+- **THEN** Junie and its descendant end through the job and unrelated processes keep running

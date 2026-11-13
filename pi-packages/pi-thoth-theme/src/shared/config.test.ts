@@ -28,6 +28,29 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+describe('subscription provider configuration', () => {
+  it('defaults to Claude Bridge, Antigravity, and Junie subscriptions', () => {
+    expect(loadConfig(path).statusLine.subscriptionProviders).toEqual([
+      'claude-bridge',
+      'antigravity',
+      'junie',
+    ]);
+  });
+
+  it.each([
+    { providers: ['custom-provider', 'claude-bridge'] },
+    { providers: [] },
+  ])('preserves the explicit user list $providers', ({ providers }) => {
+    writeFileSync(
+      path,
+      JSON.stringify({ statusLine: { subscriptionProviders: providers } }),
+    );
+    expect(loadConfig(path).statusLine.subscriptionProviders).toEqual(
+      providers,
+    );
+  });
+});
+
 describe('collapsed tool density configuration', () => {
   it.each(['frame', 'compact', 'line'] as const)('loads %s', (collapsed) => {
     writeFileSync(path, JSON.stringify({ tools: { collapsed } }));

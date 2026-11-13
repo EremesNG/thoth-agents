@@ -335,6 +335,11 @@ skills under `skills/`.
 3. Add `pnpm run build` when the change affects built/runtime output or packaging;
    use `pnpm run test:pi-extensions` for changed Pi extension bundles.
 
+For pi-junie-bridge packaging changes, run `pnpm --filter @thoth-agents/pi-junie-bridge run typecheck`
+and `pnpm --filter @thoth-agents/pi-junie-bridge run test` (hermetic fake ACP agent
+and loopback MCP; no live Junie inference), then build and run `pnpm run test:pi-extensions`
+to verify provider/command registration and packed Windows launcher assets.
+
 For Pi task-channel changes, run the full offline tests and typechecks for
 pi-core, pi-subagents, pi-background-tasks and pi-thoth-theme, plus affected
 `src/cli/pi-install*.test.ts`, operation tests and `src/pi.test.ts` when the

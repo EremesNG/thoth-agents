@@ -106,7 +106,7 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
-  The root package and all twelve `pi-packages/*` members declare Pi SDK peers
+  The root package and all thirteen `pi-packages/*` members declare Pi SDK peers
   `>=1.5.0`, pin development SDK/TUI dependencies to `1.5.0`, and require Node
   `>=22.19.0`. Features requiring APIs above this Pi floor must be runtime-guarded.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
@@ -156,6 +156,10 @@
   are size-budgeted by each package's `tool-budget.test.ts`, which serializes
   name, description, parameters, snippet and guidelines; raise a budget only with
   a deliberate definition change and state shared guidance once per tool.
+  The optional/manual `@thoth-agents/pi-junie-bridge` registers the `junie` ACP
+  provider using an installed, authenticated Junie CLI. Its `extensions/index.ts`
+  is bundled with Pi SDK/typebox externals and pi-core `launcher.cs`/`launcher.ps1`
+  assets beside `dist/index.ts`, like Antigravity. It is not in `PI_PACKAGE_SPECS`.
   The workspace `@thoth-agents/pi-openai-fast` (`pi-packages/pi-openai-fast`,
   operator-installed, not in `PI_PACKAGE_SPECS`) adds `<id>-fast` virtual models
   under every provider with `openai-responses`/`openai-codex-responses` models
@@ -338,8 +342,8 @@
   operator-edited filters. Global/project `lean_skills` defaults to true;
   `lean_skills: false` disables child catalogs without enabling full resources.
   Explicit assignment paths remain available alongside catalog discovery.
-  Trusted packages in `lifecycle_passthrough` (default: the two
-  provider bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
+  Trusted packages in `lifecycle_passthrough` (default: the Claude, Antigravity
+  and Junie provider bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
   thoth-agents) are the exception: they keep their full lifecycle in children,
   with prompt-shaping events observe-only as defense in depth except that a
   `before_provider_request` return replaces the provider payload (so `-fast`
@@ -621,6 +625,20 @@ a visible flash and this workaround still need live validation. See
 [Claude quota](../../pi-packages/pi-claude-bridge/README.md#rate-limits-and-claude-quota)
 and [Windows quota diagnosis](../../pi-packages/pi-antigravity-bridge/README.md#windows-quota-console-diagnosis).
 
+Junie requires the Junie CLI installed and logged in with a JetBrains Account.
+Its ACP provider exposes Pi tools via authenticated loopback MCP. Built-in Junie
+tools cannot be disabled: Pi dialogs gate only permission requests Junie sends,
+headless requests reject, and brave mode is forced off. Junie may still execute
+commands it classifies as safe without asking (observed with `echo` on 26.11.1). `/junie models` refreshes discovery; `/junie quota`
+uses advertised `/stats` in a throwaway session. Stable balance and no usage/tool/
+thought activity on Junie 26.11.1 support an inferred non-consuming result, not a
+billing guarantee. Version-dependent live behavior and unavailable quota are
+reported explicitly; Junie model price rates stay zero, while message costs use
+cumulative USD usage deltas, not measured subscription fees. Late usage after a
+terminal event carries into the next message; the attributed baseline persists
+across resume.
+See the [Junie bridge](../../pi-packages/pi-junie-bridge/README.md).
+
 Antigravity messages use API-equivalent `calculateCost` prices from pi-ai's
 `compat` catalog via an explicit normalized-model mapping: Gemini Flash versions
 to matching Google entries, Gemini 3.1 Pro to `google/gemini-3.1-pro-preview`,
@@ -629,13 +647,13 @@ catalog models stay at $0 and log once as unpriced. Both engines feed these cost
 into session and subagent totals; ACP token estimates remain estimates and exact
 usage replaces them with recomputed cost. This is not subscription billing.
 The theme defaults `statusLine.subscriptionProviders` to
-`["claude-bridge", "antigravity"]`; explicit user lists remain unchanged. `(sub)`
+`["claude-bridge", "antigravity", "junie"]`; explicit user lists remain unchanged. `(sub)`
 retains its current-provider classification of the displayed total, not a
 per-message billing split.
 
-The Claude/Antigravity bridges and pi-openai-fast are **manual installs**, not
+The Claude/Antigravity/Junie bridges and pi-openai-fast are **manual installs**, not
 installer-managed packages. See [manual Pi provider installation](../installation.md#manual-pi-provider-extensions)
-for the three `pi install` commands and authentication requirements.
+for the four `pi install` commands and authentication requirements.
 
 ## Pi AskCodex delegation
 
@@ -850,7 +868,7 @@ npm view @thoth-agents/<pkg> version
 
 Order: pi-core, pi-subagents, pi-questions-user, pi-todo, pi-antigravity-bridge,
 pi-background-tasks, pi-claude-bridge, pi-askcodex, pi-openai-fast, pi-thoth-theme,
-pi-sidebar, pi-contained-shell.
+pi-sidebar, pi-contained-shell, pi-junie-bridge.
 
 The contained-shell package starts at 0.1.0 and follows the same manual first
 publish and trusted-publisher setup. Installer-managed npm setup cannot complete

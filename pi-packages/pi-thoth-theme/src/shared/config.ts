@@ -60,7 +60,7 @@ function parseSubscriptionProviders(value: unknown): string[] {
         typeof item === 'string' && item.trim().length > 0,
     );
   }
-  return ['claude-bridge', 'antigravity'];
+  return ['claude-bridge', 'antigravity', 'junie'];
 }
 
 function parseRespectPackages(value: unknown): string[] {

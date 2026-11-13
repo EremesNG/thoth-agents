@@ -160,12 +160,13 @@ API keys and the newer ChatGPT token-sharing flow are not supported.
 
 ### Optional Pi extensions (manual install)
 
-The installer does **not** install or manage the Claude/Antigravity bridges,
+The installer does **not** install or manage the Claude/Antigravity/Junie bridges,
 pi-openai-fast, or pi-askcodex. Install only those you want, then restart Pi:
 
 ```bash
 pi install npm:@thoth-agents/pi-claude-bridge
 pi install npm:@thoth-agents/pi-antigravity-bridge
+pi install npm:@thoth-agents/pi-junie-bridge
 pi install npm:@thoth-agents/pi-openai-fast
 pi install npm:@thoth-agents/pi-askcodex
 ```
@@ -181,12 +182,14 @@ times without changing task status. Quota is on demand: `/claude quota` uses an
 experimental SDK API without sending a prompt; `/agy quota` shows Antigravity
 usage. Antigravity costs are API-equivalent estimates from an explicit catalog
 mapping, not subscription charges. The theme marks the total `(sub)` by default
-for both `claude-bridge` and `antigravity`. See
+for `claude-bridge`, `antigravity` and `junie`. Junie requires its CLI installed
+and logged in with a JetBrains Account; `/junie models` refreshes its catalog and
+`/junie quota` checks balance on demand (inferred non-consuming `/stats`). See
 [provider commands and caveats](docs/installation.md#manual-pi-provider-extensions).
 
 ### Pi package inventory
 
-The twelve first-party `@thoth-agents/pi-*` packages are:
+The thirteen first-party `@thoth-agents/pi-*` packages are:
 
 | Package | Setup |
 | --- | --- |
@@ -196,6 +199,7 @@ The twelve first-party `@thoth-agents/pi-*` packages are:
 | [`@thoth-agents/pi-claude-bridge`](pi-packages/pi-claude-bridge/README.md) | Optional/manual |
 | [`@thoth-agents/pi-contained-shell`](pi-packages/pi-contained-shell/README.md) | Installer-managed |
 | [`@thoth-agents/pi-core`](pi-packages/pi-core/README.md) | Shared library; not installer-managed |
+| [`@thoth-agents/pi-junie-bridge`](pi-packages/pi-junie-bridge/README.md) | Optional/manual |
 | [`@thoth-agents/pi-openai-fast`](pi-packages/pi-openai-fast/README.md) | Optional/manual |
 | [`@thoth-agents/pi-questions-user`](pi-packages/pi-questions-user/README.md) | Installer-managed |
 | [`@thoth-agents/pi-sidebar`](pi-packages/pi-sidebar/README.md) | Installer-managed |

@@ -49,6 +49,8 @@ jobs:
         run: pnpm --filter @thoth-agents/pi-subagents run typecheck
       - name: Typecheck pi-antigravity-bridge
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+      - name: Typecheck pi-junie-bridge
+        run: pnpm --filter @thoth-agents/pi-junie-bridge run typecheck
       - name: Typecheck pi-askcodex
         run: pnpm --filter @thoth-agents/pi-askcodex run typecheck
       - name: Typecheck pi-contained-shell
@@ -130,6 +132,9 @@ jobs:
       - name: Test pi-antigravity-bridge
         if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+      - name: Test pi-junie-bridge
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-junie-bridge run test
       - name: Test pi-openai-fast
         if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
         run: pnpm --filter @thoth-agents/pi-openai-fast run test
@@ -185,6 +190,9 @@ jobs:
       - name: Test pi-antigravity-bridge
         if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test --retry=2
+      - name: Test pi-junie-bridge
+        if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
+        run: pnpm --filter @thoth-agents/pi-junie-bridge run test --retry=2
       - name: Test pi-openai-fast
         if: ${{ !cancelled() && matrix.lane == 'antigravity' }}
         run: pnpm --filter @thoth-agents/pi-openai-fast run test --retry=2

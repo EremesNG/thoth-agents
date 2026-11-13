@@ -125,7 +125,7 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
   "animation": "full",
   "statusLine": {
     "enabled": true,
-    "subscriptionProviders": ["claude-bridge", "antigravity"]
+    "subscriptionProviders": ["claude-bridge", "antigravity", "junie"]
   },
   "inputBox": { "enabled": true },
   "tools": {
@@ -164,7 +164,7 @@ or `"ascii"` (plain-text alternatives).
 Missing or malformed icon values use `"nerd"`. Each module's `enabled` key
 accepts a boolean and defaults to `true`. Set it to `false` to leave Pi's native
 behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
-provider identifier strings (defaults to `["claude-bridge", "antigravity"]`) to mark
+provider identifier strings (defaults to `["claude-bridge", "antigravity", "junie"]`) to mark
 subscription-backed usage with `(sub)` in the status line cost segment.
 Classification uses the current provider for the displayed total, not a
 per-message billing split. Arrays keep only nonblank strings; an empty resulting

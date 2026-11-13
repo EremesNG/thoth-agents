@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createEventBus } from '@earendil-works/pi-coding-agent';
+import { getOrInstallSessionLivenessRegistry } from '@thoth-agents/pi-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import type { SubagentManager } from '../../src/manager.js';
@@ -49,7 +50,7 @@ function controlledRunner() {
   return { runner, started, aborted, result };
 }
 
-async function fixture(runner: SubagentRunner) {
+async function fixture(runner: SubagentRunner, initialSessionId = 'parent') {
   env.writeAgent('worker');
   const handlers = new Map<string, Array<(...args: any[]) => unknown>>();
   const events = createEventBus();
@@ -59,7 +60,15 @@ async function fixture(runner: SubagentRunner) {
     events.on(name, () => {
       emitted.push(name);
     });
-  const ctx = { cwd: env.tmp, sessionId: 'parent', hasUI: false };
+  let sessionId = initialSessionId;
+  const ctx = {
+    cwd: env.tmp,
+    hasUI: false,
+    sessionManager: {
+      getSessionId: () => sessionId,
+      getSessionFile: () => `/${sessionId}.jsonl`,
+    },
+  };
   subagentsExtension({
     events,
     sendMessage: vi.fn(),
@@ -76,10 +85,66 @@ async function fixture(runner: SubagentRunner) {
   const manager = captured.manager;
   if (!manager) throw new Error('Subagent tools did not register.');
   (manager as any).runner = runner;
-  return { manager, emitted, ctx, shutdown };
+  return {
+    manager,
+    emitted,
+    ctx,
+    shutdown,
+    dispatch,
+    setSessionId: (id: string) => {
+      sessionId = id;
+    },
+  };
 }
 
 describe('Orca lifecycle ownership', () => {
+  it.each([
+    ' ',
+    'parent',
+  ])('starts safely with identifier %j when registration throws', async (sessionId) => {
+    const key = Symbol.for('@agegr/pi-web/session-liveness/v1');
+    const globals = globalThis as unknown as Record<symbol, unknown>;
+    const original = globals[key];
+    const register = vi.fn(() => {
+      throw new Error('registry unavailable');
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    globals[key] = { version: 1, register, hasActiveProvider: () => false };
+    try {
+      const host = await fixture(async () => ({ result: 'done' }), sessionId);
+      expect(register).toHaveBeenCalledTimes(sessionId === 'parent' ? 1 : 0);
+      await host.shutdown();
+    } finally {
+      globals[key] = original;
+      log.mockRestore();
+    }
+  });
+
+  it('replaces the provider on session start and releases it on repeated shutdown', async () => {
+    const child = controlledRunner();
+    const host = await fixture(child.runner);
+    const registry = getOrInstallSessionLivenessRegistry();
+    expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(false);
+    await host.manager.run(
+      { agent: 'worker', task: 'work', mode: 'background' },
+      host.ctx,
+    );
+    await child.started.promise;
+    expect(registry?.hasActiveProvider({ sessionFile: '/parent.jsonl' })).toBe(
+      true,
+    );
+    await host.dispatch('session_start');
+    expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(true);
+    host.setSessionId('child');
+    await host.dispatch('session_start');
+    expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(false);
+    expect(registry?.hasActiveProvider({ sessionId: 'child' })).toBe(false);
+    child.result.resolve({ result: 'done' });
+    await host.shutdown();
+    await host.shutdown();
+    expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(false);
+  });
+
   describe.each(['task', 'background'] as const)('%s mode', (mode) => {
     it.each([
       'completed',
@@ -101,6 +166,11 @@ describe('Orca lifecycle ownership', () => {
       await settled.promise;
       await host.manager.close();
       expect(host.manager.getTask(response.task_ids[0])?.status).toBe(status);
+      expect(
+        getOrInstallSessionLivenessRegistry()?.hasActiveProvider({
+          sessionId: 'parent',
+        }),
+      ).toBe(false);
       expect(host.emitted).toEqual([]);
     });
 
@@ -113,6 +183,14 @@ describe('Orca lifecycle ownership', () => {
       );
       await child.started.promise;
       const id = host.manager.listActiveSessionTasks()[0].id;
+      const registry = getOrInstallSessionLivenessRegistry();
+      expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(
+        mode === 'background',
+      );
+      if (mode === 'task') {
+        host.manager.sendToBackground([id]);
+        expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(true);
+      }
       host.manager.cancel(id);
       host.manager.cancel(id);
       await child.aborted.promise;
@@ -122,6 +200,7 @@ describe('Orca lifecycle ownership', () => {
       await host.manager.close();
       await run;
       expect(host.manager.getTask(id)?.status).toBe('cancelled');
+      expect(registry?.hasActiveProvider({ sessionId: 'parent' })).toBe(false);
       expect(host.emitted).toEqual([]);
     });
 
@@ -142,6 +221,11 @@ describe('Orca lifecycle ownership', () => {
       await vi.advanceTimersByTimeAsync(1000);
       await child.aborted.promise;
       expect(host.manager.getTask(id)?.status).toBe('stopping');
+      expect(
+        getOrInstallSessionLivenessRegistry()?.hasActiveProvider({
+          sessionFile: '/parent.jsonl',
+        }),
+      ).toBe(mode === 'background');
       expect(host.emitted).toEqual([]);
       // Cancellation/shutdown racing an expired deadline preserves its outcome.
       host.manager.cancel(id);
@@ -222,6 +306,16 @@ describe('Orca lifecycle ownership', () => {
     await child.started.promise;
     const [runningId, cancelledId, nextId] = response.task_ids;
     expect(host.manager.getTask(cancelledId)?.status).toBe('queued');
+    // A queued background task alone must retain liveness.
+    const active = host.manager.getTask(runningId);
+    if (!active) throw new Error('Missing running task');
+    active.mode = 'task';
+    active.effective_mode = 'task';
+    expect(
+      getOrInstallSessionLivenessRegistry()?.hasActiveProvider({
+        sessionId: 'parent',
+      }),
+    ).toBe(true);
     host.manager.cancel(cancelledId);
     host.manager.cancel(cancelledId);
     child.result.resolve({ result: 'first child completed' });

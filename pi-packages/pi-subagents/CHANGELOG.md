@@ -5,6 +5,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent Orca native-chat idle eviction while the session owns queued, running, or stopping background subagents; release session liveness on replacement and shutdown.
+
 ## [0.15.0] - 2026-11-11
 
 ### Added

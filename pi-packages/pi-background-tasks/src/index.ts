@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   bindWorkPanelLifecycle,
   publishToolDefinitions,
+  registerSessionLivenessProvider,
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
 } from "@thoth-agents/pi-core";
@@ -17,6 +18,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const definitions: ToolDefinitionLike[] = [];
   let publication: ToolDefinitionHandle | undefined;
   let releaseLifecycle: (() => void) | undefined;
+  let unregisterLiveness: (() => void) | undefined;
   const registerTool = pi.registerTool.bind(pi);
   pi.registerTool = (tool) => {
     const result = registerTool(tool);
@@ -27,6 +29,22 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const navigator = getBackgroundTasksNavigator(pi);
   // Registered before registerTools(pi), so this runs before running tasks are resumed.
   pi.on("session_start", async (_event, ctx) => {
+    unregisterLiveness?.();
+    unregisterLiveness = undefined;
+    const origin = { cwd: ctx.cwd, sessionId: ctx.sessionManager?.getSessionId() };
+    if (typeof origin.sessionId === 'string' && origin.sessionId.trim().length > 0) {
+      try {
+        unregisterLiveness = registerSessionLivenessProvider({
+          name: 'thoth-agents/pi-background-tasks',
+          sessionId: origin.sessionId,
+          sessionFile: ctx.sessionManager?.getSessionFile?.(),
+          isActive: () => listOwnedTaskIdsForOrigin(origin).length > 0 ||
+            listMetasForOrigin(origin).some((meta) => meta.status === 'running'),
+        });
+      } catch (error) {
+        console.error('[pi-background-tasks] Failed to register session liveness provider:', error);
+      }
+    }
     if (ctx.hasUI && !publication) publication = publishToolDefinitions(definitions);
     releaseLifecycle ??= bindWorkPanelLifecycle(pi, ctx);
     resumeScheduledWork(pi);
@@ -38,6 +56,8 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     navigator.dispose();
   });
   pi.on("session_shutdown", async (event, ctx) => {
+    unregisterLiveness?.();
+    unregisterLiveness = undefined;
     releaseLifecycle?.();
     releaseLifecycle = undefined;
     publication?.withdraw();

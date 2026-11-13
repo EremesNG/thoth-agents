@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent Orca native-chat idle eviction while the session owns running background processes or command watches, without retaining unrelated sessions or completed work.
+
 ### Changed
 
 - Discover unverified shell candidate paths during tool registration without starting PowerShell version probes; retain full validation and diagnostics at launch.

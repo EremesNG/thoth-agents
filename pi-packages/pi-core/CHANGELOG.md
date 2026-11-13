@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+
+- Shared Orca native-chat session-liveness v1 registry helpers, with load-order-independent reuse and no-op registration when an incompatible registry occupies the global slot.
+
 ## [0.10.0] - 2026-11-11
 
 ### Added

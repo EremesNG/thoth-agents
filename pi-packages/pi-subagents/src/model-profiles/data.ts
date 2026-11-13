@@ -7,7 +7,14 @@ import type {
 } from '../types.js';
 import { modelProfilePaths } from './store.js';
 
-type AvailableModel = { provider: string; id: string; label: string };
+type AvailableModel = {
+  provider: string;
+  id: string;
+  /** Explicit display label from the source, else the id. */
+  label: string;
+  /** Human model name when the source lists one (pi `Model.name`). */
+  name?: string;
+};
 
 /** One listed subagent with the values the virtual `default` profile yields. */
 export type AgentRow = {
@@ -49,7 +56,16 @@ function modelFromAny(raw: any): AvailableModel | undefined {
           ? raw.name
           : undefined;
   if (!provider || !id) return undefined;
-  return { provider, id, label: String(raw?.label ?? raw?.displayName ?? id) };
+  const name =
+    typeof raw.name === 'string' && raw.name.trim()
+      ? raw.name.trim()
+      : undefined;
+  return {
+    provider,
+    id,
+    label: String(raw?.label ?? raw?.displayName ?? id),
+    ...(name ? { name } : {}),
+  };
 }
 
 export function groupAvailableModelsByProvider(

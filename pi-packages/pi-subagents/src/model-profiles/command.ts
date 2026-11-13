@@ -248,6 +248,19 @@ export function createSubagentModelProfilesModal(
       : label;
   };
 
+  /** `Name — provider/id` when the model has a human name, else `label (provider/id)`. */
+  const modelRowLabel = (model: {
+    provider: string;
+    id: string;
+    label: string;
+    name?: string;
+  }): string => {
+    const saved = `${model.provider}/${model.id}`;
+    return model.name && model.name !== model.id
+      ? `${model.name} — ${saved}`
+      : `${model.label} (${saved})`;
+  };
+
   const choose = (
     title: string,
     header: string[],
@@ -403,8 +416,10 @@ export function createSubagentModelProfilesModal(
     const modelsById = new Map(
       models.map((model) => [`${model.provider}/${model.id}`, model]),
     );
-    const searchText = (id: string) =>
-      `${modelsById.get(id)?.label ?? ''} ${id}`;
+    const searchText = (id: string) => {
+      const model = modelsById.get(id);
+      return [model?.name, model?.label, id].filter((part) => !!part).join(' ');
+    };
     editor.openPicker({
       title: 'Choose model',
       maxVisibleRows: 10,
@@ -424,7 +439,7 @@ export function createSubagentModelProfilesModal(
       rows: () =>
         models.map((model) => ({
           id: `${model.provider}/${model.id}`,
-          label: `${model.label} (${model.provider}/${model.id})`,
+          label: modelRowLabel(model),
         })),
       header: ({ filter }) => {
         const query = filter.trim().toLowerCase();

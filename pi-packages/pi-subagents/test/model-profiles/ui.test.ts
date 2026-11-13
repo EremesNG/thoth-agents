@@ -1191,4 +1191,70 @@ describe('named model profile panel', () => {
       );
     });
   });
+
+  describe('model row names', () => {
+    const junieModels = [
+      {
+        provider: 'junie',
+        id: 'mix.normal',
+        name: 'Junie Normal (GPT-6.1 Terra)',
+      },
+      { provider: 'junie', id: 'mix.frontier', name: 'Junie Frontier' },
+    ];
+
+    function editable(models: any[], current = 'junie/mix.normal') {
+      env().writeProfiles('global', {
+        profiles: { editable: profile(current, 'low') },
+      });
+      const panel = open(env(), 40, undefined, models);
+      panel.press(KEYS.right); // editable (global)
+      panel.press('m', KEYS.down, KEYS.enter); // skip orchestrator, provider, junie
+      return panel;
+    }
+
+    it('renders the model name before the saved provider/id', () => {
+      const { text } = editable(junieModels);
+      expect(text()).toContain(
+        'Junie Normal (GPT-6.1 Terra) — junie/mix.normal',
+      );
+      expect(text()).toContain('Junie Frontier — junie/mix.frontier');
+    });
+
+    it('keeps the current format when the name is absent or equals the id', () => {
+      const { press, text } = editable([
+        { provider: 'junie', id: 'mix.normal', label: 'Label Normal' },
+        { provider: 'junie', id: 'mix.frontier', name: 'mix.frontier' },
+      ]);
+      expect(text()).toContain('Label Normal (junie/mix.normal)');
+      expect(text()).toContain('mix.frontier (junie/mix.frontier)');
+      expect(text()).not.toContain('— junie/mix.frontier');
+      press(KEYS.esc);
+      expect(text()).toContain('profile 2/2');
+    });
+
+    it('matches the name in search and still saves the provider/id', () => {
+      const { press, text, workspace } = editable(junieModels, 'other/legacy');
+      expect(text()).toContain('provider: junie · 2 models');
+      expect(text()).toContain('2 models');
+      press('terra');
+      expect(text()).toContain('1/2 match');
+      expect(text()).toContain(
+        'Junie Normal (GPT-6.1 Terra) — junie/mix.normal',
+      );
+      expect(text()).not.toContain('Junie Frontier — junie/mix.frontier');
+      press(KEYS.enter); // select the searched model
+      const orchestrator = () =>
+        workspace.entries().find((entry) => entry.name === 'editable')
+          ?.orchestrator;
+      expect(orchestrator()?.model).toEqual({
+        provider: 'junie',
+        id: 'mix.normal',
+      });
+      press('s');
+      const saved = JSON.parse(
+        fs.readFileSync(env().store.paths.global, 'utf8'),
+      ).profiles.editable.orchestrator;
+      expect(saved.model).toBe('junie/mix.normal');
+    });
+  });
 });

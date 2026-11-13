@@ -5,6 +5,10 @@ import {
   readCatalog,
   refreshCatalog,
 } from '../src/catalog.js';
+import {
+  type NativeToolActivity,
+  renderNativeEvent,
+} from '../src/native-display.js';
 import { createPermissionGate, type PermissionUI } from '../src/permissions.js';
 import { createJunieProvider } from '../src/provider.js';
 import { fetchJunieQuota } from '../src/quota.js';
@@ -14,18 +18,25 @@ const KEY = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
 interface SharedState {
   refresh?: Promise<Catalog>;
   ui: Map<string, PermissionUI>;
+  nativeSinks: Map<string, (event: NativeToolActivity) => void>;
   sessions: Map<string, { cwd: string }>;
   provider: ReturnType<typeof createJunieProvider>;
 }
 const shared = globalThis as typeof globalThis & { [KEY]?: SharedState };
 export default function junieBridge(pi: ExtensionAPI): void {
+  pi.registerEntryRenderer('junie-native-event', renderNativeEvent);
   const first = !shared[KEY];
   if (!shared[KEY]) {
     const gate = createPermissionGate();
     const state: SharedState = {
       sessions: new Map(),
       ui: new Map(),
+      nativeSinks: new Map(),
       provider: createJunieProvider({
+        onCatalogUpdate: (catalog) => register(catalog),
+        onNativeEvent: (event, id) => {
+          if (id) state.nativeSinks.get(id)?.(event);
+        },
         getSession: (id) => state.sessions.get(id),
         onPermission: (params, signal, id) =>
           gate.request(params, {
@@ -51,14 +62,26 @@ export default function junieBridge(pi: ExtensionAPI): void {
     const id = ctx.sessionManager.getSessionId();
     state.sessions.set(id, { cwd: ctx.cwd });
     state.ui.delete(id);
-    if (ctx.hasUI) state.ui.set(id, ctx.ui);
+    state.nativeSinks.delete(id);
+    if (ctx.hasUI) {
+      state.ui.set(id, ctx.ui);
+      state.nativeSinks.set(id, (event) =>
+        pi.appendEntry('junie-native-event', event),
+      );
+    }
     if (!first && !ctx.modelRegistry.getProvider('junie')) register();
   });
-  pi.on('session_shutdown', (_event, ctx) => {
+  pi.on('session_shutdown', async (_event, ctx) => {
     const id = ctx.sessionManager.getSessionId();
     state.ui.delete(id);
     state.sessions.delete(id);
-    return state.provider.close(id);
+    try {
+      await state.provider.close(id);
+    } finally {
+      // Released after close, without waiting for display-only telemetry: a line
+      // that resolves past this point has no sink and is dropped.
+      state.nativeSinks.delete(id);
+    }
   });
   pi.registerCommand('junie', {
     description: 'Junie: quota or models (refresh model catalog)',

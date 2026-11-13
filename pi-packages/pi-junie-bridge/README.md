@@ -22,12 +22,37 @@ real Junie executable (especially on Windows).
 ## How it works
 
 - Junie runs as an ACP agent provider over stdio. Models and supported effort
-  levels are discovered from Junie and cached under Pi's agent directory.
+  levels are discovered from Junie and cached under Pi's agent directory. Model
+  labels use Junie's display names while ACP IDs remain unchanged. Observed
+  context capacity is cached per model and reused on registration (32k fallback
+  until observed). Prompt-response token usage is attributed to the terminal
+  message only, not duplicated across parked Pi tool segments.
 - Pi tools are exposed through an authenticated loopback MCP server. Calls are
   returned to Pi for execution rather than executed by a second Pi tool loop.
 - Junie's native tools remain available. Their permission requests are shown as
   Pi permission dialogs using Junie's options; headless requests, dismissal and
-  timeout reject. Native tool activity is display-only in Pi.
+  timeout reject. Native tool activity is coalesced into display-only session
+  entries, never assistant text or LLM history; headless runs omit it entirely.
+- After each completed Junie prompt, a display-only line names the real Junie
+  model behind Pi's provider model and the cost attributed to that turn, for
+  example: `Junie · mix.normal → gpt-6.1-terra (low) · $0.0313`. The model and
+  effort are read best-effort from local `~/.junie/sessions/<ACP sessionId>/`
+  `settings.json` after the terminal event, fire and forget: nothing waits for
+  that read, so a stalled local file can never delay the next turn, an abort or
+  shutdown, and no timer exists to hold the process. The line is emitted only
+  while it still belongs to a live session instance that no newer prompt has
+  superseded; a cancelled or refused turn, a disposed or closed session, and a
+  late read overtaken by the next turn all emit nothing, so display order never
+  inverts. The cost is exactly the USD amount
+  the bridge attributes to that turn's terminal Pi message from cumulative ACP
+  usage updates. Costs of at least `$0.0001` print four decimals; smaller
+  positive costs print as `<$0.0001` so a real charge never looks free. The
+  effort segment is omitted when Junie reports none, and the cost segment is
+  omitted when no cost was attributed to the turn. Missing or
+  invalid settings omit the line entirely. It never enters assistant text, LLM
+  context or prompts sent back to Junie, and headless runs omit it. These files
+  are undocumented: `JUNIE_HOME` overrides the bridge's local-file lookup root
+  (it does not configure Junie's own storage location).
 - `brave_mode` is forced **off** on new, resumed and forked sessions. Junie session
   mappings persist across Pi restarts. Each Pi session uses its own lifecycle cwd
   (or a cwd supplied by that call/context). If an identified session has neither,

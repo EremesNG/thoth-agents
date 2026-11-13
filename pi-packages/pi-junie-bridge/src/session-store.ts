@@ -44,6 +44,17 @@ function valid(value: unknown): value is PersistedSession {
       state.resumedWith === 'load')
   );
 }
+/** Tolerate retired fields (e.g. local usage snapshots) on load. */
+function normalize(state: PersistedSession): PersistedSession {
+  return {
+    sessionId: state.sessionId,
+    cwd: state.cwd,
+    model: state.model,
+    digests: state.digests,
+    cost: state.cost,
+    ...(state.resumedWith ? { resumedWith: state.resumedWith } : {}),
+  };
+}
 export function createSessionStore(
   directory = join(getAgentDir(), 'junie-bridge', 'sessions'),
 ): SessionStore {
@@ -58,7 +69,7 @@ export function createSessionStore(
         const { version, ...state } = JSON.parse(
           readFileSync(path(id), 'utf8'),
         );
-        return version === 1 && valid(state) ? state : null;
+        return version === 1 && valid(state) ? normalize(state) : null;
       } catch {
         return null;
       }

@@ -44,7 +44,7 @@ test('junie command reports quota on demand and refreshes registered models with
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 1,
+      version: 3,
       models: [{ id: 'old', name: 'Old' }],
       efforts: [],
     }),
@@ -63,6 +63,7 @@ test('junie command reports quota on demand and refreshes registered models with
   };
   try {
     extension({
+      registerEntryRenderer: () => {},
       registerProvider,
       registerCommand: (name: string, command: any) =>
         commands.set(name, command),

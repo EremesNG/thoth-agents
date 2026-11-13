@@ -8,6 +8,12 @@ import {
 import { JsonRpcResponseError, JsonRpcSession } from './jsonrpc.js';
 
 export interface ConfigValue {
+  _meta?: {
+    jetbrains?: {
+      air?: { modelDisplayName?: unknown; [key: string]: unknown };
+    };
+    [key: string]: unknown;
+  };
   value: string;
   name: string;
 }

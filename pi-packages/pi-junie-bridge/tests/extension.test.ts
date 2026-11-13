@@ -36,6 +36,7 @@ test.skipIf(process.platform !== 'win32')(
     const registerProvider = vi.fn();
     try {
       extension({
+        registerEntryRenderer: () => {},
         registerProvider,
         registerCommand: () => {},
         on: () => {},
@@ -76,7 +77,7 @@ test('registers cached Junie models and guards a shared registry', async () => {
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 1,
+      version: 3,
       refreshedAt: '2026-11-12',
       models: [{ id: 'mix.auto', name: 'Auto' }],
       efforts: ['low', 'medium', 'high'],
@@ -85,6 +86,7 @@ test('registers cached Junie models and guards a shared registry', async () => {
   const registerProvider = vi.fn(),
     handlers: ((event: unknown, ctx: unknown) => unknown)[] = [];
   const pi = {
+    registerEntryRenderer: () => {},
     registerProvider,
     registerCommand: () => {},
     on: (_name: string, handler: (event: unknown, ctx: unknown) => unknown) =>
@@ -140,10 +142,12 @@ test.each([
   const dir = mkdtempSync(join(tmpdir(), 'junie-lifecycle-'));
   const keys = [
     'PI_CODING_AGENT_DIR',
+    'JUNIE_HOME',
     'JUNIE_BRIDGE_LAUNCHER',
     'FAKE_TRANSCRIPT',
     'FAKE_STREAM',
     'FAKE_NATIVE_PERMISSION',
+    'FAKE_NATIVE_DETAIL',
   ] as const;
   const previous = keys.map((key) => process.env[key]);
   const fixture = fileURLToPath(
@@ -163,11 +167,24 @@ test.each([
   process.env.FAKE_TRANSCRIPT = transcript;
   process.env.FAKE_STREAM = '1';
   process.env.FAKE_NATIVE_PERMISSION = '1';
+  process.env.FAKE_NATIVE_DETAIL = '1';
+  // Local Junie session settings drive the display-only per-turn model line.
+  process.env.JUNIE_HOME = join(dir, 'junie');
+  mkdirSync(join(dir, 'junie', 'sessions', 'fake-session'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(dir, 'junie', 'sessions', 'fake-session', 'settings.json'),
+    JSON.stringify({
+      formatVersion: 1,
+      model: { modelId: 'gpt-6.1-terra', effortWireId: 'low' },
+    }),
+  );
   mkdirSync(join(dir, 'junie-bridge'));
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 1,
+      version: 3,
       models: [{ id: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
@@ -178,12 +195,20 @@ test.each([
   );
   const registerProvider = vi.fn(),
     handlers = new Map<string, any>();
+  const appendEntry = vi.fn(),
+    registerEntryRenderer = vi.fn();
   try {
     extension({
+      appendEntry,
+      registerEntryRenderer,
       registerProvider,
       registerCommand: () => {},
       on: (name: string, handler: any) => handlers.set(name, handler),
     } as unknown as ExtensionAPI);
+    expect(registerEntryRenderer).toHaveBeenCalledWith(
+      'junie-native-event',
+      expect.any(Function),
+    );
     expect(handlers.has('session_shutdown')).toBe(true);
     const config = registerProvider.mock.calls[0][1];
     const ctx = {
@@ -193,6 +218,14 @@ test.each([
       sessionManager: { getSessionId: () => 'pi-session' },
       modelRegistry: { getProvider: () => ({}) },
     };
+    const childAppend = vi.fn();
+    extension({
+      registerProvider,
+      registerEntryRenderer: () => {},
+      appendEntry: childAppend,
+      registerCommand: () => {},
+      on: (name: string, handler: any) => handlers.set(name, handler),
+    } as unknown as ExtensionAPI);
     await handlers.get('session_start')({}, ctx);
     const model = config.models[0],
       input = normalizeContext({
@@ -202,6 +235,12 @@ test.each([
       .streamSimple(model, input, { sessionId: 'pi-session' })
       .result();
     expect(first.stopReason).toBe('stop');
+    // A display line belongs to the turn that produced it: a turn started before
+    // it resolved drops it, so each turn's entries settle before the next one.
+    if (hasUI)
+      await expect
+        .poll(() => childAppend.mock.calls.length, { timeout: 5000 })
+        .toBe(2);
     const next = normalizeContext({
       messages: [
         ...input.messages,
@@ -213,6 +252,12 @@ test.each([
       .streamSimple(model, next, { sessionId: 'pi-session' })
       .result();
     expect(second.stopReason).toBe('stop');
+    // Display lines are fire-and-forget: settlement is not tied to the turn or
+    // shutdown, so wait for the entries before the sink is released.
+    if (hasUI)
+      await expect
+        .poll(() => childAppend.mock.calls.length, { timeout: 5000 })
+        .toBe(4);
     await handlers.get('session_shutdown')({}, ctx);
     await handlers.get('session_start')({}, { ...ctx, hasUI: false });
     const resumed = normalizeContext({
@@ -230,6 +275,24 @@ test.each([
       ).stopReason,
     ).toBe('stop');
     await handlers.get('session_shutdown')({}, ctx);
+    expect(appendEntry).not.toHaveBeenCalled();
+    // Display-only entries follow the session headless policy: two turns of
+    // native activity plus a per-turn model line with a UI, none without.
+    expect(childAppend).toHaveBeenCalledTimes(hasUI ? 4 : 0);
+    if (hasUI) {
+      expect(childAppend.mock.calls[0]).toEqual([
+        'junie-native-event',
+        expect.objectContaining({ title: 'Edit file', status: 'completed' }),
+      ]);
+      const entries = childAppend.mock.calls.map((call) => call[1]);
+      expect(
+        entries.filter((entry) => entry.title === 'Edit file'),
+      ).toHaveLength(2);
+      expect(entries.filter((entry) => entry.usageLine)).toEqual([
+        { usageLine: 'Junie · mix.auto → gpt-6.1-terra (low)' },
+        { usageLine: 'Junie · mix.auto → gpt-6.1-terra (low)' },
+      ]);
+    }
     const wire = readFileSync(transcript, 'utf8')
       .trim()
       .split('\n')

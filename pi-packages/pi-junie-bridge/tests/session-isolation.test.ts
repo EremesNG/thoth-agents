@@ -44,7 +44,7 @@ function setup() {
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 1,
+      version: 3,
       models: [{ id: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
@@ -53,6 +53,7 @@ function setup() {
   const handlers = new Map<string, any>();
   const registerProvider = vi.fn();
   extension({
+    registerEntryRenderer: () => {},
     registerProvider,
     registerCommand: () => {},
     on: (name: string, handler: any) => handlers.set(name, handler),

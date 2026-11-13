@@ -1,6 +1,7 @@
 const { createInterface } = require('node:readline');
 const { spawn } = require('node:child_process');
-const { appendFileSync } = require('node:fs');
+const { appendFileSync, existsSync, readFileSync, writeFileSync } =
+  require('node:fs');
 const configOptions = [
   {
     id: 'mode',
@@ -59,10 +60,35 @@ const configOptions = [
     ],
   },
 ];
+const promptUsage = process.env.FAKE_TOKEN_USAGE
+  ? {
+      inputTokens: 24719,
+      outputTokens: 472,
+      totalTokens: 25191,
+      cachedReadTokens: 11533,
+      cachedWriteTokens: 19,
+    }
+  : undefined;
 let turns = 0,
   pendingPrompt,
   mcp,
   braveResets = 0;
+/** Per-turn stop override: 'cancelled,end_turn' answers the first prompt
+ * cancelled, and every later prompt with the last entry. A disposed session
+ * restarts this fixture process, so FAKE_STOP_SEQUENCE_FILE carries the prompt
+ * count across those restarts. */
+const stopReasonForTurn = () => {
+  const sequence = (process.env.FAKE_STOP_SEQUENCE || '')
+    .split(',')
+    .map((reason) => reason.trim())
+    .filter(Boolean);
+  if (!sequence.length) return process.env.FAKE_STOP || 'end_turn';
+  const file = process.env.FAKE_STOP_SEQUENCE_FILE;
+  if (!file) return sequence[Math.min(Math.max(turns, 1), sequence.length) - 1];
+  const seen = existsSync(file) ? Number(readFileSync(file, 'utf8')) || 0 : 0;
+  writeFileSync(file, String(seen + 1));
+  return sequence[Math.min(seen, sequence.length - 1)];
+};
 const replies = new Map();
 const send = (value) =>
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
@@ -392,7 +418,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           sessionUpdate: 'agent_message_chunk',
           content: { type: 'text', text: 'Tool results received in same turn' },
         });
-        send({ id: m.id, result: { stopReason: 'end_turn' } });
+        send({
+          id: m.id,
+          result: { stopReason: 'end_turn', usage: promptUsage },
+        });
       })().catch((error) =>
         send({ id: m.id, error: { code: -32603, message: error.message } }),
       );
@@ -464,7 +493,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               params: decision,
             }) + '\n',
           );
-        send({ id: m.id, result: { stopReason: 'end_turn' } });
+        send({
+          id: m.id,
+          result: { stopReason: 'end_turn', usage: promptUsage },
+        });
       });
       send({
         id,
@@ -551,7 +583,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
     return send({
       id: m.id,
-      result: { stopReason: process.env.FAKE_STOP || 'end_turn' },
+      result: {
+        stopReason: stopReasonForTurn(),
+        usage: promptUsage,
+      },
     });
   }
   send({ id: m.id, result });

@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,9 +16,31 @@ import {
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai';
 import { afterEach, expect, test, vi } from 'vitest';
+import { projectModels, readCatalog, refreshCatalog } from '../src/catalog.js';
+import {
+  type NativeToolActivity,
+  renderNativeActivity,
+} from '../src/native-display.js';
 import { createPermissionGate } from '../src/permissions.js';
-import { createJunieProvider, type ProviderOptions } from '../src/provider.js';
+import {
+  createJunieProvider,
+  type ProviderOptions,
+  projectPrompt,
+} from '../src/provider.js';
 import { createSessionStore } from '../src/session-store.js';
+
+/** Test seam: the post-terminal settings read can be stalled on demand. */
+const displayRead = vi.hoisted(() => ({
+  stall: undefined as Promise<never> | undefined,
+}));
+vi.mock('../src/junie-usage.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/junie-usage.js')>();
+  return {
+    ...actual,
+    readJunieModel: (options: Parameters<typeof actual.readJunieModel>[0]) =>
+      displayRead.stall ?? actual.readJunieModel(options),
+  };
+});
 
 const fixture = fileURLToPath(
   new URL('./fixtures/fake-junie.cjs', import.meta.url),
@@ -47,6 +75,7 @@ const context = normalizeContext({
 });
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
+  displayRead.stall = undefined;
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 function setup(
@@ -62,6 +91,7 @@ function setup(
     ...bounds,
     getSession: () => ({ id: 'pi-1', cwd: dir }),
     sessionStore: store,
+    agentDir: dir,
   };
   const provider = createJunieProvider(options);
   cleanup.push(async () => {
@@ -107,6 +137,160 @@ async function turn(
   expect(events.at(-1)).toBe(terminals[0]);
   return { events, message: await stream.result() };
 }
+function junieSettings(
+  home: string,
+  settings: unknown = {
+    formatVersion: 1,
+    model: { modelId: 'gpt-6.1-terra', effortWireId: 'low' },
+  },
+) {
+  const session = join(home, 'sessions', 'fake-session');
+  mkdirSync(session, { recursive: true });
+  writeFileSync(
+    join(session, 'settings.json'),
+    typeof settings === 'string' ? settings : JSON.stringify(settings),
+  );
+}
+function junieHome() {
+  const home = mkdtempSync(join(tmpdir(), 'junie-model-'));
+  cleanup.push(async () => {
+    rmSync(home, { recursive: true, force: true });
+  });
+  return home;
+}
+
+test('per-turn display line shows the real Junie model and only the ACP cost attributed to that turn, after the terminal event', async () => {
+  const displays: NativeToolActivity[] = [];
+  let terminal = false;
+  const home = junieHome();
+  junieSettings(home);
+  const { provider, restart, wire } = setup(
+    { JUNIE_HOME: home, FAKE_RICH: '1' },
+    {
+      onNativeEvent: (event, id) => {
+        expect(id).toBe('pi-1');
+        // The per-turn line never precedes the terminal Pi event.
+        if (event.usageLine) expect(terminal).toBe(true);
+        displays.push(event);
+      },
+    },
+  );
+  const collect = async (active: typeof provider, input: typeof context) => {
+    const stream = active.streamSimple(model, input, { sessionId: 'pi-1' });
+    const events: AssistantMessageEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+      if (event.type === 'done' || event.type === 'error') terminal = true;
+    }
+    return { message: await stream.result() };
+  };
+  const first = await collect(provider, context);
+  expect(first.message.stopReason).toBe('stop');
+  // Each line belongs to its own turn: a newer turn drops a pending one, so the
+  // display writes here wait for the line before the next turn starts.
+  await until(() => displays.filter((event) => event.usageLine).length === 1);
+  const next = normalizeContext({
+    messages: [
+      ...context.messages,
+      first.message,
+      { role: 'user', content: 'Again', timestamp: 2 },
+    ],
+  });
+  const second = await collect(provider, next);
+  expect(second.message.usage.cost.total).toBeCloseTo(0.15, 10);
+  await until(() => displays.filter((event) => event.usageLine).length === 2);
+  await provider.close();
+  const resumed = restart();
+  const third = await collect(
+    resumed,
+    normalizeContext({
+      messages: [
+        ...next.messages,
+        second.message,
+        { role: 'user', content: 'Once more', timestamp: 3 },
+      ],
+    }),
+  );
+  await until(() => displays.filter((event) => event.usageLine).length === 3);
+  await resumed.close();
+  expect(displays.map((event) => event.usageLine).filter(Boolean)).toEqual([
+    'Junie · mix.auto → gpt-6.1-terra (low) · $0.2500',
+    'Junie · mix.auto → gpt-6.1-terra (low) · $0.1500',
+    // A resumed session re-reports cumulative usage: no cost is re-attributed.
+    'Junie · mix.auto → gpt-6.1-terra (low)',
+  ]);
+  expect(wire().some((event) => event.method === 'session/resume')).toBe(true);
+  // Display only: never assistant text, Pi context or prompts sent to Junie.
+  for (const message of [first.message, second.message, third.message]) {
+    expect(JSON.stringify(message)).not.toContain('gpt-6.1-terra');
+    expect(JSON.stringify(message)).not.toContain('Junie ·');
+  }
+  const projected = JSON.stringify(
+    projectPrompt(
+      normalizeContext({
+        messages: [
+          ...next.messages,
+          second.message,
+          { role: 'user', content: 'Once more', timestamp: 3 },
+        ],
+      }),
+      { prompted: false },
+    ),
+  );
+  expect(projected).toContain('Hello from Junie');
+  expect(projected).not.toContain('gpt-6.1-terra');
+  expect(
+    JSON.stringify(wire().filter((event) => event.method === 'session/prompt')),
+  ).not.toContain('gpt-6.1-terra');
+});
+
+test.each([
+  'no-usage',
+  'zero-cost',
+])('display line omits the cost segment when the turn attributes no ACP cost (%s)', async (kind) => {
+  const displays: NativeToolActivity[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    {
+      JUNIE_HOME: home,
+      ...(kind === 'zero-cost' ? { FAKE_STATS: 'free' } : {}),
+    },
+    { onNativeEvent: (event) => displays.push(event) },
+  );
+  const { message } = await turn(provider);
+  expect(message.usage.cost.total).toBe(0);
+  await until(() => displays.some((event) => event.usageLine));
+  await provider.close();
+  expect(displays.map((event) => event.usageLine)).toEqual([
+    'Junie · mix.auto → gpt-6.1-terra (low)',
+  ]);
+});
+
+test.each([
+  'missing',
+  'malformed',
+  'no-model',
+])('emits no display line when the Junie session settings are %s', async (kind) => {
+  const displays: NativeToolActivity[] = [];
+  const debug: string[] = [];
+  const home = junieHome();
+  if (kind === 'malformed') junieSettings(home, '{');
+  else if (kind === 'no-model') junieSettings(home, { formatVersion: 1 });
+  const { provider } = setup(
+    { JUNIE_HOME: home, FAKE_RICH: '1' },
+    {
+      onNativeEvent: (event) => displays.push(event),
+      debug: (message) => debug.push(message),
+    },
+  );
+  const { message } = await turn(provider);
+  expect(message.stopReason).toBe('stop');
+  await until(() => debug.length > 0);
+  await provider.close();
+  expect(displays.map((event) => event.usageLine).filter(Boolean)).toEqual([]);
+  expect(debug.join('\n')).toContain('Junie local model unavailable');
+});
 
 test('streams a Pi turn and configures safe mode, model and effort before prompting in the Pi cwd', async () => {
   const { provider, dir, wire } = setup();
@@ -171,7 +355,7 @@ test('projects thoughts, native tool logs and context usage; costs are cumulativ
   const second = await turn(provider, { reasoning: 'medium' }, next);
   expect(first.message.content).toEqual([
     { type: 'thinking', thinking: 'Let me think' },
-    { type: 'text', text: expect.stringContaining('Terminal') },
+    { type: 'text', text: 'Hello from Junie' },
   ]);
   expect(
     first.events
@@ -179,8 +363,8 @@ test('projects thoughts, native tool logs and context usage; costs are cumulativ
       .map((e) => e.type),
   ).toEqual(['thinking_start', 'thinking_delta', 'thinking_end']);
   expect(first.message.usage).toMatchObject({
-    input: 120,
-    totalTokens: 120,
+    input: 0,
+    totalTokens: 0,
     cost: { total: 0.25 },
   });
   expect(second.message.usage.cost.total).toBeCloseTo(0.15);
@@ -672,7 +856,7 @@ const toolContext = normalizeContext({
   ],
 });
 test('MCP call yields one Pi toolUse and its result continues the same Junie turn without reseeding', async () => {
-  const { provider, wire } = setup({ FAKE_MCP: '1' });
+  const { provider, wire } = setup({ FAKE_MCP: '1', FAKE_TOKEN_USAGE: '1' });
   const first = await turn(provider, {}, toolContext);
   expect(first.message.stopReason, first.message.errorMessage).toBe('toolUse');
   const calls = first.message.content.filter(
@@ -689,6 +873,11 @@ test('MCP call yields one Pi toolUse and its result continues the same Junie tur
   expect(
     first.message.content.filter((block) => block.type === 'text'),
   ).toEqual([]);
+  expect(first.message.usage).toMatchObject({
+    input: 0,
+    output: 0,
+    totalTokens: 0,
+  });
   const call = calls[0];
   const input = normalizeContext({
     messages: [
@@ -708,6 +897,13 @@ test('MCP call yields one Pi toolUse and its result continues the same Junie tur
     ],
   });
   const second = await turn(provider, {}, input);
+  expect(second.message.usage).toMatchObject({
+    input: 24719,
+    output: 472,
+    totalTokens: 25191,
+    cacheRead: 11533,
+    cacheWrite: 19,
+  });
   expect(second.message).toMatchObject({
     stopReason: 'stop',
     content: [{ type: 'text', text: 'Tool results received in same turn' }],
@@ -825,11 +1021,56 @@ test('aborting while Pi executes a parked call returns MCP error and cancels Jun
   expect(store.load('pi-1')).toBeNull();
 });
 
+test('an abort right after a parked continuation starts wins over the parked result', async () => {
+  const { provider, wire } = setup({
+    FAKE_MCP: '2',
+    FAKE_MCP_DELAY_SECOND: '1',
+  });
+  const first = await turn(provider, {}, toolContext);
+  expect(first.message.stopReason, first.message.errorMessage).toBe('toolUse');
+  // Both native calls are parked before Pi continues the same Junie turn.
+  await expect
+    .poll(() => wire().filter((m) => m.method === 'fixture/mcp_start'))
+    .toHaveLength(2);
+  const call = first.message.content.find(
+    (block) => block.type === 'toolCall',
+  )!;
+  const controller = new AbortController();
+  const stream = provider.streamSimple(
+    model,
+    normalizeContext({
+      messages: [
+        ...toolContext.messages,
+        first.message,
+        {
+          role: 'toolResult',
+          toolCallId: call.id,
+          toolName: call.name,
+          isError: false,
+          content: [{ type: 'text', text: 'result' }],
+          timestamp: 2,
+        },
+      ],
+    }),
+    { sessionId: 'pi-1', signal: controller.signal },
+  );
+  // Abort precedence matches the pre-telemetry bridge: a synchronous abort
+  // after the continuation stream is created never loses to the parked result.
+  controller.abort();
+  const events: AssistantMessageEvent[] = [];
+  for await (const event of stream) events.push(event);
+  const message = await stream.result();
+  expect(message.stopReason, message.errorMessage).toBe('aborted');
+  expect(
+    events.filter((event) => event.type === 'done' || event.type === 'error'),
+  ).toEqual([expect.objectContaining({ reason: 'aborted' })]);
+});
+
 test('MCP tools from other servers remain display-only native activity', async () => {
   const { provider } = setup({ FAKE_FOREIGN_MCP: '1' });
   const response = await turn(provider);
   expect(response.message.content).toEqual([
-    { type: 'text', text: expect.stringContaining('other/read') },
+    { type: 'text', text: 'Hello from Junie' },
   ]);
   expect(response.message.stopReason).toBe('stop');
 });
@@ -943,14 +1184,21 @@ test('reasserts brave mode off when Junie enables it and logs the correction', a
     .toHaveLength(2);
   expect(warnings.join('\n')).toContain('brave_mode');
 });
-test('native activity retains kind, title, locations, diff and text without executable Pi calls', async () => {
-  const { provider } = setup({ FAKE_NATIVE_DETAIL: '1' });
+test('native activity is coalesced display data, never assistant content or reseeded history', async () => {
+  const display: NativeToolActivity[] = [];
+  const { provider } = setup(
+    { FAKE_NATIVE_DETAIL: '1' },
+    {
+      onNativeEvent: (event, id) => {
+        expect(id).toBe('pi-1');
+        display.push(event);
+      },
+    },
+  );
   const { message, events } = await turn(provider);
-  expect(message.stopReason).toBe('stop');
-  expect(message.content.every((block) => block.type === 'text')).toBe(true);
-  const text = message.content
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .join('');
+  expect(message.content).toEqual([{ type: 'text', text: 'Hello from Junie' }]);
+  expect(display).toHaveLength(1);
+  const text = renderNativeActivity(display[0]);
   for (const value of [
     'edit',
     'Edit file',
@@ -961,12 +1209,22 @@ test('native activity retains kind, title, locations, diff and text without exec
     'Edit finished',
   ])
     expect(text).toContain(value);
-  expect(
-    events.some(
-      (event) =>
-        event.type === 'toolcall_start' || event.type === 'toolcall_end',
+  expect(events.some((event) => event.type.startsWith('toolcall'))).toBe(false);
+  const projected = JSON.stringify(
+    projectPrompt(
+      normalizeContext({
+        messages: [
+          ...context.messages,
+          message,
+          { role: 'user', content: 'Next', timestamp: 2 },
+        ],
+      }),
+      { prompted: false },
     ),
-  ).toBe(false);
+  );
+  expect(projected).toContain('Hello from Junie');
+  expect(projected).not.toContain('Edit file');
+  expect(projected).not.toContain('/repo/file');
 });
 
 test.each([
@@ -1043,4 +1301,239 @@ test('calls without Pi identity use fresh headless ephemeral state without persi
   ).toBe('stop');
   expect(save).not.toHaveBeenCalled();
   expect(wire().filter((m) => m.method === 'initialize')).toHaveLength(2);
+});
+
+test('usage_update capacity is saved for the exact selected model on re-registration', async () => {
+  const { provider, dir } = setup({ FAKE_RICH: '1' });
+  await refreshCatalog({
+    agentDir: dir,
+    command: { file: process.execPath, args: [fixture] },
+  });
+  await turn(provider);
+  expect(
+    projectModels(readCatalog(dir)!).find((m) => m.id === model.id)
+      ?.contextWindow,
+  ).toBe(64000);
+});
+
+test('prompt response maps billed tokens independently of context occupancy and cumulative USD cost', async () => {
+  const { provider } = setup({ FAKE_RICH: '1', FAKE_TOKEN_USAGE: '1' });
+  const { message } = await turn(provider);
+  expect(message.usage).toMatchObject({
+    input: 24719,
+    output: 472,
+    totalTokens: 25191,
+    cacheRead: 11533,
+    cacheWrite: 19,
+    cost: { total: 0.25 },
+  });
+});
+
+const stalledRead = () => new Promise<never>(() => {});
+const nextTurnContext = (
+  message: Awaited<ReturnType<typeof turn>>['message'],
+) =>
+  normalizeContext({
+    messages: [
+      ...context.messages,
+      message,
+      { role: 'user', content: 'Next', timestamp: 2 },
+    ],
+  });
+
+test('a stalled post-terminal settings read never blocks the next turn and emits nothing', async () => {
+  const displays: NativeToolActivity[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    { JUNIE_HOME: home, FAKE_RICH: '1' },
+    { onNativeEvent: (event) => displays.push(event) },
+  );
+  displayRead.stall = stalledRead();
+  const first = await turn(provider);
+  expect(first.message.stopReason).toBe('stop');
+  // The read never resolves, so any wait on the line would deadlock the turn.
+  const second = await turn(provider, {}, nextTurnContext(first.message));
+  expect(second.message.stopReason).toBe('stop');
+  expect(displays.filter((event) => event.usageLine)).toEqual([]);
+});
+
+/** Timers created by the second turn of an established session, and the ones
+ * still pending when that turn ended. */
+async function secondTurnTimers(stalled: boolean) {
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup({ JUNIE_HOME: home, FAKE_RICH: '1' });
+  displayRead.stall = stalled ? stalledRead() : undefined;
+  try {
+    const first = await turn(provider);
+    expect(first.message.stopReason).toBe('stop');
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    try {
+      const second = await turn(provider, {}, nextTurnContext(first.message));
+      expect(second.message.stopReason).toBe('stop');
+      const created = setSpy.mock.results.map((result) => result.value);
+      const cleared = new Set(clearSpy.mock.calls.map((call) => call[0]));
+      return {
+        created: created.length,
+        pending: created.filter((handle) => !cleared.has(handle)),
+      };
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
+  } finally {
+    displayRead.stall = undefined;
+  }
+}
+
+test('a pending display line schedules no timer of its own', async () => {
+  const control = await secondTurnTimers(false);
+  const stalled = await secondTurnTimers(true);
+  // Fire and forget: a pending line adds no bound, no grace and no timer at all,
+  // and the turn leaves nothing scheduled behind it.
+  expect(stalled.created).toBe(control.created);
+  expect(control.pending).toEqual([]);
+  expect(stalled.pending).toEqual([]);
+});
+
+test('abort wins immediately while a display line is pending', async () => {
+  const displays: NativeToolActivity[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    { JUNIE_HOME: home, FAKE_RICH: '1' },
+    { onNativeEvent: (event) => displays.push(event) },
+  );
+  displayRead.stall = stalledRead();
+  const first = await turn(provider);
+  expect(first.message.stopReason).toBe('stop');
+  const controller = new AbortController();
+  const startedAt = performance.now();
+  const stream = provider.streamSimple(model, nextTurnContext(first.message), {
+    sessionId: 'pi-1',
+    signal: controller.signal,
+  });
+  controller.abort();
+  const events: AssistantMessageEvent[] = [];
+  for await (const event of stream) events.push(event);
+  const message = await stream.result();
+  expect(message.stopReason).toBe('aborted');
+  expect(
+    events.filter((event) => event.type === 'done' || event.type === 'error'),
+  ).toEqual([expect.objectContaining({ reason: 'aborted' })]);
+  // The never-resolving read cannot delay the abort: nothing waits for it.
+  expect(performance.now() - startedAt).toBeLessThan(3000);
+  expect(displays.filter((event) => event.usageLine)).toEqual([]);
+});
+
+test('close never waits for a pending display line and drops it', async () => {
+  const displays: NativeToolActivity[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    { JUNIE_HOME: home, FAKE_RICH: '1' },
+    { onNativeEvent: (event) => displays.push(event) },
+  );
+  let release!: (model: { modelId: string; effortWireId?: string }) => void;
+  displayRead.stall = new Promise<never>((resolve) => {
+    release = resolve as unknown as typeof release;
+  });
+  const { message } = await turn(provider);
+  expect(message.stopReason).toBe('stop');
+  const startedAt = performance.now();
+  await provider.close();
+  // A never-resolving read cannot hold close: it is not awaited at all.
+  expect(performance.now() - startedAt).toBeLessThan(3000);
+  // The abandoned read settles after close; its line must never land.
+  release({ modelId: 'gpt-6.1-terra', effortWireId: 'low' });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(displays.filter((event) => event.usageLine)).toEqual([]);
+});
+
+/** Bounded poll: telemetry lands after the terminal event, off the turn. */
+async function until(condition: () => boolean, ms = 5000) {
+  const deadline = performance.now() + ms;
+  while (!condition() && performance.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+test.each([
+  'cancelled',
+  'refusal',
+])('a %s turn disposed at its terminal event never appends a stale display line after the next turn', async (reason) => {
+  const displays: string[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    {
+      JUNIE_HOME: home,
+      FAKE_RICH: '1',
+      FAKE_STOP_SEQUENCE: `${reason},end_turn`,
+      // The disposed turn restarts the fixture process; the count survives it.
+      FAKE_STOP_SEQUENCE_FILE: join(home, 'prompt-sequence'),
+    },
+    {
+      onNativeEvent: (event) => {
+        if (event.usageLine) displays.push(event.usageLine);
+      },
+    },
+  );
+  let release!: (model: { modelId: string; effortWireId?: string }) => void;
+  displayRead.stall = new Promise<never>((resolve) => {
+    release = resolve as unknown as typeof release;
+  });
+  const disposed = await turn(provider);
+  expect(disposed.message.stopReason).toBe(
+    reason === 'cancelled' ? 'aborted' : 'error',
+  );
+  // The session was disposed with the terminal event; a deferred read of that
+  // turn belongs to a dead session instance and must never emit.
+  displayRead.stall = undefined;
+  // The next turn reports a different Junie model, so a stale line is visible.
+  junieSettings(home, {
+    formatVersion: 1,
+    model: { modelId: 'gpt-6.1-luna', effortWireId: 'low' },
+  });
+  const next = await turn(provider, {}, nextTurnContext(disposed.message));
+  expect(next.message.stopReason).toBe('stop');
+  await until(() => displays.length > 0);
+  const fresh = 'Junie · mix.auto → gpt-6.1-luna (low) · $0.2500';
+  expect(displays).toEqual([fresh]);
+  // Releasing the disposed turn's read emits nothing: order stays intact.
+  release({ modelId: 'gpt-6.1-terra', effortWireId: 'low' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(displays).toEqual([fresh]);
+});
+
+test('a line that resolves after a newer turn started emits nothing', async () => {
+  const displays: string[] = [];
+  const home = junieHome();
+  junieSettings(home);
+  const { provider } = setup(
+    { JUNIE_HOME: home },
+    {
+      onNativeEvent: (event) => {
+        if (event.usageLine) displays.push(event.usageLine);
+      },
+    },
+  );
+  let release!: (model: { modelId: string; effortWireId?: string }) => void;
+  displayRead.stall = new Promise<never>((resolve) => {
+    release = resolve as unknown as typeof release;
+  });
+  const first = await turn(provider);
+  expect(first.message.stopReason).toBe('stop');
+  // A new continuation bumps the generation the pending line belongs to.
+  displayRead.stall = undefined;
+  const second = await turn(provider, {}, nextTurnContext(first.message));
+  expect(second.message.stopReason).toBe('stop');
+  await until(() => displays.length > 0);
+  const fresh = ['Junie · mix.auto → gpt-6.1-terra (low)'];
+  expect(displays).toEqual(fresh);
+  // Late resolution of the older line never lands: display order is preserved.
+  release({ modelId: 'gpt-6.1-luna', effortWireId: 'low' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(displays).toEqual(fresh);
 });

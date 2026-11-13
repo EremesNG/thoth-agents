@@ -17,9 +17,9 @@ import {
 
 export type JunieEffort = 'low' | 'medium' | 'high';
 export interface Catalog {
-  version: 1;
+  version: 3;
   refreshedAt: string;
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; contextWindow?: number }[];
   efforts: JunieEffort[];
   contextWindow?: number;
 }
@@ -34,7 +34,7 @@ export function readCatalog(agentDir = getAgentDir()): Catalog | undefined {
       readFileSync(cacheFile(agentDir), 'utf8'),
     ) as Catalog;
     if (
-      catalog.version !== 1 ||
+      catalog.version !== 3 ||
       !Array.isArray(catalog.models) ||
       !catalog.models.length ||
       !catalog.models.every(
@@ -61,7 +61,7 @@ export function parseCatalog(options: ConfigOption[]): Catalog {
         .filter(
           (v) => typeof v.value === 'string' && typeof v.name === 'string',
         )
-        .map((v) => [v.value, { id: v.value, name: v.name }]),
+        .map((v) => [v.value, { id: v.value, name: modelLabel(v) }]),
     ).values(),
   ];
   if (!models.length)
@@ -71,7 +71,32 @@ export function parseCatalog(options: ConfigOption[]): Catalog {
   const efforts = values('effort')
     .map((v) => v.value)
     .filter((v): v is JunieEffort => ['low', 'medium', 'high'].includes(v));
-  return { version: 1, refreshedAt: new Date().toISOString(), models, efforts };
+  return { version: 3, refreshedAt: new Date().toISOString(), models, efforts };
+}
+/**
+ * Junie ACP labels mixes with a generic preset name (`Normal`) and only names
+ * the concrete model behind them in `_meta.jetbrains.air.modelDisplayName`.
+ * Prefix and qualify those labels so a mix stays distinguishable from the real
+ * model it currently routes to; plain models keep their ACP name.
+ */
+function modelLabel(value: ConfigValue): string {
+  const optionName = value.name.trim() || value.value;
+  const displayName = modelDisplayName(value);
+  const mixed =
+    value.value.startsWith('mix.') ||
+    (displayName !== undefined && displayName !== optionName);
+  if (!mixed) return optionName;
+  return displayName
+    ? `Junie ${optionName} (${displayName})`
+    : `Junie ${optionName}`;
+}
+function modelDisplayName(value: ConfigValue): string | undefined {
+  const displayName =
+    value._meta?.jetbrains?.air?.modelDisplayName ??
+    value._meta?.['jetbrains.air.modelDisplayName'];
+  return typeof displayName === 'string' && displayName.trim()
+    ? displayName.trim()
+    : undefined;
 }
 export async function refreshCatalog(
   options: CatalogOptions = {},
@@ -93,6 +118,20 @@ export async function refreshCatalog(
     }
   }
   const directory = options.agentDir ?? getAgentDir();
+  const previous = readCatalog(directory);
+  for (const model of catalog.models) {
+    const observed = previous?.models.find(
+      (m) => m.id === model.id,
+    )?.contextWindow;
+    if (validContextWindow(observed)) model.contextWindow = observed;
+  }
+  writeCatalog(catalog, directory);
+  return catalog;
+}
+function validContextWindow(size: number | undefined): size is number {
+  return typeof size === 'number' && Number.isSafeInteger(size) && size > 0;
+}
+function writeCatalog(catalog: Catalog, directory: string): void {
   mkdirSync(join(directory, 'junie-bridge'), { recursive: true });
   const target = cacheFile(directory),
     temporary = `${target}.${randomUUID()}.tmp`;
@@ -100,6 +139,19 @@ export async function refreshCatalog(
     mode: 0o600,
   });
   renameSync(temporary, target);
+}
+/** Returns the changed catalog so an interactive host can re-register immediately. */
+export function recordContextWindow(
+  id: string,
+  size: number,
+  agentDir = getAgentDir(),
+): Catalog | undefined {
+  if (!validContextWindow(size)) return;
+  const catalog = readCatalog(agentDir);
+  const model = catalog?.models.find((m) => m.id === id);
+  if (!catalog || !model || model.contextWindow === size) return;
+  model.contextWindow = size;
+  writeCatalog(catalog, agentDir);
   return catalog;
 }
 export function effortToThinking(effort: JunieEffort): ThinkingLevel {
@@ -127,7 +179,10 @@ export function projectModels(catalog: Catalog): Model<Api>[] {
     thinkingLevelMap,
     input: ['text', 'image'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: catalog.contextWindow ?? 32000,
+    // Conservative fallback until Junie reports this model's actual capacity.
+    contextWindow: validContextWindow(model.contextWindow)
+      ? model.contextWindow
+      : (catalog.contextWindow ?? 32000),
     maxTokens: 8192,
   }));
 }

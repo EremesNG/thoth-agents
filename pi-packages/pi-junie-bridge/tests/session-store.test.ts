@@ -53,3 +53,33 @@ test('session records survive replacement atomically, use safe hashed names, and
   store.delete('../../pi-session');
   expect(store.load('../../pi-session')).toBeNull();
 });
+
+test('loads legacy records that still carry removed usage telemetry fields', () => {
+  const dir = fs.mkdtempSync(join(tmpdir(), 'junie-store-'));
+  directories.push(dir);
+  const store = createSessionStore(dir);
+  const state = {
+    sessionId: 'junie-1',
+    cwd: '/project',
+    model: 'mix.auto',
+    digests: ['a'.repeat(64)],
+    cost: 0.25,
+  };
+  store.save('pi-session', state);
+  const [file] = fs.readdirSync(dir);
+  fs.writeFileSync(
+    join(dir, file),
+    JSON.stringify({
+      version: 1,
+      ...state,
+      usageSnapshot: {
+        sessionId: 'junie-1',
+        models: [{ model: 'terra', cost: 1 }],
+      },
+      usageBaselinePending: true,
+    }),
+  );
+  expect(store.load('pi-session')).toEqual(state);
+  store.save('pi-session', store.load('pi-session')!);
+  expect(store.load('pi-session')).toEqual(state);
+});

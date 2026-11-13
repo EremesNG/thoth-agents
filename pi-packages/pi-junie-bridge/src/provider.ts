@@ -13,7 +13,8 @@ import {
 } from '@earendil-works/pi-ai';
 import { AcpConnection, type AcpOptions } from './acp/connection.js';
 import { JsonRpcResponseError } from './acp/jsonrpc.js';
-import { toJunieEffort } from './catalog.js';
+import { type Catalog, recordContextWindow, toJunieEffort } from './catalog.js';
+import { junieUsageLine, readJunieModel } from './junie-usage.js';
 import {
   type McpResult,
   type McpServerHandle,
@@ -21,8 +22,8 @@ import {
   TOKEN_HEADER,
 } from './mcp-server.js';
 import {
+  NativeActivityFolder,
   type NativeToolActivity,
-  renderNativeActivity,
 } from './native-display.js';
 import { requestPermission } from './permissions.js';
 import {
@@ -38,6 +39,12 @@ export interface ProviderOptions extends AcpOptions {
     signal?: AbortSignal,
     piSessionId?: string,
   ) => Promise<unknown>;
+  /** Display-only entries, excluded from Pi messages and prompt projection. */
+  onNativeEvent?: (event: NativeToolActivity, piSessionId?: string) => void;
+  /** Optional debug sink for best-effort local telemetry. */
+  debug?: (message: string) => void;
+  agentDir?: string;
+  onCatalogUpdate?: (catalog: Catalog) => void;
   sessionStore?: SessionStore;
   /** Optional additional MCP servers; the provider registers its own Pi server. */
   getMcpServers?: () => unknown[];
@@ -50,8 +57,18 @@ interface ParkedCall {
   args: Record<string, unknown>;
   resolve(result: McpResult): void;
 }
+interface PromptResponse {
+  stopReason: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    cachedReadTokens?: number;
+    cachedWriteTokens?: number;
+  };
+}
 interface TurnState {
-  prompt: Promise<{ stopReason: string }>;
+  prompt: Promise<PromptResponse>;
   queue: ParkedCall[];
   issued?: ParkedCall;
   wake?: () => void;
@@ -66,11 +83,15 @@ interface SessionState {
   tools?: Tool[];
   turn?: TurnState;
   hiddenTools?: Set<string>;
+  nativeActivity?: NativeActivityFolder;
   backlog?: UpdateEnvelope[];
   connection?: AcpConnection;
   sessionId?: string;
   prompted: boolean;
   recording?: PersistedSession;
+  // Bumped at the start of every new prompt/continuation and on dispose/close:
+  // a pending display-only line whose generation moved is dropped, never reordered.
+  displayGeneration: number;
   // cost is already attributed; observedCost also includes idle trailing updates.
   cost: number;
   observedCost: number;
@@ -473,7 +494,11 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
     if (state.closing) return state.closing;
     failParked(state, 'Junie turn closed before Pi returned a tool result.');
     state.permissionAbort?.abort();
+    state.nativeActivity?.flush();
+    state.nativeActivity = undefined;
     state.disposed = true;
+    // A line still pending at disposal must never land after the session ends.
+    state.displayGeneration++;
     state.onUpdate = undefined;
     state.backlog = [];
     state.closing = (async () => {
@@ -497,6 +522,8 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
       for (const [key, state] of sessions)
         if (owned.includes(state)) sessions.delete(key);
       for (const state of owned) state.interrupt?.(aborted());
+      // No waiting for display-only telemetry: dispose bumps the generation, so
+      // a line still resolving after close is dropped by its own check.
       await Promise.all(owned.map(dispose));
       // A launch already in progress is also owned; its completion closes it.
       if (piSessionId === undefined)
@@ -530,8 +557,11 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
         let state: SessionState | undefined;
         let key: string | undefined;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        let prompt: Promise<{ stopReason: string }> | undefined;
+        let prompt: Promise<PromptResponse> | undefined;
         let interrupted = false;
+        let terminalPromptEnded = false;
+        // Generation of the session instance this turn's telemetry belongs to.
+        let displayGeneration = 0;
         let rejectWait: (error: Error) => void = () => {};
         const interruption = new Promise<never>((_, reject) => {
           rejectWait = reject;
@@ -612,6 +642,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
             observedCost: 0,
             disposed: false,
             active: false,
+            displayGeneration: 0,
             recording: persist ? (store.load(key) ?? undefined) : undefined,
           };
           state.piSessionId = options?.sessionId;
@@ -619,8 +650,11 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
           sessions.set(key, state);
           state.active = true;
           state.interrupt = interrupt;
+          // Any line still pending from an earlier turn is stale from here on.
+          state.displayGeneration++;
           state.turn?.removeAbort?.();
           state.tools = getCurrentTools(context.messages);
+          // Abort must keep precedence over a pending display-only line.
           options?.signal?.addEventListener('abort', onAbort, { once: true });
           if (options?.signal?.aborted) onAbort();
           arm(startup, 'startup');
@@ -791,19 +825,26 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
                 event.content.text,
               );
             if (event.sessionUpdate === 'usage_update') {
-              // ACP reports context occupancy, not input/output token billing.
-              if (
-                typeof event.used === 'number' &&
-                Number.isFinite(event.used) &&
-                event.used >= 0
-              )
-                message.usage.input = message.usage.totalTokens = event.used;
+              // Context occupancy is not billed input; prompt response owns token usage.
               if (
                 typeof event.size === 'number' &&
                 Number.isFinite(event.size) &&
                 event.size > 0
-              )
+              ) {
                 model.contextWindow = event.size;
+                try {
+                  const catalog = recordContextWindow(
+                    model.id,
+                    event.size,
+                    deps.agentDir,
+                  );
+                  if (catalog) deps.onCatalogUpdate?.(catalog);
+                } catch (error) {
+                  (deps.warn ?? console.warn)(
+                    `Junie context capacity cache unavailable: ${String(error)}`,
+                  );
+                }
+              }
               message.usage.cost.total = Math.max(
                 0,
                 owned.observedCost - baseCost,
@@ -824,11 +865,23 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               const hidden =
                 own ||
                 (event.toolCallId && owned.hiddenTools?.has(event.toolCallId));
-              if (!hidden)
-                blocks.append(
-                  'text',
-                  `\n${renderNativeActivity({ ...event, content: Array.isArray(event.content) ? event.content : undefined })}\n`,
+              if (!hidden) {
+                owned.nativeActivity ??= new NativeActivityFolder(
+                  (activity) => {
+                    try {
+                      deps.onNativeEvent?.(activity, owned.piSessionId);
+                    } catch {
+                      /* Display sinks cannot fail inference. */
+                    }
+                  },
                 );
+                owned.nativeActivity.add({
+                  ...event,
+                  content: Array.isArray(event.content)
+                    ? event.content
+                    : undefined,
+                });
+              }
             }
           };
           for (const update of state.backlog ?? []) state.onUpdate(update);
@@ -944,9 +997,26 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               options?.signal?.removeEventListener('abort', parkedAbort);
             return;
           }
+          terminalPromptEnded = true;
+          // Bind this turn's telemetry to its own session instance: capture the
+          // generation at terminal time, before any terminal disposal or close.
+          displayGeneration = state.displayGeneration;
+          // Only the terminal segment owns prompt-wide tokens. Parked segments
+          // have zero tokens, avoiding double billing across Pi tool round trips.
+          const tokens = (value: number | undefined) =>
+            typeof value === 'number' && Number.isFinite(value) && value >= 0
+              ? value
+              : 0;
+          message.usage.input = tokens(result.usage?.inputTokens);
+          message.usage.output = tokens(result.usage?.outputTokens);
+          message.usage.cacheRead = tokens(result.usage?.cachedReadTokens);
+          message.usage.cacheWrite = tokens(result.usage?.cachedWriteTokens);
+          message.usage.totalTokens = tokens(result.usage?.totalTokens);
           turn.removeAbort?.();
           state.turn = undefined;
           state.hiddenTools = undefined;
+          state.nativeActivity?.flush();
+          state.nativeActivity = undefined;
           state.prompted = true;
           const reason = result?.stopReason;
           message.stopReason =
@@ -1037,6 +1107,43 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               message,
             });
           stream.end();
+          // The display-only line starts AFTER the terminal stream event and
+          // only reads local Junie settings; nothing ever awaits it, so it can
+          // never delay a turn, an abort or shutdown. It emits only while its
+          // own session instance is alive and its generation is unchanged.
+          // A turn that already disposed its session (cancel, refusal) schedules
+          // nothing: its telemetry belongs to a session instance that is gone.
+          if (terminalPromptEnded && state?.sessionId && !state.disposed) {
+            const owned = state;
+            const sessionId = state.sessionId;
+            // Single source of truth: the cost this turn's message attributes.
+            const cost = message.usage.cost.total;
+            const piModel = model.id;
+            void readJunieModel({
+              sessionId,
+              home: deps.env?.JUNIE_HOME,
+              debug: deps.debug,
+            })
+              .then((junie) => {
+                // A late read never emits after close/disposal or after a newer
+                // turn bumped the generation, which would misorder display lines.
+                if (
+                  !junie ||
+                  owned.disposed ||
+                  owned.displayGeneration !== displayGeneration
+                )
+                  return;
+                const usageLine = junieUsageLine({ piModel, junie, cost });
+                try {
+                  deps.onNativeEvent?.({ usageLine }, owned.piSessionId);
+                } catch {
+                  /* Display sinks cannot fail inference. */
+                }
+              })
+              .catch((error) => {
+                deps.debug?.(`Junie display line skipped: ${String(error)}`);
+              });
+          }
         }
       })();
       return stream;

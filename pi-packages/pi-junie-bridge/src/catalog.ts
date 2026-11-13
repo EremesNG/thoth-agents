@@ -16,10 +16,18 @@ import {
 } from './acp/connection.js';
 
 export type JunieEffort = 'low' | 'medium' | 'high';
+export interface CatalogModel {
+  /** Pi-visible id: the ACP tail, or the full ACP value when tails collide. */
+  id: string;
+  /** Exact ACP config value; always what Junie receives on the wire. */
+  value: string;
+  name: string;
+  contextWindow?: number;
+}
 export interface Catalog {
-  version: 3;
+  version: 4;
   refreshedAt: string;
-  models: { id: string; name: string; contextWindow?: number }[];
+  models: CatalogModel[];
   efforts: JunieEffort[];
   contextWindow?: number;
 }
@@ -34,12 +42,16 @@ export function readCatalog(agentDir = getAgentDir()): Catalog | undefined {
       readFileSync(cacheFile(agentDir), 'utf8'),
     ) as Catalog;
     if (
-      catalog.version !== 3 ||
+      catalog.version !== 4 ||
       !Array.isArray(catalog.models) ||
       !catalog.models.length ||
       !catalog.models.every(
         (m) =>
-          typeof m.id === 'string' && m.id.length && typeof m.name === 'string',
+          typeof m.id === 'string' &&
+          m.id.length &&
+          typeof m.value === 'string' &&
+          m.value.length &&
+          typeof m.name === 'string',
       ) ||
       !Array.isArray(catalog.efforts) ||
       !catalog.efforts.every((e) => ['low', 'medium', 'high'].includes(e))
@@ -55,23 +67,77 @@ export function parseCatalog(options: ConfigOption[]): Catalog {
     (options.find((option) => option.id === id)?.options ?? []).flatMap(
       (value) => ('options' in value ? value.options : [value]),
     );
-  const models = [
+  const discovered = [
     ...new Map(
       values('model')
         .filter(
           (v) => typeof v.value === 'string' && typeof v.name === 'string',
         )
-        .map((v) => [v.value, { id: v.value, name: modelLabel(v) }]),
+        .map((v) => [v.value, { value: v.value, name: modelLabel(v) }]),
     ).values(),
   ];
-  if (!models.length)
+  if (!discovered.length)
     throw new Error(
       'Junie returned no model config options; run `junie` and log in with your JetBrains Account.',
     );
+  const ids = assignModelIds(discovered.map((model) => model.value));
+  const models = discovered.map((model) => ({
+    id: ids.get(model.value) ?? model.value,
+    value: model.value,
+    name: model.name,
+  }));
   const efforts = values('effort')
     .map((v) => v.value)
     .filter((v): v is JunieEffort => ['low', 'medium', 'high'].includes(v));
-  return { version: 3, refreshedAt: new Date().toISOString(), models, efforts };
+  return { version: 4, refreshedAt: new Date().toISOString(), models, efforts };
+}
+/**
+ * Pi lists models by id, so the ACP value's last segment is what a person can
+ * read (`v1:12:jetbrains-ai:gemini-3.7-flash` → `gemini-3.7-flash`). Mix presets
+ * carry no scheme and stay untouched. A value that would end up empty keeps its
+ * full form rather than becoming a nameless duplicate.
+ */
+export function shortModelId(value: string): string {
+  const index = value.lastIndexOf(':');
+  if (index < 0) return value;
+  return value.slice(index + 1) || value;
+}
+/**
+ * Distinct short ids for Pi; every value whose short form is ambiguous keeps its
+ * full ACP value instead, so two models can never collapse into one entry.
+ */
+function assignModelIds(values: string[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const short = shortModelId(value);
+    counts.set(short, (counts.get(short) ?? 0) + 1);
+  }
+  return new Map(
+    values.map((value) => {
+      const short = shortModelId(value);
+      return [value, (counts.get(short) ?? 0) > 1 ? value : short];
+    }),
+  );
+}
+/**
+ * The ACP value for a Pi model id. Either form resolves to the wire value, so a
+ * record written before short ids (or one written by this version) keeps
+ * working. Stale short ids must have a unique ACP tail; never guess when a
+ * catalog is available. Without a catalog, Junie remains the validator.
+ */
+export function toAcpModelValue(id: string, catalog?: Catalog): string {
+  const models = catalog?.models;
+  if (!models) return id;
+  const exact =
+    models.find((model) => model.id === id) ??
+    models.find((model) => model.value === id);
+  if (exact) return exact.value;
+  const tails = models.filter((model) => shortModelId(model.value) === id);
+  if (tails.length === 1) return tails[0].value;
+  if (tails.length > 1)
+    throw new Error(`Ambiguous Junie model "${id}"; select a full model id.`);
+  if (!id.includes(':') && id.startsWith('mix.')) return id;
+  throw new Error(`Unknown Junie model "${id}"; refresh the model catalog.`);
 }
 /**
  * Junie ACP labels mixes with a generic preset name (`Normal`) and only names
@@ -120,8 +186,9 @@ export async function refreshCatalog(
   const directory = options.agentDir ?? getAgentDir();
   const previous = readCatalog(directory);
   for (const model of catalog.models) {
+    // Capacity is a property of the model, not of the id a version gave it.
     const observed = previous?.models.find(
-      (m) => m.id === model.id,
+      (m) => m.value === model.value,
     )?.contextWindow;
     if (validContextWindow(observed)) model.contextWindow = observed;
   }
@@ -140,15 +207,19 @@ function writeCatalog(catalog: Catalog, directory: string): void {
   });
   renameSync(temporary, target);
 }
-/** Returns the changed catalog so an interactive host can re-register immediately. */
+/**
+ * Returns the changed catalog so an interactive host can re-register
+ * immediately. Keyed strictly by ACP value: a Pi id can be reassigned to a
+ * different ACP value by a catalog refresh.
+ */
 export function recordContextWindow(
-  id: string,
+  value: string,
   size: number,
   agentDir = getAgentDir(),
 ): Catalog | undefined {
   if (!validContextWindow(size)) return;
   const catalog = readCatalog(agentDir);
-  const model = catalog?.models.find((m) => m.id === id);
+  const model = catalog?.models.find((m) => m.value === value);
   if (!catalog || !model || model.contextWindow === size) return;
   model.contextWindow = size;
   writeCatalog(catalog, agentDir);
@@ -171,7 +242,8 @@ export function projectModels(catalog: Catalog): Model<Api>[] {
   for (const level of ['low', 'medium', 'high'] as const)
     thinkingLevelMap[level] = catalog.efforts.includes(level) ? level : null;
   return catalog.models.map((model) => ({
-    ...model,
+    id: model.id,
+    name: model.name,
     provider: 'junie',
     api: 'junie-bridge',
     baseUrl: 'junie-bridge://junie',

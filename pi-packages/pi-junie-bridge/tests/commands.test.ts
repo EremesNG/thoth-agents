@@ -44,8 +44,8 @@ test('junie command reports quota on demand and refreshes registered models with
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
-      models: [{ id: 'old', name: 'Old' }],
+      version: 4,
+      models: [{ id: 'old', value: 'old', name: 'Old' }],
       efforts: [],
     }),
   );

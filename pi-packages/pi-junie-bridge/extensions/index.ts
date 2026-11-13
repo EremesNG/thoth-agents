@@ -22,7 +22,7 @@ const KEY = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
  * from another version is disposed and rebuilt, never reused, so a reload always
  * runs the new bundle's provider code and never reads a map the old one lacked.
  */
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 interface SharedState {
   version: number;
   refresh?: Promise<Catalog>;

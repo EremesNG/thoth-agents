@@ -176,9 +176,9 @@ test(
       writeFileSync(
         join(agentDir, 'junie-bridge/models.json'),
         JSON.stringify({
-          version: 3,
+          version: 4,
           refreshedAt: '2026-11-12T00:00:00.000Z',
-          models: [{ id: 'mix.auto', name: 'Auto' }],
+          models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
           efforts: ['low', 'medium', 'high'],
         }),
       );

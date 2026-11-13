@@ -46,8 +46,11 @@ test.skipIf(process.platform !== 'win32')(
         .poll(() => readCatalog(dir), { timeout: 8000 })
         .toMatchObject({
           models: [
-            { id: 'v1:12:jetbrains-ai:gemini-3.7-flash' },
-            { id: 'mix.auto' },
+            {
+              id: 'gemini-3.7-flash',
+              value: 'v1:12:jetbrains-ai:gemini-3.7-flash',
+            },
+            { id: 'mix.auto', value: 'mix.auto' },
           ],
         });
       await expect.poll(() => registerProvider.mock.calls.length).toBe(2);
@@ -77,9 +80,9 @@ test('registers cached Junie models and guards a shared registry', async () => {
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
+      version: 4,
       refreshedAt: '2026-11-12',
-      models: [{ id: 'mix.auto', name: 'Auto' }],
+      models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
       efforts: ['low', 'medium', 'high'],
     }),
   );
@@ -184,8 +187,8 @@ test.each([
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
-      models: [{ id: 'mix.auto', name: 'Auto' }],
+      version: 4,
+      models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
   );
@@ -349,8 +352,8 @@ function cachedAgentDir(): string {
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
-      models: [{ id: 'mix.auto', name: 'Auto' }],
+      version: 4,
+      models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
   );
@@ -462,7 +465,7 @@ test('replaces a same-version state whose provider cannot close', async () => {
     { streamSimple: legacyStreamSimple },
     async ({ pi, dir }) => {
       Object.assign((globalThis as any)[KEY], {
-        version: 2,
+        version: 3,
         nativeSinks: new Map(),
       });
       extension(pi.pi);

@@ -1316,6 +1316,90 @@ test('usage_update capacity is saved for the exact selected model on re-registra
   ).toBe(64000);
 });
 
+const shortModel: Model<Api> = {
+  ...model,
+  id: 'gemini-3.7-flash',
+  name: 'Gemini 3.7 Flash',
+};
+
+test('selecting a short Pi model id sends the ACP value and records capacity for the ACP value', async () => {
+  const { provider, dir, wire } = setup({ FAKE_RICH: '1' });
+  await refreshCatalog({
+    agentDir: dir,
+    command: { file: process.execPath, args: [fixture] },
+  });
+  const message = await provider
+    .streamSimple(shortModel, context, { sessionId: 'pi-1' })
+    .result();
+  expect(message.stopReason).toBe('stop');
+  // Pi keeps the short id in its own transcript.
+  expect(message.model).toBe('gemini-3.7-flash');
+  expect(
+    wire()
+      .filter(
+        (m) =>
+          m.method === 'session/set_config_option' &&
+          m.params.configId === 'model',
+      )
+      .map((m) => m.params.value),
+  ).toEqual(['v1:12:jetbrains-ai:gemini-3.7-flash']);
+  expect(shortModel.contextWindow).toBe(64000);
+  expect(
+    readCatalog(dir)?.models.find((m) => m.id === 'gemini-3.7-flash')
+      ?.contextWindow,
+  ).toBe(64000);
+});
+
+test('a durable record that stored the full ACP model value still resumes when Pi selects the short id', async () => {
+  const { provider, restart, dir, store, wire } = setup();
+  await refreshCatalog({
+    agentDir: dir,
+    command: { file: process.execPath, args: [fixture] },
+  });
+  const first = await provider
+    .streamSimple(shortModel, context, { sessionId: 'pi-1' })
+    .result();
+  expect(first.stopReason).toBe('stop');
+  // The record keeps the ACP value: old and new builds read the same model.
+  expect(store.load('pi-1')?.model).toBe('v1:12:jetbrains-ai:gemini-3.7-flash');
+  await provider.close();
+  const input = normalizeContext({
+    messages: [
+      ...context.messages,
+      first,
+      { role: 'user', content: 'Next', timestamp: 2 },
+    ],
+  });
+  const resumed = restart();
+  const second = await resumed
+    .streamSimple(shortModel, input, { sessionId: 'pi-1' })
+    .result();
+  expect(second.stopReason).toBe('stop');
+  expect(wire().filter((m) => m.method === 'session/new')).toHaveLength(1);
+  expect(wire().filter((m) => m.method === 'session/resume')).toHaveLength(1);
+  // Either form of the same model matches a saved session.
+  const saved = store.load('pi-1');
+  if (!saved) throw new Error('session record missing');
+  store.save('pi-1', { ...saved, model: 'gemini-3.7-flash' });
+  await resumed.close();
+  const again = restart();
+  const third = await again
+    .streamSimple(
+      shortModel,
+      normalizeContext({
+        messages: [
+          ...input.messages,
+          second,
+          { role: 'user', content: 'Again', timestamp: 3 },
+        ],
+      }),
+      { sessionId: 'pi-1' },
+    )
+    .result();
+  expect(third.stopReason).toBe('stop');
+  expect(wire().filter((m) => m.method === 'session/resume')).toHaveLength(2);
+});
+
 test('prompt response maps billed tokens independently of context occupancy and cumulative USD cost', async () => {
   const { provider } = setup({ FAKE_RICH: '1', FAKE_TOKEN_USAGE: '1' });
   const { message } = await turn(provider);
@@ -1536,4 +1620,99 @@ test('a line that resolves after a newer turn started emits nothing', async () =
   release({ modelId: 'gpt-6.1-luna', effortWireId: 'low' });
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(displays).toEqual(fresh);
+});
+
+test('mid-turn id collisions preserve wire-keyed capacity and reject the next ambiguous selection', async () => {
+  let changed = false;
+  const { provider, dir, wire } = setup(
+    { FAKE_RICH: '1' },
+    {
+      onCatalogUpdate: (catalog) => {
+        if (changed) return;
+        changed = true;
+        const selected = catalog.models[0];
+        selected.id = selected.value;
+        delete selected.contextWindow;
+        catalog.models.push({
+          id: 'v1:99:jetbrains-ai:gemini-3.7-flash',
+          value: 'v1:99:jetbrains-ai:gemini-3.7-flash',
+          name: 'Other Gemini',
+        });
+        writeFileSync(
+          join(dir, 'junie-bridge/models.json'),
+          JSON.stringify(catalog),
+        );
+      },
+    },
+  );
+  await refreshCatalog({
+    agentDir: dir,
+    command: { file: process.execPath, args: [fixture] },
+  });
+  const first = await provider
+    .streamSimple(shortModel, context, { sessionId: 'pi-1' })
+    .result();
+  expect(first.stopReason).toBe('stop');
+  expect(changed).toBe(true);
+  expect(readCatalog(dir)?.models[0].contextWindow).toBe(64000);
+  expect(readCatalog(dir)?.models[2].contextWindow).toBeUndefined();
+  const before = wire();
+  const ambiguous = await provider
+    .streamSimple(shortModel, context, { sessionId: 'pi-1' })
+    .result();
+  expect(ambiguous.stopReason).toBe('error');
+  expect(ambiguous.errorMessage).toMatch(/ambiguous.*gemini-3\.7-flash/i);
+  expect(wire()).toEqual(before);
+
+  // Removing the conflicting value leaves the selected Pi Model stale, but
+  // its tail is now unique and resolves without guessing.
+  const catalog = readCatalog(dir)!;
+  catalog.models.pop();
+  writeFileSync(join(dir, 'junie-bridge/models.json'), JSON.stringify(catalog));
+  const next = await provider
+    .streamSimple(shortModel, context, { sessionId: 'pi-1' })
+    .result();
+  expect(next.stopReason).toBe('stop');
+  expect(
+    wire()
+      .filter(
+        (m) =>
+          m.method === 'session/set_config_option' &&
+          m.params.configId === 'model',
+      )
+      .map((m) => m.params.value),
+  ).toEqual([
+    'v1:12:jetbrains-ai:gemini-3.7-flash',
+    'v1:12:jetbrains-ai:gemini-3.7-flash',
+  ]);
+});
+
+test.each([
+  'removed-model',
+  'gemini-3.7-flash',
+])('an unresolvable persisted model %s does not block a valid new selection', async (savedModel) => {
+  const { provider, restart, dir, store } = setup();
+  const catalog = await refreshCatalog({
+    agentDir: dir,
+    command: { file: process.execPath, args: [fixture] },
+  });
+  const first = await provider
+    .streamSimple(model, context, { sessionId: 'pi-1' })
+    .result();
+  expect(first.stopReason).toBe('stop');
+  await provider.close();
+  const saved = store.load('pi-1')!;
+  store.save('pi-1', { ...saved, model: savedModel });
+  catalog.models[0].id = catalog.models[0].value;
+  catalog.models.push({
+    id: 'v1:99:jetbrains-ai:gemini-3.7-flash',
+    value: 'v1:99:jetbrains-ai:gemini-3.7-flash',
+    name: 'Other Gemini',
+  });
+  writeFileSync(join(dir, 'junie-bridge/models.json'), JSON.stringify(catalog));
+  const next = await restart()
+    .streamSimple(model, context, { sessionId: 'pi-1' })
+    .result();
+  expect(next.stopReason).toBe('stop');
+  expect(store.load('pi-1')?.model).toBe('mix.auto');
 });

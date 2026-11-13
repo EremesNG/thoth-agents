@@ -44,8 +44,8 @@ function setup() {
   writeFileSync(
     join(dir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
-      models: [{ id: 'mix.auto', name: 'Auto' }],
+      version: 4,
+      models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
   );

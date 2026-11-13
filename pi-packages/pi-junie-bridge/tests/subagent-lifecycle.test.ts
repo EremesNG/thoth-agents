@@ -39,8 +39,8 @@ test('default lean SDK child keeps Junie workspace and closes its MCP endpoint a
   writeFileSync(
     join(agentDir, 'junie-bridge/models.json'),
     JSON.stringify({
-      version: 3,
-      models: [{ id: 'mix.auto', name: 'Auto' }],
+      version: 4,
+      models: [{ id: 'mix.auto', value: 'mix.auto', name: 'Auto' }],
       efforts: [],
     }),
   );

@@ -23,10 +23,36 @@ real Junie executable (especially on Windows).
 
 - Junie runs as an ACP agent provider over stdio. Models and supported effort
   levels are discovered from Junie and cached under Pi's agent directory. Model
-  labels use Junie's display names while ACP IDs remain unchanged. Observed
-  context capacity is cached per model and reused on registration (32k fallback
-  until observed). Prompt-response token usage is attributed to the terminal
-  message only, not duplicated across parked Pi tool segments.
+  labels use Junie's display names and Pi ids are short (below); Junie always
+  receives the exact ACP value. Observed context capacity is cached per model
+  and reused on registration (32k fallback until observed). Prompt-response
+  token usage is attributed to the terminal message only, not duplicated across
+  parked Pi tool segments.
+- Pi lists a model by its id and only prints a name when it differs, so a raw
+  ACP value would read as `v1:12:jetbrains-ai:gemini-3.7-flash`. The catalog
+  therefore stores both forms: `id` is the Pi-facing short id, the last segment
+  of the ACP value, and `value` is the exact ACP value Junie receives.
+
+  | ACP value | Pi model id |
+  | --- | --- |
+  | `v1:12:jetbrains-ai:gemini-3.7-flash` | `gemini-3.7-flash` |
+  | `v1:12:jetbrains-ai:claude-opus-5-5` | `claude-opus-5-5` |
+  | `mix.auto` | `mix.auto` |
+  | `v1:12:jetbrains-ai:x` + `v1:99:jetbrains-ai:x` | both keep the full ACP value |
+
+  Mix presets have no scheme and keep their value as the id. Any ACP value
+  without `:` is unchanged, and a segment that would be empty keeps the full
+  value. When two ACP values would produce the same short id, both keep their
+  full ACP value, so two models never collapse into one entry. Selecting either
+  form always puts the ACP value on the wire; a durable Junie session record
+  stores the ACP value too, and a record written before short ids existed still
+  resumes. With a readable catalog, a selection resolves by exact id, then exact
+  ACP value, then the single ACP value whose last segment matches; an ambiguous
+  or unknown selection fails the turn before anything is sent to Junie, except
+  an unknown bare `mix.*` preset, which is passed through. Without a readable
+  catalog the selection is passed through and Junie validates it. Observed
+  context capacity is keyed by ACP value only.
+
 - Pi tools are exposed through an authenticated loopback MCP server. Calls are
   returned to Pi for execution rather than executed by a second Pi tool loop.
 - Junie's native tools remain available. Their permission requests are shown as
@@ -35,7 +61,10 @@ real Junie executable (especially on Windows).
   entries, never assistant text or LLM history; headless runs omit it entirely.
 - After each completed Junie prompt, a display-only line names the real Junie
   model behind Pi's provider model and the cost attributed to that turn, for
-  example: `Junie · mix.normal → gpt-6.1-terra (low) · $0.0313`. The model and
+  example: `Junie · mix.normal → gpt-6.1-terra (low) · $0.0313`, where the first
+  name is the Pi model id (short id, or the full ACP value after a collision)
+  and the second is the concrete Junie model reported by local settings. The
+  model and
   effort are read best-effort from local `~/.junie/sessions/<ACP sessionId>/`
   `settings.json` after the terminal event, fire and forget: nothing waits for
   that read, so a stalled local file can never delay the next turn, an abort or

@@ -13,7 +13,13 @@ import {
 } from '@earendil-works/pi-ai';
 import { AcpConnection, type AcpOptions } from './acp/connection.js';
 import { JsonRpcResponseError } from './acp/jsonrpc.js';
-import { type Catalog, recordContextWindow, toJunieEffort } from './catalog.js';
+import {
+  type Catalog,
+  readCatalog,
+  recordContextWindow,
+  toAcpModelValue,
+  toJunieEffort,
+} from './catalog.js';
 import { junieUsageLine, readJunieModel } from './junie-usage.js';
 import {
   type McpResult,
@@ -339,13 +345,20 @@ function matches(
   digests: string[],
   cwd: string,
   model: string,
+  catalog: Catalog | undefined,
 ): boolean {
-  return (
-    record.cwd === cwd &&
-    record.model === model &&
-    record.digests.length <= digests.length &&
-    record.digests.every((digest, index) => digest === digests[index])
-  );
+  try {
+    return (
+      record.cwd === cwd &&
+      // A record may hold either the Pi id or the ACP value for the same model.
+      toAcpModelValue(record.model, catalog) === model &&
+      record.digests.length <= digests.length &&
+      record.digests.every((digest, index) => digest === digests[index])
+    );
+  } catch {
+    // Removed or ambiguous historical ids cannot safely resume; re-seed instead.
+    return false;
+  }
 }
 async function restoreSession(
   connection: AcpConnection,
@@ -635,6 +648,10 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               'A Junie turn is already active for this Pi session.',
             );
           const digests = historyDigests(context.messages);
+          // Pi addresses a model by its short id; Junie only accepts the exact
+          // ACP value. Resolve once per turn and use the wire value from here.
+          const catalog = readCatalog(deps.agentDir),
+            wireModel = toAcpModelValue(model.id, catalog);
           state = existing ?? {
             openings: new Set(),
             prompted: false,
@@ -661,7 +678,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
           const startupDeadline = Date.now() + startup;
           if (
             state.recording &&
-            (!matches(state.recording, digests, pi.cwd, model.id) ||
+            (!matches(state.recording, digests, pi.cwd, wireModel, catalog) ||
               context.messages
                 .slice(state.recording.digests.length)
                 .some(isCompaction))
@@ -729,7 +746,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               ...(deps.getMcpServers?.() ?? []),
             ];
             const saved = state.recording;
-            if (saved && matches(saved, digests, pi.cwd, model.id)) {
+            if (saved && matches(saved, digests, pi.cwd, wireModel, catalog)) {
               let resumeTimer: ReturnType<typeof setTimeout> | undefined;
               try {
                 // Observe cumulative usage replayed before the restore response too.
@@ -788,7 +805,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
             sessionId = state.sessionId!;
           if (!state.turn) {
             await wait(
-              connection.setConfigOption(sessionId, 'model', model.id),
+              connection.setConfigOption(sessionId, 'model', wireModel),
             );
             await wait(
               connection.setConfigOption(
@@ -834,7 +851,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
                 model.contextWindow = event.size;
                 try {
                   const catalog = recordContextWindow(
-                    model.id,
+                    wireModel,
                     event.size,
                     deps.agentDir,
                   );
@@ -968,7 +985,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
             state.recording = {
               sessionId,
               cwd: pi.cwd,
-              model: model.id,
+              model: wireModel,
               digests: historyDigests([...context.messages, message]),
               cost: state.cost,
             };
@@ -1036,7 +1053,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
             state.recording = {
               sessionId,
               cwd: pi.cwd,
-              model: model.id,
+              model: wireModel,
               digests: historyDigests([...context.messages, message]),
               cost: state.cost,
               ...(state.recording?.resumedWith

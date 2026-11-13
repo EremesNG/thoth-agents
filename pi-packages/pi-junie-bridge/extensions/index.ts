@@ -15,39 +15,89 @@ import { fetchJunieQuota } from '../src/quota.js';
 export { createJunieProvider };
 
 const KEY = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
+/**
+ * The state below lives on the process-global object, so it survives `/reload`
+ * and an upgrade replaces the bundle while the state object stays. Bump this
+ * whenever the shape changes or the provider contract it holds changes: a state
+ * from another version is disposed and rebuilt, never reused, so a reload always
+ * runs the new bundle's provider code and never reads a map the old one lacked.
+ */
+const STATE_VERSION = 2;
 interface SharedState {
+  version: number;
   refresh?: Promise<Catalog>;
   ui: Map<string, PermissionUI>;
   nativeSinks: Map<string, (event: NativeToolActivity) => void>;
   sessions: Map<string, { cwd: string }>;
   provider: ReturnType<typeof createJunieProvider>;
 }
-const shared = globalThis as typeof globalThis & { [KEY]?: SharedState };
+type Shared = Partial<Omit<SharedState, 'provider'>> & {
+  provider?: Partial<SharedState['provider']>;
+};
+const shared = globalThis as typeof globalThis & { [KEY]?: Shared };
+
+/** A state from this exact version, with every map the handlers below touch. */
+function reusable(candidate: Shared | undefined): candidate is SharedState {
+  return (
+    candidate?.version === STATE_VERSION &&
+    candidate.ui instanceof Map &&
+    candidate.nativeSinks instanceof Map &&
+    candidate.sessions instanceof Map &&
+    typeof candidate.provider?.streamSimple === 'function' &&
+    typeof candidate.provider.close === 'function'
+  );
+}
+
+/**
+ * Best effort: the previous bundle's provider may lack `close`, throw, or reject
+ * while tearing down, and a reload must continue regardless.
+ */
+function dispose(stale: Shared): void {
+  try {
+    const closing = stale.provider?.close?.();
+    void Promise.resolve(closing).catch(() => {});
+  } catch {
+    // Unreachable for this version's provider; an older one may still throw.
+  }
+}
+
+function forget<V>(map: Map<string, V> | undefined, id: string): void {
+  map?.delete(id);
+}
+
 export default function junieBridge(pi: ExtensionAPI): void {
   pi.registerEntryRenderer('junie-native-event', renderNativeEvent);
-  const first = !shared[KEY];
-  if (!shared[KEY]) {
+  const existing = shared[KEY];
+  const reused = reusable(existing) ? existing : undefined;
+  // `first` means this bundle created the state, so it also owns registration:
+  // on an upgrade the state is rebuilt and the new provider is registered at
+  // load, exactly like a cold start.
+  const first = !reused;
+  let state = reused;
+  if (!state) {
+    if (existing) dispose(existing);
     const gate = createPermissionGate();
-    const state: SharedState = {
+    const fresh: SharedState = {
+      version: STATE_VERSION,
       sessions: new Map(),
       ui: new Map(),
       nativeSinks: new Map(),
       provider: createJunieProvider({
         onCatalogUpdate: (catalog) => register(catalog),
         onNativeEvent: (event, id) => {
-          if (id) state.nativeSinks.get(id)?.(event);
+          if (id) fresh.nativeSinks.get(id)?.(event);
         },
-        getSession: (id) => state.sessions.get(id),
+        getSession: (id) => fresh.sessions.get(id),
         onPermission: (params, signal, id) =>
           gate.request(params, {
             signal,
-            ui: id ? state.ui.get(id) : undefined,
+            ui: id ? fresh.ui.get(id) : undefined,
           }),
       }),
     };
-    shared[KEY] = state;
+    shared[KEY] = fresh;
+    state = fresh;
   }
-  const state = shared[KEY]!;
   const register = (catalog = readCatalog()) =>
     pi.registerProvider('junie', {
       name: 'Junie (JetBrains AI)',
@@ -61,8 +111,8 @@ export default function junieBridge(pi: ExtensionAPI): void {
   pi.on('session_start', (_event, ctx) => {
     const id = ctx.sessionManager.getSessionId();
     state.sessions.set(id, { cwd: ctx.cwd });
-    state.ui.delete(id);
-    state.nativeSinks.delete(id);
+    forget(state.ui, id);
+    forget(state.nativeSinks, id);
     if (ctx.hasUI) {
       state.ui.set(id, ctx.ui);
       state.nativeSinks.set(id, (event) =>
@@ -73,14 +123,14 @@ export default function junieBridge(pi: ExtensionAPI): void {
   });
   pi.on('session_shutdown', async (_event, ctx) => {
     const id = ctx.sessionManager.getSessionId();
-    state.ui.delete(id);
-    state.sessions.delete(id);
+    forget(state.ui, id);
+    forget(state.sessions, id);
     try {
       await state.provider.close(id);
     } finally {
       // Released after close, without waiting for display-only telemetry: a line
       // that resolves past this point has no sink and is dropped.
-      state.nativeSinks.delete(id);
+      forget(state.nativeSinks, id);
     }
   });
   pi.registerCommand('junie', {

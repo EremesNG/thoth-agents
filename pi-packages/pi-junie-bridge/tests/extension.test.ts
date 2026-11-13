@@ -338,3 +338,172 @@ test.each([
     });
   }
 }, 15000);
+
+const KEY = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
+
+// A cached catalog keeps first-load discovery off the wire: these tests are
+// about the process-global state, not model refresh.
+function cachedAgentDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'junie-reload-'));
+  mkdirSync(join(dir, 'junie-bridge'));
+  writeFileSync(
+    join(dir, 'junie-bridge/models.json'),
+    JSON.stringify({
+      version: 3,
+      models: [{ id: 'mix.auto', name: 'Auto' }],
+      efforts: [],
+    }),
+  );
+  return dir;
+}
+
+function fakePi() {
+  const appendEntry = vi.fn(),
+    registerProvider = vi.fn(),
+    handlers = new Map<string, any>();
+  const pi = {
+    appendEntry,
+    registerEntryRenderer: () => {},
+    registerProvider,
+    registerCommand: () => {},
+    on: (name: string, handler: any) => handlers.set(name, handler),
+  } as unknown as ExtensionAPI;
+  return { pi, appendEntry, registerProvider, handlers };
+}
+
+function sessionCtx(dir: string, hasUI = false) {
+  return {
+    hasUI,
+    ui: { select: async () => 'Allow once' },
+    cwd: dir,
+    sessionManager: { getSessionId: () => 'pi-reload' },
+    modelRegistry: { getProvider: () => ({ id: 'junie' }) },
+  };
+}
+
+// The process-global state survives /reload, so a state written by the previous
+// bundle must never be reused by the new one.
+async function withLegacyState(
+  provider: Record<string, unknown>,
+  body: (seeded: {
+    pi: ReturnType<typeof fakePi>;
+    dir: string;
+  }) => Promise<void>,
+): Promise<void> {
+  const dir = cachedAgentDir(),
+    previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  // No version marker and no nativeSinks: the shape left by the bundle that
+  // crashed on /reload.
+  (globalThis as any)[KEY] = { sessions: new Map(), ui: new Map(), provider };
+  const seeded = { pi: fakePi(), dir };
+  try {
+    await body(seeded);
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    Reflect.deleteProperty(globalThis, KEY);
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  }
+}
+
+test('replaces a pre-upgrade global state instead of reusing its stale provider', async () => {
+  const legacyClose = vi.fn(async () => {}),
+    legacyStreamSimple = () => {
+      throw new Error('stale provider used');
+    };
+  await withLegacyState(
+    { close: legacyClose, streamSimple: legacyStreamSimple },
+    async ({ pi, dir }) => {
+      extension(pi.pi);
+      const config = pi.registerProvider.mock.calls[0][1];
+      expect(config.streamSimple).not.toBe(legacyStreamSimple);
+      expect(config.models).toHaveLength(1);
+      expect(legacyClose).toHaveBeenCalledTimes(1);
+      // Pre-fix this threw: the stale state had no nativeSinks map.
+      await pi.handlers.get('session_start')({}, sessionCtx(dir));
+      await pi.handlers.get('session_start')({}, sessionCtx(dir, true));
+      await pi.handlers.get('session_shutdown')({}, sessionCtx(dir));
+      expect(pi.appendEntry).not.toHaveBeenCalled();
+    },
+  );
+});
+
+test.each([
+  [
+    'throw',
+    () => {
+      throw new Error('close failed');
+    },
+  ],
+  ['reject', () => Promise.reject(new Error('close failed'))],
+])('swallows errors while disposing the previous provider (%s)', async (_kind, close) => {
+  const legacyClose = vi.fn(close);
+  await withLegacyState(
+    { close: legacyClose, streamSimple: () => {} },
+    async ({ pi }) => {
+      expect(() => extension(pi.pi)).not.toThrow();
+      expect(legacyClose).toHaveBeenCalledTimes(1);
+      expect(pi.registerProvider).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
+test('replaces a same-version state whose provider cannot close', async () => {
+  const legacyStreamSimple = () => {
+    throw new Error('stale provider used');
+  };
+  await withLegacyState(
+    { streamSimple: legacyStreamSimple },
+    async ({ pi, dir }) => {
+      Object.assign((globalThis as any)[KEY], {
+        version: 2,
+        nativeSinks: new Map(),
+      });
+      extension(pi.pi);
+      const config = pi.registerProvider.mock.calls[0][1];
+      expect(config.streamSimple).not.toBe(legacyStreamSimple);
+      await pi.handlers.get('session_start')({}, sessionCtx(dir));
+      await pi.handlers.get('session_shutdown')({}, sessionCtx(dir));
+    },
+  );
+});
+
+test('reuses same-version state across a reload', async () => {
+  const dir = cachedAgentDir(),
+    previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  const pi = fakePi();
+  try {
+    extension(pi.pi);
+    const state = (globalThis as any)[KEY],
+      provider = state.provider;
+    expect(pi.registerProvider).toHaveBeenCalledTimes(1);
+    pi.registerProvider.mockClear();
+    pi.handlers.clear();
+    // A reload of the same bundle version: in-process subagent and session
+    // sharing depends on this state object surviving.
+    extension(pi.pi);
+    expect((globalThis as any)[KEY]).toBe(state);
+    expect((globalThis as any)[KEY].provider).toBe(provider);
+    expect(pi.registerProvider).not.toHaveBeenCalled();
+    await pi.handlers.get('session_start')({}, sessionCtx(dir));
+    expect(pi.registerProvider).not.toHaveBeenCalled();
+    await pi.handlers.get('session_shutdown')({}, sessionCtx(dir));
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    Reflect.deleteProperty(globalThis, KEY);
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  }
+});

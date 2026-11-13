@@ -118,6 +118,14 @@ export {
   computeSessionCost,
 } from './session-cost.js';
 export type {
+  SessionLivenessProvider,
+  SessionLivenessRegistry,
+} from './session-liveness.js';
+export {
+  getOrInstallSessionLivenessRegistry,
+  registerSessionLivenessProvider,
+} from './session-liveness.js';
+export type {
   SubagentEffort,
   SubagentMode,
   SubagentStatus,

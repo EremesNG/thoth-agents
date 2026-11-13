@@ -3,6 +3,7 @@ import {
   bindWorkPanelLifecycle,
   ensureWorkPanel,
   publishToolDefinitions,
+  registerSessionLivenessProvider,
   registerWorkPanelProvider,
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
@@ -164,6 +165,7 @@ export default function subagentsExtension(pi: any): void {
     renderSubagentQuestionMessage,
   );
   let activeSessionId: string | undefined;
+  let unregisterLiveness: (() => void) | undefined;
   let rootRunActive = false;
   let notificationCtx: ExtensionContext | undefined;
   let cancelHistoryPruning: (() => Promise<void>) | undefined;
@@ -355,6 +357,33 @@ export default function subagentsExtension(pi: any): void {
     void preloadPiComponentsForSubagentRendering();
     clearWorkPanel();
     const sessionId = currentSessionId(ctx);
+    unregisterLiveness?.();
+    unregisterLiveness = undefined;
+    if (typeof sessionId === 'string' && sessionId.trim().length > 0) {
+      const cwd = ctx.cwd;
+      try {
+        unregisterLiveness = registerSessionLivenessProvider({
+          name: 'thoth-agents/pi-subagents',
+          sessionId,
+          sessionFile: ctx.sessionManager?.getSessionFile?.(),
+          isActive: () =>
+            manager
+              .listActiveSessionTasks(cwd, sessionId)
+              .some(
+                (task) =>
+                  (task.effective_mode ?? task.mode) === 'background' &&
+                  (task.status === 'queued' ||
+                    task.status === 'running' ||
+                    task.status === 'stopping'),
+              ),
+        });
+      } catch (error) {
+        console.error(
+          '[pi-subagents] Failed to register session liveness provider:',
+          error,
+        );
+      }
+    }
     activeSessionId = sessionId;
     activeSessionOwner = captureAtelierSessionOwner(ctx);
     usageEvents?.startSession(
@@ -481,6 +510,8 @@ export default function subagentsExtension(pi: any): void {
     pi.on?.('agent_end', () => usageEvents.flush());
 
   pi.on?.('session_shutdown', async () => {
+    unregisterLiveness?.();
+    unregisterLiveness = undefined;
     const canceledHistoryPruning = cancelHistoryPruning?.();
     notificationOutbox.length = 0;
     rootRunActive = false;

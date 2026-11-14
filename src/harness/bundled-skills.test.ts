@@ -447,6 +447,26 @@ describe('canonical workflow bundle contracts', () => {
     );
   });
 
+  test.each([
+    [
+      'plan-reviewer/SKILL.md',
+      'Can this exact plan satisfy its stated acceptance within its ownership/dependency/check boundaries? Return actual execution blockers and smallest repairs; do not redesign a feasible plan.',
+    ],
+    [
+      'thoth-sdd/references/phases/verify.md',
+      "Against these accepted outcomes and frozen inputs, what is satisfied, violated or unverified? Inspect the actual diff and decisive checks; identify counterevidence to the writer's claims.",
+    ],
+  ])('states the fixed review question in %s', (path, question) => {
+    const guidance = readFileSync(`skills/${path}`, 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(guidance).toContain(question);
+    if (path.includes('verify.md')) {
+      expect(guidance).not.toContain('at most three blocking risks');
+    }
+  });
+
   test('declares the Codex v1 verdict path and v2 compact fallback', () => {
     const sdd = readFileSync('skills/thoth-sdd/SKILL.md', 'utf8').replace(
       /\s+/g,

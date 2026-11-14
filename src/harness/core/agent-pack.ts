@@ -273,7 +273,7 @@ const IMPLEMENTATION_OWNERSHIP_POLICY: ImplementationOwnershipPolicy = {
   workflowIndependent: true,
   defaultImplementationOwner: 'specialist',
   rootIdentity:
-    'Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct/decide/accept/synthesize.',
+    'Root: specialists execute by default; you direct/decide/accept/synthesize.',
   defaultRule:
     'Specialists execute by default for discovery of unlocated source, external research and substantive implementation; root retains goals, decisions, coordination, acceptance, and synthesis.',
   rootResponsibilities: [
@@ -423,13 +423,30 @@ const HANDOFF_RETURN_FIELDS = [
   'nextAction',
 ] as const;
 
+const DISCOVERY_RETURN_FIELDS = [
+  'conclusion',
+  'evidence',
+  'verification?',
+  'risks?',
+  'openQuestions?',
+] as const;
+const WRITER_RETURN_FIELDS = [
+  'conclusion',
+  'changedFiles?',
+  'verification?',
+  'evidence?',
+  'risks?',
+  'openQuestions?',
+  'nextAction?',
+] as const;
+
 export const AGENT_RETURN_CONTRACT = {
   orchestrator: HANDOFF_RETURN_FIELDS,
-  explorer: EVIDENCE_RETURN_FIELDS,
-  librarian: EVIDENCE_RETURN_FIELDS,
-  oracle: HANDOFF_RETURN_FIELDS,
-  designer: [...HANDOFF_RETURN_FIELDS, 'changedFiles'],
-  worker: [...HANDOFF_RETURN_FIELDS, 'changedFiles'],
+  explorer: DISCOVERY_RETURN_FIELDS,
+  librarian: DISCOVERY_RETURN_FIELDS,
+  oracle: [...DISCOVERY_RETURN_FIELDS, 'nextAction?'],
+  designer: WRITER_RETURN_FIELDS,
+  worker: WRITER_RETURN_FIELDS,
 } as const satisfies Record<AgentRoleName, readonly string[]>;
 
 function cloneReturnContract(
@@ -484,9 +501,9 @@ function renderResultType(schema: ResultFieldSchema): string {
     return `{${Object.entries(schema.properties ?? {})
       .map(
         ([name, field]) =>
-          `${name}${schema.required?.includes(name) ? '' : '?'}: ${renderResultType(field)}`,
+          `${name}${schema.required?.includes(name) ? '' : '?'}:${renderResultType(field)}`,
       )
-      .join(', ')}}`;
+      .join(',')}}`;
   }
   if (schema.items) return `${renderResultType(schema.items)}[]`;
   if (schema.pattern === '^[a-f0-9]{64}$') return 'hex64';
@@ -499,8 +516,14 @@ function renderResultType(schema: ResultFieldSchema): string {
 export function renderSpecialistResultContract(
   role: Exclude<AgentRoleName, 'orchestrator'>,
 ): string {
-  const markdown = `Return compact markdown fields (no JSON): ${AGENT_RETURN_CONTRACT[role].join(', ')}.`;
-  if (role !== 'oracle') return markdown;
+  const optionality =
+    'Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks';
+  const markdown = `${role === 'oracle' ? 'Markdown; no approval' : 'Markdown'}: ${AGENT_RETURN_CONTRACT[role].join(', ')}. ${optionality}`;
+  if (role !== 'oracle') {
+    return role === 'worker' || role === 'designer'
+      ? `${markdown}. Report checks run or why not run.`
+      : markdown;
+  }
   const contract = SPECIALIST_RESULT_CONTRACT;
   const properties: Record<string, ResultFieldSchema> = {
     ...contract.common.properties,
@@ -508,16 +531,17 @@ export function renderSpecialistResultContract(
     role: { type: 'string', const: role },
   };
   const fields = getSpecialistResultFields(role)
-    .map((name) => `- ${name}: ${renderResultType(properties[name])}`)
+    .map((name) => `${name}:${renderResultType(properties[name])}`)
     .join('\n');
   const reviewRules = `
 ${Object.entries(contract.reviewKinds)
   .map(([kind, rule]) => `${kind}: ${rule.verdicts.join('|')}`)
   .join(
     '; ',
-  )}; ${contract.rules.positiveVerdicts.join('|')} requires ${contract.rules.positiveStatus} status and no blocking risks. Final-verification requires reviewedRecord and reviewedRecordSha256 if the assignment names a record; otherwise omit both.`;
+  )}; ${contract.rules.positiveVerdicts.join('|')}: ${contract.rules.positiveStatus} status, no blocking risks. Final-verification: record assigned → require reviewedRecord and reviewedRecordSha256; else omit both.`;
   return `${markdown}
-Diagnosis/advice uses markdown fields and cannot approve. Only for assigned plan-review or final-verification, instead return exactly one fenced \`\`\`${contract.fence} JSON block and nothing else. Types: s=string, s+=nonempty string, hex64=64 lowercase hex. No extra keys; ?=optional. evidenceIds reference unique evidence IDs.
+Assigned plan-review/final-verification: one fenced \`\`\`${contract.fence} JSON only. s=string; s+=nonempty; hex64=64 lowercase hex; ?=optional; no extra keys.
+Blocking risks[].description: file:line/record section → violated requirement → consequence → smallest repair; evidenceIds link unique evidence IDs. Nonblocking observations ≠ blockers. nextAction: owner/route only.
 ${fields}${reviewRules}`;
 }
 

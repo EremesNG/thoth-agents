@@ -41,6 +41,8 @@ const DIALECTS = [
   CODEX_PROMPT_DIALECT,
   CLAUDE_CODE_PROMPT_DIALECT,
 ] as const;
+const ROOT_READER_HANDOFF_RULE =
+  'For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.';
 const ROOT_RENDERERS = [
   [
     'OpenCode',
@@ -132,6 +134,23 @@ function sectionsFor(role: AgentRoleName) {
 describe('AI-first prompt rendering', () => {
   test.each(
     ROOT_RENDERERS,
+  )('renders one answer-first output style in %s', (_harness, render) => {
+    const prompt = render();
+    const style = `<output-style>
+- Answer first; no preamble, restated request or recap.
+- Default ≤6 sentences or ≤5 bullets; longer only if content demands.
+- No tool-call narration; update only at phase starts or plan-changing facts, ≤2 sentences.
+- Brevity never reduces work depth, evidence, verification or required contract/gate fields.
+- Use child answers/anchors directly; request only missing decision-critical evidence.
+</output-style>`;
+    expect(prompt.match(/<output-style>/g)).toHaveLength(1);
+    expect(prompt).toContain(`</operating-model>\n\n${style}`);
+    expect(prompt).not.toContain('No auxiliary process tools');
+    expect(prompt).not.toContain('(shared with runtime enforcement)');
+    expect(prompt).toContain('at most one format-only repair');
+  });
+  test.each(
+    ROOT_RENDERERS,
   )('routes implementation FAIL to owners, unlike record REJECT, in %s', (_harness, render) => {
     const prompt = render();
     for (const rule of [
@@ -219,7 +238,7 @@ describe('AI-first prompt rendering', () => {
         /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
       )?.[1] ?? '';
     expect(prompt.match(/<role>\n([\s\S]*?)\n<\/role>/)?.[1]).toBe(
-      'Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct/decide/accept/synthesize.',
+      'Root: specialists execute by default; you direct/decide/accept/synthesize.',
     );
     const defaultIndex = block.indexOf('Unlocated local source');
     const mechanicalIndex = block.indexOf(
@@ -424,7 +443,7 @@ describe('AI-first prompt rendering', () => {
       /delegation failure.*truthful.*no unrestricted root/is,
     );
     expect(prompt).toMatch(
-      /specialists default to unlocated-source discovery, external research and substantive implementation/i,
+      /specialists execute by default; you direct\/decide\/accept\/synthesize/i,
     );
     expect(prompt).toMatch(/one known source, bounded question/i);
     expect(prompt).toMatch(
@@ -544,7 +563,6 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
     expect(prompt).toContain('Implement (Recommended)');
     expect(prompt).toContain('No implementation writer may approve');
-    expect(prompt).toMatch(/no.*auxiliary process tools.*evidence generators/i);
     expect(prompt).not.toMatch(/work\.yaml|thoth-work|verify-report\.md/i);
   });
 
@@ -756,40 +774,68 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
+  ])('marks ordinary optional fields and preserves uncertainty in $harness', (dialect) => {
+    const fields = {
+      explorer: 'conclusion, evidence, verification?, risks?, openQuestions?',
+      librarian: 'conclusion, evidence, verification?, risks?, openQuestions?',
+      oracle:
+        'conclusion, evidence, verification?, risks?, openQuestions?, nextAction?',
+      worker:
+        'conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?',
+      designer:
+        'conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?',
+    } as const;
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const output = renderRolePrompt(sectionsFor(role), dialect);
+      const contract =
+        output.match(/<return-contract>([\s\S]*?)<\/return-contract>/)?.[1] ??
+        '';
+      expect(contract, role).toContain(fields[role]);
+      expect(contract, role).toContain(
+        'Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks',
+      );
+      if (role === 'worker' || role === 'designer') {
+        expect(contract, role).toContain('Report checks run or why not run.');
+      }
+    }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
   ])('renders markdown returns with Oracle-only gates in $harness', (dialect) => {
-    const fields = 'conclusion, evidence, verification, risks, openQuestions';
+    const evidenceFields =
+      'conclusion, evidence, verification?, risks?, openQuestions?';
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       const output = renderRolePrompt(sectionsFor(role), dialect);
       const contract =
         output.match(/<return-contract>([\s\S]*?)<\/return-contract>/)?.[1] ??
         '';
       const expected =
-        fields +
-        (role === 'explorer' || role === 'librarian' ? '' : ', nextAction') +
-        (role === 'worker' || role === 'designer' ? ', changedFiles' : '');
+        role === 'worker' || role === 'designer'
+          ? 'conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?'
+          : evidenceFields + (role === 'oracle' ? ', nextAction?' : '');
       expect(contract).toContain(
-        `Return compact markdown fields (no JSON): ${expected}.`,
+        `${role === 'oracle' ? 'Markdown; no approval' : 'Markdown'}: ${expected}.`,
       );
       if (role !== 'oracle') {
         expect(contract).not.toContain('thoth-result');
         expect(contract).not.toContain('schemaVersion');
       } else {
-        expect(contract).toContain(
-          'Only for assigned plan-review or final-verification',
-        );
-        expect(contract).toContain(
-          'exactly one fenced ```thoth-result JSON block and nothing else',
-        );
+        expect(contract).toContain('Assigned plan-review/final-verification:');
+        expect(contract).toContain('one fenced ```thoth-result JSON only');
         expect(contract).toContain('plan-review: OKAY|REJECT');
         expect(contract).toContain('final-verification: PASS|FAIL|BLOCKED');
         expect(contract).toContain(
-          'Final-verification requires reviewedRecord and reviewedRecordSha256 if the assignment names a record; otherwise omit both.',
+          'Final-verification: record assigned → require reviewedRecord and reviewedRecordSha256; else omit both.',
         );
         expect(contract).toContain(
-          'Diagnosis/advice uses markdown fields and cannot approve',
+          'Blocking risks[].description: file:line/record section → violated requirement → consequence → smallest repair; evidenceIds link unique evidence IDs. Nonblocking observations ≠ blockers. nextAction: owner/route only.',
         );
-        expect(contract).toContain('complete status and no blocking risks');
-        expect(contract).toContain('role: "oracle"');
+        expect(contract).toContain('evidenceIds link unique evidence IDs');
+        expect(contract).toContain('Markdown; no approval:');
+        expect(contract).toContain('complete status, no blocking risks');
+        expect(contract).toContain('role:"oracle"');
       }
     }
   });
@@ -803,6 +849,17 @@ describe('AI-first prompt rendering', () => {
         renderRolePrompt(sectionsFor(role), dialect).length,
         role,
       ).toBeLessThan(5_000);
+    }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('directs every specialist handoff to the root model in $harness', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      expect(renderRolePrompt(sectionsFor(role), dialect), role).toContain(
+        ROOT_READER_HANDOFF_RULE,
+      );
     }
   });
 
@@ -879,7 +936,6 @@ describe('AI-first prompt rendering', () => {
       'Never re-emit the envelope to validate it',
       'Only when no verdict was delivered',
       'unchanged result; it prints the compact summary',
-      'shared with runtime enforcement',
       'validation is not authorization',
     ])
       expect(root).toContain(rule);
@@ -943,7 +999,7 @@ describe('AI-first prompt rendering', () => {
         expect(returnContract).not.toContain('changedFiles:');
         expect(returnContract).not.toContain('review:');
         expect(output).toContain(
-          'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
+          'Return: compact markdown fields: conclusion, evidence, verification?, risks?, openQuestions?',
         );
         expect(
           output.match(/<evidence-only>[\s\S]*?<\/evidence-only>/)?.[0],
@@ -965,9 +1021,11 @@ describe('AI-first prompt rendering', () => {
           );
         }
       } else {
-        expect(returnContract).toContain('openQuestions, nextAction');
+        expect(returnContract).toContain('openQuestions?, nextAction?');
         expect(output).toContain(
-          'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
+          role === 'oracle'
+            ? 'Return: compact markdown fields: conclusion, evidence, verification?, risks?, openQuestions?, nextAction?'
+            : 'Return: compact markdown fields: conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?',
         );
         expect(output).not.toContain('<evidence-only>');
         if (harness === 'Pi') {
@@ -1057,12 +1115,14 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      // Creative routing and split ownership add ~290 characters; retain tight caps.
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_825],
-      [renderCodexRootInstructions(), 15_100],
-      [renderClaudeCodeRootInstructions(), 14_500],
-      // Pi tool schemas and the subagents-configuration skill own operator details.
-      [piRoot, 16_975],
+      // Output-style +194 net of duplicate trims; cap +185 stays within +200.
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 14_010],
+      // Output-style +194 net of duplicate trims; cap +190 stays within +200.
+      [renderCodexRootInstructions(), 15_290],
+      // Output-style +194 net of duplicate trims; cap +190 stays within +200.
+      [renderClaudeCodeRootInstructions(), 14_690],
+      // Output-style +194 net of duplicate trims; cap +185 stays within +200; operator details stay routed.
+      [piRoot, 17_160],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
@@ -1084,34 +1144,34 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "918ac1c9b1458823ccc720c03e76e3d35fb6e0f660c9a90629ba2c5bc28b1eee",
-          "d029170974c6f94c240dce85996ae6e069cd7c69671ddf17f6c2cce87c6eabf0",
-          "0e6be91686c66d89d423001ee2193a89575b5ed49ea99ce856547fdaf8352dd5",
-          "0dc2c5d406f99f68efd494001d64441c1db1b2ff38e072d7a2267b6d7fd74279",
-          "e2828bed679607a87b837573a3f3531c8534f2034b53ba56c50a7972698a8648",
-          "d2b05e9a931130eae481e0f4acf918888e5b599c73edccf14fcb4290c758a55b",
+          "b29f876aa07041deca1fdb8ac1fdc278d4d01b87ed7f41c1311139e6065ce8b3",
+          "843c1d5481a549f0546571c4a1ebca20bf8c9e29b53db27dbce14d982ea7cc6a",
+          "7a1057a215a497cc435ec2b588a5ca4e6d490ad341c337695d92a718423c1a9c",
+          "a8fc1f09ac7cc69cd003c4d85eebd6e9f6d0ec614a1f517f2b314dc7b50f08f5",
+          "00e6b1c422c460b46a67b5b03f8d3ff92175ef1396d99dfc625843df5dda349f",
+          "bb0894a8ee752d76f7a9e2c2bf0012ff7bf63e987b799568c3ed56edb4efcc8e",
         ],
       ],
       [
         "codex",
         [
-          "e5e549d2c916f6269385ee56a42410100c017718b279d0c97c54ab794e5632c8",
-          "f48762d3b732fb531643b7352862ab177cc890bc223024ddf36068810be1e4a1",
-          "a2287998ba096ed8d0cfa007192185fea111b4182aae43de5066dd4a77562c4a",
-          "00bba11b605a62da96ef474db9bba07968089813ce3791f2b38705a79717db38",
-          "3786d0f0ca44840640a493a30e52dc61b88e9b252f7140f589ac01e329ab3f2c",
-          "6817eedbe330eb0ea309b708039d35a78192052b072bbfa3610966cb90be3ac3",
+          "34b8cba56fffe570dbf8e2e86b179df3bdfefc28290978060a4c266e6298d3a6",
+          "d20ba38ae8a55c6df9fe250e68080bd2230e5671053cd968d782e622680c89e6",
+          "775c992baf72821a6626de0037e7959ffd9474cca79c95e062cb5d1776481954",
+          "caf1071f92e928945eb92e578d11657532da821303845bfe177246384dba84f0",
+          "25db493431e61cd7e5f62f477d84de515399121382f0005af44be3d91712c9ed",
+          "a38a79d995df03a2a233a9a7d72b698b5559d6ca8bca2124101d6f8cad52aa1e",
         ],
       ],
       [
         "claude",
         [
-          "0a41a1f0e463b19c82fc73cac957f89d2a81f9649d5533ed2877fd30c2b43fbb",
-          "12a8c9da4c5e1415ab33d608f1fea067a62c40256793e96e621fe3172b4f673b",
-          "a005d4b4ce34303fb8cbfe52c4db0e8c342979652f591638550791ac74352169",
-          "c30c7e9437a9e5921201735fe954e5b06f220e60f8ded1224cd5d1aa9af8260d",
-          "be436b000185790a21e97974a76a1f7bbf5d5d1250a60b34506bcfaadd6868b0",
-          "4bd0c2caac9a84c98a17212c84196e4d5cc538858012f7cda2abb408e01f8b5c",
+          "2a0846a7d4195db2585fed600ffb69276c637e964330d7d0a65f0cb4c44a3cfd",
+          "0fb679e28ddab33226cadc1c75285e5029d52eced1736e2b3d7b561252e386a9",
+          "f8058e91c6d97f7ce308ef39f2bd093c9a898de5d44812f4456a60e2d805b584",
+          "b2466ac253b1c4ab488cb20c148582caa563c7300f1787abf8c3e09308a56693",
+          "9d3972fde13e9606daf278d8afe162d65d5464ea4f583320aba1946ac53f92f3",
+          "b3db1b2429c6d458657cbd7179c7b8e4340105d598131bec3b9664bad2a2c0eb",
         ],
       ],
     ]
@@ -1122,15 +1182,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '433aa29335d6e7b287953be3a8a11dc4014da6f6cce1f21c0290f988b0e74f7c',
+    'ceef59487132167228faa587994339fe48d149dcfac2c822ab89d911c3311099',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    'a196d3d19dd730dfc80b297d1fb1993dde3fbb50baf3d87a6df7749fbc31be26',
+    '4e1810863441eae9e671c95c0e43dcfc0d3c85dcb3d49c45c7e8c867b1f4fea0',
   ],
   [
     PI_PROMPT_DIALECT,
-    '0819f1fd9f0ed70697887a3034d17f80e01c5f3604c44cad9b967b9fb374029a',
+    'a9b8a5b14af64e0b5b6d71e206ca3fa2d422438bf0b0068b0d7618edbc3879ea',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>
@@ -1154,7 +1214,8 @@ test('Codex hook root enforces capacity-aware scoped continuation', () => {
     'utf8',
   );
   expect(shippedPayload).toBe(payload);
-  expect(shippedPayload.length).toBeLessThanOrEqual(15_025);
+  // Output-style +194 net of duplicate trims; cap +185 stays within +200.
+  expect(shippedPayload.length).toBeLessThanOrEqual(15_210);
   for (const rule of [
     'fork_turns: "none"',
     'role instructions from the plugin hook, not inherited history',

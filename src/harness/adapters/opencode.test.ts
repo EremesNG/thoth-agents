@@ -24,7 +24,7 @@ describe('OpenCode harness adapter v0.3', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
+      /Root: specialists execute by default; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -99,7 +99,7 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).not.toContain('requirements-interview');
 
     expect(oracle).toContain('matching bundled thoth-sdd guidance');
-    expect(oracle).toContain('Reject self-review');
+    expect(oracle).toContain('Self-review cannot substitute');
     expect(oracle).toContain('Do not mutate the workspace');
   });
 

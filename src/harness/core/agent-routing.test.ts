@@ -219,7 +219,7 @@ describe('canonical agent routing', () => {
       expect(
         surface.root,
         `${routingCase.id}:${surface.harness}:workflow-owner`,
-      ).toMatch(/specialists default to.*you direct\/decide\/accept/is);
+      ).toMatch(/specialists execute by default.*you direct\/decide\/accept/is);
       expect(surface.root).not.toMatch(/Direct micro-action/i);
       expect(surface.root).not.toMatch(/Artifact-backed implement follows/i);
       if (routingCase.expectedOwner === 'oracle') {
@@ -375,22 +375,24 @@ describe('canonical agent routing', () => {
     for (const role of ['explorer', 'librarian'] as const) {
       const description = renderAgentRoutingDescription(getAgentRole(role));
       expect(description).toContain(
-        'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions',
+        'Return: compact markdown fields: conclusion, evidence, verification?, risks?, openQuestions?',
       );
       expect(description).not.toContain('nextAction');
     }
     for (const role of ['oracle', 'worker', 'designer'] as const) {
       const description = renderAgentRoutingDescription(getAgentRole(role));
-      expect(description).toContain(
-        'Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction',
-      );
       if (role === 'oracle') {
+        expect(description).toContain(
+          'conclusion, evidence, verification?, risks?, openQuestions?, nextAction?',
+        );
         expect(description).toContain(
           'Only plan-review/final-verification uses a thoth-result gate envelope',
         );
         expect(description).toContain('diagnosis/advice cannot approve');
       } else {
-        expect(description).toContain('nextAction, changedFiles');
+        expect(description).toContain(
+          'conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?',
+        );
         expect(description).not.toContain('thoth-result');
       }
     }

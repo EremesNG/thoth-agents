@@ -266,28 +266,28 @@ describe('agent-pack contract', () => {
       expect(contract[role]).toEqual([
         'conclusion',
         'evidence',
-        'verification',
-        'risks',
-        'openQuestions',
+        'verification?',
+        'risks?',
+        'openQuestions?',
       ]);
     }
     expect(contract.oracle).toEqual([
       'conclusion',
       'evidence',
-      'verification',
-      'risks',
-      'openQuestions',
-      'nextAction',
+      'verification?',
+      'risks?',
+      'openQuestions?',
+      'nextAction?',
     ]);
     for (const role of ['designer', 'worker'] as const) {
       expect(contract[role]).toEqual([
         'conclusion',
-        'evidence',
-        'verification',
-        'risks',
-        'openQuestions',
-        'nextAction',
-        'changedFiles',
+        'changedFiles?',
+        'verification?',
+        'evidence?',
+        'risks?',
+        'openQuestions?',
+        'nextAction?',
       ]);
     }
     const anotherContract = getAgentPackContract().returnContract;
@@ -303,7 +303,7 @@ describe('agent-pack contract', () => {
       'worker',
     ] as const) {
       expect(renderSpecialistResultContract(role)).toBe(
-        `Return compact markdown fields (no JSON): ${getAgentPackContract().returnContract[role].join(', ')}.`,
+        `Markdown: ${getAgentPackContract().returnContract[role].join(', ')}. Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks${role === 'worker' || role === 'designer' ? '. Report checks run or why not run.' : ''}`,
       );
     }
     expect(renderSpecialistResultContract('oracle')).toContain(
@@ -313,7 +313,7 @@ describe('agent-pack contract', () => {
       'final-verification: PASS|FAIL|BLOCKED',
     );
     expect(renderSpecialistResultContract('oracle')).toContain(
-      'Diagnosis/advice uses markdown fields and cannot approve',
+      'Markdown; no approval:',
     );
   });
 });

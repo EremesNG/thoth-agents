@@ -409,13 +409,13 @@ The adopted runtime MUST produce Atelier-compatible session references, usage me
 
 ### Requirement: Keep discovery roles evidence-only
 
-Explorer and Librarian MUST return facts with evidence, verification, risks and open questions only, MUST NOT recommend fixes, designs, defaults or next actions, and MUST escalate an open question it cannot settle as the question with its possible options and the facts for each option without choosing one. Oracle judgment and Worker/Designer implementation handoffs MUST remain unchanged, and every harness MUST render the same role-specific return contract.
+Explorer and Librarian MUST return facts with evidence and, when non-empty, verification, risks and open questions only, MUST NOT recommend fixes, designs, defaults or next actions, and MUST escalate an open question it cannot settle as the question with its possible options and the facts for each option without choosing one. Oracle judgment and Worker/Designer implementation handoffs MUST keep their role boundaries and field sets, MAY omit empty optional fields in ordinary results, and every harness MUST render the same role-specific return contract.
 
 #### Scenario: Keep discovery roles evidence-only
 
 - **GIVEN** an Explorer or Librarian assignment that ends with findings and an open choice it cannot settle
 - **WHEN** the specialist returns in any harness
-- **THEN** its return lists facts and the open question with options and their facts, contains no recommendation or next action, and root decides or asks Oracle
+- **THEN** its return lists facts and the open question with options and their facts, omits empty optional fields, contains no recommendation or next action, and root decides or asks Oracle
 
 ### Requirement: Own session-scoped Pi background shell jobs
 
@@ -576,3 +576,13 @@ Every root MUST route creative, artistic and aesthetic work (visual style, motio
 - **GIVEN** a request to create a game character sprite and its movement mechanic
 - **WHEN** the root shapes work
 - **THEN** the sprite and animation go to `designer`, the mechanic script goes to `worker`, and both share an agreed interface
+
+### Requirement: Root-optimized handoffs and concise output style
+
+Every root prompt MUST carry a shared output-style rule requiring answer-first, length-bounded replies without tool-call narration, and MUST state that brevity never reduces work depth, evidence, verification or required contract and gate fields. Every specialist prompt MUST direct ordinary results at the root model as terse labeled lines with evidence anchors and explicit uncertainty, MUST omit empty optional fields, and MUST treat size targets as soft with completeness taking priority. Oracle gate results MUST keep the validated envelope unchanged and MUST express each blocking finding as anchor, violated requirement, consequence and smallest repair.
+
+#### Scenario: Root-optimized handoffs and concise output style
+
+- **GIVEN** a root or specialist prompt rendered for any supported harness
+- **WHEN** the prompt is inspected
+- **THEN** the root contains the shared output-style rule, the specialist contains the root-reader handoff rule with optional-field markers, and the Oracle gate envelope contract is unchanged

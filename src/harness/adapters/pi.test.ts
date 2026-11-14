@@ -21,7 +21,7 @@ describe('Pi adapter', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
+      /Root: specialists execute by default; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(

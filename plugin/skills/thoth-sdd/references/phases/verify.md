@@ -1,6 +1,6 @@
 # Verify
 
-Every change requires final verification against accepted outcomes and actual execution evidence. Small low-risk work uses focused independent root checks; substantial or materially risky work requires a fresh read-only Oracle independent from the writer. Judge the actual diff, behavior, completeness, correctness, coherence, checks, and residual risks.
+Every change requires final verification against accepted outcomes and actual execution evidence. Small low-risk work uses focused independent root checks; substantial or materially risky work requires a fresh read-only Oracle independent from the writer. Against these accepted outcomes and frozen inputs, what is satisfied, violated or unverified? Inspect the actual diff and decisive checks; identify counterevidence to the writer's claims. Judge behavior, completeness, correctness, coherence, and residual risks. The plan-review three-blocker limit does not apply to final verification.
 
 For Oracle final verification of a small change without a record, require a valid delivery verdict with `mode:"no-record"`, null `record` and `recordSha256`, and `recordDigest:"none"`. Oracle omits both `reviewedRecord` and `reviewedRecordSha256`. Only in the CLI fallback, root passes `--no-record`. Do not combine `--no-record` with `--record-sha256` or plan-review. Otherwise final verification still requires both binding fields.
 

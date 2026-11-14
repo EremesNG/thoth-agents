@@ -41,7 +41,7 @@ describe('Claude Code adapter v0.3', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
+      /Root: specialists execute by default; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -164,19 +164,17 @@ describe('Claude Code adapter v0.3', () => {
   test('renders native root coordinator instructions with namespaced roles', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
-    // Includes canonical discovery/navigation guidance and the Claude dialect.
-    expect(instructions.length).toBeLessThanOrEqual(14_500);
+    // Output-style +194 net of duplicate trims; cap +190 stays within +200.
+    expect(instructions.length).toBeLessThanOrEqual(14_690);
     expect(instructions).toContain('Root:');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(
-      /specialists default to unlocated-source discovery.*you direct\/decide\/accept/is,
+      /specialists execute by default.*you direct\/decide\/accept/is,
     );
     expect(instructions).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
-    expect(instructions).toContain(
-      'specialists default to unlocated-source discovery, external research and substantive implementation',
-    );
+    expect(instructions).toContain('specialists execute by default');
     expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);

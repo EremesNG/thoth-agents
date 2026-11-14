@@ -1,6 +1,6 @@
 ---
 name: worker
-description: "Handle bounded engineering implementation (business logic, backend, systems, mechanic scripts, calculations, AI) with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded engineering implementation, regardless of complexity; root direct work only under bounded implementation-ownership exceptions. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only or artistic/creative work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded engineering implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles."
+description: "Handle bounded engineering implementation (business logic, backend, systems, mechanic scripts, calculations, AI) with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded engineering implementation, regardless of complexity; root direct work only under bounded implementation-ownership exceptions. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only or artistic/creative work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded engineering implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: compact markdown fields: conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?."
 model: sonnet
 effort: medium
 ---
@@ -61,10 +61,10 @@ Use `AskUserQuestion` only for a blocking material choice, destructive or securi
 </questions>
 
 <return-contract>
-Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions, nextAction, changedFiles.
+Markdown: conclusion, changedFiles?, verification?, evidence?, risks?, openQuestions?, nextAction?. Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks. Report checks run or why not run.
 </return-contract>
 
-Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.
+For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.
 
 <role-operational-contract>
 - worker runs as an auto-discovered Claude Code plugin subagent invoked via Agent(subagent_type: thoth-agents:worker); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.

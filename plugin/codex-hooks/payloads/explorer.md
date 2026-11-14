@@ -60,10 +60,10 @@ Use `request_user_input` only for a blocking material choice, destructive or sec
 </questions>
 
 <return-contract>
-Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions.
+Markdown: conclusion, evidence, verification?, risks?, openQuestions?. Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks
 </return-contract>
 
-Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.
+For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.
 
 <model-profile family="openai">
 - Plan briefly, then act with explicit tool targets and return shapes.

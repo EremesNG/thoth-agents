@@ -25,9 +25,11 @@ decision is still unresolved, recommend safe deferral.
 
 A fresh read-only Oracle reviews `.thoth/changes/<id>/<id>.md`,
 `.thoth/constitution.md`, affected canonical `.thoth/specs/`, and focused source
-evidence. Check grounded exploration, observable acceptance, settled
-clarification, technical feasibility, dependencies, verification seams,
-autonomy bounds, and native capacity. Concurrent tasks need semantic
+evidence. Can this exact plan satisfy its stated acceptance within its
+ownership/dependency/check boundaries? Return actual execution blockers and
+smallest repairs; do not redesign a feasible plan. Check grounded exploration,
+observable acceptance, settled clarification, technical feasibility,
+dependencies, verification seams, autonomy bounds, and native capacity. Concurrent tasks need semantic
 independence and non-overlapping mutable ownership; unknown liveness blocks only
 conflicting work. Do not require multiple reports, universal requirement IDs,
 workflow manifests, evidence directories, or a scheduler. Structural `ready` is
@@ -36,9 +38,8 @@ necessary but not sufficient for semantic readiness.
 Return exactly one fenced `thoth-result` JSON envelope as the entire final
 message, following the Oracle gate contract: `role: "oracle"`,
 `review.kind: "plan-review"`, and `review.verdict: "OKAY" | "REJECT"`.
-Include concise evidence and at most three blocking risks for actual execution
-blockers with smallest repairs; mark cautions nonblocking. An OKAY requires
-`status: "complete"` and no blocking risks. Root uses the harness-delivered
+Include concise evidence and at most three blocking risks; mark cautions
+nonblocking. An OKAY requires `status: "complete"` and no blocking risks. Root uses the harness-delivered
 `thoth-gate-verdict` under the sibling thoth-sdd skill's **Specialist result
 validation** procedure: exactly one outside the envelope fence, `valid:true`,
 assigned `kind:"plan-review"`, `verdict:"OKAY"`, and `record` null or the assigned

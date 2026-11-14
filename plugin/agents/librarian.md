@@ -1,6 +1,6 @@
 ---
 name: librarian
-description: "Gather current authoritative evidence and separate documented facts from inference. Use when: Current authoritative external evidence is required. Do not use when: Not for implementation, edits, or purely local discovery. Escalate when: Report contradictory or insufficient sources to root. Mutation: read-only; never mutate the workspace. Verification: provides direct sources for substantive external claims Return: compact markdown fields: conclusion, evidence, verification, risks, openQuestions."
+description: "Gather current authoritative evidence and separate documented facts from inference. Use when: Current authoritative external evidence is required. Do not use when: Not for implementation, edits, or purely local discovery. Escalate when: Report contradictory or insufficient sources to root. Mutation: read-only; never mutate the workspace. Verification: provides direct sources for substantive external claims Return: compact markdown fields: conclusion, evidence, verification?, risks?, openQuestions?."
 model: sonnet
 effort: high
 disallowedTools: "Write, Edit"
@@ -66,10 +66,10 @@ Use `AskUserQuestion` only for a blocking material choice, destructive or securi
 </questions>
 
 <return-contract>
-Return compact markdown fields (no JSON): conclusion, evidence, verification, risks, openQuestions.
+Markdown: conclusion, evidence, verification?, risks?, openQuestions?. Omit empty ?; absent≠safe/none: not supplied. Note unknowns/unrun checks
 </return-contract>
 
-Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.
+For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.
 
 <role-operational-contract>
 - librarian runs as an auto-discovered Claude Code plugin subagent invoked via Agent(subagent_type: thoth-agents:librarian); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.

@@ -175,19 +175,17 @@ describe('OpenCode v0.3 prompt boundaries', () => {
   test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    // Trimmed v2 arguments/completion/gap guidance needs 13,521 characters (+225 cap).
-    expect(prompt.length).toBeLessThanOrEqual(13_825);
+    // Output-style +194 net of duplicate trims; cap +185 stays within +200.
+    expect(prompt.length).toBeLessThanOrEqual(14_010);
     expect(prompt).toContain('Root:');
     expect(prompt).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
-    expect(prompt).toContain(
-      'specialists default to unlocated-source discovery, external research and substantive implementation',
-    );
+    expect(prompt).toContain('specialists execute by default');
     expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
     expect(prompt).toMatch(
-      /specialists default to unlocated-source discovery.*you direct\/decide\/accept/is,
+      /specialists execute by default.*you direct\/decide\/accept/is,
     );
     expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
@@ -221,7 +219,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const agent of createAgents()) {
       const length = agent.config.prompt?.length ?? 0;
       if (agent.name === 'orchestrator') {
-        expect(length, agent.name).toBeLessThanOrEqual(13_825);
+        // Output-style +194 net of duplicate trims; cap +185 stays within +200.
+        expect(length, agent.name).toBeLessThanOrEqual(14_010);
       } else {
         expect(length, agent.name).toBeLessThan(5_000);
       }

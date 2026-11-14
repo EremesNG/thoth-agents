@@ -47,7 +47,7 @@ describe('Codex adapter v0.3', () => {
         .join('\n'),
     );
     expect(root).toMatch(
-      /Root: specialists default to unlocated-source discovery, external research and substantive implementation; you direct\/decide\/accept\/synthesize/i,
+      /Root: specialists execute by default; you direct\/decide\/accept\/synthesize/i,
     );
     expect(block.indexOf('Unlocated local source')).toBeLessThan(
       block.indexOf(
@@ -107,19 +107,17 @@ describe('Codex adapter v0.3', () => {
   test('renders a compact Codex root coordinator', () => {
     const root = renderCodexRootInstructions();
 
-    // Includes canonical discovery/navigation guidance and the Codex dialect.
-    expect(root.length).toBeLessThanOrEqual(15_100);
+    // Output-style +194 net of duplicate trims; cap +190 stays within +200.
+    expect(root.length).toBeLessThanOrEqual(15_290);
     expect(root).toContain('Root:');
     expect(root).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
     );
-    expect(root).toContain(
-      'specialists default to unlocated-source discovery, external research and substantive implementation',
-    );
+    expect(root).toContain('specialists execute by default');
     expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
     expect(root).toMatch(
-      /specialists default to unlocated-source discovery.*you direct\/decide\/accept/is,
+      /specialists execute by default.*you direct\/decide\/accept/is,
     );
     expect(root).not.toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
@@ -257,7 +255,8 @@ describe('Codex adapter v0.3', () => {
         .replace(/^<!-- thoth-agents:codex-root:start -->\n/, '')
         .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
-    expect(root.length).toBeLessThanOrEqual(15_025);
+    // Output-style +194 net of duplicate trims; cap +185 stays within +200.
+    expect(root.length).toBeLessThanOrEqual(15_210);
     for (const rule of [
       'multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only',
       '`agent` = status-map key, not provenance',

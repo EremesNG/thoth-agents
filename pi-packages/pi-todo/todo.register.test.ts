@@ -89,6 +89,16 @@ describe('registerTodoTool — registration shape', () => {
     expect(guidance).toContain('"action":"batch"');
   });
 
+  it('describes the required action parameter', () => {
+    const { tool } = setup();
+    const schema = tool.parameters as {
+      properties?: Record<string, { description?: string }>;
+    };
+    expect(schema.properties?.action?.description).toMatch(
+      /^Required in every call/,
+    );
+  });
+
   it('exposes a typebox parameters schema declaring the seven actions', () => {
     const { tool } = setup();
     const raw = JSON.stringify(tool.parameters);

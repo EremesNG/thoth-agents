@@ -223,15 +223,13 @@ const BatchOpSchema = Type.Object({
 export const TodoParamsSchema = Type.Object({
   ...SingleParamsSchema.properties,
   action: Type.Unsafe<TaskAction>({
-    ...StringEnum([
-      'create',
-      'update',
-      'list',
-      'get',
-      'delete',
-      'clear',
-      'batch',
-    ] as const),
+    ...StringEnum(
+      ['create', 'update', 'list', 'get', 'delete', 'clear', 'batch'] as const,
+      {
+        description:
+          'Required in every call — operation; batch applies ops[] atomically in order.',
+      },
+    ),
   }),
   ops: Type.Optional(
     Type.Array(BatchOpSchema, {

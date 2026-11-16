@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   mkdirSync,
@@ -17,8 +18,23 @@ import {
   SessionManager,
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
-import { expect, test, vi } from 'vitest';
+import { beforeAll, expect, test, vi } from 'vitest';
 import { sdkSubagentRunner } from '../../pi-subagents/src/runner/sdk-runner.js';
+
+// This integration test loads the published bundle, including its runtime assets.
+// Build it even when dist exists so it cannot silently exercise a stale bundle.
+beforeAll(() => {
+  execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(
+        new URL('../../../scripts/build-pi-extensions.mjs', import.meta.url),
+      ),
+      'pi-junie-bridge',
+    ],
+    { stdio: 'inherit' },
+  );
+}, 30000);
 
 const key = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
 const alive = (pid: number) => {

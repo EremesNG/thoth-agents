@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +62,45 @@ test.skipIf(process.platform !== 'win32')(
     }
   },
   15000,
+);
+
+test.skipIf(process.platform !== 'win32')(
+  'job termination releases the child working directory before returning',
+  async () => {
+    for (let i = 0; i < 25; i++) {
+      const cwd = mkdtempSync(join(tmpdir(), 'junie-job-cwd-'));
+      writeFileSync(join(cwd, 'fixture'), 'test');
+      const child = await launchJunie({
+        cwd,
+        command: { file: process.execPath, args: [fixture] },
+        warn: (message) => {
+          throw new Error(message);
+        },
+      });
+      try {
+        expect(child.jobBacked).toBe(true);
+        const started = new Promise<void>((resolve) =>
+          child.stdout.once('data', () => resolve()),
+        );
+        child.stdin.write(
+          `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1 } })}\n`,
+        );
+        await started;
+        await child.terminate();
+        expect(alive(child.pid!)).toBe(false);
+        rmSync(cwd, { recursive: true, force: true });
+      } finally {
+        await child.terminate();
+        await rm(cwd, {
+          recursive: true,
+          force: true,
+          maxRetries: 10,
+          retryDelay: 100,
+        });
+      }
+    }
+  },
+  30000,
 );
 
 test.skipIf(process.platform !== 'win32')(

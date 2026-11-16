@@ -13,15 +13,21 @@ import type { JobLaunchOptions } from '@thoth-agents/pi-core/windows-job';
 import { expect, test, vi } from 'vitest';
 import { launchJunie } from '../src/junie-process.js';
 
-const fakeJob = () => ({
-  pid: 1,
-  stdin: new PassThrough(),
-  stdout: new PassThrough(),
-  stderr: new PassThrough(),
-  exited: new Promise<{ code: number }>(() => {}),
-  terminate: async () => {},
-  release: async () => {},
-});
+const fakeJob = () => {
+  let reportExit!: (value: { code: number }) => void;
+  const exited = new Promise<{ code: number }>((resolve) => {
+    reportExit = resolve;
+  });
+  return {
+    pid: 1,
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    exited,
+    terminate: async () => reportExit({ code: 1 }),
+    release: async () => {},
+  };
+};
 test('direct launcher appends a headless config argument without changing UI launch', async () => {
   const launchJob = vi.fn(async (_options: JobLaunchOptions) => fakeJob());
   for (const configLocation of [

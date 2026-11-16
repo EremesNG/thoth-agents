@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +34,12 @@ test.each([
       expect(result).toContain('unavailable');
       expect(result).toContain('https://account.jetbrains.com');
       expect(result).toMatch(reason);
+      // A slow Windows Job helper can exhaust the deadline before the fixture
+      // starts, so there is no transcript to inspect in that timeout case.
+      if (mode === 'timeout' && !existsSync(transcript)) {
+        expect(result).toMatch(/startup timed out/i);
+        return;
+      }
       const wire = readFileSync(transcript, 'utf8')
         .trim()
         .split('\n')

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-15
+
+### Fixed
+
+- Windows Job teardown waits for the Junie leader's exit notification before
+  releasing the Job, avoiding working-directory locks (`EBUSY`) after shutdown.
+  A missing notification is bounded and reported rather than blocking teardown.
+
 ## [0.1.0] - 2026-11-15
 
 ### Added

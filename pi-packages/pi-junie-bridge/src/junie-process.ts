@@ -181,8 +181,25 @@ export async function launchJunie(
       jobBacked: true,
       terminate: () =>
         (termination ??= (async () => {
-          await owned.terminate(3000);
-          await owned.release();
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await owned.terminate(3000);
+            // An empty job can precede the leader's exit notification. The job
+            // is already empty, so a lost notification must not block shutdown.
+            const observed = await Promise.race([
+              owned.exited.then(() => true),
+              new Promise<boolean>((resolve) => {
+                timer = setTimeout(() => resolve(false), 3000);
+              }),
+            ]);
+            if (!observed)
+              (options.warn ?? console.warn)(
+                'Junie Windows job exit notification timed out after 3000ms; the empty job will be released.',
+              );
+          } finally {
+            clearTimeout(timer);
+            await owned.release();
+          }
         })()),
     };
   } else {

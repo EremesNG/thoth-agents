@@ -157,7 +157,10 @@ test.each([
   const fixture = fileURLToPath(
     new URL('./fixtures/fake-junie.cjs', import.meta.url),
   );
-  const shim = join(dir, process.platform === 'win32' ? 'junie.bat' : 'junie');
+  const shim = join(
+    dir,
+    process.platform === 'win32' ? 'fake-junie.bat' : 'fake-junie',
+  );
   writeFileSync(
     shim,
     process.platform === 'win32'

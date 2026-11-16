@@ -31,12 +31,16 @@ test('resolves the real executable from the installed current version file', () 
 test('Windows uses job-owned pipes and terminates only through the job', async () => {
   const terminate = vi.fn(async () => {}),
     release = vi.fn(async () => {});
+  let reportExit!: (value: { code: number }) => void;
+  const exited = new Promise<{ code: number }>((resolve) => {
+    reportExit = resolve;
+  });
   const job = {
     pid: 42,
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
-    exited: new Promise<{ code: number }>(() => {}),
+    exited,
     terminate,
     release,
   };
@@ -54,9 +58,86 @@ test('Windows uses job-owned pipes and terminates only through the job', async (
   expect(child.jobBacked).toBe(true);
   job.stderr.write('diagnostic');
   expect(child.stderrTail()).toBe('diagnostic');
-  await child.terminate();
+  let closed = false;
+  const closing = child.terminate().then(() => {
+    closed = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(terminate).toHaveBeenCalledTimes(1);
+  expect(closed).toBe(false);
+  reportExit({ code: 1 });
+  await closing;
   await child.terminate();
   expect(terminate).toHaveBeenCalledTimes(1);
+  expect(release).toHaveBeenCalledTimes(1);
+});
+
+test('missing Windows exit notification times out, warns, and releases once', async () => {
+  const terminate = vi.fn(async () => {});
+  const release = vi.fn(async () => {});
+  const warn = vi.fn();
+  const child = await launchJunie({
+    command: { file: process.execPath, args: [] },
+    platform: 'win32',
+    warn,
+    launchJob: async () => ({
+      pid: 42,
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exited: new Promise(() => {}),
+      terminate,
+      release,
+    }),
+  });
+  const first = child.terminate();
+  expect(child.terminate()).toBe(first);
+  await first;
+  expect(terminate).toHaveBeenCalledTimes(1);
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(warn).toHaveBeenCalledWith(expect.stringMatching(/exit.*timed out/i));
+}, 5000);
+
+test('a rejected Windows exit notification still releases the job once', async () => {
+  const release = vi.fn(async () => {});
+  const child = await launchJunie({
+    command: { file: process.execPath, args: [] },
+    platform: 'win32',
+    launchJob: async () => ({
+      pid: 42,
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exited: Promise.reject(new Error('exit notification failed')),
+      terminate: async () => {},
+      release,
+    }),
+  });
+  const first = child.terminate();
+  expect(child.terminate()).toBe(first);
+  await expect(first).rejects.toThrow('exit notification failed');
+  expect(release).toHaveBeenCalledTimes(1);
+});
+
+test('a failed Windows job termination still attempts release once', async () => {
+  const release = vi.fn(async () => {});
+  const child = await launchJunie({
+    command: { file: process.execPath, args: [] },
+    platform: 'win32',
+    launchJob: async () => ({
+      pid: 42,
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exited: new Promise(() => {}),
+      terminate: async () => {
+        throw new Error('termination failed');
+      },
+      release,
+    }),
+  });
+  await expect(child.terminate()).rejects.toThrow('termination failed');
+  await expect(child.terminate()).rejects.toThrow('termination failed');
   expect(release).toHaveBeenCalledTimes(1);
 });
 

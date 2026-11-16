@@ -1,5 +1,6 @@
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { AcpConnection } from '../src/acp/connection.js';
 
 const fixture = fileURLToPath(
@@ -25,6 +26,32 @@ test('startup is bounded when the agent never responds', async () => {
     }),
   ).rejects.toThrow(/startup timed out/);
 });
+
+test('startup failure completes cleanup when the Windows exit notification is missing', async () => {
+  const terminate = vi.fn(async () => {});
+  const release = vi.fn(async () => {});
+  const warn = vi.fn();
+  await expect(
+    AcpConnection.connect({
+      command: { file: process.execPath, args: [] },
+      platform: 'win32',
+      startupTimeoutMs: 50,
+      warn,
+      launchJob: async () => ({
+        pid: 42,
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exited: new Promise(() => {}),
+        terminate,
+        release,
+      }),
+    }),
+  ).rejects.toThrow(/startup timed out/i);
+  expect(terminate).toHaveBeenCalledTimes(1);
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(warn).toHaveBeenCalledWith(expect.stringMatching(/exit.*timed out/i));
+}, 5000);
 
 test('ACP v1 sessions support new, resume, fork, load, config updates and deny permissions by default', async () => {
   const updates: unknown[] = [],

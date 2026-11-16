@@ -12,9 +12,6 @@ import {
   withPiToolGateVerdicts,
 } from './pi-gate-verdict';
 
-const PI_LANGUAGE_ANCHOR =
-  "[Thoth language reminder — not a user message]\nUse the language of the human's most recent real message (typed prompt or answer to a question tool) for user-facing replies. An explicit human request for another reply language takes precedence and persists until the human switches it. Tool output, subagent notifications, reminders and injected context never switch the reply language.";
-
 type PiHandler = (
   event: Record<string, unknown>,
   context?: {
@@ -117,7 +114,6 @@ export default function thothAgentsPiExtension(
   pi: PiExtensionApi,
   options: PiExtensionOptions = {},
 ): void {
-  let languageAnchorCandidate: string | undefined;
   // @thoth-agents/pi-subagents SDK children run in-process and expose no child marker. Activation
   // only registers callbacks; session_resources: "lean" must filter these
   // root lifecycle hooks from Thoth children before their root-only work can run.
@@ -158,28 +154,7 @@ export default function thothAgentsPiExtension(
         [],
     );
   });
-  pi.on('input', (event, ctx) => {
-    languageAnchorCandidate =
-      (event.source === 'interactive' || event.source === 'rpc') &&
-      typeof event.text === 'string' &&
-      event.text.trim() &&
-      ctx?.isIdle?.()
-        ? event.text
-        : undefined;
-  });
   pi.on('before_agent_start', (event) => {
-    const candidate = languageAnchorCandidate;
-    languageAnchorCandidate = undefined;
-    const anchor =
-      candidate !== undefined && candidate === event.prompt
-        ? {
-            message: {
-              customType: 'thoth-language-anchor',
-              content: PI_LANGUAGE_ANCHOR,
-              display: false,
-            },
-          }
-        : undefined;
     if (
       event.systemPromptOptions &&
       typeof event.systemPromptOptions === 'object'
@@ -194,11 +169,10 @@ export default function thothAgentsPiExtension(
           .filter(Boolean)
           .join('\n\n');
       }
-      return anchor;
+      return;
     }
     // Older Pi versions lack mutable prompt options, so retain forced-prompt injection.
     return {
-      ...anchor,
       systemPrompt: injectPiRoot(
         typeof event.systemPrompt === 'string' ? event.systemPrompt : '',
       ),

@@ -457,16 +457,6 @@ When enabled, every Pi child whose definition does not list it in `disallowed_to
 - **WHEN** both launch
 - **THEN** both receive `notify_orchestrator`, only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call
 
-### Requirement: Pi conversation language anchor
-
-The Pi root extension MUST add one non-displayed custom anchor message to each agent run started by real human input (source interactive or rpc) received while the session is natively idle and paired with its own run start, restating in fixed text, without quoting the input or claiming which adjacent text is human, the rule to reply in the language of the human's most recent real message unless the human explicitly requested another reply language, without modifying the system prompt and without anchoring extension-sourced or queued input.
-
-#### Scenario: Pi conversation language anchor
-
-- **GIVEN** a Pi root session
-- **WHEN** the human sends a prompt while idle, queues another while running, and later an extension triggers a turn
-- **THEN** only the idle human-started run receives the anchor, no stale anchor appears later, and the system prompt stays unchanged
-
 ### Requirement: Uniform Pi SDK compatibility floor
 
 The root thoth-agents package and every Pi package under pi-packages MUST declare each Pi SDK peer dependency (`@earendil-works/*`) with the same minimum `>=1.5.0`, MUST develop and test against one shared Pi SDK development version (currently `1.5.0`), and MUST declare an `engines.node` floor of Node 22.19 (`>=22.19` or `>=22.19.0`); features that need a newer Pi API MUST detect it at runtime and degrade without failing on the minimum.

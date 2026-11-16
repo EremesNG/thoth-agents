@@ -152,6 +152,22 @@ export type SubagentSessionTaskCounts = {
   statusesById: ReadonlyMap<string, SubagentTask['status']>;
 };
 
+const RUNTIME_HISTORY_FIELDS = [
+  ['runtime_context_tokens', 'contextTokens'],
+  ['runtime_context_window', 'contextWindow'],
+  ['runtime_context_percent', 'contextPercent'],
+  ['runtime_tool_uses', 'toolUses'],
+] as const;
+const RUNTIME_HISTORY_COLUMNS = RUNTIME_HISTORY_FIELDS.map(
+  ([column]) => column,
+).join(', ');
+
+function finiteNonnegative(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 const TIMEOUT_COLUMNS = [
   'timeout_started_at',
   'timeout_deadline_at',
@@ -189,6 +205,7 @@ const SESSION_TASK_METADATA_COLUMNS = `
         usage_turns,
         generation_output_tokens,
         generation_ms,
+        ${RUNTIME_HISTORY_COLUMNS},
         model,
         effort,
         model_source,
@@ -210,11 +227,22 @@ function ensureColumn(
   column: string,
   definition: string,
 ): void {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
-    name?: string;
-  }>;
-  if (!columns.some((row) => row.name === column))
+  const hasColumn = () => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+      name?: string;
+    }>;
+    return columns.some((row) => row.name === column);
+  };
+  if (hasColumn()) return;
+  try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (error) {
+    // Another connection may have added the column after our first check.
+    try {
+      if (hasColumn()) return;
+    } catch {}
+    throw error;
+  }
 }
 
 const HISTORY_BUSY_TIMEOUT_MS = 2000;
@@ -333,7 +361,7 @@ function upsertTaskRecord(
     table === 'subagent_tasks'
       ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json'
       : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json';
-  const columns = `${baseColumns}, ${TIMEOUT_HISTORY_COLUMNS}`;
+  const columns = `${baseColumns}, ${TIMEOUT_HISTORY_COLUMNS}, ${RUNTIME_HISTORY_COLUMNS}`;
   const placeholders = new Array(columns.split(',').length)
     .fill('?')
     .join(', ');
@@ -418,7 +446,8 @@ function upsertTaskRecord(
     INSERT INTO ${table} (${columns}) VALUES (${placeholders})
     ON CONFLICT(${identity}) DO UPDATE SET ${update},
       progress_updates_json=excluded.progress_updates_json,
-      ${TIMEOUT_COLUMNS.map((column) => `${column}=excluded.${column}`).join(', ')}
+      ${TIMEOUT_COLUMNS.map((column) => `${column}=excluded.${column}`).join(', ')},
+      ${RUNTIME_HISTORY_FIELDS.map(([column]) => `${column}=excluded.${column}`).join(', ')}
   `).run(
     ...(table === 'subagent_tasks' ? [task.id] : [task.id, task.attempt ?? 1]),
     value(task.display_name),
@@ -477,6 +506,9 @@ function upsertTaskRecord(
           ? Number(field)
           : field;
     }),
+    ...RUNTIME_HISTORY_FIELDS.map(
+      ([, field]) => finiteNonnegative(task.runtime_metrics?.[field]) ?? null,
+    ),
   );
 }
 
@@ -601,6 +633,8 @@ function initializeHistorySchema(db: Db): void {
   ensureColumn(db, 'subagent_tasks', 'undelivered_message_count', 'INTEGER');
   ensureAttemptColumns(db);
   for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
+    for (const [column] of RUNTIME_HISTORY_FIELDS)
+      ensureColumn(db, table, column, 'REAL');
     ensureColumn(db, table, 'progress_updates_json', 'TEXT');
     for (const column of TIMEOUT_COLUMNS)
       ensureColumn(db, table, column, 'INTEGER');
@@ -1140,6 +1174,7 @@ export class SubagentHistoryStore {
         usage_turns,
         generation_output_tokens,
         generation_ms,
+        ${RUNTIME_HISTORY_COLUMNS},
         model,
         effort,
         model_source,
@@ -1199,6 +1234,15 @@ function parseProgressUpdates(raw: unknown): SubagentTask['progress_updates'] {
 }
 
 function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
+  const runtimeMetrics: NonNullable<SubagentTask['runtime_metrics']> = {};
+  if (row.generation_output_tokens != null && row.generation_ms != null) {
+    runtimeMetrics.generationOutputTokens = row.generation_output_tokens;
+    runtimeMetrics.generationMs = row.generation_ms;
+  }
+  for (const [column, field] of RUNTIME_HISTORY_FIELDS) {
+    const metric = finiteNonnegative(row[column]);
+    if (metric !== undefined) runtimeMetrics[field] = metric;
+  }
   return {
     id: row.id,
     display_name: row.display_name ?? undefined,
@@ -1238,13 +1282,9 @@ function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
             contextTokens: row.usage_context_tokens ?? 0,
             turns: row.usage_turns ?? 0,
           },
-    runtime_metrics:
-      row.generation_output_tokens == null || row.generation_ms == null
-        ? undefined
-        : {
-            generationOutputTokens: row.generation_output_tokens,
-            generationMs: row.generation_ms,
-          },
+    runtime_metrics: Object.keys(runtimeMetrics).length
+      ? runtimeMetrics
+      : undefined,
     model: row.model ?? undefined,
     effort: row.effort ?? undefined,
     model_source: row.model_source ?? undefined,

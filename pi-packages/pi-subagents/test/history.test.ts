@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SubagentHistoryStore } from '../src/history.js';
 import type { SubagentTask } from '../src/types.js';
+import { createSubagentsWorkPanelProvider } from '../src/ui/work-panel-provider.js';
 
 const require = createRequire(import.meta.url);
 const stores = new Set<SubagentHistoryStore>();
@@ -268,6 +269,166 @@ describe('subagent history persistence and display_name compatibility', () => {
     } finally {
       if (acquired) writer.exec('ROLLBACK');
       writer.close();
+    }
+  });
+
+  it('restores runtime context and tool metrics for tasks, attempts and session metadata', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'runtime-context',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+      session_id: 'session',
+      runtime_metrics: {
+        contextTokens: 1234,
+        contextWindow: 8000,
+        contextPercent: 15.425,
+        toolUses: 0,
+      },
+    };
+    store.upsertTask(tmp, task);
+    store.close();
+    const reopened = createHistoryStore();
+    for (const restored of [
+      reopened.getTask(tmp, task.id),
+      reopened.listTaskAttempts(tmp, task.id)[0],
+      reopened.listSessionTaskMetadata(tmp, 'session')[0],
+      reopened.listSessionTaskMetadataByCompletion(tmp, 'session')[0],
+      reopened.listSessionTaskMetadataByCost(tmp, 'session')[0],
+    ])
+      expect(restored?.runtime_metrics).toEqual(task.runtime_metrics);
+
+    const provider = createSubagentsWorkPanelProvider({
+      listTasks: () => [],
+      listCompletionRankedSessionTasks: () =>
+        reopened.listSessionTaskMetadataByCompletion(tmp, 'session'),
+      onTaskUpdate: () => () => {},
+      cancel: () => {},
+      open: () => {},
+    });
+    const context = provider
+      .listRows(0, { includeHistory: true })[0]
+      ?.metrics?.find((metric) => metric.key === 'context');
+    expect(context?.segments.map((segment) => segment.text).join('')).toContain(
+      '15.4%',
+    );
+  });
+
+  it('omits invalid runtime metrics while retaining independently valid values', () => {
+    const store = createHistoryStore();
+    const task: SubagentTask = {
+      id: 'invalid-runtime',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+      runtime_metrics: {
+        contextTokens: -1,
+        contextWindow: Infinity,
+        contextPercent: NaN,
+        toolUses: 0,
+      },
+    };
+    store.upsertTask(tmp, task);
+    store.upsertTask(tmp, {
+      ...task,
+      attempt: 2,
+      runtime_metrics: { contextWindow: 9000 },
+    });
+    store.close();
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    try {
+      for (const table of ['subagent_tasks', 'subagent_task_attempts'])
+        db.exec(
+          `UPDATE ${table} SET runtime_context_percent = -2, runtime_tool_uses = 'invalid' WHERE attempt = 2`,
+        );
+    } finally {
+      db.close();
+    }
+    const reopened = createHistoryStore();
+    expect(reopened.getTask(tmp, task.id)?.runtime_metrics).toEqual({
+      contextWindow: 9000,
+    });
+    expect(
+      reopened.listTaskAttempts(tmp, task.id).map((row) => row.runtime_metrics),
+    ).toEqual([{ toolUses: 0 }, { contextWindow: 9000 }]);
+  });
+
+  it.each([
+    ['subagent_tasks', 'generation_output_tokens', 'INTEGER'],
+    ['subagent_tasks', 'runtime_context_tokens', 'REAL'],
+    ['subagent_task_attempts', 'runtime_context_tokens', 'REAL'],
+  ])('opens history when another connection adds %s.%s during migration', (table, column, definition) => {
+    const { DatabaseSync } =
+      require('node:sqlite') as typeof import('node:sqlite');
+    const peer = new DatabaseSync(process.env.PI_SUBAGENTS_HISTORY_DB_PATH!);
+    const originalExec = DatabaseSync.prototype.exec;
+    const target = `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`;
+    let raced = false;
+    const spy = vi
+      .spyOn(DatabaseSync.prototype, 'exec')
+      .mockImplementation(function (
+        this: InstanceType<typeof DatabaseSync>,
+        sql: string,
+      ) {
+        if (this !== peer && sql === target && !raced) {
+          raced = true;
+          originalExec.call(peer, sql);
+        }
+        return originalExec.call(this, sql);
+      });
+    try {
+      const store = createHistoryStore();
+      const task: SubagentTask = {
+        id: 'raced',
+        agent: 'worker',
+        mode: 'task',
+        status: 'completed',
+        task: 'work',
+        created_at: '2026-01-01T00:00:00Z',
+        runtime_metrics: { contextTokens: 120, contextPercent: 12 },
+      };
+      store.upsertTask(tmp, task);
+      expect(raced).toBe(true);
+      expect(store.getTask(tmp, task.id)?.runtime_metrics).toEqual(
+        task.runtime_metrics,
+      );
+      expect(store.listTaskAttempts(tmp, task.id)[0]?.runtime_metrics).toEqual(
+        task.runtime_metrics,
+      );
+    } finally {
+      spy.mockRestore();
+      peer.close();
+    }
+  });
+
+  it('propagates migration errors when the column is still absent', () => {
+    const { DatabaseSync } =
+      require('node:sqlite') as typeof import('node:sqlite');
+    const originalExec = DatabaseSync.prototype.exec;
+    const failure = new Error('simulated migration failure');
+    const spy = vi
+      .spyOn(DatabaseSync.prototype, 'exec')
+      .mockImplementation(function (
+        this: InstanceType<typeof DatabaseSync>,
+        sql: string,
+      ) {
+        if (
+          sql ===
+          'ALTER TABLE subagent_tasks ADD COLUMN runtime_context_tokens REAL'
+        )
+          throw failure;
+        return originalExec.call(this, sql);
+      });
+    try {
+      expect(() => createHistoryStore().listTasks(tmp)).toThrow(failure);
+    } finally {
+      spy.mockRestore();
     }
   });
 
@@ -777,6 +938,15 @@ describe('subagent history persistence and display_name compatibility', () => {
         'legacy task',
         '2026-01-01T00:00:00.000Z',
       );
+    for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
+      legacyDb.exec(
+        `ALTER TABLE ${table} ADD COLUMN generation_output_tokens INTEGER`,
+      );
+      legacyDb.exec(`ALTER TABLE ${table} ADD COLUMN generation_ms REAL`);
+    }
+    legacyDb.exec(
+      'UPDATE subagent_task_attempts SET generation_output_tokens = 17, generation_ms = 500',
+    );
     expect(
       legacyDb
         .prepare(`
@@ -797,7 +967,7 @@ describe('subagent history persistence and display_name compatibility', () => {
     expect(legacyTask?.runtime_metrics).toBeUndefined();
     expect(
       store.listTaskAttempts(tmp, 'subtask_legacy_row')[0]?.runtime_metrics,
-    ).toBeUndefined();
+    ).toEqual({ generationOutputTokens: 17, generationMs: 500 });
 
     // Now upsert a new task with display_name
     const newTask: SubagentTask = {
@@ -813,11 +983,21 @@ describe('subagent history persistence and display_name compatibility', () => {
       task: 'verify migration',
       created_at: new Date().toISOString(),
       attempt: 1,
+      runtime_metrics: {
+        contextTokens: 120,
+        contextWindow: 1000,
+        contextPercent: 12,
+        toolUses: 3,
+      },
     };
     store.upsertTask(tmp, newTask);
 
     const fetchedNew = store.getTask(tmp, newTask.id);
     expect(fetchedNew?.display_name).toBe('Post Migration Task');
+    expect(fetchedNew?.runtime_metrics).toEqual(newTask.runtime_metrics);
+    expect(store.listTaskAttempts(tmp, newTask.id)[0]?.runtime_metrics).toEqual(
+      newTask.runtime_metrics,
+    );
     expect(fetchedNew?.progress_updates).toEqual(newTask.progress_updates);
     expect(fetchedNew?.timeout_extensions_used).toBe(1);
     expect(

@@ -59,6 +59,21 @@ it('keys every metric and includes runtime and finished cost with formatted valu
     ).toContainEqual({ text: '62.0%', role: 'meta' });
   }
 });
+
+it('keeps speed pending until output tokens have been observed', () => {
+  const speed = row({
+    ...task,
+    runtime_metrics: {
+      ...task.runtime_metrics,
+      generationOutputTokens: 0,
+      generationMs: 2000,
+    },
+  }).metrics?.find(({ key }) => key === 'speed');
+
+  expect(speed).toMatchObject({ pending: true });
+  expect(speed?.segments.map(({ text }) => text).join('')).toBe('? tok/s');
+});
+
 it.each([
   'nerd',
   'unicode',

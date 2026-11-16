@@ -72,7 +72,7 @@ export function generationSpeed(
   if (
     typeof output !== 'number' ||
     !Number.isFinite(output) ||
-    output < 0 ||
+    output <= 0 ||
     typeof milliseconds !== 'number' ||
     !Number.isFinite(milliseconds) ||
     milliseconds <= 0

@@ -1273,7 +1273,7 @@ describe('tool render helpers', () => {
     task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
     task.started_at = 'invalid';
     const invalidStart = render();
-    expect(invalidStart).toContain('0 tok/s');
+    expect(invalidStart).not.toContain('tok/s');
     expect(invalidStart).not.toContain('elapsed');
     expect(invalidStart.split('\n')[1]).not.toContain('running ·');
     const now = vi

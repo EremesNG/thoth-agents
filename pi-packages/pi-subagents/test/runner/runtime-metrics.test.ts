@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { promptWithInactivity } from '../../src/runner/event-processing.js';
+import { SubagentRuntimeMetricsTracker } from '../../src/runner/snapshot-builder.js';
 
 function sessionFixture() {
   let listener: ((event: any) => void) | undefined;
@@ -273,5 +274,80 @@ describe('child runtime metrics', () => {
     expect(activities.at(-1).runtime_metrics).not.toHaveProperty(
       'contextPercent',
     );
+  });
+
+  it('retains last-known context metrics across an unknown refresh', () => {
+    const session = sessionFixture();
+    const tracker = new SubagentRuntimeMetricsTracker(session);
+    session.getContextUsage.mockReturnValue({
+      tokens: null,
+      contextWindow: null,
+      percent: null,
+    });
+
+    tracker.refresh(session);
+
+    expect(tracker.snapshot().runtime_metrics).toMatchObject({
+      contextTokens: 600,
+      contextWindow: 3000,
+      contextPercent: 20,
+    });
+  });
+
+  it('clears retained context occupancy after successful compaction until fresh usage arrives', () => {
+    const session = sessionFixture();
+    const tracker = new SubagentRuntimeMetricsTracker(session);
+    session.getContextUsage.mockReturnValue({
+      tokens: null,
+      contextWindow: null,
+      percent: null,
+    });
+
+    const compacted = tracker.observe(
+      { type: 'compaction_end', aborted: false, result: { summary: 'done' } },
+      session,
+    );
+
+    expect(compacted.runtime_metrics).not.toHaveProperty('contextTokens');
+    expect(compacted.runtime_metrics).not.toHaveProperty('contextPercent');
+    expect(compacted.runtime_metrics.contextWindow).toBe(3000);
+    expect(compacted.usage?.contextTokens).toBe(0);
+
+    session.getContextUsage.mockReturnValue({
+      tokens: 420,
+      contextWindow: 3000,
+      percent: 14,
+    });
+    const refreshed = tracker.observe({ type: 'turn_end' }, session);
+
+    expect(refreshed.runtime_metrics).toMatchObject({
+      contextTokens: 420,
+      contextWindow: 3000,
+      contextPercent: 14,
+    });
+    expect(refreshed.usage?.contextTokens).toBe(420);
+  });
+
+  it('retains known context occupancy after an aborted compaction', () => {
+    const session = sessionFixture();
+    const tracker = new SubagentRuntimeMetricsTracker(session);
+    session.getContextUsage.mockReturnValue({
+      tokens: null,
+      contextWindow: null,
+      percent: null,
+    });
+
+    const aborted = tracker.observe(
+      { type: 'compaction_end', aborted: true, result: undefined },
+      session,
+    );
+
+    expect(aborted.runtime_metrics).toMatchObject({
+      contextTokens: 600,
+      contextWindow: 3000,
+      contextPercent: 20,
+      compactions: 0,
+    });
+    expect(aborted.usage?.contextTokens).toBe(600);
   });
 });

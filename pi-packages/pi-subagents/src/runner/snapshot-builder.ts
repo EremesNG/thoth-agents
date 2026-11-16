@@ -98,8 +98,10 @@ export class SubagentRuntimeMetricsTracker {
       event.type === 'compaction_end' &&
       !event.aborted &&
       event.result != null
-    )
+    ) {
       this.compactions += 1;
+      this.clearContextOccupancy();
+    }
     if (
       [
         'message_end',
@@ -111,6 +113,15 @@ export class SubagentRuntimeMetricsTracker {
     )
       this.refresh(session);
     return this.snapshot();
+  }
+
+  private clearContextOccupancy(): void {
+    const runtimeMetrics = { ...this.runtimeMetrics };
+    delete runtimeMetrics.contextTokens;
+    delete runtimeMetrics.contextPercent;
+    this.runtimeMetrics = runtimeMetrics;
+    if (this.lifetimeUsage)
+      this.lifetimeUsage = { ...this.lifetimeUsage, contextTokens: 0 };
   }
 
   snapshot(): { runtime_metrics: SubagentRuntimeMetrics; usage?: UsageStats } {
@@ -144,13 +155,19 @@ export class SubagentRuntimeMetricsTracker {
     };
     if (isFiniteNonNegative(context?.tokens))
       runtimeMetrics.contextTokens = context.tokens;
+    else if (this.runtimeMetrics.contextTokens !== undefined)
+      runtimeMetrics.contextTokens = this.runtimeMetrics.contextTokens;
     if (
       isFiniteNonNegative(context?.contextWindow) &&
       context.contextWindow > 0
     )
       runtimeMetrics.contextWindow = context.contextWindow;
+    else if (this.runtimeMetrics.contextWindow !== undefined)
+      runtimeMetrics.contextWindow = this.runtimeMetrics.contextWindow;
     if (isFiniteNonNegative(context?.percent))
       runtimeMetrics.contextPercent = context.percent;
+    else if (this.runtimeMetrics.contextPercent !== undefined)
+      runtimeMetrics.contextPercent = this.runtimeMetrics.contextPercent;
     if (isFiniteNonNegative(stats?.toolCalls))
       runtimeMetrics.toolUses = stats.toolCalls;
     this.runtimeMetrics = runtimeMetrics;

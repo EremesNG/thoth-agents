@@ -293,7 +293,7 @@ describe('Agents work-panel rows', () => {
     );
   });
 
-  it('preserves measured zeroes, excludes caches and uses average generation time, not wall time or lifetime output', async () => {
+  it('preserves measured usage zeroes and keeps speed pending, excludes caches and uses average generation time, not wall time or lifetime output', async () => {
     const zero = task({
       usage: {
         input: 0,
@@ -310,7 +310,7 @@ describe('Agents work-panel rows', () => {
     });
     const zeroSession = await mount(provider([zero]));
     expect(renderBody(zeroSession, 100).text).toContain(
-      'tools 0 · ↑0 ↓0 · ctx 0.0% · 0 tok/s · elapsed 12s',
+      'tools 0 · ↑0 ↓0 · ctx 0.0% · ? tok/s · elapsed 12s',
     );
     const measured = task({
       runtime_metrics: { generationOutputTokens: 300, generationMs: 4000 },

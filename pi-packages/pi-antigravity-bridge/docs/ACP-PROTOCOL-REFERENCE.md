@@ -1,5 +1,12 @@
 # ACP Protocol Reference — `antigravity-acp` (verified live)
 
+> Historical standalone-server research, not current setup instructions. The
+> bridge now uses native `agy acp` (agy >=1.5.3) with shared CLI credentials,
+> separate model/thought-level settings and cancel notifications. Standalone
+> auth/install steps below are retired. See [ENGINES.md](ENGINES.md) for the
+> supported transport, isolated homes, migration and instructions-only setup.
+
+
 Everything below was verified LIVE on 2026-09-03 against the official Google
 ACP server, build `agy_acp_server_20260818_01_RC01` (registry id
 `antigravity-acp`, v1.0.0), linux-x86_64, on a headless Fedora box. Raw

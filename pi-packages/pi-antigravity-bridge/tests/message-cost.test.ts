@@ -49,6 +49,10 @@ test("normalized Gemini Flash usage reports catalog API-equivalent cost", () => 
 // including input-token tiers, rather than a frozen price snapshot.
 // Single-tier discovery preserves the qualified id, so price those variants too.
 test.each([
+	["gemini-4-argon", "google", "gemini-4-argon"],
+	["gemini-4-argon-low", "google", "gemini-4-argon"],
+	["gemini-4-argon-medium", "google", "gemini-4-argon"],
+	["gemini-4-argon-high", "google", "gemini-4-argon"],
 	["gemini-3-8-flash", "google", "gemini-3.8-flash"],
 	["gemini-3-8-flash-low", "google", "gemini-3.8-flash"],
 	["gemini-3-8-flash-medium", "google", "gemini-3.8-flash"],
@@ -95,16 +99,22 @@ test.each([
 	expect(usage.cost.total).toBeGreaterThan(0);
 });
 
-test("Gemini Argon stays zero-cost and warns once without a verified catalog equivalent", () => {
-	const events: unknown[][] = [];
-	const log = (...args: unknown[]) => events.push(args);
+test("normalized Gemini Argon usage reports catalog API-equivalent cost", () => {
 	const usage = emptyUsage();
-	toPiUsage({ input_tokens: 1_000_000 }, usage, "gemini-3-6-flash");
-	expect(usage.cost.total).toBeGreaterThan(0);
-	toPiUsage({ output_tokens: 1_000_000 }, usage, "gemini-4-argon", log);
-	toPiUsage({ output_tokens: 2_000_000 }, usage, "gemini-4-argon", log);
-	expect(usage.cost).toEqual(emptyUsage().cost);
-	expect(events).toEqual([["usage-unpriced", { modelId: "gemini-4-argon" }, "warn"]]);
+	toPiUsage(
+		{ input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 1_000_000 },
+		usage,
+		"gemini-4-argon",
+	);
+	expect(usage.cost).toEqual({
+		input: 2,
+		output: 10,
+		cacheRead: 0.1,
+		cacheWrite: 0,
+		total: 12.1,
+		totalFromProvider: false,
+	});
+	expect(usage.totalTokens).toBe(3_000_000);
 });
 
 test("unmapped ids stay unpriced and log once, without guessing from CLI names", () => {

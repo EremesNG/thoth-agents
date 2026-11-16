@@ -27,6 +27,19 @@ describe("acp/events frameCarriesUsage", () => {
 });
 
 describe("acp/events mapUpdate", () => {
+ test.each(["pi-agy-aabbccdd", "pi-bridge", "pi-bridge-123", "pi-bridge-123-12345678-abcd-1234-abcd-123456789012"])("native MCP frame preserves %s identity", (server) => {
+  const name = `mcp_${server}_bridge_echo`;
+  const start = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "native", name, rawInput: { text: "hi" } });
+  assert.ok(start && start.kind === "tool_start");
+  assert.equal(start.name, "bridge_echo"); assert.equal(start.mcpServer, server); assert.deepEqual(start.args, { text: "hi" });
+  assert.deepEqual(mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "native", name, status: "completed", rawOutput: "ok" }), { kind: "tool_done", toolCallId: "native", output: "ok", mcpServer: server });
+  assert.deepEqual(mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "native", name, status: "failed", rawOutput: "bad" }), { kind: "tool_error", toolCallId: "native", message: "bad", mcpServer: server });
+ });
+ test("unknown native MCP names stay unguessed", () => {
+  const mapped = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "foreign", name: "mcp_my_server_hyphen-tool", title: "Run arbitrary display text" });
+  assert.ok(mapped && mapped.kind === "tool_start"); assert.equal(mapped.name, "mcp_my_server_hyphen-tool"); assert.equal(mapped.mcpServer, undefined);
+ });
+
 	test("agent_message_chunk maps to a text delta", () => {
 		assert.deepEqual(
 			mapUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "HE" } }),
@@ -312,5 +325,18 @@ describe("acp/events TextAccumulator", () => {
 		}
 		assert.deepEqual(emitted, ["\n39\n40\n4", "1\n42\n43"]);
 		assert.equal(acc.text, "\n39\n40\n41\n42\n43");
+	});
+});
+
+describe("acp/events usage_update occupancy", () => {
+	test("used frame maps to a usage event", () => {
+		assert.deepEqual(mapUpdate({ sessionUpdate: "usage_update", used: 42000 }), { kind: "usage", used: 42000 });
+	});
+
+	test("zero (session setup), missing, and non-numeric used map to null", () => {
+		assert.equal(mapUpdate({ sessionUpdate: "usage_update", used: 0 }), null);
+		assert.equal(mapUpdate({ sessionUpdate: "usage_update" }), null);
+		assert.equal(mapUpdate({ sessionUpdate: "usage_update", used: "42000" }), null);
+		assert.equal(mapUpdate({ sessionUpdate: "usage_update", used: 1.5 }), null);
 	});
 });

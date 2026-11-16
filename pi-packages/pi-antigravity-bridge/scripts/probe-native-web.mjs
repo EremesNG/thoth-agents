@@ -2,7 +2,7 @@
 // inside our bridge sessions, on both engines? Gated per engine (spends quota):
 //
 //   AGY_LIVE=1 npx tsx scripts/probe-native-web.mjs stream
-//   AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+//   AGY_ACP_LIVE=1 \
 //     npx tsx scripts/probe-native-web.mjs acp
 //
 // Neutrality: the stream-json run starts the bridge with an EMPTY catalog (agy's
@@ -21,7 +21,7 @@ import path from "node:path";
 import { StreamDriver } from "../src/driver.js";
 import { bridgeMcpConfigDir, startMcpServer } from "../src/mcp-server.js";
 import { AcpDriver } from "../src/acp/driver.js";
-import { resolveAcpBinary } from "../src/acp/connection.js";
+import { stageAgyHome } from "../src/acp/home.js";
 
 const engine = process.argv[2] ?? "both";
 const MODEL_STREAM = process.env.AGY_SMOKE_MODEL ?? "gemini-3.7-flash-medium";
@@ -98,8 +98,8 @@ async function probeStreamJson() {
 
 async function probeAcp() {
 	const log = logFor("acp");
-	const bin = resolveAcpBinary(process.env.AGY_ACP_BIN || "");
-	const driver = new AcpDriver({ bin, log: (msg, data) => log({ t: "acp", msg, data }) });
+	const bin = (process.env.AGY_BIN || "agy");
+	const driver = new AcpDriver({ bin, stageHome: () => process.env.AGY_AGENTS_ROOT ? undefined : stageAgyHome(), log: (msg, data) => log({ t: "acp", msg, data }) });
 	const toolNames = [];
 	let answer = "";
 	try {

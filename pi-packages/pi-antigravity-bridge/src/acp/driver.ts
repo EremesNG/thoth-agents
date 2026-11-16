@@ -5,14 +5,11 @@
 // Engine differences vs stream-json, all verified live (docs/ACP-PROTOCOL-REFERENCE.md):
 //   - no process recycle on profile drift: one server process, sessions
 //     selected per turn via session/new / session/load
-//   - model/effort via session/set_config_option (configId "model", FULL slug
-//     with the effort tier baked in); mode via configId "mode"
+//   - separate "model" and "thought_level" session config options; mode via "mode"
 //   - config does NOT persist across server restarts: re-applied every turn
 //   - session/load replays history as full-text notification pairs BEFORE its
 //     response; the connection suppresses updates while loading
-//   - session/cancel is unimplemented on RC01 (-32601): abort = abortAll()
-//     teardown + kill, then session/load on the next turn. The method is
-//     probed once per connection; when upstream ships it, abort goes graceful
+//   - session/cancel is a notification; bounded teardown remains the safety net
 //   - overall-timer pause uses remaining-budget semantics on G9 parks (never a
 //     fresh cap); every park carries its own timeout (BRIDGE_TIMEOUT_MS)
 //   - request_permission: skipPermissions turns answer the first allow option
@@ -25,8 +22,9 @@ import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "../waits.js";
 import { TurnQueue } from "../turn-queue.js";
 import { emitLifecycle } from "../lifecycle.js";
 import { randomUUID } from "node:crypto";
+import { agyVersionVerdict, checkAgyCliVersion, MIN_AGY_ACP_VERSION } from "../agy-version.js";
 import type { UsageEstimate } from "../config.js";
-import { AcpConnection, resolveAcpBinary, type AcpMcpServer, type AcpPermissionRequest } from "./connection.js";
+import { AcpConnection, type AcpMcpServer, type AcpPermissionRequest } from "./connection.js";
 import type { AcpPermissionHandler } from "./connection.js";
 import { mapStopReason, mapUpdate, TextAccumulator, type AcpEditDiff } from "./events.js";
 import { estimateTokens, synthesizeUsage } from "./usage-estimate.js";
@@ -44,20 +42,17 @@ import type {
 const LIFECYCLE_LIMIT = 24;
 
 export interface AcpDriverOptions {
-	/** Config acp.bin value (may be empty). Env AGY_ACP_BIN wins. A function
-	 *  is resolved per connection: setup can install the binary and update
-	 *  config mid-session, and the next turn picks it up without a restart. */
+	/** agy CLI, resolved per connection; fake binaries can supply binArgs. */
 	bin: string | (() => string);
 	/** Extra argv for the binary (tests: node + fake-server script). */
 	binArgs?: string[];
+	stageHome?: () => string | undefined;
 	extraEnv?: Record<string, string>;
-	/** Record file for BROWSER-captured OAuth URLs; passed to the connection,
-	 *  which logs "auth-url" when the server tries to open a login. */
-	authUrlFile?: string;
+
 	/** Owning bridge callback, attached only to this driver's connections. */
 	onAuthInvalidated?: () => void;
 	/** Bridge registration for session/new AND session/load. */
-	mcpServers?: () => AcpMcpServer[];
+	mcpServers?: (stagedHome?: string) => AcpMcpServer[];
 	/** Gate B stopgap: how ACP turns synthesize usage while the server sends
 	 *  none. A function is resolved per turn (follows live config, like bin).
 	 *  Default "estimate". */
@@ -94,6 +89,11 @@ interface ActiveTurn {
 	thoughtDeltas: number;
 	/** Estimated once, not re-tokenized for every streaming delta. */
 	estimatedInputTokens: number;
+	/** One inference can make parallel calls; only model output closes a batch. */
+	toolBatches: number;
+	toolBatchOpen: boolean;
+	/** Observed context occupancy, never carried into a subsequent turn. */
+	contextUsed: number | undefined;
 	sawResult: boolean;
 	/** True once the prompt RPC was issued. Abort before this point has
 	 *  nothing to cancel: probing would risk a success-as-noop answer from a
@@ -114,24 +114,14 @@ interface ActiveTurn {
 	toolCalls: Map<string, { name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string }>;
 }
 
-/** Recombine the provider's (base slug, effort) into the FULL ACP model slug.
- *  Fixed families (no effort) pass through unchanged. Verified against the
- *  run-5 catalog: session/set_config_option wants "gemini-3.8-flash-low"-style
- *  full slugs. */
-export function acpModelSlug(model: string, effort?: string): string {
-	if (!effort) return model;
-	if (/(?:^|-)(?:high|medium|low)$/.test(model)) return model;
-	return `${model}-${effort}`;
-}
-
 /** Map our config knobs onto ACP session modes. skipPermissions=false also
  *  fail-closes the in-connection permission handler (reject options), so the
  *  modes keep their server-side meaning. Known gap: the CLI's `--mode plan`
  *  has no ACP equivalent (review 4, finding 4) — plan + acp is refused at the
  *  command level and fails the turn visibly. */
 export function acpMode(mode: string, skipPermissions: boolean): string {
-	if (skipPermissions) return "yolo";
-	return mode === "plan" ? "default" : "auto_edit";
+	if (skipPermissions) return "accept-edits";
+	return mode === "plan" ? "plan" : mode === "accept-edits" ? "accept-edits" : "default";
 }
 
 export class AcpDriver implements TurnDriver {
@@ -153,12 +143,11 @@ export class AcpDriver implements TurnDriver {
 	};
 	#serverVersion: string | undefined;
 	#lastSessionId: string | undefined;
-	#lastCancelSupported: boolean | null = null;
 	#agentInfo: { name?: string; title?: string } | undefined;
 
 	constructor(opts: AcpDriverOptions) {
 		this.#opts = opts;
-		this.#log("driver-created", { bin: typeof opts.bin === "function" ? "(resolved per turn)" : resolveAcpBinary(opts.bin) });
+		this.#log("driver-created", { bin: typeof opts.bin === "function" ? "(resolved per turn)" : opts.bin });
 	}
 
 	get state(): DriverState {
@@ -373,7 +362,8 @@ export class AcpDriver implements TurnDriver {
 		// are a parity break); mode failure is best-effort (auto policy makes
 		// the modes converge anyway).
 		try {
-			await conn.setConfigOption(turn.sessionId, "model", acpModelSlug(request.model, request.effort));
+			await conn.setConfigOption(turn.sessionId, "model", request.model);
+			if (request.effort) await conn.setConfigOption(turn.sessionId, "thought_level", request.effort);
 		} catch (err) {
 			this.#failTurn(turn, `ACP model selection failed: ${describe(err)}`);
 			return;
@@ -407,18 +397,18 @@ export class AcpDriver implements TurnDriver {
 			const result = await conn.prompt(turn.sessionId, request.prompt, request.images, request.contextBlock, onDispatched);
 			if (turn.closed) return;
 			turn.sawResult = true;
-			// When a future server fills ACP PromptResponse.usage, exact counts
-			// supersede every partial estimate at the end of the turn.
-			if (result.usage) this.#emit(turn, { type: "usage", usage: result.usage });
+			// Native exact billing counts replace estimates; correct the context gauge.
+			const usage = result.usage ? this.#contextCorrectedUsage(turn, result.usage) : undefined;
+			if (usage) this.#emit(turn, { type: "usage", usage });
 			const mapped = mapStopReason(result.stopReason);
 			this.#settle(turn, {
 				conversationId: turn.sessionId,
 				status: mapped.status,
 				response: turn.response.text,
-				usage: result.usage,
+				usage,
 				error: mapped.error,
 				finished: true,
-				aborted: mapped.aborted,
+				aborted: turn.aborted || mapped.aborted,
 			});
 		} catch (err) {
 			if (turn.closed) return;
@@ -471,6 +461,7 @@ export class AcpDriver implements TurnDriver {
 				if (emit) {
 					turn.textDeltas += 1;
 					turn.textTokens += estimateTokens(emit);
+					turn.toolBatchOpen = false;
 					this.#emitLiveEstimate(turn);
 					this.#emit(turn, { type: "text", delta: emit });
 				}
@@ -480,11 +471,21 @@ export class AcpDriver implements TurnDriver {
 				if (!mapped.delta) return;
 				turn.thoughtDeltas += 1;
 				turn.thoughtTokens += estimateTokens(mapped.delta);
+				turn.toolBatchOpen = false;
 				this.#emitLiveEstimate(turn);
 				this.#emit(turn, { type: "thought", delta: mapped.delta });
 				return;
 			}
+			case "usage": {
+				turn.contextUsed = mapped.used;
+				this.#emit(turn, { type: "usage", usage: { total_tokens: mapped.used } });
+				return;
+			}
 			case "tool_start": {
+				if (!turn.toolBatchOpen) {
+					turn.toolBatches += 1;
+					turn.toolBatchOpen = true;
+				}
 				const entry = { name: mapped.name, args: mapped.args, diff: mapped.diff, mcpServer: mapped.mcpServer };
 				turn.toolCalls.set(mapped.toolCallId, entry);
 				this.#emit(turn, { type: "tool_start", name: mapped.name, args: mapped.args, mcpServer: mapped.mcpServer, toolCallId: mapped.toolCallId });
@@ -521,7 +522,7 @@ export class AcpDriver implements TurnDriver {
 		}
 	}
 
-	#onConnectionExit(conn: AcpConnection, info: { stderrTail: string }): void {
+	#onConnectionExit(conn: AcpConnection, info: { code: number | null; signal: string | null; stderrTail: string }): void {
 		if (this.#conn !== conn) {
 			// A replaced connection reporting its death late (RC01's signal
 			// handler intercepts SIGTERM and can outlive its replacement by
@@ -542,7 +543,7 @@ export class AcpDriver implements TurnDriver {
 		// mid-flight is user-reportable, and it surfaces as a normal turn
 		// error, not as raw console noise.
 		const turnActive = Boolean(turn && !turn.closed && !turn.aborted && !turn.sawResult);
-		this.#log("connection-exited", { expected: !turnActive, tail: info.stderrTail.slice(-200) });
+		this.#log("connection-exited", { expected: !turnActive, code: info.code, signal: info.signal, tail: info.stderrTail.slice(-200) });
 		if (!turn || turn.closed) return;
 		if (turn.aborted || turn.sawResult) {
 			this.#settle(turn, {
@@ -554,19 +555,33 @@ export class AcpDriver implements TurnDriver {
 			});
 			return;
 		}
-		this.#failTurn(turn, "Antigravity session exited unexpectedly; it restarts on the next turn");
+		const where = info.signal ? `signal ${info.signal}` : `code ${info.code ?? "unknown"}`;
+		this.#failTurn(turn, `Antigravity session exited unexpectedly (${where}): ${info.stderrTail.trim() || "process gone"}; it restarts on the next turn`);
 	}
 
-	#ensureConnection(request: DriverTurnRequest): Promise<AcpConnection> {
-		if (this.#conn?.alive) return Promise.resolve(this.#conn);
+	async #ensureConnection(request: DriverTurnRequest): Promise<AcpConnection> {
+		if (this.#conn?.alive) return this.#conn;
+		const binary = typeof this.#opts.bin === "function" ? this.#opts.bin() : this.#opts.bin;
+		if (this.#opts.binArgs === undefined) {
+			const check = await checkAgyCliVersion(binary);
+			request.assertCurrent?.();
+			// The probe outlives abort/startup deadlines. A stale completion must
+			// not acquire a new owned process after its turn has been released.
+			if (request.signal?.aborted || this.#active?.request !== request || this.#active.closed) {
+				throw new Error("aborted before native ACP launch");
+			}
+			if (agyVersionVerdict(check.raw, MIN_AGY_ACP_VERSION).status === "unsupported") {
+				throw new Error(`Native ACP requires agy >= ${MIN_AGY_ACP_VERSION}; found ${check.version}. Update the CLI in your terminal.`);
+			}
+		}
 		this.#generation += 1;
 		this.#state = "starting";
 		this.#stats.spawns += 1;
 		const conn = new AcpConnection({
-			bin: resolveAcpBinary(typeof this.#opts.bin === "function" ? this.#opts.bin() : this.#opts.bin),
+			bin: binary,
 			binArgs: this.#opts.binArgs,
+			stageHome: this.#opts.stageHome,
 			extraEnv: this.#opts.extraEnv,
-			authUrlFile: this.#opts.authUrlFile,
 			onAuthInvalidated: this.#opts.onAuthInvalidated,
 			cwd: request.cwd,
 			mcpServers: this.#opts.mcpServers,
@@ -586,7 +601,7 @@ export class AcpDriver implements TurnDriver {
 			onExit: (info) => this.#onConnectionExit(conn, info),
 		});
 		this.#conn = conn;
-		const sinkFailure = this.#log("spawn", { bin: resolveAcpBinary(typeof this.#opts.bin === "function" ? this.#opts.bin() : this.#opts.bin) });
+		const sinkFailure = this.#log("spawn", { bin: binary });
 		if (sinkFailure) throw sinkFailure.error; // #executeTurn catches and rolls back this connection
 		return conn
 			.start()
@@ -615,28 +630,19 @@ export class AcpDriver implements TurnDriver {
 			});
 	}
 
-	/** Gate D abort. RC01 has no session/cancel: probe it once per connection,
-	 *  then either wait for the cancelled result or tear down. */
+	/** Native cancel waits for prompt settlement; teardown bounds a silent peer. */
 	async #abortTurn(turn: ActiveTurn): Promise<void> {
 		if (turn.closed) return;
 		turn.aborted = true;
 		turn.abortedBy = "signal";
 		const conn = this.#conn;
-		// No session yet (killed during setup), no live connection, or a server
-		// already known not to implement cancel: teardown directly.
-		if (!conn?.alive || turn.sessionId === "" || !turn.promptStarted || this.#cancelUnsupported()) {
+		// There is no prompt to cancel during setup: tear down directly.
+		if (!conn?.alive || turn.sessionId === "" || !turn.promptStarted) {
 			await this.#teardownAbort(turn);
 			return;
 		}
 		try {
-			const probe = await conn.cancel(turn.sessionId);
-			conn.cancelSupported = probe.supported;
-			this.#lastCancelSupported = probe.supported;
-			if (!probe.supported) {
-				this.#log("cancel-unsupported", { build: this.#serverVersion });
-				await this.#teardownAbort(turn);
-				return;
-			}
+			conn.cancel(turn.sessionId);
 			// Cancel accepted: the prompt result (stopReason cancelled) settles
 			// the turn through the normal path. Safety net below in case the
 			// server never answers.
@@ -655,10 +661,6 @@ export class AcpDriver implements TurnDriver {
 			this.#log("cancel-failed", { message: describe(err) });
 			await this.#teardownAbort(turn);
 		}
-	}
-
-	#cancelUnsupported(): boolean {
-		return this.#conn?.cancelSupported === false;
 	}
 
 	/** Gate D teardown: reject everything pending, kill the process. The turn
@@ -686,6 +688,9 @@ export class AcpDriver implements TurnDriver {
 			response: new TextAccumulator(),
 			textTokens: 0,
 			thoughtTokens: 0,
+			toolBatches: 0,
+			toolBatchOpen: false,
+			contextUsed: undefined,
 			textDeltas: 0,
 			thoughtDeltas: 0,
 			estimatedInputTokens: estimateTokens(request.contextBlock?.text ? `${request.prompt}\n${request.contextBlock.text}` : request.prompt),
@@ -856,7 +861,7 @@ export class AcpDriver implements TurnDriver {
 		// the connection outlives turns and no exact data ever replaces them
 		// on ACP 1.1.1 (peer review 2026-09-23).
 		if (this.#conn?.exactUsageSeen) return undefined;
-		return synthesizeUsage({
+		const usage = synthesizeUsage({
 			mode,
 			prompt: turn.request.prompt,
 			contextText: turn.request.contextBlock?.text,
@@ -866,6 +871,13 @@ export class AcpDriver implements TurnDriver {
 			textDeltas: turn.textDeltas,
 			thoughtDeltas: turn.thoughtDeltas,
 		});
+		return usage && turn.contextUsed !== undefined ? { ...usage, total_tokens: turn.contextUsed } : usage;
+	}
+
+	/** Billing fields remain aggregate; only pi's context gauge is corrected. */
+	#contextCorrectedUsage(turn: ActiveTurn, usage: AgyUsage): AgyUsage {
+		const derived = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + Math.ceil((usage.cache_read_tokens ?? 0) / (turn.toolBatches + 1));
+		return { ...usage, total_tokens: turn.contextUsed ?? derived };
 	}
 
 	#log(msg: string, data?: unknown): ReturnType<typeof emitLifecycle> {
@@ -925,7 +937,6 @@ export class AcpDriver implements TurnDriver {
 				sessionsCreated: this.#stats.sessionsCreated,
 				sessionsLoaded: this.#stats.sessionsLoaded,
 				kills: this.#stats.kills,
-				cancelSupported: this.#conn?.cancelSupported ?? this.#lastCancelSupported,
 				serverVersion: this.#serverVersion,
 				// Connections beyond the first are server restarts (Gate D kills,
 				// stale-exit replacements) = reconnects.

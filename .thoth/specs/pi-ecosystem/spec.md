@@ -756,6 +756,16 @@ On Windows the Junie bridge MUST launch Junie with piped stdin inside its own ki
 - **WHEN** the session shuts down
 - **THEN** Junie and its descendant end through the job and unrelated processes keep running
 
+### Requirement: Antigravity bridge proxies extension tools
+
+`@thoth-agents/pi-antigravity-bridge` MUST keep bridging to agy only the tools that pass its existing catalog filters (in Pi's current active set, not hidden, not bridge-internal, and matching the bridge-tools mode source filter, so Pi built-in-source tools stay excluded), MUST expose with full schemas only those authorized tools named like Pi's seven default tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`), MUST expose every other authorized tool only through a compact inspection tool and a compact invocation tool whose JSON-string arguments are validated, and MUST re-apply the same filters at invocation time.
+
+#### Scenario: Antigravity bridge proxies extension tools
+
+- **GIVEN** an Antigravity session with an authorized extension tool, a hidden extension tool and a Pi built-in-source tool
+- **WHEN** agy lists bridge tools and invokes the extension tools through the invocation proxy
+- **THEN** the list shows the proxies instead of the extension schema and omits the built-in-source tool, the authorized tool runs with the parsed arguments and the hidden tool is rejected
+
 ### Requirement: Claude bridge surfaces rejected tool calls
 
 `@thoth-agents/pi-claude-bridge` MUST resolve Claude Code tool calls to served Pi tools by exact name, MUST record a tool result only for calls it actually dispatched, and when Claude Code rejects a served tool call MUST commit its recording, stop that query and surface an error on the current or matching continuation turn instead of waiting.
@@ -765,3 +775,33 @@ On Windows the Junie bridge MUST launch Junie with piped stdin inside its own ki
 - **GIVEN** a Claude-backed Pi turn where Claude Code rejects a served tool call
 - **WHEN** the bridge processes the rejection
 - **THEN** no result is recorded for the undispatched call, the query stops and the turn ends with a visible error rather than hanging
+
+### Requirement: Antigravity bridge uses the native agy CLI
+
+`@thoth-agents/pi-antigravity-bridge` MUST run its ACP engine through the agy CLI's native `agy acp` command (agy 1.5.3 or newer) with the CLI's shared Google credentials and MUST NOT download, launch or authenticate a standalone ACP server; in private discovery mode (unless `AGY_AGENTS_ROOT` selects legacy behavior) both engines MUST run agy with a per-session isolated MCP home that preserves unrelated MCP servers and, among Pi bridge entries, exposes only this instance's own entry, falling back on stream-json staging or capability-probe failure to the additive private configuration with a warning (never global registration) and failing an ACP turn visibly when its home cannot be staged; when the CLI is missing the bridge MUST print installation instructions without running an installer.
+
+#### Scenario: Antigravity bridge uses the native agy CLI
+
+- **GIVEN** an Antigravity session in private discovery mode on the ACP engine with agy 1.5.8 installed and a global MCP config containing another Pi bridge entry and an unrelated MCP server
+- **WHEN** a provider turn starts
+- **THEN** `agy acp` runs inside the owned-process path with an isolated home exposing this instance's bridge entry and the unrelated server but not the other bridge entry, and no standalone server is started or downloaded
+
+### Requirement: Antigravity stream-json carrier uses a portable prompt projection
+
+`@thoth-agents/pi-antigravity-bridge` MUST stage the stream-json system-prompt carrier agent from a portable projection of Pi's system prompt that omits the bridge preamble, Pi's identity line and Pi-owned default sections while keeping custom and appended instructions, explicit section overrides, project context files and skills, and when a fresh stream-json turn that dispatched this automatic carrier (system-prompt delivery enabled, no user-configured agent) fails with a resource-exhausted error before any model output it MUST retry that turn once without the carrier, delivering the projection inline in the first user message; ACP prompt delivery is unchanged.
+
+#### Scenario: Antigravity stream-json carrier uses a portable prompt projection
+
+- **GIVEN** a fresh stream-json Antigravity turn whose Pi system prompt contains Pi's identity line, default tool list and a Thoth appended block
+- **WHEN** the turn starts
+- **THEN** the staged carrier contains the appended block and project context but not the identity line or default tool list, and if agy reports RESOURCE_EXHAUSTED before any model output the turn is retried once without `--agent` with the projection inline
+
+### Requirement: Antigravity ACP sessions mirror the stream-json tool surface
+
+`@thoth-agents/pi-antigravity-bridge` MUST pass to every ACP `session/new` and `session/load` this instance's bridge MCP server plus every enabled, non-Pi-bridge MCP server of the isolated agy configuration (stdio and http), whenever it staged an ACP home, and in that case MUST launch `agy acp` with a minimal bridge carrier agent written inside that home whose frontmatter disables agy's native subagent and delegation tools, falling back to launching without the carrier (with a warning) only when the carrier cannot be written; the Pi system prompt remains delivered inline, and when `AGY_AGENTS_ROOT` bypasses home staging the previous ACP behavior is kept.
+
+#### Scenario: Antigravity ACP sessions mirror the stream-json tool surface
+
+- **GIVEN** an isolated agy configuration with a stdio server `codegraph` and another Pi bridge entry
+- **WHEN** an ACP session is created or loaded
+- **THEN** `mcpServers` contains this bridge entry and `codegraph` (with env as name/value pairs) but not the other bridge entry, and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home

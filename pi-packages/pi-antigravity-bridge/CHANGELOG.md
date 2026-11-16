@@ -5,6 +5,32 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Changed
+
+- Default `config.engine` and the first-run engine picker to `acp` (native `agy acp`); unknown engine values fall back to `acp`.
+- Price `gemini-4-argon` and its `-low`/`-medium`/`-high` tier variants against the `google/gemini-4-argon` catalog entry.
+- Forward enabled non-Pi-bridge MCP servers from the isolated home into ACP sessions (stdio and HTTP). Launch ACP with a home-local minimal carrier to hide native delegation/interaction tools while keeping the Pi system prompt inline. Carrier write failures warn and launch without it; `AGY_AGENTS_ROOT` retains bridge-only forwarding and no carrier.
+- Stage stream-json system-prompt carriers from a portable projection: retain custom/appended policy, explicit section overrides, project context and skills, but omit Pi's identity and default harness sections. Capture structured prompt options per agent run, with assembled-prompt derivation when unavailable. ACP delivery is unchanged.
+- Retry a fresh automatic-carrier turn once on pre-output RESOURCE_EXHAUSTED/429, using a fresh process without `--agent` and delivering the projection inline. Resumed turns, user-configured agents, disabled delivery and staging failures are excluded; successful retries do not reuse the rejected carrier.
+
+- Use native `agy acp` (agy >=1.5.3) through owned processes / Windows Jobs with shared CLI credentials. Both auth commands print instructions only; never run an installer.
+- Retire standalone OAuth/browser capture, `/agy acp-bin`, `acp.bin` and `AGY_ACP_BIN`. Strip the persisted key and warn once for the environment override. Remove only evidence-marked old bridge-managed builds; report credentials for manual removal.
+- Isolate both engines' MCP homes around the acquired private identity, preserving unrelated servers and shared CLI state. Private stream-json falls back to additive private config with a warning, legacy-global to global registration; ACP staging failures fail visibly. `AGY_AGENTS_ROOT` keeps legacy behavior. Dispose on process close; retain fenced homes for dead-owner startup sweeping.
+- Hand-merge native/isolation/usage changes onto upstream sync base `cdcfc04` (`72d2224`, `32d6d2e`, `e03776a`, `7a4e9b8`, `22364ad`, `e0728f8`, `01e10ff` home hunk), retaining local containment, authorization and round-trip safeguards.
+
+- Expose authorized extension tools to agy through compact `bridge_tool_info` and `bridge_call_tool` proxies; only authorized tools named like Pi's seven defaults retain full schemas. Raw extension-name calls are rejected and live active/hidden/source filters still apply (upstream `fc95fd3`, adapted).
+- Declare the carrier agent's native tools as a block YAML list while retaining subagent masking (upstream `8d7c386`, `df83d3c`).
+
+### Fixed
+
+- Guard source and extension switch clauses against unbraced function, class, and let/const declarations in tests to prevent bundle-only initialization crashes.
+- Fix ACP edit-tool completion crash (`Cannot access 'acpEditFileArg' before initialization`) caused by a function declared inside a switch case.
+- Preserve the human prompt before trailing extension reminders on ACP by sending the complete contiguous user-message suffix.
+- Report ACP context occupancy when available; otherwise derive input + output + ceil(cacheRead / (toolBatches + 1)), separate from aggregate billing fields and reset each turn.
+- Include exit code or signal and redacted reason in ACP and stream-json failures without changing drain-aware settlement (diagnostics from upstream `6289360`).
+- Detect Windows `agy.exe` installs and tolerate empty or BOM-prefixed MCP configuration (upstream `01e10ff`, picker/config portions).
+- Isolate provider-streaming tests from operator configuration (upstream `1090801`).
+
 ## [0.8.0] - 2026-11-10
 
 ### Changed

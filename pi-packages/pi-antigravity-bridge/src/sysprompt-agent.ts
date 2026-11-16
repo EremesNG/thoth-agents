@@ -9,9 +9,8 @@
 // under ~/.gemini/config/agents and passed via --agent: the CLI reads agent
 // files from disk, off the prompt line, so the cap never applies.
 //
-// Frontmatter keeps agy's DEFAULTS on purpose (no excludeDefaultComponents,
-// no tools list, no inheritMcp override): provider sessions need the normal
-// toolset and the bridge MCP config for G9 round-trips. The subagent keys are
+// Frontmatter keeps MCP inheritance and lists the native provider tools:
+// provider sessions need the bridge MCP config for G9 round-trips. The subagent keys are
 // the deliberate exception: agent-file presence already suppresses agy's
 // native subagent tools (probed 2026-10-20, issue #7). Declare that suppression
 // explicitly; the keys' effect apart from agent-file presence is untested.
@@ -41,9 +40,8 @@ export function syspromptAgentsRoot(): string {
 	return process.env.AGY_AGENTS_ROOT ?? path.join(os.homedir(), ".gemini", "config", "agents");
 }
 
-/** agent.md for the carrier. The body is the pi system prompt composed by the
- *  provider (preamble + transcript system prompt + tool-priority note). */
-export function syspromptAgentMd(name: string, body: string): string {
+/** Shared engine carrier contract: native provider tools, no delegation. */
+export function carrierFrontmatter(name: string): string {
 	return [
 		"---",
 		`name: ${name}`,
@@ -53,11 +51,20 @@ export function syspromptAgentMd(name: string, body: string): string {
 		"model: inherit",
 		"subagent: false",
 		"agents: []",
+		"tools:",
+		"  - read_file",
+		"  - edit_file",
+		"  - write_file",
+		"  - run_command",
+		"  - manage_task",
+		"  - search_web",
 		"---",
-		"",
-		body,
-		"",
 	].join("\n");
+}
+
+/** The stream-json provider supplies the portable prompt projection unchanged. */
+export function syspromptAgentMd(name: string, body: string): string {
+	return `${carrierFrontmatter(name)}\n\n${body}\n`;
 }
 
 interface Staged {

@@ -10,9 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AcpDriver } from "../src/acp/driver.js";
-import { runAcpAuth } from "../src/acp/auth.js";
-import { clearAcpAuthVerified, ensureAcpReady, readAcpAuthVerified, writeAcpAuthVerified, writeAuthType } from "../src/acp/setup.js";
-import type { AcpPermissionHandler } from "../src/acp/connection.js";
+import type { AcpPermissionHandler, AcpMcpServer } from "../src/acp/connection.js";
 import type { DriverActivity } from "../src/driver-types.js";
 
 // Each isolated file owns a fresh Windows job helper.
@@ -37,12 +35,15 @@ async function runDriver(
 	scenario: string,
 	opts: {
 		prompt?: string;
+		model?: string;
+		effort?: string | null;
 		images?: Array<{ data: string; mimeType: string }>;
 		contextBlock?: { uri: string; title: string; text: string };
 		conversationId?: string | null;
 		timeoutMin?: number;
 		skipPermissions?: boolean;
 		usageEstimate?: "estimate" | "direct" | "off";
+		mcpServers?: () => AcpMcpServer[];
 		onPermissionRequest?: AcpPermissionHandler;
 		permissionParkMs?: number;
 		signal?: AbortSignal;
@@ -60,6 +61,7 @@ async function runDriver(
 		binArgs: [FAKE_SERVER],
 		extraEnv: { ACP_FAKE_SCENARIO: scenario, ACP_FAKE_LOG: logPath },
 		usageEstimate: opts.usageEstimate,
+		mcpServers: opts.mcpServers,
 		onPermissionRequest: opts.onPermissionRequest,
 		permissionParkMs: opts.permissionParkMs,
 		log: () => {},
@@ -68,8 +70,8 @@ async function runDriver(
 	const controller = new AbortController();
 	const handle = await driver.run({
 		cwd: dir,
-		model: "gemini-3.8-flash",
-		effort: "low",
+		model: opts.model ?? "gemini-3.8-flash",
+		effort: opts.effort === undefined ? "low" : (opts.effort ?? undefined),
 		mode: "accept-edits",
 		skipPermissions: opts.skipPermissions ?? true,
 		conversationId: opts.conversationId ?? null,
@@ -131,7 +133,7 @@ async function tracked(scenario: string, opts: Parameters<typeof runDriver>[1] =
 }
 
 describe("acp/driver happy path", () => {
-	test("streams text deltas, applies the full model slug, ends OK", async () => {
+	test("streams text deltas, applies native model and thought level separately, ends OK", async () => {
 		const run = await tracked("happy", { prompt: "hi" });
 		const outcome = await run.handle.outcome;
 		assert.equal(outcome.status, "OK");
@@ -144,13 +146,15 @@ describe("acp/driver happy path", () => {
 		const setModel = requests.find((r) => r.method === "session/set_config_option") as {
 			params: { configId: string; value: string };
 		};
-		// Gate A: full slug with the effort tier baked in.
 		assert.equal(setModel.params.configId, "model");
-		assert.equal(setModel.params.value, "gemini-3.8-flash-low");
+		assert.equal(setModel.params.value, "gemini-3.8-flash");
+		assert.ok(requests.some((r) => r.method === "session/set_config_option" &&
+			(r.params as { configId: string; value: string }).configId === "thought_level" &&
+			(r.params as { value: string }).value === "low"));
 		const mode = requests.find(
 			(r) => r.method === "session/set_config_option" && (r.params as { configId: string }).configId === "mode",
 		) as { params: { value: string } };
-		assert.equal(mode.params.value, "yolo");
+		assert.equal(mode.params.value, "accept-edits");
 		const prompt = requests.find((r) => r.method === "session/prompt") as { params: { prompt: unknown[] } };
 		assert.deepEqual(prompt.params.prompt, [{ type: "text", text: "hi" }]);
 	});
@@ -158,19 +162,24 @@ describe("acp/driver happy path", () => {
 	test("registers the bridge on session/new and session/load", async () => {
 		// Load flow: session/load carries mcpServers; session/new is NOT called
 		// when the load succeeds.
-		const load = await tracked("load-replay", { conversationId: SESSION_ID, prompt: "live" });
+		const servers: AcpMcpServer[] = [
+			{ name: "pi-bridge", type: "http", url: "http://127.0.0.1:4321/mcp", headers: [] },
+			{ name: "codegraph", command: "node", args: ["graph.js"], env: [{ name: "MODE", value: "local" }] },
+		];
+		const mcpServers = () => servers;
+		const load = await tracked("load-replay", { conversationId: SESSION_ID, prompt: "live", mcpServers });
 		await load.handle.outcome;
 		const loadReqs = sentRequests(load._logPath);
 		const loaded = loadReqs.find((r) => r.method === "session/load") as { params: { mcpServers: unknown[] } };
-		assert.ok(Array.isArray(loaded.params.mcpServers));
+		assert.deepEqual(loaded.params.mcpServers, servers);
 		assert.equal(loadReqs.find((r) => r.method === "session/new"), undefined);
 
 		// Fresh flow: session/new carries mcpServers.
-		const fresh = await tracked("happy", { prompt: "hi" });
+		const fresh = await tracked("happy", { prompt: "hi", mcpServers });
 		await fresh.handle.outcome;
 		const newReqs = sentRequests(fresh._logPath);
 		const created = newReqs.find((r) => r.method === "session/new") as { params: { mcpServers: unknown[] } };
-		assert.ok(Array.isArray(created.params.mcpServers));
+		assert.deepEqual(created.params.mcpServers, servers);
 	});
 });
 
@@ -350,6 +359,7 @@ describe("acp/driver permission parking", () => {
 		});
 		const outcome = await run.handle.outcome;
 		assert.equal(outcome.status, "ERROR");
+		assert.match(outcome.error ?? "", /code 0.*process gone/);
 	});
 
 	test("a late dialog answer after a timeout writes nothing", async () => {
@@ -379,24 +389,21 @@ describe("acp/driver permission parking", () => {
 });
 
 describe("acp/driver Gate D abort", () => {
-	test("cancel-unsupported (-32601) falls back to teardown and reports aborted", async () => {
+	test("native cancellation sends a notification and reports aborted", async () => {
 		const controller = new AbortController();
 		// Abort only after a real prompt response, not a scheduler-dependent sleep.
-		const started = runDriver("cancel-unsupported", {
+		const started = runDriver("cancel-native", {
 			prompt: "count", signal: controller.signal,
 			onActivity: (activity) => { if (activity.type === "text") controller.abort(); },
 		});
 		const run = await started;
 		const outcome = await run.handle.outcome;
 		assert.equal(outcome.aborted, true);
-		assert.equal(run.driver.state, "dead");
-		// The -32601 probe result must be remembered per connection.
-		const acp = run.driver.snapshot().acp;
-		assert.ok(acp, "acp snapshot block present");
-		assert.equal(acp.cancelSupported, false);
+		assert.equal(run.driver.state, "ready");
 		const requests = sentRequests(run._logPath);
 		const cancel = requests.find((r) => r.method === "session/cancel");
-		assert.ok(cancel, "driver should have probed session/cancel first");
+		assert.ok(cancel, "driver sends session/cancel");
+		assert.equal("id" in cancel, false, "cancel is a notification, not a request");
 		await run.cleanup();
 	});
 
@@ -412,7 +419,7 @@ describe("acp/driver Gate D abort", () => {
 			binArgs: [FAKE_SERVER],
 			extraEnv: {
 				ACP_FAKE_SCENARIO: "park",
-				ACP_FAKE_CANCEL_UNSUPPORTED: "1",
+				ACP_FAKE_CANCEL_IGNORED: "1",
 				ACP_FAKE_LOG: path.join(dir, "log.jsonl"),
 			},
 			log: (msg, data) => {
@@ -444,7 +451,7 @@ describe("acp/driver Gate D abort", () => {
 			exits.every((e) => e?.expected === true),
 			"every teardown exit must carry expected: true",
 		);
-	});
+	}, 20_000);
 });
 
 describe("acp/driver transport failures", () => {
@@ -548,7 +555,7 @@ describe("acp/driver timers", () => {
 			binArgs: [FAKE_SERVER],
 			extraEnv: {
 				ACP_FAKE_SCENARIO: "park",
-				ACP_FAKE_CANCEL_UNSUPPORTED: "1",
+				ACP_FAKE_CANCEL_IGNORED: "1",
 				ACP_FAKE_SLOW_DEATH_MS: "1500",
 				ACP_FAKE_LOG: path.join(dir, "log.jsonl"),
 			},
@@ -592,7 +599,7 @@ describe("acp/driver timers", () => {
 		const acpSnap = driver.snapshot().acp;
 		assert.ok(acpSnap, "acp snapshot block present");
 		assert.equal(acpSnap.reconnects, 1);
-	});
+	}, 20_000);
 
 	test("images ride as typed content blocks ahead of the text", async () => {
 		const run = await runDriver("happy", {
@@ -695,40 +702,22 @@ describe("acp/driver timers", () => {
 });
 
 describe("acp/driver auth", () => {
-	test("two drivers keep invalidation wiring isolated while readiness re-reads the shared marker", async () => {
+	test("two drivers keep auth-error ownership and teardown isolated", async () => {
 		const dir = tmpDir();
-		const authVerifiedFile = path.join(dir, "shared-verified.json");
-		const geminiDir = path.join(dir, "settings");
-		writeAuthType("oauth-personal", geminiDir);
-		writeAcpAuthVerified(authVerifiedFile);
 		const counts = [0, 0];
 		const drivers = counts.map((_, i) => new AcpDriver({
 			bin: process.execPath, binArgs: [FAKE_SERVER],
 			extraEnv: { ACP_FAKE_SCENARIO: i === 0 ? "auth-required" : "happy" },
-			onAuthInvalidated: () => { counts[i]++; clearAcpAuthVerified(authVerifiedFile); },
+			onAuthInvalidated: () => { counts[i]++; },
 		}));
 		const request = { cwd: dir, model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi" };
-		const setup = { configBin: process.execPath, geminiDir, authVerifiedFile, env: {}, install: false };
 		try {
-			const ready = await ensureAcpReady(setup);
-			assert.equal(ready.ok && ready.needsLogin, false);
 			assert.equal((await (await drivers[1].run(request)).outcome).status, "OK");
 			await assert.rejects(drivers[0].run(request), /authentication required/);
-			assert.deepEqual(counts, [1, 0], "A's auth error must never call B's wiring");
-			assert.equal(readAcpAuthVerified(authVerifiedFile), false);
-			const pending = await ensureAcpReady(setup);
-			assert.equal(pending.ok && pending.needsLogin, true, "B cannot trust a stale in-memory readiness latch");
-			assert.equal((await (await drivers[1].run(request)).outcome).status, "OK", "A must not tear down B's live connection");
-			const auth = await runAcpAuth({
-				bin: process.execPath, binArgs: [FAKE_SERVER], cwd: dir,
-				extraEnv: { ACP_FAKE_SCENARIO: "happy", ACP_FAKE_LOG: path.join(dir, "auth.jsonl") },
-				tokenDir: geminiDir, tokenGraceMs: 0, authVerifiedFile,
-			});
-			assert.equal(auth.ok, true, "B's explicit sign-in re-verifies through the session probe");
-			assert.ok(sentRequests(path.join(dir, "auth.jsonl")).some((r) => r.method === "session/new"));
+			assert.deepEqual(counts, [1, 0]);
 			await drivers[0].close("recycle");
-			assert.deepEqual(counts, [1, 0], "tearing down A must not invoke either callback");
-			assert.equal(readAcpAuthVerified(authVerifiedFile), true, "teardown must not invalidate the freshly verified shared marker");
+			assert.deepEqual(counts, [1, 0]);
+			assert.equal((await (await drivers[1].run(request)).outcome).status, "OK");
 		} finally {
 			await Promise.all(drivers.map((driver) => driver.close("shutdown")));
 			fs.rmSync(dir, { recursive: true, force: true });
@@ -741,7 +730,7 @@ describe("acp/driver auth", () => {
 			extraEnv: { ACP_FAKE_SCENARIO: "auth-required" } });
 		try {
 			await assert.rejects(driver.run({ cwd: dir, model: "gemini-3.8-flash", mode: "accept-edits",
-				skipPermissions: true, prompt: "hi" }), /auth-manual/);
+				skipPermissions: true, prompt: "hi" }), /agy in your terminal/);
 			assert.equal(driver.activeHandle, null);
 		} finally {
 			await driver.close("shutdown");
@@ -893,4 +882,154 @@ describe("acp/driver usage synthesis (Gate B stopgap)", () => {
 		assert.equal(outcome.usage, undefined);
 		assert.equal(run.activities.some((a) => a.type === "usage"), true);
 	});
+});
+
+describe("acp/driver exact-usage context total (issue #12)", () => {
+	test("single-inference aggregate passes through (n=1 is exact)", async () => {
+		const run = await tracked("usage-single", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		assert.deepEqual(outcome.usage, {
+			input_tokens: 1000,
+			output_tokens: 50,
+			cache_read_tokens: 800,
+			total_tokens: 1850,
+		});
+		const usage = run.activities.filter((a) => a.type === "usage").at(-1);
+		assert.ok(usage && usage.type === "usage");
+		assert.equal(usage.usage.total_tokens, 1850);
+	});
+
+	test("multi-step aggregate is de-quadratized by the tool round-trip count", async () => {
+		// Σin 1000 + Σout 50 + ceil(ΣcacheRead 800 / (1 tool call + 1) = 2 = 400).
+		// The raw 1850 would double the true occupancy; pi reads totalTokens as
+		// context length (issue #12: 107% gauge at 10% real).
+		const run = await tracked("usage-total", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		assert.deepEqual(outcome.usage, {
+			input_tokens: 1000,
+			output_tokens: 50,
+			cache_read_tokens: 800,
+			total_tokens: 1450,
+		});
+		const usage = run.activities.filter((a) => a.type === "usage").at(-1);
+		assert.ok(usage && usage.type === "usage");
+		assert.equal(usage.usage.total_tokens, 1450);
+	});
+
+	test("usage_update occupancy overrides the aggregate when the server sends it", async () => {
+		const run = await tracked("usage-occupancy", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		// Billing keeps the aggregate; the gauge keeps the observed occupancy.
+		assert.deepEqual(outcome.usage, {
+			input_tokens: 1000,
+			output_tokens: 50,
+			cache_read_tokens: 800,
+			total_tokens: 42000,
+		});
+		// Live occupancy reached pi mid-turn, and every usage activity after
+		// the occupancy frame keeps it (estimates must not clobber the gauge).
+		const firstLive = run.activities.findIndex((a) => a.type === "usage" && a.usage.total_tokens === 42000);
+		assert.ok(firstLive >= 0, "mid-turn occupancy activity missing");
+		for (const a of run.activities.slice(firstLive)) {
+			if (a.type === "usage") assert.equal(a.usage.total_tokens, 42000);
+		}
+	});
+
+	test("parallel tool calls are one inference batch, not one step each", async () => {
+		// Two tool_call frames inside ONE inference: divisor must stay 2
+		// (1450), not 3 (1317). An inflated divisor under-reads the warm-prefix
+		// cache floor and can hide real occupancy from pi's compaction.
+		const run = await tracked("usage-parallel", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		assert.equal(outcome.usage?.total_tokens, 1450);
+	});
+
+	test("interleaved completions cannot split one inference batch", async () => {
+		// u1 completes before u2 starts: still one batch, divisor 2.
+		const run = await tracked("usage-parallel-split", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		assert.equal(outcome.usage?.total_tokens, 1450);
+	});
+
+	test("occupancy survives Gate B synthesis when PromptResponse.usage is absent", async () => {
+		const run = await tracked("usage-occ-only", { prompt: "hi" });
+		const outcome = await run.handle.outcome;
+		assert.equal(outcome.status, "OK");
+		assert.ok(outcome.usage, "synthesis still fills the status fields");
+		assert.equal(outcome.usage?.total_tokens, 42000);
+		// The estimate's in/out survive for the status line; the occupancy
+		// stamp covers the total only.
+		assert.ok((outcome.usage?.input_tokens ?? 0) > 0);
+		assert.ok((outcome.usage?.output_tokens ?? 0) > 0);
+		const firstLive = run.activities.findIndex((a) => a.type === "usage" && a.usage.total_tokens === 42000);
+		assert.ok(firstLive >= 0, "mid-turn occupancy activity missing");
+		for (const a of run.activities.slice(firstLive)) {
+			if (a.type === "usage") assert.equal(a.usage.total_tokens, 42000);
+		}
+	});
+
+	test("occupancy does not leak across turns on a reused connection", async () => {
+		let driverRef: AcpDriver | undefined;
+		const first = await tracked("usage-occ-once", {
+			prompt: "hi",
+			onHandle: (_handle, driver) => {
+				driverRef = driver;
+			},
+		});
+		assert.equal((await first.handle.outcome).usage?.total_tokens, 42000);
+		assert.ok(driverRef);
+		const activities: DriverActivity[] = [];
+		const handle = await driverRef.run({
+			cwd: path.dirname(first._logPath),
+			model: "gemini-3.8-flash",
+			effort: "low",
+			mode: "accept-edits",
+			skipPermissions: true,
+			conversationId: null,
+			prompt: "again",
+		});
+		const collecting = (async () => {
+			for (;;) {
+				const activity = await handle.next();
+				if (activity === null) return;
+				activities.push(activity);
+			}
+		})();
+		const outcome = await handle.outcome;
+		await collecting;
+		assert.equal(outcome.status, "OK");
+		// Turn 2 carries no occupancy: the derived path (n=1 raw aggregate),
+		// never turn 1's stale 42000.
+		assert.equal(outcome.usage?.total_tokens, 1850);
+	});
+});
+
+test("duplicate tool frames do not inflate batches; model output opens the next batch and counts reset per turn", async () => {
+ const first = await tracked("usage-batches-reset");
+ assert.equal((await first.handle.outcome).usage?.total_tokens, 1317);
+ const second = await first.driver.run({ cwd: path.dirname(first._logPath), model: "gemini-3.8-flash", effort: "low", mode: "accept-edits", skipPermissions: true, prompt: "again" });
+ assert.equal((await second.outcome).usage?.total_tokens, 1850);
+});
+
+test("fixed-family models keep their qualified slug without thought_level", async () => {
+ const run = await tracked("happy", { model: "gemini-4-argon", effort: null });
+ assert.equal((await run.handle.outcome).status, "OK");
+ const configs = sentRequests(run._logPath).filter((r) => r.method === "session/set_config_option");
+ assert.equal((configs.find((r) => (r.params as any).configId === "model")?.params as any).value, "gemini-4-argon");
+ assert.equal(configs.some((r) => (r.params as any).configId === "thought_level"), false);
+});
+
+test("native abort settles a parked permission as cancelled without teardown", async () => {
+ const controller = new AbortController();
+ const run = await tracked("permission-cancel", { skipPermissions: false, signal: controller.signal,
+  onPermissionRequest: () => { queueMicrotask(() => controller.abort()); return new Promise(() => {}); },
+ });
+ assert.equal((await run.handle.outcome).aborted, true);
+ assert.equal(run.driver.snapshot().acp?.kills, 0);
+ assert.equal((sentRequests(run._logPath).find((r) => r._permissionOutcome !== undefined) as any)?._permissionOutcome, "cancelled");
 });

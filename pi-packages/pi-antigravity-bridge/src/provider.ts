@@ -1,3 +1,5 @@
+import { projectSystemPrompt } from "./prompt-projection.js";
+import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 // The pi provider: streamSimple(model, context, options) -> AssistantMessageEventStream.
 //
 // For each turn pi calls streamSimple. We:
@@ -74,44 +76,24 @@ function zeroUsage(): Usage {
 	};
 }
 
-/** Extract the latest user message as a flat prompt string. agy maintains its
- *  own conversation history via --conversation, so we collapse pi's structured
- *  message to text. Returns null if the last message isn't a user message.
- *
- * This last-message behavior is retained for ACP; stream-json uses the bounded
- * suffix helper below because Pi converts trailing CustomMessages to user
- * messages before a provider sees the transcript. */
-function extractUserPrompt(context: TranscriptContext): string | null {
-	const last = context.messages[context.messages.length - 1];
-	if (!last || last.role !== "user") return null;
-	const content = last.content;
-	if (typeof content === "string") return content;
-	// Flatten text blocks; images ride separately via extractImages (ACP only).
-	return content
-		.filter((b): b is { type: "text"; text: string } => b.type === "text")
-		.map((b) => b.text)
-		.join("\n")
-		.trim() || null;
-}
-
 /** Index of the first message in the final contiguous user suffix. */
-function streamJsonUserSuffixStart(messages: readonly Message[]): number {
+function userSuffixStart(messages: readonly Message[]): number {
 	let start = messages.length;
 	while (start > 0 && messages[start - 1].role === "user") start -= 1;
 	return start;
 }
 
 /**
- * Extract the final contiguous user-message suffix for stream-json. Pi's
+ * Extract the final contiguous user-message suffix for both engines. Pi's
  * `convertToLlm()` turns a hidden/display-only CustomMessage into a normal
  * user message, so selecting only the last message would drop the current
  * request when that context follows it. Stop at every non-user role (notably
  * assistant/toolResult) rather than searching backward for an arbitrary user.
  * Context remains plain user text; it is not promoted to system instructions.
  */
-function extractStreamJsonPrompt(context: TranscriptContext): string | null {
+function extractUserPrompt(context: TranscriptContext): string | null {
 	const parts: string[] = [];
-	const start = streamJsonUserSuffixStart(context.messages);
+	const start = userSuffixStart(context.messages);
 	for (let i = start; i < context.messages.length; i++) {
 		const content = context.messages[i].content;
 		const text =
@@ -127,11 +109,11 @@ function extractStreamJsonPrompt(context: TranscriptContext): string | null {
 	return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
-/** Images follow the same boundary as text: the trailing user suffix for
+/** Images retain their engine-specific boundary: the trailing user suffix for
  *  stream-json, only the final user message for ACP. Drivers deliver them as
  *  staged-file notes (stream-json) or native image blocks (ACP). */
 function extractImages(context: TranscriptContext, engine: "stream-json" | "acp"): Array<{ data: string; mimeType: string }> {
-	const start = engine === "stream-json" ? streamJsonUserSuffixStart(context.messages) : context.messages.length - 1;
+	const start = engine === "stream-json" ? userSuffixStart(context.messages) : context.messages.length - 1;
 	return context.messages.slice(Math.max(0, start)).flatMap(message => {
 		if (message.role !== "user" || typeof message.content === "string") return [];
 		return message.content
@@ -186,7 +168,7 @@ export const SYSTEM_PROMPT_END = "[END SYSTEM PROMPT]";
  *  the user's machine must go through the bridge. Rides the systemPrompt
  *  gate: the note ships only when the system prompt ships. */
 export const TOOL_PRIORITY_NOTE =
-	"[Tool priority: this conversation runs inside pi, not as a standalone agy session; the user only sees what surfaces in pi. Native interactive tools, for example ask_question, never reach the user. When a Pi Bridge tool covers the same purpose, always use the Pi Bridge tool; for user questions use ask_user_question. Your native file tools such as view_file only read brain artifacts and reject real filesystem paths; for any path on the user's machine use the Pi Bridge tools (read, ls, grep, find, edit, execute). Delegate subagent work the same way: when pi's tool list includes a delegation tool (for example subagent, Agent, agent_spawn, agent_wait, or subagent_run), always delegate through it and never through the native invoke_subagent, run_subagent, or manage_subagents; use native ones only if no pi delegation tool is listed, because native subagents run inside agy and are invisible to pi and anything watching it. Long-running bridge calls do not fail: after ~20 seconds the bridge answers STILL RUNNING with a callId; fetch the result with bridge_poll_result and poll until it lands. For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.]";
+	"[Tool priority: this conversation runs inside pi, not as a standalone agy session; the user only sees what surfaces in pi. Native interactive tools, for example ask_question, never reach the user. When a Pi Bridge tool covers the same purpose, always use the Pi Bridge tool; for user questions use ask_user_question. Your native file tools such as view_file only read brain artifacts and reject real filesystem paths; for any path on the user's machine use the Pi Bridge tools (read, ls, grep, find, edit, execute). Extension Pi tools are listed in bridge_tool_info; inspect their description and schema there, then invoke them only through bridge_call_tool with arguments_json containing a stringified JSON object. Delegate subagent work the same way: when pi's tool list includes a delegation tool (for example subagent, Agent, agent_spawn, agent_wait, or subagent_run), always delegate through it and never through the native invoke_subagent, run_subagent, or manage_subagents; use native ones only if no pi delegation tool is listed, because native subagents run inside agy and are invisible to pi and anything watching it. Long-running bridge calls do not fail: after ~20 seconds the bridge answers STILL RUNNING with a callId; fetch the result with bridge_poll_result and poll until it lands. For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.]";
 
 /** Assemble the full agy prompt: system prompt block, pi-side digest, user
  *  prompt. Empty parts are dropped. Pure; exported for unit testing.
@@ -207,6 +189,14 @@ export function buildFullPrompt(
 		parts.push(prompt);
 	}
 	return parts.join("\n\n---\n\n");
+}
+
+/** Stream-json inline fallback/retry uses the same portable instructions as the
+ * carrier, without the ACP/legacy Pi-session preamble. */
+function buildPortablePrompt(projection: string | undefined, digest: string, prompt: string): string {
+	const instructions = projection === undefined ? ""
+		: [projection, TOOL_PRIORITY_NOTE, SYSTEM_PROMPT_END].filter(Boolean).join("\n\n");
+	return [instructions, buildFullPrompt(undefined, digest, prompt)].filter(Boolean).join("\n\n---\n\n");
 }
 
 /** Flatten any message content shape (string or content-block array) to text.
@@ -272,7 +262,7 @@ export function buildContextDigest(
 	// inside the suffix would be sent once in each channel. ACP leaves this at
 	// the full transcript to preserve its legacy behavior.
 	const digestPrefixEnd = opts.excludeTrailingUserSuffix
-		? streamJsonUserSuffixStart(messages)
+		? userSuffixStart(messages)
 		: messages.length;
 
 	// 1. Most-recent pre-suffix compaction summary (it is never in agy's DB,
@@ -405,6 +395,8 @@ export interface NativeDisplayEvent {
 }
 
 export interface StreamSimpleDeps {
+	/** Latest structured Pi prompt options for this extension's agent run. */
+	getSystemPromptOptions?: () => BuildSystemPromptOptions | undefined;
 	/** Lazy instance startup. Returns a shutdown-generation guard checked
 	 *  synchronously before the selected engine can spawn or open a session. */
 	beforeStart?: () => Promise<(() => void) | void>;
@@ -1231,6 +1223,7 @@ export function buildLateResultPrompt(late: LateToolResult[], userPrompt?: strin
 // --- stream-json engine -------------------------------------------------------
 
 export interface DriverDeps {
+	getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"];
 	beforeStart?: StreamSimpleDeps["beforeStart"];
 	driver: TurnDriver;
 	roundTrips: ToolRoundTrips;
@@ -1296,6 +1289,17 @@ function emitToolUse(
  *  the gate avoids mislabeling them as edits. */
 const ACP_EDIT_TOOLS = new Set(["edit_file", "create_file", "write_to_file"]);
 
+/** File-path argument of an ACP edit tool (observed: `file_path`); other
+ *  tool kinds (execute, read) don't carry one. Returns undefined for
+ *  non-edit tools. Module-level: a declaration inside a switch case is
+ *  bundled as a case-scoped `let`, so `tool_done` hit a TDZ error. */
+function acpEditFileArg(args: Record<string, unknown>): string | undefined {
+	for (const [k, v] of Object.entries(args)) {
+		if (typeof v === "string" && v.trim() && /file|path/i.test(k)) return v;
+	}
+	return undefined;
+}
+
 /** Bridge callId arg of an MCP tool call (bridge_poll_result requires it). */
 function callIdArg(args: Record<string, unknown>): string | undefined {
 	const value = args.callId;
@@ -1336,16 +1340,6 @@ export function consumeActivity(
 				emitLifecycle(() => feats.onNativeEvent?.({ name: activity.name, mcpServer: activity.mcpServer, status: "started", callId: callIdArg(activity.args) }));
 			}
 			return "continue";
-/** File-path argument of an ACP edit tool (observed: `file_path`); other
- *  tool kinds (execute, read) don't carry one. Returns undefined for
- *  non-edit tools. */
-function acpEditFileArg(args: Record<string, unknown>): string | undefined {
-	for (const [k, v] of Object.entries(args)) {
-		if (typeof v === "string" && v.trim() && /file|path/i.test(k)) return v;
-	}
-	return undefined;
-}
-
 		case "tool_done": {
 			// Gate C (ACP): the server already executed the tool; nothing parks.
 			// Edit display has TWO paths on ACP:
@@ -1597,7 +1591,7 @@ async function runTurnDriver(
 			}
 		};
 		const active = isContinuation ? continuationHandle : undefined;
-		const userPrompt = deps.engine === "stream-json" ? extractStreamJsonPrompt(context) : extractUserPrompt(context);
+		const userPrompt = extractUserPrompt(context);
 		const images = extractImages(context, deps.engine);
 		// Dispatch fresh input first: if recovery parks, the next Pi context is
 		// a toolResult and would otherwise lose this user's prompt.
@@ -1609,6 +1603,14 @@ async function runTurnDriver(
 		// any. Recorded into stagedAgentByConversation once the outcome binds the
 		// conversation id, so later gate-closed turns pass the same agent.
 		let stagedAgentName: string | undefined;
+		let inlineRetryRequest: Parameters<typeof startTurn>[0] | undefined;
+		const bindFreshParked = (): void => {
+			const conversationId = handle?.conversationId;
+			if (!isContinuation && !existing && !store.get(key) && conversationId) {
+				store.set(key, { conversationId, lastStepIdx: -1, lastMessageCount: messageCount });
+				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
+			}
+		};
 		if (isContinuation) {
 			if (!active) {
 				if (boundary?.delivered.size) {
@@ -1684,12 +1686,15 @@ async function runTurnDriver(
 			// feature). A user-configured agent always wins: never clobber it.
 			const gateOpen = config.systemPrompt && !existing?.conversationId;
 			const rawSysPrompt = gateOpen ? getCurrentSystemPrompt(context.messages) || undefined : undefined;
-			let sysPrompt = rawSysPrompt;
+			const projected = rawSysPrompt && deps.engine !== "acp"
+				? projectSystemPrompt(rawSysPrompt, deps.getSystemPromptOptions?.())
+				: rawSysPrompt;
+			let sysPrompt = projected;
 			let agent = config.agent;
 			if (deps.engine !== "acp") {
 				if (rawSysPrompt && !config.agent) {
 					const stagedName = stageSyspromptAgent(
-						[SYSTEM_PROMPT_PREAMBLE, rawSysPrompt, TOOL_PRIORITY_NOTE].join("\n\n"),
+						[projected, TOOL_PRIORITY_NOTE].filter(Boolean).join("\n\n"),
 					);
 					if (stagedName) {
 						agent = stagedName;
@@ -1712,7 +1717,16 @@ async function runTurnDriver(
 					agent = stagedAgentByConversation.get(existing.conversationId);
 				}
 			}
-			const fullPrompt = buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "");
+			const fullPrompt = deps.engine === "acp"
+				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "")
+				: buildPortablePrompt(sysPrompt, digest, prompt ?? "");
+			if (stagedAgentName) {
+				inlineRetryRequest = {
+					conversationId: null,
+					prompt: buildPortablePrompt(projected, digest, prompt ?? ""),
+					images: images.length > 0 ? images : undefined,
+				};
+			}
 			try {
 				handle = await startTurn({
 					conversationId: existing?.conversationId ?? null,
@@ -1739,15 +1753,28 @@ async function runTurnDriver(
 			// Only the fresh dispatch may establish its first binding. Continuation
 			// contexts include later tool results, not the dispatch watermark. Never
 			// borrow a driver's current identity or overwrite a concurrent binding.
-			const conversationId = handle.conversationId;
-			if (!isContinuation && !existing && !store.get(key) && conversationId) {
-				store.set(key, { conversationId, lastStepIdx: -1, lastMessageCount: messageCount });
-				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
-			}
+			bindFreshParked();
 			return;
 		}
 
-		const outcome = await handle.outcome;
+		let outcome = await handle.outcome;
+		// Only an actually dispatched automatic carrier can take this path. The
+		// saved request exists only for fresh stream-json dispatches, not staging
+		// failures, explicit agents, ACP, disabled delivery or continuations.
+		if (inlineRetryRequest && !existing?.conversationId &&
+			outcome.status === "ERROR" && outcome.modelOutputSeen === false &&
+			!outcome.aborted && !options?.signal?.aborted &&
+			/RESOURCE_EXHAUSTED|\b429\b/i.test(outcome.error ?? "")) {
+			deps.log?.("sysprompt-inline-retry", { reason: "carrier-resource-exhausted", conversation: outcome.conversationId ?? null }, "warn");
+			await waitWithDeadline(deps.driver.close("recycle", "system-prompt carrier rejected; retry inline"), startupTimeoutMs, "inline retry process termination");
+			stagedAgentName = undefined;
+			handle = await startTurn(inlineRetryRequest);
+			if (await drainTurn(handle) === "parked") {
+				bindFreshParked();
+				return;
+			}
+			outcome = await handle.outcome;
+		}
 		// Issue #2 recovery paths. agy's stream-json prompt path silently drops an
 		// over-cap turn (SUCCESS, empty response, zero usage, NO model step) and a
 		// dropped turn leaves the conversation permanently unresponsive, so both
@@ -1884,6 +1911,7 @@ export function createStreamSimple(
 		if (selected && roundTrips) {
 			void runTurnDriver(stream, model, context, options, entries, store, {
 				beforeStart: deps.beforeStart,
+				getSystemPromptOptions: deps.getSystemPromptOptions,
 				driver: selected,
 				roundTrips,
 				replay: deps.replay,

@@ -157,7 +157,7 @@ export function bridgeMcpConfigExists(dir: string = bridgeMcpConfigDir()): boole
 	return fs.existsSync(bridgeMcpConfigPath(dir));
 }
 
-function isPidAlive(pid: number): boolean {
+export function isPidAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
 		return true;

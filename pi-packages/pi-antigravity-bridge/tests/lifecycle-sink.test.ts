@@ -187,11 +187,11 @@ for (const engine of ["acp", "stream-json"] as const) {
 		}
 	});
 	const missing = path.join(f.dir, "nonexistent-executable");
-	vi.stubEnv("AGY_ACP_BIN", engine === "acp" ? missing : "");
+	// Inject ENOENT at the owned launch boundary; standalone binary overrides are retired.
 	const realSpawn = ownedProcess.spawnOwnedProcess;
 	const spawn = vi.spyOn(ownedProcess, "spawnOwnedProcess");
 	let fail = true;
-	spawn.mockImplementation((...args) => engine === "stream-json" && fail && args[0] === "agy" ? realSpawn(missing, []) : realSpawn(...args));
+	spawn.mockImplementation((...args) => fail ? realSpawn(missing, []) : realSpawn(...args));
 	try {
 		assertSingleError(await collect(f.simple(model, user)));
 		assert.equal(sawSpawnError, true);
@@ -199,7 +199,6 @@ for (const engine of ["acp", "stream-json"] as const) {
 		assert.ok(failed);
 		assert.equal((await bounded((failed as TurnHandle).outcome)).status, "ERROR");
 		assert.equal(await bounded((failed as TurnHandle).next()), null);
-		vi.stubEnv("AGY_ACP_BIN", "");
 		fail = false;
 		const second = await collect(f.simple(model, user));
 		assert.equal(second.ends, 1);

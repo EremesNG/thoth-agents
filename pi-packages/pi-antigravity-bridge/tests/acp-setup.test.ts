@@ -1,312 +1,131 @@
-// ACP setup module tests. Fully offline: the registry and the archive come
-// from an injected fetch, unpacking from an injected copier, and every path
-// (install root, settings dir, env) points at a temp dir.
-
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, test } from "vitest";
-import {
-	buildIdFromArchive,
-	ensureAcpReady,
-	inspectAcpSetup,
-	MANUAL_SETUP,
-	platformKey,
-	readAuthState,
-	writeAuthType,
-} from "../src/acp/setup.js";
+import { afterEach, test } from "vitest";
+import { cleanupManagedAcpInstall } from "../src/acp/setup.js";
 
-import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
-
-const BUILD = "agy_acp_server_20991231_01_TEST";
-const ARCHIVE = `https://dl.google.com/agy-extensions/releases/x/agy-acp-server-${BUILD}-${platformKey().replace("aarch64", "arm64")}.zip`;
-
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 function tmpDir(): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), "agy-acp-setup-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-acp-cleanup-"));
+	roots.push(root);
+	return root;
 }
 
-function fakeFetch(registryBody: unknown, archiveBody = "fake-zip-bytes"): typeof fetch {
-	return (async (url: Parameters<typeof fetch>[0]) => {
-		if (String(url).endsWith(".zip")) {
-			return new Response(archiveBody, { status: 200 });
-		}
-		return new Response(JSON.stringify(registryBody), { status: 200 });
-	}) as typeof fetch;
+function managedBuild(root: string, build = "agy_acp_server_1.1.1"): string {
+	const dir = path.join(root, build);
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, "agy_acp_server.par"), "old server");
+	fs.writeFileSync(path.join(dir, "zip.sha256"), `${"a".repeat(64)}  server.zip\n`);
+	return dir;
 }
 
-function fakeUnpack(archive: string, dest: string): Promise<void> {
-	const bin = path.join(dest, "agy_acp_server.par");
-	fs.writeFileSync(bin, "#!/bin/sh\n");
-	fs.chmodSync(bin, 0o755);
-	void archive;
-	return Promise.resolve();
-}
+test("cleanup removes marked builds and their current symlink only", () => {
+	const root = tmpDir();
+	const build = managedBuild(root);
+	fs.symlinkSync(path.basename(build), path.join(root, "current"));
+	const unrelated = path.join(root, "keep-me");
+	fs.mkdirSync(unrelated);
+	fs.writeFileSync(path.join(unrelated, "user-data"), "keep");
 
-const REGISTRY = {
-	id: "antigravity-acp",
-	distribution: {
-		binary: {
-			[platformKey()]: { archive: ARCHIVE, cmd: "./agy_acp_server.par" },
-		},
-	},
-};
+	const result = cleanupManagedAcpInstall(root);
 
-describe("acp/setup registry parsing", () => {
-	test("buildIdFromArchive parses the real registry URL shape", () => {
-		const url =
-			"https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-agy_acp_server_20260818_01_RC01-darwin-arm64.zip";
-		assert.equal(buildIdFromArchive(url), "agy_acp_server_20260818_01_RC01");
-	});
-
-	test("buildIdFromArchive rejects unrecognized names", () => {
-		assert.throws(() => buildIdFromArchive("https://x/thing.zip"));
-	});
-
-	test("platformKey maps platform+arch", () => {
-		assert.match(platformKey(), /^(darwin|linux|windows)-(aarch64|x86_64)$/);
-	});
+	assert.deepEqual(result.removedBuilds, [path.basename(build)]);
+	assert.equal(fs.existsSync(build), false);
+	assert.equal(fs.existsSync(path.join(root, "current")), false);
+	assert.equal(fs.readFileSync(path.join(unrelated, "user-data"), "utf8"), "keep");
+	assert.equal(result.rootRemoved, false);
 });
 
-describe("acp/setup auth state", () => {
-	test("absent settings and token = unconfigured", () => {
-		assert.deepEqual(readAuthState(tmpDir()), { configured: false });
-	});
+test("cleanup removes every marked build and removes an empty root", () => {
+	const root = tmpDir();
+	managedBuild(root, "agy_acp_server_1.0.0");
+	managedBuild(root, "agy_acp_server_1.1.1");
+	fs.symlinkSync("agy_acp_server_1.1.1", path.join(root, "current"));
 
-	test("settings.json type is detected", () => {
-		const dir = tmpDir();
-		writeAuthType("gemini-api-key", dir);
-		assert.deepEqual(readAuthState(dir), { configured: true, type: "gemini-api-key" });
-	});
+	const result = cleanupManagedAcpInstall(root);
 
-	test("acp_token.json presence means configured without reading it", () => {
-		const dir = tmpDir();
-		fs.writeFileSync(path.join(dir, "acp_token.json"), "credential-not-read");
-		assert.deepEqual(readAuthState(dir), { configured: true, type: "token" });
-	});
-
-	test("writeAuthType preserves unrelated settings and auth keys", () => {
-		const dir = tmpDir();
-		const file = path.join(dir, "settings.json");
-		fs.mkdirSync(dir, { recursive: true });
-		fs.writeFileSync(
-			file,
-			JSON.stringify({ auth: { type: "oauth-personal", keepme: 1 }, gcp: { project: "p" } }),
-		);
-		writeAuthType("gemini-api-key", dir);
-		const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as {
-			auth: Record<string, unknown>;
-			gcp?: unknown;
-		};
-		assert.equal(parsed.auth.type, "gemini-api-key");
-		assert.equal(parsed.auth.keepme, 1);
-		assert.deepEqual(parsed.gcp, { project: "p" });
-	});
+	assert.deepEqual(result.removedBuilds, ["agy_acp_server_1.0.0", "agy_acp_server_1.1.1"]);
+	assert.equal(result.rootRemoved, true);
+	assert.equal(fs.existsSync(root), false);
 });
 
-describe("acp/setup ensureAcpReady", () => {
-	test("rejecting progress sinks do not fail installation or leak unhandled rejections", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		const progress: string[] = [];
-		try {
-			await withoutUnhandledRejections(async () => {
-				const status = await ensureAcpReady({
-					installRoot: root, geminiDir: gdir, env: {}, unpack: fakeUnpack,
-					fetchImpl: (async (url) => String(url).endsWith(".zip")
-						? new Response("zip", { headers: { "content-length": "3" } })
-						: new Response(JSON.stringify(REGISTRY))) as typeof fetch,
-					onProgress: async (message) => { progress.push(message); throw new Error("progress sink failed"); },
-				});
-				assert.equal(status.ok, true);
-				assert.equal(progress.length, 4, "phase and download-percent progress must all reach the sink");
-			});
-		} finally {
-			fs.rmSync(root, { recursive: true, force: true });
-			fs.rmSync(gdir, { recursive: true, force: true });
-		}
-	});
+test("cleanup preserves unmarked binaries and symlinks outside the managed layout", () => {
+	const root = tmpDir();
+	const unmarked = path.join(root, "agy_acp_server_user-copy");
+	fs.mkdirSync(unmarked);
+	fs.writeFileSync(path.join(unmarked, "agy_acp_server.par"), "user binary");
+	fs.symlinkSync("agy_acp_server_user-copy", path.join(root, "current"));
 
-	test("ready installation is a no-op with no network", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		fs.mkdirSync(path.join(root, "current"), { recursive: true });
-		const bin = path.join(root, "current", "agy_acp_server.par");
-		fs.writeFileSync(bin, "#!/bin/sh\n");
-		fs.chmodSync(bin, 0o755);
-		writeAuthType("gemini-api-key", gdir);
+	const result = cleanupManagedAcpInstall(root);
 
-		const status = await ensureAcpReady({
-			installRoot: root,
-			geminiDir: gdir,
-			env: {},
-			fetchImpl: () => Promise.reject(new Error("network must not be touched")),
-		});
-		assert.equal(status.ok, true);
-		if (!status.ok) return;
-		assert.equal(status.bin, bin);
-		assert.equal(status.binarySource, "existing");
-		assert.equal(status.auth, "gemini-api-key");
-		assert.deepEqual(status.actions, []);
-		assert.equal(status.needsLogin, false);
-	});
-
-	test("installs from the registry when missing; oauth-personal is the default even with GEMINI_API_KEY set", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		const status = await ensureAcpReady({
-			installRoot: root,
-			geminiDir: gdir,
-			env: { GEMINI_API_KEY: "k" },
-			fetchImpl: fakeFetch(REGISTRY),
-			unpack: fakeUnpack,
-		});
-		assert.equal(status.ok, true);
-		if (!status.ok) return;
-		assert.equal(status.binarySource, "installed");
-		// The subscription login is the default; an exported key must not flip it
-		// (the key path is metered paid API, not the Antigravity plan).
-		assert.equal(status.auth, "oauth-personal");
-		assert.equal(status.needsLogin, true);
-		assert.equal(status.bin, path.join(root, BUILD, "agy_acp_server.par"));
-		// Managed layout: current symlink + recorded zip sha256.
-		assert.equal(fs.readlinkSync(path.join(root, "current")), BUILD);
-		const sha = fs.readFileSync(path.join(root, BUILD, "zip.sha256"), "utf8");
-		assert.match(sha, /^[0-9a-f]{64}  /);
-		// Auth was written before any server could spawn.
-		assert.deepEqual(readAuthState(gdir), { configured: true, type: "oauth-personal" });
-		assert.match(status.actions.join("\n"), /installed ACP server build/);
-	});
-
-	test("oauth-personal wins when GEMINI_API_KEY is also exported", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		writeAuthType("oauth-personal", gdir);
-		const settingsFile = path.join(gdir, "settings.json");
-		const before = fs.readFileSync(settingsFile, "utf8");
-		fs.mkdirSync(path.join(root, "current"), { recursive: true });
-		const bin = path.join(root, "current", "agy_acp_server.par");
-		fs.writeFileSync(bin, "#!/bin/sh\n");
-		fs.chmodSync(bin, 0o755);
-
-		const status = await ensureAcpReady({
-			installRoot: root,
-			geminiDir: gdir,
-			env: { GEMINI_API_KEY: "k" },
-			fetchImpl: () => Promise.reject(new Error("network must not be touched")),
-		});
-		assert.equal(status.ok, true);
-		if (!status.ok) return;
-		// Subscription login stays selected; the key is not written anywhere and
-		// settings.json is untouched (the server uses auth.type, not env presence).
-		assert.equal(status.auth, "oauth-personal");
-		assert.deepEqual(status.actions, []);
-		// settings.json alone is not a login: the token file only appears after
-		// the browser round-trip, so setup must keep reporting login-pending
-		// (the session_start self-heal repeats the notice until then).
-		assert.equal(status.needsLogin, true);
-		assert.equal(fs.readFileSync(settingsFile, "utf8"), before);
-		assert.equal(fs.readdirSync(gdir).includes("acp_token.json"), false);
-	});
-
-	test("a completed login (token file present) is not login-pending", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		writeAuthType("oauth-personal", gdir);
-		fs.writeFileSync(path.join(gdir, "acp_token.json"), "{}");
-		fs.mkdirSync(path.join(root, "current"), { recursive: true });
-		const bin = path.join(root, "current", "agy_acp_server.par");
-		fs.writeFileSync(bin, "#!/bin/sh\n");
-		fs.chmodSync(bin, 0o755);
-
-		const status = await ensureAcpReady({
-			installRoot: root,
-			geminiDir: gdir,
-			env: {},
-			fetchImpl: () => Promise.reject(new Error("network must not be touched")),
-		});
-		assert.equal(status.ok, true);
-		if (!status.ok) return;
-		assert.equal(status.auth, "oauth-personal");
-		assert.deepEqual(status.actions, []);
-		assert.equal(status.needsLogin, false);
-	});
-
-	test("a verified sign-in marker suppresses login-pending without a token file", async () => {
-		const gdir = tmpDir();
-		writeAuthType("oauth-personal", gdir);
-		const authVerifiedFile = path.join(tmpDir(), "verified.json");
-		fs.writeFileSync(authVerifiedFile, JSON.stringify({ verified: true, at: "2026-10-13T00:00:00.000Z" }));
-		const opts = { configBin: process.execPath, geminiDir: gdir, authVerifiedFile, env: {}, install: false };
-		const ready = await ensureAcpReady(opts);
-		assert.equal(ready.ok, true);
-		if (!ready.ok) return;
-		assert.equal(ready.needsLogin, false);
-		assert.equal(inspectAcpSetup(opts).auth, "oauth-personal (verified, no token file)");
-		fs.rmSync(authVerifiedFile);
-		const pending = await ensureAcpReady(opts);
-		assert.equal(pending.ok && pending.needsLogin, true, "readiness must not latch an earlier marker");
-	});
-
-	test("a malformed or false marker does not claim a verified sign-in", async () => {
-		const gdir = tmpDir();
-		writeAuthType("oauth-personal", gdir);
-		const authVerifiedFile = path.join(tmpDir(), "verified.json");
-		for (const content of ["not json", "null", '{"verified":false}', '{"verified":"true"}']) {
-			fs.writeFileSync(authVerifiedFile, content);
-			const opts = { configBin: process.execPath, geminiDir: gdir, authVerifiedFile, env: {}, install: false };
-			const status = await ensureAcpReady(opts);
-			assert.equal(status.ok && status.needsLogin, true);
-			assert.equal(inspectAcpSetup(opts).auth, "oauth-personal");
-		}
-	});
-
-	test("install failure returns the manual fallback text", async () => {
-		const status = await ensureAcpReady({
-			installRoot: tmpDir(),
-			geminiDir: tmpDir(),
-			env: {},
-			fetchImpl: (async () => new Response("nope", { status: 500 })) as typeof fetch,
-		});
-		assert.equal(status.ok, false);
-		if (status.ok) return;
-		assert.equal(status.stage, "install");
-		assert.match(status.error, /HTTP 500/);
-		assert.equal(status.manual, MANUAL_SETUP);
-	});
-
-	test("env binary wins and skips the registry", async () => {
-		const root = tmpDir();
-		const gdir = tmpDir();
-		writeAuthType("gemini-api-key", gdir);
-		const bin = path.join(tmpDir(), "par");
-		fs.writeFileSync(bin, "#!/bin/sh\n");
-		fs.chmodSync(bin, 0o755);
-		const status = await ensureAcpReady({
-			installRoot: root,
-			geminiDir: gdir,
-			env: { AGY_ACP_BIN: bin },
-			fetchImpl: () => Promise.reject(new Error("network must not be touched")),
-		});
-		assert.equal(status.ok, true);
-		if (!status.ok) return;
-		assert.equal(status.binarySource, "env");
-		assert.equal(status.bin, bin);
-	});
+	assert.deepEqual(result.removedBuilds, []);
+	assert.equal(fs.readFileSync(path.join(unmarked, "agy_acp_server.par"), "utf8"), "user binary");
+	assert.equal(fs.readlinkSync(path.join(root, "current")), "agy_acp_server_user-copy");
 });
 
-describe("acp/setup inspectAcpSetup", () => {
-	test("empty dirs report nothing configured", () => {
-		const state = inspectAcpSetup({ installRoot: tmpDir(), geminiDir: tmpDir(), env: {} });
-		assert.equal(state.bin, null);
-		assert.equal(state.source, null);
-		assert.equal(state.auth, null);
-	});
+test("cleanup refuses a symlinked install root", () => {
+	const parent = tmpDir();
+	const actual = path.join(parent, "actual");
+	managedBuild(actual);
+	const root = path.join(parent, "agy-acp");
+	fs.symlinkSync(actual, root);
+
+	const result = cleanupManagedAcpInstall(root);
+
+	assert.deepEqual(result.removedBuilds, []);
+	assert.equal(fs.existsSync(path.join(actual, "agy_acp_server_1.1.1")), true);
 });
 
-// Windows ACLs do not expose POSIX 0600; auth behavior is tested on every OS.
-test.skipIf(process.platform === "win32")("auth settings are created user-only", () => {
-	const dir = tmpDir();
-	writeAuthType("gemini-api-key", dir);
-	assert.equal(fs.statSync(path.join(dir, "settings.json")).mode & 0o777, 0o600);
+test("cleanup recognizes the real registry layout and interrupted downloads", () => {
+	const root = tmpDir();
+	const build = managedBuild(root, "20260818_01_RC01");
+	fs.writeFileSync(path.join(build, "args.json"), "[]\n");
+	fs.writeFileSync(path.join(root, ".download-20260818_01_RC01.zip"), "partial");
+	fs.symlinkSync(build, path.join(root, "current"));
+
+	const result = cleanupManagedAcpInstall(root);
+
+	assert.deepEqual(result.removedBuilds, ["20260818_01_RC01"]);
+	assert.equal(result.rootRemoved, true);
+	assert.equal(fs.existsSync(root), false);
+});
+
+test("cleanup removes an interrupted unpack with the harness marker but no checksum", () => {
+	const root = tmpDir();
+	const build = managedBuild(root, "partial-build");
+	fs.rmSync(path.join(build, "zip.sha256"));
+	fs.mkdirSync(path.join(build, "localharness_external"));
+
+	const result = cleanupManagedAcpInstall(root);
+
+	assert.deepEqual(result.removedBuilds, ["partial-build"]);
+	assert.equal(result.rootRemoved, true);
+});
+
+test("concurrent cleanup of an already removed installation is harmless", () => {
+	const root = tmpDir();
+	managedBuild(root);
+	cleanupManagedAcpInstall(root);
+	assert.deepEqual(cleanupManagedAcpInstall(root), { removedBuilds: [], rootRemoved: false });
+});
+
+test("cleanup tolerates an absent install", () => {
+	const result = cleanupManagedAcpInstall(path.join(tmpDir(), "absent"));
+	assert.deepEqual(result, { removedBuilds: [], rootRemoved: false });
+});
+
+test("cleanup leaves an empty unmarked directory alone", () => {
+ const root = tmpDir();
+ assert.deepEqual(cleanupManagedAcpInstall(root), { removedBuilds: [], rootRemoved: false });
+ assert.equal(fs.existsSync(root), true);
+});
+
+test("cleanup never follows a marked build symlink outside its root", () => {
+ const root = tmpDir(); const outside = tmpDir();
+ const build = managedBuild(outside);
+ fs.symlinkSync(build, path.join(root, "foreign"), "junction");
+ cleanupManagedAcpInstall(root);
+ assert.equal(fs.readFileSync(path.join(build, "agy_acp_server.par"), "utf8"), "old server");
 });

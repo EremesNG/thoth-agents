@@ -15,11 +15,11 @@ import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import extension from "../extensions/index.js";
 import { CONFIG_PATH, loadConfig, saveConfig } from "../src/config.js";
-import { defaultAcpAuthVerifiedPath, readAcpAuthVerified, writeAcpAuthVerified, writeAuthType } from "../src/acp/setup.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
 import { ToolRoundTrips, POLL_TOOL_NAME, type PollView } from "../src/provider.js";
+import * as providerModule from "../src/provider.js";
 import { StreamDriver } from "../src/driver.js";
 import type { TurnOutcome } from "../src/driver-types.js";
 import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
@@ -81,7 +81,7 @@ function fixture() {
 	const bin = path.join(dir, "agy.mjs");
 	fs.writeFileSync(bin, `// pi-test-node-fixture
 import readline from 'node:readline';
-if (process.argv.includes('--version')) { console.log('1.2.14'); process.exit(0); }
+if (process.argv.includes('--version')) { console.log('1.5.8'); process.exit(0); }
 if (process.argv.includes('models')) { console.log('gemini-3.6-flash-low Gemini 3.6 Flash (Low)'); process.exit(0); }
 for await (const line of readline.createInterface({input:process.stdin})) {
  console.log(JSON.stringify({event:'init',init:{conversation_id:'conv-lazy'}}));
@@ -115,14 +115,15 @@ test.each([
 	{ engine: "stream-json", discovery: "legacy-global" },
 	{ engine: "acp", discovery: "private" },
 	{ engine: "acp", discovery: "legacy-global" },
-])("$engine/$discovery: schema and name omissions reach headless stderr once with the actual discovery name", async ({ engine, discovery }) => {
+])("$engine/$discovery: direct-schema and bridge-local name omissions reach headless stderr once with the actual discovery name", async ({ engine, discovery }) => {
 	fixture();
 	vi.stubEnv("AGY_ENGINE", engine);
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
+	if (engine === "stream-json" && discovery === "legacy-global") vi.stubEnv("AGY_AGENTS_ROOT", path.join(os.homedir(), "agents"));
 	if (engine === "acp") {
 		const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
 		fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
-		vi.stubEnv("AGY_ACP_BIN", bin);
+		vi.stubEnv("AGY_BIN", bin);
 	}
 	const stderr: string[] = [];
 	vi.spyOn(console, "error").mockImplementation((...args) => { stderr.push(args.join(" ")); });
@@ -130,9 +131,9 @@ test.each([
 	const union = { definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] };
 	const overlongName = "x".repeat(51);
 	const s = session("antigravity", [
-		{ name: "plain", description: "plain", parameters: object },
-		{ name: "union", description: "union", parameters: union },
-		{ name: "string_tool", description: "unsupported", parameters: { type: "string" } },
+		{ name: "read", description: "plain", parameters: object },
+		{ name: "edit", description: "union", parameters: union },
+		{ name: "write", description: "unsupported", parameters: { type: "string" } },
 		{ name: "agent_browser_electron", description: "22-char browser tool", parameters: object },
 		{ name: "agent_browser_network_source", description: "28-char browser tool", parameters: object },
 		{ name: overlongName, description: "overlong", parameters: object },
@@ -156,17 +157,19 @@ test.each([
 		assert.equal(response.status, 200);
 		const data = JSON.parse((await response.text()).split("\n").find((line) => line.startsWith("data:"))!.slice(5));
 		const tools = data.result.tools;
-		assert.equal(tools.some((tool: any) => tool.name === "string_tool"), false);
-		assert.deepEqual(tools.find((tool: any) => tool.name === "plain").inputSchema, object);
-		assert.deepEqual(tools.find((tool: any) => tool.name === "union").inputSchema, { type: "object", definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] });
-		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_electron"), !legacyStream);
-		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_network_source"), !legacyStream);
+		assert.equal(tools.some((tool: any) => tool.name === "write"), false);
+		assert.deepEqual(tools.find((tool: any) => tool.name === "read").inputSchema, object);
+		assert.deepEqual(tools.find((tool: any) => tool.name === "edit").inputSchema, { type: "object", definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] });
+		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_electron"), false);
+		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_network_source"), false);
 		assert.equal(tools.some((tool: any) => tool.name === "bridge_poll_result"), !legacyStream);
 		assert.equal(tools.some((tool: any) => tool.name === overlongName), false);
+		assert.equal(tools.some((tool: any) => tool.name === "bridge_tool_info"), !legacyStream);
+		assert.equal(tools.some((tool: any) => tool.name === "bridge_call_tool"), !legacyStream);
 	}
 	const omissions = stderr.filter((text) => text.includes("omitted from Antigravity"));
-	assert.equal(omissions[0], "[antigravity-bridge] Pi tool string_tool omitted from Antigravity: input schema is not an object or a supported object-only union");
-	const omittedNames = legacyStream ? ["agent_browser_electron", "agent_browser_network_source", overlongName, "bridge_poll_result"] : [overlongName];
+	assert.equal(omissions[0], "[antigravity-bridge] Pi tool write omitted from Antigravity: input schema is not an object or a supported object-only union");
+	const omittedNames = legacyStream ? ["bridge_poll_result", "bridge_tool_info", "bridge_call_tool"] : [];
 	assert.equal(omissions.length, omittedNames.length + 1, "one headless warning per omitted tool across catalog requests");
 	for (const name of omittedNames) {
 		const warning = omissions.find((text) => text.includes(`Pi tool ${name} omitted`));
@@ -244,9 +247,9 @@ test("/agy help ends with supported runtime commands", async () => {
 	fixture();
 	const s = session("other");
 	await extension(s.pi);
-	assert.ok(s.commands.get("agy").description.endsWith("|acp-bin <path|auto>|clear]"));
+	assert.ok(s.commands.get("agy").description.endsWith("|clear]"));
 	await s.command("");
-	assert.ok(s.notices.at(-1)?.endsWith("/agy acp-bin <path|auto>, /agy clear, /agy doctor"));
+	assert.ok(s.notices.at(-1)?.endsWith("/agy clear, /agy doctor"));
 	await s.command("clear");
 	assert.equal(s.notices.at(-1), "Cleared all antigravity session bindings.");
 });
@@ -290,59 +293,141 @@ test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifac
 	assert.equal(unref.mock.calls.length, 1);
 });
 
-test.each(["engine acp", "auth"])("/agy %s preparation notification uses UI ellipsis", async (args) => {
-	fixture();
-	vi.stubEnv("AGY_ACP_BIN", process.env.AGY_BIN!);
-	if (args === "auth") vi.stubEnv("AGY_ENGINE", "acp");
-	const gdir = path.join(os.homedir(), ".gemini", "antigravity-acp");
-	fs.mkdirSync(gdir, { recursive: true });
-	fs.writeFileSync(path.join(gdir, "settings.json"), JSON.stringify({ auth: { type: "gemini-api-key" } }));
-	dirs.push(gdir);
-	const s = session();
-	await extension(s.pi);
-	await s.command(args);
-	assert.ok(s.notices.some((line) => /Preparing.*…$/.test(line)));
-	s.notices.length = 0;
-	const token = registerRenderKit(createTestRenderKit({ icon: (name) => name === "ellipsis" ? "..." : name }), {});
-	try {
-		await s.command(args);
-		assert.ok(s.notices.some((line) => /Preparing.*\.\.\.$/.test(line)));
-	} finally {
-		withdrawRenderKit(token);
-	}
+test.each(["auth", "auth-manual"])("/agy %s only prints shared CLI sign-in instructions", async (args) => {
+ fixture();
+ const s = session();
+ await extension(s.pi);
+ const before = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length;
+ const fetch = vi.spyOn(globalThis, "fetch");
+ await s.command(args);
+ assert.match(s.notices.at(-1) ?? "", /agy.*terminal.*Google sign-in/s);
+ assert.match(s.notices.at(-1) ?? "", /antigravity.google/);
+ assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, before);
+ assert.equal(fetch.mock.calls.length, 0);
 });
 
-test("/agy auth resolves setup progress punctuation only at the UI sink", async () => {
-	fixture();
-	vi.stubEnv("AGY_ENGINE", "acp");
-	vi.stubEnv("AGY_ACP_BIN", "/missing/acp");
-	saveConfig({ acp: { ...loadConfig().acp, bin: "/missing/acp" } });
-	dirs.push(path.join(os.homedir(), ".local", "opt", "agy-acp"));
-	// External registry/download boundary: exercise progress without installing a binary.
-	const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
-	const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
-	const registry = { distribution: { binary: {
-		[`${platform}-${arch}`]: { archive: `https://example.invalid/agy-acp-server-icons-${platform}-${arch}.zip` },
-	} } };
-	vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-		String(input).endsWith("agent.json")
-			? new Response(JSON.stringify(registry))
-			: new Response("", { status: 503 }),
-	);
-	const s = session();
-	await extension(s.pi);
-	await s.command("auth");
-	assert.ok(s.notices.includes("downloading ACP server (build icons)…"));
-	const nativeFailure = s.notices.find((line) => line.startsWith("ACP auto-setup failed"));
-	s.notices.length = 0;
-	const token = registerRenderKit(createTestRenderKit({ icon: (name) => name === "ellipsis" ? "..." : name }), {});
-	try {
-		await s.command("auth");
-		assert.ok(s.notices.includes("downloading ACP server (build icons)..."));
-		assert.equal(s.notices.find((line) => line.startsWith("ACP auto-setup failed")), nativeFailure);
-	} finally {
-		withdrawRenderKit(token);
-	}
+test("startup retires the managed build, preserves credentials, and warns about AGY_ACP_BIN once", async () => {
+ fixture(); vi.stubEnv("AGY_ACP_BIN", "/retired/server");
+ const root = path.join(os.homedir(), ".local", "opt", "agy-acp");
+ const build = path.join(root, "old-build");
+ fs.mkdirSync(build, { recursive: true });
+ fs.writeFileSync(path.join(build, "agy_acp_server.par"), "old");
+ fs.writeFileSync(path.join(build, "zip.sha256"), "marker");
+ const credentials = path.join(os.homedir(), ".gemini", "antigravity-acp", "acp_token.json");
+ fs.mkdirSync(path.dirname(credentials), { recursive: true }); fs.writeFileSync(credentials, "preserve-me");
+ dirs.push(root, path.dirname(credentials));
+ const output: string[] = [];
+ vi.spyOn(console, "error").mockImplementation((...args) => { output.push(args.join(" ")); });
+ const s = session("other"); await extension(s.pi);
+ await s.emit("session_start"); await s.emit("session_start", { reason: "resume" });
+ assert.equal(fs.existsSync(build), false);
+ assert.equal(fs.readFileSync(credentials, "utf8"), "preserve-me");
+ assert.equal(output.filter((line) => line.includes("AGY_ACP_BIN")).length, 1);
+ assert.ok(output.some((line) => line.includes("antigravity-acp") && /manual/i.test(line)));
+});
+
+test.each(["stream-json", "acp"])("missing CLI on %s only prints instructions in UI and headless", async (engine) => {
+ fixture(); vi.stubEnv("AGY_ENGINE", engine); vi.stubEnv("AGY_BIN", path.join(os.homedir(), "missing-agy"));
+ const output: string[] = [];
+ vi.spyOn(console, "error").mockImplementation((...args) => { output.push(args.join(" ")); });
+ const spawn = vi.mocked(ownedProcess.spawnOwnedProcess);
+ const fetch = vi.spyOn(globalThis, "fetch");
+ const a = session(); await extension(a.pi); await a.emit("session_start");
+ assert.ok(output.some((line) => line.includes("not installed") && line.includes("https://antigravity.google")));
+ const b = session(); b.ctx.hasUI = true; await extension(b.pi); await b.emit("session_start");
+ assert.ok(b.notices.some((line) => line.includes("not installed") && line.includes("https://antigravity.google")));
+ assert.equal(spawn.mock.calls.length, 0);
+ assert.equal(fetch.mock.calls.length, 0);
+});
+
+test.each(["stream-json", "acp"])("%s private siblings isolate MCP homes using acquired names", async (engine) => {
+ fixture(); vi.stubEnv("AGY_ENGINE", engine);
+ if (engine === "acp") {
+  const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+  fs.writeFileSync(bin, `// pi-test-node-fixture
+${fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8")}`); vi.stubEnv("AGY_BIN", bin);
+ }
+ fs.mkdirSync(path.dirname(mcpConfigPath()), { recursive: true });
+ fs.writeFileSync(mcpConfigPath(), JSON.stringify({ mcpServers: { "pi-agy-deadbeef": {}, "pi-bridge": {}, [`pi-bridge-${process.pid}-abcdef`]: {}, unrelated: { command: "keep" } } }));
+ const observed: Array<{ home: string; servers: Record<string, unknown> }> = [];
+ vi.mocked(ownedProcess.spawnOwnedProcess).mockImplementation((file, args, options) => {
+  const home = args[args.indexOf(engine === "acp" ? "--gemini-dir" : "--gemini_dir") + 1];
+  if (home) observed.push({ home, servers: JSON.parse(fs.readFileSync(path.join(home, "config", "mcp_config.json"), "utf8")).mcpServers });
+  return spawnOwned(file, args, options);
+ });
+ const a = session("other"), b = session("other"); await extension(a.pi); await extension(b.pi);
+ assert.deepEqual(await a.turn("isolation-a"), []); assert.deepEqual(await b.turn("isolation-b"), []);
+ assert.equal(observed.length, 2); assert.notEqual(observed[0].home, observed[1].home);
+ const ownNames = observed.map(({ servers }) => Object.keys(servers).find((name) => name.startsWith("pi-agy-"))!);
+ assert.notEqual(ownNames[0], ownNames[1]);
+ for (const [i, { servers }] of observed.entries()) assert.deepEqual(Object.keys(servers).sort(), [ownNames[i], "unrelated"].sort());
+ await a.emit("session_shutdown"); assert.equal(fs.existsSync(observed[0].home), false); assert.equal(fs.existsSync(observed[1].home), true);
+ await b.emit("session_shutdown"); assert.equal(fs.existsSync(observed[1].home), false);
+});
+
+test.each([
+ ["private", "probe"], ["private", "stage"], ["legacy-global", "probe"], ["legacy-global", "stage"],
+] as const)("stream-json %s %s failure keeps its mode-qualified fallback", async (discovery, failure) => {
+ fixture(); vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
+ if (failure === "probe") {
+  const bin = process.env.AGY_BIN!;
+  fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace("if (process.argv.includes('--version'))", `if (process.argv.includes('--gemini_dir') && process.argv.includes('--version')) { console.error('flag not defined'); process.exit(2); }
+if (process.argv.includes('--version'))`));
+ } else {
+  const base = path.join(os.homedir(), ".pi", "agent", "antigravity-bridge", "acp-homes");
+  fs.rmSync(base, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(base), { recursive: true }); fs.writeFileSync(base, "block staging"); dirs.push(base);
+ }
+ const output: string[] = []; vi.spyOn(console, "error").mockImplementation((...args) => { output.push(args.join(" ")); });
+ const s = session("other"); await extension(s.pi); assert.deepEqual(await s.turn(), []);
+ const calls = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls; assert.equal(calls.length, 1); assert.equal(calls[0][1].includes("--gemini_dir"), false);
+ assert.ok(output.some((line) => /isolation/i.test(line) && line.includes(discovery === "private" ? "additive private" : "global registration")));
+ const keys = fs.existsSync(mcpConfigPath()) ? Object.keys(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers) : [];
+ assert.equal(keys.some((name) => name.startsWith("pi-bridge-")), discovery === "legacy-global");
+ if (discovery === "private") assert.ok(calls[0][1].some((arg) => arg.startsWith(path.dirname(CONFIG_PATH)) && arg.includes("agy-mcp-")));
+});
+
+test("ACP staging failure fails the native turn visibly without an agent launch", async () => {
+ fixture(); vi.stubEnv("AGY_ENGINE", "acp");
+ const base = path.join(os.homedir(), ".pi", "agent", "antigravity-bridge", "acp-homes");
+ fs.rmSync(base, { recursive: true, force: true });
+ fs.mkdirSync(path.dirname(base), { recursive: true }); fs.writeFileSync(base, "block staging"); dirs.push(base);
+ const s = session("other"); await extension(s.pi);
+ assert.match((await s.turn()).join(" "), /isolat|staging|EEXIST/i);
+ assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0);
+});
+
+test.each(["stream-json", "acp"])("%s AGY_AGENTS_ROOT skips isolation and the capability probe", async (engine) => {
+ fixture(); vi.stubEnv("AGY_ENGINE", engine); vi.stubEnv("AGY_AGENTS_ROOT", path.join(os.homedir(), "agents"));
+ if (engine === "acp") {
+  const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+  fs.writeFileSync(bin, `// pi-test-node-fixture
+${fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8")}`); vi.stubEnv("AGY_BIN", bin);
+ }
+ const s = session("other"); await extension(s.pi); assert.deepEqual(await s.turn(), []);
+ const args = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls[0][1];
+ assert.equal(args.includes("--gemini_dir") || args.includes("--gemini-dir"), false);
+ if (engine === "acp") assert.equal(args.includes("--agent"), false);
+ assert.equal(vi.mocked(childProcess.spawn).mock.calls.some(([, argv]) => argv?.includes("--gemini_dir")), false);
+});
+
+test("startup sweeps dead-owner homes even without starting a bridge, preserving current-process siblings", async () => {
+ fixture();
+ const base = path.join(os.homedir(), ".pi", "agent", "antigravity-bridge", "acp-homes");
+ const dead = path.join(base, "agy-home-2147483647-dead"); const live = path.join(base, `acp-home-${process.pid}-sibling`);
+ fs.mkdirSync(dead, { recursive: true }); fs.mkdirSync(live, { recursive: true }); dirs.push(base);
+ const s = session("other"); await extension(s.pi); await s.emit("session_start");
+ assert.equal(fs.existsSync(dead), false); assert.equal(fs.existsSync(live), true);
+ assert.equal(privateConfigs().length, 0);
+});
+
+test.each(["stream-json", "acp"])("doctor shows the %s CLI floor without treating ACP's CLI as optional", async (engine) => {
+ fixture(); vi.stubEnv("AGY_ENGINE", engine);
+ const bin = process.env.AGY_BIN!; fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace("1.5.8", "1.5.2"));
+ const s = session("other"); await extension(s.pi); await s.command("doctor");
+ const notice = s.notices.at(-1) ?? "";
+ assert.ok(notice.includes(engine === "acp" ? "min 1.5.3" : "min 1.1.22"));
+ assert.equal(notice.includes("TOO OLD"), engine === "acp"); assert.equal(notice.includes("optional here"), false);
 });
 
 test("private model-at-start writes unique private discovery, no global entries, and reuses it on resume", async () => {
@@ -360,7 +445,7 @@ test("private model-at-start writes unique private discovery, no global entries,
 	assert.equal(fs.existsSync(mcpConfigPath()), false);
 	await a.emit("session_start", { reason: "resume" });
 	assert.equal(privateConfigs().length, 2);
-	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
+	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version") && !args.includes("--gemini_dir")).length, 1);
 	assert.deepEqual(await a.turn(), []);
 });
 
@@ -430,7 +515,7 @@ test("non-antigravity sessions do no bridge work; model_select starts once with 
 	assert.equal(spawn.mock.calls.length, 0);
 	await Promise.all([s.emit("model_select", { model: { provider: "antigravity" } }), s.turn()]);
 	assert.equal(privateConfigs().length, 1);
-	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
+	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version") && !args.includes("--gemini_dir")).length, 1);
 	const streamLaunch = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.find(([, args]) => args?.includes("--input-format"));
 	assert.ok(streamLaunch, "provider fallback must launch the stream engine");
 	const args = streamLaunch[1]!;
@@ -445,7 +530,7 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	const log = path.join(dir, "acp-wire.jsonl");
 	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
-	vi.stubEnv("AGY_ACP_BIN", bin);
+	vi.stubEnv("AGY_BIN", bin);
 	vi.stubEnv("ACP_FAKE_LOG", log);
 	const s = session("anthropic");
 	await extension(s.pi);
@@ -480,47 +565,29 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	}
 });
 
-test("ACP extension instances invalidate shared sign-in evidence without affecting sibling lifecycle", async () => {
-	fixture();
-	const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
-	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
-	vi.stubEnv("AGY_ENGINE", "acp");
-	vi.stubEnv("AGY_ACP_BIN", bin);
-	const marker = defaultAcpAuthVerifiedPath();
-	dirs.push(marker, path.join(os.homedir(), ".gemini", "antigravity-acp"));
-	writeAuthType("oauth-personal");
-	writeAcpAuthVerified();
-	const a = session("other"); const b = session("other");
-	await extension(a.pi); await extension(b.pi);
-	await Promise.all([a.emit("session_start"), b.emit("session_start")]);
-	assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0, "auth wiring must preserve lazy startup");
-	assert.deepEqual(await b.turn("auth-sibling"), []);
-	vi.stubEnv("ACP_FAKE_SCENARIO", "auth-required");
-	assert.match((await a.turn("auth-owner")).join("\n"), /authentication required/i);
-	assert.equal(readAcpAuthVerified(), false);
-	const beforeReadiness = vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length;
-	await b.command("engine acp");
-	assert.ok(b.notices.at(-1)?.includes("One-time sign-in needed"));
-	assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, beforeReadiness, "readiness never launches a probe");
-	vi.stubEnv("ACP_FAKE_SCENARIO", "happy");
-	await b.command("auth");
-	assert.ok(b.notices.at(-1)?.includes("Signed in (the server authenticated from existing credentials"));
-	assert.equal(readAcpAuthVerified(), true);
-	await a.emit("session_shutdown");
-	assert.equal(readAcpAuthVerified(), true, "A's teardown must not invalidate B's verified sign-in");
-	assert.deepEqual(await b.turn("auth-sibling"), [], "A's teardown must not close B's live ACP connection");
-	await b.emit("session_shutdown");
-	await b.emit("session_start", { reason: "resume" });
-	vi.stubEnv("ACP_FAKE_SCENARIO", "auth-required");
-	assert.match((await b.turn("auth-sibling-fresh")).join("\n"), /authentication required/i);
-	assert.equal(readAcpAuthVerified(), false, "B's fresh connection retains its own invalidation wiring after A stopped");
+test("ACP auth failure and shutdown leave a sibling native connection intact", async () => {
+ fixture();
+ const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+ fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
+ vi.stubEnv("AGY_ENGINE", "acp"); vi.stubEnv("AGY_BIN", bin);
+ const a = session("other"); const b = session("other");
+ await extension(a.pi); await extension(b.pi);
+ await Promise.all([a.emit("session_start"), b.emit("session_start")]);
+ assert.equal(vi.mocked(ownedProcess.spawnOwnedProcess).mock.calls.length, 0);
+ assert.deepEqual(await b.turn("auth-sibling"), []);
+ vi.stubEnv("ACP_FAKE_SCENARIO", "auth-required");
+ assert.match((await a.turn("auth-owner")).join("\n"), /authentication required/i);
+ await b.command("auth");
+ assert.match(b.notices.at(-1) ?? "", /agy in your terminal/);
+ await a.emit("session_shutdown");
+ assert.deepEqual(await b.turn("auth-sibling"), []);
 }, 20_000);
 
 test("shutdown during the deferred version check cancels later startup and leaves no child process", async () => {
 	const spawn = fixture();
 	const bin = process.env.AGY_BIN!;
 	fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace(
-		"console.log('1.2.14'); process.exit(0);",
+		"console.log('1.5.8'); process.exit(0);",
 		"console.log('1.2.14'); await new Promise(r => setTimeout(r, 250)); process.exit(0);",
 	));
 	fs.rmSync(path.join(os.homedir(), ".pi", "agent", "antigravity-bridge", "models-cache.json"), { force: true });
@@ -583,8 +650,9 @@ test("shutdown during MCP bind closes the late bridge and refuses the waiting st
 	} finally { release?.(); }
 });
 
-test("private discovery diagnoses a live legacy-global bridge once and sweeps only dead owners", async () => {
+test("private additive fallback diagnoses a live legacy-global bridge once and sweeps only dead owners", async () => {
 	fixture();
+	vi.stubEnv("AGY_AGENTS_ROOT", path.join(os.homedir(), "agents"));
 	const globalFile = mcpConfigPath();
 	const liveName = `pi-bridge-${process.pid}-deadbeef`;
 	const deadName = "pi-bridge-2147483647-deadbeef";
@@ -645,6 +713,7 @@ test("owned shutdown removes only its descriptor cache after termination, preser
 
 test("legacy-global shutdown removes only its acquired unique descriptor cache, preserving shared and sibling caches", async () => {
 	fixture();
+	vi.stubEnv("AGY_AGENTS_ROOT", path.join(os.homedir(), "agents"));
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "legacy-global");
 	const a = session(); const b = session();
 	await extension(a.pi); await extension(b.pi);
@@ -701,7 +770,7 @@ test("legacy-global ACP shutdown preserves shared descriptor caches", async () =
 	const log = path.join(dir, "acp-wire.jsonl");
 	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
-	vi.stubEnv("AGY_ACP_BIN", bin);
+	vi.stubEnv("AGY_BIN", bin);
 	vi.stubEnv("ACP_FAKE_LOG", log);
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "legacy-global");
 	const s = session();
@@ -775,7 +844,7 @@ test("root /new and resume recycle drivers and restage the same owned bridge wit
 	assert.equal(launches[1][1]!.includes("--conversation"), false, "/new uses a fresh Pi session binding");
 	const resumeArgs = launches[2][1]!;
 	assert.equal(resumeArgs[resumeArgs.indexOf("--conversation") + 1], "conv-lazy");
-	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
+	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version") && !args.includes("--gemini_dir")).length, 1);
 });
 
 test("lazy startFlight has an absolute deadline and late completion cannot publish bridge readiness", async () => {
@@ -800,7 +869,7 @@ test("ACP status and native-entry sinks may reject without leaking from event ca
 	const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
 	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
 	vi.stubEnv("AGY_ENGINE", "acp");
-	vi.stubEnv("AGY_ACP_BIN", bin);
+	vi.stubEnv("AGY_BIN", bin);
 	vi.stubEnv("ACP_FAKE_SCENARIO", "tool-diff");
 	const s = session();
 	s.ctx.hasUI = true;
@@ -826,6 +895,7 @@ test("ACP status and native-entry sinks may reject without leaking from event ca
 
 test("rejecting active UI notifications do not leak unhandled rejections or fail healthy turns", async () => {
 	fixture();
+	vi.stubEnv("AGY_AGENTS_ROOT", path.join(os.homedir(), "agents"));
 	const bin = process.env.AGY_BIN!;
 	fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace("status:'SUCCESS'", "status:'ERROR'"));
 	const globalFile = mcpConfigPath();
@@ -983,4 +1053,106 @@ test("AC-4: terminal poll answers mark delivery and shutdown clears the instance
 	assert.deepEqual(mark.mock.calls, [["call-2"], ["call-3"]]);
 	await s.emit("session_shutdown");
 	assert.deepEqual(clear.mock.calls, [["antigravity session shut down"]]);
+});
+
+test("proxy dispatch rechecks live filters, rejects raw extension names and keeps instance ownership", async () => {
+ fixture();
+ const tools = [
+  { name: "ext", description: "Extension", parameters: { type: "object" } },
+  { name: "hidden", description: "Hidden", parameters: {} },
+  { name: "builtin", description: "Builtin", parameters: {}, sourceInfo: { source: "builtin" } },
+  { name: "read", description: "Override", parameters: { type: "object" } },
+ ];
+ const s = session("antigravity", tools);
+ let active = tools.map(t => t.name);
+ vi.spyOn(s.pi, "getActiveTools").mockImplementation(() => active);
+ const failAll = vi.spyOn(ToolRoundTrips.prototype, "failAll");
+ await extension(s.pi);
+ await s.emit("session_start");
+ await s.turn("prime-proxy-registry");
+ const registry = failAll.mock.contexts[0] as ToolRoundTrips;
+ const dispatch = vi.spyOn(registry, "onToolCall").mockResolvedValue({ content: [{ type: "text", text: "executed" }], isError: false });
+ await s.command("tools hide hidden");
+ const endpoint = Object.values(privateConfigs()[0].servers)[0];
+ const rpc = async (method: string, params: object) => {
+  const response = await fetch(endpoint.serverUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  return JSON.parse((await response.text()).split("\n").find(line => line.startsWith("data:"))!.slice(5)).result;
+ };
+ const listed = await rpc("tools/list", {});
+ assert.deepEqual(listed.tools.map((t: any) => t.name).sort(), ["bridge_call_tool", "bridge_poll_result", "bridge_tool_info", "read"].sort());
+ const call = (name: string, args: object = {}) => rpc("tools/call", { name, arguments: args });
+ assert.equal((await call("ext")).isError, true);
+ assert.equal(dispatch.mock.calls.length, 0);
+ assert.match(JSON.stringify(await call("bridge_tool_info", { names: ["ext"] })), /Extension/);
+ assert.equal((await call("bridge_call_tool", { name: "ext", arguments_json: '{"x":1}' })).isError, false);
+ assert.equal(dispatch.mock.calls.length, 1);
+ assert.equal(dispatch.mock.calls[0][1], "ext");
+ assert.deepEqual(dispatch.mock.calls[0][2], { x: 1 });
+ const owner = dispatch.mock.instances[0];
+ await call("read", {});
+ assert.equal(dispatch.mock.instances[1], owner);
+ for (const name of ["hidden", "builtin", "antigravity", "bridge_call_tool"]) assert.equal((await call("bridge_call_tool", { name, arguments_json: "{}" })).isError, true);
+ assert.equal((await call("bridge_call_tool", { name: "ext", arguments_json: "[]" })).isError, true);
+ active = ["read"];
+ assert.equal((await call("bridge_call_tool", { name: "ext", arguments_json: "{}" })).isError, true);
+ assert.equal((await call("bridge_tool_info", { names: ["ext"] })).isError, true);
+ assert.equal(dispatch.mock.calls.length, 2);
+ active = tools.map(t => t.name);
+ await s.command("bridge mcp");
+ assert.equal((await call("bridge_call_tool", { name: "ext", arguments_json: "{}" })).isError, true);
+ await s.command("bridge none");
+ assert.equal((await call("bridge_call_tool", { name: "ext", arguments_json: "{}" })).isError, true);
+ assert.equal(dispatch.mock.calls.length, 2);
+});
+
+test("captures structured prompt options afresh for each agent run", async () => {
+	fixture();
+	const capture = vi.spyOn(providerModule, "createStreamSimple");
+	const s = session();
+	await extension(s.pi);
+	const deps = capture.mock.calls.at(-1)![0] as any;
+	const options = { customPrompt: "custom", appendSystemPrompt: "append", sections: { rules: "override" }, selectedTools: ["read"], contextFiles: [{ path: "AGENTS.md", content: "policy" }], skills: [], promptGuidelines: ["guidance"] };
+	await s.emit("before_agent_start", { systemPrompt: "assembled", systemPromptOptions: options });
+	assert.deepEqual(deps.getSystemPromptOptions(), options);
+	await s.emit("before_agent_start", { systemPrompt: "next" });
+	assert.equal(deps.getSystemPromptOptions(), undefined, "missing options must not inherit the previous run");
+});
+
+test.each(["private", "legacy-global"])("ACP %s forwards staged MCP entries on new/load but bypass stays bridge-only", async (discovery) => {
+ fixture();
+ const dir = path.dirname(process.env.AGY_BIN!);
+ const bin = path.join(dir, "acp.mjs"); const log = path.join(dir, "forward-wire.jsonl");
+ fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"), { mode: 0o755 });
+ vi.stubEnv("AGY_ENGINE", "acp"); vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
+ vi.stubEnv("AGY_BIN", bin); vi.stubEnv("ACP_FAKE_LOG", log);
+ fs.mkdirSync(path.dirname(mcpConfigPath()), { recursive: true });
+ fs.writeFileSync(mcpConfigPath(), JSON.stringify({ mcpServers: {
+  codegraph: { command: "node", args: ["graph.js"], env: { MODE: "local" } },
+  web: { serverUrl: "https://example.test/mcp" }, disabled: { command: "off", disabled: true },
+  "pi-bridge-999": { command: "foreign" }, malformed: { command: 42 },
+ } }));
+ const s = session(); await extension(s.pi); await s.emit("session_start");
+ assert.deepEqual(await s.turn(`forward-${discovery}`), []);
+ await s.emit("session_shutdown"); await s.emit("session_start", { reason: "resume" });
+ assert.deepEqual(await s.turn(`forward-${discovery}`), []); await s.emit("session_shutdown");
+ vi.stubEnv("AGY_AGENTS_ROOT", path.join(dir, "agents"));
+ await s.emit("session_start"); assert.deepEqual(await s.turn(`bypass-${discovery}`), []);
+ const opens = fs.readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((r) => ["session/new", "session/load"].includes(r.method));
+ assert.deepEqual(opens.map((r) => r.method), ["session/new", "session/load", "session/new"]);
+ for (const request of opens.slice(0, 2)) {
+  assert.deepEqual(request.params.mcpServers.slice(1), [
+   { name: "codegraph", command: "node", args: ["graph.js"], env: [{ name: "MODE", value: "local" }] },
+   { name: "web", type: "http", url: "https://example.test/mcp", headers: [] },
+  ]);
+ }
+ assert.equal(opens[2].params.mcpServers.length, 1);
+});
+
+test("/agy agent still refuses ACP user agents", async () => {
+ fixture(); vi.stubEnv("AGY_ENGINE", "acp");
+ const s = session("anthropic"); await extension(s.pi); await s.emit("session_start");
+ const before = loadConfig().agent;
+ await s.command("agent custom-user-agent");
+ assert.equal(loadConfig().agent, before);
+ assert.ok(s.notices.some((message) => message.includes("ACP engine has no agent selection")));
 });

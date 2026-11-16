@@ -6,13 +6,15 @@
 
 Every extension factory (root or child) acquires a unique `pi-agy-<8 hex>` name, derived from its instance UUID. Collisions are checked against all live PID-owned `agy-mcp-*/.agents/mcp_config.json` keys and process-wide reservations shared by separately loaded package copies. A collision gets a fresh eight-hex suffix; reservations cover the gap before config writing. The localhost MCP server, discovery directory, and approval hook remain instance-owned; directories and hooks still use the full UUID. The stream-json engine receives the private `.agents/mcp_config.json` via its existing extra `--add-dir`; ACP receives the owned name and endpoint in `session/new` and `session/load`'s `mcpServers`.
 
-Private mode never registers, suppresses, or heals global bridge entries. Startup still sweeps dead-process `pi-bridge-*` entries from the global config while preserving live and foreign entries. A live legacy-global bridge produces a diagnostic once per instance. Do not mix discovery modes: agy's private config is additive, so live global bridges remain visible.
+Private mode never registers, suppresses, or heals global bridge entries. Unless `AGY_AGENTS_ROOT` selects legacy behavior, both engines stage an isolated MCP home: preserve unrelated servers, remove other `pi-agy-<8 hex>` and legacy `pi-bridge[-<pid>[-<uuid>]]` entries, and enable only the acquired own entry. CLI app data, credentials and conversations are shared. Stream-json passes `--gemini_dir`, ACP `--gemini-dir`. Own-entry refresh uses atomic rename.
 
-`legacy-global` retains upstream global registration for stream-json and the reference-counted AskAntigravity suppression/marker-aware healing behavior. This is a compatibility option, not cross-session isolation.
+Startup still sweeps dead-process legacy entries while preserving live and foreign entries. Stream-json probe or staging failure warns and keeps today's additive private config (never global registration); a live legacy-global bridge then produces a mixed-mode diagnostic once. ACP staging failure fails the turn visibly. `AGY_AGENTS_ROOT` bypasses isolation and the stream capability probe. Avoid mixing modes on a non-isolated fallback.
+
+`legacy-global` retains upstream global-registration fallback when stream-json isolation is unavailable, plus the reference-counted AskAntigravity suppression/marker-aware healing behavior. This compatibility fallback is not cross-session isolation.
 
 ## Qualified tool-name limit
 
-agy uses `mcp_<server>_<tool>` names with a 64-character limit. The advertised catalog enforces `4 + serverName.length + 1 + toolName.length <= 64` using private `pi-agy-<8 hex>`, legacy stream-json `pi-bridge-<pid>-<UUID>`, or legacy ACP `pi-bridge`, as applicable. The private prefix leaves 44 characters for a tool name, so the 22-/28-character browser tool names fit. Tools above the limit are omitted with the same warning as unsupported schemas, once per tool per MCP session (TUI toast or headless stderr). Legacy stream-json's full UUID discovery name can exclude bridge-local tools too; prefer private mode.
+agy uses `mcp_<server>_<tool>` names with a 64-character limit. The advertised catalog enforces `4 + serverName.length + 1 + toolName.length <= 64` using private `pi-agy-<8 hex>`, legacy stream-json `pi-bridge-<pid>-<UUID>`, or legacy ACP `pi-bridge`, as applicable. The private prefix leaves 44 characters for a tool name, so both compact proxy names fit; extension names travel inside proxy arguments. Tools above the limit are omitted with the same warning as unsupported schemas, once per tool per MCP session (TUI toast or headless stderr). Legacy-global stream-json's full UUID discovery name omits both `bridge_tool_info` and `bridge_call_tool` (as well as `bridge_poll_result`); prefer private mode.
 
 ## Lazy start
 
@@ -22,7 +24,7 @@ Bridge startup is model-gated for every instance: `session_start` with an Antigr
 
 ## Owned shutdown
 
-Shutdown invalidates pending startup, closes the MCP endpoint, terminates both drivers, and removes the private discovery directory and approval hook. After driver termination it removes only descriptor-cache keys this instance actually acquired under `~/.gemini/antigravity-cli/mcp/`:
+Shutdown invalidates pending startup, closes the MCP endpoint, terminates both drivers, and removes the private discovery directory and approval hook. Each owned process disposes its isolated home only after **close**, never leader exit or the bounded termination promise. A timeout/fence retains the home; the startup sweep removes only dead-process owners and preserves live processes and current-PID siblings. This deliberately adapts upstream group/PID cleanup to local owned-process settlement. After driver termination it removes only descriptor-cache keys this instance actually acquired under `~/.gemini/antigravity-cli/mcp/`:
 
 - Private discovery: its exact acquired `pi-agy-<8 hex>` key after bridge startup, including a collision fallback (never the rejected candidate).
 - Legacy-global stream-json: its unique `pi-bridge-<pid>-<instance>` key only after successful global registration.

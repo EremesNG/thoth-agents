@@ -1,7 +1,7 @@
 // Live smoke: bridge MCP server + ACP engine end-to-end (Gate F live).
 // Gated: AGY_ACP_LIVE=1 (spends a small amount of quota).
 //
-//   AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+//   AGY_ACP_LIVE=1 \
 //     npx tsx scripts/smoke-acp-bridge.mjs
 //
 // Proves the last load-bearing unknown of the ACP adoption: the REAL agy ACP
@@ -13,7 +13,7 @@
 // MCP client, which no fake server can stand in for.
 
 import { AcpDriver } from "../src/acp/driver.js";
-import { resolveAcpBinary } from "../src/acp/connection.js";
+import { stageAgyHome } from "../src/acp/home.js";
 import { startMcpServer, TOKEN_HEADER } from "../src/mcp-server.js";
 
 const ECHO_TOKEN = "BRIDGE-E2E-777";
@@ -23,7 +23,7 @@ if (process.env.AGY_ACP_LIVE !== "1") {
 	process.exit(1);
 }
 
-const bin = resolveAcpBinary(process.env.AGY_ACP_BIN || "");
+const bin = (process.env.AGY_BIN || "agy");
 console.log(`[smoke] bin: ${bin}`);
 
 // --- 1. Real bridge MCP server with a canned echo tool ---------------------
@@ -71,6 +71,7 @@ console.log(`[smoke] bridge: http://127.0.0.1:${port}/mcp (token: ${token.slice(
 const toolCalls = [];
 const driver = new AcpDriver({
 	bin,
+	stageHome: () => process.env.AGY_AGENTS_ROOT ? undefined : stageAgyHome(),
 	log: (msg, data) => console.error(`[acp] ${msg}${data !== undefined ? " " + JSON.stringify(data) : ""}`),
 	mcpServers: () => [
 		{

@@ -1,46 +1,47 @@
 # Engines
 
-Turns run through one of two engines behind the same provider surface (`config.engine`, default `stream-json`). The choice of engine is left to the user: a first-run picker explains the trade-offs and asks once, and `/agy engine` (no arguments, TUI) reopens the same modal anytime. Direct switches work too: `/agy engine acp|stream-json`.
+`config.engine` defaults to **acp**. Choose with `/agy engine acp|stream-json`, `AGY_ENGINE`, or the first-run interactive picker; restart Pi to apply a switch. Sessions remain engine-scoped, so switching never crosses conversations.
 
-- **stream-json** (default): the persistent `agy` CLI process. The tested default; live token usage; conversation resume via `--conversation`.
-- **acp** (beta): Google's official ACP server (`agy_acp_server.par`), JSON-RPC 2.0 over stdio. Beta: parity-verified live against the current build (RC01) - text streaming, multi-turn resume via `session/load`, bridge tools, effort switching, serialization, abort recovery (see `scripts/parity-live.mjs`). Two known RC01 gaps remain: no usage fields (token display runs on live client-side estimates via `acp.usageEstimate`, default `estimate`, streamed per delta and superseded automatically the day the server starts sending real per-turn usage) and no cancel (abort tears the server down and reloads it next turn).
+Both engines use the official **agy CLI**, resolved through `AGY_BIN` or PATH, and share its Google credentials. Install or update it yourself using [Google's CLI instructions](https://antigravity.google/product/antigravity-cli), then run `agy` in a terminal and complete Google sign-in. `/agy auth` and `/agy auth-manual` only print these instructions. The bridge never runs an installer or opens a separate ACP login.
 
-## First run
-
-On a fresh install (no `config.json` yet), the first interactive pi start opens a picker modal that explains both engines - stream-json needs the `agy` CLI installed and authenticated; ACP needs a second Google sign-in plus a ~1.5 GB server binary downloaded from Google. stream-json is preselected (the default); `esc` decides later (nothing is written, the modal reappears on the next start).
-
-Picking **acp** starts the server download immediately (progress in the status bar, milestones in the chat), then opens the Google sign-in; a restart applies the engine. Picking **stream-json** persists and toasts; while that engine is active and the `agy` binary is missing, pi warns with the install link once per extension instance, when that session first uses an Antigravity model (lazy bridge start), until the binary is found.
+- **acp** (default): persistent **`agy acp`**, JSON-RPC 2.0 over stdio; requires agy >= **1.5.3**. Model and `thought_level` are separate session settings. Native cancellation is a notification; a silent peer still triggers bounded owned-process teardown and reload.
+- **stream-json**: persistent `agy --input-format stream-json --output-format stream-json`; requires agy >= **1.1.22**.
 
 ## Capabilities
 
-| Capability | `stream-json` (default) | `acp` (beta) |
+| Capability | stream-json | Native ACP |
 | --- | --- | --- |
-| Show thinking text | No (token count only, floor 64, no text body) | Yes (streams thought text via `agent_thought_chunk`; sparse on RC01 where reasoning often arrives in message text) |
-| Live token usage | Yes (live metrics from CLI step events) | Live client-side estimates (absent in RC01; `acp.usageEstimate`, default `estimate`, streamed per delta, superseded automatically by real per-turn usage when the server starts sending it) |
-| Image prompt input | No (CLI prompt is text-only; images dropped) | Yes (native image blocks forwarded to server) |
-| Image tool results | Yes (bridge tool results carry pixels; probe-verified 2026-09-07) | Yes (probe-verified 2026-09-05) |
-| Audio prompt input | No (dropped) | Protocol advertised (`promptCapabilities.audio: true`) |
-| Review-only plan mode | Yes (`--mode plan`; plan-approval gate enforced — the skip-permissions flag is never passed in plan mode, so writes and commands fail visibly at "confirm plan") | No (RC01 modes are permission levels; plan mode refused) |
-| Leading slash commands in prompt | Disabled via `--disable-slash-commands` (sent as plain text) | Server intercepts recognized commands (e.g. `/plan`) and executes them under the active policy |
-| Dynamic model / effort switch | Recycles process on model or effort change | Dynamic per-turn via `session/set_config_option` (no restart) |
-| Process lifecycle | 1 persistent `agy` process per provider; recycles on drift | 1 persistent server process hosting N sessions concurrently |
-| Session resume & persistence | Client-side map in `sessions.json` via `--conversation <id>` | Server-side session store via `session/load` and `session/new` |
-| Turn cancel / abort | Kills process group; in-flight turn terminates | Teardown, kill, and auto-reload on RC01 (-32601 fallback) |
-| MCP tool bridge routing | Injected filesystem config via `--add-dir` | Direct `mcpServers` param in `session/new` and `session/load` |
-| Tool execution & visibility | Native re-exec (read-only) + wrapper replay (mutating) | Server executes tools natively; steps render as display-only cards in pi (path/diff/command + output) |
-| Inline file edit diffs | Sourced from git working tree in thinking block | Sourced from `tool_call content[]` or disk vs git HEAD |
-| Permission handling | `--dangerously-skip-permissions` (unattended CLI requirement) | Protocol-native `session/request_permission` (auto-approve when `skipPermissions` is on; auto-deny when off) |
-| Context digest delivery (G1) | Prepend plain text inline in prompt | Native `embeddedContext` resource block |
-| System prompt delivery (G10) | Staged agy agent file via `--agent` (content-addressed dir under the agents root, write-once; the prompt line carries only the user text) | Prepend to first prompt of conversation |
-| Authentication methods | Inherits existing `agy` CLI OAuth state | 4 methods: `oauth-personal`, `oauth-business`, `gemini-api-key`, `agent-platform` |
-| Wire protocol | Undocumented CLI NDJSON stream format | Versioned JSON-RPC 2.0 over stdio (`protocolVersion: 1`) |
-| Diagnostics (`/agy doctor`) | Child PID, state, process spawns, recycles, queue stats | Server version, agentInfo, session counts, reconnect count, cancel support |
-| Integration channel | Spawns internal CLI stream-json dialect | Official Google first-party ACP server binary |
+| Resume | `--conversation` | `session/load` |
+| User and tool-result images | Staged private files in the prompt | Typed image content blocks |
+| Thinking | Token count | Streamed thought text |
+| Usage | CLI metrics | Exact prompt billing fields when available; labeled estimates otherwise |
+| Context gauge | CLI metrics | Observed `usage_update` occupancy, otherwise input + output + ceil(cacheRead / (toolBatches + 1)) |
+| Model / effort change | Recycle process | Per-turn `model` / `thought_level` configuration |
+| Pi tool bridge | Private additive `--add-dir` config | Bridge plus enabled isolated-home MCP servers on `session/new` and `session/load` |
+| Native tool visibility | Read-only re-exec and display-only replay | Display-only native cards |
+| Permissions | CLI skip-permissions policy | Parked `session/request_permission`, fail-closed on timeout/teardown |
+| Process ownership | Owned process / Windows Job | Same owned process / Windows Job |
 
-## Engine-dependent features
+Billing fields are not context occupancy: native prompt totals sum multiple inferences. Tool batches, not individual parallel calls, determine the fallback context divisor. Counts and occupancy reset each turn. API-equivalent costs still use Pi catalog prices, not subscription billing.
 
-pi image attachments ride natively only on the ACP engine (the picker offers image attach automatically when `config.engine` is `acp`; the stream-json CLI prompt is text-only). With the optional G1 digest enabled, its delivery also differs: ACP ships it as a native `embeddedContext` resource block, stream-json prepends it to the prompt text. The G10 system prompt likewise splits: stream-json stages it as an agent file passed via `--agent` because the CLI silently drops any single prompt past a ~25KB input cap (a dropped turn answers empty and the conversation never responds again), while ACP prepends it to the first prompt of the conversation. The `AskAntigravity` delegation tool is unaffected by `config.engine` and runs the `stream-json` CLI (`agy -p`) across both configurations.
+Provider plan turns and `readOnly` turns are refused before startup on both engines: agy cannot enforce review-only writes. AskAntigravity remains a CLI delegation; do not treat its plan mode as a sandbox.
 
-## Switching and setup
+## MCP isolation and fallbacks
 
-Switch with `/agy engine acp|stream-json` (takes effect on restart), or run `/agy engine` with no arguments for the same picker modal as first run (an `acp` pick there runs the same download + sign-in chain). Setup is automatic: switching to `acp` installs Google's official ACP server binary from the [antigravity-acp registry entry](https://github.com/agentclientprotocol/registry) (`~/.local/opt/agy-acp/<build>/` + a `current` symlink, zip sha256 recorded; layout and pinning in [docs/ACP-ADOPTION-PLAN.md](ACP-ADOPTION-PLAN.md)) and prepares the login. The login is your Antigravity subscription: the same account and plan you use for the Antigravity CLI (`agy`). Sign in explicitly with `/agy auth` (engine `acp` selected): it opens the Google login in your browser and completes when you finish it. If no browser is available (an SSH session on a remote machine), pi shows the sign-in URL to copy, plus the ssh port-forward command for the login redirect. It is no different from logging into the CLI; the server just keeps its own token file on your machine, like any Google tool, and this extension never sees your credentials. If you also export `GEMINI_API_KEY`, it is ignored: the server uses the auth type in settings.json, and setup always writes `oauth-personal`. First Antigravity use self-heals the same way, silently when everything is ready; non-Antigravity sessions do not run automatic ACP setup. Manual instructions (`/agy auth-manual`) surface only when a step fails. Sessions are engine-scoped, so switching engines never crosses conversations.
+Unless `AGY_AGENTS_ROOT` selects legacy behavior, both engines stage a per-process MCP home sharing CLI app data/credentials/conversations. It preserves unrelated MCP servers and removes other Pi bridge registrations, including local `pi-agy-<8 hex>` and legacy `pi-bridge[-<pid>[-<uuid>]]`. The acquired instance entry is written enabled. Stream-json uses `--gemini_dir`; ACP uses `--gemini-dir`.
+
+ACP forwards enabled non-Pi-bridge servers from the **staged** `config/mcp_config.json` on both session creation and load, in private and legacy-global discovery modes. Stdio commands/arguments are preserved, environment objects become ACP name/value arrays, and HTTP entries retain their headers. Disabled entries are skipped; malformed entries are skipped with debug diagnostics (no configuration values).
+
+ACP also writes a minimal carrier inside the staged home and starts `agy acp --gemini-dir <home> --agent <carrier>`. Its shared stream-json frontmatter allowlist hides native delegation/interaction tools, including `invoke_subagent`, `swarm` and `ask_question`. The body is short and neutral: the Pi system prompt still arrives inline. The carrier stays fixed until the connection closes and is removed with the home; an inherited global agents link is replaced locally, never written through. Carrier write failure warns and launches without `--agent`. `/agy agent` remains stream-json-only. With `AGY_AGENTS_ROOT`, ACP keeps bridge-only forwarding and does not stage a carrier.
+
+Stream-json probes the flag without starting an agent. Probe or staging failure warns and keeps the additive private config in private discovery mode (**never global registration**); `legacy-global` instead falls back to global registration. ACP staging failure fails the turn visibly. `AGY_AGENTS_ROOT` bypasses isolation and the stream capability probe. The parse probe cannot prove future versions honor the flag; versions newer than the live-verified 1.5.8 warn.
+
+Homes are removed only after process **close**, not leader exit or a bounded termination promise. A timeout/fence retains the home; startup reclaims dead-owner homes while preserving live processes and same-PID siblings. Name collision checks and exact-owner descriptor cleanup remain unchanged. See [bridge lifecycle](BRIDGE-LIFECYCLE.md).
+
+## Migration from the standalone server
+
+The standalone ACP binary and OAuth flow are retired. `/agy acp-bin` is removed; persisted `acp.bin` is stripped on load/save, and `AGY_ACP_BIN` is ignored with one startup warning. `AGY_BIN` selects the CLI for both engines.
+
+Startup removes only old bridge-managed artifacts under `~/.local/opt/agy-acp` carrying installer evidence (recorded archive checksum, harness layout, or interrupted-download marker). Unmarked binaries and symlinked roots/builds are preserved. Credentials under `~/.gemini/antigravity-acp` are reported for **manual** removal, never deleted by the bridge. Missing CLI means installation instructions only.
+
+Upstream sync base: **`cdcfc04`**, with hand-merged native/isolation/usage commits `72d2224`, `32d6d2e`, `e03776a`, `7a4e9b8`, `22364ad`, `e0728f8` and the `01e10ff` home parsing hunk. Local containment, lazy startup, private discovery, images, read-only enforcement and round-trip ownership are retained. Automated checks use fake processes; live native turns remain operator-only opt-in checks.

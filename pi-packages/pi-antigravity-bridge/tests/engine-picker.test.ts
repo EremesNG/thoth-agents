@@ -76,28 +76,26 @@ test("picker: AGY_ENGINE env suppresses the picker even on a fresh install", () 
 	}
 });
 
-test("picker: stream-json is the first (default preselected) option", () => {
+test("picker: acp is the first (default preselected) option", () => {
 	assert.equal(ENGINE_PICKER_ITEMS.length, 2);
-	assert.equal(ENGINE_PICKER_ITEMS[0]?.value, "stream-json");
-	assert.equal(ENGINE_PICKER_ITEMS[1]?.value, "acp");
+	assert.equal(ENGINE_PICKER_ITEMS[0]?.value, "acp");
+	assert.equal(ENGINE_PICKER_ITEMS[1]?.value, "stream-json");
 });
 
-test("picker: only the literal acp value selects the ACP engine", () => {
+test("picker: only the literal stream-json value selects the stream-json engine; unknown values fall back to acp", () => {
 	assert.equal(toEngine("acp"), "acp");
 	assert.equal(toEngine("stream-json"), "stream-json");
-	assert.equal(toEngine("acp "), "stream-json");
-	assert.equal(toEngine("sqlite"), "stream-json");
+	assert.equal(toEngine("stream-json "), "acp");
+	assert.equal(toEngine("sqlite"), "acp");
 });
 
-test("picker: saved-engine toast names the download-now and sign-in promise", () => {
-	assert.match(savedEngineMessage("stream-json"), /Restart pi to apply/);
-	const acp = savedEngineMessage("acp");
-	// The pick must promise immediacy: download starts now, sign-in follows
-	// it, only the engine switch waits for the restart.
-	assert.match(acp, /~1\.5 GB/);
-	assert.match(acp, /downloads now/);
-	assert.match(acp, /sign-in opens when it lands/);
-	assert.match(acp, /Restart applies the engine/);
+test("picker: saved-engine message describes shared native CLI setup", () => {
+ assert.match(savedEngineMessage("stream-json"), /Restart pi to apply/);
+ const acp = savedEngineMessage("acp");
+ assert.match(acp, /agy >= 1\.5\.3/);
+ assert.match(acp, /shares its Google sign-in/);
+ assert.match(acp, /Restart pi to apply/);
+ assert.doesNotMatch(acp, /download|second sign-in/);
 });
 
 test("picker: agy binary detection covers PATH and explicit paths", () => {
@@ -106,7 +104,7 @@ test("picker: agy binary detection covers PATH and explicit paths", () => {
 		const fake = path.join(dir, "agy");
 		fs.writeFileSync(fake, "#!/bin/sh\n");
 		fs.chmodSync(fake, 0o755);
-		assert.equal(isAgyInstalled("agy", { PATH: [dir, "/usr/bin"].join(path.delimiter) }), true);
+		assert.equal(isAgyInstalled("agy", { PATH: [dir, "/usr/bin"].join(path.delimiter) }, "linux"), true);
 		assert.equal(isAgyInstalled("agy", { PATH: "/usr/bin" }), false);
 		assert.equal(isAgyInstalled("agy", { PATH: "" }), false);
 		assert.equal(isAgyInstalled(fake, { PATH: "" }), true);
@@ -122,14 +120,56 @@ test("picker: missing-agy toast carries the official install URL", () => {
 	assert.match(agyMissingMessage(), /[Ll]og in/);
 });
 
+test("picker: win32 bare names probe spawnable suffixes (issue #11)", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-bin-win-"));
+	try {
+		// Suffix case matches the host fs; the point is OUR probe logic, not
+		// NTFS case-insensitivity.
+		fs.writeFileSync(path.join(dir, "agy.EXE"), "");
+		fs.writeFileSync(path.join(dir, "agy2.EXE"), "");
+		fs.writeFileSync(path.join(dir, "agy3.COM"), "");
+		fs.writeFileSync(path.join(dir, "agy4"), "");
+		assert.equal(isAgyInstalled("agy", { PATH: dir }, "win32"), true);
+		assert.equal(isAgyInstalled("agy2", { PATH: dir }, "win32"), true);
+		// Google ships only agy.exe on Windows; nothing else is probed.
+		assert.equal(isAgyInstalled("agy3", { PATH: dir }, "win32"), false);
+		// A bare AGY_BIN=agy.exe already carries the extension.
+		fs.writeFileSync(path.join(dir, "agy7.exe"), "");
+		assert.equal(isAgyInstalled("agy7.exe", { PATH: dir }, "win32"), true);
+		// .cmd shims count as NOT installed: spawns run shell:false and Node
+		// throws EINVAL on .bat/.cmd since CVE-2024-27980.
+		fs.writeFileSync(path.join(dir, "agy5.CMD"), "");
+		assert.equal(isAgyInstalled("agy5", { PATH: dir }, "win32"), false);
+		// Extensionless files cannot be spawned on win32 either.
+		assert.equal(isAgyInstalled("agy4", { PATH: dir }, "win32"), false);
+		// Real machines export PATHEXT; it must not widen the probe.
+		assert.equal(isAgyInstalled("agy5", { PATH: dir, PATHEXT: ".CMD;.EXE" }, "win32"), false);
+		fs.rmSync(path.join(dir, "agy.EXE"));
+		fs.mkdirSync(path.join(dir, "agy.EXE"));
+		assert.equal(isAgyInstalled("agy", { PATH: dir }, "win32"), false); // dir is not a file
+		// No suffix probing off win32, even when a .exe exists.
+		assert.equal(isAgyInstalled("agy2", { PATH: dir }, "linux"), false);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("picker: backslash binRef routes to explicit-file lookup on win32", () => {
+ const stat = vi.spyOn(fs, "statSync").mockImplementation((file) => {
+  if (String(file) === "C:\\agy.exe") return { isFile: () => true } as fs.Stats;
+  throw new Error("missing");
+ });
+ try { assert.equal(isAgyInstalled("C:\\agy.exe", { PATH: "ignored" }, "win32"), true);
+ assert.equal(isAgyInstalled("C:\\nope\\agy.exe", { PATH: "ignored" }, "win32"), false); }
+ finally { stat.mockRestore(); }
+});
+
 test("picker: intro explains both engines' constraints", () => {
 	assert.match(ENGINE_PICKER_INTRO, /agy` CLI/);
 	assert.match(ENGINE_PICKER_INTRO, /authenticated/);
-	assert.match(ENGINE_PICKER_INTRO, /official server/);
-	assert.match(ENGINE_PICKER_INTRO, /second Google sign-in/);
-	// The download is the ACP engine's main cost; the pin keeps it disclosed.
-	assert.match(ENGINE_PICKER_INTRO, /~1\.5 GB/);
-	assert.match(ENGINE_PICKER_INTRO, /unavoidable/);
+	assert.match(ENGINE_PICKER_INTRO, /native `agy acp`/);
+	assert.match(ENGINE_PICKER_INTRO, /Shares the CLI installation and Google credentials/);
+	assert.match(ENGINE_PICKER_INTRO, /1\.5\.3/);
 	assert.match(ENGINE_PICKER_INTRO, /\/agy engine/);
 	// Tool-result images ride BOTH engines since the gate widening
 	// (probe-verified 2026-09-07); the old "adds image input" claim painted

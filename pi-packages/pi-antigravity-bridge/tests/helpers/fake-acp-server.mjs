@@ -32,10 +32,14 @@
 import fs from "node:fs";
 import readline from "node:readline";
 
+if (process.argv.includes("--version")) { console.log("1.5.8"); process.exit(0); }
+if (process.argv.includes("models")) { console.log("gemini-3.8-flash-low Gemini 3.8 Flash (Low)"); process.exit(0); }
+
 const scenario = process.env.ACP_FAKE_SCENARIO || "happy";
 const sessionId = "fake-session-0001";
 let pendingPromptId = null;
 let streaming = false;
+let promptCount = 0;
 const timers = [];
 
 // Mimic RC01's signal handler: intercept SIGTERM and linger before dying, so
@@ -122,7 +126,10 @@ async function handle(msg) {
   // request (id 101) after the first answer, for allow_always memory tests.
   if (method === undefined && (id === 100 || id === 101)) {
     const optionId = msg.result?.outcome?.optionId;
-    logReq({ _permissionAnswer: optionId });
+    logReq({ _permissionAnswer: optionId, _permissionOutcome: msg.result?.outcome?.outcome });
+    if (scenario === "permission-cancel") {
+      result(pendingPromptId, { stopReason: "cancelled" }); pendingPromptId = null; return;
+    }
     if (scenario === "permission-twice" && id === 100) {
       send({
         jsonrpc: "2.0",
@@ -284,7 +291,7 @@ async function handle(msg) {
         streaming = false;
         return;
       }
-      if (scenario === "permission" || scenario === "permission-twice" || scenario === "permission-late") {
+      if (scenario === "permission" || scenario === "permission-twice" || scenario === "permission-late" || scenario === "permission-cancel") {
         send({
           jsonrpc: "2.0",
           id: 100,
@@ -322,15 +329,16 @@ async function handle(msg) {
     }
 
     case "session/cancel":
-      if (scenario === "cancel-unsupported" || process.env.ACP_FAKE_CANCEL_UNSUPPORTED === "1") {
-        error(id, -32601, "Method not found", { method: "session/cancel" });
+      if (process.env.ACP_FAKE_CANCEL_IGNORED === "1") {
+        for (const timer of timers) clearTimeout(timer);
         return;
       }
+      if (scenario === "permission-cancel") return; // settle after the permission cancellation reply
       if (pendingPromptId !== null) {
         result(pendingPromptId, { stopReason: "cancelled" });
         pendingPromptId = null;
       }
-      result(id, {});
+      if (id !== undefined) result(id, {});
       return;
 
     case "session/close":
@@ -345,6 +353,7 @@ async function handle(msg) {
 async function streamPrompt() {
   if (streaming) return;
   streaming = true;
+  promptCount += 1;
   if (scenario === "slow") return; // never emits, never completes
   if (scenario === "frame-overflow") {
     // Never self-exit: a successful outcome must prove transport teardown,
@@ -352,7 +361,7 @@ async function streamPrompt() {
     process.stdout.write("x".repeat(34 * 1024 * 1024));
     return;
   }
-  if (scenario === "cancel-unsupported") {
+  if (scenario === "cancel-native") {
     notifyChunk("C1");
     const t = setInterval(() => {
       if (pendingPromptId === null) {
@@ -422,6 +431,50 @@ async function streamPrompt() {
       } });
       pendingPromptId = null;
     }
+    return;
+  }
+  if (scenario === "usage-batches-reset") {
+    const update = (body) => send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: body } });
+    if (promptCount === 1) {
+      const call = { sessionUpdate: "tool_call", toolCallId: "duplicate", name: "run_command" };
+      update(call); update(call);
+      update({ sessionUpdate: "tool_call_update", toolCallId: "duplicate", status: "completed" });
+      notifyThoughtChunk("next inference");
+      update({ ...call, toolCallId: "second-batch" });
+    }
+    notifyChunk("DONE");
+    result(pendingPromptId, { stopReason: "end_turn", usage: { inputTokens: 1000, outputTokens: 50, cachedReadTokens: 800, totalTokens: 1850 } });
+    pendingPromptId = null; streaming = false; return;
+  }
+  if (scenario === "usage-single" || scenario === "usage-total" || scenario === "usage-occupancy" || scenario === "usage-parallel" || scenario === "usage-parallel-split" || scenario === "usage-occ-only" || scenario === "usage-occ-once") {
+    // Aggregate shape from the live probe (2026-11-10, values hard-coded so
+    // CI needs no captures): total = in+out+cache = 1850.
+    const usage = { inputTokens: 1000, outputTokens: 50, cachedReadTokens: 800, totalTokens: 1850 };
+    if (scenario === "usage-total" || scenario === "usage-parallel" || scenario === "usage-parallel-split") {
+      const ids = scenario === "usage-total" ? ["u1"] : ["u1", "u2"];
+      if (scenario === "usage-parallel-split") {
+        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: "u1", title: "Run run_command?", kind: "execute", status: "pending", rawInput: { CommandLine: "echo x" }, sessionUpdate: "tool_call" } } });
+        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: "u1", status: "completed", rawOutput: "x", sessionUpdate: "tool_call_update" } } });
+        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: "u2", title: "Run run_command?", kind: "execute", status: "pending", rawInput: { CommandLine: "echo y" }, sessionUpdate: "tool_call" } } });
+        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: "u2", status: "completed", rawOutput: "y", sessionUpdate: "tool_call_update" } } });
+      } else {
+        for (const id of ids) {
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: id, title: "Run run_command?", kind: "execute", status: "pending", rawInput: { CommandLine: "echo x" }, sessionUpdate: "tool_call" } } });
+        }
+        for (const id of ids) {
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: id, status: "completed", rawOutput: "x", sessionUpdate: "tool_call_update" } } });
+        }
+      }
+    }
+    if ((scenario === "usage-occupancy" || scenario === "usage-occ-only") || (scenario === "usage-occ-once" && promptCount === 1)) {
+      send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { sessionUpdate: "usage_update", used: 42000, size: 1000000 } } });
+    }
+    notifyChunk("DONE");
+    if (pendingPromptId !== null) {
+      result(pendingPromptId, { stopReason: "end_turn", ...(scenario === "usage-occ-only" ? {} : { usage }) });
+      pendingPromptId = null;
+    }
+    streaming = false;
     return;
   }
   // happy / permission

@@ -487,3 +487,18 @@ test("instance-owned entries stay isolated and participate in suppression and st
 		fs.rmSync(home, { recursive: true, force: true });
 	}
 });
+
+test("registration tolerates empty and BOM-prefixed MCP configs", () => {
+ const home = tmpHome();
+ const file = cfgFile(home);
+ fs.mkdirSync(path.dirname(file), { recursive: true });
+ try {
+  for (const content of ["", "\n\t ", "\uFEFF", '\uFEFF{"mcpServers":{"keep":{"command":"x"}}}']) {
+   fs.writeFileSync(file, content);
+   assert.equal(reg(home, ENTRY).wrote, true);
+   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+   assert.ok(parsed.mcpServers["pi-bridge-4242"]);
+   if (content.includes("keep")) assert.deepEqual(parsed.mcpServers.keep, { command: "x" });
+  }
+ } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

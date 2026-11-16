@@ -75,6 +75,11 @@ export class JsonRpcSession {
 		this.#send = opts.send;
 	}
 
+	notify(method: string, params?: unknown): void {
+		if (this.#aborted) throw new Error("JSON-RPC session is aborted");
+		this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", method, params }));
+	}
+
 	/** Feed raw transport bytes. Stdio chunks are NOT newline-aligned: bytes
 	 *  are buffered and only complete lines are parsed (a frame split across a
 	 *  64KB pipe boundary must never be dropped). The buffer is capped: a peer

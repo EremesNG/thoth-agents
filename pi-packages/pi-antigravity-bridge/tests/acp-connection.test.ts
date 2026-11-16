@@ -134,7 +134,6 @@ const authErrorOperations: Record<string, (conn: AcpConnection, cwd: string) => 
 	"session/load": (conn, cwd) => conn.loadSession("s", cwd),
 	"session/set_config_option": (conn) => conn.setConfigOption("s", "model", "m"),
 	"session/prompt": (conn) => conn.prompt("s", "hello"),
-	"session/cancel": (conn) => conn.cancel("s"),
 	"session/close": (conn) => conn.closeSession("s"),
 };
 
@@ -191,15 +190,42 @@ test("protocol and plain connection errors never invalidate authentication", asy
 	const conn = new AcpConnection({
 		cwd: process.cwd(), bin: process.execPath,
 		binArgs: [path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs")],
-		extraEnv: { ACP_FAKE_SCENARIO: "cancel-unsupported" },
+		extraEnv: { ACP_FAKE_SCENARIO: "happy" },
 		log: () => {}, onUpdate: () => {}, onExit: () => {},
 		onAuthInvalidated: () => { invalidations++; },
 	});
 	try {
 		await conn.start();
-		assert.deepEqual(await conn.cancel("s"), { supported: false });
+		await assert.rejects(conn.request("unsupported/method"), /Method not found/);
 		await conn.kill();
 		await assert.rejects(conn.request("session/new"), /not running/);
 		assert.equal(invalidations, 0);
 	} finally { await conn.kill(); }
+});
+
+test("acp connection: silent early exit reports its code and reason", async () => {
+	const exits: Array<{ code: number | null; signal: string | null }> = [];
+	const conn = new AcpConnection({
+		cwd: process.cwd(), bin: process.execPath,
+		binArgs: ["-e", "setTimeout(() => process.exit(23), 100)"],
+		log: () => {}, onUpdate: () => {}, onExit: (info) => exits.push(info),
+	});
+	try {
+		await assert.rejects(conn.start(), /code 23: process gone/);
+		assert.equal(exits[0]?.code, 23);
+		assert.equal(exits[0]?.signal, null);
+	} finally {
+		await conn.kill();
+	}
+});
+
+test("acp connection: explicit kill preserves the default rejection reason", async () => {
+	const conn = new AcpConnection({
+		cwd: process.cwd(), bin: process.execPath,
+		binArgs: ["-e", "setInterval(() => {}, 1000)"],
+		log: () => {}, onUpdate: () => {}, onExit: () => {},
+	});
+	const started = assert.rejects(conn.start(), /connection killed/);
+	await conn.kill();
+	await started;
 });

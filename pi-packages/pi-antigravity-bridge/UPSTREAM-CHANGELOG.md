@@ -4,7 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Native migration (local hand-merge, sync base `cdcfc04`)
+
+- Adopt `72d2224` native `agy acp` (agy >=1.5.3), shared CLI credentials and separate model/thought-level settings; retain owned Windows Jobs, permissions, lazy startup, images and instance-local round trips. Stream-json stays default.
+- Adopt `32d6d2e` config retirement. Drop installer execution (instructions only). Remove only evidence-marked old managed builds; credentials remain manual cleanup. `/agy acp-bin`, `acp.bin`, `AGY_ACP_BIN` and standalone OAuth are retired; both auth commands print CLI sign-in/install instructions.
+- Adapt `e03776a`, `7a4e9b8`, `22364ad` and `01e10ff` home parsing to acquired `pi-agy-<8 hex>` identities and mode-qualified fallbacks: private stream-json keeps additive config, legacy-global uses global registration, ACP fails visibly. `AGY_AGENTS_ROOT` keeps legacy behavior. Dispose on process close, retaining fenced homes for dead-owner startup sweeping; do not copy upstream PID/group cleanup.
+- Adopt `e0728f8` occupancy-first context totals, distinct from billing fields, with per-turn batch reset.
+
+Earlier unreleased notes below describe the pre-migration baseline and are retained as history, not current setup instructions. Current behavior: [ENGINES.md](docs/ENGINES.md).
+
 ### Changed
+
+- Port transport-independent fixes only: `6289360` exit diagnostics (not registry argv or entitlement probes), `01e10ff` Windows picker and tolerant MCP parsing (not isolated ACP homes), `1090801` provider-test isolation, `8d7c386` + `df83d3c` block-YAML carrier tools, and `fc95fd3` compact extension-tool proxies. Keep standalone ACP, local live authorization, owned-process settlement and instance-local round trips; reject raw extension-name dispatch rather than retaining upstream's cached-schema fallback. Proxy arguments must be JSON strings, not object-valued payloads.
 
 - Raise the `@modelcontextprotocol/sdk` dependency floor to `^1.31.0` for GHSA-6qxp-vccf-f47h (upstream `192f0a5`). Upstream assesses the bridge's server-side SDK usage as not exposed.
 - Fold consecutive ACP `bridge_poll_result` calls into one counted `agy-poll-run` transcript entry, with an expanded poll span and a live muted counter instead of one entry per poll (upstream `c98938c`). Count settled calls once, not start/completion frames twice; close runs on target switches, non-poll events, terminal results, turn/agent end and session shutdown. Native-tool and usage footer statuses are also muted. Folding, best-effort persistence and reset remain instance-local, using the existing pi-core render-kit/native fallback path.

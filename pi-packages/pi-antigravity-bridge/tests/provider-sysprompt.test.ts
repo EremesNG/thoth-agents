@@ -17,6 +17,7 @@ import {
 	ToolRoundTrips,
 	buildFullPrompt,
 	createStreamSimple,
+	type StreamSimpleDeps,
 } from "../src/provider.js";
 import { resetSyspromptAgentForTests } from "../src/sysprompt-agent.js";
 import { SessionStore } from "../src/sessions.js";
@@ -115,7 +116,7 @@ interface Harness {
 	dir: string;
 }
 
-function gateHarness(): Harness {
+function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"]): Harness {
 	const seen: { opts?: DriverTurnRequest } = {};
 	const driver: StreamDriver = {
 		run: async (opts: DriverTurnRequest) => {
@@ -137,6 +138,7 @@ function gateHarness(): Harness {
 	// One tmp dir = one stable session key (cwd-based) across both turns.
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-sysprompt-"));
 	const streamSimple = createStreamSimple({
+		getSystemPromptOptions,
 		entries: [{ id: "gemini-flash", full: "gemini-3.6-flash" }],
 		store: new SessionStore(path.join(dir, "sessions.json")),
 		driver,
@@ -236,7 +238,7 @@ test("gate: a user-configured agent wins; the block falls back inline (never clo
 			await runTurn(h, "hello", SYS);
 			assert.equal(h.seen.opts?.agent, "my-own-agent");
 			const prompt = h.seen.opts?.prompt ?? "";
-			assert.ok(prompt.startsWith(SYSTEM_PROMPT_PREAMBLE));
+			assert.ok(!prompt.includes(SYSTEM_PROMPT_PREAMBLE));
 			assert.ok(prompt.includes(SYS));
 			// Nothing staged: the user's agent directory stays untouched.
 			assert.equal(fs.readdirSync(root).length, 0);
@@ -245,4 +247,35 @@ test("gate: a user-configured agent wins; the block falls back inline (never clo
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
+});
+
+test("carrier projects away Pi harness while preserving appended policy", async () => {
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-projection-"));
+ await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: undefined, AGY_AGENTS_ROOT: root }, async () => {
+  resetSyspromptAgentForTests();
+  const h = gateHarness();
+  try {
+   await runTurn(h, "hello", "You are a coding assistant running inside pi.\n<tools>\nPi tools\n</tools>\n<addendum>\nThoth instructions\n</addendum>");
+   const md = fs.readFileSync(path.join(root, h.seen.opts!.agent!, "agent.md"), "utf8");
+   assert.ok(md.includes("Thoth instructions"));
+   assert.ok(md.includes(TOOL_PRIORITY_NOTE));
+   assert.ok(!md.includes(SYSTEM_PROMPT_PREAMBLE));
+   assert.ok(!md.includes("You are a coding assistant running inside pi"));
+   assert.ok(!md.includes("\nPi tools\n"));
+  } finally { fs.rmSync(h.dir, { recursive:true, force:true }); fs.rmSync(root, { recursive:true, force:true }); }
+ });
+});
+
+test("carrier uses the latest structured capture rather than assembled default sections", async () => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),"agy-structured-projection-"));
+ await withEnv({AGY_SYSTEM_PROMPT:"on",AGY_AGENT:undefined,AGY_AGENTS_ROOT:root},async()=>{
+  resetSyspromptAgentForTests();
+  const h=gateHarness(()=>({cwd:"/project",appendSystemPrompt:"structured appended policy",sections:{tools:"operator override"},contextFiles:[{path:"AGENTS.md",content:"loaded project policy"}]}));
+  try {
+   await runTurn(h,"hello","You are a coding assistant running inside pi.\n<tools>\nassembled defaults\n</tools>");
+   const md=fs.readFileSync(path.join(root,h.seen.opts!.agent!,"agent.md"),"utf8");
+   for(const text of ["structured appended policy","operator override","loaded project policy"]) assert.ok(md.includes(text));
+   assert.ok(!md.includes("assembled defaults"));
+  } finally { fs.rmSync(h.dir,{recursive:true,force:true});fs.rmSync(root,{recursive:true,force:true}); }
+ });
 });

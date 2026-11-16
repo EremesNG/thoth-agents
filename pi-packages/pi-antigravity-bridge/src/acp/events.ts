@@ -30,6 +30,7 @@ export interface AcpEditDiff {
 export type MappedUpdate =
 	| { kind: "text"; delta: string }
 	| { kind: "thought"; delta: string }
+	| { kind: "usage"; used: number }
 	| { kind: "tool_start"; toolCallId: string; name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string }
 	| { kind: "tool_done"; toolCallId: string; output?: string; diff?: AcpEditDiff; mcpServer?: string }
 	| { kind: "tool_error"; toolCallId: string; message: string; mcpServer?: string }
@@ -48,15 +49,19 @@ export function mapUpdate(update: unknown): MappedUpdate {
 			return { kind: "thought", delta: chunkText(u.content) };
 		case "user_message_chunk":
 			return { kind: "replay_user" };
+		case "usage_update": {
+			const used = u.used;
+			return typeof used === "number" && Number.isSafeInteger(used) && used > 0 ? { kind: "usage", used } : null;
+		}
 		case "tool_call": {
 			const id = stringField(u.toolCallId);
 			if (!id) return null;
 			return {
 				kind: "tool_start",
 				toolCallId: id,
-				name: metaToolName(u._meta) ?? toolName(u.title, u.kind),
+				name: metaToolName(u._meta) ?? nativeMcpTool(u)?.name ?? stringField(u.name) ?? toolName(u.title, u.kind),
 				args: rawArguments(u.rawInput),
-				mcpServer: stringField(recordField(recordField(u._meta).mcp).server),
+				mcpServer: stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server,
 				// Edits carry their native diff HERE, on the pending tool_call
 				// frame (run 6:10) — the completed update carries only display
 				// text. contentDiff on the update stays as a future-build
@@ -75,7 +80,7 @@ export function mapUpdate(update: unknown): MappedUpdate {
 				// failure next to a successful edit.
 				const raw = stringField(u.rawOutput);
 				if (raw?.includes("approved but never executed")) return null;
-				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server);
+				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server;
 				return { kind: "tool_error", toolCallId: id, message: raw ?? "tool failed", ...(mcpServer ? { mcpServer } : {}) };
 			}
 			if (u.status === "completed") {
@@ -83,7 +88,7 @@ export function mapUpdate(update: unknown): MappedUpdate {
 				// often just the server's display title, not the result (probe
 				// 2026-09-03: completed MCP call, rawOutput "Call bridge_echo").
 				const diff = contentDiff(u.content);
-				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server);
+				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server;
 				return {
 					kind: "tool_done",
 					toolCallId: id,
@@ -110,6 +115,12 @@ function rawArguments(rawInput: unknown): Record<string, unknown> {
 	return typeof args === "object" && args !== null && !Array.isArray(args)
 		? (args as Record<string, unknown>)
 		: rec;
+}
+
+/** Native frames omit _meta; only known bridge identities are unambiguous. */
+function nativeMcpTool(update: Record<string, unknown>): { name: string; server: string } | undefined {
+ const match = /^mcp_(pi-agy-[0-9a-f]{8}|pi-bridge(?:-\d+(?:-[0-9a-f-]+)?)?)_(.+)$/.exec(stringField(update.name) ?? "");
+ return match ? { server: match[1]!, name: match[2]! } : undefined;
 }
 
 /** Clean tool name for MCP tools: the title is "<server>_<tool>" (e.g.

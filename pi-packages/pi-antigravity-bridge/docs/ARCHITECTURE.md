@@ -5,8 +5,8 @@ How the provider works internally. For build/test/debug workflow see [DEVELOPMEN
 ## Engine
 
 The provider ships two turn engines behind one contract (`TurnDriver`,
-`src/driver-types.ts`): the default **stream-json engine** (below) and the
-opt-in **ACP engine** (bottom of this doc). Turns are fed over stdin; agy emits NDJSON events on stdout; the driver parses them and streams text into pi token by token. Conversation binding comes from the `init` event, tool steps arrive as typed events (no protobuf decoding), and token usage is live.
+`src/driver-types.ts`): the default **ACP engine** (bottom of this doc) and the
+**stream-json engine** (below). On stream-json, turns are fed over stdin; agy emits NDJSON events on stdout; the driver parses them and streams text into pi token by token. Conversation binding comes from the `init` event, tool steps arrive as typed events (no protobuf decoding), and token usage is live.
 
 Shared infrastructure: session binding (`sessions.json`), runtime config, the `AskAntigravity` tool, the MCP tool bridge surface, and the G1 context digest (off by default - see below). Discovery defaults to private per-instance names for root and children. Loading uses a fresh cached model catalog or awaits bounded discovery before registering both catalogs (stale cache/static fallback on failure); bridge startup is lazy and model-gated, and shutdown removes only acquired, unique descriptor-cache keys. See [BRIDGE-LIFECYCLE.md](./BRIDGE-LIFECYCLE.md).
 
@@ -71,16 +71,16 @@ By default the prompt agy receives is only the latest user message: agy keeps it
 
 ### Removed: the legacy-sqlite engine (1.3.2)
 
-The pre-1.3.0 engine (spawn `agy -p`, poll the SQLite conversation DB, decode protobuf step payloads) was removed in 1.3.2. agy 1.1.18 changed the step-row storage to a two-phase write (a metadata-only placeholder row that grows in place), which the polling decoder read once as an empty placeholder and never re-read: turns completed with the full reply in the database and zero text streamed to pi (issue #1, reported by @imatimba). The engine reverse-engineered an undocumented storage format, so every agy storage change risked repeating that silent failure. The stream-json engine shares none of that code path and is unaffected by storage-format changes. `AGY_ENGINE` and the `engine` config key are gone; a stale value in an existing `config.json` is ignored.
+The pre-1.3.0 engine (spawn `agy -p`, poll the SQLite conversation DB, decode protobuf step payloads) was removed in 1.3.2. agy 1.1.18 changed the step-row storage to a two-phase write (a metadata-only placeholder row that grows in place), which the polling decoder read once as an empty placeholder and never re-read: turns completed with the full reply in the database and zero text streamed to pi (issue #1, reported by @imatimba). The engine reverse-engineered an undocumented storage format, so every agy storage change risked repeating that silent failure. The stream-json engine shares none of that code path and is unaffected by storage-format changes. The old sqlite engine value is ignored; current `AGY_ENGINE` / `engine` choices are stream-json and native ACP.
 
-## ACP engine (opt-in, official server)
+## ACP engine (default, native `agy acp`)
 
-`config.engine: "acp"` (or `/agy engine acp`) routes turns through Google's
-official ACP server (`agy_acp_server.par`, registry id `antigravity-acp`)
-over JSON-RPC stdio. Off by default; stream-json remains the default. BOTH
-engines are permanently maintained peers (standing decision - no deletion,
-regardless of Gate B). Gate B (absent usage fields) is informational:
-zero-usage is documented on ACP. See docs/ACP-ADOPTION-PLAN.md section 17.
+`config.engine: "acp"` (default, or `/agy engine acp`) routes turns through native
+`agy acp` (agy >=1.5.3), sharing the CLI's credentials. Stream-json remains
+available via `/agy engine stream-json` or `AGY_ENGINE=stream-json`. Both engines launch through the owned-process layer and Windows
+Jobs, stage isolated MCP homes unless `AGY_AGENTS_ROOT` selects legacy behavior,
+and keep instance-local lifecycle/round-trip ownership. No standalone server,
+OAuth capture, download or installer execution remains. See [ENGINES.md](ENGINES.md).
 
 Modules: `src/acp/jsonrpc.ts` (framing/correlation), `src/acp/connection.ts`
 (process + protocol methods + parked permission answering),
@@ -90,11 +90,9 @@ the interface only and is otherwise unchanged.
 
 Phase-2/3 additions (all ACP-only, verified live):
 
-- **Images**: pi image attachments ride as typed content blocks in the
-  prompt array; models advertise `input: ["text","image"]` only when the
-  engine is `acp` (decided at extension load). stream-json prompt input
-  stays text-only (tool-RESULT images ride both engines; see
-  PI-BRIDGE-GAPS).
+- **Images**: ACP sends typed content blocks; stream-json stages private image
+  files in its prompt. Models advertise text/image input on both engines;
+  user and recovered tool-result images retain originating conversations.
 - **Digest delivery**: with `config.digest` on, ACP ships the G1 digest as
   a native `embeddedContext` resource block (images → resource → text);
   stream-json keeps it inline. Same cache churn either way.
@@ -106,12 +104,13 @@ Phase-2/3 additions (all ACP-only, verified live):
   the first: Gate D kills + stale-exit replacements) and the handshake
   `agentInfo` name/title; `/agy doctor` surfaces both.
 
-Engine-specific behavior: session ids are scoped per engine
-(`sid:<x>@acp`); model/effort ship as one full slug via
-`session/set_config_option` and are RE-APPLIED after every server restart
-(config does not persist); `session/load` history replay is swallowed (never
-live text); abort is teardown+kill+reload while `session/cancel` is
-unimplemented (RC01); usage tokens are absent (zero-usage fallback).
-Verified protocol shapes and the auth flow:
-docs/ACP-PROTOCOL-REFERENCE.md. Raw captures: `probe-logs/` (gitignored,
-local only).
+Session IDs are engine-scoped (`sid:<x>@acp`). Model and `thought_level`
+are separate `session/set_config_option` calls, re-applied each turn;
+`session/load` replay is suppressed. `session/cancel` is a notification,
+with bounded teardown if the prompt does not settle. Exact usage keeps billing
+fields but replaces total tokens with observed context occupancy or
+input + output + ceil(cacheRead / (toolBatches + 1)); estimates remain labeled.
+Each process's staged home is disposed on close, not leader exit or a fenced
+termination promise; dead-owner startup sweeping reclaims retained homes.
+Historical captures are in ACP-PROTOCOL-REFERENCE.md; current behavior is
+in ENGINES.md and BRIDGE-LIFECYCLE.md.

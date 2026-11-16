@@ -1,4 +1,4 @@
-// Stream-json prompt preservation: Pi custom messages are normalized to user
+// Prompt preservation: Pi custom messages are normalized to user
 // messages before a custom provider sees TranscriptContext. The provider must
 // retain the current user suffix when a trailing context message follows it.
 // Run: npm test -- packages/pi-antigravity-bridge/tests/provider-prompt-preservation.test.ts
@@ -211,12 +211,41 @@ test("stream-json preserves the current user task before normalized trailing con
 	assert.ok((seen.opts?.prompt.indexOf("TRAILING_CONTEXT_ONE") ?? -1) < (seen.opts?.prompt.indexOf("TRAILING_CONTEXT_TWO") ?? -1));
 });
 
-test("ACP keeps its existing last-user prompt behavior", async () => {
+test("ACP preserves Hola before a normalized language reminder", async () => {
+	const now = Date.now();
+	const messages = convertToLlm([
+		{ role: "user", content: "Hola", timestamp: now },
+		{
+			role: "custom",
+			customType: "thoth-language-anchor",
+			content: "language reminder",
+			display: false,
+			timestamp: now,
+		},
+	] as Parameters<typeof convertToLlm>[0]);
+	const seen: SeenRequest = { calls: 0 };
+	await capturePrompt(normalizeContext({ messages }), "acp", seen);
+
+	assert.equal(seen.calls, 1);
+	assert.equal(seen.opts?.prompt, "Hola\n\nlanguage reminder");
+});
+
+test("ACP leaves a single user prompt unchanged", async () => {
+	const seen: SeenRequest = { calls: 0 };
+	await capturePrompt(normalizeContext({
+		messages: [{ role: "user", content: "Hola", timestamp: Date.now() }],
+	}), "acp", seen);
+
+	assert.equal(seen.calls, 1);
+	assert.equal(seen.opts?.prompt, "Hola");
+});
+
+test("ACP preserves the current user suffix without replaying history", async () => {
 	const seen: SeenRequest = { calls: 0 };
 	await capturePrompt(normalizedTurn(), "acp", seen);
 
 	assert.equal(seen.calls, 1);
-	assert.equal(seen.opts?.prompt, "TRAILING_CONTEXT_TWO");
+	assert.equal(seen.opts?.prompt, "CURRENT_TASK_MARKER\n\nTRAILING_CONTEXT_ONE\n\nTRAILING_CONTEXT_TWO");
 });
 
 test("stream-json digest excludes the entire current user suffix", async () => {
@@ -238,7 +267,7 @@ test("ACP digest keeps its legacy last-message exclusion", async () => {
 	await capturePrompt(normalizedTurn(), "acp", seen, true);
 
 	assert.equal(seen.calls, 1);
-	assert.equal(seen.opts?.prompt, "TRAILING_CONTEXT_TWO");
+	assert.equal(seen.opts?.prompt, "CURRENT_TASK_MARKER\n\nTRAILING_CONTEXT_ONE\n\nTRAILING_CONTEXT_TWO");
 	const embedded = seen.opts?.contextBlock?.text ?? "";
 	assert.match(embedded, /HISTORICAL_TASK_MARKER/);
 	assert.match(embedded, /CURRENT_TASK_MARKER/);
@@ -290,7 +319,8 @@ test("ACP retains compaction digest behavior for a full-user suffix", async () =
 	await capturePrompt(normalizedCompactionTurn(false), "acp", seen, true);
 
 	assert.equal(seen.calls, 1);
-	assert.equal(seen.opts?.prompt, "TRAILING_CONTEXT_TWO");
+	assert.match(seen.opts?.prompt ?? "", /COMPACTION_SUMMARY_MARKER/);
+	assert.ok(seen.opts?.prompt.endsWith("CURRENT_TASK_MARKER\n\nTRAILING_CONTEXT_ONE\n\nTRAILING_CONTEXT_TWO"));
 	const embedded = seen.opts?.contextBlock?.text ?? "";
 	assert.equal((embedded.match(/COMPACTION_SUMMARY_MARKER/g) ?? []).length, 1);
 	assert.match(embedded, /CURRENT_TASK_MARKER/);

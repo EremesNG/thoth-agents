@@ -17,6 +17,7 @@
 import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
 import { TurnQueue } from "./turn-queue.js";
 import { resolveAgyCommand } from "./agy-runtime.js";
+import { removeStagedAgyHome } from "./acp/home.js";
 import { onOwnedProcessSettled, spawnOwnedProcess, type OwnedProcess } from "./owned-process.js";
 import { randomUUID } from "node:crypto";
 import { parseAgyLine } from "./stream-events.js";
@@ -201,6 +202,9 @@ export class StreamDriver implements TurnDriver {
 		lastRecycleReason: undefined as string | undefined,
 		recycleReasons: {} as Record<string, number>,
 	};
+
+	/** Restaged for each owned process, never shared across instances. */
+	stageHome?: () => string | undefined;
 
 	constructor(private readonly bridgeDir: string = bridgeMcpConfigDir()) {}
 
@@ -443,7 +447,9 @@ export class StreamDriver implements TurnDriver {
 		this.#boundConversation = request.conversationId ?? undefined;
 		this.#stderrTail = "";
 
+		const home = this.stageHome?.();
 		const args: string[] = ["--add-dir", request.cwd];
+		if (home) args.push("--gemini_dir", home);
 		// The bridge dir carries .agents/mcp_config.json (tool bridge) and, when
 		// the approval gate is on, .agents/hooks.json (gate staging). Only this
 		// session's agy ever gets it: standalone IDE/CLI sessions in the
@@ -464,13 +470,22 @@ export class StreamDriver implements TurnDriver {
 			"--disable-slash-commands",
 		);
 
-		const child = spawnOwnedProcess(resolveAgyCommand(process.env.AGY_BIN || "agy", process.env, request.cwd), args, {
-			cwd: request.cwd,
-			stdio: ["pipe", "pipe", "pipe"],
-			log: (message, data) => { this.#log(message, data); },
-			detached: process.platform !== "win32",
-			windowsHide: true,
-		});
+		let child: OwnedProcess;
+		try {
+			child = spawnOwnedProcess(resolveAgyCommand(process.env.AGY_BIN || "agy", process.env, request.cwd), args, {
+				cwd: request.cwd,
+				stdio: ["pipe", "pipe", "pipe"],
+				log: (message, data) => { this.#log(message, data); },
+				detached: process.platform !== "win32",
+				windowsHide: true,
+			});
+		} catch (error) {
+			if (home) removeStagedAgyHome(home);
+			throw error;
+		}
+		// No generation guard: an old process still owns its own home. Fences
+		// emit no close, retaining uncertain homes for the dead-owner sweep.
+		if (home) child.once("close", () => removeStagedAgyHome(home));
 		this.#child = child;
 		// The facade returns before the asynchronous Windows launch completes.
 		const startupMs = request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
@@ -517,7 +532,7 @@ export class StreamDriver implements TurnDriver {
 		child.stderr!.on("data", (chunk: string) => {
 			this.#stderrTail = (this.#stderrTail + chunk).slice(-8192);
 		});
-		onOwnedProcessSettled(child, (code) => {
+		onOwnedProcessSettled(child, (code, signal) => {
 			if (generation !== this.#generation) return;
 			const turn = this.#active;
 			this.#child = undefined;
@@ -538,7 +553,7 @@ export class StreamDriver implements TurnDriver {
 						turn,
 						// agy stderr can carry auth material; the tail becomes the
 						// user-facing error and a daily-log value.
-						redactText(this.#stderrTail.trim()) || `agy exited with status ${code ?? "signal"}`,
+						`agy exited with ${signal ? `signal ${signal}` : `code ${code ?? "unknown"}`}: ${redactText(this.#stderrTail.trim()) || "process gone"}`,
 					);
 				}
 			}

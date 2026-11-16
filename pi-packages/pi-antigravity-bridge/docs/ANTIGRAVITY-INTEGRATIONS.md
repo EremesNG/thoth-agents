@@ -1,5 +1,12 @@
 # Antigravity Editor Integrations: Reverse Engineered Internals (historical)
 
+> Historical standalone-server research, not current setup instructions. The
+> bridge now uses native `agy acp` (agy >=1.5.3) with shared CLI credentials,
+> separate model/thought-level settings and cancel notifications. Standalone
+> auth/install steps below are retired. See [ENGINES.md](ENGINES.md) for the
+> supported transport, isolated homes, migration and instructions-only setup.
+
+
 Date of original research: 2026-08-21 (full 551-line analysis preserved in git
 history; this stub summarizes what still matters). Sources: the official VSIX
 `Google.google-antigravity_1.0.0`, Zed's external-agents registry cache, the

@@ -113,7 +113,7 @@ test("saveConfig: env overrides are not baked into the file; null nested keys to
 				assert.equal(raw.mode, "accept-edits");
 				assert.equal(raw.skipPermissions, true, "unrelated env overrides must not persist either");
 				// Null objects and legacy keys normalize to the known shape.
-				assert.deepEqual(raw.acp, { bin: "", usageEstimate: "estimate" });
+				assert.deepEqual(raw.acp, { usageEstimate: "estimate" });
 				assert.deepEqual(raw.approvals, { gateMode: "auto", mode: "ask" });
 			});
 		}

@@ -3,6 +3,10 @@ import { getModels } from "@earendil-works/pi-ai/compat";
 
 // Keys are normalized Pi model ids, NOT AgyModelEntry.full CLI slugs.
 const PRICE_MAPPING = {
+	"gemini-4-argon": ["google", "gemini-4-argon"],
+	"gemini-4-argon-low": ["google", "gemini-4-argon"],
+	"gemini-4-argon-medium": ["google", "gemini-4-argon"],
+	"gemini-4-argon-high": ["google", "gemini-4-argon"],
 	"gemini-3-6-flash": ["google", "gemini-3.6-flash"],
 	"gemini-3-7-flash": ["google", "gemini-3.7-flash"],
 	"gemini-3-8-flash": ["google", "gemini-3.8-flash"],

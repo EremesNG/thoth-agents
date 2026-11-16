@@ -33,6 +33,7 @@ test.each(["agy", "other"])("ACP uses a neutral runtime executable only for agy,
 		await assert.rejects(connection.start(), /offline launch boundary/);
 		if (kind === "agy") f.assertAlias(spawn.mock.calls[0][0]);
 		else assert.equal(spawn.mock.calls[0][0], process.execPath);
+		assert.deepEqual(spawn.mock.calls[0][1], ["acp"], "native ACP subcommand stays inside owned launch");
 		assert.equal(spawn.mock.calls[0][2]?.windowsHide, true);
 	} finally { await connection.kill(); spawn.mockRestore(); f.cleanup(); }
 });

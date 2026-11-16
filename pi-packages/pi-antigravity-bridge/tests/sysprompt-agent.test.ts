@@ -28,7 +28,7 @@ test("agent.md keeps agy defaults except the declared subagent masking", () => {
 	// normal toolset and the bridge MCP config for G9 round-trips.
 	assert.equal(md.includes("excludeDefaultComponents"), false);
 	assert.equal(md.includes("inheritMcp"), false);
-	assert.equal(md.includes("tools:"), false);
+	assert.match(md, /tools:\n  - read_file\n/);
 	assert.ok(md.endsWith("BODY\n"));
 });
 
@@ -41,6 +41,7 @@ test("frontmatter parses as YAML (agy drops unparsable agents, issue #5)", () =>
 	);
 	assert.equal(fm.mainAgent, true);
 	assert.equal(fm.model, "inherit");
+	assert.deepEqual(fm.tools, ["read_file", "edit_file", "write_file", "run_command", "manage_task", "search_web"]);
 });
 
 test("carrier declares native subagent masking explicitly (issue #7)", () => {

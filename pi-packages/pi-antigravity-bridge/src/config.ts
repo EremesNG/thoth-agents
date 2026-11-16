@@ -39,8 +39,8 @@ export function logsDir(): string {
 	);
 }
 
-/** Which turn engine drives turns. "stream-json" is the tested default;
- *  "acp" is the official-server engine, opt-in (plan §9.5). */
+/** Which turn engine drives turns. "acp" (native `agy acp`) is the default;
+ *  "stream-json" is the persistent stream-json CLI engine. */
 export type Engine = "stream-json" | "acp";
 export type AgyMode = "accept-edits" | "plan";
 export type ThinkingTier = "low" | "medium" | "high";
@@ -77,8 +77,6 @@ export interface GateConfig {
 }
 
 export interface AcpConfig {
-	/** Path to agy_acp_server.par. Empty = env AGY_ACP_BIN > PATH. */
-	bin: string;
 	/** Gate B stopgap: client-side token estimates for ACP turns so pi's
 	 *  usage surfaces show nonzero numbers. Estimates are labeled as such in
 	 *  /agy doctor and auto-disable when the server sends real usage. */
@@ -191,7 +189,7 @@ export interface AgyConfig {
 }
 
 const DEFAULTS: AgyConfig = {
-	engine: "stream-json",
+	engine: "acp",
 	mode: "accept-edits",
 	readOnly: false,
 	skipPermissions: true,
@@ -209,7 +207,7 @@ const DEFAULTS: AgyConfig = {
 	startupTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
 	queueTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
 	approvals: { gateMode: "auto", mode: "ask" },
-	acp: { bin: "", usageEstimate: "estimate" },
+	acp: { usageEstimate: "estimate" },
 };
 
 /** Hard ceiling for a free-typed turn cap: one day, in minutes. */
@@ -255,8 +253,20 @@ function readConfigFile(configPath: string): Partial<AgyConfig> {
 	return {};
 }
 
+/** Retire only the old key, preserving minimal configs and dotfile symlinks. */
+export function removeLegacyAcpBin(configPath: string = CONFIG_PATH): boolean {
+	const file = readConfigFile(configPath) as Record<string, unknown>;
+	if (!file.acp || typeof file.acp !== "object" || Array.isArray(file.acp)) return false;
+	const acp = file.acp as Record<string, unknown>;
+	if (!("bin" in acp)) return false;
+	delete acp.bin;
+	writeConfigJson(fs.realpathSync(configPath), file);
+	return true;
+}
+
 /** Load config merged over defaults. Env vars override the file when set. */
 export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
+	removeLegacyAcpBin(configPath);
 	const file = readConfigFile(configPath);
 
 	// Env overrides file (matches the skipPermissions pattern).
@@ -264,9 +274,9 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 	// explicit AGY_MODE=accept-edits when the file says plan, violating the
 	// documented precedence. Check env first.
 	// Engine: narrow to the known set; anything else (incl. the pre-1.3.2
-	// "sqlite" value) falls back to the tested default.
+	// "sqlite" value) falls back to the default ("acp").
 	const engineRaw = String(process.env.AGY_ENGINE ?? file.engine ?? DEFAULTS.engine).toLowerCase();
-	const engine: Engine = engineRaw === "acp" ? "acp" : "stream-json";
+	const engine: Engine = engineRaw === "stream-json" ? "stream-json" : "acp";
 
 	const mode: AgyMode =
 		process.env.AGY_MODE !== undefined
@@ -371,9 +381,6 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 	const usageEstimate: UsageEstimate =
 		usageRaw === "direct" || usageRaw === "off" ? usageRaw : "estimate";
 	const acp: AcpConfig = {
-		bin:
-			process.env.AGY_ACP_BIN ??
-			(typeof fileAcp.bin === "string" ? fileAcp.bin : DEFAULTS.acp.bin),
 		usageEstimate,
 	};
 
@@ -417,15 +424,21 @@ export function saveConfig(patch: Partial<AgyConfig>, configPath: string = CONFI
 		turnTimeoutMin: defaultTurnTimeoutMin(),
 		...Object.fromEntries(Object.entries(file).filter(([key]) => Object.hasOwn(DEFAULTS, key))),
 		agent: normalizeAgyAgentName(file.agent),
-		acp: { bin: acp.bin ?? DEFAULTS.acp.bin, usageEstimate: acp.usageEstimate ?? DEFAULTS.acp.usageEstimate },
+		acp: { usageEstimate: acp.usageEstimate ?? DEFAULTS.acp.usageEstimate },
 		approvals: { gateMode: approvals.gateMode ?? DEFAULTS.approvals.gateMode, mode: approvals.mode ?? DEFAULTS.approvals.mode },
 		...patch,
 	};
+	next.acp = { usageEstimate: next.acp?.usageEstimate ?? DEFAULTS.acp.usageEstimate };
+	writeConfigJson(configPath, next);
+	return next;
+}
+
+function writeConfigJson(configPath: string, value: unknown): void {
 	const dir = path.dirname(configPath);
 	fs.mkdirSync(dir, { recursive: true });
 	const tmp = `${configPath}.${process.pid}.tmp`;
 	try {
-		fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
+		fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
 		fs.renameSync(tmp, configPath);
 	} catch (err) {
 		try {
@@ -435,7 +448,6 @@ export function saveConfig(patch: Partial<AgyConfig>, configPath: string = CONFI
 		}
 		throw err;
 	}
-	return next;
 }
 
 export { CONFIG_PATH };

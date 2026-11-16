@@ -38,31 +38,30 @@ bash scripts/smoke-in-pi.sh
 AGY_LIVE=1 node --experimental-strip-types scripts/smoke-stream-json.mjs
 
 # Live smoke for the ACP engine through OUR driver stack. OPT-IN: spends a
-# little quota. Needs AGY_ACP_BIN (or acp on PATH) and a one-time
-# /agy auth-manual credential setup.
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+# little quota. Needs agy >=1.5.3 on PATH (or AGY_BIN) and terminal CLI sign-in.
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/smoke-acp.mjs
 
 # Live smoke for the Gate F bridge e2e: the real ACP server lists the bridge
 # catalog and completes a tool call through the registered mcpServers entry.
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/smoke-acp-bridge.mjs
 
 # Live smoke for image prompts on the ACP engine: builds a 64x64 two-tone PNG
 # in-process and asserts the model identifies both halves through the full
 # driver stack.
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/smoke-acp-image.mjs
 
 # Live probe: thought-chunk sparsity, tool_call content[]/rawInput shapes,
 # and the /plan command flow, captured to probe-logs/ (local only).
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/probe-acp-phase2.mjs
 
 # Live probe: does the ACP server deliver MCP tool-result IMAGE content to
 # the model? One bridge tool returns a two-tone PNG in its result; the model
 # must name both halves from the tool result alone.
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/probe-acp-image-result.mjs
 
 # Live probe: same image question for the stream-json engine. AGY
@@ -73,9 +72,9 @@ AGY_LIVE=1 pnpm exec tsx scripts/probe-stream-json-image.mjs
 
 # Live parity run: the SAME scenario set (streaming, continuity, bridge
 # round-trip, effort switch, serialization, abort+recover, usage) through
-# BOTH engines. Needs the agy CLI AND the ACP binary. Spends ~13 flash-low
+# BOTH engines. Needs agy >=1.5.3 and the CLI sign-in. Spends ~13 flash-low
 # turns; prints a per-scenario matrix and exits non-zero on any mismatch.
-AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
+AGY_ACP_LIVE=1 \
   pnpm exec tsx scripts/parity-live.mjs
 ```
 

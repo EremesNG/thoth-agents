@@ -250,6 +250,7 @@ describe("stream-json driver stderr redaction", () => {
 		assert.ok(outcome.error);
 		assert.equal(outcome.error.includes("AIzaSyA"), false, "raw secret absent");
 		assert.ok(outcome.error.includes("<redacted>"), "secret is redacted");
+		assert.match(outcome.error, /code 3: boom google key/);
 		await driver.close("shutdown");
 	});
 });

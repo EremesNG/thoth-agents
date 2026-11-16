@@ -149,7 +149,6 @@ export interface DriverSnapshot {
 		sessionsLoaded: number;
 		kills: number;
 		/** null = never probed on this server process. */
-		cancelSupported: boolean | null;
 		serverVersion?: string;
 		/** Connections beyond the first this driver process made = server
 		 *  restarts (Gate D kills + stale-exit replacements). */

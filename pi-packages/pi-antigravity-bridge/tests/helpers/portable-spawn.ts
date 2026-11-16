@@ -5,6 +5,8 @@ import { vi } from "vitest";
 // StreamDriver honors AGY_BIN and the Orca runtime resolver scans PATH.
 // Keep inherited operator settings from bypassing the fake-agy launch seam.
 delete process.env.AGY_BIN;
+// Never let an operator carrier-root override redirect filesystem fixtures.
+delete process.env.AGY_AGENTS_ROOT;
 delete process.env.ORCA_PANE_KEY;
 delete process.env.ORCA_TERMINAL_HANDLE;
 

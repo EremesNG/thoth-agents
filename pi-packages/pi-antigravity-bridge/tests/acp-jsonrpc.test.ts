@@ -17,6 +17,21 @@ function makeSession(handlers: Partial<ConstructorParameters<typeof JsonRpcSessi
 }
 
 describe("acp/jsonrpc", () => {
+	test("notification sends no id and never waits for a response", () => {
+		const { session, sent } = makeSession();
+		session.notify("session/cancel", { sessionId: "s" });
+		assert.deepEqual(sent[0], { jsonrpc: "2.0", method: "session/cancel", params: { sessionId: "s" } });
+		assert.equal(session.pendingCount, 0);
+	});
+
+	test("notifications share framing and rejected-sink containment with requests", async () => {
+		await withoutUnhandledRejections(async () => {
+			const frames: string[] = [];
+			const { session } = makeSession({ send: async (frame) => { frames.push(frame); throw new Error("write sink failed"); } });
+			session.notify("session/cancel", { sessionId: "s" });
+			assert.equal(frames[0].endsWith("\n"), false, "the connection owns NDJSON newlines");
+		});
+	});
 	test("request correlates the response by id", async () => {
 		const { session, sent } = makeSession();
 		const p = session.request("session/new", { cwd: "/x" });

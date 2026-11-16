@@ -2,9 +2,9 @@
 //
 // On the first interactive start (no config file yet, no AGY_ENGINE env) pi
 // asks which turn engine to use: the stream-json `agy` CLI or Google's
-// official ACP server. The choice persists via saveConfig({ engine }) and,
+// native ACP subcommand. The choice persists via saveConfig({ engine }) and,
 // like /agy engine, takes effect on the next pi start (drivers wire at load).
-// Every start with the stream-json engine active also re-checks that the
+// First Antigravity use on either engine checks that the
 // `agy` binary exists and warns until it does (re-auth is out of scope).
 //
 // UI: tui.md "Pattern 1" - SelectList framed by DynamicBorder inside pi's
@@ -24,17 +24,17 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Engine } from "./config.js";
 
-/** Picker order is the default answer order: stream-json first. */
+/** Picker order is the default answer order: acp first. */
 export const ENGINE_PICKER_ITEMS: SelectItem[] = [
+	{
+		value: "acp",
+		label: "Native ACP (agy acp)",
+		description: "default, recommended (agy >= 1.5.3, shared CLI sign-in)",
+	},
 	{
 		value: "stream-json",
 		label: "Stream-JSON CLI",
-		description: "default, recommended",
-	},
-	{
-		value: "acp",
-		label: "ACP server (official Google)",
-		description: "second sign-in, ~1.5 GB binary download",
+		description: "persistent stream-json CLI engine",
 	},
 ];
 
@@ -43,8 +43,8 @@ export const ENGINE_PICKER_ITEMS: SelectItem[] = [
 export const ENGINE_PICKER_INTRO = [
 	"Pick the engine that runs your Antigravity turns. Switch anytime with /agy engine (restart applies it).",
 	"",
-	"stream-json: the `agy` CLI you already installed and authenticated. Persistent process, streamed output. Tested default.",
-	"ACP: Google's official server (agy_acp_server.par). Needs a second Google sign-in and a ~1.5 GB server binary downloaded from Google (automatic, one-time, unavoidable: the server is not part of the agy CLI).",
+	"ACP: native `agy acp` (agy >= 1.5.3). Default. Shares the CLI installation and Google credentials; no separate server or sign-in.",
+	"stream-json: the `agy` CLI you already installed and authenticated. Persistent process, streamed output.",
 ].join("\n");
 
 /** True only for a genuine first interactive run: no saved config yet (any
@@ -65,42 +65,63 @@ export function shouldOfferEnginePicker(
 
 /** Narrow a picker value to an Engine. Items are our own constants, but an
  *  unknown value must never reach config as a cast string: it falls back to
- *  the tested default. */
+ *  the default ("acp"). */
 export function toEngine(value: string): Engine {
-	return value === "acp" ? "acp" : "stream-json";
+	return value === "stream-json" ? "stream-json" : "acp";
 }
 
-/** Toast copy shown after the choice is saved. ACP names the promise that
- *  matters: the binary download starts NOW (not on restart), sign-in follows
- *  when it lands, restart applies the engine. */
+/** Saving an engine never installs software or signs the user in. */
 export function savedEngineMessage(engine: Engine): string {
 	return engine === "acp"
-		? "Engine saved: acp. The ~1.5 GB server binary downloads now; the Google sign-in opens when it lands. Restart applies the engine."
+		? "Engine saved: acp. Requires agy >= 1.5.3 and shares its Google sign-in. Restart pi to apply."
 		: "Engine saved: stream-json. Restart pi to apply.";
 }
 
-/** True when the `agy` CLI binary can be found. A binRef with a path
- *  separator (AGY_BIN=/opt/agy/agy) must exist as a file; a bare name is
- *  searched on PATH. statSync cannot throw through the guards, but a race
- *  (file removed between listing and stat) fails closed to false. */
-export function isAgyInstalled(binRef: string, env: NodeJS.ProcessEnv = process.env): boolean {
-	if (binRef.includes("/") || (process.platform === "win32" && binRef.includes("\\"))) {
+/** Bare-name suffix candidates per platform. Windows pins the probe to
+ *  agy.exe: that is the only artifact Google ships there, and .bat/.cmd
+ *  cannot spawn anyway (shell:false + EINVAL since CVE-2024-27980). */
+function executableSuffixes(platform: NodeJS.Platform): string[] {
+	return platform === "win32" ? [".EXE"] : [""];
+}
+
+/** True when the `agy` CLI binary can be found. A binRef carrying a path
+ *  separator must exist as a file - backslashes count as separators on
+ *  win32, where path.join would mangle a bare "C:\..." AGY_BIN into a PATH
+ *  segment. Otherwise the bare name is searched on PATH, appending the
+ *  Windows candidate (agy.exe only: Google ships nothing else there, and
+ *  an extensionless or .cmd file cannot be spawned anyway). A bare
+ *  AGY_BIN that already ends in .exe probes the raw name too. Only a
+ *  regular file counts; races fail closed. */
+export function isAgyInstalled(
+	binRef: string,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): boolean {
+	if (binRef.includes("/") || (platform === "win32" && binRef.includes("\\"))) {
 		try {
 			return fs.statSync(binRef).isFile();
 		} catch {
 			return false;
 		}
 	}
+	let suffixes = executableSuffixes(platform);
+	// A bare AGY_BIN=agy.exe already carries the extension; name+suffix
+	// would stat agy.exe.EXE and miss the real file (issue #11 class).
+	if (platform === "win32" && path.extname(binRef).toLowerCase() === ".exe") {
+		suffixes = ["", ...suffixes];
+	}
 	return (env.PATH ?? "")
 		.split(path.delimiter)
 		.filter(Boolean)
-		.some((dir) => {
-			try {
-				return fs.statSync(path.join(dir, binRef)).isFile();
-			} catch {
-				return false;
-			}
-		});
+		.some((dir) =>
+			suffixes.some((suffix) => {
+				try {
+					return fs.statSync(path.join(dir, binRef) + suffix).isFile();
+				} catch {
+					return false;
+				}
+			}),
+		);
 }
 
 /** Toast copy for the missing-CLI warning. Fires every pi start while the
@@ -154,3 +175,5 @@ export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine 
 		},
 	);
 }
+
+export const CLI_SIGN_IN_INSTRUCTIONS = "Run agy in your terminal and complete Google sign-in. Both engines share the CLI credentials. Install or update agy (ACP requires >= 1.5.3) from https://antigravity.google/product/antigravity-cli. The bridge never runs an installer.";

@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
 ### Changed
 
 - Selectively sync upstream through `45fc71d`: pin Agent SDK 0.3.321, measure Fable 5.2 at 1M, and add access-gated Mythos 5.1/5.2 from available catalog siblings; retain local prompt guards, projection, append epochs and Pi 1.5.0 compatibility.

@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-15
+
 ### Changed
 
 - Describe the required `action` parameter and its operations in the todo tool schema.

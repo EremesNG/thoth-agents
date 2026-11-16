@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-15
+
 ### Changed
 
 - Default `config.engine` and the first-run engine picker to `acp` (native `agy acp`); unknown engine values fall back to `acp`.

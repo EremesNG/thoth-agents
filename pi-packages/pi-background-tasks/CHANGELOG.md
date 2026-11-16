@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-15
+
 ### Fixed
 
 - Prevent Orca native-chat idle eviction while the session owns running background processes or command watches, without retaining unrelated sessions or completed work.

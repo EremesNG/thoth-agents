@@ -5,6 +5,13 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-15
+
+### Added
+
+- Show model names in the model picker.
+- Persist runtime context tokens, window, percent and tool uses in subagent history; tolerate a concurrent connection adding the same column during migration.
+
 ### Fixed
 
 - Prevent Orca native-chat idle eviction while the session owns queued, running, or stopping background subagents; release session liveness on replacement and shutdown.

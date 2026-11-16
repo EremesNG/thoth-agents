@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-15
+
 ### Added
 
 - `cacheExpiry` settings section for an estimated prompt-cache countdown on the editor's bottom border, immediately left of the context segment: `60` minute default lifetime with `openai`/`openai-codex` overrides at `30` minutes, a `muted` countdown down to five minutes, `warning` below that and `cache cold` in the error color once expired. It anchors on the latest assistant request in the current session branch, hides before the first reply and while a request is in flight, refreshes on a one-second idle timer, and drops before the context segment degrades. `enabled` and `ttlMinutes` are editable live in `/thoth-theme`; `providerTtlMinutes` is JSON-only.

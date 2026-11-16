@@ -22,13 +22,13 @@ const KEY = Symbol.for('thoth-agents.pi-junie-bridge.registration.v1');
  * from another version is disposed and rebuilt, never reused, so a reload always
  * runs the new bundle's provider code and never reads a map the old one lacked.
  */
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 interface SharedState {
   version: number;
   refresh?: Promise<Catalog>;
   ui: Map<string, PermissionUI>;
   nativeSinks: Map<string, (event: NativeToolActivity) => void>;
-  sessions: Map<string, { cwd: string }>;
+  sessions: Map<string, { cwd: string; headless: boolean }>;
   provider: ReturnType<typeof createJunieProvider>;
 }
 type Shared = Partial<Omit<SharedState, 'provider'>> & {
@@ -110,7 +110,7 @@ export default function junieBridge(pi: ExtensionAPI): void {
   if (first) register();
   pi.on('session_start', (_event, ctx) => {
     const id = ctx.sessionManager.getSessionId();
-    state.sessions.set(id, { cwd: ctx.cwd });
+    state.sessions.set(id, { cwd: ctx.cwd, headless: !ctx.hasUI });
     forget(state.ui, id);
     forget(state.nativeSinks, id);
     if (ctx.hasUI) {

@@ -756,6 +756,16 @@ On Windows the Junie bridge MUST launch Junie with piped stdin inside its own ki
 - **WHEN** the session shuts down
 - **THEN** Junie and its descendant end through the job and unrelated processes keep running
 
+### Requirement: Junie bridge headless native tool routing
+
+In a Pi session without a dialog-capable UI, the Junie bridge MUST launch Junie with a `PreToolUse` hook configuration that blocks Junie's native shell-execution and file-mutation tools before execution with a reason directing it to the Pi MCP tools, MUST refuse to start rather than launch Junie without that hook, MUST tell Junie in the prompt to use the Pi tools for commands and file changes, and MUST leave native read-only tools and UI sessions unchanged.
+
+#### Scenario: Junie bridge headless native tool routing
+
+- **GIVEN** a headless Pi run (such as a subagent child) on a `junie` model
+- **WHEN** Junie attempts its native `powershell` or `apply_patch` tool
+- **THEN** the hook blocks it before execution with a reason naming `pi/bash`, Junie can continue through the Pi MCP tools, and an interactive session launches without the hook
+
 ### Requirement: Antigravity bridge proxies extension tools
 
 `@thoth-agents/pi-antigravity-bridge` MUST keep bridging to agy only the tools that pass its existing catalog filters (in Pi's current active set, not hidden, not bridge-internal, and matching the bridge-tools mode source filter, so Pi built-in-source tools stay excluded), MUST expose with full schemas only those authorized tools named like Pi's seven default tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`), MUST expose every other authorized tool only through a compact inspection tool and a compact invocation tool whose JSON-string arguments are validated, and MUST re-apply the same filters at invocation time.

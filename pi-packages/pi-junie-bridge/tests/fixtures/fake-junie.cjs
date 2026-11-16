@@ -2,6 +2,12 @@ const { createInterface } = require('node:readline');
 const { spawn } = require('node:child_process');
 const { appendFileSync, existsSync, readFileSync, writeFileSync } =
   require('node:fs');
+if (process.env.FAKE_RECORD_ARGV && process.env.FAKE_TRANSCRIPT)
+  appendFileSync(
+    process.env.FAKE_TRANSCRIPT,
+    JSON.stringify({ method: 'fixture/argv', params: process.argv.slice(2) }) +
+      '\n',
+  );
 const configOptions = [
   {
     id: 'mode',
@@ -331,6 +337,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           params: { sessionId: m.params.sessionId, update: value },
         });
       (async () => {
+        if (process.env.FAKE_MCP_CONTEXT_USAGE)
+          update({ sessionUpdate: 'usage_update', used: 444 });
         if (!mcp) throw new Error('No Pi MCP server registered');
         const permission = new Promise((resolve) => replies.set(902, resolve));
         send({
@@ -553,6 +561,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         status: 'completed',
       });
     }
+    if (process.env.FAKE_INVALID_CONTEXT_USAGE)
+      update({ sessionUpdate: 'usage_update', used: -1, size: -1 });
     send({
       method: 'session/update',
       params: {

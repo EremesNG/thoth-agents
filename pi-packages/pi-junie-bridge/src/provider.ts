@@ -31,6 +31,7 @@ import {
   NativeActivityFolder,
   type NativeToolActivity,
 } from './native-display.js';
+import { writeNativeToolHooks } from './native-tool-hooks.js';
 import { requestPermission } from './permissions.js';
 import {
   createSessionStore,
@@ -39,7 +40,9 @@ import {
 } from './session-store.js';
 
 export interface ProviderOptions extends AcpOptions {
-  getSession?: (piSessionId: string) => { cwd: string } | undefined;
+  getSession?: (
+    piSessionId: string,
+  ) => { cwd: string; headless?: boolean } | undefined;
   onPermission?: (
     params: unknown,
     signal?: AbortSignal,
@@ -76,6 +79,7 @@ interface PromptResponse {
 interface TurnState {
   prompt: Promise<PromptResponse>;
   queue: ParkedCall[];
+  contextTokens?: number;
   issued?: ParkedCall;
   wake?: () => void;
   removeAbort?: () => void;
@@ -183,7 +187,11 @@ function boundedHistory(messages: TranscriptContext['messages']): string {
 /** Fresh/diverged sessions receive bounded context; live sessions only the unseen suffix. */
 export function projectPrompt(
   context: TranscriptContext,
-  state: { prompted: boolean; recording?: PersistedSession },
+  state: {
+    prompted: boolean;
+    recording?: PersistedSession;
+    headless?: boolean;
+  },
 ) {
   const lastUser = [...context.messages]
     .reverse()
@@ -197,6 +205,11 @@ export function projectPrompt(
     | { type: 'text'; text: string }
     | { type: 'image'; data: string; mimeType: string }
   )[] = [];
+  if (state.headless)
+    prompt.push({
+      type: 'text',
+      text: 'Use the pi/ MCP tools for commands and file changes: pi/bash, pi/edit, and pi/write.',
+    });
   if (!state.prompted) {
     const history = boundedHistory(context.messages.slice(0, userIndex));
     if (history)
@@ -399,11 +412,19 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
   const sessions = new Map<string, SessionState>();
   const openings = new Set<Promise<unknown>>();
   const cleanups = new Set<Promise<void>>();
-  function connect(owned: SessionState, cwd: string, startupTimeoutMs: number) {
+  function connect(
+    owned: SessionState,
+    cwd: string,
+    startupTimeoutMs: number,
+    headless: boolean,
+  ) {
     const nativePermission = deps.onPermission;
     const opening = AcpConnection.connect({
       ...deps,
       cwd,
+      configLocation: headless
+        ? writeNativeToolHooks(deps.agentDir)
+        : undefined,
       startupTimeoutMs,
       requestTimeoutMs: 0,
       onPermission: (params) =>
@@ -624,10 +645,12 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
           // Current Pi supplies cwd through session_start; also accept it directly
           // from hosts that attach per-call context. Never use a provider-wide cwd
           // for an identified session whose lifecycle metadata is missing.
+          const metadata = options?.sessionId
+            ? deps.getSession?.(options.sessionId)
+            : undefined;
+          const headless = metadata?.headless === true;
           const knownCwd =
-            (options?.sessionId
-              ? deps.getSession?.(options.sessionId)?.cwd
-              : undefined) ||
+            metadata?.cwd ||
             options?.cwd ||
             context.cwd ||
             (!options?.sessionId ? deps.cwd : undefined);
@@ -733,7 +756,8 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               .catch(() => {});
             await wait(opening);
           }
-          if (!state.connection) await wait(connect(state, pi.cwd, startup));
+          if (!state.connection)
+            await wait(connect(state, pi.cwd, startup, headless));
           if (!state.sessionId) {
             let connection = state.connection!;
             const mcpServers = [
@@ -783,6 +807,7 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
                     state,
                     pi.cwd,
                     Math.max(1, startupDeadline - Date.now()),
+                    headless,
                   ),
                 );
               } finally {
@@ -843,6 +868,14 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
               );
             if (event.sessionUpdate === 'usage_update') {
               // Context occupancy is not billed input; prompt response owns token usage.
+              const turn = owned.turn;
+              if (
+                turn &&
+                typeof event.used === 'number' &&
+                Number.isFinite(event.used) &&
+                event.used >= 0
+              )
+                turn.contextTokens = event.used;
               if (
                 typeof event.size === 'number' &&
                 Number.isFinite(event.size) &&
@@ -907,7 +940,11 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
           // A crash after dispatch leaves an unknown remote tail: never persist a park.
           if (persist) store.delete(key);
           if (!state.turn) {
-            const content = projectPrompt(context, state);
+            const content = projectPrompt(context, {
+              prompted: state.prompted,
+              recording: state.recording,
+              headless,
+            });
             prompt = connection.request('session/prompt', {
               sessionId,
               prompt: content,
@@ -1028,7 +1065,8 @@ export function createJunieProvider(deps: ProviderOptions = {}) {
           message.usage.output = tokens(result.usage?.outputTokens);
           message.usage.cacheRead = tokens(result.usage?.cachedReadTokens);
           message.usage.cacheWrite = tokens(result.usage?.cachedWriteTokens);
-          message.usage.totalTokens = tokens(result.usage?.totalTokens);
+          message.usage.totalTokens =
+            turn.contextTokens ?? tokens(result.usage?.totalTokens);
           turn.removeAbort?.();
           state.turn = undefined;
           state.hiddenTools = undefined;

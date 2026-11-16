@@ -89,7 +89,7 @@ function setup(
     command: { file: process.execPath, args: [fixture] },
     env: { FAKE_STREAM: '1', FAKE_TRANSCRIPT: transcript, ...env },
     ...bounds,
-    getSession: () => ({ id: 'pi-1', cwd: dir }),
+    getSession: bounds.getSession ?? (() => ({ id: 'pi-1', cwd: dir })),
     sessionStore: store,
     agentDir: dir,
   };
@@ -364,7 +364,7 @@ test('projects thoughts, native tool logs and context usage; costs are cumulativ
   ).toEqual(['thinking_start', 'thinking_delta', 'thinking_end']);
   expect(first.message.usage).toMatchObject({
     input: 0,
-    totalTokens: 0,
+    totalTokens: 120,
     cost: { total: 0.25 },
   });
   expect(second.message.usage.cost.total).toBeCloseTo(0.15);
@@ -441,6 +441,109 @@ test.each([
     mode === 'resume' ? 0.05 : 0.25,
   );
   expect(store.load('pi-1')?.cost).toBeCloseTo(mode === 'resume' ? 0.3 : 0.25);
+});
+
+test.each([
+  true,
+  false,
+])('headless launch and prompt guidance survive continuation and resume (headless: %s)', async (headless) => {
+  const { provider, dir, wire, restart } = setup(
+    { FAKE_RECORD_ARGV: '1' },
+    { getSession: () => ({ cwd: dir, headless }) },
+  );
+  const first = await turn(provider);
+  const next = normalizeContext({
+    messages: [
+      ...context.messages,
+      first.message,
+      { role: 'user', content: 'Next', timestamp: 2 },
+    ],
+  });
+  const second = await turn(provider, {}, next);
+  await provider.close();
+  const resumed = normalizeContext({
+    messages: [
+      ...next.messages,
+      second.message,
+      { role: 'user', content: 'Resume', timestamp: 3 },
+    ],
+  });
+  expect((await turn(restart(), {}, resumed)).message.stopReason).toBe('stop');
+  const entries = wire();
+  const argv = entries
+    .filter((m) => m.method === 'fixture/argv')
+    .map((m) => m.params);
+  expect(argv).toHaveLength(2);
+  for (const args of argv) {
+    const index = args.indexOf('--config-location');
+    if (headless)
+      expect(args[index + 1]).toBe(
+        join(dir, 'junie-bridge', 'native-tool-hooks.json'),
+      );
+    else expect(index).toBe(-1);
+  }
+  expect(entries.filter((m) => m.method === 'session/new')).toHaveLength(1);
+  expect(entries.filter((m) => m.method === 'session/resume')).toHaveLength(1);
+  const prompts = entries.filter((m) => m.method === 'session/prompt');
+  expect(prompts).toHaveLength(3);
+  for (const prompt of prompts) {
+    const text = JSON.stringify(prompt.params.prompt);
+    if (headless)
+      for (const name of ['pi/bash', 'pi/edit', 'pi/write'])
+        expect(text).toContain(name);
+    else expect(text).not.toContain('pi/bash');
+  }
+});
+
+test('unsafe batch hook path reaches Pi as an error terminal without launching', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'junie-provider-refusal-'));
+  const agentDir = join(dir, '100% real');
+  const launchJob = vi.fn();
+  const provider = createJunieProvider({
+    agentDir,
+    sessionStore: createSessionStore(join(dir, 'sessions')),
+    getSession: () => ({ cwd: dir, headless: true }),
+    command: { file: 'junie.bat', args: [] },
+    platform: 'win32',
+    launchJob,
+  });
+  try {
+    const { events, message } = await turn(provider);
+    expect(events.at(-1)?.type).toBe('error');
+    expect(message.stopReason).toBe('error');
+    expect(message.errorMessage).toMatch(/JUNIE_BRIDGE_LAUNCHER.*junie\.exe/i);
+    expect(launchJob).not.toHaveBeenCalled();
+  } finally {
+    await provider.close();
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  }
+}, 5000);
+
+test('headless resume failure reconnects with the native tool hook', async () => {
+  const { provider, restart, wire, dir } = setup(
+    { FAKE_RECORD_ARGV: '1', FAKE_RESUME_FAIL: '1' },
+    { getSession: () => ({ cwd: dir, headless: true }) },
+  );
+  const first = await turn(provider);
+  await provider.close();
+  const next = normalizeContext({
+    messages: [
+      ...context.messages,
+      first.message,
+      { role: 'user', content: 'Next', timestamp: 2 },
+    ],
+  });
+  expect((await turn(restart(), {}, next)).message.stopReason).toBe('stop');
+  const args = wire()
+    .filter((m) => m.method === 'fixture/argv')
+    .map((m) => m.params);
+  expect(args).toHaveLength(3);
+  for (const argv of args) expect(argv).toContain('--config-location');
 });
 
 test('seeds history only on a fresh session and sends latest user base64 images unchanged', async () => {
@@ -856,7 +959,11 @@ const toolContext = normalizeContext({
   ],
 });
 test('MCP call yields one Pi toolUse and its result continues the same Junie turn without reseeding', async () => {
-  const { provider, wire } = setup({ FAKE_MCP: '1', FAKE_TOKEN_USAGE: '1' });
+  const { provider, wire } = setup({
+    FAKE_MCP: '1',
+    FAKE_TOKEN_USAGE: '1',
+    FAKE_MCP_CONTEXT_USAGE: '1',
+  });
   const first = await turn(provider, {}, toolContext);
   expect(first.message.stopReason, first.message.errorMessage).toBe('toolUse');
   const calls = first.message.content.filter(
@@ -900,7 +1007,7 @@ test('MCP call yields one Pi toolUse and its result continues the same Junie tur
   expect(second.message.usage).toMatchObject({
     input: 24719,
     output: 472,
-    totalTokens: 25191,
+    totalTokens: 444,
     cacheRead: 11533,
     cacheWrite: 19,
   });
@@ -1401,7 +1508,24 @@ test('a durable record that stored the full ACP model value still resumes when P
 });
 
 test('prompt response maps billed tokens independently of context occupancy and cumulative USD cost', async () => {
-  const { provider } = setup({ FAKE_RICH: '1', FAKE_TOKEN_USAGE: '1' });
+  const { provider } = setup({
+    FAKE_RICH: '1',
+    FAKE_TOKEN_USAGE: '1',
+    FAKE_INVALID_CONTEXT_USAGE: '1',
+  });
+  const { message } = await turn(provider);
+  expect(message.usage).toMatchObject({
+    input: 24719,
+    output: 472,
+    totalTokens: 120,
+    cacheRead: 11533,
+    cacheWrite: 19,
+    cost: { total: 0.25 },
+  });
+});
+
+test('prompt totalTokens keeps the terminal usage when no context update was observed', async () => {
+  const { provider } = setup({ FAKE_TOKEN_USAGE: '1' });
   const { message } = await turn(provider);
   expect(message.usage).toMatchObject({
     input: 24719,
@@ -1409,7 +1533,6 @@ test('prompt response maps billed tokens independently of context occupancy and 
     totalTokens: 25191,
     cacheRead: 11533,
     cacheWrite: 19,
-    cost: { total: 0.25 },
   });
 });
 

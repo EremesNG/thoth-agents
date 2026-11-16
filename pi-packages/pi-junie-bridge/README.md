@@ -55,10 +55,16 @@ real Junie executable (especially on Windows).
 
 - Pi tools are exposed through an authenticated loopback MCP server. Calls are
   returned to Pi for execution rather than executed by a second Pi tool loop.
-- Junie's native tools remain available. Their permission requests are shown as
-  Pi permission dialogs using Junie's options; headless requests, dismissal and
-  timeout reject. Native tool activity is coalesced into display-only session
-  entries, never assistant text or LLM history; headless runs omit it entirely.
+- With a UI, Junie's native tools remain available and permission requests use
+  Pi dialogs with Junie's options; dismissal and timeout reject. In headless
+  sessions, a Junie `PreToolUse` hook blocks native shell and file mutation
+  tools and directs Junie to `pi/bash`, `pi/edit`, and `pi/write` instead;
+  native read-only tools remain available. Other native permission requests
+  still reject without a UI. Native tool activity is coalesced into display-only
+  session entries, never assistant text or LLM history; headless runs omit it.
+  On Windows, if the agent-directory path contains cmd metacharacters, batch
+  launchers fail closed rather than launching without the hook. Set
+  `JUNIE_BRIDGE_LAUNCHER` to the real `junie.exe` to use that path safely.
 - After each completed Junie prompt, a display-only line names the real Junie
   model behind Pi's provider model and the cost attributed to that turn, for
   example: `Junie · mix.normal → gpt-6.1-terra (low) · $0.0313`, where the first

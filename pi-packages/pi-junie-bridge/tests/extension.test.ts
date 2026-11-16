@@ -151,6 +151,7 @@ test.each([
     'FAKE_STREAM',
     'FAKE_NATIVE_PERMISSION',
     'FAKE_NATIVE_DETAIL',
+    'FAKE_RECORD_ARGV',
   ] as const;
   const previous = keys.map((key) => process.env[key]);
   const fixture = fileURLToPath(
@@ -171,6 +172,7 @@ test.each([
   process.env.FAKE_STREAM = '1';
   process.env.FAKE_NATIVE_PERMISSION = '1';
   process.env.FAKE_NATIVE_DETAIL = '1';
+  process.env.FAKE_RECORD_ARGV = '1';
   // Local Junie session settings drive the display-only per-turn model line.
   process.env.JUNIE_HOME = join(dir, 'junie');
   mkdirSync(join(dir, 'junie', 'sessions', 'fake-session'), {
@@ -309,6 +311,13 @@ test.each([
       { outcome: 'selected', optionId: hasUI ? 'yes' : 'no' },
       { outcome: 'selected', optionId: 'no' },
     ]);
+    const args = wire
+      .filter((m) => m.method === 'fixture/argv')
+      .map((m) => m.params);
+    expect(args).toHaveLength(2);
+    if (hasUI) expect(args[0]).not.toContain('--config-location');
+    else expect(args[0]).toContain('--config-location');
+    expect(args[1]).toContain('--config-location');
     expect(wire.filter((m) => m.method === 'initialize')).toHaveLength(2);
     expect(
       wire.filter((m) => m.method === 'session/new').map((m) => m.params.cwd),
@@ -433,6 +442,31 @@ test('replaces a pre-upgrade global state instead of reusing its stale provider'
       await pi.handlers.get('session_start')({}, sessionCtx(dir, true));
       await pi.handlers.get('session_shutdown')({}, sessionCtx(dir));
       expect(pi.appendEntry).not.toHaveBeenCalled();
+    },
+  );
+});
+
+test('replaces a complete version 3 state and records headless session metadata', async () => {
+  const legacyClose = vi.fn(async () => {});
+  const legacyStreamSimple = () => {};
+  await withLegacyState(
+    { close: legacyClose, streamSimple: legacyStreamSimple },
+    async ({ pi, dir }) => {
+      Object.assign((globalThis as any)[KEY], {
+        version: 3,
+        nativeSinks: new Map(),
+      });
+      extension(pi.pi);
+      expect(legacyClose).toHaveBeenCalledTimes(1);
+      expect(pi.registerProvider.mock.calls[0][1].streamSimple).not.toBe(
+        legacyStreamSimple,
+      );
+      await pi.handlers.get('session_start')({}, sessionCtx(dir));
+      expect((globalThis as any)[KEY].sessions.get('pi-reload')).toEqual({
+        cwd: dir,
+        headless: true,
+      });
+      await pi.handlers.get('session_shutdown')({}, sessionCtx(dir));
     },
   );
 });

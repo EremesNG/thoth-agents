@@ -82,14 +82,23 @@ export function resolveJunieLauncher(
 export function windowsCommand(
   command: JunieCommand,
   env: NodeJS.ProcessEnv,
+  configLocation?: string,
 ): JunieCommand {
   if (!/\.(bat|cmd)$/i.test(command.file)) return command;
-  if (/[\r\n%!^"&|<>]/.test(command.file) || command.args.length)
+  if (
+    /[\r\n%!^"&|<>]/.test(command.file) ||
+    command.args.length ||
+    (configLocation !== undefined && /[\r\n%!^"&|<>]/.test(configLocation))
+  )
     throw new Error(
-      'Unsafe Junie batch launcher path; configure the real junie.exe with JUNIE_BRIDGE_LAUNCHER.',
+      'Unsafe Junie batch launcher or config path; set JUNIE_BRIDGE_LAUNCHER to the real junie.exe.',
     );
   const literal = command.file.replace(/'/g, "''");
-  const script = `& '${literal}' --acp true --skip-update-check; exit $LASTEXITCODE`;
+  const configArg =
+    configLocation === undefined
+      ? ''
+      : ` --config-location '${configLocation.replace(/'/g, "''")}'`;
+  const script = `& '${literal}' --acp true --skip-update-check${configArg}; exit $LASTEXITCODE`;
   return {
     file: join(
       env.SystemRoot ?? 'C:\\Windows',
@@ -117,6 +126,7 @@ export interface JunieProcess {
 export interface JunieLaunchOptions extends LauncherOptions {
   cwd?: string;
   command?: JunieCommand;
+  configLocation?: string;
   warn?: (message: string) => void;
   launchJob?: (options: JobLaunchOptions) => Promise<LaunchedJob>;
 }
@@ -132,17 +142,29 @@ export async function launchJunie(
     };
   const platform = options.platform ?? process.platform;
   let command = options.command ?? resolveJunieLauncher(options);
-  command =
-    platform === 'win32' && /\.(bat|cmd)$/i.test(command.file)
-      ? windowsCommand(command, env)
-      : {
-          file: command.file,
-          args: [...command.args, '--acp', 'true', '--skip-update-check'],
-        };
+  const batch = platform === 'win32' && /\.(bat|cmd)$/i.test(command.file);
+  command = batch
+    ? windowsCommand(command, env, options.configLocation)
+    : {
+        file: command.file,
+        args: [
+          ...command.args,
+          '--acp',
+          'true',
+          '--skip-update-check',
+          ...(options.configLocation === undefined
+            ? []
+            : ['--config-location', options.configLocation]),
+        ],
+      };
   let job: LaunchedJob | undefined;
   if (platform === 'win32') {
     try {
-      job = await (options.launchJob ?? launchInJob)({ ...command, cwd, env });
+      job = await (options.launchJob ?? launchInJob)({
+        ...command,
+        cwd,
+        env,
+      });
     } catch (error) {
       if (!(error instanceof JobLauncherUnavailable)) throw error;
       (options.warn ?? console.warn)(

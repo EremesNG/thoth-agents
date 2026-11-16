@@ -2220,6 +2220,349 @@ describe('registerStatusLine', () => {
     expect(mocks.ctx.getContextUsage).not.toHaveBeenCalled();
   });
 
+  describe('prompt-cache countdown', () => {
+    const NOW = 1_800_000_000_000;
+    const MINUTE = 60_000;
+
+    function cacheEntries(timestamp: number, provider = 'anthropic') {
+      return [
+        {
+          type: 'message',
+          id: '1',
+          parentId: null,
+          timestamp: '2026-10-02T10:00:00Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+        },
+        {
+          type: 'message',
+          id: '2',
+          parentId: '1',
+          timestamp: '2026-10-02T10:00:01Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+            provider,
+            timestamp,
+          },
+        },
+      ];
+    }
+
+    /** Points the mocked session at an assistant request started `ageMs` ago. */
+    function anchorAt(
+      mocks: ReturnType<typeof createMocks>,
+      ageMs: number,
+      provider = 'anthropic',
+    ) {
+      mocks.sessionManager.getLeafId.mockReturnValue('2');
+      mocks.sessionManager.getEntries.mockReturnValue(
+        cacheEntries(NOW - ageMs, provider) as never,
+      );
+    }
+
+    function fire(mocks: ReturnType<typeof createMocks>, event: string) {
+      for (const handler of mocks.eventHandlers.get(event) ?? []) handler();
+    }
+
+    /** Focuses a real editor so the bordered countdown can actually render. */
+    function mountEditor(mocks: ReturnType<typeof createMocks>) {
+      const editor = createEditor(mocks);
+      mocks.tui.getFocusedComponent.mockReturnValue(editor);
+      return editor;
+    }
+
+    /** True when the idle countdown re-rendered the footer within `ms`. */
+    function ticks(mocks: ReturnType<typeof createMocks>, ms: number): boolean {
+      mocks.tui.requestRender.mockClear();
+      vi.advanceTimersByTime(ms);
+      return mocks.tui.requestRender.mock.calls.length > 0;
+    }
+
+    it('counts the estimated lifetime down from the latest assistant request', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      const component = createFooter(mocks);
+      try {
+        const editor = mountEditor(mocks);
+        const first = component.getStatusSnapshot();
+        expect(first.cacheExpiryRemainingMs).toBe(50 * MINUTE);
+        component.render(100);
+        expect(borders(editor, 100).bottom).toContain('\u{f051f} 50m');
+
+        expect(ticks(mocks, 1000)).toBe(true);
+        const next = component.getStatusSnapshot();
+        // A new snapshot object drives the footer and border render keys.
+        expect(next).not.toBe(first);
+        expect(next.cacheExpiryRemainingMs).toBe(50 * MINUTE - 1000);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('hides the countdown and stops ticking while a request is in flight', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      const component = createFooter(mocks);
+      try {
+        const editor = mountEditor(mocks);
+        component.render(100);
+        expect(borders(editor, 100).bottom).toContain('\u{f051f} 50m');
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          50 * MINUTE,
+        );
+        fire(mocks, 'agent_start');
+        expect(
+          component.getStatusSnapshot().cacheExpiryRemainingMs,
+        ).toBeUndefined();
+        vi.advanceTimersByTime(1000);
+        expect(
+          component.getStatusSnapshot().cacheExpiryRemainingMs,
+        ).toBeUndefined();
+
+        fire(mocks, 'agent_end');
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          50 * MINUTE - 1000,
+        );
+        expect(ticks(mocks, 1000)).toBe(true);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('uses the provider override and marks an expired cache', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE, 'openai-codex');
+      const component = createFooter(mocks);
+      try {
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          20 * MINUTE,
+        );
+        anchorAt(mocks, 45 * MINUTE, 'openai');
+        fire(mocks, 'message_end');
+        expect(
+          component.getStatusSnapshot().cacheExpiryRemainingMs,
+        ).toBeLessThan(0);
+        const editor = createEditor(mocks);
+        mocks.tui.getFocusedComponent.mockReturnValue(editor);
+        component.render(100);
+        expect(borders(editor, 100).bottom).toContain('cache cold');
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('stays hidden without an assistant request and stops when disabled live', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      const config = structuredClone(defaultConfig);
+      mocks.sessionManager.getEntries.mockReturnValue([
+        {
+          type: 'message',
+          id: '1',
+          parentId: null,
+          timestamp: '2026-10-02T10:00:00Z',
+          message: { role: 'user', content: [] },
+        },
+      ] as never);
+      const component = createFooter(mocks, config);
+      try {
+        const editor = mountEditor(mocks);
+        component.render(100);
+        expect(
+          component.getStatusSnapshot().cacheExpiryRemainingMs,
+        ).toBeUndefined();
+        expect(ticks(mocks, 2000)).toBe(false);
+
+        anchorAt(mocks, 5 * MINUTE);
+        fire(mocks, 'message_end');
+        component.render(100);
+        borders(editor, 100);
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          55 * MINUTE - 2000,
+        );
+        expect(ticks(mocks, 1000)).toBe(true);
+
+        applyLiveSettings(
+          config,
+          { cacheExpiry: { enabled: false } },
+          { requestRender: mocks.tui.requestRender },
+        );
+        component.render(100);
+        expect(
+          component.getStatusSnapshot().cacheExpiryRemainingMs,
+        ).toBeUndefined();
+        vi.advanceTimersByTime(1000);
+        expect(ticks(mocks, 2000)).toBe(false);
+
+        applyLiveSettings(
+          config,
+          { cacheExpiry: { enabled: true } },
+          { requestRender: mocks.tui.requestRender },
+        );
+        component.render(100);
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          55 * MINUTE - 6000,
+        );
+        expect(ticks(mocks, 1000)).toBe(true);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears the countdown timer on session shutdown', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, MINUTE);
+      const component = createFooter(mocks);
+      const editor = mountEditor(mocks);
+      component.render(100);
+      borders(editor, 100);
+      expect(ticks(mocks, 1000)).toBe(true);
+      fire(mocks, 'session_shutdown');
+      expect(vi.getTimerCount()).toBe(0);
+      component.dispose();
+      vi.useRealTimers();
+    });
+
+    it('runs no countdown timer while the input box module is disabled', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      const component = createFooter(mocks, {
+        ...structuredClone(defaultConfig),
+        inputBox: { enabled: false },
+      });
+      try {
+        const editor = mountEditor(mocks);
+        component.render(100);
+        // No border segment exists, so no one-second timer may run.
+        editor.render(100);
+        expect(component.getStatusSnapshot().cacheExpiryRemainingMs).toBe(
+          50 * MINUTE,
+        );
+        expect(ticks(mocks, 3000)).toBe(false);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('stops ticking when a narrow border drops the countdown and rearms on resize', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      const component = createFooter(mocks);
+      try {
+        const editor = mountEditor(mocks);
+        component.render(40);
+        const narrow = borders(editor, 40).bottom;
+        expect(narrow).not.toContain('50m');
+        expect(ticks(mocks, 1000)).toBe(false);
+
+        // The border re-render alone re-arms the timer once the segment fits.
+        const wide = borders(editor, 120).bottom;
+        expect(wide).toContain('\u{f051f} 50m');
+        expect(ticks(mocks, 1000)).toBe(true);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('runs no interval when an ASCII cache-named model hides the countdown', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      if (!mocks.ctx.model) throw new Error('Missing fixture model');
+      mocks.ctx.model = {
+        ...mocks.ctx.model,
+        id: 'cache-model',
+        name: 'cache-model',
+      };
+      const component = createFooter(mocks, {
+        ...structuredClone(defaultConfig),
+        icons: 'ascii',
+      });
+      try {
+        const editor = mountEditor(mocks);
+        component.render(60);
+        // The word glyph "cache" also appears in the model name, so only the
+        // chosen layout variant may arm the timer.
+        let firstWithCountdown = 0;
+        for (let width = 40; width <= 140; width++) {
+          if (borders(editor, width).bottom.includes('cache 50m')) {
+            firstWithCountdown = width;
+            break;
+          }
+        }
+        expect(firstWithCountdown).toBeGreaterThan(41);
+        const narrow = borders(editor, firstWithCountdown - 1).bottom;
+        expect(narrow).toContain('cache-model');
+        expect(narrow).not.toContain('cache 50m');
+        vi.advanceTimersByTime(0);
+        expect(ticks(mocks, 3000)).toBe(false);
+
+        expect(borders(editor, 140).bottom).toContain('cache 50m');
+        expect(ticks(mocks, 1000)).toBe(true);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps one interval and requests no per-frame repaint when an overlay takes focus', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const mocks = createMocks();
+      anchorAt(mocks, 10 * MINUTE);
+      const component = createFooter(mocks);
+      try {
+        const editor = mountEditor(mocks);
+        component.render(100);
+        expect(borders(editor, 100).bottom).toContain('\u{f051f} 50m');
+        // Settle the one-shot session reconcile timeout: only the interval stays.
+        vi.advanceTimersByTime(0);
+        const timers = vi.getTimerCount();
+        expect(timers).toBe(1);
+
+        // An overlay takes focus while the decorated editor keeps rendering
+        // beneath it: visibility must not flip, so nothing self-requests a frame.
+        const overlay = { render: () => ['overlay'], invalidate() {} };
+        mocks.tui.getFocusedComponent.mockReturnValue(overlay);
+        mocks.tui.requestRender.mockClear();
+        for (let pass = 0; pass < 5; pass++) {
+          component.render(100);
+          borders(editor, 100);
+        }
+        expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(timers);
+
+        // The single interval still ticks the countdown once per second.
+        expect(vi.getTimerCount()).toBe(timers);
+        expect(ticks(mocks, 1000)).toBe(true);
+        expect(vi.getTimerCount()).toBe(timers);
+      } finally {
+        component.dispose();
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('disposes all event and branch subscriptions on component dispose', () => {
     const mocks = createMocks();
     const busUnsubs: Array<ReturnType<typeof vi.fn>> = [];

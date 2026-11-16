@@ -42,6 +42,12 @@ export function inputLabelWidth(
 export interface BorderRegions {
   left?: readonly string[];
   right?: readonly string[];
+  /**
+   * Receives the index of the `right` variant the fit step selected, or
+   * `undefined` when none is drawn, so callers can tell what was rendered
+   * without inspecting the row text.
+   */
+  onRightSelected?: (index: number | undefined) => void;
 }
 
 // `╭─ ` + left + ` ─…─ ` + right + ` ─╮`: the rule keeps at least one cell.
@@ -61,13 +67,19 @@ function renderBorder(
   width = Math.max(0, Math.floor(width));
   const border = (text: string) => colorBorder(theme, text, frame);
   const pieces = (regions.left ?? []).filter((piece) => visibleWidth(piece));
-  const rights = (regions.right ?? []).filter((piece) => visibleWidth(piece));
-  const plain = () =>
-    truncateToWidth(
+  const rights = (regions.right ?? [])
+    .map((piece, index) => ({ piece, index }))
+    .filter(({ piece }) => visibleWidth(piece));
+  const reportRight = (index: number | undefined) =>
+    regions.onRightSelected?.(index);
+  const plain = () => {
+    reportRight(undefined);
+    return truncateToWidth(
       border(`${capLeft}${'─'.repeat(Math.max(0, width - 2))}${capRight}`),
       width,
       '',
     );
+  };
   if (width <= 5 || (!pieces.length && !overflow && !rights.length))
     return plain();
 
@@ -85,15 +97,17 @@ function renderBorder(
   // Degrade right first (compact, then drop), then left secondaries.
   const full = leftWith(pieces.length);
   const fullWidth = visibleWidth(full);
-  for (const right of rights) {
+  for (const { piece: right, index } of rights) {
     const rightWidth = visibleWidth(right);
     if (!full) {
       if (rightWidth > width - RIGHT_ONLY_OVERHEAD) continue;
       const dashes = width - 5 - rightWidth;
+      reportRight(index);
       return `${border(`${capLeft}${'─'.repeat(dashes)} `)}${right}${border(` ─${capRight}`)}`;
     }
     if (fullWidth + rightWidth > width - LEFT_RIGHT_OVERHEAD) continue;
     const dashes = width - 8 - fullWidth - rightWidth;
+    reportRight(index);
     return `${border(`${capLeft}─ `)}${full}${border(` ${'─'.repeat(dashes)} `)}${right}${border(` ─${capRight}`)}`;
   }
   if (!full) return plain();
@@ -121,6 +135,7 @@ function renderBorder(
   }
   const fitted = truncateToWidth(label, labelWidth, '');
   const dashes = width - visibleWidth(fitted) - 5;
+  reportRight(undefined);
   return `${border(`${capLeft}─ `)}${fitted}${border(` ${'─'.repeat(dashes)}${capRight}`)}`;
 }
 

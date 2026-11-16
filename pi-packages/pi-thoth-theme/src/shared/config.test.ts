@@ -244,3 +244,97 @@ describe('input-box configuration', () => {
     expect(loadConfig(path).statusLine.enabled).toBe(true);
   });
 });
+
+describe('cache expiry configuration', () => {
+  const defaults = {
+    enabled: true,
+    ttlMinutes: 60,
+    providerTtlMinutes: { openai: 30, 'openai-codex': 30 },
+  };
+
+  it('defaults to an enabled 60 minute lifetime with OpenAI/Codex overrides', () => {
+    expect(loadConfig(path).cacheExpiry).toEqual(defaults);
+  });
+
+  it.each([
+    { enabled: false },
+    { enabled: null },
+    { enabled: 'false' },
+    { ttlMinutes: 0 },
+    { ttlMinutes: -15 },
+    { ttlMinutes: '30' },
+    { ttlMinutes: null },
+    { ttlMinutes: Number.NaN },
+  ])('falls back to defaults for invalid %j', (section) => {
+    writeFileSync(path, JSON.stringify({ cacheExpiry: section }));
+    const loaded = loadConfig(path).cacheExpiry;
+    expect(loaded?.enabled).toBe(
+      typeof section.enabled === 'boolean' ? section.enabled : true,
+    );
+    expect(loaded?.ttlMinutes).toBe(60);
+    expect(loaded?.providerTtlMinutes).toEqual(defaults.providerTtlMinutes);
+  });
+
+  it.each([
+    null,
+    false,
+    42,
+    'cacheExpiry',
+    [],
+  ])('ignores a non-object section %j', (cacheExpiry) => {
+    writeFileSync(path, JSON.stringify({ cacheExpiry }));
+    expect(loadConfig(path).cacheExpiry).toEqual(defaults);
+  });
+
+  it('accepts a positive lifetime in minutes', () => {
+    writeFileSync(path, JSON.stringify({ cacheExpiry: { ttlMinutes: 5 } }));
+    expect(loadConfig(path).cacheExpiry?.ttlMinutes).toBe(5);
+  });
+
+  it('merges user provider overrides over the defaults', () => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        cacheExpiry: {
+          providerTtlMinutes: {
+            openai: 90,
+            custom: 15,
+            anthropic: 0,
+            bad: 'x',
+          },
+        },
+      }),
+    );
+    expect(loadConfig(path).cacheExpiry?.providerTtlMinutes).toEqual({
+      openai: 90,
+      'openai-codex': 30,
+      custom: 15,
+    });
+  });
+
+  it('persists the panel fields while preserving provider overrides and unknown fields', () => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        icons: 'ascii',
+        cacheExpiry: {
+          ttlMinutes: 60,
+          providerTtlMinutes: { openai: 90 },
+          note: 'keep',
+        },
+        unknown: 42,
+      }),
+    );
+    saveThemeConfig({ cacheExpiry: { enabled: false, ttlMinutes: 30 } }, path);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      icons: 'ascii',
+      cacheExpiry: {
+        enabled: false,
+        ttlMinutes: 30,
+        providerTtlMinutes: { openai: 90 },
+        note: 'keep',
+      },
+      unknown: 42,
+    });
+  });
+});

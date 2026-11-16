@@ -38,13 +38,15 @@ function open(overrides: Partial<ThemeSettingsOptions> = {}) {
 }
 
 describe('theme settings panel', () => {
-  it('renders enum rows, then module checkboxes marked as requiring /reload', () => {
+  it('renders enum rows, then the live cache rows, then module checkboxes marked as requiring /reload', () => {
     const { text } = open();
     const out = text();
     expect(out).toContain('Thoth theme settings');
     expect(out).toContain('Icons         ‹ nerd ›');
     expect(out).toContain('Animation     ‹ full ›');
     expect(out).toContain('Tool density  ‹ frame ›');
+    expect(out).toContain('[x] Cache expiry');
+    expect(out).toContain('Cache TTL     ‹ 60m ›');
     for (const label of ['Status line', 'Input box', 'Tool cards', 'Welcome'])
       expect(out).toContain(`[x] ${label}  (requires /reload)`);
     expect(out).toContain('Space toggle');
@@ -76,7 +78,7 @@ describe('theme settings panel', () => {
     const { text, press } = open();
     press(' ');
     expect(text()).toContain('pending: none');
-    press(DOWN, DOWN, DOWN, ' ', RIGHT, LEFT);
+    press(DOWN, DOWN, DOWN, DOWN, DOWN, ' ', RIGHT, LEFT);
     expect(text()).toContain('‹ nerd ›');
     expect(text()).toContain('[ ] Status line');
     expect(text()).toContain('[x] Input box');
@@ -84,15 +86,62 @@ describe('theme settings panel', () => {
     expect(text()).toContain('[x] Status line');
   });
 
+  it('toggles cache expiry and cycles the TTL without leaving the live group', () => {
+    const { text, press } = open();
+    press(DOWN, DOWN, DOWN, ' ');
+    expect(text()).toContain('[ ] Cache expiry');
+    expect(text()).toContain('pending: 1 change');
+    press(DOWN, RIGHT);
+    expect(text()).toContain('Cache TTL     ‹ 120m ›');
+    expect(text()).toContain('pending: 2 changes');
+    press(LEFT, LEFT);
+    expect(text()).toContain('Cache TTL     ‹ 30m ›');
+    expect(text()).toContain('[x] Status line');
+  });
+
+  it('steps a JSON-only TTL value to the neighbouring choice', () => {
+    const save = vi.fn<ThemeSettingsOptions['save']>();
+    const component = createThemeSettingsPanel({
+      initial: {
+        ...draftFromConfig(loadConfig('/nonexistent/pi-thoth-theme.json')),
+        cacheExpiry: { enabled: true, ttlMinutes: 45 },
+      },
+      save,
+      onDone: vi.fn<(saved: boolean) => void>(),
+      theme,
+      maxHeight: () => 30,
+    });
+    const text = () => component.render(80).map(strip).join('\n');
+    expect(text()).toContain('Cache TTL     ‹ 45m ›');
+    for (const key of [DOWN, DOWN, DOWN, DOWN, RIGHT])
+      component.handleInput?.(key);
+    expect(text()).toContain('Cache TTL     ‹ 60m ›');
+    component.handleInput?.(LEFT);
+    expect(text()).toContain('Cache TTL     ‹ 30m ›');
+  });
+
   it('marks changed rows dirty', () => {
     const { text, press } = open();
-    press(DOWN, RIGHT, DOWN, DOWN, DOWN, DOWN, DOWN, ' ');
+    press(DOWN, RIGHT, DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, ' ');
     expect(text()).toContain('pending: 2 changes');
   });
 
   it('saves only changed settings on Enter and closes as saved', () => {
     const { save, onDone, press } = open();
-    press(RIGHT, DOWN, DOWN, RIGHT, DOWN, DOWN, DOWN, DOWN, DOWN, ' ', ENTER);
+    press(
+      RIGHT,
+      DOWN,
+      DOWN,
+      RIGHT,
+      DOWN,
+      DOWN,
+      DOWN,
+      DOWN,
+      DOWN,
+      DOWN,
+      ' ',
+      ENTER,
+    );
     expect(save).toHaveBeenCalledOnce();
     expect(save.mock.calls[0]?.[0]).toEqual({
       icons: 'unicode',
@@ -100,6 +149,14 @@ describe('theme settings panel', () => {
       welcome: { enabled: false },
     });
     expect(onDone).toHaveBeenCalledWith(true);
+  });
+
+  it('saves cache expiry settings as a nested patch', () => {
+    const { save, press } = open();
+    press(DOWN, DOWN, DOWN, ' ', DOWN, RIGHT, ENTER);
+    expect(save.mock.calls[0]?.[0]).toEqual({
+      cacheExpiry: { enabled: false, ttlMinutes: 120 },
+    });
   });
 
   it('also saves with s', () => {

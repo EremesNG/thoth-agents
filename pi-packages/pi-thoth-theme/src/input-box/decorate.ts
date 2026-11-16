@@ -8,8 +8,8 @@ import type { IconMode } from '../shared/config.ts';
 import { settingsRevision } from '../shared/settings-revision.ts';
 import {
   type ActiveThemeLike,
+  formatBottomRightRegions,
   formatBranchSegment,
-  formatContextSegments,
   formatCwdSegments,
   formatModelSegments,
 } from '../status-line/layout.ts';
@@ -49,6 +49,11 @@ export interface InputBoxDeps {
   readonly iconMode?: IconMode;
   /** Shared live data; optional for standalone decorator consumers. */
   getStatusSnapshot?: StatusSnapshotProvider;
+  /**
+   * Reports whether the last rendered bottom border carried the cache
+   * countdown, so the owner only runs its timer while it is visible.
+   */
+  onCacheSegmentRender?: (visible: boolean) => void;
 }
 
 export interface EditorDecoration {
@@ -246,20 +251,35 @@ export function decorateEditor(
           (hidden > 0 &&
             visibleWidth(scrollLabel('down', hidden, deps.iconMode)) >
               outerWidth - 6)
-        )
+        ) {
+          // Native geometry renders no themed border, so no countdown segment.
+          deps.onCacheSegmentRender?.(false);
           return originals.renderBottomBorder.call(this, width, hidden);
+        }
         const data = active ? deps.getStatusSnapshot?.() : undefined;
         const options = { mode: deps.iconMode, theme: deps.theme };
+        const right = data
+          ? formatBottomRightRegions(data, options)
+          : undefined;
+        // The fit step reports which variant it drew, so visibility never
+        // depends on row text (the ASCII/Unicode glyph is the word "cache").
+        let selected: number | undefined;
         bottom = renderInputBottom(
           outerWidth,
           deps.theme,
           {
             left: data ? formatModelSegments(data, options) : [],
-            right: data ? formatContextSegments(data, options) : [],
+            right: right?.variants ?? [],
+            onRightSelected: (index) => {
+              selected = index;
+            },
           },
           hidden,
           renderFrame,
           deps.iconMode,
+        );
+        deps.onCacheSegmentRender?.(
+          right?.cacheIndex !== undefined && selected === right.cacheIndex,
         );
         return bottom;
       },
@@ -290,6 +310,8 @@ export function decorateEditor(
     dispose() {
       if (!active) return;
       active = false;
+      // Unmounting the decoration removes the only renderer of the countdown.
+      deps.onCacheSegmentRender?.(false);
       for (const name of names) {
         const current = Reflect.getOwnPropertyDescriptor(editor, name);
         const patch = patches[name];

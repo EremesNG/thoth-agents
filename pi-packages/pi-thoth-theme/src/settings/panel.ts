@@ -8,6 +8,8 @@ import {
 } from '@thoth-agents/pi-core/panel';
 import {
   ANIMATION_LEVELS,
+  CACHE_TTL_CHOICES,
+  DEFAULT_CACHE_TTL_MINUTES,
   type IconMode,
   type ThemeConfig,
   type ThemeConfigPatch,
@@ -16,6 +18,7 @@ import {
 
 const ICON_MODES: readonly IconMode[] = ['nerd', 'unicode', 'ascii'];
 const DENSITIES: readonly ToolDensity[] = ['frame', 'compact', 'line'];
+const TTL_CHOICES: readonly number[] = CACHE_TTL_CHOICES;
 
 const MODULES = [
   ['statusLine', 'Status line'],
@@ -32,6 +35,7 @@ export interface ThemeSettingsDraft {
   icons: IconMode;
   animation: AnimationLevel;
   density: ToolDensity;
+  cacheExpiry: { enabled: boolean; ttlMinutes: number };
   modules: Record<ModuleKey, boolean>;
 }
 
@@ -51,11 +55,28 @@ const cycle = <T>(values: readonly T[], current: T, delta: number): T =>
     (values.indexOf(current) + Math.sign(delta) + values.length) % values.length
   ];
 
+/**
+ * Steps a numeric choice list. A TTL outside the list (JSON-only value) snaps
+ * to the neighbouring choice in the travelled direction.
+ */
+function cycleTtl(current: number, delta: number): number {
+  const index = TTL_CHOICES.indexOf(current);
+  if (index >= 0) return cycle(TTL_CHOICES, current, delta);
+  const up = TTL_CHOICES.filter((value) => value > current);
+  const down = TTL_CHOICES.filter((value) => value < current);
+  if (Math.sign(delta) > 0) return up[0] ?? TTL_CHOICES[0];
+  return down[down.length - 1] ?? TTL_CHOICES[TTL_CHOICES.length - 1];
+}
+
 export function draftFromConfig(config: ThemeConfig): ThemeSettingsDraft {
   return {
     icons: config.icons,
     animation: config.animation ?? 'full',
     density: config.tools.collapsed ?? 'frame',
+    cacheExpiry: {
+      enabled: config.cacheExpiry?.enabled !== false,
+      ttlMinutes: config.cacheExpiry?.ttlMinutes ?? DEFAULT_CACHE_TTL_MINUTES,
+    },
     modules: {
       statusLine: config.statusLine.enabled,
       inputBox: config.inputBox?.enabled !== false,
@@ -75,6 +96,12 @@ export function patchFromDraft(
   if (draft.animation !== initial.animation) patch.animation = draft.animation;
   if (draft.density !== initial.density)
     patch.tools = { collapsed: draft.density };
+  const cache: { enabled?: boolean; ttlMinutes?: number } = {};
+  if (draft.cacheExpiry.enabled !== initial.cacheExpiry.enabled)
+    cache.enabled = draft.cacheExpiry.enabled;
+  if (draft.cacheExpiry.ttlMinutes !== initial.cacheExpiry.ttlMinutes)
+    cache.ttlMinutes = draft.cacheExpiry.ttlMinutes;
+  if (Object.keys(cache).length) patch.cacheExpiry = cache;
   for (const [key] of MODULES) {
     if (draft.modules[key] === initial.modules[key]) continue;
     if (key === 'tools')
@@ -102,6 +129,7 @@ export function createThemeSettingsPanel(
   const { initial } = options;
   const draft: ThemeSettingsDraft = {
     ...initial,
+    cacheExpiry: { ...initial.cacheExpiry },
     modules: { ...initial.modules },
   };
   const enumRows = [
@@ -115,6 +143,17 @@ export function createThemeSettingsPanel(
       label: `${label.padEnd(LABEL_WIDTH)}  ‹ ${draft[id]} ›`,
       dirty: draft[id] !== initial[id],
     })),
+    // Cache expiry applies live, so it sits with the other live rows.
+    {
+      id: 'cache:enabled',
+      label: `${draft.cacheExpiry.enabled ? '[x]' : '[ ]'} Cache expiry`,
+      dirty: draft.cacheExpiry.enabled !== initial.cacheExpiry.enabled,
+    },
+    {
+      id: 'cache:ttl',
+      label: `${'Cache TTL'.padEnd(LABEL_WIDTH)}  ‹ ${draft.cacheExpiry.ttlMinutes}m ›`,
+      dirty: draft.cacheExpiry.ttlMinutes !== initial.cacheExpiry.ttlMinutes,
+    },
     ...MODULES.map(([id, label]) => ({
       id: `module:${id}`,
       label: `${draft.modules[id] ? '[x]' : '[ ]'} ${label}  (requires /reload)`,
@@ -155,6 +194,11 @@ export function createThemeSettingsPanel(
       draft.animation = cycle(ANIMATION_LEVELS, draft.animation, delta);
     else if (id === 'density')
       draft.density = cycle(DENSITIES, draft.density, delta);
+    else if (id === 'cache:ttl')
+      draft.cacheExpiry.ttlMinutes = cycleTtl(
+        draft.cacheExpiry.ttlMinutes,
+        delta,
+      );
     else return;
     editor.invalidate();
   };
@@ -165,6 +209,11 @@ export function createThemeSettingsPanel(
       const key = normalizePanelKey(data);
       if (key === 'space') {
         const id = selectedId();
+        if (id === 'cache:enabled') {
+          draft.cacheExpiry.enabled = !draft.cacheExpiry.enabled;
+          editor.invalidate();
+          return;
+        }
         const module = MODULES.find(([name]) => `module:${name}` === id)?.[0];
         if (module) {
           draft.modules[module] = !draft.modules[module];

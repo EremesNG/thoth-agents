@@ -4,7 +4,10 @@ import { formatCwd as coreFormatCwd } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
 import {
   type FooterData,
+  formatBottomRightRegions,
+  formatBottomRightSegments,
   formatBranchSegment,
+  formatCacheExpirySegment,
   formatContextSegments,
   formatCwd,
   formatCwdSegments,
@@ -199,7 +202,9 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
   ] as const)('shows an unavailable cache hit ratio when total input is zero in %s mode', (mode) => {
     expect(
       renderStatusLine(
-        { tokenTotals: { input: 0, output: 12, cacheRead: 0, cacheWrite: 0 } },
+        {
+          tokenTotals: { input: 0, output: 12, cacheRead: 0, cacheWrite: 0 },
+        },
         { width: 200, mode },
       ),
     ).toBe(
@@ -529,5 +534,120 @@ describe('border segments', () => {
     expect(withPercent).toContain(`[${token}]${label}[/${token}]`);
     expect(withBar).toContain(`[${token}]${label}[/${token}]`);
     expect(withBar).toContain(`[${token}]━`);
+  });
+});
+
+describe('cache expiry segment', () => {
+  const glyph = '\u{f051f}';
+  const minutes = (value: number) => value * 60_000;
+
+  it('is hidden when the snapshot carries no remaining time', () => {
+    expect(formatCacheExpirySegment({})).toBe('');
+    expect(formatCacheExpirySegment({}, { theme: mockTheme })).toBe('');
+  });
+
+  it('counts whole minutes down and switches to seconds under a minute', () => {
+    expect(
+      formatCacheExpirySegment({ cacheExpiryRemainingMs: minutes(42) }),
+    ).toBe(`${glyph} 42m`);
+    expect(
+      formatCacheExpirySegment({ cacheExpiryRemainingMs: minutes(42) - 1000 }),
+    ).toBe(`${glyph} 42m`);
+    expect(formatCacheExpirySegment({ cacheExpiryRemainingMs: 60_000 })).toBe(
+      `${glyph} 1m`,
+    );
+    expect(formatCacheExpirySegment({ cacheExpiryRemainingMs: 59_000 })).toBe(
+      `${glyph} 59s`,
+    );
+    expect(formatCacheExpirySegment({ cacheExpiryRemainingMs: 1000 })).toBe(
+      `${glyph} 1s`,
+    );
+  });
+
+  it.each([
+    [minutes(6), '[muted]󰔟 6m[/muted]'],
+    [minutes(5) + 1000, '[muted]󰔟 6m[/muted]'],
+    [minutes(5), '[warning]󰔟 5m[/warning]'],
+    [30_000, '[warning]󰔟 30s[/warning]'],
+    [0, '[error]󰔟 cache cold[/error]'],
+    [-minutes(3), '[error]󰔟 cache cold[/error]'],
+  ])('renders %i ms remaining as %s', (remaining, expected) => {
+    expect(
+      formatCacheExpirySegment(
+        { cacheExpiryRemainingMs: remaining },
+        { theme: mockTheme },
+      ),
+    ).toBe(expected);
+  });
+
+  it('names the expired state in error color', () => {
+    expect(
+      formatCacheExpirySegment(
+        { cacheExpiryRemainingMs: -1 },
+        { theme: mockTheme },
+      ),
+    ).toBe('[error]󰔟 cache cold[/error]');
+  });
+
+  it('falls back to the unicode and ascii icon variants', () => {
+    expect(
+      formatCacheExpirySegment(
+        { cacheExpiryRemainingMs: minutes(42) },
+        { mode: 'ascii' },
+      ),
+    ).toBe('cache 42m');
+    expect(
+      formatCacheExpirySegment(
+        { cacheExpiryRemainingMs: -1 },
+        { mode: 'unicode' },
+      ),
+    ).toBe('cache cache cold');
+  });
+});
+
+describe('bottom right composition', () => {
+  const data: StatusData = {
+    contextPercent: 43,
+    contextTokens: 425900,
+    contextWindow: 1000000,
+    cacheExpiryRemainingMs: 42 * 60_000,
+  };
+
+  it('puts the countdown immediately left of the richest context variant', () => {
+    const segments = formatBottomRightSegments(data);
+    expect(segments).toEqual([
+      '󰔟 42m \uf2db ━━━╾──── 43% 425.9K/1M',
+      '\uf2db ━━━╾──── 43% 425.9K/1M',
+      '\uf2db 43% 425.9K/1M',
+      '\uf2db 425.9K/1M',
+    ]);
+  });
+
+  it('reports the variant index that carries the countdown', () => {
+    expect(formatBottomRightRegions(data)).toEqual({
+      variants: formatBottomRightSegments(data),
+      cacheIndex: 0,
+    });
+    expect(
+      formatBottomRightRegions({ ...data, cacheExpiryRemainingMs: undefined }),
+    ).toEqual({
+      variants: formatContextSegments(data),
+      cacheIndex: undefined,
+    });
+  });
+
+  it('leaves the context variants untouched when the countdown is hidden', () => {
+    expect(
+      formatBottomRightSegments({ ...data, cacheExpiryRemainingMs: undefined }),
+    ).toEqual(formatContextSegments(data));
+  });
+
+  it('drops the countdown before it degrades the context variant', () => {
+    const segments = formatBottomRightSegments(data);
+    // Each variant is a superset of the next: the countdown only ever leads.
+    expect(segments[1]).toBe(formatContextSegments(data)[0]);
+    expect(segments.slice(1).some((segment) => segment.includes('42m'))).toBe(
+      false,
+    );
   });
 });

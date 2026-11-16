@@ -21,6 +21,28 @@ export const DEFAULT_RESPECT_PACKAGES: readonly string[] = [
   'thoth-mem',
 ];
 
+/** Default prompt-cache lifetime when the provider is not overridden. */
+export const DEFAULT_CACHE_TTL_MINUTES = 60;
+
+/** Panel choices for the default prompt-cache lifetime, in minutes. */
+export const CACHE_TTL_CHOICES = [5, 15, 30, 60, 120] as const;
+
+/**
+ * Providers whose prompt cache dies sooner than the generic default. The Pi
+ * provider ids come from `@earendil-works/pi-ai` (`openai` for the OpenAI API,
+ * `openai-codex` for the ChatGPT/Codex subscription).
+ */
+export const DEFAULT_PROVIDER_CACHE_TTL_MINUTES: Readonly<
+  Record<string, number>
+> = { openai: 30, 'openai-codex': 30 };
+
+export interface CacheExpiryConfig {
+  enabled: boolean;
+  ttlMinutes: number;
+  /** Resolved provider TTLs: user overrides merged over the package defaults. */
+  providerTtlMinutes?: Record<string, number>;
+}
+
 export interface ThemeConfig {
   icons: IconMode;
   /** Omission uses full animation, preserving existing programmatic configs. */
@@ -29,6 +51,8 @@ export interface ThemeConfig {
     enabled: boolean;
     subscriptionProviders?: string[];
   };
+  /** Omission enables the prompt-cache countdown with the package defaults. */
+  cacheExpiry?: CacheExpiryConfig;
   /** Omission enables the input box, preserving the legacy config shape. */
   inputBox?: { enabled: boolean };
   tools: {
@@ -74,6 +98,35 @@ function parseRespectPackages(value: unknown): string[] {
     : [...DEFAULT_RESPECT_PACKAGES];
 }
 
+/** A usable lifetime is a positive finite number of minutes. */
+export function usableTtlMinutes(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+/** User entries merge over the provider defaults; invalid entries are ignored. */
+function parseProviderTtlMinutes(value: unknown): Record<string, number> {
+  const overrides: Record<string, number> = {
+    ...DEFAULT_PROVIDER_CACHE_TTL_MINUTES,
+  };
+  for (const [provider, minutes] of Object.entries(asObject(value))) {
+    const ttl = usableTtlMinutes(minutes);
+    if (ttl !== undefined && provider.trim()) overrides[provider] = ttl;
+  }
+  return overrides;
+}
+
+function parseCacheExpiry(value: unknown): CacheExpiryConfig {
+  const section = asObject(value);
+  return {
+    enabled: moduleEnabled(value),
+    ttlMinutes:
+      usableTtlMinutes(section.ttlMinutes) ?? DEFAULT_CACHE_TTL_MINUTES,
+    providerTtlMinutes: parseProviderTtlMinutes(section.providerTtlMinutes),
+  };
+}
+
 function defaultConfigPath(): string {
   return join(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'),
@@ -90,6 +143,8 @@ export function isAnimationLevel(value: unknown): value is AnimationLevel {
 export interface ThemeConfigPatch {
   icons?: IconMode;
   animation?: AnimationLevel;
+  /** Only the panel-editable fields; provider TTLs stay JSON-only. */
+  cacheExpiry?: { enabled?: boolean; ttlMinutes?: number };
   statusLine?: { enabled?: boolean };
   inputBox?: { enabled?: boolean };
   tools?: { enabled?: boolean; collapsed?: ToolDensity };
@@ -119,7 +174,13 @@ export function saveThemeConfig(
     );
   }
   const updated = { ...config, ...patch };
-  for (const key of ['statusLine', 'inputBox', 'tools', 'welcome'] as const) {
+  for (const key of [
+    'statusLine',
+    'inputBox',
+    'tools',
+    'welcome',
+    'cacheExpiry',
+  ] as const) {
     if (patch[key] !== undefined) {
       updated[key] = { ...asObject(config[key]), ...patch[key] };
     }
@@ -159,6 +220,7 @@ export function loadConfig(configPath = defaultConfigPath()): ThemeConfig {
   const collapsed = asObject(config.tools).collapsed;
   return {
     animation: isAnimationLevel(config.animation) ? config.animation : 'full',
+    cacheExpiry: parseCacheExpiry(config.cacheExpiry),
     icons:
       config.icons === 'ascii' || config.icons === 'unicode'
         ? config.icons

@@ -136,7 +136,7 @@ describe('/thoth-theme command', () => {
     const panel = await session.open();
     // icons → unicode, animation → minimal, density → line, welcome off
     panel.press(RIGHT, DOWN, RIGHT, RIGHT, DOWN, RIGHT, RIGHT);
-    panel.press(DOWN, DOWN, DOWN, DOWN, ' ', ENTER);
+    panel.press(DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, ' ', ENTER);
     await panel.done;
     expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
       icons: 'unicode',
@@ -154,6 +154,39 @@ describe('/thoth-theme command', () => {
       expect.stringContaining('/reload'),
       'info',
     );
+  });
+
+  it('applies cache expiry changes live without a reload notice', async () => {
+    const session = setup({
+      cacheExpiry: {
+        ttlMinutes: 60,
+        providerTtlMinutes: { custom: 15 },
+        unknown: 'kept',
+      },
+      custom: 1,
+    });
+    expect(session.config.cacheExpiry?.enabled).toBe(true);
+    const panel = await session.open();
+    // Cache expiry off, then the TTL one step up (60 → 120).
+    panel.press(DOWN, DOWN, DOWN, ' ', DOWN, RIGHT, ENTER);
+    await panel.done;
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      cacheExpiry: {
+        enabled: false,
+        ttlMinutes: 120,
+        providerTtlMinutes: { custom: 15 },
+        unknown: 'kept',
+      },
+      custom: 1,
+    });
+    // In-memory keeps the resolved provider defaults; unknown fields stay on disk.
+    expect(session.config.cacheExpiry).toEqual({
+      enabled: false,
+      ttlMinutes: 120,
+      providerTtlMinutes: { custom: 15, openai: 30, 'openai-codex': 30 },
+    });
+    expect(overlay.requestRender).toHaveBeenCalled();
+    expect(session.ui.notify).not.toHaveBeenCalled();
   });
 
   it('applies animation changes live without a reload notice', async () => {

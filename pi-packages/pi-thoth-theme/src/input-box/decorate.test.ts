@@ -30,7 +30,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function setup() {
+function setup(overrides: Partial<InputBoxDeps> = {}) {
   const plain = (text: string) => text;
   const tui = {
     terminal: { rows: 20 },
@@ -53,7 +53,9 @@ function setup() {
     theme: { fg: vi.fn((_token: string, text: string) => text) },
     working,
     getStatusSnapshot: undefined as InputBoxDeps['getStatusSnapshot'],
+    onCacheSegmentRender: undefined as InputBoxDeps['onCacheSegmentRender'],
   };
+  Object.assign(deps, overrides);
   function decorate(candidate: unknown = editor): EditorDecoration {
     const decoration = decorateEditor(candidate, deps);
     if (!decoration) throw new Error('Editor was not decorated');
@@ -476,6 +478,109 @@ describe('input-box editor composition', () => {
     }
     expect(sawBranchWithoutCwd).toBe(true);
     expect(sawEffortWithoutContext).toBe(true);
+  });
+
+  it('puts the cache countdown immediately left of the context segment and drops it first', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      cacheExpiryRemainingMs: 42 * 60_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    const bottom = plainLines(editor.render(80)).find((line) =>
+      line.startsWith('╰'),
+    ) as string;
+    expect(bottom).toContain('\u{f051f} 42m \uf2db ━━╾───── 30% 60K/200K');
+
+    // The countdown is the first thing dropped, before context degrades.
+    let sawCountdown = false;
+    let sawCountdownWithoutBar = false;
+    let sawContextWithoutCountdown = false;
+    for (let width = 20; width <= 120; width++) {
+      const line = plainLines(editor.render(width)).find((candidate) =>
+        candidate.startsWith('╰'),
+      ) as string;
+      expect(visibleWidth(line)).toBe(width);
+      const countdown = line.includes('\u{f051f} 42m');
+      sawCountdown ||= countdown;
+      sawCountdownWithoutBar ||= countdown && !line.includes('━');
+      sawContextWithoutCountdown ||= line.includes('30%') && !countdown;
+    }
+    expect(sawCountdown).toBe(true);
+    expect(sawCountdownWithoutBar).toBe(false);
+    expect(sawContextWithoutCountdown).toBe(true);
+  });
+
+  it('reports whether each rendered bottom border carried the cache countdown', () => {
+    const { editor, deps, decorate } = setup();
+    const report = vi.fn<(visible: boolean) => void>();
+    deps.onCacheSegmentRender = report;
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      cacheExpiryRemainingMs: 42 * 60_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokensPerSecond: null,
+    });
+    const decoration = decorate();
+    report.mockClear();
+    editor.render(120);
+    expect(report).toHaveBeenLastCalledWith(true);
+    editor.render(40);
+    expect(report).toHaveBeenLastCalledWith(false);
+
+    // Unmounting the decoration is a real loss of visibility.
+    editor.render(120);
+    expect(report).toHaveBeenLastCalledWith(true);
+    decoration.dispose();
+    expect(report).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each([
+    'unicode',
+    'ascii',
+  ] as const)('derives countdown visibility from the chosen variant, not the model name (%s)', (mode) => {
+    const report = vi.fn<(visible: boolean) => void>();
+    const { editor, deps, decorate } = setup({
+      iconMode: mode,
+      onCacheSegmentRender: report,
+    });
+    deps.getStatusSnapshot = () => ({
+      modelName: 'cache-model',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      cacheExpiryRemainingMs: 42 * 60_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    const bottom = (width: number) =>
+      plainLines(editor.render(width)).find((line) =>
+        line.startsWith('╰'),
+      ) as string;
+
+    // The word-based glyphs make the model name "cache-model" look like the
+    // countdown, so visibility must follow the chosen layout variant only.
+    let droppedAt = 0;
+    for (let width = 40; width <= 120; width++) {
+      const row = bottom(width);
+      const drawn = row.includes('cache 42m');
+      expect(report).toHaveBeenLastCalledWith(drawn);
+      if (row.includes('cache-model') && !drawn && droppedAt === 0)
+        droppedAt = width;
+    }
+    expect(droppedAt).toBeGreaterThan(0);
+    expect(bottom(droppedAt)).not.toContain('cache 42m');
+    expect(bottom(120)).toContain('cache 42m');
+    expect(report).toHaveBeenLastCalledWith(true);
   });
 
   it('animates only the working box, preserving native fallback and byte-identical idle output', () => {

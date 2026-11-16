@@ -1,7 +1,11 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { setAnimationLevel } from '@thoth-agents/pi-core';
 import { applyNativeAnimation } from '../animation.ts';
-import type { ThemeConfig, ThemeConfigPatch } from './config.ts';
+import {
+  DEFAULT_CACHE_TTL_MINUTES,
+  type ThemeConfig,
+  type ThemeConfigPatch,
+} from './config.ts';
 import { advanceSettingsRevision } from './settings-revision.ts';
 
 const publishers = new WeakMap<ThemeConfig, () => void>();
@@ -30,6 +34,13 @@ export function applyLiveSettings(
   if (patch.icons !== undefined) config.icons = patch.icons;
   if (patch.animation !== undefined) config.animation = patch.animation;
   if (patch.statusLine) Object.assign(config.statusLine, patch.statusLine);
+  if (patch.cacheExpiry) {
+    config.cacheExpiry ??= {
+      enabled: true,
+      ttlMinutes: DEFAULT_CACHE_TTL_MINUTES,
+    };
+    Object.assign(config.cacheExpiry, patch.cacheExpiry);
+  }
   if (patch.tools) Object.assign(config.tools, patch.tools);
   if (patch.welcome) Object.assign(config.welcome, patch.welcome);
   if (patch.inputBox) {

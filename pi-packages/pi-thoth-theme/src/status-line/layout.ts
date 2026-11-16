@@ -20,6 +20,8 @@ export interface StatusData {
   contextTokens?: number | null;
   contextWindow?: number;
   contextPercent?: number | null;
+  /** Rounded milliseconds until the prompt cache is expected to expire. */
+  cacheExpiryRemainingMs?: number;
   /** Parent session cost; subagent cost is accounted for separately. */
   cost?: number;
   subagentCost?: number;
@@ -65,6 +67,9 @@ export interface SegmentOptions {
   mode?: IconMode;
   theme?: ActiveThemeLike;
 }
+
+/** Warning once the estimated cache lifetime is down to five minutes. */
+const CACHE_EXPIRY_WARNING_MS = 5 * 60_000;
 
 /** Git branch piece for the input-box border; empty when no branch. */
 export function formatBranchSegment(
@@ -195,6 +200,53 @@ export function formatContextSegments(
     `${contextIcon} ${pct} ${tokens}`,
     `${contextIcon} ${tokens}`,
   ];
+}
+
+/**
+ * Estimated prompt-cache countdown, rendered immediately left of the context
+ * segment: `42m` above a minute, `42s` below it, `cache cold` once expired.
+ * Empty when the snapshot hides the indicator.
+ */
+export function formatCacheExpirySegment(
+  data: StatusData,
+  { mode = 'nerd', theme }: SegmentOptions = {},
+): string {
+  const remaining = data.cacheExpiryRemainingMs;
+  if (remaining === undefined || !Number.isFinite(remaining)) return '';
+  const glyph = icon('cacheExpiry', mode);
+  if (remaining <= 0) return themeFg(theme, 'error', `${glyph} cache cold`);
+  const countdown =
+    remaining >= 60_000
+      ? `${Math.ceil(remaining / 60_000)}m`
+      : `${Math.ceil(remaining / 1000)}s`;
+  const token = remaining <= CACHE_EXPIRY_WARNING_MS ? 'warning' : 'muted';
+  return themeFg(theme, token, `${glyph} ${countdown}`);
+}
+
+/**
+ * Right-hand bottom-border variants for the countdown and the context segment.
+ */
+export function formatBottomRightSegments(
+  data: StatusData,
+  options: SegmentOptions = {},
+): string[] {
+  return formatBottomRightRegions(data, options).variants;
+}
+
+/**
+ * The same variants plus the index that carries the countdown, so a renderer
+ * can report what it drew without inspecting the row text (the ASCII and
+ * Unicode glyphs are words that ordinary segment text can contain too).
+ */
+export function formatBottomRightRegions(
+  data: StatusData,
+  options: SegmentOptions = {},
+): { variants: string[]; cacheIndex: number | undefined } {
+  const context = formatContextSegments(data, options);
+  const cache = formatCacheExpirySegment(data, options);
+  return cache
+    ? { variants: [`${cache} ${context[0]}`, ...context], cacheIndex: 0 }
+    : { variants: context, cacheIndex: undefined };
 }
 
 export interface FooterData extends StatusData {

@@ -20,6 +20,11 @@ import {
 import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { settingsRevision } from '../shared/settings-revision.ts';
+import {
+  type CacheAnchor,
+  cacheExpiryRemainingMs,
+  findCacheAnchor,
+} from './cache-expiry.ts';
 import { type ActiveThemeLike, formatCwd, renderStatusLine } from './layout.ts';
 import { createOrcaChildHold } from './orca-child-hold.ts';
 import type { StatusSnapshot, StatusSnapshotProvider } from './snapshot.ts';
@@ -59,8 +64,12 @@ export function registerStatusLine(
     let disposed = false;
     const throughput = createThroughputTracker();
     let sessionLeafId = ctx.sessionManager.getLeafId();
-    let session = readSession();
     let sessionDirty = false;
+    let cacheAnchor: CacheAnchor | undefined;
+    let requestInFlight = false;
+    let cacheSegmentVisible = false;
+    let cacheTimer: ReturnType<typeof setInterval> | undefined;
+    let session = readSession(sessionLeafId);
     let subagentCost = 0;
     let cachedKey = '';
     let cachedLines: string[] = [];
@@ -73,7 +82,7 @@ export function registerStatusLine(
       if (!disposed) {
         const leafId = ctx.sessionManager.getLeafId();
         if (sessionDirty || leafId !== sessionLeafId) {
-          session = readSession();
+          session = readSession(leafId);
           sessionLeafId = leafId;
           sessionDirty = false;
         }
@@ -85,6 +94,9 @@ export function registerStatusLine(
         gitBranch: footerData?.getGitBranch?.() ?? null,
         cwd: formatCwd(ctx.cwd, process.env.HOME || process.env.USERPROFILE),
         ...session,
+        cacheExpiryRemainingMs: requestInFlight
+          ? undefined
+          : cacheExpiryRemainingMs(cacheAnchor, config.cacheExpiry, Date.now()),
         subagentCost,
         tokensPerSecond: throughput.tokensPerSecond,
       };
@@ -96,9 +108,13 @@ export function registerStatusLine(
       return snapshot;
     };
 
-    function readSession() {
+    function readSession(leafId: string | null) {
       const usage = ctx.getContextUsage?.();
       const entries = ctx.sessionManager.getEntries();
+      // The anchor follows the branch whose leaf the snapshot is keyed on, so a
+      // branch switch cannot show another branch's request. message_end reaches
+      // extensions before persistence; the leaf key still detects the append.
+      cacheAnchor = findCacheAnchor(entries, leafId);
       return {
         ...computeSessionCost(entries, {
           subscriptionProviders,
@@ -118,6 +134,34 @@ export function registerStatusLine(
       if (disposed) return;
       cachedKey = '';
       requestRender();
+    };
+    /** Only an idle session with a rendered countdown needs the one-second timer. */
+    const syncCacheTimer = () => {
+      const wanted =
+        !disposed &&
+        !requestInFlight &&
+        cacheAnchor !== undefined &&
+        cacheSegmentVisible &&
+        config.cacheExpiry?.enabled !== false;
+      if (wanted && cacheTimer === undefined) {
+        cacheTimer = setInterval(requestRender, 1000);
+        cacheTimer.unref?.();
+      } else if (!wanted && cacheTimer !== undefined) {
+        clearInterval(cacheTimer);
+        cacheTimer = undefined;
+      }
+    };
+    /**
+     * The bordered countdown exists only while the input-box decoration renders
+     * it, so the timer follows that border render: no timer with the input box
+     * disabled, and none at widths where the segment is dropped. Focus changes
+     * and overlays never clear it (the editor keeps rendering underneath), and
+     * arming the interval is enough: its next tick repaints a re-armed segment.
+     */
+    const reportCacheSegmentRender = (visible: boolean) => {
+      if (disposed || cacheSegmentVisible === visible) return;
+      cacheSegmentVisible = visible;
+      syncCacheTimer();
     };
     const working = createWorkingState(invalidateRender);
     const orcaChildHold = createOrcaChildHold(pi.events);
@@ -222,10 +266,21 @@ export function registerStatusLine(
           subscribeAndRequestBackgroundWork();
         }),
       );
-      if (inputBoxEnabled) {
-        unsubs.push(pi.on('agent_start', working.start));
-        unsubs.push(pi.on('agent_end', working.end));
-      }
+      unsubs.push(
+        pi.on('agent_start', () => {
+          // A request in flight rewrites the prompt cache; hide until agent_end.
+          requestInFlight = true;
+          if (inputBoxEnabled) working.start();
+          syncCacheTimer();
+        }),
+      );
+      unsubs.push(
+        pi.on('agent_end', () => {
+          requestInFlight = false;
+          if (inputBoxEnabled) working.end();
+          syncCacheTimer();
+        }),
+      );
       unsubs.push(
         pi.on('message_start', (event) => {
           if (!disposed && event) throughput.observe(event);
@@ -252,6 +307,11 @@ export function registerStatusLine(
       if (disposed) return;
       // Pi may have snapshotted lifecycle handlers before replacing the footer.
       disposed = true;
+      if (cacheTimer !== undefined) {
+        clearInterval(cacheTimer);
+        cacheTimer = undefined;
+      }
+      cacheSegmentVisible = false;
       working.dispose();
       orcaChildHold.dispose();
       for (const decoration of editorDecorations) decoration.dispose();
@@ -280,6 +340,7 @@ export function registerStatusLine(
             theme: theme as ActiveThemeLike,
             working,
             getStatusSnapshot,
+            onCacheSegmentRender: reportCacheSegmentRender,
             get iconMode() {
               return config.icons;
             },
@@ -291,6 +352,8 @@ export function registerStatusLine(
         }
         if (width <= 0) return [];
         const data = getStatusSnapshot();
+        // Sample the anchor first: a fresh session read decides the countdown.
+        syncCacheTimer();
         const key = `${settingsRevision()}\u0000${config.icons}\u0000${width}\u0000${JSON.stringify(data)}`;
         if (key === cachedKey) return cachedLines;
         const line = renderStatusLine(data, {

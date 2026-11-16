@@ -123,6 +123,11 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 {
   "icons": "nerd",
   "animation": "full",
+  "cacheExpiry": {
+    "enabled": true,
+    "ttlMinutes": 60,
+    "providerTtlMinutes": { "openai": 30, "openai-codex": 30 }
+  },
   "statusLine": {
     "enabled": true,
     "subscriptionProviders": ["claude-bridge", "antigravity", "junie"]
@@ -182,6 +187,8 @@ working directory appear on the top border, using pi-core's root-exported
 Context usage draws an eight-cell hairline bar (`━` full, `╾` half, dim `─` empty; ASCII
 keeps `[#=-]`) that stays in the success color up to 70%, turns warning above 70% and
 error above 90%, the same rule as the sidebar Session meter.
+The estimated prompt-cache countdown (`󰔟 42m`, `cache` in Unicode and ASCII modes)
+sits immediately left of that context segment; see `cacheExpiry` below.
 Native scroll indicators are preserved. The status line always stays in its
 separate footer row below the box. Narrow widths use the native editor geometry.
 Disable `inputBox` to keep the native editor and the same footer.
@@ -196,6 +203,27 @@ Invalid values (including any empty, whitespace-only or non-string entry) use
 the full default list. Package names come from the nearest `package.json`
 walking upward from the tool's source directory. Built-ins always use the
 themed frames; tools absent from Pi's registry keep their own renderers.
+
+`cacheExpiry` controls the estimated prompt-cache countdown on the editor's
+bottom border. It anchors on the `timestamp` (request start) of the latest
+assistant message in the current session branch, takes the lifetime for that
+message's provider and counts the remainder down.
+
+- `enabled` defaults to `true`; `false` hides the segment and stops its timer.
+- `ttlMinutes` is the default lifetime (default `60`).
+- `providerTtlMinutes` merges over the package defaults
+  `{ "openai": 30, "openai-codex": 30 }`; keys are Pi provider ids and every
+  value must be a positive number of minutes.
+
+The segment shows `<icon> 42m` above a minute and `<icon> 42s` below it, in the
+normal `muted` color; it turns `warning` at five minutes or less and shows
+`cache cold` in the `error` color once the estimate expired. It stays hidden
+before the first assistant message and while a request is in flight (that
+request rewrites the cache). While it is visible and the session is idle, a
+one-second timer refreshes just the countdown; nothing runs while it is hidden.
+The countdown is the first piece dropped when the border is too narrow, before
+the context segment degrades. `enabled` and `ttlMinutes` are editable live in
+`/thoth-theme`; provider overrides are JSON-only.
 
 Configuration is read at extension load; use `/reload` after manual file edits
 (or change the live settings from `/thoth-theme`). Missing,
@@ -214,6 +242,8 @@ overlay:
 │ › * Icons         ‹ unicode ›                       │
 │     Animation     ‹ full ›                          │
 │     Tool density  ‹ frame ›                         │
+│     [x] Cache expiry                                │
+│     Cache TTL     ‹ 60m ›                           │
 │     [x] Status line  (requires /reload)             │
 │     [x] Input box  (requires /reload)               │
 │     [x] Tool cards  (requires /reload)              │
@@ -222,15 +252,16 @@ overlay:
 ```
 
 - `↑`/`↓` move; `←`/`→` cycle the enum rows (icons `nerd|unicode|ascii`,
-  animation `full|reduced|minimal|off`, tool density `frame|compact|line`);
-  `Space` toggles a module; `*` marks changed rows.
+  animation `full|reduced|minimal|off`, tool density `frame|compact|line`,
+  cache TTL `5|15|30|60|120` minutes); `Space` toggles a module or the cache
+  countdown; `*` marks changed rows.
 - `Enter` or `s` saves, `Esc` or `q` cancels without changes. A failed save
   (for example a malformed config file) shows the error in the panel and leaves
   the file and the running settings untouched.
 - Saving writes `pi-thoth-theme.json` atomically, preserving unknown fields and
   settings the panel does not edit.
-- **Live now:** icons, animation and tool density apply immediately, including
-  to tool cards already on screen.
+- **Live now:** icons, animation, tool density and both cache-expiry rows apply
+  immediately, including to tool cards and a mounted prompt-cache countdown.
 - **After `/reload`:** the status line, input box, tool cards and welcome
   toggles are saved at once but only take effect after `/reload`; the panel marks
   them and Pi reminds you after saving.

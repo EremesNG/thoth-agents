@@ -8,6 +8,11 @@ import { loadConfig } from '../src/shared/config.ts';
 
 const defaults = {
   animation: 'full',
+  cacheExpiry: {
+    enabled: true,
+    ttlMinutes: 60,
+    providerTtlMinutes: { openai: 30, 'openai-codex': 30 },
+  },
   icons: 'nerd',
   statusLine: {
     enabled: true,
@@ -118,6 +123,7 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath)).toEqual({
       animation: 'full',
+      cacheExpiry: defaults.cacheExpiry,
       icons: 'ascii',
       statusLine: { ...defaults.statusLine, enabled: false },
       tools: { ...defaults.tools, enabled: false },

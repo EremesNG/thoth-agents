@@ -44,7 +44,7 @@ function record(options = {}) {
 	const systemPromptOptions = { cwd: `/tool-note/${randomUUID()}`, selectedTools: [], contextFiles: [], skills: [], ...options };
 	const key = buildSystemPrompt(systemPromptOptions);
 	handlers.get("before_agent_start")({ systemPrompt: key, systemPromptOptions });
-	handlers.get("agent_start")({}, { getSystemPrompt: () => key });
+	handlers.get("agent_start")({}, { sessionManager: { getSessionId: () => "unit-mcp-tool-note" }, getSystemPrompt: () => key });
 	return key;
 }
 

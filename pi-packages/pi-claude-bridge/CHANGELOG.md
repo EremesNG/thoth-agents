@@ -5,6 +5,18 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Changed
+
+- Selectively sync upstream through `45fc71d`: pin Agent SDK 0.3.321, measure Fable 5.2 at 1M, and add access-gated Mythos 5.1/5.2 from available catalog siblings; retain local prompt guards, projection, append epochs and Pi 1.5.0 compatibility.
+
+### Fixed
+
+- Surface Claude Code rejection of served tool calls without hanging or recording undispatched results; preserve exact-case served names and avoid duplicate abort commits.
+
+### Added
+
+- Warn about extension messages repeatedly dropped from history and qualify unexpected Extra Usage billing/refusals, exempting user-selected paid 1M models.
+
 ## [0.5.1] - 2026-11-10
 
 ### Fixed

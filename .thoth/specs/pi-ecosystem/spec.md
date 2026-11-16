@@ -755,3 +755,13 @@ On Windows the Junie bridge MUST launch Junie with piped stdin inside its own ki
 - **GIVEN** a Windows Pi session whose Junie process spawned a descendant
 - **WHEN** the session shuts down
 - **THEN** Junie and its descendant end through the job and unrelated processes keep running
+
+### Requirement: Claude bridge surfaces rejected tool calls
+
+`@thoth-agents/pi-claude-bridge` MUST resolve Claude Code tool calls to served Pi tools by exact name, MUST record a tool result only for calls it actually dispatched, and when Claude Code rejects a served tool call MUST commit its recording, stop that query and surface an error on the current or matching continuation turn instead of waiting.
+
+#### Scenario: Claude bridge surfaces rejected tool calls
+
+- **GIVEN** a Claude-backed Pi turn where Claude Code rejects a served tool call
+- **WHEN** the bridge processes the rejection
+- **THEN** no result is recorded for the undispatched call, the query stops and the turn ends with a visible error rather than hanging

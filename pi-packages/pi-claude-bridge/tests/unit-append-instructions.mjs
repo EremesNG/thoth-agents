@@ -42,7 +42,7 @@ async function turn(append, { piSessionId = "parent", script = {}, promptOptions
 		? buildSystemPrompt({ cwd: "/append-sections", selectedTools: [], ...systemPromptOptions })
 		: `Captured prompt ${randomUUID()}`;
 	handlers.get("before_agent_start")({ systemPrompt, systemPromptOptions });
-	handlers.get("agent_start")({}, { getSystemPrompt: () => systemPrompt });
+	handlers.get("agent_start")({}, { sessionManager: { getSessionId: () => piSessionId }, getSystemPrompt: () => systemPrompt });
 	const messages = histories.get(piSessionId) ?? [];
 	messages.push({ role: "user", content: "Report current instructions", timestamp: 0 });
 	histories.set(piSessionId, messages);

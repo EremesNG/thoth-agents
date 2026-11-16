@@ -7,7 +7,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { applyLongContext, buildModels, resolveClaudeCodeRuntimeModel } from "../src/models.js";
+import { applyLongContext, buildModels, extraUsageByChoice, resolveClaudeCodeRuntimeModel } from "../src/models.js";
 import { updateUsage } from "../src/usage.js";
 import { getModels } from "@earendil-works/pi-ai/compat";
 
@@ -41,7 +41,7 @@ describe("MODELS projection", () => {
 			assert.equal(m.provider, undefined);
 			assert.equal(m.headers, undefined);
 			assert.equal(m.promptCache, undefined, "projection does not enable native cache warming");
-			assert.deepEqual(m.cost, find(catalog, m.id).cost, `${m.id} keeps catalog prices`);
+			assert.deepEqual(m.cost, find(catalog, m.id)?.cost ?? find(catalog, m.id.replace("mythos", "fable")).cost, `${m.id} keeps catalog prices`);
 			for (const kind of ["input", "output", "cacheRead", "cacheWrite"]) {
 				assert.ok(m.cost[kind] > 0, `${m.id} has a nonzero ${kind} price`);
 			}
@@ -96,6 +96,36 @@ describe("MODELS projection", () => {
 		assert.deepEqual(models.map((m) => m.id), ["claude-opus-5", "claude-proxy-x"]);
 	});
 
+	it("adds access-gated Mythos models cloned from their Fable siblings", () => {
+		const fable = (id) => mockPiAiModel(id, { contextWindow: 1000000, maxTokens: 128000, thinkingLevelMap: { xhigh: "xhigh", max: "max" } });
+		const models = buildModels([fable("claude-fable-5-1"), fable("claude-fable-5-2"), oneM("claude-opus-5-5")]);
+		assert.deepEqual(models.map((m) => m.id), ["claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-mythos-5-2", "claude-mythos-5-1"]);
+		const m52 = find(models, "claude-mythos-5-2");
+		assert.equal(m52.name, "Claude Mythos 5.2");
+		assert.equal(m52.contextWindow, 1000000);
+		assert.equal(m52.maxTokens, 128000);
+		assert.deepEqual(m52.thinkingLevelMap, { xhigh: "xhigh", max: "max" });
+		assert.deepEqual(m52.cost, { input: 1, output: 1 });
+		assert.equal(m52.baseUrl, undefined);
+		assert.equal(find(models, "claude-mythos-5-1").maxTokens, 128000, "inherits its sibling's max output");
+	});
+
+	it("skips a gated model whose sibling is missing, and defers to pi-ai's own entry", () => {
+		assert.equal(find(buildModels([oneM("claude-opus-5-5")]), "claude-mythos-5-2"), undefined);
+		const own = mockPiAiModel("claude-mythos-5-2", { name: "pi-ai Mythos", contextWindow: 1000000 });
+		const models = buildModels([oneM("claude-fable-5-2"), own]);
+		assert.equal(models.filter((m) => m.id === "claude-mythos-5-2").length, 1);
+		assert.equal(find(models, "claude-mythos-5-2").name, "pi-ai Mythos");
+	});
+
+	it("synthetic host catalog gains both Mythos siblings at 1M", () => {
+		const models = buildModels([oneM("claude-fable-5-1"), oneM("claude-fable-5-2")]);
+		for (const id of ["claude-mythos-5-2", "claude-mythos-5-1"]) {
+			assert.ok(find(models, id), `${id} present`);
+			assert.deepEqual(resolveClaudeCodeRuntimeModel({ id }, PRO), { cliModelId: `${id}[1m]`, contextWindow: 1000000 });
+		}
+	});
+
 	it("forwards pi-ai's thinkingLevelMap verbatim", () => {
 		const withMap = () => mockPiAiModel("claude-sonnet-5", { thinkingLevelMap: { xhigh: "xhigh", max: "max" } });
 		const models = buildModels([withMap(), mockPiAiModel("claude-haiku-4-5")]);
@@ -106,7 +136,7 @@ describe("MODELS projection", () => {
 
 describe("Claude Code runtime policy", () => {
 	it("measured-1M ids send [1m] on every plan", () => {
-		for (const id of ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"]) {
+		for (const id of ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-fable-5", "claude-fable-5-1", "claude-fable-5-2", "claude-mythos-5-2", "claude-mythos-5-1", "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"]) {
 			assert.deepEqual(resolveClaudeCodeRuntimeModel(oneM(id), PRO), { cliModelId: `${id}[1m]`, contextWindow: 1000000 });
 		}
 	});
@@ -128,6 +158,15 @@ describe("Claude Code runtime policy", () => {
 	it("measured exception: sonnet-4-6 1M requires extra usage", () => {
 		assert.deepEqual(resolveClaudeCodeRuntimeModel(oneM("claude-sonnet-4-6"), PRO), { cliModelId: "claude-sonnet-4-6", contextWindow: 200000 });
 		assert.deepEqual(resolveClaudeCodeRuntimeModel(oneM("claude-sonnet-4-6"), EXTRA), { cliModelId: "claude-sonnet-4-6[1m]", contextWindow: 1000000 });
+	});
+
+	it("extraUsageByChoice: only 1M that longContextExtraUsage turned on", () => {
+		assert.equal(extraUsageByChoice({ id: "claude-sonnet-4-6" }, EXTRA), true);
+		assert.equal(extraUsageByChoice({ id: "claude-opus-4-6" }, EXTRA), true);
+		assert.equal(extraUsageByChoice({ id: "claude-opus-4-6" }, { ...MAX, longContextExtraUsage: true }), false, "Max serves it from the plan");
+		assert.equal(extraUsageByChoice({ id: "claude-sonnet-4-6" }, PRO), false);
+		assert.equal(extraUsageByChoice({ id: "claude-sonnet-4-6" }, { ...EXTRA, forceTwoHundredK: ["claude-sonnet-4-6"] }), false);
+		assert.equal(extraUsageByChoice({ id: "claude-opus-5" }, EXTRA), false);
 	});
 
 	it("forceTwoHundredK overrides an optimistic 1M declaration", () => {

@@ -131,7 +131,7 @@ test("ignores and preserves old checkpoints, writes Pi history once, then uses t
 	const turn = async (messages) => {
 		const systemPrompt = "Captured continuing Pi prompt";
 		handlers.get("before_agent_start")({ systemPrompt, systemPromptOptions: { appendSystemPrompt: currentAppend } });
-		handlers.get("agent_start")({}, { getSystemPrompt: () => systemPrompt });
+		handlers.get("agent_start")({}, { sessionManager: { getSessionId: () => "unit-ignore-legacy-checkpoints" }, getSystemPrompt: () => systemPrompt });
 		const answer = await provider.streamSimple(provider.models[0], { systemPrompt, messages, tools: [] }, { sessionId: piSessionId }).result();
 		await new Promise((done) => setImmediate(done));
 		assert.deepEqual(legacyReads, [], "no sync, async, file, or directory reads of legacy state");

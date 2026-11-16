@@ -63,7 +63,7 @@ function resumedTurn() {
 	assert.deepEqual(Object.keys(patch), ["addendum", "thoth_mem_recovery", "agent_browser"]);
 	messages.push(system({ content: "", sections: patch }), user("resumed turn"));
 
-	const ctx = { getSystemPrompt: () => buildSystemPrompt(options) };
+	const ctx = { sessionManager: { getSessionId: () => "resume-prompt-capture" }, getSystemPrompt: () => buildSystemPrompt(options) };
 	handlers.get("agent_start")({}, ctx);
 	handlers.get("turn_start")({}, ctx);
 	return { handlers, messages, options, ctx, desired };

@@ -12,12 +12,13 @@ const mod = await import("../src/index.js");
 const { __test } = mod;
 const { setQuery, getSharedSession, resetSharedSession } = __test;
 let providerConfig;
-mod.default({ on: () => {}, registerProvider: (_name, config) => { providerConfig = config; } });
+const handlers = new Map();
+mod.default({ on: (name, fn) => handlers.set(name, fn), registerProvider: (_name, config) => { providerConfig = config; } });
 const model = providerConfig.models[0];
 const user = (content) => ({ role: "user", content, timestamp: 1 });
 const result = (id) => ({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text: "file" }], isError: false, timestamp: 1 });
 const tools = [{ name: "read", description: "read", parameters: { type: "object", properties: { path: { type: "string" } } } }, { name: "edit", description: "edit", parameters: { type: "object", properties: {} } }];
-const call = (sid, messages) => providerConfig.streamSimple(model, { messages, tools }, { sessionId: sid });
+const call = (sid, messages, options = {}) => providerConfig.streamSimple(model, { messages, tools }, { sessionId: sid, ...options });
 const gate = () => { let open; const wait = new Promise((r) => { open = r; }); return { wait, open }; };
 const settle = () => new Promise((r) => setTimeout(r, 20));
 let scripts, calls;
@@ -56,10 +57,19 @@ beforeEach(() => {
 				const value = record("assistant", content);
 				return { type: "assistant", parent_tool_use_id: null, uuid: value.uuid, session_id: sessionId, message: { id, model: model.id, content } };
 			};
+			if (script.beforePi) {
+				const event = (event) => ({ type: "stream_event", parent_tool_use_id: null, event });
+				yield event({ type: "message_start", message: { id: `msg_${script.tool}`, usage: {} } });
+				yield event({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: script.tool, name: "mcp__custom-tools__read", input: {} } });
+				yield event({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } });
+				yield event({ type: "content_block_stop", index: 0 });
+			}
 			if (script.tool) yield sdkAssistant([{ type: "tool_use", id: script.tool, name: "mcp__custom-tools__read", input: { path: "a" } }], `msg_${script.tool}`);
 			if (script.wait) await script.wait;
-			if (script.result) {
-				const value = record("user", [{ type: "tool_result", tool_use_id: script.result, content: "file" }]);
+			if (script.result || script.rejected) {
+				// Claude Code calls the MCP handler before writing an accepted call's result.
+				if (script.result) for (const c of __test.activeQueryContexts) c.dispatchedToolCalls.add(script.result);
+				const value = record("user", [{ type: "tool_result", tool_use_id: script.result ?? script.rejected, content: script.rejected ? "Permission denied by hook" : "file" }]);
 				yield { type: "user", parent_tool_use_id: null, uuid: value.uuid, message: value.message };
 			}
 			if (script.edit) yield sdkAssistant([{ type: "tool_use", id: "edit-id", name: "mcp__custom-tools__edit", input: { path: "a", edits: script.edit } }], "msg_edit");
@@ -157,4 +167,67 @@ describe("cross-session conversation isolation", () => {
 		await settle();
 		assertCoverage("parent", [ask, output]);
 	});
+});
+
+// Scripted SDK coverage is mandatory even when the real-SDK POSIX suite skips.
+describe("rejected served tool calls with a mocked SDK", () => {
+	for (const continued of [false, true]) it(`fails ${continued ? "the current continuation" : "the matching next turn"} and commits only once on abort`, { timeout: 5000 }, async () => {
+		const sid = `rejection-${continued}`, ask = user("read"), g = gate();
+		const controller = new AbortController();
+		scripts.push({ tool: "rejected-id", rejected: "rejected-id", wait: g.wait });
+		const tool = await call(sid, [ask], { signal: controller.signal }).result();
+		const c = [...__test.activeQueryContexts].find((c) => c.piSessionId === sid);
+		let commits = 0;
+		const commit = c.commitRecording, stop = c.stopProcess, stopped = gate();
+		c.commitRecording = (dirty) => { commits++; assert.equal(dirty, true); commit(dirty); };
+		c.stopProcess = () => { assert.equal(c.discarded, true); stop(); controller.abort(); stopped.open(); };
+		let continuation;
+		if (continued) continuation = call(sid, [ask, tool, result("rejected-id")]);
+		g.open();
+		await stopped.wait;
+		assert.equal(c.discarded, true);
+		assert.equal(__test.activeQueryContexts.has(c), false);
+		assert.equal(c.dispatchedToolCalls.has("rejected-id"), false);
+		const answer = await (continuation ?? call(sid, [ask, tool, result("rejected-id")])).result();
+		assert.equal(answer.stopReason, "error");
+		assert.match(answer.errorMessage, /Claude Code rejected pi's tool call "read"/);
+		assert.match(answer.errorMessage, /Permission denied by hook/);
+		assert.equal(commits, 1, "abort and the SDK finalizer must not recommit");
+		assert.equal(calls.length, 1, "no retry query can execute the rejected call again");
+		// The undispatched result is not authoritative: Pi's actual result must fill it.
+		scripts.push({ text: "recovered" });
+		await call(sid, [ask, tool, result("rejected-id"), answer, user("next")]).result();
+		const state = getSharedSession(sid);
+		const transcript = readFileSync(getSessionPath(state.ccSessionId, state.cwd, root), "utf8");
+		assert.doesNotMatch(transcript, /Permission denied by hook/);
+		assert.match(transcript, /file/);
+	});
+});
+
+for (const stale of [false, true]) it(`does not carry a rejection into ${stale ? "a new agent run" : "an unrelated continuation"}`, { timeout: 5000 }, async () => {
+	const sid = `cleared-rejection-${stale}`, ask = user("read"), g = gate();
+	scripts.push({ tool: "old-id", rejected: "old-id", wait: g.wait });
+	const tool = await call(sid, [ask]).result();
+	const c = [...__test.activeQueryContexts].find((c) => c.piSessionId === sid);
+	const stopped = gate(), stop = c.stopProcess;
+	c.stopProcess = () => { stop(); stopped.open(); };
+	g.open();
+	await stopped.wait;
+	if (stale) handlers.get("agent_start")({}, { sessionManager: { getSessionId: () => sid }, getSystemPrompt: () => "" });
+	scripts.push({ text: "new answer" });
+	const answer = await call(sid, stale ? [ask, tool, result("old-id")] : [user("unrelated")]).result();
+	assert.equal(answer.stopReason, "stop");
+	assert.equal(calls.length, 2);
+});
+
+it("fails a rejected call before Pi receives the completed tool turn", { timeout: 5000 }, async () => {
+	scripts.push({ tool: "before-pi", rejected: "before-pi", beforePi: true });
+	const stream = call("rejected-before-pi", [user("read")]);
+	const answer = await stream.result();
+	assert.equal(answer.stopReason, "error");
+	assert.match(answer.errorMessage, /before pi started running it/);
+	for await (const event of stream) {
+		if (event.type === "toolcall_start") assert.equal(answer.content[event.contentIndex].id, "before-pi", "queued indices remain valid");
+	}
+	assert.equal(calls.length, 1);
 });

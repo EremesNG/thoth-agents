@@ -56,11 +56,11 @@ export class QueryContext {
 	/** Synchronous progress capture before killing/discarding this query. */
 	commitRecording: ((dirty: boolean) => void) | null = null;
 	stopProcess: (() => void) | null = null;
-	/** pi's history moved out from under this query. Its completion must not touch
-	 *  the session state or the pi stream: the query that took over the turn has
-	 *  already rebuilt both from the new history, and this one's session id names the
-	 *  conversation pi just discarded. A context runs at most one SDK query (every
-	 *  fresh query gets a new one), so this marks that query abandoned too. */
+	/** Abandoned after a history rewrite or fatal tool rejection. Its completion
+	 *  must not touch the session state or pi stream: a replacement query has
+	 *  rebuilt both, or the rejection has already committed its final recording.
+	 *  A context runs at most one SDK query (every fresh query gets a new one),
+	 *  so this marks that query abandoned too. */
 	discarded = false;
 	sawResult = false;
 	pendingToolCalls = new Map<string, PendingToolCall>();
@@ -72,6 +72,8 @@ export class QueryContext {
 	 *  to the owning query when several queries are in flight — pairing a result
 	 *  to its call is done by id from Claude's tools/call _meta, not from here. */
 	turnToolCallIds: string[] = [];
+	/** Query-lifetime ids dispatched by Claude Code to our MCP handler. */
+	dispatchedToolCalls = new Set<string>();
 	/** Streaming-input handle for the active query — how steers reach CC mid-turn. */
 	promptStream: PromptStream | null = null;
 	/** Steers written or awaiting a write, not yet incorporated into a turn. */
@@ -90,6 +92,8 @@ export class QueryContext {
 	/** Highest 5% utilization bucket we notified for, so repeat rate_limit_event spam is suppressed. */
 	lastRateLimitWarnStep: number | null = null;
 	lastRateLimitWarnThreshold: number | undefined;
+	/** Already warned that this query billed Extra Usage with the plan limit not reached. */
+	warnedUnplannedOverage = false;
 	/** pi session this query serves, from SimpleStreamOptions.sessionId at fresh-query
 	 *  setup. A bridge process serves several pi sessions at once (subagents run their
 	 *  own AgentSessions), and history rewrites must only discard the rewriting

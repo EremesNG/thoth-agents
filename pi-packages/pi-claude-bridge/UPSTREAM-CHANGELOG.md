@@ -2,6 +2,17 @@
 
 ## UNRELEASED
 
+### Selective sync reference: `45fc71d` (after upstream 0.12.0)
+
+- `2cc6368`: fail turns on Claude Code rejection of served tool calls, preserving recording state (#218).
+- `0cdc44c`: warn about repeated unsaved extension messages rewriting the prompt cache (#246).
+- `f14f2ed` (selected): Agent SDK 0.3.321, Fable 5.2 measured 1M, and unexpected Extra Usage diagnostics.
+- `7d1f485`: access-gated Mythos 5.1/5.2 cloned from available Fable siblings, listed last at 1M (#259).
+
+Whole-prompt forwarding (`45fc71d`), prompt-guard removal, Pi floor raises,
+upstream documentation/TODO/release-only changes are not adopted; see the local
+README sync policy. Earlier upstream/local history below remains unchanged.
+
 - **Fix: show Claude progress updates as text** — Port upstream PR #212 (issue #211, not yet merged upstream): detect the `narration` signature kind with fail-closed decoding, hold streaming blocks privately up to 800 characters so updates never appear as reasoning first, and classify completed nonstreaming fallback blocks without a length cap. Replay updates as their original signed reasoning; locally, session-sync digests treat the displayed text exactly as the signed reasoning it replays as, preventing recording gaps or forks caused by this display change.
 
 - **Bump: upstream sync through `0b41f78`** — Adopt #222 content-digest session sync in place of local checkpoints: retain matching recorded history, fork on differences, and keep append refresh state with the retained records; old checkpoints are ignored and left in place, requiring a one-time history rebuild. Pin the Claude Agent SDK exactly to `0.3.308`; adopt #198 settings security (ignore project `provider` options and load only user Claude settings), child-only environment overrides/isolation, and the Extra Usage warning. Apply the bash default timeout at execution, route tool results to their own Pi session and close parked queries, and preserve every block in the nonstreaming fallback.

@@ -4,7 +4,21 @@
 
 Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Originally based on [claude-agent-sdk-pi](https://github.com/prateekmedia/claude-agent-sdk-pi) by Prateek Sunal.
 
-This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), synced through upstream `acbe45b` (0.11.0); the local package version is independent.
+This is a vendored, Thoth-maintained copy of [elidickinson/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), sync base `45fc71d` (following 0.12.0), selectively ported; the local package version is independent.
+
+### Upstream sync policy
+
+Adopted `2cc6368` (rejected served calls), `0cdc44c` (dropped-message warning),
+the SDK 0.3.321 / Fable 5.2 measured-1M / Extra Usage diagnostics from `f14f2ed`,
+and `7d1f485` (Mythos siblings). Excluded:
+
+- `45fc71d`: whole-prompt forwarding and configurable preset would replace local prompt capture/projection and append epochs.
+- The prompt-guard removal and Pi peer/dev floor raises from `f14f2ed`: keep `assertSendablePrompt` and Pi 1.5.0 compatibility.
+- `15cef44`, `334c2b6`: upstream README rewrites/links do not describe this workspace distribution.
+- `e526535`, `7f6cab1`: TODO/probe and live cache-test changes are outside this selective port.
+- `d8a03f0`: upstream release/versioning and raised-floor messaging; local versions and floors stay unchanged.
+
+Local prompt guidelines, schema wrapping, tolerant streaming arguments, immediate provider-limit delivery and recording/fork epochs are retained.
 
 Use Opus/Sonnet/Haiku as models in pi, with all tool calls flowing through pi's TUI.
 
@@ -32,6 +46,17 @@ Development Pi SDK/TUI dependencies are pinned to `1.5.0` in the root workspace 
 ## Provider
 
 Use `/model` to select any Claude model in pi-ai's catalog, e.g. `claude-bridge/claude-fable-5-1`, `claude-bridge/claude-opus-5`, or `claude-bridge/claude-haiku-4-5`.
+
+Fable 5.2 appears only when the host Pi catalog supplies it (Pi 1.5.2 does; the
+1.5.0 development pin does not). Access-gated Mythos 5.1/5.2 entries are cloned
+from available Fable siblings unless the catalog already lists them. They sort
+last and use measured 1M context; accounts without Mythos access cannot use them.
+The bridge does not seed missing Fable catalog entries.
+
+A served tool call rejected by Claude Code now ends the current or matching
+continuation turn with an error instead of hanging. Running Pi tools are not
+canceled or undone. Unknown or wrong-case served names stay with Claude Code to
+retry; only exactly served names reach Pi.
 
 Behind the scenes, pi's tools are bridged to Claude Code but everything works like normal in pi. Foreground Bash commands get Claude Code's 120-second default timeout at execution when no timeout is provided; the default is not saved in pi's history. Calls marked `background: true` are exempt from that implicit default; explicit timeouts still apply. Skills are forwarded to Claude Code's system prompt, and steering mid-turn reaches Claude at the next tool boundary.
 
@@ -282,3 +307,16 @@ Requires the following in `~/.pi/agent/subagents.json`:
 **System prompt recording is account-dependent.** The bridge keeps Claude Code's default recording and refreshes changed projected appends through new-turn hook context, not by replacing the recorded prompt. Prefix preservation depends on active recording; where CC has not enabled it, changing the append can still change the rendered system prompt. Arbitrary replacement prompts outside Pi's structured capture are not supported.
 
 **Exported Anthropic environment variables override the Claude Code child (issue #107).** An exported `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` redirects Claude Code to that gateway and every turn fails with its auth error. Unset them for the pi process, or blank them in a `claude-bridge` credential's `env` (see [Configuration](#configuration)).
+
+### Extensions that add a message to every request
+
+After three consecutive requests drop an extension-injected trailing user message
+from the next history, the bridge warns once and quotes the message. Repeated
+copies invalidate the recorded prompt cache. Disable the extension or ask its
+author to save the message with `pi.sendMessage` instead of appending it in a
+`context` hook. Retries preserve the streak; history rewrites reset it.
+
+Unexpected Extra Usage billing warns once per query. An "out of extra usage"
+refusal without a reported reached plan limit includes a qualified suspicion
+that Anthropic interpreted the system prompt as a third-party app; this is not a
+confirmed billing cause. User-selected paid 1M models are exempt.

@@ -5,6 +5,7 @@ import {
 } from '@thoth-agents/pi-core';
 import { continuationAvailable } from '../continuation-availability.js';
 import { safeErrorMetadataDetails } from '../error-metadata.js';
+import { fallbackSummaryLines } from '../model-fallback.js';
 import {
   agentIcon,
   BOX_CHARS,
@@ -102,6 +103,7 @@ export function completionMessage(
 ): string {
   const label = formatTaskLabel(task);
   const warning = toolSelectionWarning(task);
+  const fallbackLines = fallbackSummaryLines(task);
   const hasResp =
     typeof task.result === 'string' && task.result.trim().length > 0;
   const content = [
@@ -110,6 +112,7 @@ export function completionMessage(
     `task_id: ${task.id ?? task.task_id ?? 'unknown'}`,
     `Undelivered messages: ${task.undelivered_message_count ?? 0}`,
     ...(warning ? [warning] : []),
+    ...(fallbackLines.length ? ['', ...fallbackLines] : []),
     '',
     `Read only this ${hasResp && task.status !== 'completed' ? 'partial' : 'final'} response from the subagent. Do not reread the full execution transcript unless the user explicitly asks for debugging details.`,
   ];
@@ -170,6 +173,12 @@ export function sendSubagentCompletionMessage(
           error: task.error,
           undelivered_message_count: task.undelivered_message_count ?? 0,
           dropped_tools: task.dropped_tools,
+          ...(task.fallback_attempts?.length
+            ? {
+                fallback_used: task.fallback_used,
+                fallback_attempts: task.fallback_attempts,
+              }
+            : {}),
           error_metadata: safeCompletionErrorMetadata(task),
         },
       },

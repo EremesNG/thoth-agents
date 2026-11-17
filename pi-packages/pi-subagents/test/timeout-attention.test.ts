@@ -13,7 +13,10 @@ import type { SubagentRunner } from '../src/types.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 async function fixture(
   overrides = {},
@@ -533,5 +536,80 @@ describe('bounded timeout attention', () => {
     expect(task.status).toBe('running');
     await vi.advanceTimersByTimeAsync(200);
     expect(task.status).toBe('failed');
+  });
+
+  it('reconciles a single-model runner success settling after the deadline before the timer fires as total_timeout', async () => {
+    env.writeAgent('worker');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        enable_continue: true,
+        timeout_ms: 1000,
+        timeout_warning_ms: 200,
+        stall_timeout_ms: 10000,
+      }),
+    );
+    const nested = path.join(env.tmp, 'late-single.jsonl');
+    fs.writeFileSync(nested, '{}');
+    const history = env.createHistoryStore();
+    let manager!: ReturnType<typeof env.createManager>;
+    const runner: SubagentRunner = async ({ taskId, onActivity }) => {
+      onActivity?.({
+        message: 'working',
+        output: 'partial single output',
+        nested_session_path: nested,
+      });
+      const active = manager.getTask(taskId!)!;
+      vi.spyOn(Date, 'now').mockReturnValue(active.timeout_deadline_at! + 1);
+      await Promise.resolve();
+      return {
+        result: 'late single completion',
+        model: 'mock/model',
+        fallback_used: false,
+      };
+    };
+    manager = env.createManager(runner, history);
+    const run = await manager.run(
+      { agent: 'worker', task: 'work', mode: 'task' },
+      { cwd: env.tmp, sessionId: 'parent' },
+    );
+    const task = run.results![0];
+    expect(task.status).toBe('failed');
+    expect(task.error).toBe('timed out after 1000ms');
+    expect(task.error_metadata).toMatchObject({
+      category: 'total_timeout',
+      retryable: false,
+      partial_result_available: true,
+    });
+    expect(task.result).toBeUndefined();
+    expect(task.output_preview).toBe('partial single output');
+    expect(history.getTask(env.tmp, task.id)).toMatchObject({
+      status: 'failed',
+      error_metadata: { category: 'total_timeout' },
+    });
+    expect(
+      history
+        .listTaskAttempts(env.tmp, task.id)
+        .map((a) => [a.attempt, a.status, a.error_metadata?.category]),
+    ).toEqual([[1, 'failed', 'total_timeout']]);
+    const notification = completionMessage({ ...task, cwd: env.tmp }, true);
+    const toolResult = await createSubagentResultTool(manager).execute(
+      'call',
+      { task_id: task.id },
+      undefined,
+      undefined,
+      { cwd: env.tmp },
+    );
+    for (const text of [
+      notification,
+      (toolResult.details as Record<string, unknown>).full_result as string,
+    ]) {
+      expect(text).toContain('timed out after 1000ms');
+      expect(text).toContain('## Partial context (total timeout)');
+      expect(text).toContain('partial single output');
+      expect(text).toContain('Nested session: available');
+      expect(text).toContain('subagent_continue: enabled');
+      expect(text).not.toContain('late single completion');
+    }
   });
 });

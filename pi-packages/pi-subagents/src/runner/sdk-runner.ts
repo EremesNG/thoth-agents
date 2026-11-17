@@ -939,7 +939,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       nested_session_path: resolvedNestedSessionPath,
       model: modelLabel(preferred) ?? modelRefLabel(profile.model.value),
       effort,
-      fallback_used: false,
+      fallback_used: profile.model.source === 'fallback',
     };
   } catch (error) {
     if (signal.aborted) throw new Error('Subagent was aborted');

@@ -97,3 +97,91 @@ it('falls back independently for absent profile agents and fields through defini
     effort: { source: 'unresolved' },
   });
 });
+
+const fallbackBase = {
+  agentName: 'worker',
+  definition: {
+    name: 'worker',
+    description: '',
+    filePath: '',
+    instructions: '',
+    tools: [],
+    model: { provider: 'definition', id: 'model' },
+  },
+  config: readSubagentsConfig('missing'),
+  ctx: {} as any,
+};
+const ref = (provider: string, id: string) => ({ provider, id });
+
+it('resolves an empty fallback chain when none is configured', () => {
+  expect(resolveEffectiveSubagentProfile(fallbackBase).fallbackModels).toEqual(
+    [],
+  );
+});
+
+it('prefers the profile chain, then the definition chain, then the config default', () => {
+  const definition = {
+    ...fallbackBase.definition,
+    fallback_models: [ref('def', 'a')],
+  };
+  const config = {
+    ...fallbackBase.config,
+    default_fallback_models: [ref('cfg', 'a')],
+  };
+  const ctx = {
+    modelProfile: {
+      name: 'p',
+      warnings: [],
+      profile: {
+        agents: { worker: { fallback_models: [ref('prof', 'a')] } },
+      },
+    },
+  };
+  expect(
+    resolveEffectiveSubagentProfile({
+      ...fallbackBase,
+      definition,
+      config,
+      ctx,
+    }).fallbackModels,
+  ).toEqual([ref('prof', 'a')]);
+  expect(
+    resolveEffectiveSubagentProfile({ ...fallbackBase, definition, config })
+      .fallbackModels,
+  ).toEqual([ref('def', 'a')]);
+  expect(
+    resolveEffectiveSubagentProfile({ ...fallbackBase, config }).fallbackModels,
+  ).toEqual([ref('cfg', 'a')]);
+});
+
+it('removes the primary and duplicate entries from the chain', () => {
+  const chain = resolveEffectiveSubagentProfile({
+    ...fallbackBase,
+    definition: {
+      ...fallbackBase.definition,
+      fallback_models: [
+        ref('definition', 'model'),
+        ref('x', 'one'),
+        ref('x', 'one'),
+        ref('x', 'two'),
+      ],
+    },
+  }).fallbackModels;
+  expect(chain).toEqual([ref('x', 'one'), ref('x', 'two')]);
+});
+
+it('the default (no-profile) resolution ignores profile chains', () => {
+  const chain = resolveDefaultSubagentProfile({
+    ...fallbackBase,
+    ctx: {
+      modelProfile: {
+        name: 'p',
+        warnings: [],
+        profile: {
+          agents: { worker: { fallback_models: [ref('prof', 'a')] } },
+        },
+      },
+    },
+  }).fallbackModels;
+  expect(chain).toEqual([]);
+});

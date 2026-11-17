@@ -294,3 +294,49 @@ it('preserves orchestrator on workspace clone, default creation and unedited sav
   s.save('global', 'root', { agents: {} });
   expect(s.read('global').profiles.root.orchestrator?.effort).toBe('low');
 });
+it('round-trips fallback_models as provider/id strings and preserves them on model edits', () => {
+  const s = store();
+  fs.mkdirSync(path.dirname(s.paths.global), { recursive: true });
+  fs.writeFileSync(
+    s.paths.global,
+    JSON.stringify({
+      version: 1,
+      profiles: {
+        fast: {
+          agents: {
+            worker: {
+              model: 'openai/gpt',
+              fallback_models: ['anthropic/claude', 'openrouter/a/b'],
+            },
+          },
+        },
+      },
+    }),
+  );
+  expect(s.read('global').profiles.fast.agents.worker.fallback_models).toEqual([
+    { provider: 'anthropic', id: 'claude' },
+    { provider: 'openrouter', id: 'a/b' },
+  ]);
+  s.save('global', 'fast', {
+    agents: { worker: { model: { provider: 'openai', id: 'gpt-2' } } },
+  });
+  const raw = JSON.parse(fs.readFileSync(s.paths.global, 'utf8'));
+  expect(raw.profiles.fast.agents.worker).toEqual({
+    model: 'openai/gpt-2',
+    fallback_models: ['anthropic/claude', 'openrouter/a/b'],
+  });
+});
+it('rejects malformed fallback_models without overwriting the store', () => {
+  const s = store();
+  expect(() =>
+    s.save('global', 'fast', {
+      agents: { worker: { fallback_models: ['no-slash'] } },
+    }),
+  ).toThrow(/fallback_models/);
+  expect(() =>
+    s.save('global', 'fast', {
+      agents: { worker: { fallback_models: 'openai/gpt' } },
+    }),
+  ).toThrow(/fallback_models/);
+  expect(fs.existsSync(s.paths.global)).toBe(false);
+});

@@ -2,8 +2,12 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseEffort, parseModel } from '../config.js';
-import type { SubagentModelProfile, SubagentModelProfiles } from '../types.js';
+import { parseEffort, parseModel, parseModelList } from '../config.js';
+import type {
+  ModelRef,
+  SubagentModelProfile,
+  SubagentModelProfiles,
+} from '../types.js';
 
 export type ProfileScope = 'global' | 'project';
 export type NamedModelProfile = {
@@ -55,9 +59,26 @@ function parseOverride(value: unknown, label: string): SubagentModelProfile {
     throw new Error(`Invalid model for ${label}; expected provider/id`);
   if (value.effort !== undefined && !effort)
     throw new Error(`Invalid effort for ${label}`);
+  let fallbackModels: ModelRef[] | undefined;
+  if (value.fallback_models !== undefined) {
+    const items = Array.isArray(value.fallback_models)
+      ? value.fallback_models
+      : undefined;
+    fallbackModels = items ? parseModelList(items) : undefined;
+    if (
+      !items ||
+      items.some((item) => !parseModel(item)) ||
+      (items.length > 0 && !fallbackModels)
+    )
+      throw new Error(
+        `Invalid fallback_models for ${label}; expected an array of provider/id`,
+      );
+  }
+  const { fallback_models: _ignored, ...rest } = value;
   return {
-    ...value,
+    ...rest,
     ...(model ? { model } : {}),
+    ...(fallbackModels ? { fallback_models: fallbackModels } : {}),
     ...(effort ? { effort } : {}),
   };
 }
@@ -103,6 +124,13 @@ function serializeOverride(entry: SubagentModelProfile) {
     ...entry,
     ...(entry.model
       ? { model: `${entry.model.provider}/${entry.model.id}` }
+      : {}),
+    ...(entry.fallback_models
+      ? {
+          fallback_models: entry.fallback_models.map(
+            (model) => `${model.provider}/${model.id}`,
+          ),
+        }
       : {}),
   };
 }

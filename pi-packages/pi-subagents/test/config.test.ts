@@ -375,6 +375,35 @@ describe('config and workflow loading', () => {
     expect(parsed.body).toBe('# Body');
   });
 
+  it('parses fallback_models from definition frontmatter and default_fallback_models from config', () => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
+      `---\nname: analyst\ndescription: analyst agent\nmodel: openai/gpt-5.2\nfallback_models:\n  - anthropic/claude-sonnet-4-5\n  - bogus\n  - openrouter/a/b\n  - anthropic/claude-sonnet-4-5\n---\n# Agent`,
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        default_fallback_models: ['google/gemini', 'nope', 'google/gemini'],
+      }),
+    );
+    expect(loadSubagents(tmp)[0].fallback_models).toEqual([
+      { provider: 'anthropic', id: 'claude-sonnet-4-5' },
+      { provider: 'openrouter', id: 'a/b' },
+    ]);
+    expect(readSubagentsConfig(tmp).default_fallback_models).toEqual([
+      { provider: 'google', id: 'gemini' },
+    ]);
+  });
+
+  it('leaves fallback models undefined when unconfigured', () => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
+      `---\nname: analyst\ndescription: analyst agent\n---\n# Agent`,
+    );
+    expect(loadSubagents(tmp)[0].fallback_models).toBeUndefined();
+    expect(readSubagentsConfig(tmp).default_fallback_models).toBeUndefined();
+  });
+
   it('loads agent names from markdown files and config default model/effort', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'analyst.md'),

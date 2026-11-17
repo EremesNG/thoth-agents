@@ -33,6 +33,7 @@ export type ThinkingEffort =
 
 export type SubagentModelProfile = {
   model?: ModelRef;
+  fallback_models?: ModelRef[];
   effort?: ThinkingEffort;
 };
 
@@ -43,8 +44,16 @@ export type ProfileValueSource =
   | 'profile'
   | 'definition'
   | 'default'
+  | 'fallback'
   | 'orchestrator'
   | 'unresolved';
+
+export type SubagentFallbackAttempt = {
+  attempt: number;
+  model: string;
+  category: SubagentErrorCategory;
+  message: string;
+};
 
 export type ResolvedProfileField<T> = {
   value?: T;
@@ -57,6 +66,8 @@ export type EffectiveSubagentProfile = {
   warnings?: string[];
   agent: string;
   model: ResolvedProfileField<ModelRef>;
+  /** Ordered fallback chain (deduped, excluding the primary); empty when none. */
+  fallbackModels?: ModelRef[];
   effort: ResolvedProfileField<ThinkingEffort>;
 };
 
@@ -71,6 +82,7 @@ export type SubagentDefinition = {
   filePath: string;
   instructions: string;
   model?: ModelRef;
+  fallback_models?: ModelRef[];
   effort?: ThinkingEffort;
   tools: string[];
   toolOverlay?: SubagentToolOverlay;
@@ -88,6 +100,7 @@ export type SubagentsRenderDebugConfig = {
 
 export type SubagentsConfig = {
   default_model?: ModelRef;
+  default_fallback_models?: ModelRef[];
   default_effort?: ThinkingEffort;
   timeout_ms: number;
   timeout_warning_ms?: number;
@@ -524,6 +537,8 @@ export type SubagentTask = {
   model_source?: ProfileValueSource;
   effort_source?: ProfileValueSource;
   fallback_used?: boolean;
+  /** In-memory record of models that failed before a fallback model ran. */
+  fallback_attempts?: SubagentFallbackAttempt[];
   error?: string;
   error_metadata?: SubagentErrorMetadata;
   result?: string;

@@ -300,6 +300,31 @@ export function parseModel(value: any): ModelRef | undefined {
   return undefined;
 }
 
+/**
+ * Parses an ordered fallback model list from a YAML/JSON array (or a
+ * comma-separated string). Invalid entries are dropped, duplicates removed.
+ * Returns undefined when no valid model remains.
+ */
+export function parseModelList(value: unknown): ModelRef[] | undefined {
+  const items =
+    typeof value === 'string'
+      ? value.split(',')
+      : Array.isArray(value)
+        ? value
+        : [];
+  const seen = new Set<string>();
+  const models: ModelRef[] = [];
+  for (const item of items) {
+    const model = parseModel(item);
+    if (!model) continue;
+    const key = `${model.provider}/${model.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    models.push(model);
+  }
+  return models.length > 0 ? models : undefined;
+}
+
 const THINKING_EFFORTS = new Set([
   'off',
   'minimal',
@@ -500,6 +525,7 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
       DEFAULT_MAX_TIMEOUT_EXTENSIONS,
     ),
     default_model: parseModel(raw.default_model),
+    default_fallback_models: parseModelList(raw.default_fallback_models),
     default_effort: parseEffort(
       raw.default_effort ?? raw.default_thinking_level ?? raw.thinkingLevel,
     ),
@@ -626,6 +652,7 @@ export function loadSubagentsFromDir(
           filePath,
           instructions: body.trim(),
           model: parseModel(data.model),
+          fallback_models: parseModelList(data.fallback_models),
           effort: parseEffort(
             data.effort ?? data.thinking_level ?? data.thinkingLevel,
           ),

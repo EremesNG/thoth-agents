@@ -71,6 +71,35 @@ function resolveModel(
   return field('unresolved', undefined, modelLabel);
 }
 
+/**
+ * Chain from the first source (profile entry, definition, subagents.json
+ * default) that configures one. Duplicates of the primary and of earlier
+ * entries are removed.
+ */
+function resolveFallbackModels(
+  definition: SubagentDefinition,
+  config: SubagentsConfig,
+  ctx: any,
+  primary: ModelRef | undefined,
+): ModelRef[] {
+  const profile = ctx?.modelProfile?.profile.agents[definition.name];
+  const chain =
+    [
+      profile?.fallback_models,
+      definition.fallback_models,
+      config.default_fallback_models,
+    ].find((candidate) => candidate && candidate.length > 0) ?? [];
+  const seen = new Set<string>(primary ? [modelLabel(primary)] : []);
+  const result: ModelRef[] = [];
+  for (const model of chain) {
+    const key = modelLabel(model);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ provider: model.provider, id: model.id });
+  }
+  return result;
+}
+
 function resolveEffort(
   definition: SubagentDefinition,
   config: SubagentsConfig,
@@ -103,9 +132,16 @@ export function resolveDefaultSubagentProfile(
     name: input.agentName.trim().toLowerCase(),
   };
   const ctx = { ...input.ctx, modelProfile: undefined };
+  const model = resolveModel(definition, input.config, ctx);
   return {
     agent: definition.name,
-    model: resolveModel(definition, input.config, ctx),
+    model,
+    fallbackModels: resolveFallbackModels(
+      definition,
+      input.config,
+      ctx,
+      model.value,
+    ),
     effort: resolveEffort(definition, input.config, ctx),
   };
 }
@@ -135,6 +171,12 @@ export function resolveEffectiveSubagentProfile(
   return {
     agent: definition.name,
     model,
+    fallbackModels: resolveFallbackModels(
+      definition,
+      input.config,
+      ctx,
+      model.value,
+    ),
     effort,
     profileName: selection.name,
     warnings: selection.warnings,

@@ -38,7 +38,7 @@ export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
     description:
       'Continue a completed, failed, or cancelled task in its exact persisted nested Pi session, keeping task_id.',
     promptSnippet:
-      'Omit mode: background by default. Use mode=task only when explicitly asked to wait. Supply model or effort only after an explicit user decision. Never auto-switch models.',
+      'Omit mode: background by default. Use mode=task only when explicitly asked to wait. Supply model or effort only after an explicit user decision. Never auto-switch models yourself (this is root guidance only; configured subagent fallback_models chains switch automatically on provider failures, and an explicit model here disables that chain for this call).',
     parameters: Type.Object({
       task_id: Type.String(),
       prompt: Type.String(),

@@ -720,3 +720,68 @@ describe('completion message render', () => {
     expect(message).not.toContain('hidden prompt body');
   });
 });
+
+it('includes terminal fallback failure reasons with partial output without changing non-fallback messages', () => {
+  const task = {
+    id: 'failed-with-partial',
+    agent: 'worker',
+    status: 'failed',
+    model: 'p/two',
+    result: 'partial work',
+    error: 'provider network error',
+    error_metadata: {
+      category: 'provider_network_error',
+      message: 'backup connection lost',
+    },
+  };
+  const plain = completionMessage(task, false);
+  expect(plain).not.toContain('Model fallback:');
+  expect(plain).not.toContain('backup connection lost');
+  const fallback = completionMessage(
+    {
+      ...task,
+      fallback_attempts: [
+        {
+          attempt: 1,
+          model: 'p/one',
+          category: 'provider_rate_limit',
+          message: 'primary unavailable',
+        },
+      ],
+    },
+    false,
+  );
+  expect(fallback).toContain(
+    '- p/two failed (provider_network_error): backup connection lost',
+  );
+  expect(fallback).not.toContain('- continued on p/two');
+  expect(fallback).toContain('partial work');
+
+  const cancelled = completionMessage(
+    {
+      ...task,
+      status: 'cancelled',
+      error: 'Subagent cancelled: user request',
+      error_metadata: {
+        category: 'cancelled',
+        message: 'Subagent cancelled: user request',
+      },
+      fallback_attempts: [
+        {
+          attempt: 1,
+          model: 'p/one',
+          category: 'provider_rate_limit',
+          message: 'primary unavailable',
+        },
+      ],
+    },
+    false,
+  );
+  expect(cancelled).toContain(
+    '- p/one failed (provider_rate_limit): primary unavailable',
+  );
+  expect(cancelled).toContain(
+    '- p/two cancelled (cancelled): Subagent cancelled: user request',
+  );
+  expect(cancelled).not.toContain('- continued on p/two');
+});

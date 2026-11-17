@@ -815,3 +815,13 @@ In a Pi session without a dialog-capable UI, the Junie bridge MUST launch Junie 
 - **GIVEN** an isolated agy configuration with a stdio server `codegraph` and another Pi bridge entry
 - **WHEN** an ACP session is created or loaded
 - **THEN** `mcpServers` contains this bridge entry and `codegraph` (with env as name/value pairs) but not the other bridge entry, and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home
+
+### Requirement: Pi subagent model fallback chains
+
+pi-subagents MUST resolve an optional ordered per-subagent fallback model chain from the first non-empty fallback configuration (profile entry, then agent definition, then `subagents.json` default), MUST disable it for an explicit `subagent_continue` model override, and on a classified retryable provider API, rate-limit or network failure, or an authentication failure, MUST continue the same nested child session with the next chain model under the same task until success or exhaustion, reporting each attempted model and failure; timeouts, cancellation, context overflow and other failures MUST NOT switch models, and an empty chain MUST preserve single-model behavior.
+
+#### Scenario: Pi subagent model fallback chains
+
+- **GIVEN** a worker whose profile selects `openai/gpt-x` with `fallback_models: ["anthropic/claude-sonnet-5-5"]`
+- **WHEN** the first attempt fails with a provider rate-limit error
+- **THEN** the same task continues its nested session on `anthropic/claude-sonnet-5-5`, completes, reports `fallback_used: true` and records both attempts in history, while a timeout on the first model would fail the task without switching

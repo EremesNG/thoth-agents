@@ -466,6 +466,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | Field | Default | Description |
 |---|---:|---|
 | `default_model` | current orchestrator model | Fallback model for all subagents. Format: `provider/model-id`. |
+| `default_fallback_models` | none | Ordered fallback model chain used when neither the selected profile entry nor the definition sets `fallback_models`. See [Model fallback chains](#model-fallback-chains). |
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
 | `enable_notify_orchestrator` | `true` | Independently inject child-provided `notify_orchestrator` unless denied by the definition. Follows the global/project cascade. |
@@ -578,7 +579,37 @@ Effective effort resolution order:
 4. current orchestrator thinking level
 5. unresolved
 
-If a configured model cannot be resolved, the runner reports an error. The runner makes one attempt with the selected model, returns `fallback_used: false` on success, and preserves the original failure on error or stall; it does not retry with the orchestrator model.
+If a configured model cannot be resolved, the runner reports an error. With no fallback chain configured, the runner makes one attempt with the selected model, returns `fallback_used: false` on success, and preserves the original failure on error or stall; it does not retry with the orchestrator model. See [Model fallback chains](#model-fallback-chains) for the opt-in per-subagent chain.
+
+## Model fallback chains
+
+A subagent can declare an ordered list of fallback models. When the run on the current model fails with an eligible provider error, pi-subagents continues the **same nested child session** (same task ID, prior turns and tool activity preserved) on the next model, without root intervention. Chains are opt-in: with none configured, behavior is unchanged.
+
+Configure a chain in any of these places (`provider/model-id` entries, in order):
+
+1. Selected profile entry: `agents[agent].fallback_models` in `thoth/profiles.json`.
+2. Agent definition frontmatter: `fallback_models` (YAML list or comma-separated string).
+3. `subagents.json`: `default_fallback_models`.
+
+```md
+---
+name: worker
+model: openai/gpt-5.2
+fallback_models:
+  - anthropic/claude-sonnet-4-5
+  - google/gemini-2.5-pro
+---
+```
+
+Precedence is profile entry → definition → `default_fallback_models`; the first source that configures a non-empty chain wins (chains are not merged). Entries equal to the primary model or to an earlier entry are dropped, and invalid entries in frontmatter or `subagents.json` are ignored (an invalid `profiles.json` entry is a store error). The `/subagents-model` TUI does not edit chains; edit the JSON or the definition.
+
+**Eligibility.** The model switches only when the failed attempt is classified as `provider_api_error`, `provider_rate_limit`, `provider_network_error` or `provider_auth_error`, a chain model remains, and neither cancellation nor the task deadline has fired. Failures marked non-retryable (for example request-shape errors) do not switch, except authentication errors. Timeouts and stalls, cancellation, context overflow, interaction failures and any other failure class fail the task as before, as does an exhausted chain, always with the last attempt's exact error. Pi's own same-model auto-retry runs first; fallback starts only after it surfaces the error.
+
+**Execution.** The next model reopens the session file captured from the failed attempt with a short continuation prompt instead of replaying the delegated task, and the attempt number increases. If no session file exists yet, the original task runs on the next model. `timeout_ms` and its extensions are one deadline for the whole task and span all models.
+
+**Overrides.** `subagent_run` has no model parameter. An explicit `model` passed to `subagent_continue` disables the chain for that call. The `subagent_continue` tool guidance "Never auto-switch models" is guidance for the root orchestrator and does not forbid a configured chain.
+
+**Reporting.** The task and results show the current/actual model, `model_source: "fallback"` while a fallback model runs, and `fallback_used: true`. History stores one attempt row per model with its classified failure. The completion message lists each failed model with its category and reason. The failed-model list is kept in memory for the running manager (`fallback_attempts`); durable per-model details are the history attempt rows.
 
 ## Debug and interaction bridge logs
 

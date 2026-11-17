@@ -40,6 +40,11 @@ import {
   publishInteractionResponse,
   sanitizeInteractionTransportText,
 } from './interaction-channel.js';
+import {
+  eligibleFallbackFailure,
+  fallbackAttemptRecord,
+  fallbackContinuationPrompt,
+} from './model-fallback.js';
 import { ModelProfileStore } from './model-profiles/store.js';
 import {
   profileSourceLabel,
@@ -55,6 +60,7 @@ import type {
   SubagentContinueInput,
   SubagentDefinition,
   SubagentErrorMetadata,
+  SubagentFallbackAttempt,
   SubagentQuestion,
   SubagentRunInput,
   SubagentRunner,
@@ -297,7 +303,13 @@ function resolveContinuationProfile(
             label: profileSourceLabel('orchestrator', parsed, String),
           };
         })();
-  return { ...resolved, model, effort };
+  // An explicit operator model override disables configured fallback chains.
+  return {
+    ...resolved,
+    model,
+    effort,
+    ...(input.model === undefined ? {} : { fallbackModels: [] }),
+  };
 }
 
 function interactionPromptMessage(request: SubagentInteractionRequest): string {
@@ -1795,6 +1807,7 @@ export class SubagentManager {
       model_source: effectiveProfile.model.source,
       effort_source: effectiveProfile.effort.source,
       fallback_used: undefined,
+      fallback_attempts: undefined,
       error: undefined,
       error_metadata: undefined,
       result: undefined,
@@ -2074,11 +2087,53 @@ export class SubagentManager {
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         let interactionsHandled = 0;
         let result: Awaited<ReturnType<SubagentRunner>> | undefined;
+        // Model fallback state: the chain advances only on eligible provider
+        // failures and reopens the persisted nested session on the next model.
+        let activeProfile = effectiveProfile;
+        let activeNestedSessionPath = nestedSessionPath;
+        let activePreviousSnapshot = previousSnapshot;
+        let activeContinuationPrompt = continuationPrompt;
+        const fallbackChain = effectiveProfile.fallbackModels ?? [];
+        let fallbackIndex = 0;
+        const fallbackAttempts: SubagentFallbackAttempt[] = [];
+        let pendingFallback:
+          | {
+              nextAttempt: number;
+              nextLabel: string;
+              nextProfile: EffectiveSubagentProfile;
+              nextNestedSessionPath?: string;
+              nextPreviousSnapshot?: SubagentTask['thread_snapshot'];
+              nextContinuationPrompt?: string;
+              failedAttemptRecord: SubagentFallbackAttempt;
+              activity: string;
+            }
+          | undefined;
         const runnerMetricOffset = {
           turns: 0,
           compactions: 0,
           generationOutputTokens: 0,
           generationMs: 0,
+        };
+        const expireDeadline = () => {
+          const elapsed = task.timeout_deadline_at! - task.timeout_started_at!;
+          const message = `timed out after ${elapsed}ms`;
+          timedOut = true;
+          this.stopDispositions.set(id, {
+            status: 'failed',
+            metadata: {
+              category: 'total_timeout',
+              message,
+              phase: 'manager',
+              retryable: false,
+              partial_result_available: hasPartialResult(task),
+              details: { timeout_ms: String(elapsed) },
+            },
+            fallbackError: message,
+          });
+          this.transitionToStopping(task, message, cwd);
+          this.notifyTaskUpdate(id, onTaskUpdate, true);
+          controller.abort();
+          return new Error(message);
         };
         while (true) {
           const runnerMetricHighwater = {
@@ -2123,6 +2178,47 @@ export class SubagentManager {
                       runnerMetricHighwater[key];
             }
           };
+          // Transition persistence and update callbacks can cancel or consume
+          // the remaining deadline. Check as the last step before mutating
+          // next-attempt state and synchronously invoking the runner.
+          if (pendingFallback || fallbackIndex > 0 || interactionsHandled > 0) {
+            if (
+              controller.signal.aborted ||
+              (task as SubagentTask).status !== 'running'
+            )
+              throw new Error('Subagent was aborted');
+            if (
+              Date.now() >=
+              (task.timeout_deadline_at ?? Number.POSITIVE_INFINITY)
+            )
+              throw expireDeadline();
+          }
+          const switchedFallback = pendingFallback !== undefined;
+          if (pendingFallback) {
+            const transition = pendingFallback;
+            pendingFallback = undefined;
+            fallbackIndex += 1;
+            fallbackAttempts.push(transition.failedAttemptRecord);
+            task.fallback_attempts = [...fallbackAttempts];
+            task.attempt = transition.nextAttempt;
+            retention.attempt = transition.nextAttempt;
+            const liveState = this.liveStates.get(id);
+            if (liveState) {
+              liveState.attempt = transition.nextAttempt;
+              delete liveState.bridge;
+            }
+            activeProfile = transition.nextProfile;
+            if (transition.nextNestedSessionPath !== undefined) {
+              activeNestedSessionPath = transition.nextNestedSessionPath;
+              activePreviousSnapshot = transition.nextPreviousSnapshot;
+              activeContinuationPrompt = transition.nextContinuationPrompt;
+            }
+            task.model = transition.nextLabel;
+            task.model_source = 'fallback';
+            task.fallback_used = true;
+            task.last_activity = transition.activity;
+            task.last_activity_at = nowIso();
+          }
           const runnerPromise = this.runner({
             definition,
             task: taskText,
@@ -2133,13 +2229,13 @@ export class SubagentManager {
             ctx,
             config,
             signal: controller.signal,
-            effectiveProfile,
-            nested_session_path: nestedSessionPath,
-            continuation: continuationPrompt
+            effectiveProfile: activeProfile,
+            nested_session_path: activeNestedSessionPath,
+            continuation: activeContinuationPrompt
               ? {
-                  prompt: continuationPrompt,
+                  prompt: activeContinuationPrompt,
                   attempt: task.attempt ?? 1,
-                  previous_snapshot: previousSnapshot,
+                  previous_snapshot: activePreviousSnapshot,
                 }
               : undefined,
             registerLiveBridge: (bridge) =>
@@ -2194,7 +2290,7 @@ export class SubagentManager {
               if (activity.output)
                 task.output_preview = compactOutput(activity.output);
               if (activity.prompt) {
-                if (continuationPrompt)
+                if (activeContinuationPrompt)
                   task.continuation_prompt = sanitizeInteractionTransportText(
                     activity.prompt,
                   );
@@ -2250,35 +2346,25 @@ export class SubagentManager {
             },
           });
           runnerPromise.catch(() => {});
+          if (switchedFallback) {
+            if (atelierRun)
+              atelierStepIndex = atelierRun.beginStep({
+                agent: definition.name,
+                model: task.model,
+                startedAt: Date.now(),
+              }).index;
+            this.record(cwd, task, task.last_activity ?? 'model fallback');
+            this.notifyTaskUpdate(id, onTaskUpdate, true);
+          } else if (fallbackIndex > 0) {
+            this.notifyTaskUpdate(id, onTaskUpdate, true);
+          }
           activeRunnerSettlement = runnerPromise.then(
             () => undefined,
             () => undefined,
           );
           const timeoutPromise = new Promise<never>((_resolve, reject) => {
             this.armDeadline(task, config, cwd, () => {
-              const elapsed =
-                task.timeout_deadline_at! - task.timeout_started_at!;
-              timedOut = true;
-              this.stopDispositions.set(id, {
-                status: 'failed',
-                metadata: {
-                  category: 'total_timeout',
-                  message: `timed out after ${elapsed}ms`,
-                  phase: 'manager',
-                  retryable: false,
-                  partial_result_available: hasPartialResult(task),
-                  details: { timeout_ms: String(elapsed) },
-                },
-                fallbackError: `timed out after ${elapsed}ms`,
-              });
-              this.transitionToStopping(
-                task,
-                `timed out after ${elapsed}ms`,
-                cwd,
-              );
-              this.notifyTaskUpdate(id, onTaskUpdate, true);
-              controller.abort();
-              reject(new Error(`timed out after ${elapsed}ms`));
+              reject(expireDeadline());
             });
           });
           const abortPromise = new Promise<never>((_resolve, reject) => {
@@ -2291,13 +2377,144 @@ export class SubagentManager {
                 { once: true },
               );
           });
-          result = await Promise.race([
-            runnerPromise,
-            timeoutPromise,
-            abortPromise,
-          ]);
+          try {
+            result = await Promise.race([
+              runnerPromise,
+              timeoutPromise,
+              abortPromise,
+            ]);
+          } catch (error) {
+            const failure =
+              fallbackIndex < fallbackChain.length &&
+              !timedOut &&
+              !controller.signal.aborted &&
+              (task as SubagentTask).status === 'running'
+                ? eligibleFallbackFailure(error)
+                : undefined;
+            // Anything else fails exactly as it would without a fallback chain.
+            if (!failure) throw error;
+            await activeRunnerSettlement;
+            activeRunnerSettlement = undefined;
+            for (const key of [
+              'turns',
+              'compactions',
+              'generationOutputTokens',
+              'generationMs',
+            ] as const)
+              runnerMetricOffset[key] += runnerMetricHighwater[key];
+            // Abort or the task-wide deadline may land while the failed
+            // runner settles; never start another model after either.
+            if (
+              timedOut ||
+              controller.signal.aborted ||
+              (task as SubagentTask).status !== 'running' ||
+              Date.now() >=
+                (task.timeout_deadline_at ?? Number.POSITIVE_INFINITY)
+            )
+              throw error;
+            // Notify listeners of the pending fallback before committing the next
+            // attempt so cancellation or deadline expiry stops dispatch cleanly
+            // without recording an unstarted model or bumping attempt.
+            const nextModel = fallbackChain[fallbackIndex];
+            const nextLabel = modelRefLabel(nextModel) ?? 'unknown';
+            const failedModel = task.model ?? 'unknown';
+            const failedAttempt = task.attempt ?? 1;
+            delete task.interaction_request;
+            task.last_activity = `model fallback pending: ${failedModel} failed (${failure.category}); switching to ${nextLabel}`;
+            task.last_activity_at = nowIso();
+            this.notifyTaskUpdate(id, onTaskUpdate, true);
+            if (
+              controller.signal.aborted ||
+              (task as SubagentTask).status !== 'running'
+            )
+              throw new Error('Subagent was aborted');
+            if (
+              Date.now() >=
+              (task.timeout_deadline_at ?? Number.POSITIVE_INFINITY)
+            )
+              throw expireDeadline();
+
+            // Finalize and persist only the failed attempt of the model that
+            // actually ran; next-attempt state and persistence wait until the
+            // final dispatch guard passes and the runner has been invoked.
+            const failedAt = nowIso();
+            const failedMetadata = enrichTerminalMetadata(
+              task,
+              parentSessionId,
+              failure,
+            );
+            this.record(
+              cwd,
+              {
+                ...task,
+                status: 'failed',
+                error: deriveErrorString(failedMetadata),
+                error_metadata: failedMetadata,
+                last_activity: `failed: ${deriveErrorString(failedMetadata)}`,
+                last_activity_at: failedAt,
+                ended_at: failedAt,
+              },
+              'model attempt failed',
+            );
+            if (atelierRun && atelierStepIndex !== undefined) {
+              atelierRun.finishStep(atelierStepIndex, atelierStatus('failed'), {
+                model: failedModel,
+              });
+              atelierStepIndex = undefined;
+            }
+            const reopenPath =
+              task.nested_session_path ?? activeNestedSessionPath;
+            const canReopen = Boolean(reopenPath && fs.existsSync(reopenPath));
+            pendingFallback = {
+              nextAttempt: failedAttempt + 1,
+              nextLabel,
+              nextProfile: {
+                ...activeProfile,
+                model: {
+                  value: nextModel,
+                  source: 'fallback',
+                  label: profileSourceLabel(
+                    'fallback',
+                    nextModel,
+                    (value) => `${value.provider}/${value.id}`,
+                  ),
+                },
+              },
+              ...(canReopen
+                ? {
+                    nextNestedSessionPath: reopenPath,
+                    nextPreviousSnapshot: task.thread_snapshot,
+                    nextContinuationPrompt: fallbackContinuationPrompt({
+                      failedModel,
+                      nextModel: nextLabel,
+                      metadata: failure,
+                    }),
+                  }
+                : {}),
+              failedAttemptRecord: fallbackAttemptRecord({
+                attempt: failedAttempt,
+                model: failedModel,
+                metadata: failure,
+              }),
+              activity: `model fallback: ${failedModel} failed (${failure.category}); continuing on ${nextLabel}`,
+            };
+            continue;
+          }
           await activeRunnerSettlement;
           activeRunnerSettlement = undefined;
+          if ((task as SubagentTask).status === 'stopping') {
+            this.finalizeStop(task, parentSessionId, cwd, onTaskUpdate);
+            return;
+          }
+          if (isTerminalStatus(task.status)) return;
+          // Enforce the absolute total deadline synchronously before accepting
+          // any runner completion or interaction request, even if the runner
+          // settled before the ceiling timer callback ran.
+          if (
+            task.timeout_deadline_at !== undefined &&
+            Date.now() >= task.timeout_deadline_at
+          )
+            throw expireDeadline();
           updateRunnerMetrics(result?.runtime_metrics);
           for (const key of [
             'turns',
@@ -2306,11 +2523,6 @@ export class SubagentManager {
             'generationMs',
           ] as const)
             runnerMetricOffset[key] += runnerMetricHighwater[key];
-          if ((task as SubagentTask).status === 'stopping') {
-            this.finalizeStop(task, parentSessionId, cwd, onTaskUpdate);
-            return;
-          }
-          if (isTerminalStatus(task.status)) return;
 
           const interactionRequest = result.interaction_request;
           if (!interactionRequest) break;
@@ -2348,7 +2560,8 @@ export class SubagentManager {
             );
           task.model = result.model;
           task.effort = result.effort ?? task.effort;
-          task.fallback_used = result.fallback_used;
+          task.fallback_used =
+            fallbackAttempts.length > 0 ? true : result.fallback_used;
           if (result.thread_snapshot)
             task.thread_snapshot = sanitizeUnknown(result.thread_snapshot);
           if (result.dropped_tools !== undefined)
@@ -2423,7 +2636,8 @@ export class SubagentManager {
           );
         task.model = result.model;
         task.effort = result.effort ?? task.effort;
-        task.fallback_used = result.fallback_used;
+        task.fallback_used =
+          fallbackAttempts.length > 0 ? true : result.fallback_used;
         if (result.thread_snapshot)
           task.thread_snapshot = sanitizeUnknown(result.thread_snapshot);
         if (result.dropped_tools !== undefined)

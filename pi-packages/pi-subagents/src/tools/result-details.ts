@@ -106,6 +106,9 @@ export function compactTaskForToolResult(
     model_source: task.model_source,
     effort_source: task.effort_source,
     fallback_used: task.fallback_used,
+    ...(task.fallback_attempts?.length
+      ? { fallback_attempts: task.fallback_attempts }
+      : {}),
     interaction_request: task.interaction_request,
     stop_reason: task.stop_reason,
     pi_retry_attempts: task.pi_retry_attempts,

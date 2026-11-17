@@ -186,6 +186,7 @@ function lastAssistantFailure(
         errorMessage: message.errorMessage,
       };
     }
+    return undefined;
   }
   return undefined;
 }
@@ -292,30 +293,30 @@ class LiveActivityReducer {
   }
 }
 
-function failingToolNames(snapshot?: SubagentThreadSnapshot): string[] {
-  if (!snapshot?.items?.length) return [];
-  const names = new Set<string>();
-  for (const item of snapshot.items) {
-    if (item.type === 'tool' && item.status === 'failed' && item.name)
-      names.add(item.name);
-    if (item.type === 'tool_result' && item.result?.isError && item.name)
-      names.add(item.name);
-    if (item.type === 'bash' && item.status === 'failed') names.add('bash');
-  }
-  return [...names].slice(0, 3);
+function isFinalAssistantMessage(message: any): boolean {
+  return (
+    message?.role === 'assistant' &&
+    (message.stopReason == null ||
+      message.stopReason === 'stop' ||
+      message.stopReason === 'length') &&
+    typeof message.errorMessage !== 'string' &&
+    !(
+      Array.isArray(message.content) &&
+      message.content.some((part: any) => part?.type === 'toolCall')
+    )
+  );
 }
 
-function collectFinalizedAssistantText(messages: any[]): string {
+function collectFinalizedAssistantText(
+  messages: any[],
+  separator = '\n',
+): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     if (message?.role !== 'assistant') continue;
-    if (
-      message?.stopReason === 'error' ||
-      message?.stopReason === 'aborted' ||
-      typeof message?.errorMessage === 'string'
-    )
-      return '';
-    return assistantMessageText(message).trim();
+    return isFinalAssistantMessage(message)
+      ? assistantMessageText(message, separator).trim()
+      : '';
   }
   return '';
 }
@@ -374,6 +375,9 @@ export async function promptWithInactivity(
       ? session.messages.length
       : 0;
   let sawToolActivity = false;
+  const failedToolNames = new Set<string>();
+  const attemptAssistantMessages: any[] = [];
+  let sessionCompacted = false;
   let piRetryAttempts = 0;
   let sawInitialUserMessage = false;
   const activeToolCalls = new Map<
@@ -490,6 +494,10 @@ export async function promptWithInactivity(
         return;
       }
       if (event?.type === 'auto_retry_start') piRetryAttempts += 1;
+      if (event?.type === 'compaction_end' && event.result != null)
+        sessionCompacted = true;
+      if (event?.type === 'message_end' && event.message?.role === 'assistant')
+        attemptAssistantMessages.push(event.message);
       if (event?.type === 'message_start' && event?.message?.role === 'user') {
         if (sawInitialUserMessage) onQueuedMessageStart?.();
         sawInitialUserMessage = true;
@@ -499,6 +507,8 @@ export async function promptWithInactivity(
         event.type.startsWith('tool_execution_')
       ) {
         sawToolActivity = true;
+        if (event.type === 'tool_execution_end' && event.isError)
+          failedToolNames.add(event.toolName ?? event.name ?? 'tool');
         registerSubagentRuntimeToolDefinition(
           taskId,
           event?.toolName,
@@ -724,9 +734,10 @@ export async function promptWithInactivity(
       ...usage,
       turns: finalRuntimeSnapshot.runtime_metrics.turns ?? usage.turns,
     };
-    const currentMessages = (session.messages ?? []).slice(
-      initialMessagesLength,
-    );
+    const currentMessages =
+      sessionCompacted && promptLabel === 'continuation'
+        ? attemptAssistantMessages
+        : (session.messages ?? []).slice(initialMessagesLength);
     const thread_snapshot = snapshotBuilder.finalize(currentMessages);
     debugLog(cwd, 'runner_final_snapshot', {
       source: thread_snapshot?.source,
@@ -764,7 +775,12 @@ export async function promptWithInactivity(
       });
       throw new SubagentStructuredError(metadata);
     }
-    const assistantFailure = lastAssistantFailure(currentMessages);
+    const classificationMessages =
+      sessionCompacted ||
+      !currentMessages.some((message: any) => message?.role === 'assistant')
+        ? attemptAssistantMessages
+        : currentMessages;
+    const assistantFailure = lastAssistantFailure(classificationMessages);
     if (assistantFailure) {
       const metadata =
         assistantFailure.stopReason === 'aborted'
@@ -795,8 +811,12 @@ export async function promptWithInactivity(
         throw new SubagentStructuredError(metadata);
       }
     }
-    const finalizedAssistantText =
-      collectFinalizedAssistantText(currentMessages);
+    const finalizedAssistantText = sanitizeInteractionTransportText(
+      collectFinalizedAssistantText(
+        classificationMessages,
+        classificationMessages === attemptAssistantMessages ? '' : '\n',
+      ),
+    );
     if (promptError && finalizedAssistantText) {
       transcript += `\n\n# final assistant text\n\n${finalizedAssistantText}`;
       emitActivity({
@@ -819,13 +839,25 @@ export async function promptWithInactivity(
       };
     }
     if (promptError) throw promptError;
-    const messageText = collectAssistantText(currentMessages);
-    const streamedFallback = sawToolActivity ? '' : output.trim();
+    const latestClassifiedMessage = classificationMessages.findLast(
+      (message: any) => message?.role === 'assistant',
+    );
+    const messageText = sessionCompacted
+      ? collectFinalizedAssistantText(attemptAssistantMessages, '')
+      : currentMessages.some((message: any) => message?.role === 'assistant') &&
+          isFinalAssistantMessage(latestClassifiedMessage)
+        ? collectAssistantText(currentMessages)
+        : '';
+    const streamedFallback = !isFinalAssistantMessage(latestClassifiedMessage)
+      ? ''
+      : sawToolActivity || sessionCompacted
+        ? collectFinalizedAssistantText(attemptAssistantMessages, '')
+        : output.trim();
     const collected = sanitizeInteractionTransportText(
       messageText || streamedFallback,
     );
     if (!collected.trim()) {
-      const toolNames = failingToolNames(thread_snapshot);
+      const toolNames = [...failedToolNames].slice(0, 3);
       const metadata = toolNames.length
         ? normalizeErrorMetadata({
             category: 'tool_failure',
@@ -907,7 +939,7 @@ function assistantMessageText(
 export function collectAssistantText(messages: any[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const msg = messages[index];
-    if (msg?.role !== 'assistant') continue;
+    if (!isFinalAssistantMessage(msg)) continue;
     const text = assistantMessageText(msg).trim();
     if (text) return text;
   }

@@ -165,7 +165,7 @@ it.each([
   expect(run.activities.at(-1)?.transcript).toContain('completed answer');
 });
 
-it('does not use completed output as a final-answer fallback after tools, as HEAD did', async () => {
+it('uses the completed assistant message as a final-answer fallback after tools', async () => {
   const run = runningSession();
   run.session.messages = [];
   run.event({
@@ -183,14 +183,10 @@ it('does not use completed output as a final-answer fallback after tools, as HEA
     type: 'message_end',
     message: { role: 'assistant', content: 'completed final answer' },
   });
-  const outcome = expect(run.outcome).rejects.toMatchObject({
-    error_metadata: { category: 'empty_response_after_tools' },
-  });
   run.finish();
-  await outcome;
-  expect(run.activities.at(-1)?.transcript).toContain('completed final answer');
-  expect(run.activities.at(-1)?.transcript).not.toContain(
-    '# final assistant text',
+  expect((await run.outcome).result).toBe('completed final answer');
+  expect(run.activities.at(-1)?.transcript).toContain(
+    '# final assistant text\n\ncompleted final answer',
   );
 });
 

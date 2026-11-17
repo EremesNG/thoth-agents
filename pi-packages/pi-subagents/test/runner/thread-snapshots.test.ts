@@ -222,11 +222,6 @@ describe('subagent runner thread snapshots', () => {
 
   it.each([
     { content: [] },
-    {
-      content: [
-        { type: 'toolCall', id: 'read-2', name: 'read', arguments: {} },
-      ],
-    },
     { content: [{ type: 'thinking', thinking: 'No response text here.' }] },
     { content: [{ type: 'text', text: '   ' }] },
   ])('falls back to the latest text answer when the trailing assistant message has no text (%j)', async ({
@@ -764,6 +759,7 @@ describe('subagent runner thread snapshots', () => {
             result: { content: [{ type: 'text', text: 'done' }] },
           });
         }
+        subscriber?.({ type: 'message_end', message: session.messages[1] });
       }),
       messages: [
         {
@@ -776,8 +772,11 @@ describe('subagent runner thread snapshots', () => {
               name: call.name,
               arguments: call.args,
             })),
-            { type: 'text', text: 'final answer' },
           ],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'final answer' }],
         },
       ],
       dispose: vi.fn(async () => undefined),

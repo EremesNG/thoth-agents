@@ -426,7 +426,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "enable_ask_orchestrator": true,
   "enable_notify_orchestrator": true,
   "ask_timeout_ms": 600000,
-  "timeout_ms": 1200000,
+  "timeout_ms": 1800000,
   "timeout_warning_ms": 180000,
   "max_total_timeout_ms": 3600000,
   "max_timeout_extensions": 3,
@@ -472,7 +472,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `enable_notify_orchestrator` | `true` | Independently inject child-provided `notify_orchestrator` unless denied by the definition. Follows the global/project cascade. |
 | `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
 | `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but does not pause the execution deadline. |
-| `timeout_ms` | `1200000` | Initial execution deadline per subagent attempt (20 minutes); also the default extension amount. |
+| `timeout_ms` | `1800000` | Initial execution deadline per subagent attempt (30 minutes); also the default extension amount. |
 | `timeout_warning_ms` | `180000` | Warning lead time before the current deadline (3 minutes). Normalized to `0` (disabled) when greater than or equal to `timeout_ms`. |
 | `max_total_timeout_ms` | `3600000` | Total execution ceiling including extensions (60 minutes). Raised to `timeout_ms` when lower. |
 | `max_timeout_extensions` | `3` | Maximum number of deadline extensions per attempt. |

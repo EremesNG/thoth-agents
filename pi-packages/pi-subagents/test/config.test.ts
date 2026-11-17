@@ -785,6 +785,7 @@ tools: read
 
   it('normalizes and cascades bounded timeout settings', () => {
     expect(readSubagentsConfig(tmp)).toMatchObject({
+      timeout_ms: 1800000,
       timeout_warning_ms: 180000,
       max_total_timeout_ms: 3600000,
       max_timeout_extensions: 3,
@@ -911,7 +912,7 @@ tools: read
     );
     const config = readSubagentsConfig(tmp);
     expect(config.max_concurrency).toBe(5);
-    expect(config.timeout_ms).toBe(1200000);
+    expect(config.timeout_ms).toBe(1800000);
     expect(config.stall_timeout_ms).toBe(240000);
   });
 

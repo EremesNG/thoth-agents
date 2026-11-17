@@ -693,10 +693,13 @@ describe('subagent runner thread snapshots', () => {
           type: 'status',
           text: expect.stringContaining('auto retry end'),
         }),
+      ]),
+    );
+    expect(result.thread_snapshot?.items).not.toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           type: 'status',
           text: 'agent settled (awaiting result)',
-          severity: 'info',
         }),
       ]),
     );
@@ -705,6 +708,109 @@ describe('subagent runner thread snapshots', () => {
         (item: any) => item.type === 'attempt',
       ),
     ).toHaveLength(1);
+  });
+
+  it('removes the settled status when a final response is collected despite a prompt error', async () => {
+    let subscriber: ((event: unknown) => void) | undefined;
+    const session = {
+      subscribe: vi.fn((callback: (event: unknown) => void) => {
+        subscriber = callback;
+        return vi.fn();
+      }),
+      prompt: vi.fn(async () => {
+        subscriber?.({ type: 'agent_settled' });
+        throw new Error('late prompt error');
+      }),
+      messages: [
+        { role: 'assistant', content: [{ type: 'text', text: 'answer' }] },
+      ],
+      dispose: vi.fn(async () => undefined),
+    };
+    const { result } = await runWithSession(session);
+    expect(result.result).toBe('answer');
+    expect(result.thread_snapshot?.items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'status',
+          text: 'agent settled (awaiting result)',
+        }),
+      ]),
+    );
+  });
+
+  it('retains the settled diagnostic for a failed attempt when the next attempt succeeds', async () => {
+    const activities: any[] = [];
+    let subscriber: ((event: unknown) => void) | undefined;
+    const session = (messages: any[]) => ({
+      subscribe: vi.fn((callback: (event: unknown) => void) => {
+        subscriber = callback;
+        return vi.fn();
+      }),
+      prompt: vi.fn(async function (this: any) {
+        subscriber?.({ type: 'agent_settled' });
+        this.messages = messages;
+      }),
+      messages: [],
+      dispose: vi.fn(async () => undefined),
+    });
+    await expect(
+      runWithSession(
+        session([
+          {
+            role: 'assistant',
+            content: [{ type: 'thinking', thinking: 'incomplete' }],
+          },
+        ]),
+        '/workspace',
+        {
+          onActivity: (activity: any) => activities.push(activity),
+        },
+      ),
+    ).rejects.toThrow();
+    const failedSnapshot = [...activities]
+      .reverse()
+      .find((activity) =>
+        activity.message?.startsWith('failed:'),
+      )?.thread_snapshot;
+    const settled = {
+      type: 'status',
+      text: 'agent settled (awaiting result)',
+      severity: 'info',
+    };
+    expect(failedSnapshot?.items).toContainEqual(settled);
+
+    const { result } = await runWithSession(
+      session([
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'final answer' }],
+        },
+      ]),
+      '/workspace',
+      {
+        continuation: {
+          prompt: 'try again',
+          attempt: 2,
+          previous_snapshot: failedSnapshot,
+        },
+      },
+    );
+    expect(result.result).toBe('final answer');
+    const items = result.thread_snapshot?.items ?? [];
+    expect(
+      items.filter(
+        (item: any) => item.type === 'status' && item.text === settled.text,
+      ),
+    ).toEqual([settled]);
+    expect(
+      items.findIndex(
+        (item: any) => item.type === 'status' && item.text === settled.text,
+      ),
+    ).toBeLessThan(
+      items.findIndex(
+        (item: any) => item.type === 'attempt' && item.attempt === 2,
+      ),
+    );
   });
 
   it('keeps toolcall deltas out of live assistant text while preserving native tool rows', async () => {

@@ -542,7 +542,10 @@ export class ThreadSnapshotBuilder {
     );
   }
 
-  finalize(messages: any[]): SubagentThreadSnapshot | undefined {
+  finalize(
+    messages: any[],
+    hasCollectedResponse = false,
+  ): SubagentThreadSnapshot | undefined {
     const messageItems = assistantItemsFromMessages(messages);
     const priorItems = this.items.slice(0, this.currentAttemptStart);
     const currentItems = this.items.slice(this.currentAttemptStart);
@@ -555,7 +558,17 @@ export class ThreadSnapshotBuilder {
         item.message.content.some((part) => part.type === 'thinking'),
     );
     const eventItems = currentItems
-      .filter((item) => item.type !== 'attempt' && !isInitialUserItem(item))
+      .filter(
+        (item) =>
+          item.type !== 'attempt' &&
+          !isInitialUserItem(item) &&
+          !(
+            hasCollectedResponse &&
+            item.type === 'status' &&
+            item.text === 'agent settled (awaiting result)' &&
+            item.severity === 'info'
+          ),
+      )
       .map((item) =>
         finalizeEventItem(
           item,

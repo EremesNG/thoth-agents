@@ -738,7 +738,7 @@ export async function promptWithInactivity(
       sessionCompacted && promptLabel === 'continuation'
         ? attemptAssistantMessages
         : (session.messages ?? []).slice(initialMessagesLength);
-    const thread_snapshot = snapshotBuilder.finalize(currentMessages);
+    let thread_snapshot = snapshotBuilder.finalize(currentMessages);
     debugLog(cwd, 'runner_final_snapshot', {
       source: thread_snapshot?.source,
       items: thread_snapshot?.items.map((item) => ({
@@ -818,6 +818,7 @@ export async function promptWithInactivity(
       ),
     );
     if (promptError && finalizedAssistantText) {
+      thread_snapshot = snapshotBuilder.finalize(currentMessages, true);
       transcript += `\n\n# final assistant text\n\n${finalizedAssistantText}`;
       emitActivity({
         persist: false,
@@ -896,6 +897,7 @@ export async function promptWithInactivity(
       });
       throw new SubagentStructuredError(metadata);
     }
+    thread_snapshot = snapshotBuilder.finalize(currentMessages, true);
     transcript += `\n\n# final assistant text\n\n${collected}`;
     emitActivity({
       persist: false,

@@ -222,7 +222,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
         // Output-style +194 net of duplicate trims; cap +185 stays within +200.
         expect(length, agent.name).toBeLessThanOrEqual(14_010);
       } else {
-        expect(length, agent.name).toBeLessThan(5_000);
+        // The child turn-end rule adds 116 characters including its bullet and newline.
+        expect(length, agent.name).toBeLessThan(5_116);
       }
     }
   });

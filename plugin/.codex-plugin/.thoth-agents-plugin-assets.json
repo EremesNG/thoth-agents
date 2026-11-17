@@ -17,25 +17,25 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/designer.md",
       "reference": "./codex-hooks/payloads/designer.md",
-      "sha256": "sha256:a68bb17fedba4e3dfddc8f60987dd14af8ddec5b12a2386cd5d53f5e3b3c5854"
+      "sha256": "sha256:7afdd8d095175113d9257be7391b43856ea6f7d52b1d01a2f2d7a6f566b0e696"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/explorer.md",
       "reference": "./codex-hooks/payloads/explorer.md",
-      "sha256": "sha256:090dc527592d38acc485107a2d9ae42db3e046fd5f54abcae6c8d7b7276c38f8"
+      "sha256": "sha256:044687951d9068f0c31f6075071feafa67a026442719fc166416ca514b86bc31"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/librarian.md",
       "reference": "./codex-hooks/payloads/librarian.md",
-      "sha256": "sha256:eb746dadf641061bafd8213730c290df337b5c15c3a074e7a3eb701309b37573"
+      "sha256": "sha256:4ce0d3895ad5fe8dc0761904131caf6f2ba1e2cd1f3e6e7cef568393ddf26197"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/oracle.md",
       "reference": "./codex-hooks/payloads/oracle.md",
-      "sha256": "sha256:1d7f63a7f33a165483a958a90ebbb458facaf71cbe704b2e6ba5469bcce2da39"
+      "sha256": "sha256:3a0fb3f49812ff3b0c1fa605fbcb0292822a3a817633f975727c3ae77f6c1e6e"
     },
     {
       "field": "hooks",
@@ -47,7 +47,7 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/worker.md",
       "reference": "./codex-hooks/payloads/worker.md",
-      "sha256": "sha256:ef60e8e72d2b9210e07baa47bd38829d5d270d06b0169c33aafea630e5f0ab0d"
+      "sha256": "sha256:3fd99b5c4320ba43c5ff1599c8f0661fa7f0e8870347e6fac60f118689b636ca"
     },
     {
       "field": "mcpServers",

@@ -534,11 +534,14 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		});
 	}
 	let systemPromptOptions: BuildSystemPromptOptions | undefined;
-	pi.on("before_agent_start", (event) => {
+	let sessionMode: string | undefined;
+	pi.on("before_agent_start", (event, ctx) => {
 		systemPromptOptions = event.systemPromptOptions;
+		sessionMode = ctx.mode;
 	});
 	const streamSimple = createStreamSimple({
 		getSystemPromptOptions: () => systemPromptOptions,
+		getSessionMode: () => sessionMode,
 		entries,
 		store,
 		driver,
@@ -631,6 +634,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// normal toolUse loop (native cards, permissions, hooks) - no patch, no
 	// privileged API. Started on first Antigravity use, torn down on session_shutdown.
 	pi.on("session_start", async (event, ctx) => {
+		sessionMode = ctx.mode;
 		if (shutdownFlight) await shutdownFlight;
 		stopped = false;
 		projectTrusted = ctx.isProjectTrusted();

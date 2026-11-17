@@ -576,3 +576,13 @@ Every root prompt MUST carry a shared output-style rule requiring answer-first, 
 - **GIVEN** a root or specialist prompt rendered for any supported harness
 - **WHEN** the prompt is inspected
 - **THEN** the root contains the shared output-style rule, the specialist contains the root-reader handoff rule with optional-field markers, and the Oracle gate envelope contract is unchanged
+
+### Requirement: Children finish before ending their turn
+
+Every generated specialist (child) prompt on every harness MUST state that nothing wakes the child after its turn ends and that it must run checks in the foreground and finish all work before ending its turn; orchestrator prompts MUST NOT carry this rule.
+
+#### Scenario: Children finish before ending their turn
+
+- **GIVEN** generated Pi, OpenCode, Codex and Claude Code specialist prompts
+- **WHEN** they are rendered
+- **THEN** each contains the turn-end rule exactly once and no orchestrator prompt contains it

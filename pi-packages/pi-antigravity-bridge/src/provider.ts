@@ -170,6 +170,13 @@ export const SYSTEM_PROMPT_END = "[END SYSTEM PROMPT]";
 export const TOOL_PRIORITY_NOTE =
 	"[Tool priority: this conversation runs inside pi, not as a standalone agy session; the user only sees what surfaces in pi. Native interactive tools, for example ask_question, never reach the user. When a Pi Bridge tool covers the same purpose, always use the Pi Bridge tool; for user questions use ask_user_question. Your native file tools such as view_file only read brain artifacts and reject real filesystem paths; for any path on the user's machine use the Pi Bridge tools (read, ls, grep, find, edit, execute). Extension Pi tools are listed in bridge_tool_info; inspect their description and schema there, then invoke them only through bridge_call_tool with arguments_json containing a stringified JSON object. Delegate subagent work the same way: when pi's tool list includes a delegation tool (for example subagent, Agent, agent_spawn, agent_wait, or subagent_run), always delegate through it and never through the native invoke_subagent, run_subagent, or manage_subagents; use native ones only if no pi delegation tool is listed, because native subagents run inside agy and are invisible to pi and anything watching it. Long-running bridge calls do not fail: after ~20 seconds the bridge answers STILL RUNNING with a callId; fetch the result with bridge_poll_result and poll until it lands. For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.]";
 
+function toolPriorityNote(mode: string | undefined): string {
+	return mode === "tui" ? TOOL_PRIORITY_NOTE : TOOL_PRIORITY_NOTE.replace(
+		"For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.",
+		"For work you already know is long, run commands in the foreground within the turn.",
+	);
+}
+
 /** Assemble the full agy prompt: system prompt block, pi-side digest, user
  *  prompt. Empty parts are dropped. Pure; exported for unit testing.
  *  Pass systemPrompt only on a fresh conversation (see runTurnDriver). */
@@ -177,10 +184,11 @@ export function buildFullPrompt(
 	systemPrompt: string | undefined,
 	digest: string,
 	prompt: string,
+	mode?: string,
 ): string {
 	const parts: string[] = [];
 	if (systemPrompt) {
-		parts.push(`${SYSTEM_PROMPT_PREAMBLE}\n\n${systemPrompt}\n\n${TOOL_PRIORITY_NOTE}\n\n${SYSTEM_PROMPT_END}`);
+		parts.push(`${SYSTEM_PROMPT_PREAMBLE}\n\n${systemPrompt}\n\n${toolPriorityNote(mode)}\n\n${SYSTEM_PROMPT_END}`);
 	}
 	if (digest) {
 		parts.push(`${DIGEST_PREAMBLE}\n\n${digest}`);
@@ -193,9 +201,9 @@ export function buildFullPrompt(
 
 /** Stream-json inline fallback/retry uses the same portable instructions as the
  * carrier, without the ACP/legacy Pi-session preamble. */
-function buildPortablePrompt(projection: string | undefined, digest: string, prompt: string): string {
+function buildPortablePrompt(projection: string | undefined, digest: string, prompt: string, mode?: string): string {
 	const instructions = projection === undefined ? ""
-		: [projection, TOOL_PRIORITY_NOTE, SYSTEM_PROMPT_END].filter(Boolean).join("\n\n");
+		: [projection, toolPriorityNote(mode), SYSTEM_PROMPT_END].filter(Boolean).join("\n\n");
 	return [instructions, buildFullPrompt(undefined, digest, prompt)].filter(Boolean).join("\n\n---\n\n");
 }
 
@@ -397,6 +405,8 @@ export interface NativeDisplayEvent {
 export interface StreamSimpleDeps {
 	/** Latest structured Pi prompt options for this extension's agent run. */
 	getSystemPromptOptions?: () => BuildSystemPromptOptions | undefined;
+	/** Current Pi extension session mode; missing modes are non-interactive. */
+	getSessionMode?: () => string | undefined;
 	/** Lazy instance startup. Returns a shutdown-generation guard checked
 	 *  synchronously before the selected engine can spawn or open a session. */
 	beforeStart?: () => Promise<(() => void) | void>;
@@ -1224,6 +1234,7 @@ export function buildLateResultPrompt(late: LateToolResult[], userPrompt?: strin
 
 export interface DriverDeps {
 	getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"];
+	getSessionMode?: StreamSimpleDeps["getSessionMode"];
 	beforeStart?: StreamSimpleDeps["beforeStart"];
 	driver: TurnDriver;
 	roundTrips: ToolRoundTrips;
@@ -1684,6 +1695,7 @@ async function runTurnDriver(
 			// (issue #2, probed 2026-09-30), and the block routinely crossed it.
 			// ACP keeps the inline block (JSON-RPC transport; --agent is a CLI
 			// feature). A user-configured agent always wins: never clobber it.
+			const mode = deps.getSessionMode?.();
 			const gateOpen = config.systemPrompt && !existing?.conversationId;
 			const rawSysPrompt = gateOpen ? getCurrentSystemPrompt(context.messages) || undefined : undefined;
 			const projected = rawSysPrompt && deps.engine !== "acp"
@@ -1694,7 +1706,7 @@ async function runTurnDriver(
 			if (deps.engine !== "acp") {
 				if (rawSysPrompt && !config.agent) {
 					const stagedName = stageSyspromptAgent(
-						[projected, TOOL_PRIORITY_NOTE].filter(Boolean).join("\n\n"),
+						[projected, toolPriorityNote(mode)].filter(Boolean).join("\n\n"),
 					);
 					if (stagedName) {
 						agent = stagedName;
@@ -1718,12 +1730,12 @@ async function runTurnDriver(
 				}
 			}
 			const fullPrompt = deps.engine === "acp"
-				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "")
-				: buildPortablePrompt(sysPrompt, digest, prompt ?? "");
+				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "", mode)
+				: buildPortablePrompt(sysPrompt, digest, prompt ?? "", mode);
 			if (stagedAgentName) {
 				inlineRetryRequest = {
 					conversationId: null,
-					prompt: buildPortablePrompt(projected, digest, prompt ?? ""),
+					prompt: buildPortablePrompt(projected, digest, prompt ?? "", mode),
 					images: images.length > 0 ? images : undefined,
 				};
 			}
@@ -1912,6 +1924,7 @@ export function createStreamSimple(
 			void runTurnDriver(stream, model, context, options, entries, store, {
 				beforeStart: deps.beforeStart,
 				getSystemPromptOptions: deps.getSystemPromptOptions,
+				getSessionMode: deps.getSessionMode,
 				driver: selected,
 				roundTrips,
 				replay: deps.replay,

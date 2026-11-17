@@ -41,6 +41,8 @@ const DIALECTS = [
   CODEX_PROMPT_DIALECT,
   CLAUDE_CODE_PROMPT_DIALECT,
 ] as const;
+const TURN_END_RULE =
+  'Nothing wakes you after your turn ends: run checks in the foreground and finish all work before ending your turn.';
 const ROOT_READER_HANDOFF_RULE =
   'For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.';
 const ROOT_RENDERERS = [
@@ -843,12 +845,13 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
-  ])('keeps shared specialist prompts under 5000 characters in $harness', (dialect) => {
+  ])('keeps shared specialist prompts under 5116 characters in $harness', (dialect) => {
+    // The child turn-end rule adds 116 characters including its bullet and newline.
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       expect(
         renderRolePrompt(sectionsFor(role), dialect).length,
         role,
-      ).toBeLessThan(5_000);
+      ).toBeLessThan(5_116);
     }
   });
 
@@ -1077,6 +1080,36 @@ describe('AI-first prompt rendering', () => {
     });
   });
 
+  test.each(
+    HARNESS_RENDERERS,
+  )('$harness delivers the turn-end rule once in each specialist artifact', ({
+    render,
+  }) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      expect(render(role).split(TURN_END_RULE)).toHaveLength(2);
+    }
+  });
+
+  test.each(
+    ROOT_RENDERERS,
+  )('%s root instructions do not contain the child turn-end rule', (_harness, render) => {
+    expect(render()).not.toContain(TURN_END_RULE);
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+    PI_PROMPT_DIALECT,
+  ])('$harness renders the turn-end rule exactly once for each specialist, never the root', (dialect) => {
+    const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
+    expect(root).not.toContain(TURN_END_RULE);
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const child = renderRolePrompt(sectionsFor(role), dialect);
+      expect(child.split(TURN_END_RULE)).toHaveLength(2);
+    }
+  });
+
   test.each([
     [OPENCODE_PROMPT_DIALECT, 'todowrite', 'keep one in_progress'],
     [CODEX_PROMPT_DIALECT, 'functions.update_plan', 'keep one in_progress'],
@@ -1145,33 +1178,33 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
         "opencode",
         [
           "b29f876aa07041deca1fdb8ac1fdc278d4d01b87ed7f41c1311139e6065ce8b3",
-          "843c1d5481a549f0546571c4a1ebca20bf8c9e29b53db27dbce14d982ea7cc6a",
-          "7a1057a215a497cc435ec2b588a5ca4e6d490ad341c337695d92a718423c1a9c",
-          "a8fc1f09ac7cc69cd003c4d85eebd6e9f6d0ec614a1f517f2b314dc7b50f08f5",
-          "00e6b1c422c460b46a67b5b03f8d3ff92175ef1396d99dfc625843df5dda349f",
-          "bb0894a8ee752d76f7a9e2c2bf0012ff7bf63e987b799568c3ed56edb4efcc8e",
+          "13b6af9a0599f80d11fd9986652bd19c76c94e36f7112be14d9a276f56cd81f9",
+          "67579de49210ba90d802532ed9b4e0bdf325476eb18c671613d4bafff54cd13c",
+          "b5a7869f739696823d7fc01ad3c21360b3822247867e4a7e00907154b8fdf154",
+          "9e26e86b5ce6f2d8432170164dc817bec838d3cfadf20698adb44c1af4921034",
+          "d6ad64c414485dfd3c007829c9f021fc09a163ed747b4dfee22de839dc5b6858",
         ],
       ],
       [
         "codex",
         [
           "34b8cba56fffe570dbf8e2e86b179df3bdfefc28290978060a4c266e6298d3a6",
-          "d20ba38ae8a55c6df9fe250e68080bd2230e5671053cd968d782e622680c89e6",
-          "775c992baf72821a6626de0037e7959ffd9474cca79c95e062cb5d1776481954",
-          "caf1071f92e928945eb92e578d11657532da821303845bfe177246384dba84f0",
-          "25db493431e61cd7e5f62f477d84de515399121382f0005af44be3d91712c9ed",
-          "a38a79d995df03a2a233a9a7d72b698b5559d6ca8bca2124101d6f8cad52aa1e",
+          "6031f0dc79c4c84a6cc1f1b7b633f4f21a709a66bd2ec7d4fb75316fb44dfa0b",
+          "0a0d4930ea813cce4f415ade53480f1effbaa0730017d7e6fa6e8c017031e6af",
+          "9109286ed9b956d2bd0f4eb3c3ba13acb12436777d406779cb4512a735412a15",
+          "b97112d13d608623fccbeca844431297770c513d866d25fde6e42b620d2b88a0",
+          "92fc3ad7183a495d8cdff12e04f1d49dbcd111287d8c6278d1d039e1e6bf53a5",
         ],
       ],
       [
         "claude",
         [
           "2a0846a7d4195db2585fed600ffb69276c637e964330d7d0a65f0cb4c44a3cfd",
-          "0fb679e28ddab33226cadc1c75285e5029d52eced1736e2b3d7b561252e386a9",
-          "f8058e91c6d97f7ce308ef39f2bd093c9a898de5d44812f4456a60e2d805b584",
-          "b2466ac253b1c4ab488cb20c148582caa563c7300f1787abf8c3e09308a56693",
-          "9d3972fde13e9606daf278d8afe162d65d5464ea4f583320aba1946ac53f92f3",
-          "b3db1b2429c6d458657cbd7179c7b8e4340105d598131bec3b9664bad2a2c0eb",
+          "05036dca0225baf2acf115e15ddd8728337e35d1d73f852ab26df5062f5e4e22",
+          "84baf3978d35a237cda8891a1a10a9ed51d36df96e2a5e8195d55475a0e03c7d",
+          "84db62e7a58abff475e10bb92657c5021a729dd951547dcf1556e7f19f45250d",
+          "57a68a135c177f9fff242d51a1c5266a993dac41ddd71c8711456f83d132a4f5",
+          "6d50739075f9b4cde89e501ffaff14dec74409cba4209aab7d2a0d3ae0fafb28",
         ],
       ],
     ]
@@ -1182,15 +1215,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    'ceef59487132167228faa587994339fe48d149dcfac2c822ab89d911c3311099',
+    '6d8a9943ceaabb0016b6d430632776289a27a8cca7b614cd777dd1ea1ce5fef6',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '4e1810863441eae9e671c95c0e43dcfc0d3c85dcb3d49c45c7e8c867b1f4fea0',
+    '8994f66c9ac93efc0e1a928575c508593bfb109e1f0bace17cf58e945b800be1',
   ],
   [
     PI_PROMPT_DIALECT,
-    'a9b8a5b14af64e0b5b6d71e206ca3fa2d422438bf0b0068b0d7618edbc3879ea',
+    '250f00c27b635cf55f7852401c9fa2b752d4b8f711de3d49fe7b10d4fe2d3b9d',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>

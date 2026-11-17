@@ -12,6 +12,7 @@ import {
 	syspromptAgentMd,
 } from "../src/sysprompt-agent.js";
 import { parseAgentFrontmatter } from "./helpers/frontmatter.js";
+import { buildFullPrompt, TOOL_PRIORITY_NOTE } from "../src/provider.js";
 
 function tmpAgentsRoot(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "agy-sys-agents-"));
@@ -87,6 +88,21 @@ test("same body reuses its dir; a different body gets its own (no clobber)", () 
 	// Restaging the first body after the interleaved second keeps returning
 	// the SAME name: a conversation's agent field must never flip mid-flight.
 	assert.equal(stageSyspromptAgent("BODY-ONE", { agentsRoot: root }), a1);
+});
+
+test("mode-specific prompt bodies get isolated reusable carriers", () => {
+	const root = tmpAgentsRoot();
+	try {
+		const tui = buildFullPrompt("shared system", "", "", "tui");
+		const print = buildFullPrompt("shared system", "", "", "print");
+		const a = stageSyspromptAgent(tui, { agentsRoot: root })!;
+		const b = stageSyspromptAgent(print, { agentsRoot: root })!;
+		assert.notEqual(a, b);
+		assert.equal(stageSyspromptAgent(tui, { agentsRoot: root }), a);
+		assert.equal(stageSyspromptAgent(print, { agentsRoot: root }), b);
+		assert.ok(fs.readFileSync(path.join(root, a, "agent.md"), "utf8").includes(TOOL_PRIORITY_NOTE));
+		assert.ok(!fs.readFileSync(path.join(root, b, "agent.md"), "utf8").includes(TOOL_PRIORITY_NOTE));
+	} finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("staging failure returns null instead of throwing", () => {

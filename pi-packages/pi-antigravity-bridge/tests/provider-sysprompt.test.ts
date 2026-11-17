@@ -42,7 +42,7 @@ test("no system prompt: plain passthrough (disabled or absent)", () => {
 });
 
 test("tool priority note rides the system prompt gate, before END", () => {
-	const out = buildFullPrompt(SYS, "", "hello");
+	const out = buildFullPrompt(SYS, "", "hello", "tui");
 	const iNote = out.indexOf(TOOL_PRIORITY_NOTE);
 	assert.ok(iNote > out.indexOf(SYS), "note comes after the user's system prompt");
 	assert.ok(iNote < out.indexOf(SYSTEM_PROMPT_END), "note stays inside the delimited block");
@@ -116,7 +116,7 @@ interface Harness {
 	dir: string;
 }
 
-function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"]): Harness {
+function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"], mode: string | null = "tui", engine: "acp" | "stream-json" = "stream-json"): Harness {
 	const seen: { opts?: DriverTurnRequest } = {};
 	const driver: StreamDriver = {
 		run: async (opts: DriverTurnRequest) => {
@@ -139,9 +139,12 @@ function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptO
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-sysprompt-"));
 	const streamSimple = createStreamSimple({
 		getSystemPromptOptions,
+		getSessionMode: mode === null ? undefined : () => mode,
 		entries: [{ id: "gemini-flash", full: "gemini-3.6-flash" }],
 		store: new SessionStore(path.join(dir, "sessions.json")),
 		driver,
+		acpDriver: engine === "acp" ? driver : undefined,
+		engine,
 		roundTrips: new ToolRoundTrips(driver),
 	});
 	return { seen, streamSimple, dir };
@@ -191,6 +194,78 @@ test("gate: fresh conversation stages the system prompt as an agent, not prompt 
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
+});
+
+test("print sessions stage tool guidance without the background preference", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-mode-agents-"));
+	await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: undefined, AGY_AGENTS_ROOT: root }, async () => {
+		const h = gateHarness(undefined, "print");
+		try {
+			await runTurn(h, "hello", SYS);
+			const md = fs.readFileSync(path.join(root, h.seen.opts!.agent!, "agent.md"), "utf8");
+			assert.ok(md.includes("Long-running bridge calls do not fail"));
+			assert.ok(!md.includes("prefer exec_command's session-output pattern or background agents"));
+		} finally {
+			fs.rmSync(h.dir, { recursive: true, force: true });
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+test.each(["tui", "print", "unknown", null])("ACP inline guidance for %s preserves the rest of the note", async (mode) => {
+	await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: undefined }, async () => {
+		const h = gateHarness(undefined, mode, "acp");
+		try {
+			await runTurn(h, "hello", SYS);
+			const expected = mode === "tui" ? TOOL_PRIORITY_NOTE : TOOL_PRIORITY_NOTE.replace(
+				"For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.",
+				"For work you already know is long, run commands in the foreground within the turn.",
+			);
+			assert.ok(h.seen.opts!.prompt.includes(expected));
+			assert.equal(h.seen.opts!.prompt.includes(TOOL_PRIORITY_NOTE), mode === "tui");
+		} finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
+	});
+});
+
+test("stream-json stages distinct reusable carriers for tui and print with the same system prompt", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-mode-isolation-"));
+	await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: undefined, AGY_AGENTS_ROOT: root }, async () => {
+		resetSyspromptAgentForTests();
+		const sessions = [gateHarness(undefined, "tui"), gateHarness(undefined, "print"), gateHarness(undefined, "tui")];
+		try {
+			for (const h of sessions) await runTurn(h, "hello", SYS);
+			const [tui, print, tuiAgain] = sessions.map((h) => h.seen.opts!.agent!);
+			assert.notEqual(tui, print);
+			assert.equal(tui, tuiAgain);
+			assert.ok(fs.readFileSync(path.join(root, tui, "agent.md"), "utf8").includes(TOOL_PRIORITY_NOTE));
+			const printBody = fs.readFileSync(path.join(root, print, "agent.md"), "utf8");
+			assert.ok(printBody.includes("Long-running bridge calls do not fail"));
+			assert.ok(!printBody.includes("prefer exec_command's session-output pattern or background agents"));
+		} finally {
+			for (const h of sessions) fs.rmSync(h.dir, { recursive: true, force: true });
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+test.each(["tui", "print"])("stream-json inline fallback keeps %s guidance on staging failure and user agent", async (mode) => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-mode-fallback-"));
+	const blocker = path.join(root, "file");
+	fs.writeFileSync(blocker, "x");
+	try {
+		for (const [agent, agentsRoot] of [[undefined, blocker], ["custom-agent", root]] as const) {
+			await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: agent, AGY_AGENTS_ROOT: agentsRoot }, async () => {
+				const h = gateHarness(undefined, mode);
+				try {
+					await runTurn(h, "hello", SYS);
+					const prompt = h.seen.opts!.prompt;
+					assert.ok(prompt.includes("Long-running bridge calls do not fail"));
+					assert.equal(prompt.includes(TOOL_PRIORITY_NOTE), mode === "tui");
+					assert.equal(prompt.includes("prefer exec_command's session-output pattern or background agents"), mode === "tui");
+				} finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
+			});
+		}
+	} finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("gate: bound conversation keeps the carrier agent and never re-sends the block", async () => {

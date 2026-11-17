@@ -825,3 +825,13 @@ pi-subagents MUST resolve an optional ordered per-subagent fallback model chain 
 - **GIVEN** a worker whose profile selects `openai/gpt-x` with `fallback_models: ["anthropic/claude-sonnet-5-5"]`
 - **WHEN** the first attempt fails with a provider rate-limit error
 - **THEN** the same task continues its nested session on `anthropic/claude-sonnet-5-5`, completes, reports `fallback_used: true` and records both attempts in history, while a timeout on the first model would fail the task without switching
+
+### Requirement: Antigravity bridge omits background-agent preference in non-interactive sessions
+
+`@thoth-agents/pi-antigravity-bridge` MUST omit the background-agent preference from its tool-priority note for sessions whose Pi extension mode is not `tui`, on the ACP and stream-json carriers including retry projections, and MUST keep the note unchanged for `tui` sessions.
+
+#### Scenario: Antigravity bridge omits background-agent preference in non-interactive sessions
+
+- **GIVEN** a subagent child session (`print` mode) and an interactive `tui` session on an antigravity model
+- **WHEN** each sends its first prompt on either carrier
+- **THEN** the child's note lacks the background-agent preference while the tui note is unchanged

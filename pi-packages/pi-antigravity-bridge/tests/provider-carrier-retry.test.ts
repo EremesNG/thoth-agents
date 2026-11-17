@@ -44,7 +44,7 @@ const success: TurnOutcome = {
 	modelOutputSeen: true,
 	conversationId: "inline-conversation",
 };
-function harness(outcomes: TurnOutcome[] = [failure, success], activityTurns: DriverActivity[][] = []) {
+function harness(outcomes: TurnOutcome[] = [failure, success], activityTurns: DriverActivity[][] = [], mode: string | undefined = "tui") {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-carrier-retry-"));
 	dirs.push(dir);
 	vi.stubEnv("AGY_AGENTS_ROOT", path.join(dir, "agents"));
@@ -76,6 +76,7 @@ function harness(outcomes: TurnOutcome[] = [failure, success], activityTurns: Dr
 	const store = new SessionStore(path.join(dir, "sessions.json"));
 	const log = vi.fn();
 	const stream = createStreamSimple({
+		getSessionMode: () => mode,
 		entries: [],
 		store,
 		driver,
@@ -116,6 +117,18 @@ test("fresh automatic carrier 429 retries once inline on a fresh process and per
 	assert.equal(h.requests[2].conversationId, "inline-conversation");
 	assert.equal(h.requests[2].agent, undefined);
 	assert.equal(h.requests[2].prompt, "hola");
+});
+
+test.each(["tui", "print", "unknown"])("inline retry retains %s session guidance", async (mode) => {
+	const h = harness([failure, success], [], mode);
+	await h.turn();
+	assert.equal(h.requests.length, 2);
+	const carrier = fs.readFileSync(path.join(h.dir, "agents", h.requests[0].agent!, "agent.md"), "utf8");
+	for (const body of [carrier, h.requests[1].prompt]) {
+		assert.ok(body.includes("Long-running bridge calls do not fail"));
+		assert.equal(body.includes(TOOL_PRIORITY_NOTE), mode === "tui");
+		assert.equal(body.includes("prefer exec_command's session-output pattern or background agents"), mode === "tui");
+	}
 });
 
 test.each([

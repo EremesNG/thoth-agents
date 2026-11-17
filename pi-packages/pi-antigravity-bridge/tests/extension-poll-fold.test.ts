@@ -88,8 +88,22 @@ async function session(discovery = "private") {
 		assert.ok(component, `${entry.name} needs a registered renderer`);
 		return component;
 	};
-	return { deps, emit, entries, statuses, poll, send, pollCall, render, appendEntry, blocks, turnEnd };
+	return { deps, emit, ctx, entries, statuses, poll, send, pollCall, render, appendEntry, blocks, turnEnd };
 }
+
+test("session and before-agent events capture mode independently per extension instance", async () => {
+	const a = await session();
+	const b = await session();
+	assert.equal(a.deps.getSessionMode?.(), "rpc");
+	a.ctx.mode = "tui";
+	await a.emit("before_agent_start", {});
+	assert.equal(a.deps.getSessionMode?.(), "tui");
+	assert.equal(b.deps.getSessionMode?.(), "rpc");
+	a.ctx.mode = "print";
+	await a.emit("session_start", { reason: "resume" });
+	assert.equal(a.deps.getSessionMode?.(), "print");
+	assert.equal(b.deps.getSessionMode?.(), "rpc");
+});
 
 test("consecutive ACP polls render one counted entry; a non-poll event breaks the run", async () => {
 	const s = await session();

@@ -855,3 +855,13 @@ pi-subagents MUST resolve an optional ordered per-subagent fallback model chain 
 - **GIVEN** a subagent child on an antigravity model with default settings; WHEN the model calls native `run_command`; THEN the call is refused without ending the turn, the reason names the Pi `bash` tool, and a retry through Pi `bash` executes
 - **WHEN** the same happens in a `tui` session or with the guard disabled
 - **THEN** native `run_command` runs as before
+
+### Requirement: Pi /subagents-model fallback chain editing
+
+Pi `/subagents-model` MUST show each subagent's effective fallback chain with its source (profile, agent, default), MUST let the user append, delete, reorder and clear the selected profile's per-agent `fallback_models` (a cleared list means inherit), and MUST preserve existing `fallback_models` when saving a profile.
+
+#### Scenario: Pi /subagents-model fallback chain editing
+
+- **GIVEN** a profile whose worker entry has `fallback_models: ["anthropic/claude-sonnet-5-5"]`
+- **WHEN** the user changes only the worker effort in `/subagents-model` and saves
+- **THEN** the saved worker entry still lists `anthropic/claude-sonnet-5-5`, and the overview shows that chain marked as coming from the profile 

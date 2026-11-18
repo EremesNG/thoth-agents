@@ -15,8 +15,10 @@ import {
   type PanelTheme,
   padPanelText,
   panelHintRow,
+  panelVisibleWidth,
   renderPanelFrame,
 } from '@thoth-agents/pi-core/panel';
+import { classifyFallbackEntries } from '../profile-resolver.js';
 import type {
   ModelRef,
   SubagentModelProfile,
@@ -50,6 +52,7 @@ import {
   renderProfileSidebar,
   scopeTag,
   sidebarWidthFor,
+  truncateToVisibleWidth,
 } from './formatting.js';
 import { ModelProfileStore, type ProfileScope } from './store.js';
 
@@ -174,6 +177,9 @@ type EditTarget = {
   resetEffort: string;
   apply: (edit: AgentEdit) => void;
 };
+
+/** Returns a model picker's result to the fallback editor, not the overview. */
+type FallbackPick = { select: (model: ModelRef) => void; back: () => void };
 
 const POINTER_LABEL: Record<ProfilePointer, string> = {
   session: 'session selection',
@@ -411,6 +417,7 @@ export function createSubagentModelProfilesModal(
     target: EditTarget,
     provider: string,
     thenEffort: boolean,
+    pick?: FallbackPick,
   ) => {
     const models = availableByProvider[provider] ?? [];
     const modelsById = new Map(
@@ -452,8 +459,17 @@ export function createSubagentModelProfilesModal(
         ];
       },
       onAction: (key, choice) => {
+        if (pick && key === 'escape') {
+          pick.back();
+          return true;
+        }
         if (key !== 'enter') return false;
         const model = choice && modelsById.get(choice.id);
+        if (pick) {
+          if (model) pick.select({ provider: model.provider, id: model.id });
+          else pick.back();
+          return true;
+        }
         if (model)
           applyEdit(target, {
             model: { provider: model.provider, id: model.id },
@@ -469,9 +485,10 @@ export function createSubagentModelProfilesModal(
     entry: ProfileEntry,
     target: EditTarget,
     thenEffort: boolean,
+    pick?: FallbackPick,
   ) =>
     editor.openPicker({
-      title: 'Choose model provider',
+      title: pick ? 'Choose fallback provider' : 'Choose model provider',
       maxVisibleRows: 10,
       hints: () =>
         ['choose provider', 'enter: select', 'esc/q: back'].join(separator()),
@@ -482,13 +499,17 @@ export function createSubagentModelProfilesModal(
           : []),
       ],
       rows: () => [
-        { id: 'reset', label: target.resetModel },
+        ...(pick ? [] : [{ id: 'reset', label: target.resetModel }]),
         ...providerNames.map((provider) => ({
           id: `provider:${provider}`,
           label: provider,
         })),
       ],
       onAction: (key, choice) => {
+        if (pick && (key === 'escape' || key === 'q')) {
+          pick.back();
+          return true;
+        }
         if (key !== 'enter') return false;
         if (choice?.id === 'reset') {
           applyEdit(target, { reset: 'model' });
@@ -500,6 +521,7 @@ export function createSubagentModelProfilesModal(
             target,
             choice.id.slice('provider:'.length),
             thenEffort,
+            pick,
           );
         return true;
       },
@@ -516,6 +538,239 @@ export function createSubagentModelProfilesModal(
       return offerDraftFromDefault(entry, `edit ${target.name}`);
     if (mode === 'effort') effortPicker(entry, target);
     else providerPicker(entry, target, mode === 'both');
+  };
+
+  const chainSeparator = () => ` ${resolveIcon('arrowRight', '→')} `;
+
+  /** Keeps the head and the (distinguishing) tail: `openrouter/…20241022:beta-07`. */
+  const middleTruncate = (text: string, width: number): string => {
+    if (cells(text) <= width) return text;
+    const ellipsis = resolveIcon('ellipsis', '…');
+    const room = Math.max(0, width - cells(ellipsis));
+    const tailRoom = Math.ceil(room * 0.6);
+    const take = (chars: string[], limit: number) => {
+      const out: string[] = [];
+      let used = 0;
+      for (const char of chars) {
+        if (used + cells(char) > limit) break;
+        out.push(char);
+        used += cells(char);
+      }
+      return out;
+    };
+    const chars = [...text];
+    const head = take(chars, room - tailRoom).join('');
+    const tail = take([...chars].reverse(), tailRoom)
+      .reverse()
+      .join('');
+    return `${head}${ellipsis}${tail}`;
+  };
+
+  /** Width the picker rows may use; the shell renders pickers full width. */
+  let panelWidth = 80;
+  const rowWidth = () => Math.max(8, panelWidth - 8);
+
+  /**
+   * Fallback list of one agent. Unfiltered so a/d/[/]/c/v reach onAction.
+   * Rows are the profile's own list, else the inherited chain (read-only
+   * context). Enter or `v` opens a detail view with the whole id. Read-only
+   * for the virtual default profile: same rows and detail, edit keys explain.
+   */
+  const fallbackEditor = (
+    entry: ProfileEntry,
+    row: AgentRow,
+    index = 0,
+  ): void => {
+    const readOnly = !entry.scope;
+    const explicit = (): ModelRef[] =>
+      entry.agents[row.key]?.fallback_models ?? [];
+    /**
+     * Raw rows keep their raw index (d/[/] act on it); each also carries the
+     * runtime verdict from the resolver: skipped (primary/duplicate) or its
+     * effective ordinal out of `effective`.
+     */
+    const shown = () => {
+      const own = explicit();
+      const values = workspace.valuesFor(entry, row);
+      const entries: ReturnType<typeof classifyFallbackEntries> = own.length
+        ? classifyFallbackEntries(own, values.model)
+        : values.fallback_models.map((model, i) => ({
+            model,
+            ordinal: i + 1,
+          }));
+      return {
+        entries,
+        effective: entries.filter((item) => !item.skipped).length,
+        inherited: !own.length,
+        source: own.length ? ('profile' as const) : values.fallbackSource,
+      };
+    };
+    const skipNote = (skipped: 'primary' | 'duplicate') =>
+      `skipped (${skipped})`;
+    const reopen = (at: number) => fallbackEditor(entry, row, at);
+    const run = (action: () => boolean, noop: string, at: number) => {
+      attempt(() => {
+        if (!action()) notify(noop, 'warning');
+      });
+      reopen(at);
+    };
+    const indexOf = (id?: string) =>
+      id ? Number(id.startsWith('inh:') ? id.slice(4) : id) : 0;
+    const unavailable = (model: ModelRef) =>
+      availableKeys.size > 0 && !availableKeys.has(modelKey(model));
+
+    const detail = (at: number) => {
+      const { entries, effective, inherited, source } = shown();
+      const item = entries[at];
+      if (!item) return reopen(Math.max(0, entries.length - 1));
+      const { model } = item;
+      const text = `${modelKey(model)}${!item.skipped && unavailable(model) ? ' (unavailable)' : ''}`;
+      const place = item.skipped
+        ? item.skipped === 'primary'
+          ? 'skipped: same as primary'
+          : 'skipped: duplicate of an earlier entry'
+        : `${item.ordinal} of ${effective} effective`;
+      const back = () => {
+        reopen(at);
+        return true;
+      };
+      editor.openPicker({
+        title: `Fallback ${item.skipped ? 'skipped' : `#${item.ordinal}/${effective}`}${separator()}${row.name}`,
+        hints: () => 'full model id' + separator() + 'enter/esc/q back',
+        rows: () => [
+          {
+            id: 'position',
+            label: `${place}${separator()}[${source}]${separator()}${inherited ? 'inherited chain' : 'own list'}`,
+          },
+          ...chunkCells(text, rowWidth()).map((chunk, i) => ({
+            id: `id:${i}`,
+            label: chunk,
+          })),
+        ],
+        onAction: (key) =>
+          key === 'enter' || key === 'escape' || key === 'q' || key === 'v'
+            ? back()
+            : false,
+      });
+    };
+
+    const target = targetFor(entry, row.key);
+    editor.openPicker(
+      {
+        title: `Fallback models${separator()}${row.name}${readOnly ? `${separator()}read-only` : ''}`,
+        homeEndAliases: false,
+        maxVisibleRows: 10,
+        hints: () =>
+          (readOnly
+            ? ['enter/v detail', moveHint(), 'esc/q back']
+            : [
+                'enter/v detail',
+                'a add',
+                'd delete',
+                '[/] reorder',
+                'c clear (inherit)',
+                'esc/q back',
+              ]
+          ).join(separator()),
+        header: () => {
+          const { entries, effective, inherited, source } = shown();
+          const values = workspace.valuesFor(entry, row);
+          return [
+            `profile: ${entry.name}${separator()}agent: ${themeAccent(input.theme, row.name)}${separator()}primary: ${modelText(values.model)}`,
+            readOnly
+              ? `${entry.name} is read-only; press n on the overview for a profile you can edit`
+              : !inherited
+                ? `own list (${entries.length}${entries.length === effective ? '' : `, ${effective} effective`}); tried in order after the primary fails`
+                : entries.length
+                  ? `inherited [${source}] chain (read-only here); a starts this profile's own list`
+                  : 'no fallback chain; a adds a model to this profile',
+          ];
+        },
+        rows: () => {
+          const { entries, effective, inherited } = shown();
+          return entries.map((item, i) => ({
+            id: inherited ? `inh:${i}` : String(i),
+            // The id tail distinguishes similar models, so shorten the middle.
+            label: (context: ListEditorContext) => {
+              const { model } = item;
+              const prefix = `${inherited ? 'inherited ' : ''}${item.skipped ? '-' : `${item.ordinal}/${effective}`} `;
+              const note = item.skipped
+                ? ` ${skipNote(item.skipped)}`
+                : unavailable(model)
+                  ? ' (unavailable)'
+                  : '';
+              return `${prefix}${middleTruncate(modelKey(model), context.width - cells(prefix) - cells(note))}${note}`;
+            },
+          }));
+        },
+        footer: () =>
+          status ? [{ text: status.text, tone: status.tone }] : [],
+        onAction: (key, choice) => {
+          const at = indexOf(choice?.id);
+          if ((key === 'enter' || key === 'v') && choice) {
+            detail(at);
+            return true;
+          }
+          if (/^[adc[\]]$/.test(key) && readOnly) {
+            notify(
+              `${entry.name} is read-only; edit a profile of your own (n on the overview).`,
+              'warning',
+            );
+            return true;
+          }
+          if (choice?.id.startsWith('inh:') && /^[d[\]]$/.test(key)) {
+            notify(
+              "Inherited entries are read-only; a starts this profile's own list.",
+              'warning',
+            );
+            return true;
+          }
+          if (key === 'a') {
+            const pick: FallbackPick = {
+              select: (model) => {
+                const added = workspace.appendFallback(entry, row.name, model);
+                if (!added)
+                  notify(
+                    `${modelKey(model)} is the primary or already in the list.`,
+                    'warning',
+                  );
+                reopen(added ? explicit().length - 1 : at);
+              },
+              back: () => reopen(at),
+            };
+            if (target) providerPicker(entry, target, false, pick);
+          } else if (key === 'd' && choice)
+            run(
+              () => workspace.removeFallback(entry, row.name, at),
+              'Nothing to delete.',
+              Math.max(0, Math.min(at, explicit().length - 2)),
+            );
+          else if ((key === '[' || key === ']') && choice) {
+            const delta = key === '[' ? -1 : 1;
+            run(
+              () => workspace.moveFallback(entry, row.name, at, delta),
+              'Already at the edge of the list.',
+              Math.max(0, at + delta),
+            );
+          } else if (key === 'c')
+            run(
+              () => workspace.clearFallbacks(entry, row.name),
+              'Own list is already empty.',
+              0,
+            );
+          else return false;
+          return true;
+        },
+      },
+      index,
+    );
+  };
+  const editFallbacks = (id: string | undefined) => {
+    const entry = current();
+    const row = rowOf(id);
+    if (!row)
+      return notify('The orchestrator has no fallback chain.', 'warning');
+    fallbackEditor(entry, row);
   };
 
   const offerDraftFromDefault = (entry: ProfileEntry, purpose: string) =>
@@ -629,14 +884,143 @@ export function createSubagentModelProfilesModal(
     );
   };
 
+  /** Footer sizing handshake with the render pass below. */
+  let footerCap: number | undefined;
+  let footerProbe = { base: 0, chain: [] as string[] };
+
+  const MODEL_MIN = 18;
+  const FALLBACK_MIN = 15;
+  /** Narrowest content width that still fits the aligned table (see below). */
+  const TABLE_MIN = 12 + 8 + 6 + MODEL_MIN + FALLBACK_MIN;
+  const SHORT_MARKER: Record<string, string> = {
+    profile: 'prof',
+    agent: 'agt',
+    default: 'def',
+  };
+
+  const cells = (text: string) => panelVisibleWidth(text);
+
+  /** Splits by visible cells so an oversized id stays fully readable. */
+  const chunkCells = (text: string, width: number): string[] => {
+    const chunks: string[] = [];
+    let chunk = '';
+    let used = 0;
+    for (const char of text) {
+      const size = cells(char);
+      if (chunk && used + size > Math.max(1, width)) {
+        chunks.push(chunk);
+        chunk = '';
+        used = 0;
+      }
+      chunk += char;
+      used += size;
+    }
+    if (chunk) chunks.push(chunk);
+    return chunks;
+  };
+
+  /**
+   * Word-wraps `label a → b → c` to `width`. A model that does not fit on its
+   * own continuation line is split across lines by cells, never clipped.
+   */
+  const wrapChain = (
+    prefix: string,
+    models: readonly string[],
+    width: number,
+  ): string[] => {
+    const arrow = chainSeparator().trimEnd();
+    const indent = '  ';
+    const lines: string[] = [];
+    let line = prefix;
+    models.forEach((model, i) => {
+      const piece = i ? `${arrow} ${model}` : model;
+      const joined = i ? `${line} ${piece}` : `${line}${piece}`;
+      if (cells(joined) <= width) {
+        line = joined;
+        return;
+      }
+      lines.push(line.trimEnd());
+      const chunks = chunkCells(piece, width - indent.length);
+      for (const chunk of chunks.slice(0, -1)) lines.push(`${indent}${chunk}`);
+      line = `${indent}${chunks[chunks.length - 1]}`;
+    });
+    lines.push(line);
+    return lines;
+  };
+
+  /**
+   * Agent rows with a chain use the aligned table only when it can afford
+   * TABLE_MIN cells (model column >= 18, chain column >= 15: the `[source]`
+   * marker plus >= 4 characters of the first fallback). Narrower rows,
+   * including the 60-65 column "wide" band, use the compact row below.
+   */
+  const useTable = (context: ListEditorContext) =>
+    context.layout === 'wide' && context.width >= TABLE_MIN;
+
   const tableColumns = (context: ListEditorContext) => {
-    const effort = 10;
-    const name = Math.max(12, Math.min(22, Math.floor(context.width * 0.28)));
-    return {
-      name,
-      effort,
-      model: Math.max(8, context.width - name - effort - 4),
-    };
+    let name = Math.max(12, Math.min(22, Math.floor(context.width * 0.28)));
+    let effort = 10;
+    let rest = context.width - name - effort - 6;
+    if (rest < MODEL_MIN + FALLBACK_MIN) {
+      name = 12;
+      effort = 8;
+      rest = context.width - name - effort - 6;
+    }
+    const fallbacks =
+      rest >= 56
+        ? Math.floor(rest * 0.4)
+        : Math.max(FALLBACK_MIN, rest - MODEL_MIN);
+    return { name, effort, fallbacks, model: Math.max(8, rest - fallbacks) };
+  };
+
+  const rowSeparator = (width: number) => (width < 50 ? ' ' : separator());
+
+  /**
+   * `name · model · effort · [source] chain`, budgeted by cells. Each part
+   * keeps a floor (name 5, model 8, effort 4, chain 5 = marker + >= 4
+   * characters of the first fallback); spare cells go to name, effort, model,
+   * then the chain. Below 41 cells the marker shortens (`[prof]`, `[agt]`,
+   * `[def]`) and below 50 the separators shrink to one space; the choice
+   * depends on width only. Rows without a chain keep  ·  (they have room).
+   */
+  const compactRow = (
+    parts: { name: string; model: string; effort: string },
+    fallbacks: { source: string; chain: string },
+    width: number,
+  ): string => {
+    const short = width < 41;
+    const sep = rowSeparator(width);
+    const marker = `[${short ? (SHORT_MARKER[fallbacks.source] ?? fallbacks.source) : fallbacks.source}]`;
+    const keys = ['name', 'effort', 'model'] as const;
+    const size = { ...parts };
+    const alloc = { name: 0, model: 0, effort: 0 };
+    const floor = { name: 5, model: 8, effort: 4 };
+    for (const key of keys) alloc[key] = Math.min(cells(size[key]), floor[key]);
+    const chainFloor = Math.min(cells(fallbacks.chain), 5);
+    let slack =
+      width -
+      cells(sep) * 3 -
+      cells(marker) -
+      1 -
+      chainFloor -
+      alloc.name -
+      alloc.model -
+      alloc.effort;
+    for (const key of keys) {
+      const add = Math.max(0, Math.min(cells(size[key]) - alloc[key], slack));
+      alloc[key] += add;
+      slack -= add;
+    }
+    const chain = truncateToVisibleWidth(
+      fallbacks.chain,
+      chainFloor + Math.max(0, slack),
+    );
+    return [
+      truncateToVisibleWidth(parts.name, alloc.name),
+      truncateToVisibleWidth(parts.model, alloc.model),
+      truncateToVisibleWidth(parts.effort, alloc.effort),
+      `${marker} ${chain}`,
+    ].join(sep);
   };
 
   const tableLabel = (
@@ -644,13 +1028,16 @@ export function createSubagentModelProfilesModal(
     model: string,
     effort: string,
     context: ListEditorContext,
+    fallbacks?: { source: string; chain: string },
   ): string => {
-    if (context.layout === 'compact')
-      return `${name}${separator()}${model}${separator()}${effort}`;
+    if (!useTable(context))
+      return fallbacks
+        ? compactRow({ name, model, effort }, fallbacks, context.width)
+        : [name, model, effort].join(separator());
     const columns = tableColumns(context);
-    return `${padPanelText(name, columns.name)}  ${padPanelText(model, columns.model)}  ${padPanelText(effort, columns.effort)}`;
+    const chain = fallbacks ? `[${fallbacks.source}] ${fallbacks.chain}` : '';
+    return `${padPanelText(name, columns.name)}  ${padPanelText(model, columns.model)}  ${padPanelText(effort, columns.effort)}  ${padPanelText(chain, columns.fallbacks)}`;
   };
-
   const agentLabel = (row: AgentRow, context: ListEditorContext): string => {
     const values = workspace.valuesFor(current(), row);
     return tableLabel(
@@ -658,6 +1045,12 @@ export function createSubagentModelProfilesModal(
       modelText(values.model),
       values.effort ?? 'unresolved',
       context,
+      values.fallback_models.length
+        ? {
+            source: values.fallbackSource,
+            chain: values.fallback_models.map(modelKey).join(', '),
+          }
+        : undefined,
     );
   };
 
@@ -686,6 +1079,9 @@ export function createSubagentModelProfilesModal(
     return text ? [{ text, tone: 'warning' }] : [];
   };
 
+  const fallbackKeys = (models?: readonly ModelRef[]): string =>
+    (models ?? []).map(modelKey).join('\n');
+
   const rowDirty = (row: AgentRow): boolean => {
     const entry = current();
     if (!entry.base) return false;
@@ -694,7 +1090,8 @@ export function createSubagentModelProfilesModal(
     return (
       a?.model?.provider !== b?.model?.provider ||
       a?.model?.id !== b?.model?.id ||
-      a?.effort !== b?.effort
+      a?.effort !== b?.effort ||
+      fallbackKeys(a?.fallback_models) !== fallbackKeys(b?.fallback_models)
     );
   };
 
@@ -743,9 +1140,14 @@ export function createSubagentModelProfilesModal(
         const total = entries().length;
         return [
           panelHintRow(
-            ['n new', 'c clone', 's save', 'r rename', 'd delete'].join(
-              separator(),
-            ),
+            [
+              'f fallbacks',
+              'n new',
+              'c clone',
+              's save',
+              'r rename',
+              'd delete',
+            ].join(separator()),
           ),
           panelHintRow(
             ['u session', 'g global', 'p pin', 'o capture session model'].join(
@@ -758,9 +1160,9 @@ export function createSubagentModelProfilesModal(
           ...driftRows(),
           ...(stacked ? stackedProfileRows() : []),
           panelHintRow(
-            context.layout === 'wide'
-              ? `    ${padPanelText('agent', tableColumns(context).name)}  ${padPanelText('model', tableColumns(context).model)}  ${padPanelText('effort', tableColumns(context).effort)}`
-              : `agent ${separator().trim()} model ${separator().trim()} effort`,
+            useTable(context)
+              ? `    ${padPanelText('agent', tableColumns(context).name)}  ${padPanelText('model', tableColumns(context).model)}  ${padPanelText('effort', tableColumns(context).effort)}${tableColumns(context).fallbacks ? `  ${padPanelText('fallbacks', tableColumns(context).fallbacks)}` : ''}`
+              : `agent ${separator().trim()} model ${separator().trim()} effort ${separator().trim()} fallbacks`,
           ),
         ];
       },
@@ -776,7 +1178,7 @@ export function createSubagentModelProfilesModal(
           label: (context: ListEditorContext) => agentLabel(row, context),
         })),
       ],
-      footer: ({ index }) => {
+      footer: ({ index, width }) => {
         const row = workspace.rows[index - 1];
         const values = row && workspace.valuesFor(current(), row);
         const detail =
@@ -785,9 +1187,28 @@ export function createSubagentModelProfilesModal(
             : row && values
               ? `selected: ${themeAccent(input.theme, row.name)}${separator()}model: ${modelText(values.model)}${separator()}effort: ${values.effort ?? 'unresolved'}`
               : 'selected: (none)';
-        return [
+        const base: PanelRowInput[] = [
           ...(status ? [{ text: status.text, tone: status.tone }] : []),
           detail,
+        ];
+        const chain = values?.fallback_models.length
+          ? wrapChain(
+              `fallbacks [${values.fallbackSource}]: `,
+              values.fallback_models.map(modelKey),
+              width + 4, // the footer spans the frame's inner width
+            )
+          : [];
+        footerProbe = { base: base.length, chain };
+        const all = [...base, ...chain.map((text) => ({ text }))];
+        if (footerCap === undefined || all.length <= footerCap) return all;
+        // The shell drops rows that do not fit; say so instead of losing them.
+        const keep = Math.max(0, footerCap - 1);
+        return [
+          ...all.slice(0, keep),
+          {
+            text: `${resolveIcon('ellipsis', '…')} +${all.length - keep} more${separator()}f to view`,
+            tone: 'warning' as const,
+          },
         ];
       },
       onAction: (key, choice) => {
@@ -798,6 +1219,7 @@ export function createSubagentModelProfilesModal(
         else if (key === 'enter') editAgent(choice?.id, 'both');
         else if (key === 'm') editAgent(choice?.id, 'model');
         else if (key === 'e') editAgent(choice?.id, 'effort');
+        else if (key === 'f') editFallbacks(choice?.id);
         else if (key === 'o') attempt(captureSession);
         else if (key === 'n') startDraft(entries()[0], 'New');
         else if (key === 'c') attempt(() => startDraft(current(), 'Clone'));
@@ -845,14 +1267,38 @@ export function createSubagentModelProfilesModal(
     input.tui?.requestRender?.();
   };
 
+  const plain = (lines: string[]) =>
+    lines.join('\n').replace(/\u001b\[[0-9;]*m/g, '');
+
+  /**
+   * The shell slices the footer to the rows left after the body and does not
+   * report it. Render once, find how many chain rows survived, and if any
+   * were dropped re-render with a visible `… +N more · f to view` row.
+   */
+  const renderEditor = (width: number): string[] => {
+    panelWidth = width;
+    footerCap = undefined;
+    const lines = editor.render(width);
+    const { base, chain } = footerProbe;
+    if (editor.getState().view !== 'overview' || !chain.length) return lines;
+    const text = plain(lines);
+    if (text.includes(chain[chain.length - 1])) return lines;
+    let shown = 0;
+    while (shown < chain.length && text.includes(chain[shown])) shown += 1;
+    footerCap = base + shown;
+    const capped = editor.render(width);
+    footerCap = undefined;
+    return capped;
+  };
+
   return {
     render: (width) => {
       if (prompt) return renderPrompt(prompt, width);
       const side =
         editor.getState().view === 'overview' ? sidebarWidthFor(width) : 0;
       stacked = side === 0;
-      if (!side) return editor.render(width);
-      const main = editor.render(width - side);
+      if (!side) return renderEditor(width);
+      const main = renderEditor(width - side);
       return joinColumns(
         renderProfileSidebar({
           rows: sidebarRows(),

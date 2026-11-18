@@ -1,10 +1,14 @@
+import {
+  type FallbackSource,
+  resolveFallbackChain,
+} from '../profile-resolver.js';
 import type {
   ModelRef,
   SubagentModelProfile,
   SubagentModelProfiles,
   ThinkingEffort,
 } from '../types.js';
-import type { AgentRow } from './data.js';
+import { type AgentRow, modelKey } from './data.js';
 import type {
   ModelProfileStore,
   NamedModelProfile,
@@ -36,10 +40,20 @@ export type ProfileEntry = {
 export type ProfilePointer = 'session' | 'project' | 'global';
 export type ProfileMarkers = Record<ProfilePointer | 'effective', boolean>;
 
-export type AgentEdit = {
+type ModelEffortEdit = {
   model?: ModelRef;
   effort?: ThinkingEffort;
   reset?: 'model' | 'effort';
+};
+
+export type AgentEdit = Omit<ModelEffortEdit, 'reset'> & {
+  fallback_models?: readonly ModelRef[];
+  reset?: ModelEffortEdit['reset'] | 'fallback_models';
+};
+
+export type AgentValues = SubagentModelProfile & {
+  fallback_models: ModelRef[];
+  fallbackSource: FallbackSource;
 };
 
 const entryKey = (scope: ProfileScope | undefined, name: string): string =>
@@ -49,7 +63,14 @@ function cloneAgent(profile: SubagentModelProfile = {}): SubagentModelProfile {
   return {
     ...(profile.model ? { model: { ...profile.model } } : {}),
     ...(profile.effort ? { effort: profile.effort } : {}),
+    ...(profile.fallback_models?.length
+      ? { fallback_models: cloneFallbacks(profile.fallback_models) }
+      : {}),
   };
+}
+
+function cloneFallbacks(models: readonly ModelRef[]): ModelRef[] {
+  return models.map((model) => ({ ...model }));
 }
 
 function cloneAgents(agents: SubagentModelProfiles): SubagentModelProfiles {
@@ -61,7 +82,10 @@ function cloneAgents(agents: SubagentModelProfiles): SubagentModelProfiles {
 const cloneOrchestrator = (
   orchestrator?: SubagentModelProfile,
 ): SubagentModelProfile | undefined => {
-  const copy = cloneAgent(orchestrator);
+  const copy = cloneAgent({
+    model: orchestrator?.model,
+    effort: orchestrator?.effort,
+  });
   return copy.model || copy.effort ? copy : undefined;
 };
 
@@ -73,13 +97,12 @@ const signature = (
     Object.entries(agents)
       .map(([name, agent]) => [
         name,
-        agent.model ? `${agent.model.provider}/${agent.model.id}` : null,
+        agent.model ? modelKey(agent.model) : null,
         agent.effort ?? null,
+        agent.fallback_models?.map(modelKey) ?? [],
       ])
       .sort(([a], [b]) => String(a).localeCompare(String(b))),
-    orchestrator?.model
-      ? `${orchestrator.model.provider}/${orchestrator.model.id}`
-      : null,
+    orchestrator?.model ? modelKey(orchestrator.model) : null,
     orchestrator?.effort ?? null,
   ]);
 
@@ -191,7 +214,7 @@ export class ModelProfileWorkspace {
     };
   }
 
-  /** Full copy of the `default` effective model/effort for every listed agent. */
+  /** Copy default model/effort; fallbacks stay inherited unless overridden. */
   defaultAgents(): SubagentModelProfiles {
     return Object.fromEntries(
       this.rows.map((row) => [
@@ -208,12 +231,23 @@ export class ModelProfileWorkspace {
     return this.entries().filter(isEntryDirty).length;
   }
 
-  /** Effective values: explicit profile value, else the default value. */
-  valuesFor(entry: ProfileEntry, row: AgentRow): SubagentModelProfile {
+  /** Effective values, including the resolved chain for this row's primary. */
+  valuesFor(entry: ProfileEntry, row: AgentRow): AgentValues {
     const own = entry.scope ? entry.agents[row.key] : undefined;
+    const model = own?.model ?? row.defaultModel;
+    const { models, source } = resolveFallbackChain(
+      {
+        profile: own?.fallback_models,
+        agent: row.agentFallbackModels,
+        default: row.configFallbackModels,
+      },
+      model,
+    );
     return {
-      model: own?.model ?? row.defaultModel,
+      model,
       effort: own?.effort ?? row.defaultEffort,
+      fallback_models: models,
+      fallbackSource: source,
     };
   }
 
@@ -261,11 +295,11 @@ export class ModelProfileWorkspace {
     };
   }
 
-  private agentFor(name: string): string {
+  private agentFor(name: string): AgentRow {
     const key = name.trim().toLowerCase();
-    if (!this.rows.some((row) => row.key === key))
-      throw new Error(`Unknown subagent: ${name}`);
-    return key;
+    const row = this.rows.find((row) => row.key === key);
+    if (!row) throw new Error(`Unknown subagent: ${name}`);
+    return row;
   }
 
   private assertEditable(entry: ProfileEntry): void {
@@ -317,17 +351,102 @@ export class ModelProfileWorkspace {
 
   edit(entry: ProfileEntry, agentName: string, edit: AgentEdit): void {
     this.assertEditable(entry);
-    const key = this.agentFor(agentName);
-    const row = this.rows.find((item) => item.key === key) as AgentRow;
+    this.editAgent(entry, this.agentFor(agentName), edit);
+  }
+
+  private editAgent(entry: ProfileEntry, row: AgentRow, edit: AgentEdit): void {
+    const key = row.key;
     const agent = cloneAgent(entry.agents[key]);
     if (edit.reset === 'model') agent.model = cloneModel(row.defaultModel);
     if (edit.reset === 'effort') agent.effort = row.defaultEffort;
+    if (edit.reset === 'fallback_models' || edit.fallback_models?.length === 0)
+      delete agent.fallback_models;
+    else if (edit.fallback_models)
+      agent.fallback_models = cloneFallbacks(edit.fallback_models);
     if (edit.model) agent.model = { ...edit.model };
     if (edit.effort) agent.effort = edit.effort;
     if (!agent.model) delete agent.model;
     if (!agent.effort) delete agent.effort;
-    entry.agents[key] = agent;
+    if (
+      agent.model ||
+      agent.effort ||
+      agent.fallback_models ||
+      entry.base?.[key]
+    )
+      entry.agents[key] = agent;
+    else delete entry.agents[key];
     if (!isDraft(entry)) this.trackEdits(entry);
+  }
+
+  /** Edits operate on explicit profile overrides; false means no change. */
+  private updateFallbacks(
+    entry: ProfileEntry,
+    agentName: string,
+    update: (
+      list: readonly ModelRef[],
+      row: AgentRow,
+    ) => ModelRef[] | undefined,
+  ): boolean {
+    this.assertEditable(entry);
+    const row = this.agentFor(agentName);
+    const next = update(entry.agents[row.key]?.fallback_models ?? [], row);
+    if (!next) return false;
+    this.editAgent(entry, row, { fallback_models: next });
+    return true;
+  }
+
+  appendFallback(
+    entry: ProfileEntry,
+    agentName: string,
+    model: ModelRef,
+  ): boolean {
+    return this.updateFallbacks(entry, agentName, (list, row) => {
+      const primary = entry.agents[row.key]?.model ?? row.defaultModel;
+      const key = modelKey(model);
+      if (
+        (primary && modelKey(primary) === key) ||
+        list.some((item) => modelKey(item) === key)
+      )
+        return undefined;
+      return [...list, model];
+    });
+  }
+
+  removeFallback(
+    entry: ProfileEntry,
+    agentName: string,
+    index: number,
+  ): boolean {
+    return this.updateFallbacks(entry, agentName, (list) =>
+      validIndex(list, index) ? list.filter((_, i) => i !== index) : undefined,
+    );
+  }
+
+  moveFallback(
+    entry: ProfileEntry,
+    agentName: string,
+    index: number,
+    delta: number,
+  ): boolean {
+    return this.updateFallbacks(entry, agentName, (list) => {
+      const target = index + delta;
+      if (
+        target === index ||
+        !validIndex(list, index) ||
+        !validIndex(list, target)
+      )
+        return undefined;
+      const next = [...list];
+      const [model] = next.splice(index, 1);
+      next.splice(target, 0, model);
+      return next;
+    });
+  }
+
+  clearFallbacks(entry: ProfileEntry, agentName: string): boolean {
+    return this.updateFallbacks(entry, agentName, (list) =>
+      list.length ? [] : undefined,
+    );
   }
 
   /** Stage an orchestrator edit; reset clears the field back to the session's. */
@@ -475,4 +594,8 @@ export class ModelProfileWorkspace {
 
 function cloneModel(model?: ModelRef): ModelRef | undefined {
   return model ? { ...model } : undefined;
+}
+
+function validIndex(list: readonly ModelRef[], index: number): boolean {
+  return Number.isInteger(index) && index >= 0 && index < list.length;
 }

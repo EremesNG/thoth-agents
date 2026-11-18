@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { renderFakeCursor } from '@earendil-works/pi-tui';
 import { panelVisibleWidth } from '@thoth-agents/pi-core/panel';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import {
   createSubagentModelProfilesModal,
   runSubagentModelsCommand,
 } from '../../src/model-profiles-ui.js';
+import { resolveFallbackChain } from '../../src/profile-resolver.js';
 import type { ThinkingEffort } from '../../src/types.js';
 import {
   AVAILABLE_MODELS,
@@ -1189,6 +1191,526 @@ describe('named model profile panel', () => {
       expect(message).toBe(
         'Session now uses boss. Orchestrator x unavailable.',
       );
+    });
+  });
+
+  describe('fallback chains', () => {
+    const CHAIN = ['anthropic/claude-x', 'openrouter/org/backup'];
+    const seedChain = (fallback_models: string[] = CHAIN) =>
+      env().writeProfiles('global', {
+        profiles: {
+          fb: {
+            agents: {
+              analyst: {
+                model: 'openai/gpt-5.5',
+                effort: 'high',
+                fallback_models,
+              },
+            },
+          },
+        },
+      });
+    /** Select fb and its analyst row. */
+    const openFb = (fallbacks: string[] = CHAIN, height = 40) => {
+      seedChain(fallbacks);
+      const view = open(env(), height);
+      view.press(KEYS.right, KEYS.down);
+      return view;
+    };
+    const savedAnalyst = () =>
+      env().readFile('global').profiles.fb.agents.analyst;
+    const maxWidth = (text: string) =>
+      Math.max(...text.split('\n').map((line) => panelVisibleWidth(line)));
+
+    it.each([
+      [
+        200,
+        /analyst\s+openai\/gpt-5\.5\s+high\s+\[profile\] anthropic\/claude-x, openrouter\/org\/bac/,
+      ],
+      [100, /analyst\s+openai\/gpt-5\.5\s+high\s+\[profile\] anth/],
+      [70, /analyst\s+openai\/gpt-5\.5\s+high\s+\[profile\] a/],
+      [50, /analyst openai\/\S+ high \[profile\] a/],
+    ])('shows source and a chain preview on an unselected row at %i columns', (width, row) => {
+      const { text, press } = openFb();
+      press(KEYS.down); // analyst is no longer selected
+      const out = text(width);
+      expect(out).toMatch(row);
+      expect(maxWidth(out)).toBeLessThanOrEqual(width);
+    });
+
+    it('wraps a long chain in the selected footer so the last model stays readable', () => {
+      const long = [
+        'anthropic/claude-sonnet-5-5-long-name',
+        'openrouter/org/some-very-long-model-name',
+        'openrouter/org/another-long-backup-model',
+        'openrouter/org/final-fallback-model',
+      ];
+      const { text } = openFb(long);
+      for (const width of [50, 70, 110]) {
+        const out = text(width);
+        expect(out).toContain('final-fallback-model');
+        expect(out).toContain('anthropic/claude-sonnet-5-5-long-name');
+        expect(maxWidth(out)).toBeLessThanOrEqual(width);
+      }
+    });
+
+    /** analyst: profile chain; reviewer: agent chain; planner: default chain. */
+    const seedSources = () => {
+      const dir = path.join(env().cwd, '.pi', 'subagents');
+      fs.writeFileSync(
+        path.join(dir, 'reviewer.md'),
+        '---\nname: reviewer\ndescription: reviewer agent\nmodel: anthropic/claude-x\neffort: high\nfallback_models: [openrouter/org/agent-backup]\n---\nbody',
+      );
+      fs.writeFileSync(
+        path.join(dir, 'planner.md'),
+        '---\nname: planner\ndescription: planner agent\n---\nbody',
+      );
+      fs.writeFileSync(
+        path.join(env().cwd, '.pi', 'subagents.json'),
+        JSON.stringify({
+          default_fallback_models: ['zeta/org/default-backup'],
+        }),
+      );
+      seedChain();
+    };
+    const contentOf = (line: string) =>
+      (line.includes('││') ? line.split('││')[1] : line)
+        .replace(/^\s*│?\s?/, '')
+        .replace(/\s*│\s*$/, '');
+
+    it('keeps the source marker and >= 4 characters of the first fallback on every row at every width', () => {
+      seedSources();
+      const expected = [
+        ['anal', 'profile', 'prof', 'anth'],
+        ['revi', 'agent', 'agt', 'open'],
+        ['plan', 'default', 'def', 'zeta'],
+      ];
+      for (let width = 40; width <= 220; width += 1) {
+        const view = open(env());
+        view.press(KEYS.right); // fb; the orchestrator row stays selected
+        const out = view.text(width);
+        expect(maxWidth(out), `width ${width}`).toBeLessThanOrEqual(width);
+        for (const [prefix, source, short, first] of expected) {
+          const line = out.split('\n').find((l) => l.includes(prefix)) ?? '';
+          expect(line, `width ${width} ${source}`).toMatch(
+            new RegExp(`\\[(${source}|${short})\\] ?${first}`),
+          );
+        }
+      }
+    });
+
+    it('splits oversized model ids across footer rows at every width', () => {
+      const ids = [
+        'openrouter/anthropic/claude-3-5-sonnet-20241022:beta',
+        'openrouter/org/another-long-backup-model-with-a-long-name',
+        'x/y',
+      ];
+      for (let width = 40; width <= 220; width += 1) {
+        const view = openFb(ids);
+        const lines = view.text(width).split('\n').map(contentOf);
+        const start = lines.findIndex((l) => l.startsWith('fallbacks ['));
+        expect(start, `width ${width}`).toBeGreaterThan(-1);
+        const footer = lines
+          .slice(start)
+          .filter((l) => !/^[╰─╯]+$/.test(l))
+          .map((l) => l.replace(/^\s*(→\s*)?/, ''))
+          .join('');
+        for (const id of ids) expect(footer, `width ${width}`).toContain(id);
+      }
+    });
+
+    it('shows an overflow row instead of silently dropping footer lines', () => {
+      const ids = Array.from(
+        { length: 6 },
+        (_, i) => `openrouter/org/model-${i}`,
+      );
+      let overflowSeen = false;
+      for (let height = 12; height <= 30; height += 1) {
+        const text = openFb(ids, height).text(50);
+        if (!text.includes('selected: analyst')) continue; // no footer room at all
+        const overflow = /\+\d+ more · f to view/.test(text);
+        overflowSeen ||= overflow;
+        expect(overflow || text.includes('model-5'), `height ${height}`).toBe(
+          true,
+        );
+      }
+      expect(overflowSeen).toBe(true);
+    });
+
+    it('lists the whole inherited chain in the editor, scrollable at a bounded height', () => {
+      const ids = Array.from(
+        { length: 6 },
+        (_, i) => `zeta/org/inherited-${i}`,
+      );
+      fs.mkdirSync(path.join(env().cwd, '.pi'), { recursive: true });
+      fs.writeFileSync(
+        path.join(env().cwd, '.pi', 'subagents.json'),
+        JSON.stringify({ default_fallback_models: ids }),
+      );
+      seedChain([]);
+      const view = open(env(), 14);
+      view.press(KEYS.right, KEYS.down, 'f');
+      const seen = new Set<string>();
+      for (let step = 0; step < ids.length + 1; step += 1) {
+        const text = view.text(60);
+        expect(text).toContain('inherited [default] chain');
+        for (const id of ids) if (text.includes(id)) seen.add(id);
+        view.press(KEYS.down);
+      }
+      expect([...seen].sort()).toEqual(ids);
+      view.press('d');
+      expect(view.text(60)).toContain('Inherited entries are read-only');
+    });
+
+    /** Rows of the detail view: drop border, selection and dirty columns. */
+    const detailText = (text: string) =>
+      text
+        .split('\n')
+        .map(contentOf)
+        .filter((l) => !/^[╰─╯╭]/.test(l))
+        .map((l) => l.slice(4))
+        .join('');
+    const prefixed = Array.from(
+      { length: 12 },
+      (_, i) =>
+        `openrouter/org/common-prefix-for-every-single-model:beta-${String(i + 1).padStart(2, '0')}`,
+    );
+
+    it('keeps the distinguishing suffix visible and each full id reachable at 50x14', () => {
+      const view = openFb(prefixed, 14);
+      view.press('f');
+      const seen = new Set<string>();
+      for (let i = 0; i < prefixed.length; i += 1) {
+        const text = view.text(50);
+        expect(maxWidth(text)).toBeLessThanOrEqual(50);
+        for (const [n] of prefixed.entries())
+          if (text.includes(`beta-${String(n + 1).padStart(2, '0')}`))
+            seen.add(prefixed[n]);
+        view.press(KEYS.enter); // detail view of this row
+        const detail = view.text(50);
+        expect(maxWidth(detail)).toBeLessThanOrEqual(50);
+        expect(detailText(detail)).toContain(prefixed[i]);
+        expect(detail).toContain(`${i + 1} of 12 effective`);
+        expect(detail).toContain('[profile]');
+        view.press(KEYS.esc); // back at the same index
+        expect(view.text(50)).toMatch(
+          new RegExp(`[›>]\\s+${i + 1}/12 openrout`),
+        );
+        view.press(KEYS.down);
+      }
+      expect(seen.size).toBe(prefixed.length);
+    });
+
+    it.each([
+      40, 50,
+    ])('shows the whole id in the detail view at %i columns', (width) => {
+      const id = 'openrouter/anthropic/claude-3-5-sonnet-20241022:beta';
+      const view = openFb([id]);
+      view.press('f', 'v');
+      const out = view.text(width);
+      expect(maxWidth(out)).toBeLessThanOrEqual(width);
+      expect(detailText(out)).toContain(id);
+      expect(out).toContain('1 of 1');
+      view.press('q');
+      expect(view.text(width)).toContain('Fallback models');
+    });
+
+    it('shows inherited rows in the detail view with their source', () => {
+      fs.mkdirSync(path.join(env().cwd, '.pi'), { recursive: true });
+      fs.writeFileSync(
+        path.join(env().cwd, '.pi', 'subagents.json'),
+        JSON.stringify({
+          default_fallback_models: ['zeta/org/a', 'zeta/org/b'],
+        }),
+      );
+      seedChain([]);
+      const view = open(env());
+      view.press(KEYS.right, KEYS.down, 'f', KEYS.down, KEYS.enter);
+      const out = view.text(60);
+      expect(out).toContain('2 of 2');
+      expect(out).toContain('[default]');
+      expect(out).toContain('inherited chain');
+      expect(detailText(out)).toContain('zeta/org/b');
+    });
+
+    it('opens a read-only chain viewer on the default profile', () => {
+      fs.mkdirSync(path.join(env().cwd, '.pi'), { recursive: true });
+      fs.writeFileSync(
+        path.join(env().cwd, '.pi', 'subagents.json'),
+        JSON.stringify({
+          default_fallback_models: ['zeta/org/a', 'zeta/org/b'],
+        }),
+      );
+      const view = open(env());
+      view.press(KEYS.down, 'f');
+      let out = view.text(80);
+      expect(out).toContain('Fallback models');
+      expect(out).toContain('read-only');
+      expect(out).not.toContain('Create a new profile');
+      expect(out).toContain('inherited 1/2 zeta/org/a');
+      expect(out).toContain('inherited 2/2 zeta/org/b');
+      for (const key of ['a', 'd', '[', ']', 'c']) {
+        view.press(key);
+        expect(view.text(80), key).toContain('is read-only');
+        expect(view.text(80), key).not.toContain('Choose fallback provider');
+      }
+      view.press(KEYS.down, KEYS.enter);
+      out = view.text(80);
+      expect(out).toContain('2 of 2');
+      expect(detailText(out)).toContain('zeta/org/b');
+      view.press(KEYS.enter);
+      view.press(KEYS.esc);
+      expect(view.text(80)).toContain('Subagent model profiles');
+      expect(view.workspace.pendingCount()).toBe(0);
+    });
+
+    const parseRef = (id: string) => {
+      const [provider, ...rest] = id.split('/');
+      return { provider, id: rest.join('/') };
+    };
+    const selectedLine = (text: string) =>
+      text
+        .split('\n')
+        .map(contentOf)
+        .find((l) => /^[›>]/.test(l)) ?? '';
+
+    it('marks the entry equal to the primary as skipped and numbers the rest like the resolver', () => {
+      env().writeProfiles('global', {
+        profiles: {
+          fb: {
+            agents: {
+              analyst: {
+                model: prefixed[7],
+                effort: 'high',
+                fallback_models: prefixed,
+              },
+            },
+          },
+        },
+      });
+      const effective = resolveFallbackChain(
+        { profile: prefixed.map(parseRef) },
+        parseRef(prefixed[7]),
+      ).models;
+      expect(effective).toHaveLength(11);
+      const tall = open(env(), 40);
+      tall.press(KEYS.right, KEYS.down);
+      // the overview chain/footer already use the effective chain
+      const overviewLines = tall.text(200).split('\n').map(contentOf);
+      const start = overviewLines.findIndex((l) => l.startsWith('fallbacks ['));
+      expect(start).toBeGreaterThan(-1);
+      // the footer chain lists only what the runtime tries (the primary is
+      // still named in the row/selected lines above it)
+      const chainText = overviewLines.slice(start).join('\n');
+      expect(chainText).toContain('beta-07');
+      expect(chainText).toContain('beta-09');
+      expect(chainText).toContain('beta-12');
+      expect(chainText).not.toContain('beta-08');
+      const view = open(env(), 14);
+      view.press(KEYS.right, KEYS.down, 'f');
+      expect(view.text(50)).toContain('12, 11 effective');
+      for (let i = 0; i < prefixed.length; i += 1) {
+        const line = selectedLine(view.text(50));
+        const ordinal = effective.findIndex(
+          (m) => `${m.provider}/${m.id}` === prefixed[i],
+        );
+        if (i === 7) expect(line).toContain('skipped (primary)');
+        else expect(line).toContain(`${ordinal + 1}/11`);
+        view.press(KEYS.enter);
+        const detail = view.text(50);
+        expect(maxWidth(detail)).toBeLessThanOrEqual(50);
+        expect(detailText(detail)).toContain(prefixed[i]);
+        if (i === 7) expect(detail).toContain('skipped: same as primary');
+        else expect(detail).toContain(`${ordinal + 1} of 11 effective`);
+        view.press(KEYS.esc, KEYS.down);
+      }
+    });
+
+    it('re-evaluates skipped entries when the primary changes after the list was saved', () => {
+      const view = openFb(['anthropic/claude-x', 'openrouter/org/backup']);
+      view.press('f');
+      expect(view.text(80)).toContain('1/2 anthropic/claude-x');
+      const entry = view.workspace.entries().find((e) => e.name === 'fb');
+      if (!entry) throw new Error('fb missing');
+      view.workspace.edit(entry, 'analyst', {
+        model: { provider: 'anthropic', id: 'claude-x' },
+      });
+      const out = view.text(80);
+      expect(out).toContain('own list (2, 1 effective)');
+      expect(out).toMatch(/- anthropic\/claude-x skipped \(primary\)/);
+      expect(out).toContain('1/1 openrouter/org/backup');
+      view.press(KEYS.enter);
+      expect(view.text(80)).toContain('skipped: same as primary');
+    });
+
+    it('marks a duplicate of an earlier entry as skipped', () => {
+      // The store drops duplicates on load, so stage one in the workspace.
+      const view = openFb(['anthropic/claude-x', 'openrouter/org/backup']);
+      const entry = view.workspace.entries().find((e) => e.name === 'fb');
+      if (!entry) throw new Error('fb missing');
+      const ref = (provider: string, id: string) => ({ provider, id });
+      view.workspace.edit(entry, 'analyst', {
+        fallback_models: [
+          ref('anthropic', 'claude-x'),
+          ref('openrouter', 'org/backup'),
+          ref('anthropic', 'claude-x'),
+          ref('zeta', 'org/last'),
+        ],
+      });
+      view.press('f');
+      const out = view.text(80);
+      expect(out).toContain('own list (4, 3 effective)');
+      expect(out).toContain('1/3 anthropic/claude-x');
+      expect(out).toContain('2/3 openrouter/org/backup');
+      expect(out).toMatch(/- anthropic\/claude-x skipped \(duplicate\)/);
+      expect(out).toContain('3/3 zeta/org/last');
+      view.press(KEYS.down, KEYS.down, KEYS.enter);
+      expect(view.text(80)).toContain('skipped: duplicate of an earlier entry');
+      view.press(KEYS.esc, 'd'); // raw index: removes the duplicate itself
+      expect(view.text(80)).toContain('own list (3)');
+    });
+    it('mentions v and enter for the detail view in the editor legend', () => {
+      const view = openFb();
+      view.press('f');
+      expect(view.text(110)).toContain('enter/v detail');
+    });
+    it('shows f in the legend', () => {
+      const { text } = openFb();
+      expect(text(110)).toContain('f fallbacks');
+    });
+
+    it('lists the full ordered chain with its source in the selected footer', () => {
+      const { text, press } = openFb();
+      expect(text(110)).toMatch(
+        /fallbacks \[profile\]: anthropic\/claude-x\s*\S+\s*openrouter\/org\/backup/,
+      );
+      press(KEYS.down); // reviewer has no chain
+      expect(text(110)).not.toContain('fallbacks [');
+    });
+
+    it('marks agent and default sources', () => {
+      fs.mkdirSync(path.join(env().cwd, '.pi'), { recursive: true });
+      fs.writeFileSync(
+        path.join(env().cwd, '.pi', 'subagents.json'),
+        JSON.stringify({ default_fallback_models: ['openrouter/org/default'] }),
+      );
+      seedChain([]);
+      const { press, text } = open(env());
+      press(KEYS.right, KEYS.down);
+      expect(text(160)).toContain('[default] openrouter/org/default');
+    });
+
+    it('opens the editor with f and returns with escape or q', () => {
+      const { press, text } = openFb();
+      press('f');
+      let out = text();
+      expect(out).toContain('Fallback models');
+      expect(out).toContain('1/2 anthropic/claude-x');
+      expect(out).toContain('2/2 openrouter/org/backup');
+      expect(out).toContain('own list (2)');
+      press(KEYS.esc);
+      expect(text()).toContain('Subagent model profiles');
+      press('F', 'q');
+      out = text();
+      expect(out).toContain('Subagent model profiles');
+      expect(out).not.toContain('Fallback models');
+    });
+
+    it('shows the inherited chain as context when the own list is empty', () => {
+      const { press, text } = openFb();
+      press(KEYS.down, 'f'); // reviewer
+      expect(text()).toContain('no fallback chain');
+      press('a', KEYS.esc);
+      expect(text()).toContain('Fallback models');
+    });
+
+    it('ignores f on the orchestrator and protects default', () => {
+      const { press, text } = openFb();
+      press(KEYS.up, 'f');
+      expect(text()).toContain('no fallback chain');
+      const view = open(env());
+      view.press(KEYS.down, 'f');
+      expect(view.text()).toContain('read-only');
+      expect(view.text()).not.toContain('Create a new profile');
+    });
+
+    it('appends through the provider/model picker and returns to the editor', () => {
+      const { press, text, workspace } = openFb(['openrouter/org/backup']);
+      press('f', 'a');
+      expect(text()).toContain('Choose fallback provider');
+      expect(text()).not.toContain('reset to default model');
+      press(KEYS.enter); // anthropic
+      expect(text()).toContain('Select anthropic model for analyst');
+      press(KEYS.enter);
+      expect(text()).toContain('Fallback models');
+      expect(text()).toContain('2/2 anthropic/claude-x');
+      expect(workspace.pendingCount()).toBe(1);
+      // primary and existing entries are refused
+      press('a', KEYS.down, KEYS.enter, KEYS.enter);
+      expect(text()).toContain('is the primary or already in the list');
+      expect(text()).toContain('Fallback models');
+    });
+
+    it('returns to the editor when the pickers are cancelled', () => {
+      const { press, text } = openFb();
+      press('f', 'a', KEYS.esc);
+      expect(text()).toContain('Fallback models');
+      press('a', KEYS.enter, KEYS.esc);
+      expect(text()).toContain('Fallback models');
+      press('a', 'q');
+      expect(text()).toContain('Fallback models');
+    });
+
+    it('moves, deletes and clears entries', () => {
+      const { press, text, workspace } = openFb();
+      const list = () =>
+        workspace
+          .entries()
+          .find((entry) => entry.name === 'fb')
+          ?.agents.analyst.fallback_models?.map((m) => `${m.provider}/${m.id}`);
+      press('f', ']');
+      expect(list()).toEqual([CHAIN[1], CHAIN[0]]);
+      press('[');
+      expect(list()).toEqual(CHAIN);
+      press('[');
+      expect(text()).toContain('Already at the edge of the list');
+      press('d');
+      expect(list()).toEqual([CHAIN[1]]);
+      press('c');
+      expect(list()).toBeUndefined();
+      press('c');
+      expect(text()).toContain('already empty');
+    });
+
+    it('tracks dirty state, shows the new chain at once and can be reverted', () => {
+      const { press, text, workspace } = openFb();
+      press('f', ']', KEYS.esc);
+      expect(workspace.pendingCount()).toBe(1);
+      const out = text(160);
+      expect(out).toContain('pending: 1 change');
+      expect(out).toMatch(/\* analyst/);
+      expect(out).toMatch(
+        /openrouter\/org\/backup\s*\S+\s*anthropic\/claude-x/,
+      );
+      press('f', KEYS.down, '[', KEYS.esc);
+      expect(workspace.pendingCount()).toBe(0);
+      expect(text(160)).not.toMatch(/\* analyst/);
+    });
+
+    it('persists edits and a cleared list on save, then reloads', () => {
+      const { press } = openFb();
+      press('f', 'd', KEYS.esc, 's');
+      expect(savedAnalyst().fallback_models).toEqual([CHAIN[1]]);
+      press('f', 'c', KEYS.esc);
+      press('s');
+      expect(savedAnalyst()).toEqual({
+        model: 'openai/gpt-5.5',
+        effort: 'high',
+      });
+      const reopened = open(env());
+      reopened.press(KEYS.right, KEYS.down);
+      expect(reopened.text(160)).not.toContain('[profile]');
+      expect(reopened.workspace.pendingCount()).toBe(0);
     });
   });
 

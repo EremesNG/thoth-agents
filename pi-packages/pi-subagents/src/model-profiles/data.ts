@@ -25,6 +25,9 @@ export type AgentRow = {
   scope: SubagentDefinitionScope;
   defaultModel?: ModelRef;
   defaultEffort?: ThinkingEffort;
+  /** Unfiltered inputs so the chain can be resolved against the edited primary. */
+  agentFallbackModels?: readonly ModelRef[];
+  configFallbackModels?: readonly ModelRef[];
 };
 
 export function globalSubagentsConfigPath(agentDir?: string): string {
@@ -116,6 +119,8 @@ export function buildAgentRows(ctx: any = {}): AgentRow[] {
         scope: definition.scope ?? 'global',
         defaultModel: resolved.model.value,
         defaultEffort: resolved.effort.value,
+        agentFallbackModels: definition.fallback_models,
+        configFallbackModels: config.default_fallback_models,
       };
     });
 }

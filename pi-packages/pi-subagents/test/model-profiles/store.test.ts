@@ -294,7 +294,7 @@ it('preserves orchestrator on workspace clone, default creation and unedited sav
   s.save('global', 'root', { agents: {} });
   expect(s.read('global').profiles.root.orchestrator?.effort).toBe('low');
 });
-it('round-trips fallback_models as provider/id strings and preserves them on model edits', () => {
+it('round-trips fallback_models as provider/id strings when included in a save', () => {
   const s = store();
   fs.mkdirSync(path.dirname(s.paths.global), { recursive: true });
   fs.writeFileSync(
@@ -318,13 +318,42 @@ it('round-trips fallback_models as provider/id strings and preserves them on mod
     { provider: 'openrouter', id: 'a/b' },
   ]);
   s.save('global', 'fast', {
-    agents: { worker: { model: { provider: 'openai', id: 'gpt-2' } } },
+    agents: {
+      worker: {
+        model: { provider: 'openai', id: 'gpt-2' },
+        fallback_models: ['anthropic/claude', 'openrouter/a/b'],
+      },
+    },
   });
   const raw = JSON.parse(fs.readFileSync(s.paths.global, 'utf8'));
   expect(raw.profiles.fast.agents.worker).toEqual({
     model: 'openai/gpt-2',
     fallback_models: ['anthropic/claude', 'openrouter/a/b'],
   });
+});
+it.each([
+  {},
+  { fallback_models: [] },
+])('omits an old fallback list when the next override supplies %j', (fallback) => {
+  const s = store();
+  s.create('project', 'fast', {
+    agents: {
+      worker: {
+        effort: 'high',
+        fallback_models: ['anthropic/claude'],
+        future: { keep: true },
+      },
+    },
+  });
+  s.save('project', 'fast', {
+    agents: { worker: { effort: 'high', ...fallback } },
+  });
+  const expected = { effort: 'high', future: { keep: true } };
+  expect(s.read('project').profiles.fast.agents.worker).toEqual(expected);
+  expect(
+    JSON.parse(fs.readFileSync(s.paths.project, 'utf8')).profiles.fast.agents
+      .worker,
+  ).toEqual(expected);
 });
 it('rejects malformed fallback_models without overwriting the store', () => {
   const s = store();

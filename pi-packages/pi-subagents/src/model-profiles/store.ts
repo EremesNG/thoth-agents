@@ -202,6 +202,7 @@ export class ModelProfileStore {
       const previous = { ...existing?.agents[agent] };
       delete previous.model;
       delete previous.effort;
+      delete previous.fallback_models;
       next.agents[agent] = { ...previous, ...entry };
     }
     document.profiles[key] = { ...existing, ...next };

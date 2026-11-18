@@ -113,6 +113,9 @@ export interface McpBridgeDeps {
 	 *  emits the shadow toolUse; the decision returns via approvals.resolve.
 	 *  Optional: absent = every approval POST is denied directly (fail closed). */
 	onApproval?(ticket: string, payload: ApprovalPayload): void;
+	/** Optional synchronous deny for tools owned by a static guard (e.g.
+	 *  non-interactive run_command), so they never park for approval. */
+	denyApprovalReason?(toolName: string): string | undefined;
 }
 
 /** Clamp an unsupported MCP-Protocol-Version header down to the SDK's LATEST.
@@ -493,6 +496,12 @@ export async function startMcpServer(
 			if (!GATED_AGY_TOOL_SET.has(payload.toolCall.name)) {
 				log("approval-ungated", { name: payload.toolCall.name });
 				denyDirect(res, `tool ${payload.toolCall.name} is not in the approval matcher set`);
+				return;
+			}
+			const guardedDeny = deps.denyApprovalReason?.(payload.toolCall.name);
+			if (guardedDeny) {
+				log("approval-guarded-deny", { name: payload.toolCall.name });
+				denyDirect(res, guardedDeny);
 				return;
 			}
 			if (typeof deps.onApproval !== "function") {

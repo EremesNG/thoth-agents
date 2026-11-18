@@ -119,7 +119,8 @@ export interface TurnHandle {
 	/** Live identity observed by THIS turn, never a driver-global binding.
 	 *  Undefined until the owning transport reports a conversation/session. */
 	readonly conversationId?: string;
-	/** Resolves when the turn settles (result event, exit, abort, recycle). */
+	/** Resolves when the turn settles (result event, exit, abort, recycle).
+	 *  The same promise identifies this turn across all reentry wrappers. */
 	outcome: Promise<TurnOutcome>;
 	/** Pull the next activity. Resolves null once the activity stream closes. */
 	next(): Promise<DriverActivity | null>;

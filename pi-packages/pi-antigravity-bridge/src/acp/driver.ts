@@ -47,6 +47,8 @@ export interface AcpDriverOptions {
 	/** Extra argv for the binary (tests: node + fake-server script). */
 	binArgs?: string[];
 	stageHome?: () => string | undefined;
+	/** Optional hooks-only --add-dir directory for ACP PreToolUse guards. */
+	hooksDir?: string | (() => string | undefined);
 	extraEnv?: Record<string, string>;
 
 	/** Owning bridge callback, attached only to this driver's connections. */
@@ -488,6 +490,7 @@ export class AcpDriver implements TurnDriver {
 				}
 				const entry = { name: mapped.name, args: mapped.args, diff: mapped.diff, mcpServer: mapped.mcpServer };
 				turn.toolCalls.set(mapped.toolCallId, entry);
+				this.#clearIdle(turn);
 				this.#emit(turn, { type: "tool_start", name: mapped.name, args: mapped.args, mcpServer: mapped.mcpServer, toolCallId: mapped.toolCallId });
 				return;
 			}
@@ -503,6 +506,7 @@ export class AcpDriver implements TurnDriver {
 					turn.toolCalls.clear();
 				}
 				turn.toolCalls.delete(mapped.toolCallId);
+				if (entry && turn.toolCalls.size === 0) this.#armIdle(turn);
 				const name = entry?.name ?? "tool";
 				const args = entry?.args ?? {};
 				// Native diff from the stored tool_call frame; the update's own
@@ -513,6 +517,7 @@ export class AcpDriver implements TurnDriver {
 			case "tool_error": {
 				const entry = turn.toolCalls.get(mapped.toolCallId);
 				turn.toolCalls.delete(mapped.toolCallId);
+				if (entry && turn.toolCalls.size === 0) this.#armIdle(turn);
 				const name = entry?.name ?? "tool";
 				this.#emit(turn, { type: "tool_error", name, message: mapped.message, mcpServer: mapped.mcpServer ?? entry?.mcpServer, toolCallId: mapped.toolCallId });
 				return;
@@ -581,6 +586,7 @@ export class AcpDriver implements TurnDriver {
 			bin: binary,
 			binArgs: this.#opts.binArgs,
 			stageHome: this.#opts.stageHome,
+			hooksDir: this.#opts.hooksDir,
 			extraEnv: this.#opts.extraEnv,
 			onAuthInvalidated: this.#opts.onAuthInvalidated,
 			cwd: request.cwd,
@@ -777,8 +783,8 @@ export class AcpDriver implements TurnDriver {
 	}
 
 	#armIdle(turn: ActiveTurn): void {
-		if (turn.idleTimer) clearTimeout(turn.idleTimer);
-		if (turn.parks > 0) return; // parked: idle timer resumes on unpark
+		this.#clearIdle(turn);
+		if (turn.parks > 0 || turn.toolCalls.size > 0) return; // resumes when both suspensions end
 		const idleMs = this.#idleBudgetMs(turn);
 		// 0 disables the stall guard (config inactivityTimeoutMin: 0).
 		if (idleMs <= 0) return;
@@ -811,6 +817,7 @@ export class AcpDriver implements TurnDriver {
 			}
 		}
 		turn.closed = true;
+		turn.toolCalls.clear();
 		if (turn.overallTimer) clearTimeout(turn.overallTimer);
 		if (turn.idleTimer) clearTimeout(turn.idleTimer);
 		if (turn.onAbort && turn.request.signal) {

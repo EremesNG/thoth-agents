@@ -338,13 +338,13 @@ Pi `/subagents-model` MUST manage named model profiles (model and effort per sub
 
 ### Requirement: Tool-aware subagent stall budgets
 
-For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_timeout_ms` only when no tool is active; while tools are active its ordinary inactivity check MUST fire only when an active tool exceeds its own budget, defaulting to `tool_stall_timeout_ms` (default 900000, never below `stall_timeout_ms`) and extended to the declared seconds timeout plus 30 seconds for `bash`/`powershell` `timeout` or any `timeout_seconds` argument, capped at `max_total_timeout_ms`; maintenance suspension ceilings and execution deadlines are unaffected; the final stall error MUST identify the applied budget.
+For ordinary inactivity, the pi-subagents inactivity watchdog MUST apply `stall_timeout_ms` only when no tool is active, where active tools include Pi tool executions and provider-native tools registered as in flight for the child's session id in the shared pi-core registry; while tools are active its ordinary inactivity check MUST fire only when an active tool exceeds its own budget, defaulting to `tool_stall_timeout_ms` (default 900000, never below `stall_timeout_ms`) and extended to the declared seconds timeout plus 30 seconds for `bash`/`powershell` `timeout` or any `timeout_seconds` argument, capped at `max_total_timeout_ms`; maintenance suspension ceilings and execution deadlines are unaffected; the final stall error MUST identify the applied budget.
 
 #### Scenario: Tool-aware subagent stall budgets
 
-- **GIVEN** a child running a silent `bash` command with `timeout: 1000`, default config, and a deadline beyond 20 minutes
-- **WHEN** 16 minutes pass without tool updates
-- **THEN** no stall fires, and a stall fires once 1030 seconds pass without updates, with the final error naming the tool budget of 1030000 ms
+- **GIVEN** a child running a silent `bash` command with `timeout: 1000`, default config, and a deadline beyond 20 minutes, or a child whose antigravity provider registered a silent native command in flight
+- **WHEN** 16 minutes pass without tool updates for the `bash` case, or 10 minutes pass for the native case
+- **THEN** no stall fires, a stall fires once 1030 seconds pass for `bash`, and a native command is bounded by the 900000 ms tool budget, with the final error naming the applied tool budget
 
 ### Requirement: AskCodex app-server delegation
 
@@ -768,13 +768,13 @@ In a Pi session without a dialog-capable UI, the Junie bridge MUST launch Junie 
 
 ### Requirement: Antigravity bridge proxies extension tools
 
-`@thoth-agents/pi-antigravity-bridge` MUST keep bridging to agy only the tools that pass its existing catalog filters (in Pi's current active set, not hidden, not bridge-internal, and matching the bridge-tools mode source filter, so Pi built-in-source tools stay excluded), MUST expose with full schemas only those authorized tools named like Pi's seven default tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`), MUST expose every other authorized tool only through a compact inspection tool and a compact invocation tool whose JSON-string arguments are validated, and MUST re-apply the same filters at invocation time.
+`@thoth-agents/pi-antigravity-bridge` MUST keep bridging to agy only the tools that pass its existing catalog filters (in Pi's current active set, not hidden, not bridge-internal, and matching the bridge-tools mode source filter, so Pi built-in-source tools stay excluded, except that while its non-interactive `run_command` guard is active the session's active, non-hidden Pi `bash` is bridged even when it is built-in-source), MUST expose with full schemas only those authorized tools named like Pi's seven default tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`), MUST expose every other authorized tool only through a compact inspection tool and a compact invocation tool whose JSON-string arguments are validated, and MUST re-apply the same filters at invocation time.
 
 #### Scenario: Antigravity bridge proxies extension tools
 
-- **GIVEN** an Antigravity session with an authorized extension tool, a hidden extension tool and a Pi built-in-source tool
-- **WHEN** agy lists bridge tools and invokes the extension tools through the invocation proxy
-- **THEN** the list shows the proxies instead of the extension schema and omits the built-in-source tool, the authorized tool runs with the parsed arguments and the hidden tool is rejected
+- **GIVEN** an Antigravity session with an authorized extension tool, a hidden extension tool and a Pi built-in-source tool; WHEN agy lists bridge tools and invokes the extension tools through the invocation proxy; THEN the list shows the proxies instead of the extension schema and omits the built-in-source tool, the authorized tool runs with the parsed arguments and the hidden tool is rejected; and GIVEN a non-interactive session with the guard active and Pi's built-in `bash` active
+- **WHEN** agy lists and invokes bridge tools
+- **THEN** `bash` is listed with its schema and runs, while other built-in-source tools stay omitted
 
 ### Requirement: Claude bridge surfaces rejected tool calls
 
@@ -835,3 +835,23 @@ pi-subagents MUST resolve an optional ordered per-subagent fallback model chain 
 - **GIVEN** a subagent child session (`print` mode) and an interactive `tui` session on an antigravity model
 - **WHEN** each sends its first prompt on either carrier
 - **THEN** the child's note lacks the background-agent preference while the tui note is unchanged
+
+### Requirement: Antigravity bridge native commands suspend its idle guard
+
+`@thoth-agents/pi-antigravity-bridge` MUST suspend its turn idle guard on both carriers while any native tool of the current turn is in flight, re-arm it with a full budget when none remain, publish in-flight native tools per Pi session id to the shared pi-core registry and clear them on finish, settle, error or abort, and MUST default its headless turn cap to 30 minutes while keeping interactive turns uncapped.
+
+#### Scenario: Antigravity bridge native commands suspend its idle guard
+
+- **GIVEN** a headless subagent child on an antigravity model whose native `run_command` stays silent for 12 minutes
+- **WHEN** the command finishes
+- **THEN** neither the 3-minute idle guard nor the pi-subagents generic stall fired, the registry entry was present during the command and removed after it, and the turn remains bounded by the 30-minute headless cap
+
+### Requirement: Antigravity bridge routes non-interactive shell commands through Pi bash
+
+`@thoth-agents/pi-antigravity-bridge` MUST, in any Pi session whose mode is not `tui` and that has an active, non-hidden Pi `bash` tool, stage a `PreToolUse` guard on both carriers that refuses agy native `run_command` before execution with a model-visible reason naming the bridge server's Pi `bash` tool, without ending the turn and without affecting other native tools, independently of permission and approval-gate settings; it MUST bridge that `bash` tool to agy while guarding even when it is Pi built-in-source; its non-interactive tool-priority note MUST then direct shell commands to that tool; interactive sessions MUST keep native `run_command`, and a documented bridge setting MUST disable the guard in all sessions.
+
+#### Scenario: Antigravity bridge routes non-interactive shell commands through Pi bash
+
+- **GIVEN** a subagent child on an antigravity model with default settings; WHEN the model calls native `run_command`; THEN the call is refused without ending the turn, the reason names the Pi `bash` tool, and a retry through Pi `bash` executes
+- **WHEN** the same happens in a `tui` session or with the guard disabled
+- **THEN** native `run_command` runs as before

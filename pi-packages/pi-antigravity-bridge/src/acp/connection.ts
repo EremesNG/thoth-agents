@@ -53,6 +53,8 @@ export interface AcpConnectionOptions {
 	binArgs?: string[];
 	/** Stage only immediately before owned launch; failure is a visible turn error. */
 	stageHome?: () => string | undefined;
+	/** Optional hooks-only --add-dir directory (never shared with mcp_config.json). */
+	hooksDir?: string | (() => string | undefined);
 	/** Owning bridge's auth invalidation callback. Detached when this
 	 *  connection is killed; never shared across connection instances. */
 	onAuthInvalidated?: () => void;
@@ -177,6 +179,8 @@ export class AcpConnection {
 	async start(): Promise<void> {
 		if (this.#child) return;
 		const args = [...(this.#opts.binArgs ?? ["acp"])];
+		const hooksDir = typeof this.#opts.hooksDir === "function" ? this.#opts.hooksDir() : this.#opts.hooksDir;
+		if (hooksDir) args.push("--add-dir", hooksDir);
 		const home = this.#opts.stageHome?.();
 		this.#stagedHome = home;
 		if (home) {

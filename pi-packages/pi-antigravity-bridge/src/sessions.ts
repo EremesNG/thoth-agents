@@ -29,6 +29,10 @@ export interface AgySession {
 	 *  fresh or pre-watermark session. Optional for backward compat with older
 	 *  persisted sessions that predate the watermark. */
 	lastMessageCount?: number;
+	/** Non-interactive run_command guard state reflected by the instructions
+	 *  last delivered to this conversation. Undefined for legacy bindings or
+	 *  turns where no system-prompt / guard instructions were delivered. */
+	runCommandGuardActive?: boolean;
 }
 
 type StoreMap = Record<string, AgySession>;
@@ -48,10 +52,12 @@ function narrowStoreMap(parsed: unknown): StoreMap {
 		if (typeof conversationId !== "string") continue;
 		const idx = (value as { lastStepIdx?: unknown }).lastStepIdx;
 		const mc = (value as { lastMessageCount?: unknown }).lastMessageCount;
+		const guardActive = (value as { runCommandGuardActive?: unknown }).runCommandGuardActive;
 		clean[key] = {
 			conversationId,
 			lastStepIdx: typeof idx === "number" && Number.isFinite(idx) ? idx : -1,
 			lastMessageCount: typeof mc === "number" && Number.isFinite(mc) ? mc : 0,
+			...(typeof guardActive === "boolean" ? { runCommandGuardActive: guardActive } : {}),
 		};
 	}
 	return clean;
@@ -93,6 +99,7 @@ export class SessionStore {
 			conversationId: s.conversationId,
 			lastStepIdx: s.lastStepIdx ?? -1,
 			lastMessageCount: s.lastMessageCount ?? 0,
+			...(typeof s.runCommandGuardActive === "boolean" ? { runCommandGuardActive: s.runCommandGuardActive } : {}),
 		};
 	}
 

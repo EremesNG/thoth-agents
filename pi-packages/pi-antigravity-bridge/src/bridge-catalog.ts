@@ -44,19 +44,26 @@ export function serializeToolSchema(parameters?: object): object {
  * the CURRENT Pi active set: /mcp and pi.setActiveTools() can change it mid-session.
  * A stale tools/call must not bypass a disabled Pi tool. */
 export function bridgedPiTools(
-	all: BridgeToolInfo[], active: readonly string[], mode: BridgeTools, hidden: ReadonlySet<string>,
+	all: BridgeToolInfo[],
+	active: readonly string[],
+	mode: BridgeTools,
+	hidden: ReadonlySet<string>,
+	guardActive = false,
 ): BridgeToolInfo[] {
 	if (mode === "none") return [];
 	const enabled = new Set(active);
-	return all.filter((tool) =>
-		enabled.has(tool.name) && !hidden.has(tool.name) &&
+	return all.filter((tool) => {
+		if (!enabled.has(tool.name) || hidden.has(tool.name)) return false;
 		// Never bridge the bridge's own tools. agy has native web tools, so
 		// our quota-burning one-shot wrappers must not tempt it through MCP.
-		!BRIDGE_INTERNAL_TOOLS.has(tool.name) &&
-		(mode === "mcp"
+		if (BRIDGE_INTERNAL_TOOLS.has(tool.name)) return false;
+		// While the non-interactive run_command guard is active, expose active
+		// non-hidden Pi bash even when it is built-in-source.
+		if (guardActive && tool.name === "bash") return true;
+		return mode === "mcp"
 			? /pi-mcp-adapter/.test(tool.sourceInfo?.source ?? "")
-			: tool.sourceInfo?.source !== "builtin"),
-	);
+			: tool.sourceInfo?.source !== "builtin";
+	});
 }
 
 /** Split authorized bridge tools into always-loaded Pi defaults and proxied extension tools. */

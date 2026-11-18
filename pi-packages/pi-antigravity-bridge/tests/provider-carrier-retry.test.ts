@@ -44,7 +44,12 @@ const success: TurnOutcome = {
 	modelOutputSeen: true,
 	conversationId: "inline-conversation",
 };
-function harness(outcomes: TurnOutcome[] = [failure, success], activityTurns: DriverActivity[][] = [], mode: string | undefined = "tui") {
+function harness(
+	outcomes: TurnOutcome[] = [failure, success],
+	activityTurns: DriverActivity[][] = [],
+	mode: string | undefined = "tui",
+	getRunCommandGuard?: () => { active: boolean; serverName?: string },
+) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-carrier-retry-"));
 	dirs.push(dir);
 	vi.stubEnv("AGY_AGENTS_ROOT", path.join(dir, "agents"));
@@ -77,6 +82,7 @@ function harness(outcomes: TurnOutcome[] = [failure, success], activityTurns: Dr
 	const log = vi.fn();
 	const stream = createStreamSimple({
 		getSessionMode: () => mode,
+		getRunCommandGuard,
 		entries: [],
 		store,
 		driver,
@@ -117,6 +123,15 @@ test("fresh automatic carrier 429 retries once inline on a fresh process and per
 	assert.equal(h.requests[2].conversationId, "inline-conversation");
 	assert.equal(h.requests[2].agent, undefined);
 	assert.equal(h.requests[2].prompt, "hola");
+});
+
+test("inline 429 retry preserves guarded tool priority note in non-tui mode", async () => {
+	const h = harness([failure, success], [], "rpc", () => ({ active: true, serverName: "pi-agy-11223344" }));
+	const events = await h.turn();
+	assert.ok(!events.some((event) => event.type === "error"));
+	assert.equal(h.requests.length, 2);
+	assert.match(h.requests[1].prompt, /pi-agy-11223344\/bash/);
+	assert.match(h.requests[1].prompt, /run_command is refused/i);
 });
 
 test.each(["tui", "print", "unknown"])("inline retry retains %s session guidance", async (mode) => {
@@ -205,4 +220,196 @@ test("silent-drop protection still runs on the inline retry outcome", async () =
 	assert.equal(h.requests.length, 2);
 	assert.equal(h.store.get(`cwd:${h.dir}`), null);
 	assert.ok(events.some((event) => event.type === "error" && event.error.errorMessage?.includes("silently dropped")));
+});
+
+test.each([true, false])("identity-late parked inline retry (guardActive=%s) records guard state on continuation and does not restage on next turn", async (guardActive) => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-carrier-retry-late-"));
+	dirs.push(dir);
+	const agentsRoot = path.join(dir, "agents");
+	vi.stubEnv("AGY_AGENTS_ROOT", agentsRoot);
+	vi.stubEnv("AGY_SYSTEM_PROMPT", "on");
+	vi.stubEnv("AGY_AGENT", "");
+	vi.stubEnv("AGY_ENGINE", "stream-json");
+	vi.stubEnv("AGY_DIGEST", "off");
+
+	const requests: DriverTurnRequest[] = [];
+	const store = new SessionStore(path.join(dir, "sessions.json"));
+	let activeHandle: any;
+	let roundTrips: ToolRoundTrips;
+	let settleLateRetry!: (outcome: TurnOutcome) => void;
+	const driver = {
+		get activeHandle() {
+			return activeHandle;
+		},
+		reentry: () => activeHandle,
+		kickIdle: () => {},
+		run: async (request: DriverTurnRequest) => {
+			requests.push(request);
+			const callNum = requests.length;
+			if (callNum === 1) {
+				const handle = {
+					id: "1",
+					conversationId: failure.conversationId,
+					next: async () => null,
+					pushExternal: () => {},
+					outcome: Promise.resolve(failure),
+				};
+				activeHandle = handle;
+				return handle;
+			}
+			if (callNum === 2) {
+				const queue: DriverActivity[] = [];
+				let resolveNext: ((v: DriverActivity | null) => void) | undefined;
+				let closed = false;
+				let handle!: {
+					id: string;
+					conversationId?: string;
+					next: () => Promise<DriverActivity | null>;
+					pushExternal: (a: DriverActivity) => void;
+					outcome: Promise<TurnOutcome>;
+				};
+				const outcome = new Promise<TurnOutcome>((resolve) => {
+					settleLateRetry = (out) => {
+						handle.conversationId = out.conversationId;
+						closed = true;
+						resolveNext?.(null);
+						resolveNext = undefined;
+						resolve(out);
+					};
+				});
+				handle = {
+					id: "2",
+					conversationId: undefined,
+					pushExternal: (a: DriverActivity) => {
+						if (resolveNext) {
+							const r = resolveNext;
+							resolveNext = undefined;
+							r(a);
+						} else {
+							queue.push(a);
+						}
+					},
+					next: () => {
+						if (queue.length > 0) return Promise.resolve(queue.shift()!);
+						if (closed) return Promise.resolve(null);
+						return new Promise<DriverActivity | null>((resolve) => {
+							resolveNext = resolve;
+						});
+					},
+					outcome,
+				};
+				activeHandle = handle;
+				queueMicrotask(() => {
+					void roundTrips.onToolCall("call-late-1", "read", { path: "AGENTS.md" }, new AbortController().signal);
+				});
+				return handle;
+			}
+			const handle = {
+				id: String(callNum),
+				conversationId: "inline-conversation",
+				next: async () => null,
+				pushExternal: () => {},
+				outcome: Promise.resolve(success),
+			};
+			activeHandle = handle;
+			return handle;
+		},
+		close: vi.fn(async () => {
+			activeHandle = undefined;
+		}),
+	} as unknown as TurnDriver;
+
+	roundTrips = new ToolRoundTrips(driver);
+	const stream = createStreamSimple({
+		getSessionMode: () => "rpc",
+		getRunCommandGuard: () => ({ active: guardActive, serverName: "pi-agy-11223344" }),
+		entries: [],
+		store,
+		driver,
+		roundTrips,
+	});
+
+	// Turn 1: 429 on carrier -> retries inline -> parks BEFORE conversationId is known
+	const turn1Events: any[] = [];
+	let assistantMsg: any;
+	for await (const ev of stream(
+		model,
+		normalizeContext({
+			systemPrompt: "You are a coding assistant running inside pi.\n<addendum>\nThoth policy\n</addendum>",
+			messages: [{ role: "user", content: "hola", timestamp: 1 }],
+		}),
+		{ cwd: dir } as unknown as SimpleStreamOptions,
+	)) {
+		turn1Events.push(ev);
+		if (ev.type === "done") assistantMsg = ev.message;
+	}
+	assert.equal(requests.length, 2);
+	assert.match(requests[0].agent!, /^pi-bridge-sys-/);
+	assert.equal(requests[1].agent, undefined);
+	assert.equal(assistantMsg?.stopReason, "toolUse");
+	// Identity-late park: store must not be bound yet
+	assert.equal(store.get(`cwd:${dir}`), null);
+
+	const toolUse = assistantMsg.content.find((b: any) => b.type === "toolCall");
+	assert.equal(toolUse.id, "call-late-1");
+
+	// Continuation resolves the parked tool call, then retry finishes with conversationId
+	const contPromise = (async () => {
+		const events: any[] = [];
+		for await (const ev of stream(
+			model,
+			normalizeContext({
+				systemPrompt: "You are a coding assistant running inside pi.\n<addendum>\nThoth policy\n</addendum>",
+				messages: [
+					{ role: "user", content: "hola", timestamp: 1 },
+					assistantMsg,
+					{
+						role: "toolResult",
+						toolCallId: "call-late-1",
+						toolName: "read",
+						content: [{ type: "text", text: "contents" }],
+						isError: false,
+						timestamp: 2,
+					},
+				],
+			}),
+			{ cwd: dir } as unknown as SimpleStreamOptions,
+		)) {
+			events.push(ev);
+		}
+		return events;
+	})();
+
+	await new Promise((r) => setTimeout(r, 20));
+	settleLateRetry(success);
+	const contEvents = await contPromise;
+	assert.deepEqual(contEvents.filter((ev) => ev.type === "error"), []);
+	assert.ok(contEvents.some((ev) => ev.type === "done" && ev.reason === "stop"));
+
+	// Stored guard state must reflect the inline retry's delivered guard state
+	assert.deepEqual(store.get(`cwd:${dir}`), {
+		conversationId: "inline-conversation",
+		lastStepIdx: -1,
+		lastMessageCount: 4,
+		runCommandGuardActive: guardActive,
+	});
+	const stagedBeforeTurn3 = fs.readdirSync(agentsRoot);
+	assert.equal(stagedBeforeTurn3.length, 1);
+
+	// Next turn must resume inline-conversation with NO needless restage or refresh note
+	for await (const _ev of stream(
+		model,
+		normalizeContext({
+			systemPrompt: "You are a coding assistant running inside pi.\n<addendum>\nThoth policy\n</addendum>",
+			messages: [{ role: "user", content: "hola", timestamp: 3 }],
+		}),
+		{ cwd: dir } as unknown as SimpleStreamOptions,
+	)) {
+		void _ev;
+	}
+	assert.equal(requests.length, 3);
+	assert.equal(requests[2].conversationId, "inline-conversation");
+	assert.equal(requests[2].agent, undefined);
+	assert.equal(requests[2].prompt, "hola");
+	assert.deepEqual(fs.readdirSync(agentsRoot), stagedBeforeTurn3);
 });

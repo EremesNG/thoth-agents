@@ -66,6 +66,14 @@ import {
 } from "../src/approval-gate.js";
 import { detectPermissionGateExtensions, resolveGateMode } from "../src/approval-detect.js";
 import { approvalHookFileName, hookScriptSource, removeGateHooks, stageGateHooks, sweepWorkspaceGateGroups } from "../src/approval-hook.js";
+import {
+	formatRunCommandGuardReason,
+	guardHooksStaged,
+	isRunCommandGuardActive,
+	removeRunCommandGuardHooks,
+	stageRunCommandGuardHooks,
+	writeGuardHookScript,
+} from "../src/run-command-guard.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import { stagedAcpMcpServers } from "../src/acp/mcp-servers.js";
@@ -155,6 +163,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// and defers. See that extension's isBridgeInstalled().
 	const instanceId = randomUUID();
 	const bridgeDir = bridgeMcpConfigDir(instanceId);
+	const acpHooksDir = path.join(bridgeDir, "acp-hooks");
+	const guardScriptPath = path.join(bridgeDir, "run-command-guard.mjs");
 	let activeUi: ExtensionUIContext | null = null;
 	const claimActive = () => {
 		activeInstances.add(instanceId);
@@ -252,6 +262,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	let startFlight: Promise<void> | null = null;
 	let shutdownFlight: Promise<void> | null = null;
 	let mixedDiscoveryWarned = false;
+	type GuardSnapshot = { active: boolean; serverName: string };
+	let sessionGuardSnapshot: GuardSnapshot | null = null;
 
 	// One flight owns startup. A generation guard travels with each stream so
 	// a shutdown (including /new or resume) cannot resurrect an old turn.
@@ -268,7 +280,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				}).catch(error => {
 					// Fence late startup work at its existing epoch checks. A retry
 					// gets a new generation; the expired flight cannot publish readiness.
-					if (epoch === lifecycleEpoch) lifecycleEpoch++;
+					if (epoch === lifecycleEpoch) {
+						lifecycleEpoch++;
+						clearGuardSnapshot();
+					}
 					throw error;
 				}).finally(() => { if (startFlight === flight) startFlight = null; });
 				startFlight = flight;
@@ -279,10 +294,61 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	}
 	// Session-only visibility overrides; never change either application's MCP config.
 	const hiddenBridgeTools = new Set<string>();
-	const getBridgeTools = () => bridgedPiTools(pi.getAllTools(), pi.getActiveTools(), loadConfig().bridgeTools, hiddenBridgeTools);
+	const currentDiscoveryServerName = () => (
+		bridgeDiscovery === "private"
+			? serverName
+			: engine === "acp" ? acpServerName : bridgeServerName(process.pid, instanceId)
+	);
+	const computeGuardSnapshot = (): GuardSnapshot => {
+		const cfg = loadConfig();
+		const active = isRunCommandGuardActive({
+			sessionMode,
+			enabled: cfg.runCommandGuard,
+			bridgeTools: cfg.bridgeTools,
+			allTools: pi.getAllTools(),
+			activeTools: pi.getActiveTools(),
+			hiddenTools: hiddenBridgeTools,
+		});
+		return { active, serverName: currentDiscoveryServerName() };
+	};
+	const getGuardContext = (): GuardSnapshot => sessionGuardSnapshot ?? computeGuardSnapshot();
+	const clearGuardSnapshot = (): void => {
+		sessionGuardSnapshot = null;
+	};
+	const getBridgeTools = () => {
+		const cfg = loadConfig();
+		return bridgedPiTools(
+			pi.getAllTools(),
+			pi.getActiveTools(),
+			cfg.bridgeTools,
+			hiddenBridgeTools,
+			getGuardContext().active,
+		);
+	};
 	// Approval-gate hook script (instance-owned, token embedded). Written at session
 	// start when the gate is active; removed at session_shutdown.
 	let gateScriptPath: string | null = null;
+	let gateShadowsRegistered = false;
+	let activeApprovalPark: McpServerHandle["approvals"] | undefined;
+	function syncRunCommandGuardHooks(guard: GuardSnapshot = getGuardContext()): boolean {
+		if (guard.active) {
+			const reason = formatRunCommandGuardReason(guard.serverName);
+			writeGuardHookScript(guardScriptPath, reason);
+			if (engine === "acp") {
+				stageRunCommandGuardHooks(acpHooksDir, guardScriptPath);
+				removeRunCommandGuardHooks(bridgeDir);
+			} else {
+				stageRunCommandGuardHooks(bridgeDir, guardScriptPath);
+				removeRunCommandGuardHooks(acpHooksDir);
+			}
+		} else {
+			removeRunCommandGuardHooks(bridgeDir);
+			removeRunCommandGuardHooks(acpHooksDir);
+			try { fs.rmSync(guardScriptPath, { force: true }); } catch { /* best effort */ }
+			try { fs.rmSync(acpHooksDir, { recursive: true, force: true }); } catch { /* best effort */ }
+		}
+		return guard.active;
+	}
 	let managedAcpCleanupRan = false;
 	let legacyAcpWarningShown = false;
 	let agyMissingWarned = false;
@@ -358,6 +424,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	const acpDriver = new AcpDriver({
 		bin: resolveAgyBinary,
 		stageHome: () => stageEngineHome("acp-home"),
+		hooksDir: () => (guardHooksStaged(acpHooksDir) ? acpHooksDir : undefined),
 		// Resolved per turn: /agy and AGY_USAGE_ESTIMATE changes apply without
 		// a restart. Without this the driver defaults to "estimate" and the
 		// config knob (incl. "off") is dead.
@@ -542,6 +609,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	const streamSimple = createStreamSimple({
 		getSystemPromptOptions: () => systemPromptOptions,
 		getSessionMode: () => sessionMode,
+		getRunCommandGuard: () => getGuardContext(),
 		entries,
 		store,
 		driver,
@@ -689,6 +757,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		if (ctx.model?.provider === "antigravity") await ensureBridgeStarted();
 	});
 	pi.on("model_select", async (event, ctx) => {
+		sessionMode = (ctx as { mode?: string }).mode ?? sessionMode;
 		if (ctx.hasUI) activeUi = ctx.ui;
 		projectTrusted = ctx.isProjectTrusted();
 		if (event.model.provider === "antigravity") await ensureBridgeStarted();
@@ -785,7 +854,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// Start the bridge unless the user turned it off. No patch gate, no
 		// consent flow: calls route through pi's normal toolUse loop.
 		const bridgeMode: BridgeTools = loadConfig().bridgeTools;
-		if (bridgeMode === "none") return; // user opted out
+		if (bridgeMode === "none") {
+			sessionGuardSnapshot = { active: false, serverName: currentDiscoveryServerName() };
+			return; // user opted out
+		}
 		if (mcpHandle) return; // already running (reload re-fires session_start)
 		// pi loads project skill locations only after the project is trusted;
 		// mirror that gate. Global skill dirs are always scanned.
@@ -889,24 +961,33 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			serverName = privateNameReservation.name;
 			acpServerName = serverName;
 		}
+		sessionGuardSnapshot = computeGuardSnapshot();
 		const r = await startMcpServer(
 			{
 				listTools,
 				onToolCall: bridgeOnToolCall,
 				onApproval: (ticket, payload) => roundTrips.onApproval(ticket, payload),
+				denyApprovalReason: (name) => {
+					if (name !== "run_command") return undefined;
+					const guard = getGuardContext();
+					return guard.active ? formatRunCommandGuardReason(guard.serverName) : undefined;
+				},
 			},
 			{
 				log: mcpLog, configDir: bridgeDir, serverName,
-				discoveryServerName: bridgeDiscovery === "private" ? serverName
-					: engine === "acp" ? acpServerName : bridgeServerName(process.pid, instanceId),
+				discoveryServerName: currentDiscoveryServerName(),
 			},
 		);
 		if (stopped || epoch !== lifecycleEpoch) {
+			clearGuardSnapshot();
 			await r.handle?.close();
 			releasePrivateName();
 			return;
 		}
-		if (!r.ok || !r.handle) releasePrivateName();
+		if (!r.ok || !r.handle) {
+			clearGuardSnapshot();
+			releasePrivateName();
+		}
 		if (r.ok && r.handle) {
 			mcpHandle = r.handle;
 			if (bridgeDiscovery === "private") ownedDescriptorCacheName = serverName;
@@ -928,6 +1009,12 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// ACP supplies the bridge per-session (session/new | session/load);
 			// only the stream-json CLI reads the global MCP config.
 			if (engine === "stream-json" && (!streamHomeSupported || process.env.AGY_AGENTS_ROOT)) registerLegacyFallback();
+
+			// --- Headless run_command guard (non-tui) ---------------------------
+			const guardActive = syncRunCommandGuardHooks();
+			if (guardActive) {
+				fileLog.log("run-command-guard-staged", { engine, server: currentDiscoveryServerName() }, "info");
+			}
 
 			// --- Approval gate (docs/TODO.md 2.5) ------------------------------
 			// agy native tool calls pass through a pi-side approval: a PreToolUse
@@ -951,8 +1038,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				const sweptLegacy = sweepWorkspaceGateGroups(process.cwd());
 				if (sweptLegacy > 0) fileLog.log("approval-workspace-swept", { swept: sweptLegacy }, "info");
 				if (mode === "off") {
-					// Gate off: drop this session's private hooks file. Other sessions
-					// own their own instance files; nothing shared to preserve.
+					activeApprovalPark = undefined;
+					roundTrips.approvalPark = undefined;
+					// Gate off: drop this session's private gate group while preserving
+					// any staged run_command guard group.
 					const unstaged = removeGateHooks(bridgeDir);
 					if (unstaged.wrote) fileLog.log("approval-unstaged", unstaged, "info");
 				} else {
@@ -978,6 +1067,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 						token: r.handle.token,
 						scriptPath,
 						parkBudgetMs: APPROVAL_PARK_MS,
+						excludeRunCommand: guardActive,
 					});
 					fileLog.log("approval-staged", { mode, script: scriptPath, ...staged }, staged.wrote ? "info" : "debug");
 
@@ -987,47 +1077,51 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					// delegate to the twins, so behavior matches the standard
 					// builtins (session-level bash-operations overrides are not
 					// inherited; documented in README).
-					const gateCwd = process.cwd();
-					const bases: Record<string, AnyToolDefinition> = {
-						bash: createBashToolDefinition(gateCwd) as unknown as AnyToolDefinition,
-						write: createWriteToolDefinition(gateCwd) as unknown as AnyToolDefinition,
-						edit: createEditToolDefinition(gateCwd) as unknown as AnyToolDefinition,
-					};
-					const askMode = cfg.approvals.mode;
-					const policy: GatePolicy = async ({ tool, params, ctx }) => {
-						if (askMode === "allow") return { allow: true };
-						if (askMode === "deny") {
-							return { allow: false, reason: `blocked by approval gate (mode: deny): ${tool}` };
-						}
-						const extCtx = ctx as { hasUI?: boolean; ui?: Pick<ExtensionUIContext, "confirm"> } | undefined;
-						if (!extCtx?.hasUI || typeof extCtx.ui?.confirm !== "function") {
-							return { allow: false, reason: `approval gate: no UI to approve ${tool} (headless)` };
-						}
-						const what =
-							typeof params.command === "string"
-								? params.command
-								: typeof params.path === "string"
-									? params.path
-									: JSON.stringify(stripMarkerFields(params)).slice(0, 200);
-						// Dialog lock: parallel agy tool approvals queue up instead of
-						// clobbering the live dialog (which silently loses the approval).
-						// Capture the narrowed method: TS drops the guard's narrowing
-						// inside the deferred closure.
-						const uiConfirm = extCtx.ui.confirm.bind(extCtx.ui);
-						const ok = await withDialogLock(() =>
-							uiConfirm(`agy ${tool}?`, what, { timeout: APPROVAL_PARK_MS }),
-						);
-						return ok ? { allow: true } : { allow: false, reason: `declined in pi (agy ${tool})` };
-					};
 					const handle = r.handle;
-					for (const [name, base] of Object.entries(bases)) {
-						registerTool(
-							createShadowTool(base, policy, { verifyTicket: (t) => handle.approvals.has(t) }),
-						);
+					if (!gateShadowsRegistered) {
+						gateShadowsRegistered = true;
+						const gateCwd = process.cwd();
+						const bases: Record<string, AnyToolDefinition> = {
+							bash: createBashToolDefinition(gateCwd) as unknown as AnyToolDefinition,
+							write: createWriteToolDefinition(gateCwd) as unknown as AnyToolDefinition,
+							edit: createEditToolDefinition(gateCwd) as unknown as AnyToolDefinition,
+						};
+						const policy: GatePolicy = async ({ tool, params, ctx }) => {
+							const askMode = loadConfig().approvals.mode;
+							if (askMode === "allow") return { allow: true };
+							if (askMode === "deny") {
+								return { allow: false, reason: `blocked by approval gate (mode: deny): ${tool}` };
+							}
+							const extCtx = ctx as { hasUI?: boolean; ui?: Pick<ExtensionUIContext, "confirm"> } | undefined;
+							if (!extCtx?.hasUI || typeof extCtx.ui?.confirm !== "function") {
+								return { allow: false, reason: `approval gate: no UI to approve ${tool} (headless)` };
+							}
+							const what =
+								typeof params.command === "string"
+									? params.command
+									: typeof params.path === "string"
+										? params.path
+										: JSON.stringify(stripMarkerFields(params)).slice(0, 200);
+							// Dialog lock: parallel agy tool approvals queue up instead of
+							// clobbering the live dialog (which silently loses the approval).
+							// Capture the narrowed method: TS drops the guard's narrowing
+							// inside the deferred closure.
+							const uiConfirm = extCtx.ui.confirm.bind(extCtx.ui);
+							const ok = await withDialogLock(() =>
+								uiConfirm(`agy ${tool}?`, what, { timeout: APPROVAL_PARK_MS }),
+							);
+							return ok ? { allow: true } : { allow: false, reason: `declined in pi (agy ${tool})` };
+						};
+						for (const base of Object.values(bases)) {
+							registerTool(
+								createShadowTool(base, policy, { verifyTicket: (t) => activeApprovalPark?.has(t) ?? false }),
+							);
+						}
 					}
 					// The park is wired ONLY after the shadows are registered: an
 					// approval toolUse must never dispatch to the REAL builtin and
 					// execute locally.
+					activeApprovalPark = handle.approvals;
 					roundTrips.approvalPark = handle.approvals;
 				}
 			}
@@ -1050,9 +1144,12 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (activeInstances.size === 0) delete (globalThis as Record<symbol, unknown>)[ACTIVE_BRIDGE];
 			const h = mcpHandle;
 			mcpHandle = null;
+			activeApprovalPark = undefined;
 			await h?.close();
 			roundTrips.failAll(FAIL_REASON_SHUTDOWN);
+			roundTrips.approvalPark = undefined;
 			roundTrips.clearEscalations(FAIL_REASON_SHUTDOWN);
+			clearGuardSnapshot();
 			// "recycle", NOT "shutdown": pi fires session_shutdown on /new, /resume
 			// and /fork (docs/extensions.md session lifecycle), not only on process
 			// exit. The drivers are process-lifetime singletons; closing them with
@@ -1074,10 +1171,14 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			}
 			releasePrivateName();
 			hiddenBridgeTools.clear();
-			// Approval gate: unstage hooks and remove the per-pid script. Pending
-			// approvals already failed closed via handle close (bridge shutdown deny).
+			// Approval gate & run_command guard: unstage hooks and remove per-pid scripts.
+			// Pending approvals already failed closed via handle close (bridge shutdown deny).
 			const unstaged = removeGateHooks(bridgeDir);
 			if (unstaged.wrote) fileLog.log("approval-unstaged", unstaged, "info");
+			removeRunCommandGuardHooks(bridgeDir);
+			removeRunCommandGuardHooks(acpHooksDir);
+			try { fs.rmSync(guardScriptPath, { force: true }); } catch { /* best effort */ }
+			try { fs.rmSync(acpHooksDir, { recursive: true, force: true }); } catch { /* best effort */ }
 			if (gateScriptPath) {
 				try {
 					fs.rmSync(gateScriptPath, { force: true });
@@ -1149,6 +1250,7 @@ function settingsRows(ctx: AgyCommandCtx): string[] {
 		row("bridge tools:", config.bridgeTools),
 		row("digest:", config.digest ? "on" : "off"),
 		row("system prompt:", config.systemPrompt ? "on" : "off"),
+		row("runCommandGuard:", config.runCommandGuard ? "on (non-tui)" : "off"),
 	];
 }
 

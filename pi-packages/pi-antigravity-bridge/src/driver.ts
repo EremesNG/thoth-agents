@@ -87,6 +87,10 @@ interface ActiveTurn {
 	/** Open bridge parks. Suspend idle and overall timers until all resolve:
 	 *  agy is blocked waiting on the MCP HTTP response, not doing model work. */
 	parks: number;
+	/** Native step identities live only for this turn. */
+	nativeTools: Set<number | undefined>;
+	/** Repeated unidentified starts could be distinct tools, so retain until settle. */
+	ambiguousUnidentifiedTool: boolean;
 }
 
 /** Plan never auto-approves permissions: the CLI does not gate plan writes
@@ -228,15 +232,7 @@ export class StreamDriver implements TurnDriver {
 			turn.overallRemainingMs = null;
 			this.#startOverallTimer(turn, remaining);
 		}
-		if (!turn.idleTimer) {
-			const idleMin = turn.request.inactivityMin ?? 3;
-			// 0 disables the stall guard (config inactivityTimeoutMin: 0).
-			if (idleMin > 0) {
-				turn.idleTimer = setTimeout(() => {
-					void this.#turnDeadlineGuard(turn, "stall", `agy activity inactivity wait stalled for ${idleMin}m with no recognized frame`);
-				}, idleMin * 60_000);
-			}
-		}
+		this.#armIdle(turn);
 	}
 
 	/** Hook: invoked with the outcome whenever a turn settles. The provider
@@ -379,6 +375,8 @@ export class StreamDriver implements TurnDriver {
 			sawModelStep: false,
 			cumulativeText: undefined,
 			parks: 0,
+			nativeTools: new Set(),
+			ambiguousUnidentifiedTool: false,
 			startedAt: Date.now(),
 		};
 		return turn;
@@ -411,6 +409,11 @@ export class StreamDriver implements TurnDriver {
 		// setTimeout(fn, 0) would fire instantly and kill every turn.
 		const totalMin = turn.request.timeoutMin ?? 10;
 		if (totalMin > 0) this.#startOverallTimer(turn, totalMin * 60_000);
+		this.#armIdle(turn);
+	}
+
+	#armIdle(turn: ActiveTurn): void {
+		if (turn.closed || turn.idleTimer || turn.parks > 0 || turn.nativeTools.size > 0) return;
 		const idleMin = turn.request.inactivityMin ?? 3;
 		if (idleMin > 0) {
 			turn.idleTimer = setTimeout(() => {
@@ -645,14 +648,23 @@ export class StreamDriver implements TurnDriver {
 						s.tool_info?.parameters && typeof s.tool_info.parameters === "object"
 							? (s.tool_info.parameters as Record<string, unknown>)
 							: {};
+					const server = name === "call_mcp_tool"
+						? [args.server_name, args.serverName, args.server].find((value): value is string => typeof value === "string" && value.length > 0)
+						: undefined;
 					if (s.state === "ACTIVE") {
-						emit(turn, { type: "tool_start", stepId: s.step_index, name, args });
+						if (s.step_index === undefined && turn.nativeTools.has(undefined)) turn.ambiguousUnidentifiedTool = true;
+						turn.nativeTools.add(s.step_index);
+						if (turn.idleTimer) clearTimeout(turn.idleTimer);
+						turn.idleTimer = undefined;
+						emit(turn, { type: "tool_start", stepId: s.step_index, name, args, ...(server ? { mcpServer: server } : {}) });
 					} else if (s.state === "DONE") {
+						if (!(s.step_index === undefined && turn.ambiguousUnidentifiedTool) && turn.nativeTools.delete(s.step_index)) this.#armIdle(turn);
 						emit(turn, {
 							type: "tool_done",
 							stepId: s.step_index,
 							name,
 							args,
+							...(server ? { mcpServer: server } : {}),
 							// Newer stream-json frames put native tool output under
 							// tool_info.output. Prefer that field when it is a string,
 							// including an explicit empty string; retain response_text
@@ -666,11 +678,13 @@ export class StreamDriver implements TurnDriver {
 							durationSeconds: s.duration_seconds,
 						});
 					} else if (s.state === "ERROR") {
+						if (!(s.step_index === undefined && turn.ambiguousUnidentifiedTool) && turn.nativeTools.delete(s.step_index)) this.#armIdle(turn);
 						emit(turn, {
 							type: "tool_error",
 							stepId: s.step_index,
 							name,
 							message: s.error_message ?? "tool error",
+							...(server ? { mcpServer: server } : {}),
 						});
 					}
 				}
@@ -741,6 +755,7 @@ export class StreamDriver implements TurnDriver {
 	#settle(turn: ActiveTurn, outcome: TurnOutcome): void {
 		if (turn.closed) return;
 		turn.closed = true;
+		turn.nativeTools.clear();
 		if (turn.overallTimer) clearTimeout(turn.overallTimer);
 		if (turn.idleTimer) clearTimeout(turn.idleTimer);
 		if (turn.onAbort && turn.request.signal) {

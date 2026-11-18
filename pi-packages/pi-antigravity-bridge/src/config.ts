@@ -164,17 +164,18 @@ export interface AgyConfig {
 	 *  this bridge cap is the only knob.
 	 *
 	 *  Default is TTY-aware: 0 (no cap) on an interactive pi - the user aborts
-	 *  with Esc and is the better backstop - and 20 on headless runs, where
+	 *  with Esc and is the better backstop - and 30 on headless runs, where
 	 *  nobody can abort and one runaway turn blocks the drivers' serialized
 	 *  turn queue. Explicit values opt into the gate: 1..1440 valid, 0
 	 *  disables, anything else (garbage, negative, >1440) falls back to the
-	 *  TTY-aware default. The inactivity stall guard (3m without recognized progress) still bounds
-	 *  a hung server either way. Next-turn effect. Env AGY_TURN_TIMEOUT_MIN
+	 *  TTY-aware default. The inactivity guard (3m without recognized progress)
+	 *  is suspended while native tools or bridge parks are in flight. Next-turn effect. Env AGY_TURN_TIMEOUT_MIN
 	 *  wins over the file. */
 	turnTimeoutMin: number;
 	/** Progress-inactivity cap in minutes, both engines: no recognized frame / ACP
 	 *  session/update for this long fails the turn as a stall. Default 3;
-	 *  0 disables the guard. Next-turn effect.
+	 *  0 disables the guard. Suspended while native tools or bridge parks are in
+	 *  flight; a full budget resumes afterwards. Next-turn effect.
 	 *  Env AGY_INACTIVITY_TIMEOUT_MIN wins over the file. */
 	inactivityTimeoutMin: number;
 	/** Absolute startup-type wait deadline in ms. 0 disables. Env AGY_STARTUP_TIMEOUT_MS. */
@@ -186,6 +187,11 @@ export interface AgyConfig {
 	 *  round-trip; this covers the rest. Default auto (off until a
 	 *  third-party permission extension is detected). See docs/TODO.md 2.5. */
 	approvals: GateConfig;
+	/** Refuse native run_command via a PreToolUse guard in non-interactive
+	 *  sessions (mode !== "tui") and route shell commands through Pi's bridged
+	 *  bash tool instead. Default true; tui sessions are unaffected. Set false
+	 *  in config.json to disable the guard in all sessions. */
+	runCommandGuard: boolean;
 }
 
 const DEFAULTS: AgyConfig = {
@@ -208,6 +214,7 @@ const DEFAULTS: AgyConfig = {
 	queueTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
 	approvals: { gateMode: "auto", mode: "ask" },
 	acp: { usageEstimate: "estimate" },
+	runCommandGuard: true,
 };
 
 /** Hard ceiling for a free-typed turn cap: one day, in minutes. */
@@ -218,7 +225,7 @@ export const MAX_TURN_CAP_MIN = 1440;
  *  where nobody can abort (headless runs: one runaway turn also blocks the
  *  drivers' serialized turn queue). */
 export function defaultTurnTimeoutMin(): number {
-	return process.stdout.isTTY || process.stdin.isTTY ? 0 : 20;
+	return process.stdout.isTTY || process.stdin.isTTY ? 0 : 30;
 }
 
 /** Explicit cap minutes: 0 keeps (disable), 1..MAX_TURN_CAP_MIN keeps;
@@ -388,6 +395,9 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 	// (same pattern as mode). Normalized (trim/cap/control-strip); an empty
 	// result means agy's default agent.
 	const agent = normalizeAgyAgentName(process.env.AGY_AGENT ?? file.agent);
+	const runCommandGuard = typeof file.runCommandGuard === "boolean"
+		? file.runCommandGuard
+		: DEFAULTS.runCommandGuard;
 
 	return {
 		engine,
@@ -410,6 +420,7 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		queueTimeoutMs: parseWaitMs(process.env.AGY_QUEUE_TIMEOUT_MS ?? file.queueTimeoutMs),
 		agent,
 		approvals: { gateMode, mode: gateAskMode },
+		runCommandGuard,
 	};
 }
 
@@ -429,6 +440,7 @@ export function saveConfig(patch: Partial<AgyConfig>, configPath: string = CONFI
 		...patch,
 	};
 	next.acp = { usageEstimate: next.acp?.usageEstimate ?? DEFAULTS.acp.usageEstimate };
+	next.runCommandGuard = typeof next.runCommandGuard === "boolean" ? next.runCommandGuard : DEFAULTS.runCommandGuard;
 	writeConfigJson(configPath, next);
 	return next;
 }

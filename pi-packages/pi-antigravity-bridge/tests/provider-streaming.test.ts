@@ -186,10 +186,10 @@ test("streamSimple forwards the config turn caps to the driver", async () => {
 		process.env.AGY_TURN_TIMEOUT_MIN = "0";
 		const disabled = await captureTurn(entry, undefined);
 		assert.equal(disabled?.timeoutMin, 0);
-		// Unset: the TTY-aware default resolves (vitest stdio is piped: 20).
+		// Unset: the TTY-aware default resolves (vitest stdio is piped: 30).
 		delete process.env.AGY_TURN_TIMEOUT_MIN;
 		const fallback = await captureTurn(entry, undefined);
-		assert.equal(fallback?.timeoutMin, 20);
+		assert.equal(fallback?.timeoutMin, 30);
 		assert.equal(fallback?.inactivityMin, 5);
 	} finally {
 		process.stdout.isTTY = prevTTY;

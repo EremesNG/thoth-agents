@@ -18,6 +18,7 @@ import { CONFIG_PATH, loadConfig, saveConfig } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
+import { GATE_MARKER } from "../src/approval-gate.js";
 import { ToolRoundTrips, POLL_TOOL_NAME, type PollView } from "../src/provider.js";
 import * as providerModule from "../src/provider.js";
 import { StreamDriver } from "../src/driver.js";
@@ -1155,4 +1156,136 @@ test("/agy agent still refuses ACP user agents", async () => {
  await s.command("agent custom-user-agent");
  assert.equal(loadConfig().agent, before);
  assert.ok(s.notices.some((message) => message.includes("ACP engine has no agent selection")));
+});
+
+test("approval-gate shadow tools rebind across session_shutdown -> session_start without duplicating registrations", async () => {
+	fixture();
+	const dir = path.dirname(process.env.AGY_BIN!);
+	const holdFile = path.join(dir, "hold");
+	const bin = path.join(dir, "agy-hold.mjs");
+	fs.writeFileSync(bin, `// pi-test-node-fixture
+import fs from "node:fs";
+import readline from "node:readline";
+if (process.argv.includes("--version")) { console.log("1.5.8"); process.exit(0); }
+if (process.argv.includes("models")) { console.log("gemini-3.6-flash-low Gemini 3.6 Flash (Low)"); process.exit(0); }
+for await (const _line of readline.createInterface({ input: process.stdin })) {
+	while (fs.existsSync(${JSON.stringify(holdFile)})) await new Promise((r) => setTimeout(r, 20));
+	console.log(JSON.stringify({ event: "init", init: { conversation_id: "conv-gate-rebind" } }));
+	console.log(JSON.stringify({ event: "result", result: { status: "SUCCESS", response: "ok", conversation_id: "conv-gate-rebind" } }));
+}
+`, { mode: 0o755 });
+	vi.stubEnv("AGY_BIN", bin);
+	saveConfig({ askTool: false, webTools: false, bridgeTools: "all", approvals: { gateMode: "shadow", mode: "allow" } });
+
+	const s = session();
+	const registered: Array<{ name: string; execute: (...args: any[]) => Promise<any> }> = [];
+	const origRegisterTool = s.pi.registerTool.bind(s.pi);
+	s.pi.registerTool = ((def: any) => {
+		registered.push(def);
+		return origRegisterTool(def);
+	}) as any;
+
+	await extension(s.pi);
+	await s.emit("session_start");
+	assert.equal(registered.filter((t) => t.name === "edit").length, 1);
+	assert.equal(registered.filter((t) => t.name === "write").length, 1);
+	assert.equal(registered.filter((t) => t.name === "bash").length, 1);
+
+	const postApproval = async (toolName: string, args: object) => {
+		const endpoint = Object.values(privateConfigs()[0].servers)[0];
+		const baseUrl = new URL(endpoint.serverUrl).origin;
+		const res = await fetch(`${baseUrl}/approval`, {
+			method: "POST",
+			headers: { "content-type": "application/json", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] },
+			body: JSON.stringify({ toolCall: { name: toolName, args } }),
+		});
+		return { baseUrl, token: endpoint.headers[TOKEN_HEADER], body: await res.json() as { ticket?: string; decision?: string } };
+	};
+
+	// Session 1: hold turn open so bridge has an active turn for POST /approval
+	fs.writeFileSync(holdFile, "1");
+	const turn1 = s.turn("gate-rebind-1");
+	await vi.waitFor(() => expect(fs.existsSync(path.join(os.homedir(), ".pi", "agent", "antigravity-bridge"))).toBe(true));
+	let ticket1 = "";
+	await vi.waitFor(async () => {
+		const res = await postApproval("edit_file", { TargetFile: "a.ts", SearchText: "x", ReplacementContent: "y" });
+		expect(typeof res.body.ticket).toBe("string");
+		ticket1 = res.body.ticket!;
+	});
+	const editShadow = registered.find((t) => t.name === "edit")!;
+	const writeShadow = registered.find((t) => t.name === "write")!;
+	const res1 = await editShadow.execute(
+		"call-1",
+		{ path: "a.ts", edits: [], [GATE_MARKER]: true, __agyTicket: ticket1, __agyTool: "edit_file" },
+		undefined, undefined, { hasUI: false } as any,
+	);
+	assert.match(JSON.stringify(res1), /Approved by approval gate: edit_file/);
+	fs.rmSync(holdFile, { force: true });
+	assert.deepEqual(await turn1, []);
+
+	// Simulate /new or /resume: session_shutdown followed by session_start
+	await s.emit("session_shutdown");
+	await s.emit("session_start", { reason: "new" });
+	assert.equal(registered.filter((t) => t.name === "edit").length, 1, "no duplicate shadow registrations");
+	assert.equal(registered.filter((t) => t.name === "write").length, 1, "no duplicate shadow registrations");
+
+	// Stale ticket from session 1 must stay rejected
+	await assert.rejects(
+		editShadow.execute(
+			"call-stale",
+			{ path: "a.ts", edits: [], [GATE_MARKER]: true, __agyTicket: ticket1, __agyTool: "edit_file" },
+			undefined, undefined, { hasUI: false } as any,
+		),
+		/unrecognized or stale approval ticket/,
+	);
+
+	// Session 2: fresh HTTP tickets for edit_file & write_to_file must be accepted
+	fs.writeFileSync(holdFile, "1");
+	const turn2 = s.turn("gate-rebind-2");
+	let ticket2 = "";
+	await vi.waitFor(async () => {
+		const res = await postApproval("edit_file", { TargetFile: "b.ts", SearchText: "a", ReplacementContent: "b" });
+		expect(typeof res.body.ticket).toBe("string");
+		ticket2 = res.body.ticket!;
+	});
+	const res2 = await editShadow.execute(
+		"call-2",
+		{ path: "b.ts", edits: [], [GATE_MARKER]: true, __agyTicket: ticket2, __agyTool: "edit_file" },
+		undefined, undefined, { hasUI: false } as any,
+	);
+	assert.match(JSON.stringify(res2), /Approved by approval gate: edit_file/);
+
+	const writeApproval = await postApproval("write_to_file", { TargetFile: "c.ts", CodeContent: "hi" });
+	assert.ok(typeof writeApproval.body.ticket === "string");
+	const res3 = await writeShadow.execute(
+		"call-3",
+		{ path: "c.ts", content: "hi", [GATE_MARKER]: true, __agyTicket: writeApproval.body.ticket, __agyTool: "write_to_file" },
+		undefined, undefined, { hasUI: false } as any,
+	);
+	assert.match(JSON.stringify(res3), /Approved by approval gate: write_to_file/);
+
+	// Policy updates dynamically across restarts too
+	fs.rmSync(holdFile, { force: true });
+	assert.deepEqual(await turn2, []);
+	await s.emit("session_shutdown");
+	saveConfig({ askTool: false, webTools: false, bridgeTools: "all", approvals: { gateMode: "shadow", mode: "deny" } });
+	await s.emit("session_start", { reason: "resume" });
+	fs.writeFileSync(holdFile, "1");
+	const turn3 = s.turn("gate-rebind-3");
+	let ticket4 = "";
+	await vi.waitFor(async () => {
+		const res = await postApproval("edit_file", { TargetFile: "d.ts", SearchText: "1", ReplacementContent: "2" });
+		expect(typeof res.body.ticket).toBe("string");
+		ticket4 = res.body.ticket!;
+	});
+	await assert.rejects(
+		editShadow.execute(
+			"call-4",
+			{ path: "d.ts", edits: [], [GATE_MARKER]: true, __agyTicket: ticket4, __agyTool: "edit_file" },
+			undefined, undefined, { hasUI: false } as any,
+		),
+		/blocked by approval gate \(mode: deny\): edit_file/,
+	);
+	fs.rmSync(holdFile, { force: true });
+	assert.deepEqual(await turn3, []);
 });

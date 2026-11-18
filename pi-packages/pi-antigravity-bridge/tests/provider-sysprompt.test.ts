@@ -116,7 +116,13 @@ interface Harness {
 	dir: string;
 }
 
-function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"], mode: string | null = "tui", engine: "acp" | "stream-json" = "stream-json"): Harness {
+function gateHarness(
+	getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"],
+	mode: string | null = "tui",
+	engine: "acp" | "stream-json" = "stream-json",
+	getRunCommandGuard?: StreamSimpleDeps["getRunCommandGuard"],
+	beforeStart?: StreamSimpleDeps["beforeStart"],
+): Harness {
 	const seen: { opts?: DriverTurnRequest } = {};
 	const driver: StreamDriver = {
 		run: async (opts: DriverTurnRequest) => {
@@ -140,6 +146,8 @@ function gateHarness(getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptO
 	const streamSimple = createStreamSimple({
 		getSystemPromptOptions,
 		getSessionMode: mode === null ? undefined : () => mode,
+		getRunCommandGuard,
+		beforeStart,
 		entries: [{ id: "gemini-flash", full: "gemini-3.6-flash" }],
 		store: new SessionStore(path.join(dir, "sessions.json")),
 		driver,
@@ -353,4 +361,56 @@ test("carrier uses the latest structured capture rather than assembled default s
    assert.ok(!md.includes("assembled defaults"));
   } finally { fs.rmSync(h.dir,{recursive:true,force:true});fs.rmSync(root,{recursive:true,force:true}); }
  });
+});
+
+test("AC-3: tool priority note routes shell commands to Pi bash bridge tool when guard is active, preserves disabled and tui wordings", async () => {
+	const guard = { active: true, serverName: "pi-agy-a1b2c3d4" };
+	const guardedOut = buildFullPrompt(SYS, "", "hello", "print", guard);
+	assert.match(guardedOut, /run_command is refused/i);
+	assert.match(guardedOut, /pi-agy-a1b2c3d4\/bash/);
+	assert.match(guardedOut, /mcp_pi-agy-a1b2c3d4_bash/);
+	assert.match(guardedOut, /timeout/i);
+	assert.ok(guardedOut.includes("Long-running bridge calls do not fail"));
+	assert.ok(!guardedOut.includes("run commands in the foreground within the turn"));
+
+	const disabledOut = buildFullPrompt(SYS, "", "hello", "print", { active: false, serverName: "pi-agy-a1b2c3d4" });
+	assert.ok(disabledOut.includes("run commands in the foreground within the turn"));
+	assert.equal(disabledOut.includes("pi-agy-a1b2c3d4/bash"), false);
+
+	const tuiOut = buildFullPrompt(SYS, "", "hello", "tui", guard);
+	assert.ok(tuiOut.includes(TOOL_PRIORITY_NOTE));
+
+	// Both carriers wire getRunCommandGuard after beforeStart
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-ac3-"));
+	await withEnv({ AGY_SYSTEM_PROMPT: "on", AGY_AGENT: undefined, AGY_AGENTS_ROOT: root }, async () => {
+		resetSyspromptAgentForTests();
+		let started = false;
+		const streamH = gateHarness(
+			undefined,
+			"rpc",
+			"stream-json",
+			() => ({ active: true, serverName: started ? "pi-agy-deadbeef" : "pi-agy-00000000" }),
+			async () => { started = true; },
+		);
+		const acpH = gateHarness(
+			undefined,
+			"rpc",
+			"acp",
+			() => ({ active: true, serverName: "pi-agy-cafebabe" }),
+		);
+		try {
+			await runTurn(streamH, "hello", SYS);
+			const md = fs.readFileSync(path.join(root, streamH.seen.opts!.agent!, "agent.md"), "utf8");
+			assert.match(md, /pi-agy-deadbeef\/bash/);
+			assert.match(md, /run_command is refused/i);
+
+			await runTurn(acpH, "hello", SYS);
+			assert.match(acpH.seen.opts!.prompt, /pi-agy-cafebabe\/bash/);
+			assert.match(acpH.seen.opts!.prompt, /run_command is refused/i);
+		} finally {
+			fs.rmSync(streamH.dir, { recursive: true, force: true });
+			fs.rmSync(acpH.dir, { recursive: true, force: true });
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

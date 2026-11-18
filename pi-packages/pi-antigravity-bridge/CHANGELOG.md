@@ -5,6 +5,15 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Added
+
+- Guard native `run_command` in non-interactive sessions (`mode !== "tui"`) via a dedicated `PreToolUse` hook on both engines when `runCommandGuard` (default `true`) is enabled and an active, non-hidden Pi `bash` tool exists, routing shell commands to Pi's bridged `bash` tool (exposed even when built-in-source while guarded). Guard state (hooks, prompt note, and built-in `bash` source admission) is frozen once per Pi session lifecycle; mid-session setting or `bash` activation changes apply on the next session, while hiding or deactivating `bash` still removes it from the live MCP catalog immediately. Explicit `systemPrompt: false` suppresses guard-refresh prompt notes while the `PreToolUse` hook still enforces.
+
+### Changed
+
+- Suspend the inactivity guard during native tool execution on both carriers, and raise the default headless turn cap to 30 minutes.
+- Publish in-flight native tools by Pi session so subagent watchdogs apply tool-aware stall budgets, without duplicating identified Pi-bridge calls. For stream-json frames lacking server identity, a unique matching bridge park is inferred; an unrelated concurrent unidentified MCP call with the same target remains indistinguishable.
+
 ## [0.9.0] - 2026-11-15
 
 ### Changed

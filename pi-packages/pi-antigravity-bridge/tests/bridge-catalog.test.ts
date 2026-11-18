@@ -156,4 +156,37 @@ describe("hybrid partition and proxy helpers", () => {
 		expect(direct.map((t) => t.name)).toEqual(["read"]);
 		expect(proxied.map((t) => t.name)).toEqual(["git_commit"]);
 	});
+
+	it("exposes active non-hidden builtin bash in direct when guardActive is true, while keeping other builtins excluded", () => {
+		const bashSchema = {
+			type: "object",
+			properties: { command: { type: "string" }, timeout: { type: "number" } },
+			required: ["command"],
+		};
+		const catalog = [
+			{ name: "bash", description: "Execute bash", parameters: bashSchema, sourceInfo: { source: "builtin" } },
+			{ name: "read", description: "Read file", sourceInfo: { source: "builtin" } },
+			{ name: "write", description: "Write file", sourceInfo: { source: "builtin" } },
+			{ name: "mcp:files", sourceInfo: { source: "pi-mcp-adapter" } },
+			{ name: "git_commit", sourceInfo: { source: "extension" } },
+		];
+
+		const activeAll = ["bash", "read", "write", "mcp:files", "git_commit"];
+		const guarded = bridgedPiTools(catalog, activeAll, "all", new Set(), true);
+		const { direct, proxied } = partitionBridgeTools(guarded);
+		expect(direct.map((t) => t.name)).toEqual(["bash"]);
+		expect(direct[0].parameters).toEqual(bashSchema);
+		expect(proxied.map((t) => t.name)).toEqual(["mcp:files", "git_commit"]);
+
+		// Hidden or inactive bash stays excluded even when guardActive is true
+		expect(bridgedPiTools(catalog, activeAll, "all", new Set(["bash"]), true).some((t) => t.name === "bash")).toBe(false);
+		expect(bridgedPiTools(catalog, ["read", "git_commit"], "all", new Set(), true).some((t) => t.name === "bash")).toBe(false);
+
+		// Guard inactive keeps builtin bash excluded
+		expect(bridgedPiTools(catalog, activeAll, "all", new Set(), false).some((t) => t.name === "bash")).toBe(false);
+
+		// mcp mode admits guarded bash alongside pi-mcp-adapter tools; none stays empty
+		expect(bridgedPiTools(catalog, activeAll, "mcp", new Set(), true).map((t) => t.name)).toEqual(["bash", "mcp:files"]);
+		expect(bridgedPiTools(catalog, activeAll, "none", new Set(), true)).toEqual([]);
+	});
 });

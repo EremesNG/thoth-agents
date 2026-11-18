@@ -32,7 +32,7 @@ test("config: load/save expose only current runtime settings", () => {
 		const keys = [
 			"acp", "agent", "approvals", "askTool", "bridgeDiscovery", "bridgeTools",
 			"defaultModel", "defaultThinking", "digest", "engine", "escalateLongTools", "inactivityTimeoutMin",
-			"mode", "queueTimeoutMs", "readOnly", "skipPermissions", "startupTimeoutMs", "systemPrompt",
+			"mode", "queueTimeoutMs", "readOnly", "runCommandGuard", "skipPermissions", "startupTimeoutMs", "systemPrompt",
 			"turnTimeoutMin", "webTools",
 		];
 		assert.deepEqual(Object.keys(loadConfig(p)).sort(), keys);
@@ -148,7 +148,7 @@ test("config: AGY_SYSTEM_PROMPT env overrides the file in both directions", () =
 	}
 });
 
-test("config: turn caps default TTY-aware (headless 20m) and round-trip", () => {
+test("config: turn caps default TTY-aware (headless 30m) and round-trip", () => {
 	const p = tmpConfig();
 	const prev = process.env.AGY_TURN_TIMEOUT_MIN;
 	try {
@@ -157,7 +157,7 @@ test("config: turn caps default TTY-aware (headless 20m) and round-trip", () => 
 		// ambient stdio (CI, piped vitest, TTY shells).
 		stubTTY(false, () => {
 			const c = loadConfig(p);
-			assert.equal(c.turnTimeoutMin, 20);
+			assert.equal(c.turnTimeoutMin, 30);
 			assert.equal(c.inactivityTimeoutMin, 3);
 		});
 		saveConfig({ turnTimeoutMin: 45, inactivityTimeoutMin: 0 }, p);
@@ -177,7 +177,7 @@ test("config: turn cap defaults to 0 when stdout is a TTY", () => {
 	try {
 		delete process.env.AGY_TURN_TIMEOUT_MIN;
 		stubTTY(true, () => assert.equal(loadConfig(p).turnTimeoutMin, 0));
-		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 20));
+		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 30));
 	} finally {
 		if (prev === undefined) delete process.env.AGY_TURN_TIMEOUT_MIN;
 		else process.env.AGY_TURN_TIMEOUT_MIN = prev;
@@ -194,9 +194,9 @@ test("config: turn cap sanity range 1-1440; out-of-range falls back to the TTY-a
 			saveConfig({ turnTimeoutMin: 1440 }, p);
 			assert.equal(loadConfig(p).turnTimeoutMin, 1440);
 			saveConfig({ turnTimeoutMin: 1441 }, p);
-			assert.equal(loadConfig(p).turnTimeoutMin, 20);
+			assert.equal(loadConfig(p).turnTimeoutMin, 30);
 			saveConfig({ turnTimeoutMin: 0.5 }, p);
-			assert.equal(loadConfig(p).turnTimeoutMin, 20);
+			assert.equal(loadConfig(p).turnTimeoutMin, 30);
 		});
 	} finally {
 		if (prev === undefined) delete process.env.AGY_TURN_TIMEOUT_MIN;
@@ -213,7 +213,7 @@ test("config: invalid turn cap values fall back to the defaults, 0 stays disable
 		stubTTY(false, () => {
 			saveConfig({ turnTimeoutMin: -3, inactivityTimeoutMin: "abc" as never }, p);
 			const c = loadConfig(p);
-			assert.equal(c.turnTimeoutMin, 20);
+			assert.equal(c.turnTimeoutMin, 30);
 			assert.equal(c.inactivityTimeoutMin, 3);
 		});
 	} finally {
@@ -231,10 +231,10 @@ test("config: AGY_TURN_TIMEOUT_MIN env overrides the file, 0 disables", () => {
 		process.env.AGY_TURN_TIMEOUT_MIN = "0";
 		assert.equal(loadConfig(p).turnTimeoutMin, 0);
 		process.env.AGY_TURN_TIMEOUT_MIN = "junk";
-		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 20));
+		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 30));
 		// Whitespace-only must fall back too, never read as an explicit 0/disable.
 		process.env.AGY_TURN_TIMEOUT_MIN = "  ";
-		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 20));
+		stubTTY(false, () => assert.equal(loadConfig(p).turnTimeoutMin, 30));
 	} finally {
 		if (prev === undefined) delete process.env.AGY_TURN_TIMEOUT_MIN;
 		else process.env.AGY_TURN_TIMEOUT_MIN = prev;
@@ -287,6 +287,23 @@ test("config: startup and queue deadlines default to 120000ms, env overrides and
 	} finally {
 		if (startup === undefined) delete process.env.AGY_STARTUP_TIMEOUT_MS; else process.env.AGY_STARTUP_TIMEOUT_MS = startup;
 		if (queue === undefined) delete process.env.AGY_QUEUE_TIMEOUT_MS; else process.env.AGY_QUEUE_TIMEOUT_MS = queue;
+		fs.rmSync(path.dirname(p), { recursive: true, force: true });
+	}
+});
+
+test("config: runCommandGuard defaults true, round-trips, preserves on unrelated saves, and falls back on non-boolean", () => {
+	const p = tmpConfig();
+	try {
+		assert.equal(loadConfig(p).runCommandGuard, true);
+		saveConfig({ runCommandGuard: false }, p);
+		assert.equal(loadConfig(p).runCommandGuard, false);
+		saveConfig({ mode: "plan" }, p);
+		assert.equal(loadConfig(p).runCommandGuard, false);
+		saveConfig({ runCommandGuard: true }, p);
+		assert.equal(loadConfig(p).runCommandGuard, true);
+		fs.writeFileSync(p, JSON.stringify({ runCommandGuard: "no" }));
+		assert.equal(loadConfig(p).runCommandGuard, true);
+	} finally {
 		fs.rmSync(path.dirname(p), { recursive: true, force: true });
 	}
 });

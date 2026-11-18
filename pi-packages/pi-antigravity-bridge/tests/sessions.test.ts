@@ -119,3 +119,43 @@ test("SessionStore: a removed key stops being deleted once its persist lands (mu
 		assert.equal(disk.b?.conversationId, "conv-b");
 	});
 });
+
+test("SessionStore: runCommandGuardActive boolean round-trips and tolerates legacy or non-boolean entries", async () => {
+	const p = tmpStorePath();
+	fs.writeFileSync(
+		p,
+		JSON.stringify({
+			legacy: { conversationId: "c-legacy", lastStepIdx: -1, lastMessageCount: 2 },
+			guarded: { conversationId: "c-guarded", lastStepIdx: -1, lastMessageCount: 3, runCommandGuardActive: true },
+			unguarded: { conversationId: "c-unguarded", lastStepIdx: -1, lastMessageCount: 4, runCommandGuardActive: false },
+			badGuard: { conversationId: "c-bad", lastStepIdx: 1, lastMessageCount: 5, runCommandGuardActive: "yes" },
+		}) + "\n",
+	);
+	const store = new SessionStore(p);
+	assert.deepEqual(store.get("legacy"), { conversationId: "c-legacy", lastStepIdx: -1, lastMessageCount: 2 });
+	assert.equal(store.get("legacy")?.runCommandGuardActive, undefined);
+	assert.deepEqual(store.get("guarded"), {
+		conversationId: "c-guarded",
+		lastStepIdx: -1,
+		lastMessageCount: 3,
+		runCommandGuardActive: true,
+	});
+	assert.deepEqual(store.get("unguarded"), {
+		conversationId: "c-unguarded",
+		lastStepIdx: -1,
+		lastMessageCount: 4,
+		runCommandGuardActive: false,
+	});
+	assert.deepEqual(store.get("badGuard"), { conversationId: "c-bad", lastStepIdx: 1, lastMessageCount: 5 });
+
+	store.set("legacy", {
+		conversationId: "c-legacy",
+		lastStepIdx: -1,
+		lastMessageCount: 6,
+		runCommandGuardActive: true,
+	});
+	await vi.waitFor(() => {
+		const reloaded = new SessionStore(p);
+		assert.equal(reloaded.get("legacy")?.runCommandGuardActive, true);
+	});
+});

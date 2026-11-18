@@ -97,9 +97,18 @@ function reconstructedGateGroupPid(key: string, group: unknown): number | null {
 	return isDeepStrictEqual(group, expected) ? pid : null;
 }
 
+/** Guard group-key namespace (shared hooks.json coexistence with approval gate). */
+export const RUN_COMMAND_GUARD_GROUP_PREFIX = "pi-bridge-run-command-guard";
+
+/** This session's run_command guard group key. */
+export function runCommandGuardGroupKey(pid: number = process.pid): string {
+	return `${RUN_COMMAND_GUARD_GROUP_PREFIX}-${pid}`;
+}
+
 /** agy native tools worth gating: everything that mutates the machine. */
-export const GATED_AGY_TOOLS =
-	"create_file|write_to_file|replace_file_content|multi_replace_file_content|edit_file|run_command";
+export const GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND =
+	"create_file|write_to_file|replace_file_content|multi_replace_file_content|edit_file";
+export const GATED_AGY_TOOLS = `${GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND}|run_command`;
 
 /** The same list as a set, for the bridge's POST /approval validation: a
  *  payload for anything else is answered with a direct deny (defense in
@@ -115,6 +124,8 @@ export interface StageOptions {
 	scriptPath: string;
 	/** Full park budget in ms; the staged hook timeout exceeds it. */
 	parkBudgetMs: number;
+	/** Exclude run_command from the gate matcher when the headless guard owns it. */
+	excludeRunCommand?: boolean;
 }
 
 /** Source of the staged poll script. Written to disk by the caller (data
@@ -194,7 +205,7 @@ export function buildGateGroup(opts: StageOptions): Record<string, unknown> {
 		enabled: true,
 		PreToolUse: [
 			{
-				matcher: GATED_AGY_TOOLS,
+				matcher: opts.excludeRunCommand ? GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND : GATED_AGY_TOOLS,
 				hooks: [
 					{
 						type: "command",
@@ -213,9 +224,8 @@ export interface StageResult {
 	reason?: string;
 }
 
-/** The session-private hooks.json for gate staging (beside the bridge's
- *  mcp_config.json in the per-pid add-dir). */
-function gateHooksFile(dir: string = bridgeMcpConfigDir()): string {
+/** The session-private hooks.json path (beside mcp_config.json or in a hooks-only add-dir). */
+export function hooksFilePath(dir: string = bridgeMcpConfigDir()): string {
 	return path.join(dir, ".agents", "hooks.json");
 }
 
@@ -223,25 +233,32 @@ function gateHooksFile(dir: string = bridgeMcpConfigDir()): string {
  *  add-dir. The driver uses this to decide whether to pass the extra
  *  --add-dir even when the MCP config is absent. */
 export function gateHooksStaged(dir: string = bridgeMcpConfigDir()): boolean {
-	return fs.existsSync(gateHooksFile(dir));
+	return fs.existsSync(hooksFilePath(dir));
 }
 
-/** Stage the gate group into the session-private per-pid dir:
- *  <bridgeMcpConfigDir()>/.agents/hooks.json. The dir (and everything in
- *  it) belongs to this pid alone, so the write is a plain atomic replace -
- *  no merge, no foreign-file guards. */
-export function stageGateHooks(dir: string, opts: StageOptions): StageResult {
-	const file = gateHooksFile(dir);
-	const next = JSON.stringify({ [gateGroupKey()]: buildGateGroup(opts) }, null, 2) + "\n";
+function readHooksObject(file: string): Record<string, unknown> | null {
 	try {
-		if (fs.readFileSync(file, "utf8") === next) return { wrote: false, reason: "already staged" };
+		const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	} catch {
+		/* absent or invalid JSON */
+	}
+	return null;
+}
+
+/** Atomically write `content` to `file` (mode 0600) only when missing or changed. */
+export function writeFileAtomicIfChanged(file: string, content: string): boolean {
+	try {
+		if (fs.readFileSync(file, "utf8") === content) return false;
 	} catch {
 		/* absent or unreadable: write */
 	}
 	fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
 	const tmp = `${file}.${process.pid}.tmp`;
 	try {
-		fs.writeFileSync(tmp, next, { mode: 0o600 });
+		fs.writeFileSync(tmp, content, { mode: 0o600 });
 		fs.renameSync(tmp, file);
 	} catch (err) {
 		try {
@@ -251,20 +268,81 @@ export function stageGateHooks(dir: string, opts: StageOptions): StageResult {
 		}
 		throw err;
 	}
-	return { wrote: true };
+	return true;
 }
 
-/** Remove the private gate hooks file. The rest of the per-pid dir (the MCP
- *  config) is managed by the bridge server lifecycle and stays until close. */
-export function removeGateHooks(dir: string = bridgeMcpConfigDir()): StageResult {
-	const file = gateHooksFile(dir);
+function writeHooksAtomic(file: string, groups: Record<string, unknown>): StageResult {
+	const wrote = writeFileAtomicIfChanged(file, JSON.stringify(groups, null, 2) + "\n");
+	return wrote ? { wrote: true } : { wrote: false, reason: "already staged" };
+}
+
+/** Stage one owned hook group into dir/.agents/hooks.json while preserving
+ *  sibling owned groups selected by preserveKey (dropping stale leftovers). */
+export function stageManagedHooksGroup(
+	dir: string,
+	groupKey: string,
+	group: Record<string, unknown>,
+	preserveKey: (key: string) => boolean,
+): StageResult {
+	const file = hooksFilePath(dir);
+	const existing = readHooksObject(file);
+	const nextGroups: Record<string, unknown> = {};
+	if (existing) {
+		for (const [k, v] of Object.entries(existing)) {
+			if (k === groupKey) nextGroups[k] = group;
+			else if (preserveKey(k)) nextGroups[k] = v;
+		}
+	}
+	if (!Object.hasOwn(nextGroups, groupKey)) nextGroups[groupKey] = group;
+	if (existing && isDeepStrictEqual(existing, nextGroups)) {
+		return { wrote: false, reason: "already staged" };
+	}
+	return writeHooksAtomic(file, nextGroups);
+}
+
+/** Remove one owned hook group from dir/.agents/hooks.json, preserving any
+ *  remaining groups or deleting the file when empty. */
+export function removeManagedHooksGroup(
+	dir: string,
+	groupKey: string,
+	missingReason: string,
+): StageResult {
+	const file = hooksFilePath(dir);
 	if (!fs.existsSync(file)) return { wrote: false, reason: "no hooks.json" };
+	const existing = readHooksObject(file);
+	if (!existing || !Object.hasOwn(existing, groupKey)) {
+		return { wrote: false, reason: missingReason };
+	}
+	delete existing[groupKey];
+	if (Object.keys(existing).length === 0) {
+		try {
+			fs.rmSync(file, { force: true });
+			return { wrote: true };
+		} catch {
+			return { wrote: false, reason: "remove failed" };
+		}
+	}
 	try {
-		fs.rmSync(file, { force: true });
-		return { wrote: true };
+		return writeHooksAtomic(file, existing);
 	} catch {
 		return { wrote: false, reason: "remove failed" };
 	}
+}
+
+/** Stage the gate group into the session-private per-pid dir:
+ *  <bridgeMcpConfigDir()>/.agents/hooks.json, preserving a staged guard group. */
+export function stageGateHooks(dir: string, opts: StageOptions): StageResult {
+	return stageManagedHooksGroup(
+		dir,
+		gateGroupKey(),
+		buildGateGroup(opts),
+		(k) => k === runCommandGuardGroupKey(),
+	);
+}
+
+/** Remove the private gate hooks group while preserving any staged guard group. */
+export function removeGateHooks(dir: string = bridgeMcpConfigDir()): StageResult {
+	return removeManagedHooksGroup(dir, gateGroupKey(), "no gate group");
 }
 
 /** Legacy cleanup (issue #5): remove gate groups that 1.6.x staged into the

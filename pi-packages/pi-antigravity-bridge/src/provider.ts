@@ -33,6 +33,8 @@ import {
 	type Usage,
 } from "@earendil-works/pi-ai";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { beginNativeTool } from "@thoth-agents/pi-core";
 import type { Api } from "@earendil-works/pi-ai";
 import type { DriverActivity, DriverTurnRequest, TurnDriver, TurnHandle } from "./driver-types.js";
 import { SubagentRoster } from "./subagent-roster.js";
@@ -48,6 +50,7 @@ import path from "node:path";
 import { TurnDiffContext, createExecGitOps, formatInlineDiff, parseEditToolInput } from "./diff-render.js";
 import { stageSyspromptAgent } from "./sysprompt-agent.js";
 import { emitLifecycle } from "./lifecycle.js";
+import { isPiBridgeName } from "./acp/home.js";
 
 const DEFAULT_TIMEOUT_MIN = 10;
 
@@ -170,10 +173,19 @@ export const SYSTEM_PROMPT_END = "[END SYSTEM PROMPT]";
 export const TOOL_PRIORITY_NOTE =
 	"[Tool priority: this conversation runs inside pi, not as a standalone agy session; the user only sees what surfaces in pi. Native interactive tools, for example ask_question, never reach the user. When a Pi Bridge tool covers the same purpose, always use the Pi Bridge tool; for user questions use ask_user_question. Your native file tools such as view_file only read brain artifacts and reject real filesystem paths; for any path on the user's machine use the Pi Bridge tools (read, ls, grep, find, edit, execute). Extension Pi tools are listed in bridge_tool_info; inspect their description and schema there, then invoke them only through bridge_call_tool with arguments_json containing a stringified JSON object. Delegate subagent work the same way: when pi's tool list includes a delegation tool (for example subagent, Agent, agent_spawn, agent_wait, or subagent_run), always delegate through it and never through the native invoke_subagent, run_subagent, or manage_subagents; use native ones only if no pi delegation tool is listed, because native subagents run inside agy and are invisible to pi and anything watching it. Long-running bridge calls do not fail: after ~20 seconds the bridge answers STILL RUNNING with a callId; fetch the result with bridge_poll_result and poll until it lands. For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.]";
 
-function toolPriorityNote(mode: string | undefined): string {
-	return mode === "tui" ? TOOL_PRIORITY_NOTE : TOOL_PRIORITY_NOTE.replace(
+export interface RunCommandGuardContext {
+	active: boolean;
+	serverName?: string;
+}
+
+function toolPriorityNote(mode: string | undefined, guard?: RunCommandGuardContext): string {
+	if (mode === "tui") return TOOL_PRIORITY_NOTE;
+	const replacement = guard?.active
+		? `Native run_command is refused in non-interactive sessions; use the Pi bash bridge tool (${guard.serverName ? `${guard.serverName}/bash; mcp_${guard.serverName}_bash` : "bash"}) for every shell command, passing its timeout argument (in seconds) for long work.`
+		: "For work you already know is long, run commands in the foreground within the turn.";
+	return TOOL_PRIORITY_NOTE.replace(
 		"For work you already know is long, prefer exec_command's session-output pattern or background agents so you keep working while it runs.",
-		"For work you already know is long, run commands in the foreground within the turn.",
+		replacement,
 	);
 }
 
@@ -185,10 +197,11 @@ export function buildFullPrompt(
 	digest: string,
 	prompt: string,
 	mode?: string,
+	guard?: RunCommandGuardContext,
 ): string {
 	const parts: string[] = [];
 	if (systemPrompt) {
-		parts.push(`${SYSTEM_PROMPT_PREAMBLE}\n\n${systemPrompt}\n\n${toolPriorityNote(mode)}\n\n${SYSTEM_PROMPT_END}`);
+		parts.push(`${SYSTEM_PROMPT_PREAMBLE}\n\n${systemPrompt}\n\n${toolPriorityNote(mode, guard)}\n\n${SYSTEM_PROMPT_END}`);
 	}
 	if (digest) {
 		parts.push(`${DIGEST_PREAMBLE}\n\n${digest}`);
@@ -201,9 +214,15 @@ export function buildFullPrompt(
 
 /** Stream-json inline fallback/retry uses the same portable instructions as the
  * carrier, without the ACP/legacy Pi-session preamble. */
-function buildPortablePrompt(projection: string | undefined, digest: string, prompt: string, mode?: string): string {
+function buildPortablePrompt(
+	projection: string | undefined,
+	digest: string,
+	prompt: string,
+	mode?: string,
+	guard?: RunCommandGuardContext,
+): string {
 	const instructions = projection === undefined ? ""
-		: [projection, toolPriorityNote(mode), SYSTEM_PROMPT_END].filter(Boolean).join("\n\n");
+		: [projection, toolPriorityNote(mode, guard), SYSTEM_PROMPT_END].filter(Boolean).join("\n\n");
 	return [instructions, buildFullPrompt(undefined, digest, prompt)].filter(Boolean).join("\n\n---\n\n");
 }
 
@@ -407,6 +426,8 @@ export interface StreamSimpleDeps {
 	getSystemPromptOptions?: () => BuildSystemPromptOptions | undefined;
 	/** Current Pi extension session mode; missing modes are non-interactive. */
 	getSessionMode?: () => string | undefined;
+	/** Shared run_command guard state and server name for the tool-priority note. */
+	getRunCommandGuard?: () => RunCommandGuardContext;
 	/** Lazy instance startup. Returns a shutdown-generation guard checked
 	 *  synchronously before the selected engine can spawn or open a session. */
 	beforeStart?: () => Promise<(() => void) | void>;
@@ -780,6 +801,13 @@ export class ToolRoundTrips {
 
 	get pendingIds(): string[] {
 		return [...this.#pending.keys()];
+	}
+
+	/** Live bridge parks for this underlying turn, including queued activities. */
+	pendingBridgeParks(name: string, outcome: TurnHandle["outcome"]): object[] {
+		return [...this.#pending.values()].filter(entry =>
+			entry.kind === "bridge" && entry.name === name && entry.owner?.handle.outcome === outcome,
+		);
 	}
 
 	get replayEpoch(): number {
@@ -1235,6 +1263,7 @@ export function buildLateResultPrompt(late: LateToolResult[], userPrompt?: strin
 export interface DriverDeps {
 	getSystemPromptOptions?: StreamSimpleDeps["getSystemPromptOptions"];
 	getSessionMode?: StreamSimpleDeps["getSessionMode"];
+	getRunCommandGuard?: StreamSimpleDeps["getRunCommandGuard"];
 	beforeStart?: StreamSimpleDeps["beforeStart"];
 	driver: TurnDriver;
 	roundTrips: ToolRoundTrips;
@@ -1452,6 +1481,108 @@ export function consumeActivity(
 	}
 }
 
+// A turn can outlive a Pi stream while a bridge tool is parked. Retain its
+// native entries across re-entry, but never clear entries owned by another turn.
+class NativeTurnActivity {
+	private readonly prefix = randomUUID();
+	private readonly releases = new Map<string, () => void>();
+	private readonly bridgeCalls = new Set<string>();
+	private readonly unidentifiedMcpTargets = new Map<string, string>();
+	private readonly matchedBridgeParks = new WeakSet<object>();
+	private ambiguousUnidentified = false;
+	private closed = false;
+	private readonly onAbort = () => this.close();
+
+	constructor(private readonly sessionId: string | undefined, private readonly handle: TurnHandle, private readonly roundTrips: ToolRoundTrips, private readonly signal?: AbortSignal) {
+		if (signal?.aborted) this.close();
+		else signal?.addEventListener("abort", this.onAbort, { once: true });
+		void handle.outcome.then(() => this.close(), () => this.close());
+	}
+
+	private reconcile(target: string): void {
+		const matches = [...this.unidentifiedMcpTargets].filter(([, name]) => name === target);
+		const parks = this.roundTrips.pendingBridgeParks(target, this.handle.outcome);
+		if (matches.length !== 1 || parks.length !== 1 || this.matchedBridgeParks.has(parks[0]!)) return;
+		const key = matches[0]![0];
+		this.releases.get(key)?.();
+		this.releases.delete(key);
+		this.unidentifiedMcpTargets.delete(key);
+		this.bridgeCalls.add(key);
+		this.matchedBridgeParks.add(parks[0]!);
+	}
+
+	observe(activity: DriverActivity, engine: "acp" | "stream-json"): void {
+		if (this.closed || !this.sessionId) return;
+		if (activity.type === "bridge_call" && engine === "stream-json") {
+			// A wrapper can start before its park is delivered. Reconcile again at
+			// park delivery, using live pending parks (including queued parks), not
+			// a turn-lifetime count. An unlabelled foreign call remains inherently
+			// indistinguishable if it is the sole matching wrapper.
+			this.reconcile(activity.name);
+			return;
+		}
+		if (activity.type !== "tool_start" && activity.type !== "tool_done" && activity.type !== "tool_error") return;
+		const key = engine === "acp" ? `acp:${activity.toolCallId ?? "unknown"}` : `step:${activity.stepId ?? "unknown"}`;
+		if (activity.type === "tool_start") {
+			// An explicit server, including a later update, overrides inference.
+			if (activity.mcpServer) this.unidentifiedMcpTargets.delete(key);
+			if (activity.mcpServer && isPiBridgeName(activity.mcpServer)) {
+				// A repeated start may supply the previously missing identity.
+				this.releases.get(key)?.();
+				this.releases.delete(key);
+				this.bridgeCalls.add(key);
+				return;
+			}
+			if (engine === "acp" || activity.mcpServer) this.bridgeCalls.delete(key);
+			else if (this.bridgeCalls.has(key)) return;
+			if (this.releases.has(key)) {
+				// Unidentified concurrent steps cannot be distinguished from repeat
+				// ACTIVE frames. Conservatively retain the entry until turn close.
+				if (engine === "stream-json" && activity.stepId === undefined) this.ambiguousUnidentified = true;
+				return;
+			}
+			this.releases.set(key, beginNativeTool(this.sessionId, `${this.prefix}:${key}`, activity.name));
+			if (engine === "stream-json" && activity.stepId !== undefined && activity.name === "call_mcp_tool" && !activity.mcpServer && typeof activity.args.tool === "string") {
+				this.unidentifiedMcpTargets.set(key, activity.args.tool);
+				this.reconcile(activity.args.tool);
+			}
+			return;
+		}
+		let finished = key;
+		// ACP may adopt an approval under a different completion ID. Match the
+		// driver's own sole-pending adoption rule, and only for completion.
+		if (!this.releases.has(finished) && !this.bridgeCalls.has(finished) && engine === "acp" && activity.type === "tool_done" && this.releases.size + this.bridgeCalls.size === 1) {
+			finished = this.releases.keys().next().value ?? this.bridgeCalls.values().next().value!;
+		}
+		if (this.bridgeCalls.delete(finished)) return;
+		if (engine === "stream-json" && finished === "step:unknown" && this.ambiguousUnidentified) return;
+		this.releases.get(finished)?.();
+		this.releases.delete(finished);
+		const target = this.unidentifiedMcpTargets.get(finished);
+		this.unidentifiedMcpTargets.delete(finished);
+		if (target) this.reconcile(target);
+	}
+
+	close(): void {
+		if (this.closed) return;
+		this.closed = true;
+		this.signal?.removeEventListener("abort", this.onAbort);
+		for (const release of this.releases.values()) release();
+		this.releases.clear();
+		this.bridgeCalls.clear();
+		this.unidentifiedMcpTargets.clear();
+	}
+}
+
+// Both drivers expose the same outcome promise on every wrapper for one turn.
+// Unlike ids, the promise also cannot collide across independent drivers.
+const nativeTurns = new WeakMap<TurnHandle["outcome"], NativeTurnActivity>();
+const pendingTurnMeta = new WeakMap<TurnHandle["outcome"], {
+	stagedAgentName?: string;
+	clearStagedAgent?: boolean;
+	deliveredGuardActive?: boolean;
+}>();
+
 /** The stream-json engine: persistent driver + toolUse round-trips. */
 async function runTurnDriver(
 	stream: AssistantMessageEventStream,
@@ -1522,11 +1653,20 @@ async function runTurnDriver(
 		const entry = entries.find((e) => e.id === model.id) ?? null;
 		const agyModel = entry?.full ?? model.id;
 		const effort = entry?.efforts?.length ? toAgyEffort(options?.reasoning, entry.efforts) : undefined;
+		let beforeStartDone = false;
+		let beforeStartAssert: (() => void) | undefined;
+		const ensureStartedOnce = async (): Promise<(() => void) | undefined> => {
+			if (!beforeStartDone) {
+				beforeStartDone = true;
+				beforeStartAssert = (await waitWithDeadline(Promise.resolve(deps.beforeStart?.()), startupTimeoutMs, "beforeStart")) ?? undefined;
+			}
+			beforeStartAssert?.();
+			return beforeStartAssert;
+		};
 		const startTurn = async (request: Pick<DriverTurnRequest, "conversationId" | "prompt" | "images" | "agent" | "contextBlock">): Promise<TurnHandle> => {
-			const assertReady = await waitWithDeadline(Promise.resolve(deps.beforeStart?.()), startupTimeoutMs, "beforeStart");
-			assertReady?.();
+			const assertReady = await ensureStartedOnce();
 			return deps.driver.run({
-				assertCurrent: assertReady ?? undefined, cwd, model: agyModel, effort,
+				assertCurrent: assertReady, cwd, model: agyModel, effort,
 				mode: config.mode, skipPermissions: config.skipPermissions,
 				timeoutMin: config.turnTimeoutMin, inactivityMin: config.inactivityTimeoutMin,
 				startupTimeoutMs, queueTimeoutMs: config.queueTimeoutMs, signal: options?.signal,
@@ -1535,6 +1675,12 @@ async function runTurnDriver(
 		};
 		const diffCtx = new TurnDiffContext(createExecGitOps());
 		const drainTurn = async (h: TurnHandle): Promise<"parked" | undefined> => {
+			let native = nativeTurns.get(h.outcome);
+			if (!native) {
+				native = new NativeTurnActivity((options as { sessionId?: string } | undefined)?.sessionId, h, deps.roundTrips, options?.signal);
+				nativeTurns.set(h.outcome, native);
+			}
+			let parked = false;
 			// Each replay marker must retain THIS handle, not the preceding turn.
 			const feats: ActivityFeatures = {
 				handle: h, replayEpoch, replay: deps.replay, nativeActive: deps.nativeActive,
@@ -1542,10 +1688,18 @@ async function runTurnDriver(
 				roster: deps.roster, log: deps.log,
 			};
 			const outcomeFailure = h.outcome.then(() => new Promise<never>(() => {}));
-			for (;;) {
-				const activity = await Promise.race([h.next(), outcomeFailure]);
-				if (!activity) return;
-				if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") return "parked";
+			try {
+				for (;;) {
+					const activity = await Promise.race([h.next(), outcomeFailure]);
+					if (!activity) return;
+					native.observe(activity, deps.engine);
+					if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") {
+						parked = true;
+						return "parked";
+					}
+				}
+			} finally {
+				if (!parked) native.close();
 			}
 		};
 		const deliverStranded = async (): Promise<{ stopped: boolean; delivered: Set<string>; unknown: boolean }> => {
@@ -1610,16 +1764,34 @@ async function runTurnDriver(
 		const boundary = active || freshInput ? undefined : await deliverStranded();
 		if (boundary?.stopped) return;
 
-		// Name of the carrier agent staged for THIS turn's fresh conversation, if
-		// any. Recorded into stagedAgentByConversation once the outcome binds the
-		// conversation id, so later gate-closed turns pass the same agent.
+		// Name of the carrier agent staged for THIS turn's fresh or refreshed
+		// conversation, if any. Recorded into stagedAgentByConversation once the
+		// outcome binds (or refreshes) the conversation id, so later gate-closed
+		// turns pass the same agent.
 		let stagedAgentName: string | undefined;
+		let clearStagedAgent = false;
+		let deliveredGuardActive: boolean | undefined;
 		let inlineRetryRequest: Parameters<typeof startTurn>[0] | undefined;
-		const bindFreshParked = (): void => {
+		const commitParkedTurn = (): void => {
 			const conversationId = handle?.conversationId;
-			if (!isContinuation && !existing && !store.get(key) && conversationId) {
-				store.set(key, { conversationId, lastStepIdx: -1, lastMessageCount: messageCount });
+			if (isContinuation || !conversationId) return;
+			if (!existing && !store.get(key)) {
+				store.set(key, {
+					conversationId,
+					lastStepIdx: -1,
+					lastMessageCount: messageCount,
+					...(deliveredGuardActive !== undefined ? { runCommandGuardActive: deliveredGuardActive } : {}),
+				});
 				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
+			} else if (existing?.conversationId && conversationId === existing.conversationId) {
+				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
+				else if (clearStagedAgent) stagedAgentByConversation.delete(conversationId);
+				if (deliveredGuardActive !== undefined && deliveredGuardActive !== existing.runCommandGuardActive) {
+					store.set(key, {
+						...existing,
+						runCommandGuardActive: deliveredGuardActive,
+					});
+				}
 			}
 		};
 		if (isContinuation) {
@@ -1698,20 +1870,51 @@ async function runTurnDriver(
 			const mode = deps.getSessionMode?.();
 			const gateOpen = config.systemPrompt && !existing?.conversationId;
 			const rawSysPrompt = gateOpen ? getCurrentSystemPrompt(context.messages) || undefined : undefined;
-			const projected = rawSysPrompt && deps.engine !== "acp"
-				? projectSystemPrompt(rawSysPrompt, deps.getSystemPromptOptions?.())
-				: rawSysPrompt;
-			let sysPrompt = projected;
+			const canRefreshGuard = Boolean(existing?.conversationId && config.systemPrompt && deps.getRunCommandGuard);
+			if ((rawSysPrompt || canRefreshGuard) && deps.beforeStart) {
+				try {
+					await ensureStartedOnce();
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					deps.log?.("turn-error", { reason: "driver-start-failed", error: msg }, "error");
+					finalize(stream, blocks, "error", `agy failed to start: ${msg}`);
+					return;
+				}
+			}
+			const guard = rawSysPrompt || canRefreshGuard ? deps.getRunCommandGuard?.() : undefined;
+			const needsGuardRefresh = Boolean(
+				existing?.conversationId &&
+				config.systemPrompt &&
+				guard &&
+				(existing.runCommandGuardActive !== undefined
+					? existing.runCommandGuardActive !== guard.active
+					: mode !== "tui"),
+			);
+			if (rawSysPrompt || needsGuardRefresh) {
+				deliveredGuardActive = guard?.active;
+			}
+			const refreshSysPrompt = needsGuardRefresh
+				? getCurrentSystemPrompt(context.messages) || undefined
+				: undefined;
+			const effectiveSysPrompt = rawSysPrompt ?? refreshSysPrompt;
+			const projected = effectiveSysPrompt && deps.engine !== "acp"
+				? projectSystemPrompt(effectiveSysPrompt, deps.getSystemPromptOptions?.())
+				: effectiveSysPrompt;
+			let sysPrompt = rawSysPrompt ? projected : undefined;
+			let inlineGuardNote: string | undefined;
 			let agent = config.agent;
 			if (deps.engine !== "acp") {
-				if (rawSysPrompt && !config.agent) {
+				if (effectiveSysPrompt && !config.agent) {
 					const stagedName = stageSyspromptAgent(
-						[projected, toolPriorityNote(mode)].filter(Boolean).join("\n\n"),
+						[projected, toolPriorityNote(mode, guard)].filter(Boolean).join("\n\n"),
 					);
 					if (stagedName) {
 						agent = stagedName;
 						sysPrompt = undefined;
 						stagedAgentName = stagedName;
+					} else if (needsGuardRefresh) {
+						inlineGuardNote = toolPriorityNote(mode, guard);
+						clearStagedAgent = true;
 					}
 					// Staging failed: inline fallback. The silent-drop guard below
 					// keeps the resulting cap failure visible instead of quiet.
@@ -1723,19 +1926,34 @@ async function runTurnDriver(
 						"warn",
 					);
 				} else if (!rawSysPrompt && !config.agent && existing?.conversationId) {
-					// Gate closed (bound conversation): pass the carrier staged for
-					// THIS conversation, if any, so the driver profile never drifts on
-					// "agent" and a respawned process reloads its own instructions.
-					agent = stagedAgentByConversation.get(existing.conversationId);
+					if (needsGuardRefresh) {
+						// No system prompt available to restage the carrier: deliver the
+						// updated guard note inline and drop any stale carrier binding.
+						inlineGuardNote = toolPriorityNote(mode, guard);
+						clearStagedAgent = true;
+					} else {
+						// Gate closed (bound conversation): pass the carrier staged for
+						// THIS conversation, if any, so the driver profile never drifts on
+						// "agent" and a respawned process reloads its own instructions.
+						agent = stagedAgentByConversation.get(existing.conversationId);
+					}
+				} else if (needsGuardRefresh) {
+					inlineGuardNote = toolPriorityNote(mode, guard);
+					clearStagedAgent = true;
 				}
+			} else if (needsGuardRefresh) {
+				inlineGuardNote = toolPriorityNote(mode, guard);
 			}
-			const fullPrompt = deps.engine === "acp"
-				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "", mode)
-				: buildPortablePrompt(sysPrompt, digest, prompt ?? "", mode);
-			if (stagedAgentName) {
+			const basePrompt = deps.engine === "acp"
+				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "", mode, guard)
+				: buildPortablePrompt(sysPrompt, digest, prompt ?? "", mode, guard);
+			const fullPrompt = inlineGuardNote
+				? [inlineGuardNote, basePrompt].filter(Boolean).join("\n\n---\n\n")
+				: basePrompt;
+			if (stagedAgentName && !existing?.conversationId) {
 				inlineRetryRequest = {
 					conversationId: null,
-					prompt: buildPortablePrompt(projected, digest, prompt ?? "", mode),
+					prompt: buildPortablePrompt(projected, digest, prompt ?? "", mode, guard),
 					images: images.length > 0 ? images : undefined,
 				};
 			}
@@ -1752,6 +1970,11 @@ async function runTurnDriver(
 							}
 						: undefined,
 				});
+				pendingTurnMeta.set(handle.outcome, {
+					stagedAgentName,
+					clearStagedAgent,
+					deliveredGuardActive,
+				});
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				deps.log?.("turn-error", { reason: "driver-start-failed", error: msg }, "error");
@@ -1762,10 +1985,10 @@ async function runTurnDriver(
 
 		ensureStarted(stream, blocks);
 		if (await drainTurn(handle) === "parked") {
-			// Only the fresh dispatch may establish its first binding. Continuation
-			// contexts include later tool results, not the dispatch watermark. Never
+			// Only the fresh dispatch may establish its first binding, or an
+			// existing binding may record a refreshed guard note/carrier. Never
 			// borrow a driver's current identity or overwrite a concurrent binding.
-			bindFreshParked();
+			commitParkedTurn();
 			return;
 		}
 
@@ -1779,10 +2002,18 @@ async function runTurnDriver(
 			/RESOURCE_EXHAUSTED|\b429\b/i.test(outcome.error ?? "")) {
 			deps.log?.("sysprompt-inline-retry", { reason: "carrier-resource-exhausted", conversation: outcome.conversationId ?? null }, "warn");
 			await waitWithDeadline(deps.driver.close("recycle", "system-prompt carrier rejected; retry inline"), startupTimeoutMs, "inline retry process termination");
+			const retryGuardActive = deliveredGuardActive;
+			pendingTurnMeta.delete(handle.outcome);
 			stagedAgentName = undefined;
+			clearStagedAgent = true;
 			handle = await startTurn(inlineRetryRequest);
+			pendingTurnMeta.set(handle.outcome, {
+				stagedAgentName: undefined,
+				clearStagedAgent: true,
+				deliveredGuardActive: retryGuardActive,
+			});
 			if (await drainTurn(handle) === "parked") {
-				bindFreshParked();
+				commitParkedTurn();
 				return;
 			}
 			outcome = await handle.outcome;
@@ -1844,12 +2075,19 @@ async function runTurnDriver(
 				store.delete(key);
 				stagedAgentByConversation.delete(existing.conversationId);
 			} else if (outcome.status === "OK" && !outcome.aborted) {
+				const turnMeta = pendingTurnMeta.get(handle.outcome);
+				pendingTurnMeta.delete(handle.outcome);
+				const persistedGuardActive = deliveredGuardActive ?? turnMeta?.deliveredGuardActive ?? existing?.runCommandGuardActive;
+				const finalStagedAgent = stagedAgentName ?? turnMeta?.stagedAgentName;
+				const finalClearStaged = clearStagedAgent || turnMeta?.clearStagedAgent;
 				store.set(key, {
 					conversationId: outcome.conversationId,
 					lastStepIdx: -1,
 					lastMessageCount: messageCount,
+					...(persistedGuardActive !== undefined ? { runCommandGuardActive: persistedGuardActive } : {}),
 				});
-				if (stagedAgentName) stagedAgentByConversation.set(outcome.conversationId, stagedAgentName);
+				if (finalStagedAgent) stagedAgentByConversation.set(outcome.conversationId, finalStagedAgent);
+				else if (finalClearStaged) stagedAgentByConversation.delete(outcome.conversationId);
 			}
 			// A failed or aborted turn on the SAME conversation keeps the pre-turn
 			// record: whether the prompt actually landed in agy's DB is not
@@ -1925,6 +2163,7 @@ export function createStreamSimple(
 				beforeStart: deps.beforeStart,
 				getSystemPromptOptions: deps.getSystemPromptOptions,
 				getSessionMode: deps.getSessionMode,
+				getRunCommandGuard: deps.getRunCommandGuard,
 				driver: selected,
 				roundTrips,
 				replay: deps.replay,

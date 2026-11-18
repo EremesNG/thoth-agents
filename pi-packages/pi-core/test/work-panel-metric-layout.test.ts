@@ -104,6 +104,131 @@ it('sweeps every format boundary at widths 20..140 with and without a kit withou
   }
 }, 60_000);
 
+it('drops only opted-in metrics when the greedy continuation would wrap', () => {
+  const row = rowFor('cost', '$0.92');
+  const compact: WorkPanelRow = {
+    ...row,
+    dropMetricsOnWrap: ['tools', 'tokens'],
+  };
+  expect(render(compact, 120)).toEqual(render(row, 120));
+  expect(render(compact, 44)).toHaveLength(2);
+  expect(render(compact, 44)[1]?.trim()).toBe(
+    'ctx 0.0% · 0 tok/s · $0.92 · elapsed 0s',
+  );
+  expect(render(row, 44).length).toBeGreaterThan(2);
+  const tiny = render(compact, 24);
+  expect(tiny).toHaveLength(2);
+  expect(tiny[1]?.trim()).toMatch(/^ctx 0\.0% · 0 tok\/s.*…$/);
+  expect(tiny.every((line) => panelVisibleWidth(line) <= 24)).toBe(true);
+  expect(workPanelRowLineCount(compact, 24, panelVisibleWidth)).toBe(2);
+});
+
+it.each([
+  '...',
+  '…',
+])('keeps one nonblank stats row at widths 8–10 with %s ellipsis', (ellipsis) => {
+  const token = registerRenderKit(
+    createTestRenderKit({
+      icon: (name) => (name === 'ellipsis' ? ellipsis : []),
+    }),
+    {},
+  );
+  try {
+    const row: WorkPanelRow = {
+      id: 'tiny',
+      primary: 'worker',
+      dropMetricsOnWrap: ['tools'],
+      metrics: [
+        { key: 'tools', segments: [{ text: '* 5', role: 'meta' }] },
+        { key: 'context', segments: [{ text: 'ctx ?', role: 'meta' }] },
+      ],
+    };
+    for (const width of [8, 9, 10]) {
+      const lines = render(row, width);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]?.trim()).not.toBe('');
+      expect(lines.every((line) => panelVisibleWidth(line) <= width)).toBe(
+        true,
+      );
+      expect(workPanelRowLineCount(row, width, panelVisibleWidth)).toBe(2);
+    }
+  } finally {
+    withdrawRenderKit(token);
+  }
+});
+
+it.each([
+  { mode: 'native', ellipsis: '…', gutter: 4 },
+  { mode: 'themed Unicode', ellipsis: '…', gutter: 7 },
+  { mode: 'themed ASCII', ellipsis: '...', gutter: 7 },
+])('avoids blank opt-in continuations in $mode mode', ({
+  mode,
+  ellipsis,
+  gutter,
+}) => {
+  const token =
+    mode === 'native'
+      ? undefined
+      : registerRenderKit(
+          createTestRenderKit({
+            icon: (name) => (name === 'ellipsis' ? ellipsis : []),
+          }),
+          {},
+        );
+  try {
+    const model: WorkPanelMetricGroup = {
+      key: 'model',
+      columnsOnly: true,
+      segments: [{ text: 'sonnet', role: 'meta' }],
+    };
+    const tools: WorkPanelMetricGroup = {
+      key: 'tools',
+      segments: [
+        { text: mode === 'native' ? 'tools 12' : '* 12', role: 'meta' },
+      ],
+    };
+    const blank: WorkPanelMetricGroup = {
+      key: 'context',
+      segments: [{ text: ' ', role: 'meta' }],
+    };
+    const row: WorkPanelRow = {
+      id: 'timed-out',
+      primary: 'worker',
+      status: 'timedOut',
+      dropMetricsOnWrap: ['tools'],
+      metrics: [model, tools],
+    };
+    for (const width of [8, 9, 10]) {
+      for (const metrics of [
+        [model, tools],
+        [model, tools, blank],
+      ]) {
+        const item = { ...row, metrics };
+        const lines = render(item, width);
+        expect(lines).toHaveLength(2);
+        expect(lines[1]?.trim()).toBe(ellipsis.slice(0, width - gutter));
+        expect(lines.every((line) => panelVisibleWidth(line) <= width)).toBe(
+          true,
+        );
+        expect(workPanelRowLineCount(item, width, panelVisibleWidth)).toBe(2);
+      }
+      for (const metrics of [
+        [model],
+        [model, blank],
+        [blank, { ...blank, key: 'cost' as const }],
+      ]) {
+        const item = { ...row, metrics };
+        expect(render(item, width)).toHaveLength(1);
+        expect(workPanelRowLineCount(item, width, panelVisibleWidth)).toBe(1);
+      }
+    }
+    expect(render(row, gutter)).toHaveLength(1);
+    expect(workPanelRowLineCount(row, gutter, panelVisibleWidth)).toBe(1);
+  } finally {
+    if (token) withdrawRenderKit(token);
+  }
+});
+
 it('grows monotonically beyond the reserved ranges', () => {
   const beyond = {
     tools: ['999', '1000', '10000', '100000'],

@@ -64,7 +64,7 @@ export interface WorkPanelRowContent {
   extraSegments?: readonly (readonly WorkPanelSegment[])[];
   /** Narrow-width metrics or other continuations; never independently selectable. */
   extraRows?: readonly string[];
-  /** Two-line columns only: draw blank extra rows (all-pending metrics) to keep height. */
+  /** Draw blank extra rows to preserve layout height. */
   keepBlankRows?: boolean;
 }
 
@@ -122,6 +122,8 @@ export interface WorkPanelRow {
   identity?: readonly WorkPanelSegment[];
   /** Atomic groups joined with the semantic separator, inline or in wrapped continuations. */
   metrics?: readonly WorkPanelMetricGroup[];
+  /** Greedy only: cap stats at one continuation, dropping these keys before truncating. */
+  dropMetricsOnWrap?: readonly WorkPanelMetricKey[];
   /** Section summary; excluded from item caps and overflow counts. Informational by default. */
   summary?: boolean;
   /** Prefer dropping this item before other items when the panel exceeds its height budget. */

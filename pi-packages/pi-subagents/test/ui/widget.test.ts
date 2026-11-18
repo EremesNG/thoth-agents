@@ -381,7 +381,7 @@ describe('Agents work-panel rows', () => {
   it.each([
     'running',
     'queued',
-  ] as const)('keeps a compact dropped-tools warning on %s rows without displacing metrics', async (status) => {
+  ] as const)('keeps a compact dropped-tools warning on %s rows at every width', async (status) => {
     const session = await mount(
       provider([
         task({ status, dropped_tools: ['unavailable_read', 'missing_search'] }),
@@ -393,21 +393,10 @@ describe('Agents work-panel rows', () => {
       expect(content.text).not.toContain('unavailable_read');
       expect(content.text).not.toContain('missing_search');
       const lines = [content.text, ...(content.extraRows ?? [])];
-      for (const metric of [
-        'tools 5',
-        '↑20k ↓10k',
-        'ctx 62.0%',
-        '75 tok/s',
-        status === 'running' ? 'elapsed 12s' : 'elapsed ?',
-      ])
-        expect(lines.join(' · ')).toContain(metric);
+      expect(content.extraRows).toHaveLength(1);
+      expect(content.extraRows[0]).toContain('ctx 62.0%');
       for (const line of lines)
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-      if (width === 100) {
-        expect(content.extraRows?.length).toBe(1);
-        expect(content.text).toContain('…');
-      }
-      if (width <= 50) expect(content.extraRows?.length).toBeGreaterThan(0);
     }
   });
 
@@ -477,32 +466,83 @@ describe('Agents work-panel rows', () => {
     }
   });
 
-  it('truncates the task before metrics and uses continuations only when metrics cannot fit inline', async () => {
+  it('preserves all metrics in order at wide widths', async () => {
     const session = await mount(provider([task()]));
-    const metrics = [
-      'tools 5',
-      '↑20k ↓10k',
-      'ctx 62.0%',
-      '75 tok/s',
-      'elapsed 12s',
-    ];
+    const stats =
+      'tools 5 · ↑20k ↓10k · ctx 62.0% · 75 tok/s · $0.00 · elapsed 12s';
     for (const width of [140, 120, 100]) {
       const content = renderBody(session, width);
-      expect(content.extraRows ?? []).toEqual([]);
-      for (const metric of metrics) expect(content.text).toContain(metric);
-      expect(content.text).toContain('worker');
-      expect(content.text).toContain('…');
+      expect(content.extraRows).toEqual([]);
+      expect(content.text).toContain(`worker · `);
+      expect(content.text).toContain(`… · ${stats}`);
       expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
     }
-    for (const width of [80, 70, 50, 35, 24]) {
-      const content = renderBody(session, width);
-      expect(content.extraRows?.length).toBeGreaterThan(0);
-      expect(content.text).toContain('worker');
-      for (const metric of metrics)
-        expect(content.extraRows.join(' · ')).toContain(metric);
-      for (const line of [content.text, ...content.extraRows])
-        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-    }
+    expect(renderBody(session, 70).extraRows).toEqual([stats]);
+  });
+
+  it('keeps a running agent to two lines on a 45-column terminal', async () => {
+    const token = registerRenderKit(createTestRenderKit(), {});
+    cleanups.push(() => withdrawRenderKit(token));
+    const session = await mount(
+      provider([task({ dropped_tools: ['missing_read'] })]),
+    );
+    const content = renderBody(session, 38);
+    expect(content.text).toContain('worker · ');
+    expect(content.text).toContain('⚠ 1 dropped');
+    expect(content.extraRows).toEqual(['ctx 62.0% · tok/s 75 · $0.00 · ◷ 12s']);
+    expect(
+      session.render(45).every((line: string) => visibleWidth(line) <= 45),
+    ).toBe(true);
+  });
+  it.each([
+    { terminalStatuses: ['completed', 'failed'] },
+    { terminalStatuses: ['cancelled', 'interrupted'] },
+    { terminalStatuses: ['timedOut', 'sparse'] },
+  ] as const)('renders two rows per agent at 45 columns for running and $terminalStatuses', async ({
+    terminalStatuses,
+  }) => {
+    const terminal = terminalStatuses.map((status) => {
+      const item = task({
+        id: status,
+        agent: `worker-${status}`,
+        status:
+          status === 'timedOut'
+            ? 'failed'
+            : status === 'sparse'
+              ? 'completed'
+              : status,
+        ended_at: new Date(now).toISOString(),
+      });
+      if (status === 'timedOut') {
+        item.error_metadata = {
+          version: 1,
+          category: 'total_timeout',
+          message: 'Timed out',
+          retryable: false,
+          partial_result_available: false,
+        };
+      }
+      if (status === 'sparse') {
+        item.usage = { cost: 0.92 } as SubagentTask['usage'];
+        item.runtime_metrics = {
+          contextPercent: 62,
+          generationOutputTokens: 300,
+          generationMs: 4000,
+        };
+      }
+      return item;
+    });
+    const items = [task({ agent: 'worker-running' }), ...terminal];
+    const session = await mount(provider(items));
+    const lines: string[] = session.render(45).slice(1, -1);
+    const starts = lines.flatMap((line, index) =>
+      items.some(({ agent }) => line.includes(agent)) ? [index] : [],
+    );
+    expect(starts).toHaveLength(items.length);
+    expect(
+      starts.map((start, i) => (starts[i + 1] ?? lines.length) - start),
+    ).toEqual(items.map(() => 2));
+    for (const start of starts) expect(lines[start + 1]).toContain('ctx 62.0%');
   });
 });
 
@@ -535,12 +575,13 @@ it('renders agent identity, task, metrics and dropped tools with distinct roles 
           ([role, text]) => role === 'text' && text.includes('PHASE'),
         ),
       ).toBe(true);
-      expect(
-        styled
-          .filter(([role]) => role === 'dim')
-          .map(([, text]) => text)
-          .join(''),
-      ).toContain('* 5');
+      const dim = styled
+        .filter(([role]) => role === 'dim')
+        .map(([, text]) => text)
+        .join('');
+      expect(dim).toContain('tok/s 75');
+      if (width === 120) expect(dim).toContain('* 5');
+      else expect(dim).not.toContain('* 5');
       expect(
         styled.some(
           ([role, text]) => role === 'warning' && text.includes('⚠ 1 dropped'),

@@ -213,6 +213,7 @@ function taskRow(
       ),
     ],
     metrics: parts,
+    dropMetricsOnWrap: ['tools', 'tokens'],
   };
 }
 

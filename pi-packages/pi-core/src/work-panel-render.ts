@@ -610,6 +610,7 @@ function truncateSegments(
   width: number,
   measure: Measure,
   ellipsis: string,
+  trimTrailingMeta = true,
 ): WorkPanelSegment[] {
   if (width <= 0 || segmentText(segments) === '') return [];
   if (measure(segmentText(segments)) <= width)
@@ -625,7 +626,8 @@ function truncateSegments(
     used += measure(text);
     if (text !== segment.text) break;
   }
-  while (kept.length > 1 && kept.at(-1)?.role === 'meta') kept.pop();
+  while (trimTrailingMeta && kept.length > 1 && kept.at(-1)?.role === 'meta')
+    kept.pop();
   if (ellipsis && measure(ellipsis) <= width) {
     if (!kept.length) kept.push({ text: '', role: segments[0].role });
     (kept.at(-1) as WorkPanelSegment).text += ellipsis;
@@ -1432,6 +1434,45 @@ function responsiveContent(
     measure,
   );
   if (inline) segments.push(separator, ...visibleMetrics);
+  const dropMetricsOnWrap = row.dropMetricsOnWrap;
+  if (
+    !inline &&
+    metricLayout === 'greedy' &&
+    dropMetricsOnWrap &&
+    groups.length
+  ) {
+    const identityContent = { text: segmentText(segments), segments };
+    if (width <= 0) return identityContent;
+    const continuation = (metrics: WorkPanelMetricGroup[]) =>
+      joinGroups(
+        metrics
+          .map((group) => group.continuation ?? group.segments)
+          .filter((parts) => segmentText(parts).trim()),
+      );
+    const full = continuation(groups);
+    if (!full.length) return identityContent;
+    let parts = full;
+    if (measure(segmentText(full)) > width) {
+      const marker =
+        truncateData(resolveIcon('ellipsis', '…'), width, measure, '').trim() ||
+        truncateData('.', width, measure, '');
+      parts = truncateSegments(
+        continuation(
+          groups.filter(({ key }) => !key || !dropMetricsOnWrap.includes(key)),
+        ),
+        width,
+        measure,
+        marker,
+        false,
+      );
+      if (!segmentText(parts).trim()) parts = [{ text: marker, role: 'meta' }];
+    }
+    return {
+      ...identityContent,
+      extraRows: [segmentText(parts)],
+      extraSegments: [parts],
+    };
+  }
   const continuations: WorkPanelSegment[][] = [];
   if (!inline) {
     for (const group of groups) {
@@ -1817,7 +1858,7 @@ export function workPanelRowLineCount(
   return 1 + keptExtraRows(content, options.metricLayout === 'grid').length;
 }
 
-/** Extra rows that take height: blank ones only in grid or all-pending two-line rows. */
+/** Blank continuations count only when the layout explicitly preserves their height. */
 function keptExtraRows(content: WorkPanelRowContent, grid = false) {
   return (content.extraRows ?? []).filter(
     (extra) => grid || content.keepBlankRows || extra.trim(),

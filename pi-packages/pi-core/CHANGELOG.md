@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Added
+
+- Shared per-session native tool activity registry for tracking in-flight provider tools across independently loaded package copies.
+
 ## [0.10.1] - 2026-11-15
 
 ### Added

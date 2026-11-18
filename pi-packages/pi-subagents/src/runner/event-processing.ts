@@ -1,3 +1,4 @@
+import { listNativeTools } from '@thoth-agents/pi-core';
 import {
   DEFAULT_MAX_TOTAL_TIMEOUT_MS,
   DEFAULT_STALL_SUSPEND_MAX_MS,
@@ -340,6 +341,7 @@ export async function promptWithInactivity(
   stallSuspendMaxMs = DEFAULT_STALL_SUSPEND_MAX_MS,
   toolStallTimeoutMs = DEFAULT_TOOL_STALL_TIMEOUT_MS,
   maxTotalTimeoutMs = DEFAULT_MAX_TOTAL_TIMEOUT_MS,
+  sessionId?: string,
 ): Promise<{
   result: string;
   usage: UsageStats;
@@ -653,6 +655,11 @@ export async function promptWithInactivity(
           : retryBackoffStartedAt !== undefined
             ? { reason: 'auto_retry', startedAt: retryBackoffStartedAt }
             : undefined;
+      const nativeTools = sessionId ? listNativeTools(sessionId) : [];
+      const nativeBudgetMs = Math.min(
+        Math.max(toolStallTimeoutMs, stallTimeoutMs),
+        maxTotalTimeoutMs,
+      );
       let budgetKind = 'session';
       let budgetMs = stallTimeoutMs;
       // Questions pause ordinary inactivity, not the maintenance safety ceiling.
@@ -660,15 +667,18 @@ export async function promptWithInactivity(
         if (stalledAt - suspension.startedAt <= stallSuspendMaxMs) return;
       } else {
         if (questionPending) return;
-        if (activeToolCalls.size === 0) {
+        if (activeToolCalls.size === 0 && nativeTools.length === 0) {
           if (stalledAt - lastActivity <= stallTimeoutMs) return;
         } else {
           const expiredTool = [...activeToolCalls.values()].find(
             (tool) => stalledAt - tool.lastUpdate > tool.budgetMs,
           );
-          if (!expiredTool) return;
+          const expiredNativeTool = nativeTools.find(
+            (tool) => stalledAt - tool.since > nativeBudgetMs,
+          );
+          if (!expiredTool && !expiredNativeTool) return;
           budgetKind = 'tool';
-          budgetMs = expiredTool.budgetMs;
+          budgetMs = expiredTool?.budgetMs ?? nativeBudgetMs;
         }
       }
       // Capture before abort: cleanup can emit events and clear tracked tools.
@@ -692,12 +702,16 @@ export async function promptWithInactivity(
         ms_since_last_session_event: String(stalledAt - lastSessionEventAt),
         last_session_event_type: lastSessionEventType,
         active_tools:
-          [...activeToolCalls.values()]
-            .map(
+          [
+            ...[...activeToolCalls.values()].map(
               (tool) =>
                 `${tool.name} (${stalledAt - tool.lastUpdate}ms since update)`,
-            )
-            .join(', ') || 'none',
+            ),
+            ...nativeTools.map(
+              (tool) =>
+                `${tool.name} (${stalledAt - tool.since}ms since update)`,
+            ),
+          ].join(', ') || 'none',
         settled_after_last_start: String(settledAfterLastStart),
         outstanding_orchestrator_questions: String(outstandingQuestions),
       };

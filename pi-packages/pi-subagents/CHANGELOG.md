@@ -5,6 +5,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply the tool stall budget to provider-native tools running in subagent sessions and include them in stall diagnostics.
+
 ## [0.16.0] - 2026-11-15
 
 ### Added

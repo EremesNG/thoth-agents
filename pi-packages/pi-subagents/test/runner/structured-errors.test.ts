@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beginNativeTool, clearNativeTools } from '@thoth-agents/pi-core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyThrownError,
   deriveErrorString,
@@ -37,6 +38,7 @@ vi.mock('@earendil-works/pi-coding-agent', async (importOriginal) => {
 });
 
 beforeEach(() => sdkMocks.createAgentSession.mockReset());
+afterEach(() => clearNativeTools('structured-native-child'));
 
 describe('subagent runner structured errors', () => {
   const definition: SubagentDefinition = {
@@ -254,6 +256,70 @@ describe('subagent runner structured errors', () => {
       expect(error.message).toContain('outstanding_orchestrator_questions=0');
       expect(error.error_metadata.message).toBe(error.message);
       expect(error.message).not.toContain('SECRET_FILE_BODY');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    'manager',
+    'fallback',
+  ])('reports native stalls from the child session id (%s)', async (idSource) => {
+    vi.useFakeTimers();
+    try {
+      let resolvePrompt: (() => void) | undefined;
+      const { promise } = await runStructuredSession(
+        () => ({
+          ...(idSource === 'manager'
+            ? {
+                sessionManager: {
+                  getSessionId: () => 'structured-native-child',
+                },
+                sessionId: 'wrong-id',
+              }
+            : { sessionId: 'structured-native-child' }),
+          subscribe: () => () => {},
+          prompt: async () => {
+            beginNativeTool(
+              'structured-native-child',
+              'native-1',
+              'run_command',
+            );
+            await new Promise<void>((resolve) => {
+              resolvePrompt = resolve;
+            });
+          },
+          abort: async () => {
+            clearNativeTools('structured-native-child');
+            resolvePrompt?.();
+          },
+          messages: [],
+          dispose: async () => {},
+        }),
+        {
+          config: {
+            ...config,
+            stall_timeout_ms: 1000,
+            tool_stall_timeout_ms: 2000,
+          },
+          ctx: { model: undefined },
+        },
+      );
+      const rejection = promise.catch((error) => error);
+      await vi.dynamicImportSettled();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(resolvePrompt).toBeDefined();
+      await vi.advanceTimersByTimeAsync(1000);
+      const error = await rejection;
+      expect(error.error_metadata.details).toMatchObject({
+        stall_budget_kind: 'tool',
+        stall_budget_ms: '2000',
+        active_tools: 'run_command (2500ms since update)',
+      });
+      expect(error.message).toContain('stalled for 2000ms');
+      expect(error.message).toContain(
+        'active_tools=run_command (2500ms since update)',
+      );
     } finally {
       vi.useRealTimers();
     }

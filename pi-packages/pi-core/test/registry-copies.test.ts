@@ -89,6 +89,30 @@ describe('isolated render-kit/tool-definition contracts', () => {
   });
 });
 
+describe('isolated native-tool activity contracts', () => {
+  const key = Symbol.for('thoth.pi-core.native-tool-activity.v1');
+  afterEach(() => {
+    delete shared[key];
+  });
+
+  it.each([
+    false,
+    true,
+  ])('shares activity between copies (other first: %s)', (reverse) => {
+    const [owner, other] = reverse
+      ? [same.core, first.core]
+      : [first.core, same.core];
+    expect(owner.beginNativeTool).not.toBe(other.beginNativeTool);
+    const release = owner.beginNativeTool('session', 'call', 'run_command');
+    expect(other.listNativeTools('session')).toEqual([
+      { key: 'call', name: 'run_command', since: expect.any(Number) },
+    ]);
+    other.clearNativeTools('session');
+    expect(owner.listNativeTools('session')).toEqual([]);
+    release();
+  });
+});
+
 describe('isolated provider-limit contracts', () => {
   const key = Symbol.for('thoth.pi-core.provider-limits.v1');
   afterEach(() => {

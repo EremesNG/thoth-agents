@@ -50,6 +50,12 @@ export {
   registerDecorativeOverlay,
 } from './decorative-overlay.js';
 export { formatDuration } from './duration.js';
+export type { NativeToolActivity } from './native-tool-activity.js';
+export {
+  beginNativeTool,
+  clearNativeTools,
+  listNativeTools,
+} from './native-tool-activity.js';
 export type {
   OwnedOverlayFactory,
   OwnedOverlayOptions,

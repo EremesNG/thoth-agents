@@ -360,16 +360,24 @@ type SubagentInteractionSessionMetadata = {
   parent?: { piSessionId?: string };
 };
 
+function childSessionId(
+  session:
+    | { sessionManager?: { getSessionId?: () => unknown }; sessionId?: unknown }
+    | null
+    | undefined,
+): string | undefined {
+  const id = session?.sessionManager?.getSessionId?.() ?? session?.sessionId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
 function registerInteractionSubagentSession(
   session: any,
   definition: SubagentDefinition,
   taskId?: string,
   parentPiSessionId?: string,
 ): () => void {
-  const sessionId =
-    session?.sessionManager?.getSessionId?.() ?? session?.sessionId;
-  if (typeof sessionId !== 'string' || sessionId.length === 0)
-    return () => undefined;
+  const sessionId = childSessionId(session);
+  if (!sessionId) return () => undefined;
   const registry = getInteractionSessionRegistry() as Map<
     string,
     SubagentInteractionSessionMetadata
@@ -876,6 +884,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
         config.stall_suspend_max_ms,
         config.tool_stall_timeout_ms,
         config.max_total_timeout_ms,
+        childSessionId(session),
       );
       if (signal.aborted) {
         await abortBridge.abortSession();

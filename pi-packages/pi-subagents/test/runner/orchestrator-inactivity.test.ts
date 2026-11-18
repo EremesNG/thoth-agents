@@ -1,11 +1,20 @@
-import { expect, it, vi } from 'vitest';
+import { beginNativeTool, clearNativeTools } from '@thoth-agents/pi-core';
+import { afterEach, expect, it, vi } from 'vitest';
 import { promptWithInactivity } from '../../src/runner/event-processing.js';
 import type { SubagentOrchestratorChannel } from '../../src/types.js';
+
+const nativeSessionId = 'native-child';
+afterEach(() => {
+  clearNativeTools(nativeSessionId);
+  clearNativeTools('other-child');
+});
 
 function inactivitySession(
   stallSuspendMaxMs?: number,
   onQuestionPendingChange?: SubagentOrchestratorChannel['onPendingChange'],
   toolStallTimeoutMs = 1000,
+  maxTotalTimeoutMs?: number,
+  sessionId?: string,
 ) {
   let event: (event: any) => void = () => {};
   let finish: () => void = () => {};
@@ -44,6 +53,8 @@ function inactivitySession(
     onQuestionPendingChange,
     stallSuspendMaxMs,
     toolStallTimeoutMs,
+    maxTotalTimeoutMs,
+    sessionId,
   ).catch((error) => error);
   return {
     session,
@@ -549,6 +560,154 @@ it('checks each tool budget rather than only the oldest update and refreshes upd
     });
     expect(error.message).toContain('budget=tool; budget_ms=5000');
     expect(error.message).toContain('stalled for 5000ms');
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('applies the native tool budget from its start, including alongside Pi tools', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(
+    undefined,
+    undefined,
+    3000,
+    10000,
+    nativeSessionId,
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(500);
+    beginNativeTool(nativeSessionId, 'n1', 'run_command');
+    run.event({
+      type: 'tool_execution_start',
+      toolCallId: 'p1',
+      toolName: 'bash',
+      args: { timeout: 1000 },
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    run.event({ type: 'message_update' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    const error = await run.outcome;
+    expect(error.error_metadata.details).toMatchObject({
+      stall_budget_kind: 'tool',
+      stall_budget_ms: '3000',
+      active_tools:
+        'bash (3500ms since update), run_command (3500ms since update)',
+    });
+    expect(error.message).toContain('stalled for 3000ms');
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('caps native tool budgets at the total maximum', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(
+    undefined,
+    undefined,
+    5000,
+    2000,
+    nativeSessionId,
+  );
+  try {
+    beginNativeTool(nativeSessionId, 'n1', 'exec_command');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_budget_kind: 'tool',
+      stall_budget_ms: '2000',
+      active_tools: 'exec_command (2500ms since update)',
+    });
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('returns to session inactivity after native release and ignores other sessions', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(
+    undefined,
+    undefined,
+    5000,
+    10000,
+    nativeSessionId,
+  );
+  try {
+    beginNativeTool('other-child', 'other', 'unrelated');
+    const release = beginNativeTool(nativeSessionId, 'n1', 'run_command');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(run.session.abort).not.toHaveBeenCalled();
+    release();
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_budget_kind: 'session',
+      stall_budget_ms: '1000',
+      active_tools: 'none',
+    });
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('still expires a Pi tool independently of a newer native tool', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(
+    undefined,
+    undefined,
+    2000,
+    10000,
+    nativeSessionId,
+  );
+  try {
+    run.event({
+      type: 'tool_execution_start',
+      toolCallId: 'p1',
+      toolName: 'read',
+    });
+    await vi.advanceTimersByTimeAsync(1500);
+    beginNativeTool(nativeSessionId, 'n1', 'run_command');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_budget_kind: 'tool',
+      stall_budget_ms: '2000',
+      active_tools:
+        'read (2500ms since update), run_command (1000ms since update)',
+    });
+  } finally {
+    run.finish();
+    await run.outcome;
+    vi.useRealTimers();
+  }
+});
+
+it('keeps the maintenance ceiling while reporting native tools before abort cleanup', async () => {
+  vi.useFakeTimers();
+  const run = inactivitySession(2000, undefined, 5000, 10000, nativeSessionId);
+  try {
+    beginNativeTool(nativeSessionId, 'n1', 'run_command');
+    run.session.abort.mockImplementation(async () => {
+      clearNativeTools(nativeSessionId);
+      run.finish();
+    });
+    run.event({ type: 'compaction_start' });
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(run.session.abort).toHaveBeenCalledOnce();
+    expect((await run.outcome).error_metadata.details).toMatchObject({
+      stall_suspend_reason: 'compaction',
+      stall_suspend_max_ms: '2000',
+      active_tools: 'run_command (2500ms since update)',
+    });
   } finally {
     run.finish();
     await run.outcome;

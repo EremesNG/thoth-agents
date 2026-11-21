@@ -448,7 +448,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
         recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
         return meta;
       }
-      scheduleWatch(pi, meta.id, 0, getActiveSession);
+      // A pending timer or in-flight poll already owns the cadence; replacing it would force an early poll.
+      if (!watcherTimers.has(meta.id) && !activePolls.has(meta.id)) scheduleWatch(pi, meta.id, 0, getActiveSession);
       return meta;
     }
 

@@ -1,4 +1,4 @@
-import { LEGACY_OPENAI_PRESET } from '../config/constants';
+import { previousOpenAIPresets } from '../config/constants';
 import {
   type EffectiveRoster,
   ModelProfileStore,
@@ -67,10 +67,10 @@ export function syncOpenCodeProfile(reset = false): void {
     const agents = Object.fromEntries(
       PROFILE_ROLES.map((role) => {
         const current = previous[role];
-        const legacy = LEGACY_OPENAI_PRESET[role];
-        const advance =
-          current?.model === `openai/${legacy.model}` &&
-          current?.variant === legacy.effort;
+        const advance = previousOpenAIPresets(role).some(
+          ({ model, effort }) =>
+            current?.model === `openai/${model}` && current.variant === effort,
+        );
         return [
           role,
           (reset && name === 'openai') || advance

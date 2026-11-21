@@ -55,10 +55,24 @@ export const LEGACY_OPENAI_PRESET = {
   { model: string; effort: string }
 >;
 
+/** Additional previous pairs for roles that changed in the GPT-6.2 update. */
+const PREVIOUS_OPENAI_PAIRS: Partial<
+  Record<BuiltinAgentName, { model: string; effort: string }>
+> = {
+  oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+  orchestrator: { model: 'gpt-6.1-sol', effort: 'high' },
+};
+
+export function previousOpenAIPresets(role: BuiltinAgentName) {
+  const previous = PREVIOUS_OPENAI_PAIRS[role];
+  const legacy = LEGACY_OPENAI_PRESET[role];
+  return previous ? [legacy, previous] : [legacy];
+}
+
 export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
   explorer: { model: 'gpt-6-luna', effort: 'max' },
   librarian: { model: 'gpt-6-luna', effort: 'max' },
-  oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+  oracle: { model: 'gpt-6.2-sol', effort: 'xhigh' },
   designer: { model: 'gpt-6-luna', effort: 'max' },
   worker: { model: 'gpt-6-luna', effort: 'max' },
 } as const satisfies Record<
@@ -67,7 +81,7 @@ export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
 >;
 
 export const OPENCODE_OPENAI_ORCHESTRATOR_PRESET = {
-  model: 'gpt-6.1-sol',
+  model: 'gpt-6.2-sol',
   effort: 'high',
 } as const;
 

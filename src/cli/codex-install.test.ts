@@ -502,7 +502,9 @@ max_concurrent_threads_per_session = 3
     }
   });
   test.each([
-    ['gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['gpt-6-astra', 'medium', 'gpt-6.2-sol', 'xhigh'],
+    ['gpt-6.1-sol', 'xhigh', 'gpt-6.2-sol', 'xhigh'],
+    ['gpt-6.1-sol', 'high', 'gpt-6.1-sol', 'high'],
     ['custom-model', 'medium', 'custom-model', 'medium'],
     ['gpt-6-astra', 'high', 'gpt-6-astra', 'high'],
     ['gpt-6-astra', undefined, 'gpt-6-astra', undefined],
@@ -532,11 +534,11 @@ max_concurrent_threads_per_session = 3
         const next = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
         expect(next.configuredModels[key]).toBe(expectedModel);
         expect(next.configuredEfforts?.[key]).toBe(expectedEffort);
-        if (model === 'gpt-6-astra' && effort === 'medium')
-          expect(next.models[key]).toBe('gpt-6.1-sol');
+        if (model !== expectedModel)
+          expect(next.models[key]).toBe('gpt-6.2-sol');
       }
       applyFreshCodexSetup(dir, home, true);
-      expect(roleModel(readFileSync(target, 'utf8'))).toBe('gpt-6.1-sol');
+      expect(roleModel(readFileSync(target, 'utf8'))).toBe('gpt-6.2-sol');
       expect(parseRoleTomlEffort(readFileSync(target, 'utf8'))).toBe('xhigh');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -546,9 +548,11 @@ max_concurrent_threads_per_session = 3
   test.each([
     ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
     ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
-    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.2-sol', 'xhigh'],
     ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
     ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
+    ['oracle', 'gpt-6.1-sol', 'xhigh', 'gpt-6.2-sol', 'xhigh'],
+    ['oracle', 'gpt-6.1-sol', 'high', 'gpt-6.1-sol', 'high'],
     ['designer', 'gpt-6-sol', 'high', 'gpt-6-sol', 'high'],
     ['designer', 'gpt-6-sol', undefined, 'gpt-6-sol', undefined],
   ] as const)('advances only complete tracked Codex pair %s / %s / %s without configured state', (role, model, effort, expectedModel, expectedEffort) => {
@@ -600,7 +604,7 @@ max_concurrent_threads_per_session = 3
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+        oracle: { model: 'gpt-6.2-sol', effort: 'xhigh' },
         librarian: { model: 'gpt-6-luna', effort: 'max' },
         explorer: { model: 'gpt-6-luna', effort: 'max' },
         designer: { model: 'gpt-6-luna', effort: 'max' },

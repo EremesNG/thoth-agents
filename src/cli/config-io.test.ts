@@ -155,8 +155,17 @@ describe('config-io', () => {
   });
 
   test.each([
-    ['oracle', 'openai/gpt-6-astra', 'medium', 'openai/gpt-6.1-sol', 'xhigh'],
-    ['orchestrator', 'openai/gpt-6-sol', 'xhigh', 'openai/gpt-6.1-sol', 'high'],
+    ['oracle', 'openai/gpt-6-astra', 'medium', 'openai/gpt-6.2-sol', 'xhigh'],
+    ['orchestrator', 'openai/gpt-6-sol', 'xhigh', 'openai/gpt-6.2-sol', 'high'],
+    ['oracle', 'openai/gpt-6.1-sol', 'xhigh', 'openai/gpt-6.2-sol', 'xhigh'],
+    [
+      'orchestrator',
+      'openai/gpt-6.1-sol',
+      'high',
+      'openai/gpt-6.2-sol',
+      'high',
+    ],
+    ['oracle', 'openai/gpt-6.1-sol', 'high', 'openai/gpt-6.1-sol', 'high'],
     ['worker', 'custom/model', 'low', 'custom/model', 'low'],
     ['oracle', 'openai/gpt-6-astra', 'high', 'openai/gpt-6-astra', 'high'],
   ] as const)('sync advances only previous shipped pairs in openai: %s', (role, model, variant, expectedModel, expectedVariant) => {

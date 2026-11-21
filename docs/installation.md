@@ -624,7 +624,7 @@ provider. The ambient root retains Pi's selected model and effort settings:
 | --- | --- | --- |
 | explorer | `openai-codex/gpt-6-luna` | `max` |
 | librarian | `openai-codex/gpt-6-luna` | `max` |
-| oracle | `openai-codex/gpt-6.1-sol` | `xhigh` |
+| oracle | `openai-codex/gpt-6.2-sol` | `xhigh` |
 | designer | `openai-codex/gpt-6-luna` | `max` |
 | worker | `openai-codex/gpt-6-luna` | `max` |
 

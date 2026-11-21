@@ -11,7 +11,7 @@ describe('OpenAI default model projection', () => {
     expect(CONFIRMED_OPENAI_SUBAGENT_PRESET).toEqual({
       explorer: { model: 'gpt-6-luna', effort: 'max' },
       librarian: { model: 'gpt-6-luna', effort: 'max' },
-      oracle: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+      oracle: { model: 'gpt-6.2-sol', effort: 'xhigh' },
       designer: { model: 'gpt-6-luna', effort: 'max' },
       worker: { model: 'gpt-6-luna', effort: 'max' },
     });
@@ -19,7 +19,7 @@ describe('OpenAI default model projection', () => {
 
   test('defines a separate providerless OpenCode orchestrator preset', () => {
     expect(OPENCODE_OPENAI_ORCHESTRATOR_PRESET).toEqual({
-      model: 'gpt-6.1-sol',
+      model: 'gpt-6.2-sol',
       effort: 'high',
     });
   });

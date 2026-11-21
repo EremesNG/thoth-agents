@@ -51,7 +51,9 @@ describe('Pi specialist synchronization', () => {
   });
 
   test.each([
-    ['openai-codex/gpt-6-astra', 'medium', 'openai-codex/gpt-6.1-sol', 'xhigh'],
+    ['openai-codex/gpt-6-astra', 'medium', 'openai-codex/gpt-6.2-sol', 'xhigh'],
+    ['openai-codex/gpt-6.1-sol', 'xhigh', 'openai-codex/gpt-6.2-sol', 'xhigh'],
+    ['openai-codex/gpt-6.1-sol', 'high', 'openai-codex/gpt-6.1-sol', 'high'],
     ['custom/model', 'medium', 'custom/model', 'medium'],
     ['openai-codex/gpt-6-astra', 'high', 'openai-codex/gpt-6-astra', 'high'],
     [
@@ -102,7 +104,7 @@ Old body.
   test.each([
     ['explorer', 'gpt-6-luna', 'low', 'gpt-6-luna', 'max'],
     ['librarian', 'gpt-6-luna', 'high', 'gpt-6-luna', 'max'],
-    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.1-sol', 'xhigh'],
+    ['oracle', 'gpt-6-astra', 'medium', 'gpt-6.2-sol', 'xhigh'],
     ['designer', 'gpt-6-sol', 'medium', 'gpt-6-luna', 'max'],
     ['worker', 'gpt-6-luna', 'max', 'gpt-6-luna', 'max'],
   ] as const)('advances legacy Pi %s with thinking migration', (role, model, thinking, expectedModel, expectedEffort) => {

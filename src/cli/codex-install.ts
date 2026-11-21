@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEGACY_OPENAI_PRESET } from '../config/constants';
+import { previousOpenAIPresets } from '../config/constants';
 import {
   codexAdapter,
   renderLegacyCodexAgentArtifacts,
@@ -499,8 +499,11 @@ function resolveRoleTomlContent(options: {
   const installedContent = readFileSync(options.targetPath, 'utf8');
   const currentModel = parseRoleTomlModel(installedContent);
   const currentEffort = parseRoleTomlEffort(installedContent);
-  const legacy = LEGACY_OPENAI_PRESET[options.role];
-  if (currentModel === legacy.model && currentEffort === legacy.effort) {
+  if (
+    previousOpenAIPresets(options.role).some(
+      ({ model, effort }) => currentModel === model && currentEffort === effort,
+    )
+  ) {
     options.nextState.models[key] = renderedModel;
     if (configuredModel !== undefined) {
       options.nextState.configuredModels ??= {};

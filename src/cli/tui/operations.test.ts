@@ -261,7 +261,7 @@ describe('TUI operations', () => {
       getOpenCodeModelRoles().find(({ role }) => role === 'orchestrator'),
     ).toEqual({
       role: 'orchestrator',
-      model: 'openai/gpt-6.1-sol',
+      model: 'openai/gpt-6.2-sol',
       effort: { kind: 'effort', value: 'high' },
     });
   });
@@ -613,7 +613,7 @@ describe('shipped model restoration', () => {
     const expected = [
       ['explorer', 'gpt-6-luna', 'max'],
       ['librarian', 'gpt-6-luna', 'max'],
-      ['oracle', 'gpt-6.1-sol', 'xhigh'],
+      ['oracle', 'gpt-6.2-sol', 'xhigh'],
       ['designer', 'gpt-6-luna', 'max'],
       ['worker', 'gpt-6-luna', 'max'],
     ];
@@ -632,7 +632,7 @@ describe('shipped model restoration', () => {
       ]),
     );
     expect(compact('opencode')).toEqual([
-      ['orchestrator', 'openai/gpt-6.1-sol', 'high'],
+      ['orchestrator', 'openai/gpt-6.2-sol', 'high'],
       ...expected.map(([role, model, effort]) => [
         role,
         `openai/${model}`,
@@ -672,7 +672,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
         ({ code }) => code === 'codex-effort-model-unsupported',
       ),
     ).toBe(true);
-    const catalog = ['gpt-6-luna', 'gpt-6.1-sol'].map((model) => ({
+    const catalog = ['gpt-6-luna', 'gpt-6.2-sol'].map((model) => ({
       id: model,
       catalogId: `openai/${model}`,
       label: model,
@@ -687,7 +687,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
     ).toEqual([
       { role: 'explorer', model: 'gpt-6-luna', effort: 'max' },
       { role: 'librarian', model: 'gpt-6-luna', effort: 'max' },
-      { role: 'oracle', model: 'gpt-6.1-sol', effort: 'xhigh' },
+      { role: 'oracle', model: 'gpt-6.2-sol', effort: 'xhigh' },
       { role: 'designer', model: 'gpt-6-luna', effort: 'max' },
       { role: 'worker', model: 'gpt-6-luna', effort: 'max' },
     ]);

@@ -8,10 +8,10 @@ you can create your own profiles using models available to your account.
 
 | Role | Model | Effort/variant |
 | --- | --- | --- |
-| `orchestrator` | `openai/gpt-6.1-sol` | `high` |
+| `orchestrator` | `openai/gpt-6.2-sol` | `high` |
 | `explorer` | `openai/gpt-6-luna` | `max` |
 | `librarian` | `openai/gpt-6-luna` | `max` |
-| `oracle` | `openai/gpt-6.1-sol` | `xhigh` |
+| `oracle` | `openai/gpt-6.2-sol` | `xhigh` |
 | `designer` | `openai/gpt-6-luna` | `max` |
 | `worker` | `openai/gpt-6-luna` | `max` |
 
@@ -43,7 +43,7 @@ Both files use this schema (assignments may be partial):
   "profiles": {
     "focused": {
       "agents": {
-        "orchestrator": { "model": "openai/gpt-6.1-sol", "variant": "high" },
+        "orchestrator": { "model": "openai/gpt-6.2-sol", "variant": "high" },
         "worker": { "model": "openai/gpt-6-luna", "variant": "max" }
       }
     }

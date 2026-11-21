@@ -709,7 +709,7 @@ test('restores Codex defaults without replacing unrelated TOML settings', () => 
     const configBefore = readFileSync(configPath, 'utf8');
     const plan = buildRestoreModelPlan(
       'codex',
-      ['gpt-6-luna', 'gpt-6.1-sol'].map((model) => ({
+      ['gpt-6-luna', 'gpt-6.2-sol'].map((model) => ({
         id: `openai/${model}`,
         catalogId: `openai/${model}`,
         label: model,

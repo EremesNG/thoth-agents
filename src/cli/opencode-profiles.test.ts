@@ -73,6 +73,7 @@ it('advances previous shipped pairs in openai and the active agents roster, pres
   };
   store.save('global', 'openai', previous);
   const applied = structuredClone(previous);
+  applied.agents.oracle = { model: 'openai/gpt-6.1-sol', variant: 'xhigh' };
   applied.agents.worker = { model: 'custom/worker', variant: 'high' };
   // Same legacy model, different effort is also an operator override.
   applied.agents.designer.variant = 'low';
@@ -84,7 +85,7 @@ it('advances previous shipped pairs in openai and the active agents roster, pres
   expect(document.active).toBe('agents');
   expect(document.profiles.openai.agents).toEqual(MODEL_MAPPINGS.openai);
   expect(document.profiles.agents.agents.oracle).toEqual({
-    model: 'openai/gpt-6.1-sol',
+    model: 'openai/gpt-6.2-sol',
     variant: 'xhigh',
   });
   expect(document.profiles.agents.agents.worker).toEqual({

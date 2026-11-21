@@ -22,7 +22,7 @@ describe('providers', () => {
     expect(config).not.toHaveProperty('presets');
     const agents = MODEL_MAPPINGS.openai;
     expect(agents).toBeDefined();
-    expect(agents.orchestrator.model).toBe('openai/gpt-6.1-sol');
+    expect(agents.orchestrator.model).toBe('openai/gpt-6.2-sol');
     expect(agents.orchestrator.variant).toBe('high');
     expect(agents.worker).toEqual({
       model: 'openai/gpt-6-luna',
@@ -32,9 +32,9 @@ describe('providers', () => {
 
   test('OpenAI profile uses the shipped role models and variants', () => {
     const agents = MODEL_MAPPINGS.openai;
-    expect(agents.orchestrator.model).toBe('openai/gpt-6.1-sol');
+    expect(agents.orchestrator.model).toBe('openai/gpt-6.2-sol');
     expect(agents.oracle).toEqual({
-      model: 'openai/gpt-6.1-sol',
+      model: 'openai/gpt-6.2-sol',
       variant: 'xhigh',
     });
     expect(agents.librarian).toEqual({

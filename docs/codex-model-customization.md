@@ -7,7 +7,7 @@ The mandatory Codex CLI setup creates five user custom-agent TOMLs under
 | --- | --- | --- |
 | `explorer` | `gpt-6-luna` | `max` |
 | `librarian` | `gpt-6-luna` | `max` |
-| `oracle` | `gpt-6.1-sol` | `xhigh` |
+| `oracle` | `gpt-6.2-sol` | `xhigh` |
 | `designer` | `gpt-6-luna` | `max` |
 | `worker` | `gpt-6-luna` | `max` |
 

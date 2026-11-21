@@ -227,7 +227,7 @@ content, so review before sharing console output.
 To diagnose the small typo case (POSIX shell; PowerShell uses `$env:NAME='value'`):
 
 ```sh
-THOTH_EVAL_MODEL=openai-codex/gpt-6.1-sol THOTH_EVAL_CASE=small-no-record THOTH_EVAL_VERBOSE=1 pnpm run eval:pi
+THOTH_EVAL_MODEL=openai-codex/gpt-6.2-sol THOTH_EVAL_CASE=small-no-record THOTH_EVAL_VERBOSE=1 pnpm run eval:pi
 ```
 
 Its grader requires the corrected README content, tolerating only CRLF/LF and

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSeq, parseDocument } from 'yaml';
-import { LEGACY_OPENAI_PRESET } from '../config/constants';
+import { previousOpenAIPresets } from '../config/constants';
 import {
   PI_SPECIALIST_ROLES,
   piSpecialistName,
@@ -87,10 +87,11 @@ function preserveOverrides(
 
   const oldModel = field(current, 'model');
   const oldEffort = field(current, 'effort') ?? field(current, 'thinking');
-  const legacy = LEGACY_OPENAI_PRESET[role];
-  const advancesLegacy =
-    isSentinel(oldModel ?? '', `openai-codex/${legacy.model}`) &&
-    isSentinel(oldEffort ?? '', legacy.effort);
+  const advancesLegacy = previousOpenAIPresets(role).some(
+    ({ model, effort }) =>
+      isSentinel(oldModel ?? '', `openai-codex/${model}`) &&
+      isSentinel(oldEffort ?? '', effort),
+  );
   const transitionalModelInherit = isSentinel(
     field(current, 'thoth-model-inherit') ?? '',
     'true',

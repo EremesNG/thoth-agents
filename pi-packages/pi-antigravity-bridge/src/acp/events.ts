@@ -31,9 +31,9 @@ export type MappedUpdate =
 	| { kind: "text"; delta: string }
 	| { kind: "thought"; delta: string }
 	| { kind: "usage"; used: number }
-	| { kind: "tool_start"; toolCallId: string; name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string }
-	| { kind: "tool_done"; toolCallId: string; output?: string; diff?: AcpEditDiff; mcpServer?: string }
-	| { kind: "tool_error"; toolCallId: string; message: string; mcpServer?: string }
+	| { kind: "tool_start"; toolCallId: string; name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string; mcp?: true }
+	| { kind: "tool_done"; toolCallId: string; output?: string; diff?: AcpEditDiff; mcpServer?: string; mcp?: true }
+	| { kind: "tool_error"; toolCallId: string; message: string; mcpServer?: string; mcp?: true; name?: string }
 	| { kind: "replay_user" }
 	| null;
 
@@ -61,7 +61,8 @@ export function mapUpdate(update: unknown): MappedUpdate {
 				toolCallId: id,
 				name: metaToolName(u._meta) ?? nativeMcpTool(u)?.name ?? stringField(u.name) ?? toolName(u.title, u.kind),
 				args: rawArguments(u.rawInput),
-				mcpServer: stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server,
+				mcpServer: mcpIdentity(u).server,
+				...(mcpIdentity(u).mcp ? { mcp: true as const } : {}),
 				// Edits carry their native diff HERE, on the pending tool_call
 				// frame (run 6:10) — the completed update carries only display
 				// text. contentDiff on the update stays as a future-build
@@ -80,20 +81,25 @@ export function mapUpdate(update: unknown): MappedUpdate {
 				// failure next to a successful edit.
 				const raw = stringField(u.rawOutput);
 				if (raw?.includes("approved but never executed")) return null;
-				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server;
-				return { kind: "tool_error", toolCallId: id, message: raw ?? "tool failed", ...(mcpServer ? { mcpServer } : {}) };
+				const { server: mcpServer, mcp } = mcpIdentity(u);
+				// Explicit identity carried by the failed update itself (an attested
+				// `name` field), kept only when no MCP marker is present: the driver
+				// uses it when the start record is missing.
+				const name = mcp || mcpServer ? undefined : stringField(u.name);
+				return { kind: "tool_error", toolCallId: id, message: raw ?? "tool failed", ...(mcpServer ? { mcpServer } : {}), ...(mcp ? { mcp: true as const } : {}), ...(name ? { name } : {}) };
 			}
 			if (u.status === "completed") {
 				// content[] first (edits carry their diff there); rawOutput alone is
 				// often just the server's display title, not the result (probe
 				// 2026-09-03: completed MCP call, rawOutput "Call bridge_echo").
 				const diff = contentDiff(u.content);
-				const mcpServer = stringField(recordField(recordField(u._meta).mcp).server) ?? nativeMcpTool(u)?.server;
+				const { server: mcpServer, mcp } = mcpIdentity(u);
 				return {
 					kind: "tool_done",
 					toolCallId: id,
 					output: contentText(u.content) ?? stringField(u.rawOutput),
 					...(mcpServer ? { mcpServer } : {}),
+					...(mcp ? { mcp: true as const } : {}),
 					...(diff ? { diff } : {}),
 				};
 			}
@@ -115,6 +121,17 @@ function rawArguments(rawInput: unknown): Record<string, unknown> {
 	return typeof args === "object" && args !== null && !Array.isArray(args)
 		? (args as Record<string, unknown>)
 		: rec;
+}
+
+/** MCP provenance, carried separately from server identity: any `_meta.mcp`
+ *  marker (server OR tool, either alone) or a known bridge-prefixed name marks
+ *  the call as MCP, so a partial frame (tool without server) is never native. */
+function mcpIdentity(update: Record<string, unknown>): { server: string | undefined; mcp: boolean } {
+	const meta = recordField(recordField(update._meta).mcp);
+	const server = stringField(meta.server) ?? nativeMcpTool(update)?.server;
+	// Flag only the serverless case; a known server already implies MCP.
+	const mcp = server === undefined && (metaToolName(update._meta) !== undefined || Object.keys(meta).length > 0);
+	return { server, mcp };
 }
 
 /** Native frames omit _meta; only known bridge identities are unambiguous. */
@@ -214,6 +231,41 @@ export function mapStopReason(stopReason: unknown): {
 			return { status: "OK", aborted: false };
 	}
 }
+
+/** Stop reasons the ACP spec defines. Anything else reaching mapStopReason's
+ *  default (OK) is server drift - agy 1.5.x sent the stream-json style "stop"
+ *  after a failed native tool (upstream 9ba4314) - and is logged by the driver. */
+export const KNOWN_STOP_REASONS: ReadonlySet<string> = new Set([
+	"end_turn",
+	"cancelled",
+	"max_tokens",
+	"refusal",
+	"max_turn_requests",
+]);
+
+/** agy-native tool names (agy 1.5.13 stream-json `init.tools` inventory plus
+ *  the legacy/1.5.11 file-tool family). Native provenance of a failed ACP tool
+ *  is POSITIVE evidence only: the start record names one of these and carries
+ *  no MCP marker. Absence of an MCP marker alone proves nothing (foreign MCP
+ *  failures can arrive metadata-less). `call_mcp_tool` is the MCP wrapper and
+ *  deliberately absent. */
+export const KNOWN_NATIVE_AGY_TOOLS: ReadonlySet<string> = new Set([
+	"ask_custom_permission", "ask_permission", "ask_question", "browser_click_element", "browser_drag_pixel_to_pixel",
+	"browser_get_dom", "browser_get_network_request", "browser_input", "browser_list_network_requests", "browser_mouse_down",
+	"browser_mouse_up", "browser_move_mouse", "browser_press_key", "browser_refresh_page", "browser_resize_window",
+	"browser_scroll", "browser_scroll_dom", "browser_select_option", "browser_subagent", "capture_browser_console_logs",
+	"capture_browser_screenshot", "click_browser_pixel", "command_status", "define_subagent", "delete_knowledge",
+	"execute_browser_javascript", "find_by_name", "finish", "generate_image", "grep_search", "invoke_subagent",
+	"list_browser_pages", "list_dir", "list_permissions", "list_plugin_accounts", "list_resources", "manage_inbox",
+	"manage_subagents", "manage_task", "multi_replace_file_content", "notebook_edit", "notebook_execution",
+	"open_browser_url", "read_browser_page", "read_resource", "read_url_content", "replace_file_content", "run_command",
+	"run_workflow", "schedule", "search_marketplace", "search_web", "sed_file", "send_command_input", "send_message",
+	"view_file", "wait", "wait_5_seconds", "write_to_file",
+	// ACP-carrier names attested by this package's live ACP evidence (tests/helpers
+	// fake server fixtures, docs/ACP-PROTOCOL-REFERENCE.md, AC-6 probe): the file
+	// family create_file/edit_file/write_file and read_file.
+	"create_file", "edit_file", "write_file", "read_file",
+]);
 
 /** Defensive accumulation with the cumulative-resend port. RC01 streams pure
  *  deltas (verified: mid-token splits across the run-5 stress streams), so on

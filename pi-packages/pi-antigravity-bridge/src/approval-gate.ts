@@ -1,7 +1,8 @@
 // Approval-gate shadow tools (docs/TODO.md section 2.5, design v2).
 //
 // When the approval gate is active, the bridge re-registers pi's mutating
-// builtins (bash, write, edit) as SHADOW tools: same name, same schema plus
+// builtins (bash, write, edit) as SHADOW tools (plus agy_native_approval for
+// unknown native tools, carrying their raw name and arguments): same name, same schema plus
 // internal __agy* marker fields. Two behaviors, keyed on the marker:
 //
 //   - marker absent: delegate to the captured real builtin. Normal pi
@@ -28,6 +29,8 @@ import type {
 	ExtensionToolContext,
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { isAbsoluteTargetPath } from "./native-tool-policy.js";
 
 /** Marker flag: this shadow-tool call is an approval round-trip, not a real
  *  invocation. The bridge's provider sets it when composing the toolUse. */
@@ -81,20 +84,55 @@ export function stripMarkerFields(params: Record<string, unknown>): Record<strin
 	return out;
 }
 
+/** Name of the production Pi shadow for native tools with no known target
+ *  shape. Its schema carries the raw tool name and arguments only. */
+export const NATIVE_APPROVAL_TOOL = "agy_native_approval";
+
 export interface ShadowMapping {
-	shadow: "bash" | "write" | "edit";
+	shadow: "bash" | "write" | "edit" | typeof NATIVE_APPROVAL_TOOL;
 	input: Record<string, unknown>;
 }
 
+/** The call cannot be approved against a trustworthy target: deny. */
+export interface NativeDenial {
+	deny: string;
+}
+
 /** Map an agy native tool call (hook stdin payload) onto the shadow surface.
- *  Field names follow the TODO 2.5 table: create_file is live-captured (F1);
- *  the edit-class arg names are docs-attested and degrade gracefully - a
- *  wrong guess only weakens the confirm-dialog text, never the decision
- *  (the tool runs in agy's loop either way). Unknown names return null:
- *  read-only tools are not gated. */
-export function mapNativeToShadow(name: string, args: Record<string, unknown>): ShadowMapping | null {
+ *  Argument names are runtime-attested: create_file is live-captured (F1), the
+ *  write/edit pairs come from agy 1.5.11 PreToolUse captures (Path/Content and
+ *  Path/Target/Replacement; upstream 62b2a20/b5aa839) with the older
+ *  docs-attested names kept as fallbacks. A known write/edit tool is approved
+ *  only against an ABSOLUTE target path taken verbatim from its arguments (the
+ *  path agy will mutate); a relative, missing, conflicting or unresolvable
+ *  target - or an edit carrying no change - is denied, never guessed. Unknown
+ *  tools map to the raw-arguments approval shadow (no fabricated path or
+ *  command). */
+export function mapNativeToShadow(
+	name: string,
+	args: Record<string, unknown>,
+	platform: NodeJS.Platform = process.platform,
+): ShadowMapping | NativeDenial {
 	const a = args ?? {};
 	const str = (v: unknown): string => (typeof v === "string" ? v : v === undefined || v === null ? "" : String(v));
+	const pick = (...vals: unknown[]): string => {
+		for (const v of vals) {
+			const s = str(v);
+			if (s !== "") return s;
+		}
+		return "";
+	};
+	const target = (): string | NativeDenial => {
+		const candidates = [a.Path, a.TargetFile].filter((v) => v !== undefined && v !== null && v !== "");
+		const first = candidates[0];
+		if (typeof first !== "string" || candidates.some((v) => v !== first)) {
+			return { deny: `${name}: target path is missing, not a string or ambiguous; refusing to approve against a guessed path` };
+		}
+		if (!isAbsoluteTargetPath(first, platform)) {
+			return { deny: `${name}: target path must be absolute (got ${JSON.stringify(first.slice(0, 200))}); refusing to approve against a guessed path` };
+		}
+		return first;
+	};
 	switch (name) {
 		case "run_command": {
 			const input: Record<string, unknown> = { command: str(a.CommandLine) };
@@ -102,33 +140,77 @@ export function mapNativeToShadow(name: string, args: Record<string, unknown>): 
 			return { shadow: "bash", input };
 		}
 		case "write_to_file":
-		case "create_file":
-			return { shadow: "write", input: { path: str(a.TargetFile), content: str(a.CodeContent) } };
+		case "write_file":
+		case "create_file": {
+			const path = target();
+			if (typeof path !== "string") return path;
+			return { shadow: "write", input: { path, content: pick(a.Content, a.CodeContent) } };
+		}
 		case "replace_file_content":
-		case "edit_file":
+		case "edit_file": {
+			const path = target();
+			if (typeof path !== "string") return path;
 			return {
 				shadow: "edit",
 				input: {
-					path: str(a.TargetFile),
-					edits: [{ oldText: str(a.SearchText), newText: str(a.ReplacementContent) }],
-				},
-			};
-		case "multi_replace_file_content": {
-			const chunks = Array.isArray(a.ReplacementChunks) ? a.ReplacementChunks : [];
-			return {
-				shadow: "edit",
-				input: {
-					path: str(a.TargetFile),
-					edits: chunks.map((c) => {
-						const chunk = (c ?? {}) as Record<string, unknown>;
-						return { oldText: str(chunk.SearchText), newText: str(chunk.ReplacementContent) };
-					}),
+					path,
+					edits: [{ oldText: pick(a.Target, a.SearchText), newText: pick(a.Replacement, a.ReplacementContent) }],
 				},
 			};
 		}
+		case "multi_replace_file_content": {
+			const path = target();
+			if (typeof path !== "string") return path;
+			const chunks = Array.isArray(a.ReplacementChunks) ? a.ReplacementChunks : [];
+			const edits = chunks.map((c) => {
+				const chunk = (c ?? {}) as Record<string, unknown>;
+				return { oldText: pick(chunk.Target, chunk.SearchText), newText: pick(chunk.Replacement, chunk.ReplacementContent) };
+			});
+			if (edits.length === 0 || edits.every((e) => e.oldText === "" && e.newText === "")) {
+				return { deny: `${name}: no resolvable edit chunks; refusing to approve an edit with no change information` };
+			}
+			return { shadow: "edit", input: { path, edits } };
+		}
 		default:
-			return null;
+			return { shadow: NATIVE_APPROVAL_TOOL, input: { tool: name, arguments: a } };
 	}
+}
+
+/** Confirmation body for a gated call. Unknown native tools show their raw
+ *  name and COMPLETE serialized arguments: approval must never rest on a
+ *  silently truncated view of what agy will run. */
+export function describeApprovalTarget(params: Record<string, unknown>): string {
+	if (typeof params.command === "string") return params.command;
+	if (typeof params.path === "string") return params.path;
+	if (typeof params.tool === "string") {
+		// Compact JSON has no structural whitespace. Escape spaces too so every
+		// run can be counted, and escape every non-ASCII UTF-16 code unit to
+		// make bidi, zero-width and terminal control characters inert.
+		return JSON.stringify({ tool: params.tool, arguments: params.arguments ?? null })
+			.replace(/[^!-~]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`);
+	}
+	return JSON.stringify(stripMarkerFields(params));
+}
+
+/** Base definition behind the unknown-target approval shadow. Its schema
+ *  carries the raw native tool name and arguments only; it can never execute
+ *  anything (marker calls are decided by the policy, non-marker calls refuse),
+ *  and its declaration is hidden from provider requests so no model is invited
+ *  to call it. */
+export function createNativeApprovalBase(): AnyToolDefinition {
+	return {
+		name: NATIVE_APPROVAL_TOOL,
+		label: "Antigravity native approval",
+		description: "Internal approval round-trip for an Antigravity native tool without a known target. Never call this yourself.",
+		prepareLoadout: () => ({ hiddenDeclarations: [NATIVE_APPROVAL_TOOL] }),
+		parameters: Type.Object({
+			tool: Type.String({ description: "Raw native agy tool name awaiting approval." }),
+			arguments: Type.Unknown({ description: "Raw native tool arguments, shown as reversible escaped JSON for approval." }),
+		}),
+		execute: async () => {
+			throw new Error(`${NATIVE_APPROVAL_TOOL} is an approval-only tool and never executes.`);
+		},
+	} as unknown as AnyToolDefinition;
 }
 
 /** Options for the shadow factory. */

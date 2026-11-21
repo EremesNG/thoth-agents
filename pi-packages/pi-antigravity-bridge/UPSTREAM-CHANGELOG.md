@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 - Adapt `e03776a`, `7a4e9b8`, `22364ad` and `01e10ff` home parsing to acquired `pi-agy-<8 hex>` identities and mode-qualified fallbacks: private stream-json keeps additive config, legacy-global uses global registration, ACP fails visibly. `AGY_AGENTS_ROOT` keeps legacy behavior. Dispose on process close, retaining fenced homes for dead-owner startup sweeping; do not copy upstream PID/group cleanup.
 - Adopt `e0728f8` occupancy-first context totals, distinct from billing fields, with per-turn batch reset.
 
+### Safety sync (agy-upstream-safety-sync; local port of upstream `EstebanForge/pi-extensions` after base `cdcfc04`)
+
+Ported SHAs: `62b2a20` (approval gate for agy 1.5.11 + ACP, #18), `b5aa839` (issue #18 review hardening, diagnostic half and fail-closed merge), `9ba4314` (silent ACP tool failures), `9d20772` (quota notice as retryable error). Local adaptations: the gate matcher is all-tools with allow-by-exception decided in the handler (upstream kept a finite mutator list); the ACP home `config/hooks.json` merge is verified by read-back before every dispatch on both carriers and gated ACP under `AGY_AGENTS_ROOT` is refused; known write/edit tools need an absolute target; unknown tools use the hidden `agy_native_approval` shadow; the hook handler owns one overall deadline below agy's timeout (documented residual: a crashed or killed hook process); native-failure provenance is positive-only and the diagnostic omits agy failure text entirely (tool name, fixed message and a transcript pointer); quota classification is shared by the main and late-redelivery settlement and leaves bindings untouched. Not ported here: compaction/rotation (`59376a7`, `806e712`, `79f8cde`, `ec307b5`), agent-directory resolution (`8dee43b`), ACP startup timeout (`f6fb22d`).
+
 Earlier unreleased notes below describe the pre-migration baseline and are retained as history, not current setup instructions. Current behavior: [ENGINES.md](docs/ENGINES.md).
 
 ### Changed

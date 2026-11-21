@@ -24,6 +24,16 @@
 // whose pid is dead; groups of live sessions and foreign groups are never
 // touched.
 //
+// ALLOW-BY-EXCEPTION (agy-upstream-safety-sync): the owned group matches every
+// native tool. The handler passes only the read-only allowlist and positively
+// identified MCP calls itself; everything else goes to the bridge, which parks
+// it for Pi approval (run_command is routed by the guard state). The handler
+// owns ONE overall deadline, strictly below the group's declared hook timeout,
+// that covers stdin reading and every bridge wait, so it always emits a
+// verdict before agy's timeout soft-pass. The residual case - the hook
+// process crashing or being killed before it writes a verdict - cannot be
+// covered from inside the handler and is a documented known limitation.
+//
 // Run: npm test
 
 import fs from "node:fs";
@@ -31,6 +41,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { logsDir } from "./config.js";
 import { APPROVAL_PARK_TIMEOUT_MS, bridgeMcpConfigDir } from "./mcp-server.js";
+import { READ_ONLY_AGY_TOOLS } from "./native-tool-policy.js";
 
 export const HOOK_GROUP = "pi-bridge-gate";
 
@@ -89,12 +100,14 @@ function reconstructedGateGroupPid(key: string, group: unknown): number | null {
 	if (!name || name[1] !== owner[1]) return null;
 	const instanceId = name[2] as string;
 	const fileName = name[3] === "mjs" ? approvalHookFileName(pid, instanceId) : `approval-hook-${pid}-${instanceId}.js`;
-	const expected = buildGateGroup({
+	const opts = {
 		port: 0, token: "", // These fields are not serialized into the group.
 		scriptPath: path.join(logsDir(), fileName),
 		parkBudgetMs: APPROVAL_PARK_TIMEOUT_MS,
-	});
-	return isDeepStrictEqual(group, expected) ? pid : null;
+	};
+	// The pinned pre-change group (what earlier builds actually wrote into the
+	// shared workspace) stays attributable independently of the live matcher.
+	return isDeepStrictEqual(group, buildHistoricalGateGroup(opts)) || isDeepStrictEqual(group, buildGateGroup(opts)) ? pid : null;
 }
 
 /** Guard group-key namespace (shared hooks.json coexistence with approval gate). */
@@ -105,15 +118,35 @@ export function runCommandGuardGroupKey(pid: number = process.pid): string {
 	return `${RUN_COMMAND_GUARD_GROUP_PREFIX}-${pid}`;
 }
 
-/** agy native tools worth gating: everything that mutates the machine. */
-export const GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND =
-	"create_file|write_to_file|replace_file_content|multi_replace_file_content|edit_file";
-export const GATED_AGY_TOOLS = `${GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND}|run_command`;
+/** Matcher of the owned gate group: every native tool. The handler decides
+ *  (allow-by-exception); a regex alternation matcher is what agy 1.5.x
+ *  accepts (the historical `a|b|c` lists were live-probed). */
+export const ALL_TOOLS_MATCHER = ".*";
 
-/** The same list as a set, for the bridge's POST /approval validation: a
- *  payload for anything else is answered with a direct deny (defense in
- *  depth - the hooks matcher should never let one through). */
-export const GATED_AGY_TOOL_SET: ReadonlySet<string> = new Set(GATED_AGY_TOOLS.split("|"));
+/** PINNED pre-change matcher (a literal copy, never derived from live
+ *  constants) so legacy workspace groups written by earlier builds remain
+ *  recognized and swept after the live matcher moved on. */
+const HISTORICAL_GATED_AGY_TOOLS =
+	"create_file|write_to_file|replace_file_content|multi_replace_file_content|edit_file|run_command";
+
+/** The exact group shape earlier builds staged (pinned; see above). */
+function buildHistoricalGateGroup(opts: { scriptPath: string; parkBudgetMs: number }): Record<string, unknown> {
+	return {
+		enabled: true,
+		PreToolUse: [
+			{
+				matcher: HISTORICAL_GATED_AGY_TOOLS,
+				hooks: [
+					{
+						type: "command",
+						command: `node ${JSON.stringify(opts.scriptPath)}`,
+						timeout: Math.max(60, Math.ceil(opts.parkBudgetMs / 1000) + 60),
+					},
+				],
+			},
+		],
+	};
+}
 
 export interface StageOptions {
 	/** Bridge HTTP port (the approval endpoints live on the bridge server). */
@@ -124,70 +157,122 @@ export interface StageOptions {
 	scriptPath: string;
 	/** Full park budget in ms; the staged hook timeout exceeds it. */
 	parkBudgetMs: number;
-	/** Exclude run_command from the gate matcher when the headless guard owns it. */
-	excludeRunCommand?: boolean;
 }
 
-/** Source of the staged poll script. Written to disk by the caller (data
- *  dir), referenced by absolute path from the staged hooks.json. Early-acks
- *  via POST /approval, then polls GET /approval/<ticket> until a terminal
- *  decision or the deadline. Terminal: prints the JSON decision on stdout.
- *  Deadline hit: prints {"decision":"deny", ...} (fail closed) - agy may
- *  still soft-pass a timed-out hook, but a printed deny is honored (V2). */
-export function hookScriptSource(opts: { port: number; token: string; deadlineMs: number }): string {
+/** Margin between the handler's internal overall deadline and the park
+ *  budget it must outlast (the bridge park answers first, then the handler
+ *  prints the terminal deny it received). */
+export const HANDLER_DEADLINE_GRACE_MS = 20_000;
+
+/** Minimum gap kept between the handler's overall deadline and the group's
+ *  declared agy hook timeout: a timed-out hook soft-passes (V3). */
+export const HANDLER_TIMEOUT_MARGIN_MS = 30_000;
+
+/** The handler's one overall deadline for a given park budget. */
+export function handlerDeadlineMs(parkBudgetMs: number): number {
+	return parkBudgetMs + HANDLER_DEADLINE_GRACE_MS;
+}
+
+/** Source of the staged handler script. Written to disk by the caller (data
+ *  dir), referenced by absolute path from the staged hooks.json. Reads the
+ *  hook payload, passes read-only tools and positively identified MCP calls
+ *  itself, and otherwise early-acks via POST /approval then polls GET
+ *  /approval/<ticket> for the terminal Pi decision. EVERY path ends in one
+ *  printed JSON verdict before the single overall deadline (stdin reading and
+ *  all bridge waits included); a valid Pi allow/deny is forwarded, anything
+ *  else - failure, malformed reply, no decision in time - is deny. */
+export function hookScriptSource(opts: { port: number; token: string; deadlineMs: number; ownServerName?: string }): string {
 	return `#!/usr/bin/env node
 // Bridge approval hook (generated; do not edit). Polls the pi-antigravity-bridge.
 const PORT = ${opts.port};
 const TOKEN = ${JSON.stringify(opts.token)};
-const DEADLINE = Date.now() + ${opts.deadlineMs};
-// Per-fetch abort: a hung fetch must never outlive the park deadline. A hook
-// killed by agy's staged timeout soft-passes (V3), so the script itself must
-// always reach a printed deny.
-const POST_TIMEOUT_MS = Math.min(10_000, ${opts.deadlineMs});
-let body = "";
-process.stdin.setEncoding("utf8");
-for await (const chunk of process.stdin) body += chunk;
-let ticket = "";
-try {
-	const res = await fetch(\`http://127.0.0.1:\${PORT}/approval\`, {
-		method: "POST",
-		headers: { "content-type": "application/json", "x-bridge-token": TOKEN },
-		body,
-		signal: AbortSignal.timeout(POST_TIMEOUT_MS),
-	});
-	const json = await res.json();
-	// Ungated payloads get a terminal decision right on the POST (no park).
-	if (json && typeof json === "object" && typeof json.decision === "string") {
-		console.log(JSON.stringify(json));
-		process.exit(0);
+const OVERALL_MS = ${opts.deadlineMs};
+const OWN_SERVER = ${JSON.stringify(opts.ownServerName ?? "")};
+const READ_ONLY = new Set(${JSON.stringify(READ_ONLY_AGY_TOOLS)});
+const DEADLINE = Date.now() + OVERALL_MS;
+let finished = false;
+// The single verdict writer. Everything below funnels through it exactly once.
+function verdict(obj) {
+	if (finished) return;
+	finished = true;
+	clearTimeout(overall);
+	const safety = setTimeout(() => process.exit(0), 2000);
+	safety.unref();
+	process.stdout.write(JSON.stringify(obj) + "\\n", () => process.exit(0));
+}
+function deny(reason) {
+	verdict({ decision: "deny", reason });
+}
+// One overall deadline over stdin reading AND every bridge wait. A hook killed
+// by agy's staged timeout soft-passes (V3), so this always prints a deny first.
+const overall = setTimeout(() => deny("approval gate deadline exceeded"), OVERALL_MS);
+function validDecision(json) {
+	return !!json && typeof json === "object" && (json.decision === "allow" || (json.decision === "deny" && typeof json.reason === "string" && json.reason.length > 0));
+}
+function isMcp(name, args) {
+	if (name === "call_mcp_tool") {
+		const a = args && typeof args === "object" ? args : {};
+		return [a.ServerName, a.server_name, a.serverName, a.server].some((v) => typeof v === "string" && v.length > 0);
 	}
-	ticket = json?.ticket ?? "";
-} catch {}
-if (!ticket) {
-	console.log(JSON.stringify({ decision: "deny", reason: "approval gate unreachable (bridge down?)" }));
-	process.exit(0);
+	return OWN_SERVER !== "" && name.startsWith("mcp_" + OWN_SERVER + "_") && name.length > OWN_SERVER.length + 5;
 }
-while (Date.now() < DEADLINE) {
-	await new Promise((r) => setTimeout(r, 500));
+const remaining = () => Math.max(1, DEADLINE - Date.now());
+try {
+	let body = "";
+	process.stdin.setEncoding("utf8");
+	for await (const chunk of process.stdin) body += chunk;
+	let payload;
 	try {
-		const res = await fetch(\`http://127.0.0.1:\${PORT}/approval/\${encodeURIComponent(ticket)}\`, {
-			headers: { "x-bridge-token": TOKEN },
-			// Bounded by the remaining park budget: an aborted poll falls through
-			// to the loop condition and lands on the deadline deny.
-			signal: AbortSignal.timeout(Math.max(1, DEADLINE - Date.now())),
-		});
-		const json = await res.json();
-		if (json?.status !== "pending") {
+		payload = JSON.parse(body);
+	} catch {
+		deny("approval gate could not parse the hook payload");
+	}
+	const name = payload?.toolCall?.name;
+	if (finished) {
+		// already denied above
+	} else if (typeof name !== "string" || name.length === 0) {
+		deny("approval gate payload has no tool name");
+	} else if (READ_ONLY.has(name) || isMcp(name, payload.toolCall.args)) {
+		verdict({ decision: "allow" });
+	} else {
+		let ticket = "";
+		try {
+			const res = await fetch(\`http://127.0.0.1:\${PORT}/approval\`, {
+				method: "POST",
+				headers: { "content-type": "application/json", "x-bridge-token": TOKEN },
+				body,
+				signal: AbortSignal.timeout(Math.min(10_000, remaining())),
+			});
+			const json = await res.json();
+			// Direct terminal decisions (guard/ungated answers) arrive on the POST.
 			if (json && typeof json === "object" && typeof json.decision === "string") {
-				console.log(JSON.stringify(json));
+				if (validDecision(json)) verdict(json);
+				else deny("gate returned an invalid decision");
 			} else {
-				console.log(JSON.stringify({ decision: "deny", reason: "gate returned no decision" }));
+				ticket = typeof json?.ticket === "string" ? json.ticket : "";
 			}
-			process.exit(0);
+		} catch {}
+		if (!finished && !ticket) deny("approval gate unreachable (bridge down?)");
+		while (!finished && Date.now() < DEADLINE) {
+			await new Promise((r) => setTimeout(r, Math.min(500, remaining())));
+			if (finished) break;
+			try {
+				const res = await fetch(\`http://127.0.0.1:\${PORT}/approval/\${encodeURIComponent(ticket)}\`, {
+					headers: { "x-bridge-token": TOKEN },
+					signal: AbortSignal.timeout(remaining()),
+				});
+				const json = await res.json();
+				if (json?.status !== "pending") {
+					if (validDecision(json)) verdict(json);
+					else deny("gate returned no decision");
+				}
+			} catch {}
 		}
-	} catch {}
+		deny("approval gate deadline exceeded");
+	}
+} catch {
+	deny("approval gate failed");
 }
-console.log(JSON.stringify({ decision: "deny", reason: "approval gate deadline exceeded" }));
 `;
 }
 
@@ -205,7 +290,7 @@ export function buildGateGroup(opts: StageOptions): Record<string, unknown> {
 		enabled: true,
 		PreToolUse: [
 			{
-				matcher: opts.excludeRunCommand ? GATED_AGY_TOOLS_WITHOUT_RUN_COMMAND : GATED_AGY_TOOLS,
+				matcher: ALL_TOOLS_MATCHER,
 				hooks: [
 					{
 						type: "command",

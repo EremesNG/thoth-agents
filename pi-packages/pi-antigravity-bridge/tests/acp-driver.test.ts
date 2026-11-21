@@ -46,6 +46,7 @@ async function runDriver(
 		mcpServers?: () => AcpMcpServer[];
 		onPermissionRequest?: AcpPermissionHandler;
 		permissionParkMs?: number;
+		verifyDelivery?: () => void;
 		signal?: AbortSignal;
 		onActivity?: (activity: DriverActivity) => void;
 		onHandle?: (
@@ -64,6 +65,7 @@ async function runDriver(
 		mcpServers: opts.mcpServers,
 		onPermissionRequest: opts.onPermissionRequest,
 		permissionParkMs: opts.permissionParkMs,
+		verifyDelivery: opts.verifyDelivery,
 		log: () => {},
 	});
 	const activities: DriverActivity[] = [];
@@ -1032,4 +1034,139 @@ test("native abort settles a parked permission as cancelled without teardown", a
  assert.equal((await run.handle.outcome).aborted, true);
  assert.equal(run.driver.snapshot().acp?.kills, 0);
  assert.equal((sentRequests(run._logPath).find((r) => r._permissionOutcome !== undefined) as any)?._permissionOutcome, "cancelled");
+});
+
+describe("acp/driver silent native tool failure (AC-3)", () => {
+	const diag = (run: DriverRun) => run.handle.outcome;
+
+	test.each([
+		["unknown stop reason ('stop')", "tfail-native"],
+		["clean end_turn", "tfail-native-endturn"],
+	])("native failure + no model text settles with a visible diagnostic: %s", async (_label, scenario) => {
+		const run = await tracked(scenario);
+		const outcome = await diag(run);
+		assert.equal(outcome.status, "OK");
+		assert.equal(outcome.response, "[bridge] The turn ended without model output. A native tool failed earlier in this turn: run_command. See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.");
+		// The diagnostic is what the provider surfaces as fallback text: it is the outcome response.
+		assert.equal(textOf(run.activities), "", "no streamed model text");
+	});
+
+	test.each([
+		["attested ACP read_file start record", "tfail-readfile", "read_file"],
+		["explicit identity on the failed update when the start record is missing", "tfail-named", "read_file"],
+		["explicit failed-update identity beats a generic start name (read)", "tfail-genericstart", "read_file"],
+	])("native failure inventory: %s", async (_label, scenario, tool) => {
+		const run = await tracked(scenario);
+		const outcome = await diag(run);
+		assert.equal(outcome.response, "[bridge] The turn ended without model output. A native tool failed earlier in this turn: " + tool + ". See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.");
+	});
+
+	test("explicit failed-update identity never overrides MCP exclusions or unknown names", async () => {
+		for (const scenario of ["tfail-namedmcp", "tfail-namedunknown"]) {
+			const run = await tracked(scenario);
+			assert.doesNotMatch((await diag(run)).response, /native tool failed/, scenario);
+		}
+	});
+
+	test("an unknown stop reason is logged; a known one is not", async () => {
+		const logs: Array<[string, unknown]> = [];
+		const driver = new AcpDriver({ bin: process.execPath, binArgs: [FAKE_SERVER], extraEnv: { ACP_FAKE_SCENARIO: "tfail-native" }, log: (m, d) => { logs.push([m, d]); } });
+		cleanups.push(() => driver.close("shutdown"));
+		const handle = await driver.run({ cwd: process.cwd(), model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi" });
+		for (;;) if ((await handle.next()) === null) break;
+		await handle.outcome;
+		assert.deepEqual(logs.filter(([m]) => m === "acp-unknown-stop-reason").map(([, d]) => d), [{ stopReason: "stop" }]);
+		const clean = new AcpDriver({ bin: process.execPath, binArgs: [FAKE_SERVER], extraEnv: { ACP_FAKE_SCENARIO: "tfail-native-endturn" }, log: (m, d) => { logs.push([`clean:${m}`, d]); } });
+		cleanups.push(() => clean.close("shutdown"));
+		const h2 = await clean.run({ cwd: process.cwd(), model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "hi" });
+		for (;;) if ((await h2.next()) === null) break;
+		await h2.outcome;
+		assert.equal(logs.some(([m]) => m === "clean:acp-unknown-stop-reason"), false);
+	});
+
+	test("later model text keeps the turn unchanged (no diagnostic)", async () => {
+		const run = await tracked("tfail-native-text");
+		const outcome = await diag(run);
+		assert.equal(outcome.response, "Recovered and here is the summary.");
+		assert.equal(outcome.status, "OK");
+	});
+
+	test.each([
+		["MCP failure with server metadata", "tfail-mcp"],
+		["partial MCP metadata (tool without server) colliding with a native name", "tfail-partialmcp"],
+		["partial MCP metadata on the failed update itself", "tfail-partialfail"],
+		["partial MCP metadata with max_tokens", "tfail-partialmcp-maxtokens"],
+		["metadata-less foreign MCP failure (unknown name, no marker)", "tfail-foreign"],
+		["failure of unknown provenance (no start record)", "tfail-unknown"],
+		["native failure but refusal (ERROR status)", "tfail-native-refusal"],
+	])("no diagnostic: %s", async (_label, scenario) => {
+		const run = await tracked(scenario);
+		const outcome = await diag(run);
+		assert.doesNotMatch(outcome.response, /native tool failed/);
+		assert.equal(outcome.response, "");
+	});
+
+	test("native failure + no model text on max_tokens still surfaces the diagnostic (error preserved)", async () => {
+		const run = await tracked("tfail-native-maxtokens");
+		const outcome = await diag(run);
+		assert.equal(outcome.status, "OK");
+		assert.equal(outcome.response, "[bridge] The turn ended without model output. A native tool failed earlier in this turn: run_command. See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.");
+		assert.match(outcome.error ?? "", /token cap/);
+	});
+
+	test("max_tokens with model text or a non-native failure gets no diagnostic", async () => {
+		assert.equal((await diag(await tracked("tfail-native-text-maxtokens"))).response, "Recovered and here is the summary.");
+		assert.equal((await diag(await tracked("tfail-mcp-maxtokens"))).response, "");
+	});
+
+	test("an aborted turn never gets a diagnostic", async () => {
+		const controller = new AbortController();
+		const run = await tracked("tfail-native-hang", {
+			signal: controller.signal,
+			onActivity: (a) => { if (a.type === "tool_error") controller.abort(); },
+		});
+		const outcome = await diag(run);
+		assert.equal(outcome.aborted, true);
+		assert.doesNotMatch(outcome.response, /native tool failed/);
+	});
+
+	test("native failure diagnostic omits even non-secret agy detail", async () => {
+		const outcome = await diag(await tracked("tfail-secret"));
+		assert.equal(outcome.response, "[bridge] The turn ended without model output. A native tool failed earlier in this turn: run_command. See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.");
+	});
+});
+
+describe("acp/driver prompt-boundary delivery recheck", () => {
+	test("rechecks gate delivery after session setup, immediately before the prompt write", async () => {
+		let calls = 0;
+		const run = await tracked("happy", { verifyDelivery: () => { calls += 1; } });
+		assert.equal((await run.handle.outcome).status, "OK");
+		assert.equal(calls, 2, "read-back before setup plus a recheck at the prompt boundary");
+	});
+
+	test("refuses visibly and writes no prompt when the owned groups are lost during setup", async () => {
+		let calls = 0;
+		const dir = tmpDir();
+		const logPath = path.join(dir, "fake-log.jsonl");
+		const driver = new AcpDriver({
+			bin: process.execPath,
+			binArgs: [FAKE_SERVER],
+			extraEnv: { ACP_FAKE_SCENARIO: "happy", ACP_FAKE_LOG: logPath },
+			verifyDelivery: () => {
+				calls += 1;
+				if (calls === 2) throw new Error("gate group lost between read-back and prompt");
+			},
+			log: () => {},
+		});
+		cleanups.push(async () => {
+			await driver.close("shutdown");
+			fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+		});
+		await assert.rejects(
+			driver.run({ cwd: dir, model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, conversationId: null, prompt: "hi", timeoutMin: 0.5 }),
+			/gate group lost between read-back and prompt/,
+		);
+		assert.equal(calls, 2);
+		assert.ok(!sentRequests(logPath).some((r) => r.method === "session/prompt"), "no prompt reached the server");
+	});
 });

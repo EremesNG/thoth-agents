@@ -351,3 +351,67 @@ for (const engine of ["acp", "stream-json"] as const) {
 		}
 	}, 15_000);
 }
+
+const nativeFailureDiagnostic = "[bridge] The turn ended without model output. A native tool failed earlier in this turn: run_command. See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.";
+
+test.each([
+	["max_tokens", "tfail-native-maxtokens"],
+	["unknown stop reason", "tfail-native"],
+	["end_turn", "tfail-native-endturn"],
+])("ACP provider terminal output surfaces the native-failure diagnostic on a non-aborted %s turn with no model text", async (_label, scenario) => {
+	const f = acpFixture();
+	try {
+		f.env.ACP_FAKE_SCENARIO = scenario;
+		const events = await boundary(provider(f.driver, new ToolRoundTrips(f.driver), f.dir, "acp"), "hello");
+		const done = events.find(e => e.type === "done");
+		assert.ok(done, "turn ends with done");
+		const text = done.message.content.flatMap(b => b.type === "text" ? [b.text] : []).join("");
+		assert.equal(text, nativeFailureDiagnostic);
+	} finally { await f.cleanup(); }
+}, 15_000);
+
+test.each([
+	["unstructured failure text", "unexpected detail that is not a credential", ["unexpected detail"]],
+	["Cookie JSON escaped inside a message", JSON.stringify({ message: JSON.stringify({ Cookie: "round5=escapedCookie" }) }), ["round5", "escapedCookie"]],
+	["header tuples", JSON.stringify({ headers: [["Cookie", "round5=tupleCookie"], ["Authorization", "Basic tupleBasic"]] }), ["round5", "tupleCookie", "tupleBasic"]],
+	["JSON Authorization", '{"aUtHoRiZaTiOn": "Basic testUser:jsonCred", "status": 401}', ["testUser:jsonCred"]],
+	["JSON Cookie with escaped quote", JSON.stringify({ cOoKiE: 'a=one; b=two"three; c=four', status: 401 }), ["a=one", "b=two", "c=four"]],
+	["JSON proxy authorization", '{"PROXY-AUTHORIZATION": "Token prox-Cred"}', ["prox-Cred"]],
+	["HTTP mixed-case/folded headers", "aUtHoRiZaTiOn: Basic shortBasic\r\n\tshortFold\r\nCookie: a=one; b=two\r\nSet-Cookie: c=three; d=four\r\nX-API-Key: shortKey", ["shortBasic", "shortFold", "a=one", "b=two", "c=three", "d=four", "shortKey"]],
+	["KV headers", "Proxy-Authorization=Basic shortProxy\nX-Api-Key='short quoted key'", ["shortProxy", "short quoted key"]],
+	["query params", "https://example.test/?api_key=shortA&APIKEY=shortB&token=shortC&secret=shortD&password=shortE&access_token=shortF&refresh_token=shortG", ["shortA", "shortB", "shortC", "shortD", "shortE", "shortF", "shortG"]],
+	["quoted kv and JSON params", 'secret="two words" {"Password":"next\\\" value"}', ["two words", "next", "value"]],
+	["percent-encoded parameter names", "https://example.test/?access%5Ftoken=encodedShort&%70assword=otherShort", ["encodedShort", "otherShort"]],
+	["JSON header with multiple cookie values", JSON.stringify({ "Set-Cookie": ["a=firstShort", "b=secondShort"] }, null, 2), ["firstShort", "secondShort"]],
+	["incomplete quoted field", '"Cookie": "partOne; id=partTwo', ["partOne", "partTwo"]],
+	["quoted query credential", 'https://example.test/?%74oken="short spaced credential"&ok=1', ["short spaced credential"]],
+	["standalone schemes", "Bearer bearerCred==, Basic basicCred==, tOkEn tokenCred", ["bearerCred", "basicCred", "tokenCred"]],
+	["URL userinfo", "https://visibleUser:short%3APass@example.test/path ssh://userOnly@host.test/", ["visibleUser", "short%3APass", "userOnly"]],
+	["JWT and opaque keys", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.DK4XA0R5UdfY92iK r6VL2QLh5DkFvEaz-WFcvZKl8vQl0sbN", ["eyJhbGciOiJIUzI1NiJ9", "r6VL2QLh5DkFvEaz"]],
+	["prefixed keys", "sk-testKeyVariant12345 AIzaTestKeyVariant12345", ["sk-testKey", "AIzaTestKey"]],
+	["credential across the 300-character cap", "context ".repeat(34) + '"Cookie": "nearBoundaryCredentialMustNeverAppearHere"', ["near", "BoundaryCredential"]],
+])("ACP provider terminal diagnostic omits all agy failure detail: %s", async (_label, raw, secrets) => {
+	const f = acpFixture();
+	try {
+		f.env.ACP_FAKE_SCENARIO = "tfail-native-maxtokens";
+		f.env.ACP_FAKE_TOOL_FAILURE = `failed: ${raw}`;
+		const events = await boundary(provider(f.driver, new ToolRoundTrips(f.driver), f.dir, "acp"), "hello");
+		const done = events.find(e => e.type === "done");
+		assert.ok(done);
+		const text = done.message.content.flatMap(b => b.type === "text" ? [b.text] : []).join("");
+		// The pre-existing tool-activity thinking line is not the terminal diagnostic.
+		for (const secret of ["failed:", ...secrets]) assert.ok(!text.includes(secret), `terminal diagnostic leaked ${secret}`);
+		assert.equal(text, nativeFailureDiagnostic);
+	} finally { await f.cleanup(); }
+}, 15_000);
+
+test("ACP provider max_tokens with model text keeps the model text and no diagnostic", async () => {
+	const f = acpFixture();
+	try {
+		f.env.ACP_FAKE_SCENARIO = "tfail-native-text-maxtokens";
+		const events = await boundary(provider(f.driver, new ToolRoundTrips(f.driver), f.dir, "acp"), "hello");
+		const text = JSON.stringify(events.find(e => e.type === "done")?.message.content);
+		assert.match(text, /Recovered and here is the summary/);
+		assert.doesNotMatch(text, /native tool failed/);
+	} finally { await f.cleanup(); }
+}, 15_000);

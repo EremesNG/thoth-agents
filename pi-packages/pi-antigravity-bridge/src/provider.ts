@@ -44,6 +44,7 @@ import { toAgyEffort, type AgyModelEntry } from "./models.js";
 import { SessionStore } from "./sessions.js";
 import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
 import { loadConfig } from "./config.js";
+import { classifyQuotaOutcome, quotaErrorMessage } from "./quota-notice.js";
 import { GATE_MARKER, mapNativeToShadow, stripMarkerFields } from "./approval-gate.js";
 import type { ApprovalDecision, ApprovalPayload, ApprovalParkApi } from "./mcp-server.js";
 import path from "node:path";
@@ -954,7 +955,7 @@ export class ToolRoundTrips {
 			? payload.toolCall.args
 			: {}) as Record<string, unknown>;
 		const mapped = mapNativeToShadow(native, args);
-		if (!mapped) return deny(`tool ${native} is not in the approval matcher set`);
+		if ("deny" in mapped) return deny(mapped.deny);
 		const entry: PendingRoundTrip = {
 			kind: "approval",
 			owner,
@@ -1324,10 +1325,10 @@ function emitToolUse(
 }
 
 /** ACP edit-class tool names that carry a file-path arg and land the file on
- *  disk (observed live: edit_file, create_file). Read/execute tools also
+ *  disk (observed live: edit_file, create_file, write_file on agy 1.5.11+). Read/execute tools also
  *  match the arg-shape heuristic but produce no diff (unchanged content), so
  *  the gate avoids mislabeling them as edits. */
-const ACP_EDIT_TOOLS = new Set(["edit_file", "create_file", "write_to_file"]);
+const ACP_EDIT_TOOLS = new Set(["edit_file", "create_file", "write_to_file", "write_file"]);
 
 /** File-path argument of an ACP edit tool (observed: `file_path`); other
  *  tool kinds (execute, read) don't carry one. Returns undefined for
@@ -1577,6 +1578,10 @@ class NativeTurnActivity {
 // Both drivers expose the same outcome promise on every wrapper for one turn.
 // Unlike ids, the promise also cannot collide across independent drivers.
 const nativeTurns = new WeakMap<TurnHandle["outcome"], NativeTurnActivity>();
+/** Handles that produced any non-text, non-usage activity (tool, thought,
+ *  bridge call). Keyed on the handle's outcome so it spans every drain of the
+ *  same underlying turn, including parked re-entries and replay boundaries. */
+const nonTextActivity = new WeakSet<TurnHandle["outcome"]>();
 const pendingTurnMeta = new WeakMap<TurnHandle["outcome"], {
 	stagedAgentName?: string;
 	clearStagedAgent?: boolean;
@@ -1692,6 +1697,7 @@ async function runTurnDriver(
 				for (;;) {
 					const activity = await Promise.race([h.next(), outcomeFailure]);
 					if (!activity) return;
+					if (activity.type !== "text" && activity.type !== "usage") nonTextActivity.add(h.outcome);
 					native.observe(activity, deps.engine);
 					if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") {
 						parked = true;
@@ -1745,6 +1751,13 @@ async function runTurnDriver(
 					if (outcome.aborted || outcome.status === "ERROR" || outcome.modelOutputSeen === false) {
 						finalize(stream, blocks, outcome.aborted ? "aborted" : "error",
 							outcome.aborted ? "Operation aborted" : outcome.error ?? "agy late delivery produced no model output");
+						return { stopped: true, delivered, unknown };
+					}
+					// Quota notice only: retryable error before any fallback output.
+					const lateQuota = classifyQuotaOutcome(outcome, nonTextActivity.has(handle.outcome));
+					if (lateQuota) {
+						deps.log?.("turn-error", { reason: "quota-exhausted", resetsIn: lateQuota.resetsIn ?? null, site: "late-redelivery" }, "error");
+						finalize(stream, blocks, "error", quotaErrorMessage(lateQuota));
 						return { stopped: true, delivered, unknown };
 					}
 					const textAfter = blocks.partial.content.filter(b => b.type === "text").map(b => b.text).join("");
@@ -2060,6 +2073,17 @@ async function runTurnDriver(
 					? `agy returned success but produced no model output: ${dropCause}. Common cause: a very large pasted prompt. The conversation binding was cleared; retry with a smaller prompt.`
 					: "agy stopped responding on the resumed conversation (no response frame before the deadline; the conversation is dead). The binding was cleared, so the next antigravity turn starts a fresh conversation.",
 			);
+			return;
+		}
+		// An OK handle whose only output is an account-quota notice settles as a
+		// retryable provider error. Classified BEFORE any binding/watermark
+		// mutation (the conversation is healthy: an existing binding is never
+		// deleted or replaced, even when the outcome carries a changed id) and
+		// before fallback output.
+		const quota = classifyQuotaOutcome(outcome, nonTextActivity.has(handle.outcome));
+		if (quota) {
+			deps.log?.("turn-error", { reason: "quota-exhausted", resetsIn: quota.resetsIn ?? null, site: "main" }, "error");
+			finalize(stream, blocks, "error", quotaErrorMessage(quota));
 			return;
 		}
 		if (outcome.conversationId) {

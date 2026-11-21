@@ -9,13 +9,17 @@ import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import extension from "../extensions/index.js";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
-import { saveConfig } from "../src/config.js";
+import { logsDir, saveConfig } from "../src/config.js";
 import * as providerModule from "../src/provider.js";
 import { resetSyspromptAgentForTests } from "../src/sysprompt-agent.js";
 import { startMcpServer, TOKEN_HEADER } from "../src/mcp-server.js";
+import * as homeModule from "../src/acp/home.js";
+import * as gateDeliveryModule from "../src/gate-delivery.js";
+import * as guardModule from "../src/run-command-guard.js";
 import { AcpConnection } from "../src/acp/connection.js";
+import * as approvalHookModule from "../src/approval-hook.js";
 import {
-	GATED_AGY_TOOLS,
+	ALL_TOOLS_MATCHER,
 	gateGroupKey,
 	gateHooksStaged,
 	removeGateHooks,
@@ -152,10 +156,9 @@ describe("approval gate coexistence in hooks.json", () => {
 		token: "secret-token",
 		scriptPath: "/data/dir/approval-hook.mjs",
 		parkBudgetMs: 480_000,
-		excludeRunCommand: true,
 	};
 
-	test("staging guard then gate preserves both groups and excludes run_command from gate matcher", () => {
+	test("staging guard then gate preserves both groups; the gate matches every tool (run_command routing is the handler/bridge decision)", () => {
 		const dir = mkTmp();
 		const guardScript = path.join(dir, "run-command-guard.mjs");
 		assert.equal(stageRunCommandGuardHooks(dir, guardScript).wrote, true);
@@ -166,9 +169,7 @@ describe("approval gate coexistence in hooks.json", () => {
 		assert.deepEqual(Object.keys(parsed).sort(), [gateGroupKey(), runCommandGuardGroupKey()].sort());
 
 		const gateGroup = parsed[gateGroupKey()] as { PreToolUse: Array<{ matcher: string }> };
-		assert.equal(gateGroup.PreToolUse[0].matcher.split("|").includes("run_command"), false);
-		assert.match(gateGroup.PreToolUse[0].matcher, /create_file/);
-		assert.match(gateGroup.PreToolUse[0].matcher, /edit_file/);
+		assert.equal(gateGroup.PreToolUse[0].matcher, ALL_TOOLS_MATCHER);
 
 		const guardGroup = parsed[runCommandGuardGroupKey()] as { PreToolUse: Array<{ matcher: string }> };
 		assert.equal(guardGroup.PreToolUse[0].matcher, "run_command");
@@ -201,13 +202,13 @@ describe("approval gate coexistence in hooks.json", () => {
 		assert.deepEqual(Object.keys(readJson(hooksFile(dir))), [runCommandGuardGroupKey()]);
 
 		// Re-add gate and remove guard instead
-		stageGateHooks(dir, { ...gateOpts, excludeRunCommand: false });
+		stageGateHooks(dir, gateOpts);
 		const removedGuard = removeRunCommandGuardHooks(dir);
 		assert.equal(removedGuard.wrote, true);
 		assert.equal(fs.existsSync(hooksFile(dir)), true);
 		assert.equal(gateHooksStaged(dir), true);
 		const remainingGate = readJson(hooksFile(dir))[gateGroupKey()] as { PreToolUse: Array<{ matcher: string }> };
-		assert.equal(remainingGate.PreToolUse[0].matcher, GATED_AGY_TOOLS);
+		assert.equal(remainingGate.PreToolUse[0].matcher, ALL_TOOLS_MATCHER);
 
 		// Removing last remaining group deletes hooks.json
 		assert.equal(removeGateHooks(dir).wrote, true);
@@ -404,6 +405,7 @@ import readline from "node:readline";
 if (process.argv.includes("--version")) { console.log("1.5.8"); process.exit(0); }
 if (process.argv.includes("models")) { console.log("gemini-3.8-flash-low Gemini 3.8 Flash (Low)"); process.exit(0); }
 fs.writeFileSync(${JSON.stringify(launchLog)}, JSON.stringify(process.argv));
+{ const gi = process.argv.indexOf("--gemini-dir"); if (gi !== -1) { try { fs.copyFileSync(process.argv[gi + 1] + "/config/hooks.json", ${JSON.stringify(launchLog + ".home-hooks.json")}); } catch {} } }
 fs.appendFileSync(${JSON.stringify(launchesLog)}, JSON.stringify(process.argv) + "\\n");
 const logPath = ${JSON.stringify(acpLog)};
 const send = (obj) => process.stdout.write(JSON.stringify(obj) + "\\n");
@@ -435,6 +437,7 @@ for await (const line of rl) {
 import fs from "node:fs";
 if (!process.argv.includes("--version") && !process.argv.includes("models")) {
 	fs.writeFileSync(${JSON.stringify(launchLog)}, JSON.stringify(process.argv));
+	{ const gi = process.argv.indexOf("--gemini-dir"); if (gi !== -1) { try { fs.copyFileSync(process.argv[gi + 1] + "/config/hooks.json", ${JSON.stringify(launchLog + ".home-hooks.json")}); } catch {} } }
 	fs.appendFileSync(${JSON.stringify(launchesLog)}, JSON.stringify(process.argv) + "\\n");
 }
 await import(${JSON.stringify(new URL("./helpers/fake-acp-server.mjs", import.meta.url).href)});
@@ -510,16 +513,28 @@ describe("extension carrier staging for AC-1", () => {
 		for (let i = 0; i < argv.length - 1; i++) {
 			if (argv[i] === "--add-dir") addDirs.push(argv[i + 1]);
 		}
-		const hooksAddDir = addDirs.find((d) => fs.existsSync(path.join(d, ".agents", "hooks.json")));
-		assert.ok(hooksAddDir, `expected --add-dir with .agents/hooks.json in ${JSON.stringify(argv)}`);
-		if (engine === "acp") {
-			assert.equal(
-				fs.existsSync(path.join(hooksAddDir, ".agents", "mcp_config.json")),
-				false,
-				"ACP hooks dir must never contain .agents/mcp_config.json",
-			);
+		// ACP with the edit gate enabled delivers BOTH owned groups through the
+		// private home's config/hooks.json (no hooks-only --add-dir); every other
+		// combination keeps the add-dir delivery.
+		const gated = gateMode === "shadow";
+		let hooksJson: Record<string, unknown>;
+		let hooksAddDir: string | undefined;
+		if (engine === "acp" && gated) {
+			assert.equal(addDirs.some((d) => fs.existsSync(path.join(d, ".agents", "hooks.json"))), false, "no hooks add-dir under the gated ACP home delivery");
+			hooksJson = readJson(`${launchLog}.home-hooks.json`);
+			assert.ok(hooksJson[gateGroupKey()], "edit gate group delivered in the private home");
+		} else {
+			hooksAddDir = addDirs.find((d) => fs.existsSync(path.join(d, ".agents", "hooks.json")));
+			assert.ok(hooksAddDir, `expected --add-dir with .agents/hooks.json in ${JSON.stringify(argv)}`);
+			if (engine === "acp") {
+				assert.equal(
+					fs.existsSync(path.join(hooksAddDir, ".agents", "mcp_config.json")),
+					false,
+					"ACP hooks dir must never contain .agents/mcp_config.json",
+				);
+			}
+			hooksJson = readJson(path.join(hooksAddDir, ".agents", "hooks.json"));
 		}
-		const hooksJson = readJson(path.join(hooksAddDir, ".agents", "hooks.json"));
 		const guardGroup = hooksJson[runCommandGuardGroupKey()] as {
 			enabled: boolean;
 			PreToolUse: Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>;
@@ -539,16 +554,15 @@ describe("extension carrier staging for AC-1", () => {
 		assert.match(decision.reason, /pi-agy-[0-9a-f]{8}\/bash/);
 		assert.match(decision.reason, /timeout/i);
 
-		if (engine === "stream-json" && gateMode === "shadow") {
+		if (gated) {
 			const gateGroup = hooksJson[gateGroupKey()] as { PreToolUse: Array<{ matcher: string }> };
 			assert.ok(gateGroup, "approval gate group coexists");
-			assert.equal(gateGroup.PreToolUse[0].matcher.split("|").includes("run_command"), false);
-			assert.match(gateGroup.PreToolUse[0].matcher, /edit_file/);
+			assert.equal(gateGroup.PreToolUse[0].matcher, ALL_TOOLS_MATCHER, "the gate matches every tool; run_command routing is decided by the handler/bridge");
 		}
 
 		await s.emit("session_shutdown");
 		assert.equal(fs.existsSync(scriptPath), false, "guard script removed on shutdown");
-		assert.equal(fs.existsSync(hooksAddDir), false, "hooks dir cleaned up on shutdown");
+		if (hooksAddDir) assert.equal(fs.existsSync(hooksAddDir), false, "hooks dir cleaned up on shutdown");
 	});
 });
 
@@ -1418,6 +1432,293 @@ describe("explicit systemPrompt: false suppresses guard-refresh notes while hook
 		} else {
 			assert.equal(readLaunches(launchLog).at(-1)!.includes("--agent"), false);
 			assert.deepEqual(readStreamStdinPrompts(launchLog), ["hi", "hi"]);
+		}
+	});
+});
+
+// --- AC-2: gated delivery, pre-dispatch verification and guard routing ----------
+
+
+const GATED_CONFIG = {
+	askTool: false,
+	webTools: false,
+	bridgeTools: "all" as const,
+	approvals: { gateMode: "shadow" as const, mode: "deny" as const },
+};
+
+function carrierLogs(launchLog: string) {
+	const dir = path.dirname(launchLog);
+	return { stream: path.join(dir, "stream.jsonl"), acp: path.join(dir, "acp.jsonl"), homeHooks: `${launchLog}.home-hooks.json` };
+}
+
+/** True when the carrier received a prompt (any engine). */
+function promptReached(engine: "stream-json" | "acp", launchLog: string): boolean {
+	const logs = carrierLogs(launchLog);
+	const file = engine === "acp" ? logs.acp : logs.stream;
+	if (!fs.existsSync(file)) return false;
+	const text = fs.readFileSync(file, "utf8");
+	return engine === "acp" ? text.includes('"session/prompt"') : text.trim().length > 0;
+}
+
+function handlerScripts(): string[] {
+	let names: string[] = [];
+	try { names = fs.readdirSync(logsDir()); } catch { /* none */ }
+	return names.filter((n) => n.startsWith(`approval-hook-${process.pid}-`)).map((n) => path.join(logsDir(), n));
+}
+
+async function postApproval(endpoint: { serverUrl: string; token: string }, name: string, args: Record<string, unknown>) {
+	const res = await fetch(new URL("/approval", endpoint.serverUrl), {
+		method: "POST",
+		headers: { "content-type": "application/json", [TOKEN_HEADER]: endpoint.token },
+		body: JSON.stringify({ toolCall: { name, args } }),
+	});
+	return (await res.json()) as { decision?: string; reason?: string; ticket?: string };
+}
+
+async function startGated(engine: "stream-json" | "acp", overrides: Record<string, unknown> = {}, tools: unknown[] = [builtinBash], mode: string = "rpc") {
+	const launchLog = setupFakeCarrier(engine);
+	saveConfig({ ...GATED_CONFIG, ...overrides } as never);
+	const s = createExtensionSession(mode, tools as never);
+	shutdowns.push(() => s.emit("session_shutdown"));
+	await extension(s.pi);
+	await s.emit("session_start");
+	return { s, launchLog };
+}
+
+test.each([
+	["stream-json", "off", "shadow"],
+	["stream-json", "shadow", "off"],
+	["acp", "off", "shadow"],
+	["acp", "shadow", "off"],
+] as const)("%s keeps the initial %s gate when MCP startup changes config to %s", async (engine, initial, changed) => {
+	const mcp = await import("../src/mcp-server.js");
+	const startServer = mcp.startMcpServer;
+	vi.spyOn(mcp, "startMcpServer").mockImplementation(async (...args) => {
+		const result = await startServer(...args);
+		saveConfig({ ...GATED_CONFIG, approvals: { gateMode: changed, mode: "deny" } });
+		return result;
+	});
+	const { s, launchLog } = await startGated(engine, { approvals: { gateMode: initial, mode: "deny" } });
+	assert.deepEqual(await s.turn(), [], "delivery and wiring agree with the startup latch");
+	assert.equal(promptReached(engine, launchLog), true);
+	const hooks = engine === "acp" ? carrierLogs(launchLog).homeHooks : hooksFile(findPrivateEndpoint().dir);
+	const groups = fs.existsSync(hooks) ? readJson(hooks) : {};
+	assert.equal(Object.hasOwn(groups, gateGroupKey()), initial === "shadow");
+	assert.equal(handlerScripts().length > 0, initial === "shadow");
+	if (initial === "shadow") {
+		for (const f of handlerScripts()) fs.rmSync(f, { force: true });
+		assert.match((await s.turn()).join("\n"), /approval gate is enabled but .*handler .* missing or unreadable/);
+	}
+});
+
+describe("AC-2 gated delivery verified before every dispatch", () => {
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: a missing handler script refuses the turn before any prompt", async ({ engine }) => {
+		const { s, launchLog } = await startGated(engine);
+		const scripts = handlerScripts();
+		assert.ok(scripts.length > 0, "handler written at bridge start");
+		for (const f of scripts) fs.rmSync(f, { force: true });
+		const errors = await s.turn();
+		assert.match(errors.join("\n"), /approval gate is enabled but .*handler .* missing or unreadable/);
+		assert.equal(promptReached(engine, launchLog), false);
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: a handler script that does not match this instance refuses the turn", async ({ engine }) => {
+		const { s, launchLog } = await startGated(engine);
+		for (const f of handlerScripts()) fs.writeFileSync(f, "console.log('{\"decision\":\"allow\"}')\n");
+		const errors = await s.turn();
+		assert.match(errors.join("\n"), /handler .* does not match this instance/);
+		assert.equal(promptReached(engine, launchLog), false);
+	});
+
+	test("stream-json: a missing or malformed owned group in the bridge hooks file refuses the turn", async () => {
+		const { s, launchLog } = await startGated("stream-json");
+		const dir = findPrivateEndpoint().dir;
+		const file = hooksFile(dir);
+		const good = readJson(file);
+		// missing group
+		fs.writeFileSync(file, JSON.stringify({ foreign: { enabled: true } }));
+		assert.match((await s.turn()).join("\n"), /edit gate group .* is missing/);
+		// malformed group (matcher narrowed)
+		const narrowed = JSON.parse(JSON.stringify(good)) as Record<string, any>;
+		narrowed[gateGroupKey()].PreToolUse[0].matcher = "run_command";
+		fs.writeFileSync(file, JSON.stringify(narrowed));
+		assert.match((await s.turn()).join("\n"), /malformed or does not match this instance/);
+		// not JSON
+		fs.writeFileSync(file, "{nope");
+		assert.match((await s.turn()).join("\n"), /not a valid hooks object/);
+		assert.equal(promptReached("stream-json", launchLog), false);
+		// restored: dispatches
+		fs.writeFileSync(file, JSON.stringify(good));
+		assert.deepEqual(await s.turn(), []);
+		assert.equal(promptReached("stream-json", launchLog), true);
+	});
+
+	test("acp: a home whose owned group was lost refuses the next turn before any new prompt", async () => {
+		const { s, launchLog } = await startGated("acp");
+		assert.deepEqual(await s.turn(), []);
+		const home = readLaunches(launchLog)[0]![readLaunches(launchLog)[0]!.indexOf("--gemini-dir") + 1]!;
+		const hooks = path.join(home, "config", "hooks.json");
+		assert.equal(fs.existsSync(hooks), true, "owned groups live in the private home");
+		const prompts = () => (fs.readFileSync(carrierLogs(launchLog).acp, "utf8").match(/"session\/prompt"/g) ?? []).length;
+		assert.equal(prompts(), 1);
+		fs.writeFileSync(hooks, JSON.stringify({ foreign: { enabled: true } }));
+		assert.match((await s.turn()).join("\n"), /edit gate group .* is missing/);
+		assert.equal(prompts(), 1, "no second prompt was sent");
+	});
+
+	test("stream-json: gate staging failure refuses the turn visibly (no soft pass)", async () => {
+		const failing = vi.spyOn(approvalHookModule, "stageGateHooks").mockImplementation(() => { throw new Error("EACCES: simulated"); });
+		const { s, launchLog } = await startGated("stream-json");
+		assert.match((await s.turn()).join("\n"), /approval gate is enabled but .*(missing|not readable|not a valid)/);
+		assert.equal(promptReached("stream-json", launchLog), false);
+		failing.mockRestore();
+	});
+
+	test("acp: home merge failure refuses the turn before the carrier is even spawned", async () => {
+		vi.spyOn(gateDeliveryModule, "mergeOwnedHookGroups").mockImplementation(() => { throw new Error("EROFS: simulated"); });
+		const { s, launchLog } = await startGated("acp");
+		const errors = await s.turn();
+		assert.match(errors.join("\n"), /Cannot stage isolated ACP home: .*EROFS/);
+		assert.equal(fs.existsSync(carrierLogs(launchLog).acp), false);
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: gate enabled with the bridge disabled refuses the turn", async ({ engine }) => {
+		const { s, launchLog } = await startGated(engine, { bridgeTools: "none" });
+		assert.match((await s.turn()).join("\n"), /bridge or hook handler is unavailable/);
+		assert.equal(promptReached(engine, launchLog), false);
+	});
+
+	test("acp: AGY_AGENTS_ROOT legacy override with the gate enabled is refused visibly; gate off keeps the previous behavior", async () => {
+		const root = mkTmp();
+		vi.stubEnv("AGY_AGENTS_ROOT", root);
+		const gated = await startGated("acp");
+		assert.match((await gated.s.turn()).join("\n"), /AGY_AGENTS_ROOT bypasses private ACP home staging/);
+		assert.equal(promptReached("acp", gated.launchLog), false);
+		await gated.s.emit("session_shutdown");
+
+		const off = await startGated("acp", { approvals: { gateMode: "off", mode: "deny" } });
+		assert.deepEqual(await off.s.turn(), []);
+		assert.equal(promptReached("acp", off.launchLog), true);
+	});
+
+	test("acp: foreign hooks in the user's config are preserved next to the owned groups; the home is cleaned up on shutdown", async () => {
+		const globalHooks = path.join(os.homedir(), ".gemini", "config", "hooks.json");
+		fs.mkdirSync(path.dirname(globalHooks), { recursive: true });
+		const foreign = { "user-hook": { enabled: true, PreToolUse: [{ matcher: "view_file", hooks: [{ type: "command", command: "node user.mjs", timeout: 5 }] }] } };
+		fs.writeFileSync(globalHooks, `\uFEFF${JSON.stringify(foreign)}`);
+		tempDirs.push(globalHooks);
+		const { s, launchLog } = await startGated("acp");
+		assert.deepEqual(await s.turn(), []);
+		const captured = readJson(carrierLogs(launchLog).homeHooks);
+		assert.deepEqual(captured["user-hook"], foreign["user-hook"]);
+		assert.ok(captured[gateGroupKey()] && captured[runCommandGuardGroupKey()]);
+		const home = readLaunches(launchLog)[0]![readLaunches(launchLog)[0]!.indexOf("--gemini-dir") + 1]!;
+		assert.equal(JSON.parse(fs.readFileSync(globalHooks, "utf8").replace(/^\uFEFF/, "")).hasOwnProperty("user-hook"), true, "the global file itself is never modified");
+		await s.emit("session_shutdown");
+		await vi.waitFor(() => expect(fs.existsSync(home)).toBe(false));
+	});
+
+	test("acp: two instances deliver to separate private homes that reference their own handler", async () => {
+		const first = await startGated("acp");
+		assert.deepEqual(await first.s.turn(), []);
+		const hooks1 = readJson(carrierLogs(first.launchLog).homeHooks);
+		const second = await startGated("acp");
+		assert.deepEqual(await second.s.turn(), []);
+		const hooks2 = readJson(carrierLogs(second.launchLog).homeHooks);
+		const cmd = (h: Record<string, any>) => h[gateGroupKey()].PreToolUse[0].hooks[0].command as string;
+		assert.notEqual(cmd(hooks1), cmd(hooks2), "each instance owns its handler script");
+		const home1 = readLaunches(first.launchLog)[0]!;
+		const home2 = readLaunches(second.launchLog)[0]!;
+		assert.notEqual(home1[home1.indexOf("--gemini-dir") + 1], home2[home2.indexOf("--gemini-dir") + 1]);
+	});
+
+	test("stream-json: the bridge dir is the LAST --add-dir (production ordering) and carries the verified owned groups", async () => {
+		const { s, launchLog } = await startGated("stream-json");
+		assert.deepEqual(await s.turn(), []);
+		const argv = readLaunches(launchLog)[0]!;
+		const addDirs = addDirsFromArgv(argv);
+		const bridgeDir = findPrivateEndpoint().dir;
+		assert.equal(addDirs.at(-1), bridgeDir, `bridge dir last in ${JSON.stringify(argv)}`);
+		assert.equal(addDirs[0], process.cwd(), "workspace add-dir first");
+		const hooks = readJson(hooksFile(bridgeDir));
+		assert.ok(hooks[gateGroupKey()] && hooks[runCommandGuardGroupKey()]);
+	});
+
+	test("stream-json: a failing MCP-home staging keeps the additive fallback and still dispatches with the gate verified", async () => {
+		// Gate delivery on stream-json is the separate bridge --add-dir, verified
+		// independently of the staged MCP home.
+		vi.spyOn(homeModule, "stageAgyHome").mockImplementation(() => { throw new Error("EACCES: simulated"); });
+		const { s, launchLog } = await startGated("stream-json");
+		assert.deepEqual(await s.turn(), []);
+		assert.equal(readLaunches(launchLog)[0]!.includes("--gemini_dir"), false);
+		assert.equal(promptReached("stream-json", launchLog), true);
+	});
+});
+
+describe("AC-1/AC-2 run_command routing under the edit gate", () => {
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: verified guard -> the gate passes run_command (the guard hook denies it)", async ({ engine }) => {
+		const { s } = await startGated(engine, { approvals: { gateMode: "shadow", mode: "allow" } });
+		assert.deepEqual(await s.turn(), []);
+		assert.deepEqual(await postApproval(findPrivateEndpoint(), "run_command", { CommandLine: "ls" }), { decision: "allow" });
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: expected guard missing/unusable -> the edit gate itself denies run_command with the Pi bash redirect, even under approvals.mode=allow", async ({ engine }) => {
+		const { s } = await startGated(engine, { approvals: { gateMode: "shadow", mode: "allow" } });
+		assert.deepEqual(await s.turn(), []);
+		const endpoint = findPrivateEndpoint();
+		assert.equal((await postApproval(endpoint, "run_command", { CommandLine: "ls" })).decision, "allow");
+		// Break the guard handler; the next pre-dispatch verification notices.
+		fs.rmSync(path.join(endpoint.dir, "run-command-guard.mjs"), { force: true });
+		assert.deepEqual(await s.turn(), [], "a bad guard does not refuse the turn; it makes the gate deny run_command");
+		const denied = await postApproval(endpoint, "run_command", { CommandLine: "ls" });
+		assert.equal(denied.decision, "deny");
+		assert.equal(denied.reason, formatRunCommandGuardReason(/pi-agy-[0-9a-f]{8}/.exec(denied.reason ?? "")![0]));
+		assert.match(denied.reason ?? "", /pi-agy-[0-9a-f]{8}\/bash/);
+		assert.equal(denied.ticket, undefined, "denied directly, never parked for Pi approval");
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: a guard-only staging failure at startup still wires the edit gate; run_command is denied with the Pi bash redirect", async ({ engine }) => {
+		vi.spyOn(guardModule, "writeGuardHookScript").mockImplementation(() => { throw new Error("EACCES: simulated guard write failure"); });
+		const { s } = await startGated(engine, { approvals: { gateMode: "shadow", mode: "allow" } });
+		assert.deepEqual(await s.turn(), [], "the gated turn still dispatches");
+		const endpoint = findPrivateEndpoint();
+		const denied = await postApproval(endpoint, "run_command", { CommandLine: "ls" });
+		assert.equal(denied.decision, "deny");
+		assert.match(denied.reason ?? "", /pi-agy-[0-9a-f]{8}\/bash/);
+		assert.equal(denied.ticket, undefined, "denied directly, never parked");
+		const edit = await postApproval(endpoint, "create_file", { TargetFile: "/w/x", CodeContent: "a" });
+		assert.equal(typeof edit.ticket, "string", "the edit gate is wired and parks other native tools");
+		// Restart on the same bridge dir must not see a stuck partial bridge.
+		await s.emit("session_shutdown");
+		vi.restoreAllMocks();
+		const again = await startGated(engine, { approvals: { gateMode: "shadow", mode: "allow" } });
+		assert.deepEqual(await again.s.turn(), []);
+		assert.equal((await postApproval(findPrivateEndpoint(), "run_command", { CommandLine: "ls" })).decision, "allow", "healthy restart verifies the guard");
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: guard intentionally inactive -> run_command requires Pi approval like any other tool", async ({ engine }) => {
+		const { s } = await startGated(engine, { approvals: { gateMode: "shadow", mode: "allow" } }, [builtinBash], "tui");
+		assert.deepEqual(await s.turn(), []);
+		const body = await postApproval(findPrivateEndpoint(), "run_command", { CommandLine: "ls" });
+		assert.equal(typeof body.ticket, "string", "parked for Pi approval");
+		assert.equal(body.decision, undefined);
+	});
+
+	test.each([{ engine: "stream-json" as const }, { engine: "acp" as const }])("$engine: gate OFF + guard staging failure is not swallowed (fails visibly like HEAD)", async ({ engine }) => {
+		vi.spyOn(guardModule, "writeGuardHookScript").mockImplementation(() => { throw new Error("EACCES: simulated guard write failure"); });
+		await assert.rejects(
+			() => startGated(engine, { approvals: { gateMode: "off", mode: "deny" } }),
+			/simulated guard write failure/,
+		);
+	});
+
+	test("gate off: guard delivery is unchanged (hooks-only add-dir on ACP, bridge dir on stream-json) and the gate is not verified", async () => {
+		for (const engine of ["acp", "stream-json"] as const) {
+			const { s, launchLog } = await startGated(engine, { approvals: { gateMode: "off", mode: "deny" } });
+			assert.deepEqual(await s.turn(), []);
+			const argv = readLaunches(launchLog)[0]!;
+			expectGuardHooksState(engine, findPrivateEndpoint().dir, argv, true);
+			await s.emit("session_shutdown");
 		}
 	});
 });

@@ -291,6 +291,47 @@ async function handle(msg) {
         streaming = false;
         return;
       }
+      if (scenario.startsWith("tfail-")) {
+        // agy-upstream-safety-sync AC-3: a tool fails, the model may never speak,
+        // and the server ends the turn with the stopReason named by the variant.
+        // Variants: <provenance>[-text][-<stop>]; provenance = native | mcp | foreign | unknown | secret.
+        const [prov, ...rest] = scenario.slice(6).split("-");
+        const withText = rest.includes("text");
+        const stop = rest.includes("endturn") ? "end_turn" : rest.includes("maxtokens") ? "max_tokens" : rest.includes("refusal") ? "refusal" : "stop";
+        const tool = { toolCallId: "fake-session-0001:9", kind: "execute", status: "pending", sessionUpdate: "tool_call" };
+        if (prov === "readfile") {
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, kind: "read", title: "Running read_file", rawInput: { Path: "/w/x" } } } });
+        } else if (prov === "genericstart") {
+          // Start frame maps to the generic kind name ("read"); the failed update names read_file.
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, kind: "read", title: "Reading file", rawInput: { Path: "/w/x" } } } });
+        } else if (prov === "native" || prov === "secret") {
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, title: "Running run_command", rawInput: { CommandLine: "boom-cmd" } } } });
+        } else if (prov === "mcp") {
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, title: "Run bash?", _meta: { mcp: { server: "pi-agy-aabbccdd", tool: "bash" } }, rawInput: { arguments: { command: "x" } } } } });
+        } else if (prov === "partialmcp") {
+          // Partial metadata: _meta.mcp.tool present WITHOUT a server, colliding with a native name.
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, title: "Running run_command", _meta: { mcp: { tool: "run_command" } }, rawInput: { arguments: { CommandLine: "x" } } } } });
+        } else if (prov === "partialfail") {
+          // Native-looking start; the failed update itself carries serverless MCP metadata.
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, title: "Running run_command", rawInput: { CommandLine: "x" } } } });
+        } else if (prov === "foreign") {
+          // Metadata-less foreign MCP call (acp-events fixture shape): no mcp marker, unknown name.
+          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { ...tool, name: "mcp_my_server_hyphen-tool", title: "Run arbitrary display text" } } });
+        }
+        // "unknown": a failure update with no start record at all.
+        // Failed update carrying explicit tool identity with no start record.
+        const failId = (prov === "named" || prov === "genericstart") ? { name: "read_file" } : prov === "namedmcp" ? { name: "read_file", _meta: { mcp: { server: "foreign-srv" } } } : prov === "namedunknown" ? { name: "mystery_tool" } : prov === "partialfail" ? { _meta: { mcp: { tool: "run_command" } } } : {};
+        const raw = process.env.ACP_FAKE_TOOL_FAILURE ?? (prov === "secret"
+          ? "boom: Authorization: Bearer abc123SECRETvalue\nsecond line\t" + "x".repeat(400)
+          : "boom: exit 1");
+        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { toolCallId: "fake-session-0001:9", status: "failed", rawOutput: raw, sessionUpdate: "tool_call_update", ...failId } } });
+        if (withText) notifyChunk("Recovered and here is the summary.");
+        if (rest.includes("hang")) return; // never settles: abort path
+        result(id, { stopReason: stop });
+        pendingPromptId = null;
+        streaming = false;
+        return;
+      }
       if (scenario === "permission" || scenario === "permission-twice" || scenario === "permission-late" || scenario === "permission-cancel") {
         send({
           jsonrpc: "2.0",

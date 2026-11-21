@@ -11,7 +11,10 @@ import { test } from "vitest";
 import {
 	GATE_MARKER,
 	MARKER_FIELDS,
+	NATIVE_APPROVAL_TOOL,
+	createNativeApprovalBase,
 	createShadowTool,
+	describeApprovalTarget,
 	mapNativeToShadow,
 	stripMarkerFields,
 	withGateMarkerSchema,
@@ -267,47 +270,158 @@ test("withGateMarkerSchema does not mutate the base schema object", () => {
 	assert.equal(JSON.stringify(base.parameters), before);
 });
 
-test("mapNativeToShadow covers the gated matcher set", () => {
+// Absolute paths are asserted on both path flavors via the explicit platform
+// parameter, so these pins do not depend on the host OS.
+const POSIX = "linux" as const;
+const WIN = "win32" as const;
+
+test("mapNativeToShadow covers the legacy field shapes (absolute targets)", () => {
 	// Live-captured shape (F1):
-	assert.deepEqual(mapNativeToShadow("create_file", { TargetFile: "/w/a.txt", CodeContent: "hi", Description: "d", Overwrite: true }), {
+	assert.deepEqual(mapNativeToShadow("create_file", { TargetFile: "/w/a.txt", CodeContent: "hi", Description: "d", Overwrite: true }, POSIX), {
 		shadow: "write",
 		input: { path: "/w/a.txt", content: "hi" },
 	});
-	assert.deepEqual(mapNativeToShadow("write_to_file", { TargetFile: "/w/b.txt", CodeContent: "x" }), {
+	assert.deepEqual(mapNativeToShadow("write_to_file", { TargetFile: "/w/b.txt", CodeContent: "x" }, POSIX), {
 		shadow: "write",
 		input: { path: "/w/b.txt", content: "x" },
 	});
-	assert.deepEqual(mapNativeToShadow("run_command", { CommandLine: "npm test", Cwd: "/w" }), {
+	assert.deepEqual(mapNativeToShadow("run_command", { CommandLine: "npm test", Cwd: "/w" }, POSIX), {
 		shadow: "bash",
 		input: { command: "npm test", cwd: "/w" },
 	});
-	assert.deepEqual(mapNativeToShadow("run_command", { CommandLine: "ls" }), {
+	assert.deepEqual(mapNativeToShadow("run_command", { CommandLine: "ls" }, POSIX), {
 		shadow: "bash",
 		input: { command: "ls" },
 	});
 	assert.deepEqual(
-		mapNativeToShadow("replace_file_content", { TargetFile: "/w/c.txt", SearchText: "a", ReplacementContent: "b" }),
+		mapNativeToShadow("replace_file_content", { TargetFile: "/w/c.txt", SearchText: "a", ReplacementContent: "b" }, POSIX),
 		{ shadow: "edit", input: { path: "/w/c.txt", edits: [{ oldText: "a", newText: "b" }] } },
 	);
 	assert.deepEqual(
 		mapNativeToShadow("multi_replace_file_content", {
 			TargetFile: "/w/d.txt",
 			ReplacementChunks: [{ SearchText: "a", ReplacementContent: "b" }, { SearchText: "c", ReplacementContent: "d" }],
-		}),
+		}, POSIX),
 		{ shadow: "edit", input: { path: "/w/d.txt", edits: [{ oldText: "a", newText: "b" }, { oldText: "c", newText: "d" }] } },
 	);
-	assert.deepEqual(mapNativeToShadow("edit_file", { TargetFile: "/w/e.txt", ReplacementContent: "z" }), {
+	assert.deepEqual(mapNativeToShadow("edit_file", { TargetFile: "/w/e.txt", ReplacementContent: "z" }, POSIX), {
 		shadow: "edit",
 		input: { path: "/w/e.txt", edits: [{ oldText: "", newText: "z" }] },
 	});
 });
 
-test("mapNativeToShadow returns null for ungated names and tolerates junk args", () => {
-	assert.equal(mapNativeToShadow("view_file", {}), null);
-	assert.equal(mapNativeToShadow("grep_search", {}), null);
-	assert.equal(mapNativeToShadow("totally_unknown", {}), null);
-	assert.deepEqual(mapNativeToShadow("run_command", {} as Record<string, unknown>), {
+test("mapNativeToShadow recognizes the agy 1.5.11 Path/Content and Path/Target/Replacement shapes", () => {
+	assert.deepEqual(mapNativeToShadow("write_file", { Path: "/w/new.txt", Content: "hello" }, POSIX), {
+		shadow: "write",
+		input: { path: "/w/new.txt", content: "hello" },
+	});
+	assert.deepEqual(mapNativeToShadow("replace_file_content", { Path: "/w/f.txt", Target: "old", Replacement: "new" }, POSIX), {
+		shadow: "edit",
+		input: { path: "/w/f.txt", edits: [{ oldText: "old", newText: "new" }] },
+	});
+	assert.deepEqual(
+		mapNativeToShadow("multi_replace_file_content", {
+			Path: "/w/g.txt",
+			ReplacementChunks: [{ Target: "a", Replacement: "b" }],
+		}, POSIX),
+		{ shadow: "edit", input: { path: "/w/g.txt", edits: [{ oldText: "a", newText: "b" }] } },
+	);
+	assert.deepEqual(mapNativeToShadow("write_file", { Path: "C:\\w\\n.txt", Content: "x" }, WIN), {
+		shadow: "write",
+		input: { path: "C:\\w\\n.txt", content: "x" },
+	});
+});
+
+test.each([
+	["relative path", "write_file", { Path: "rel/x.txt", Content: "x" }],
+	["dot-relative path", "write_file", { Path: "./x.txt", Content: "x" }],
+	["missing path", "write_file", { Content: "x" }],
+	["blank path", "write_file", { Path: "   ", Content: "x" }],
+	["numeric path", "write_file", { Path: 42, Content: "x" }],
+	["conflicting path fields", "write_file", { Path: "/w/a", TargetFile: "/w/b", Content: "x" }],
+	["legacy relative TargetFile", "edit_file", { TargetFile: "src/a.ts", SearchText: "a", ReplacementContent: "b" }],
+	["empty multi-edit", "multi_replace_file_content", { Path: "/w/a", ReplacementChunks: [] }],
+	["all-blank multi-edit chunks", "multi_replace_file_content", { Path: "/w/a", ReplacementChunks: [{}, { Target: "", Replacement: "" }] }],
+])("mapNativeToShadow denies a known write/edit tool with %s (never a guessed path)", (_label, tool, args) => {
+	const mapped = mapNativeToShadow(tool, args as Record<string, unknown>, POSIX);
+	assert.ok("deny" in mapped, `expected a denial, got ${JSON.stringify(mapped)}`);
+});
+
+test("mapNativeToShadow treats drive-relative and rooted-without-drive Windows paths as relative", () => {
+	for (const p of ["C:foo.txt", "\\foo.txt", "/foo.txt", "foo.txt"]) {
+		assert.ok("deny" in mapNativeToShadow("write_file", { Path: p, Content: "x" }, WIN), p);
+	}
+	assert.ok(!("deny" in mapNativeToShadow("write_file", { Path: "\\\\server\\share\\f.txt", Content: "x" }, WIN)), "UNC is absolute");
+});
+
+test("mapNativeToShadow maps the observed live ACP write_file/edit_file shapes with absolute-path approval", () => {
+	assert.deepEqual(mapNativeToShadow("write_file", { Content: "hi", Overwrite: true, Path: "/w/new.txt" }, POSIX), {
+		shadow: "write",
+		input: { path: "/w/new.txt", content: "hi" },
+	});
+	assert.deepEqual(mapNativeToShadow("edit_file", { Path: "/w/f.txt", Target: "old", Replacement: "new" }, POSIX), {
+		shadow: "edit",
+		input: { path: "/w/f.txt", edits: [{ oldText: "old", newText: "new" }] },
+	});
+	assert.ok("deny" in mapNativeToShadow("write_file", { Content: "hi", Overwrite: true, Path: "rel.txt" }, POSIX));
+	assert.ok("deny" in mapNativeToShadow("edit_file", { Path: "rel.txt", Target: "a", Replacement: "b" }, POSIX));
+});
+
+test("mapNativeToShadow maps unknown tools to the raw-arguments shadow with no fabricated target", () => {
+	for (const name of ["sed_file", "notebook_edit", "totally_unknown_future_tool"]) {
+		const args = { Path: "/w/n.ipynb", Cell: 3 };
+		assert.deepEqual(mapNativeToShadow(name, args, POSIX), {
+			shadow: NATIVE_APPROVAL_TOOL,
+			input: { tool: name, arguments: args },
+		});
+	}
+	assert.deepEqual(mapNativeToShadow("run_command", {} as Record<string, unknown>, POSIX), {
 		shadow: "bash",
 		input: { command: "" },
 	});
+});
+
+test("the unknown-target approval shadow carries raw tool name and arguments and never executes", async () => {
+	const base = createNativeApprovalBase();
+	assert.equal(base.name, NATIVE_APPROVAL_TOOL);
+	const props = (base.parameters as { properties: Record<string, unknown> }).properties;
+	assert.deepEqual(Object.keys(props).sort(), ["arguments", "tool"]);
+	const shadow = createShadowTool(base, () => ({ allow: true }), { verifyTicket: () => true });
+	assert.ok(Object.keys((shadow.parameters as { properties: Record<string, unknown> }).properties).includes("__agyGate"));
+	await assert.rejects(
+		shadow.execute("c1", { tool: "sed_file", arguments: { Path: "/w/x" } }, undefined, undefined, ctxStub),
+		/approval-only tool and never executes/,
+	);
+	const decided = await shadow.execute(
+		"c2",
+		{ tool: "sed_file", arguments: { Path: "/w/x" }, [GATE_MARKER]: true, __agyTicket: "t", __agyTool: "sed_file" },
+		undefined, undefined, ctxStub,
+	);
+	assert.match(JSON.stringify(decided), /Approved by approval gate: sed_file/);
+});
+
+test.each([["server-only", String.raw`\\server`], ["server with trailing slash", "\\\\server\\"], ["forward-slash server-only", "//server"]])(
+	"mapNativeToShadow denies an incomplete UNC target (%s)",
+	(_label, p) => {
+		assert.ok("deny" in mapNativeToShadow("write_file", { Path: p, Content: "x" }, WIN), p);
+	},
+);
+
+test("mapNativeToShadow accepts a complete UNC share path", () => {
+	for (const p of [String.raw`\\server\share`, String.raw`\\server\share\dir\f.txt`, "//server/share/f.txt"]) {
+		assert.ok(!("deny" in mapNativeToShadow("write_file", { Path: p, Content: "x" }, WIN)), p);
+	}
+});
+
+test("describeApprovalTarget shows the complete raw arguments of an unknown tool, never a silent cutoff", () => {
+	const big = "x".repeat(5000) + "TAIL-MARKER";
+	const what = describeApprovalTarget({ tool: "sed_file", arguments: { Path: "/w/a", Body: big } });
+	assert.ok(what.includes("sed_file"));
+	assert.ok(what.includes("TAIL-MARKER"), "tail of long arguments must be visible");
+	assert.ok(what.includes(big));
+});
+
+test("describeApprovalTarget keeps command and path targets verbatim", () => {
+	assert.equal(describeApprovalTarget({ command: "ls -la" }), "ls -la");
+	assert.equal(describeApprovalTarget({ path: "/w/a" }), "/w/a");
 });

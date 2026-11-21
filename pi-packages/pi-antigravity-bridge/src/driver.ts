@@ -210,6 +210,10 @@ export class StreamDriver implements TurnDriver {
 	/** Restaged for each owned process, never shared across instances. */
 	stageHome?: () => string | undefined;
 
+	/** Pre-dispatch delivery check (approval gate): runs before every turn is
+	 *  created. Throwing refuses the turn with the thrown message. */
+	verifyDelivery?: () => void;
+
 	constructor(private readonly bridgeDir: string = bridgeMcpConfigDir()) {}
 
 	get state(): DriverState {
@@ -273,6 +277,7 @@ export class StreamDriver implements TurnDriver {
 		await waitWithDeadline(this.#termination, request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "exclusive termination");
 		request.assertCurrent?.();
 		if (request.signal?.aborted) throw new Error("aborted before start");
+		this.verifyDelivery?.();
 
 		const cause = this.#recycleCause(request);
 		if (cause) await waitWithDeadline(this.close("recycle", cause), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "exclusive recycling");
@@ -326,6 +331,9 @@ export class StreamDriver implements TurnDriver {
 				});
 				request.assertCurrent?.();
 				if (turn.closed) throw new Error("agy turn ended before prompt dispatch");
+				// Async startup above can outlive the pre-start read-back: recheck the
+				// owned groups and handlers at the write boundary; a throw refuses visibly.
+				this.verifyDelivery?.();
 				await new Promise<void>((resolve, reject) => {
 					child.stdin!.write(line, err => err ? reject(err) : resolve());
 				});

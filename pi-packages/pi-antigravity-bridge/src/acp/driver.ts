@@ -26,7 +26,7 @@ import { agyVersionVerdict, checkAgyCliVersion, MIN_AGY_ACP_VERSION } from "../a
 import type { UsageEstimate } from "../config.js";
 import { AcpConnection, type AcpMcpServer, type AcpPermissionRequest } from "./connection.js";
 import type { AcpPermissionHandler } from "./connection.js";
-import { mapStopReason, mapUpdate, TextAccumulator, type AcpEditDiff } from "./events.js";
+import { KNOWN_NATIVE_AGY_TOOLS, KNOWN_STOP_REASONS, mapStopReason, mapUpdate, TextAccumulator, type AcpEditDiff } from "./events.js";
 import { estimateTokens, synthesizeUsage } from "./usage-estimate.js";
 import type {
 	AgyUsage,
@@ -49,6 +49,10 @@ export interface AcpDriverOptions {
 	stageHome?: () => string | undefined;
 	/** Optional hooks-only --add-dir directory for ACP PreToolUse guards. */
 	hooksDir?: string | (() => string | undefined);
+	/** Pre-dispatch delivery check (approval gate): runs after the connection
+	 *  is ready and before any session RPC or prompt. Throwing refuses the
+	 *  turn with the thrown message; the connection is retired. */
+	verifyDelivery?: () => void;
 	extraEnv?: Record<string, string>;
 
 	/** Owning bridge callback, attached only to this driver's connections. */
@@ -113,7 +117,13 @@ interface ActiveTurn {
 	onAbort?: () => void;
 	/** toolCallId → tool name + args + optional native diff (diff rides on
 	 *  the pending tool_call frame; updates don't repeat it). */
-	toolCalls: Map<string, { name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string }>;
+	toolCalls: Map<string, { name: string; args: Record<string, unknown>; diff?: AcpEditDiff; mcpServer?: string; mcp?: true }>;
+	/** The last failure of a tool with POSITIVELY identified native provenance
+	 *  (known agy tool name on the start record, no MCP marker). With an OK or
+	 *  unknown stop reason and no model text, the caller would otherwise get an
+	 *  empty success (upstream 9ba4314/b5aa839: agy ended such turns with the
+	 *  non-ACP stopReason "stop"). Unknown provenance never lands here. */
+	nativeToolFailure: string | null;
 }
 
 /** Map our config knobs onto ACP session modes. skipPermissions=false also
@@ -269,6 +279,9 @@ export class AcpDriver implements TurnDriver {
 			const conn = await waitWithDeadline(this.#prepareTurn(turn), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "ACP exclusive startup");
 			if (!conn || turn.closed) throw new Error((await turn.outcome).error ?? "ACP turn ended before prompt dispatch");
 			promptConnection = conn;
+			// Session/config setup is async: recheck the owned groups and handlers at
+			// the prompt boundary (retires the captured connection on refusal).
+			this.#opts.verifyDelivery?.();
 
 			// Setup and prompt dispatch are separate startup-type waits. Bound the
 			// target pipe acknowledgement, not the later model response.
@@ -308,6 +321,7 @@ export class AcpDriver implements TurnDriver {
 		const conn = await this.#ensureConnection(request);
 		request.assertCurrent?.();
 		if (turn.closed) return;
+		this.#opts.verifyDelivery?.();
 
 		// Session: load (resume) or create. Load failures fall back to a fresh
 		// session — a missing conversation must not fail the turn (9.4).
@@ -403,6 +417,11 @@ export class AcpDriver implements TurnDriver {
 			const usage = result.usage ? this.#contextCorrectedUsage(turn, result.usage) : undefined;
 			if (usage) this.#emit(turn, { type: "usage", usage });
 			const mapped = mapStopReason(result.stopReason);
+			if (!KNOWN_STOP_REASONS.has(String(result.stopReason))) {
+				// Not an ACP enum value: silence would hide exactly the server drift
+				// that produces an empty report.
+				this.#log("acp-unknown-stop-reason", { stopReason: String(result.stopReason) });
+			}
 			this.#settle(turn, {
 				conversationId: turn.sessionId,
 				status: mapped.status,
@@ -488,7 +507,7 @@ export class AcpDriver implements TurnDriver {
 					turn.toolBatches += 1;
 					turn.toolBatchOpen = true;
 				}
-				const entry = { name: mapped.name, args: mapped.args, diff: mapped.diff, mcpServer: mapped.mcpServer };
+				const entry = { name: mapped.name, args: mapped.args, diff: mapped.diff, mcpServer: mapped.mcpServer, ...(mapped.mcp ? { mcp: true as const } : {}) };
 				turn.toolCalls.set(mapped.toolCallId, entry);
 				this.#clearIdle(turn);
 				this.#emit(turn, { type: "tool_start", name: mapped.name, args: mapped.args, mcpServer: mapped.mcpServer, toolCallId: mapped.toolCallId });
@@ -518,7 +537,19 @@ export class AcpDriver implements TurnDriver {
 				const entry = turn.toolCalls.get(mapped.toolCallId);
 				turn.toolCalls.delete(mapped.toolCallId);
 				if (entry && turn.toolCalls.size === 0) this.#armIdle(turn);
-				const name = entry?.name ?? "tool";
+				// Identity: a start record naming a known native tool wins; otherwise
+				// (record missing, or only a generic kind name such as "read") the
+				// failed update's own explicit name is preferred.
+				const startKnown = entry !== undefined && KNOWN_NATIVE_AGY_TOOLS.has(entry.name);
+				const name = (startKnown ? entry.name : (mapped.name ?? entry?.name)) ?? "tool";
+				// Positive native provenance only: a known agy tool name (start record
+				// or explicit failed-update identity) with no MCP marker anywhere. An
+				// unidentified call, an unknown name or any MCP marker (including
+				// metadata-less foreign MCP failures, which carry neither) never feed
+				// the diagnostic.
+				if (!entry?.mcpServer && !entry?.mcp && !mapped.mcpServer && !mapped.mcp && KNOWN_NATIVE_AGY_TOOLS.has(name)) {
+					turn.nativeToolFailure = /[^A-Za-z0-9_-]/.test(name) ? "unknown tool" : name;
+				}
 				this.#emit(turn, { type: "tool_error", name, message: mapped.message, mcpServer: mapped.mcpServer ?? entry?.mcpServer, toolCallId: mapped.toolCallId });
 				return;
 			}
@@ -708,6 +739,7 @@ export class AcpDriver implements TurnDriver {
 			overallDeadline: null,
 			overallRemainingMs: null,
 			toolCalls: new Map(),
+			nativeToolFailure: null,
 		};
 		return turn;
 	}
@@ -806,6 +838,12 @@ export class AcpDriver implements TurnDriver {
 
 	#settle(turn: ActiveTurn, outcome: TurnOutcome): void {
 		if (turn.closed) return;
+		// A native tool failed, the model never spoke and the turn still ended
+		// OK (known, unknown or max_tokens stop reason): never settle as an empty success.
+		// Never copy agy's failure text or unsanitized session identifiers here.
+		if (outcome.status === "OK" && !outcome.aborted && !turn.response.text.trim() && !outcome.response.trim() && turn.nativeToolFailure) {
+			outcome.response = `[bridge] The turn ended without model output. A native tool failed earlier in this turn: ${turn.nativeToolFailure}. See the agy conversation transcript (.system_generated/logs/transcript_full.jsonl) for details.`;
+		}
 		// Gate B stopgap: synthesize usage on clean turns while the server sends
 		// none. Runs BEFORE close so the usage activity drains through the
 		// normal #nextActivity loop (provider maps it onto partial.usage).

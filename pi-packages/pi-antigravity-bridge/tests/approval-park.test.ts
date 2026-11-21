@@ -6,6 +6,8 @@
 
 import { test, vi, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
+import os from "node:os";
+import nodePath from "node:path";
 import type { McpServerHandle, McpBridgeDeps } from "../src/mcp-server.js";
 import { APPROVAL_PARK_TIMEOUT_MS, startMcpServer, TOKEN_HEADER } from "../src/mcp-server.js";
 import {
@@ -34,6 +36,7 @@ function deps(overrides: Partial<McpBridgeDeps> = {}): McpBridgeDeps {
 	};
 }
 
+const ABS = (name: string): string => nodePath.join(os.tmpdir(), name);
 const hookPayload = (name = "run_command", args: Record<string, unknown> = { CommandLine: "npm test" }) =>
 	JSON.stringify({
 		toolCall: { name, args },
@@ -165,15 +168,50 @@ test("approval: bad token 403s; invalid payload 400s; ungated tool denies withou
 		body: JSON.stringify({ something: "else" }),
 	});
 	assert.equal(badBody.status, 400);
-	const ungated = await fetch(approvalUrl(handle.port, "/approval"), {
+	// Allow-by-exception: a read-only allowlisted tool passes without a park.
+	const readOnly = await fetch(approvalUrl(handle.port, "/approval"), {
 		method: "POST",
 		headers: { "content-type": "application/json", [TOKEN_HEADER]: handle.token },
 		body: hookPayload("view_file", { TargetFile: "/w/x" }),
 	});
-	const ungatedBody = (await ungated.json()) as { decision?: string; ticket?: string };
-	assert.equal(ungatedBody.decision, "deny", "ungated tools get a direct deny");
-	assert.equal(ungatedBody.ticket, undefined, "no park for ungated tools");
-	assert.equal(parked, 0, "onApproval never fires for ungated tools");
+	const readOnlyBody = (await readOnly.json()) as { decision?: string; ticket?: string };
+	assert.equal(readOnlyBody.decision, "allow", "read-only allowlisted tools pass");
+	assert.equal(readOnlyBody.ticket, undefined, "no park for allowlisted tools");
+	assert.equal(parked, 0, "onApproval never fires for allowlisted tools");
+});
+
+test("approval: an unknown native tool outside any finite set parks for Pi approval (real POST path)", async () => {
+	const seen: Array<{ ticket: string; name: string; args: unknown }> = [];
+	const r = await startMcpServer(deps({ onApproval: (ticket, payload) => { seen.push({ ticket, name: payload.toolCall.name, args: payload.toolCall.args }); } }));
+	handle = r.handle!;
+	const res = await fetch(approvalUrl(handle.port, "/approval"), {
+		method: "POST",
+		headers: { "content-type": "application/json", [TOKEN_HEADER]: handle.token },
+		body: hookPayload("sed_file", { Path: "/w/x", Expression: "s/a/b/" }),
+	});
+	const body = (await res.json()) as { decision?: string; ticket?: string };
+	assert.equal(body.decision, undefined, "not rejected for being outside the old matcher set");
+	assert.equal(typeof body.ticket, "string");
+	assert.deepEqual(seen.map((s) => [s.name, s.args]), [["sed_file", { Path: "/w/x", Expression: "s/a/b/" }]]);
+});
+
+test("approval: positively identified MCP calls pass; metadata-less look-alikes do not", async () => {
+	let parked = 0;
+	const r = await startMcpServer(deps({ onApproval: () => { parked += 1; } }));
+	handle = r.handle!;
+	const post = async (name: string, args: Record<string, unknown>) =>
+		(await (await fetch(approvalUrl(handle!.port, "/approval"), {
+			method: "POST",
+			headers: { "content-type": "application/json", [TOKEN_HEADER]: handle!.token },
+			body: hookPayload(name, args),
+		})).json()) as { decision?: string; ticket?: string };
+	assert.equal((await post("call_mcp_tool", { server_name: "codegraph", tool: "x" })).decision, "allow");
+	assert.equal(parked, 0);
+	assert.equal((await post("call_mcp_tool", { ServerName: "pi-agy-863e9ed5", ToolName: "write", Arguments: {} })).decision, "allow", "live ACP shape");
+	assert.equal((await post("read_file", { Path: "/w/x" })).decision, "allow");
+	assert.equal(parked, 0);
+	assert.equal(typeof (await post("call_mcp_tool", { tool: "x" })).ticket, "string", "no server evidence: needs approval");
+	assert.equal(parked, 1);
 });
 
 test("approval: unwired gate denies directly; close() settles pending parks deny", async () => {
@@ -291,10 +329,10 @@ test("provider park: error result (extension block or policy deny) maps to deny 
 	const rt = new ToolRoundTrips(d as unknown as StreamDriver);
 	const park = parkSpy(["t2"]);
 	rt.approvalPark = park;
-	rt.onApproval("t2", JSON.parse(hookPayload("create_file", { TargetFile: "/w/a", CodeContent: "x" })) as never);
+	rt.onApproval("t2", JSON.parse(hookPayload("create_file", { TargetFile: ABS("a"), CodeContent: "x" })) as never);
 	const push = d.pushed[0] as { name: string; args: Record<string, unknown> };
 	assert.equal(push.name, "write");
-	assert.equal(push.args.path, "/w/a");
+	assert.equal(push.args.path, ABS("a"));
 	assert.equal(push.args.content, "x");
 	rt.resolve("t2", "rm is not allowed", true);
 	assert.deepEqual(park.decisions, [{ ticket: "t2", allow: false, reason: "rm is not allowed" }]);
@@ -308,17 +346,35 @@ test("provider park: unwired park denies fail-closed and parks nothing", () => {
 	assert.equal(rt.pendingIds.includes("t3"), false);
 });
 
-test("provider park: ungated native tool denies without parking", () => {
+test("provider park: a known write tool with a relative or missing target denies without parking", () => {
+	for (const args of [{ TargetFile: "rel/x", CodeContent: "x" }, { CodeContent: "x" }, { Path: "", Content: "x" }]) {
+		const d = new RecordingDriver();
+		const rt = new ToolRoundTrips(d as unknown as StreamDriver);
+		const park = parkSpy(["t4"]);
+		rt.approvalPark = park;
+		rt.onApproval("t4", JSON.parse(hookPayload("write_file", args)) as never);
+		assert.deepEqual(d.pushed, []);
+		assert.equal(rt.pendingIds.includes("t4"), false);
+		assert.equal(park.decisions.length, 1);
+		assert.equal(park.decisions[0]?.allow, false);
+		assert.match(park.decisions[0]?.reason ?? "", /target path/);
+	}
+});
+
+test("provider park: an unknown native tool parks on the raw-arguments shadow", () => {
 	const d = new RecordingDriver();
 	const rt = new ToolRoundTrips(d as unknown as StreamDriver);
-	const park = parkSpy(["t4"]);
+	const park = parkSpy(["t5"]);
 	rt.approvalPark = park;
-	rt.onApproval("t4", JSON.parse(hookPayload("view_file", { TargetFile: "/w/x" })) as never);
-	assert.deepEqual(d.pushed, []);
-	assert.equal(rt.pendingIds.includes("t4"), false);
-	assert.equal(park.decisions.length, 1);
-	assert.equal(park.decisions[0]?.allow, false);
-	assert.match(park.decisions[0]?.reason ?? "", /matcher set/);
+	rt.onApproval("t5", JSON.parse(hookPayload("sed_file", { Path: "/w/x", Expression: "s/a/b/" })) as never);
+	const push = d.pushed[0] as { name: string; args: Record<string, unknown> };
+	assert.equal(push.name, "agy_native_approval");
+	assert.equal(push.args.tool, "sed_file");
+	assert.deepEqual(push.args.arguments, { Path: "/w/x", Expression: "s/a/b/" });
+	assert.equal(push.args.command, undefined, "no fabricated command");
+	assert.equal(push.args.path, undefined, "no fabricated path");
+	rt.resolve("t5", "denied by user", true);
+	assert.deepEqual(park.decisions, [{ ticket: "t5", allow: false, reason: "denied by user" }]);
 });
 
 test("provider park: timeout denies fail-closed; the late result logs approval-late", async () => {

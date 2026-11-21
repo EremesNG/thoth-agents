@@ -364,3 +364,37 @@ test.each(["plan", "accept-edits"] as const)("stream-json %s argv preserves the 
 		else process.env.PATH = previousPath;
 	}
 });
+
+describe("stream-json driver prompt-boundary delivery recheck", () => {
+	const request = (prompt: string) => ({
+		prompt,
+		cwd: process.cwd(),
+		model: "gemini-3.8-flash",
+		mode: "accept-edits" as const,
+		skipPermissions: true,
+		timeoutMin: 0.5,
+		inactivityMin: 0.5,
+	});
+
+	test("rechecks delivery immediately before the prompt write", async () => {
+		process.env.PATH = `${FAKE_BIN_DIR}${path.delimiter}${process.env.PATH}`;
+		const driver = new StreamDriver();
+		let calls = 0;
+		driver.verifyDelivery = () => { calls += 1; };
+		const handle = await driver.run(request("hi"));
+		assert.equal((await handle.outcome).status, "OK");
+		assert.equal(calls, 2, "pre-start read-back plus the prompt-boundary recheck");
+	}, 30_000);
+
+	test("refuses visibly when the owned groups are lost after read-back and before the write", async () => {
+		process.env.PATH = `${FAKE_BIN_DIR}${path.delimiter}${process.env.PATH}`;
+		const driver = new StreamDriver();
+		let calls = 0;
+		driver.verifyDelivery = () => {
+			calls += 1;
+			if (calls === 2) throw new Error("gate group lost between read-back and prompt");
+		};
+		await assert.rejects(driver.run(request("hi")), /gate group lost between read-back and prompt/);
+		assert.equal(calls, 2);
+	}, 30_000);
+});

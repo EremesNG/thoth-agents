@@ -808,13 +808,13 @@ In a Pi session without a dialog-capable UI, the Junie bridge MUST launch Junie 
 
 ### Requirement: Antigravity ACP sessions mirror the stream-json tool surface
 
-`@thoth-agents/pi-antigravity-bridge` MUST pass to every ACP `session/new` and `session/load` this instance's bridge MCP server plus every enabled, non-Pi-bridge MCP server of the isolated agy configuration (stdio and http), whenever it staged an ACP home, and in that case MUST launch `agy acp` with a minimal bridge carrier agent written inside that home whose frontmatter disables agy's native subagent and delegation tools, falling back to launching without the carrier (with a warning) only when the carrier cannot be written; the Pi system prompt remains delivered inline, and when `AGY_AGENTS_ROOT` bypasses home staging the previous ACP behavior is kept.
+`@thoth-agents/pi-antigravity-bridge` MUST pass to every ACP `session/new` and `session/load` this instance's bridge MCP server plus every enabled, non-Pi-bridge MCP server of the isolated agy configuration (stdio and http), whenever it staged an ACP home, and in that case MUST launch `agy acp` with a minimal bridge carrier agent written inside that home whose frontmatter disables agy's native subagent and delegation tools, falling back to launching without the carrier (with a warning) only when the carrier cannot be written; the Pi system prompt remains delivered inline, and when `AGY_AGENTS_ROOT` bypasses home staging the previous ACP behavior is kept only while the edit-approval gate is disabled; with the gate enabled such ACP turns MUST be refused visibly.
 
 #### Scenario: Antigravity ACP sessions mirror the stream-json tool surface
 
-- **GIVEN** an isolated agy configuration with a stdio server `codegraph` and another Pi bridge entry
-- **WHEN** an ACP session is created or loaded
-- **THEN** `mcpServers` contains this bridge entry and `codegraph` (with env as name/value pairs) but not the other bridge entry, and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home
+- **GIVEN** an isolated agy configuration with a stdio server `codegraph` and another Pi bridge entry, and separately an ACP session with `AGY_AGENTS_ROOT` set
+- **WHEN** an ACP session is created or loaded, or the `AGY_AGENTS_ROOT` session starts a turn with the edit-approval gate enabled
+- **THEN** `mcpServers` contains this bridge entry and `codegraph` but not the other bridge entry and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home, while the gated `AGY_AGENTS_ROOT` turn is refused with a visible error and the same session with the gate disabled keeps the previous ACP behavior 
 
 ### Requirement: Pi subagent model fallback chains
 
@@ -864,4 +864,14 @@ Pi `/subagents-model` MUST show each subagent's effective fallback chain with it
 
 - **GIVEN** a profile whose worker entry has `fallback_models: ["anthropic/claude-sonnet-5-5"]`
 - **WHEN** the user changes only the worker effort in `/subagents-model` and saves
-- **THEN** the saved worker entry still lists `anthropic/claude-sonnet-5-5`, and the overview shows that chain marked as coming from the profile 
+- **THEN** the saved worker entry still lists `anthropic/claude-sonnet-5-5`, and the overview shows that chain marked as coming from the profile
+
+### Requirement: Antigravity bridge native write approval and failure visibility
+
+When the edit-approval gate is enabled, the bridge MUST NOT dispatch an agy turn on ACP or stream-json without a verified owned edit-gate hook group for that instance, refusing the turn visibly otherwise (including gated ACP under a legacy discovery override that cannot deliver it); every agy native tool not on the source-recorded read-only allowlist (other than MCP calls and a guard-owned `run_command`) MUST require Pi approval — known file write/edit tools against the absolute target path agy will mutate (denied when the target is relative, missing or unresolvable), unknown tools as explicit unknown-target operations showing their raw arguments and never against a guessed path — and the owned hook handler MUST emit a verdict before agy's hook timeout, forwarding a valid Pi decision received in time and defaulting to deny on failure or when no valid decision arrives by its internal deadline (a crashed or killed hook process is a documented residual); a non-aborted ACP turn whose positively identified native tool failed without model text MUST surface a diagnostic instead of an empty success; and an OK handle consisting only of an account-quota notice MUST surface as a retryable provider error without mutating the existing binding.
+
+#### Scenario: Antigravity bridge native write approval and failure visibility
+
+- **GIVEN** the Antigravity bridge with the edit-approval gate enabled on agy >=1.5.11
+- **WHEN** agy issues `write_file` or an edit with current argument shapes, the owned hook group cannot be verified, a native tool fails with no model text, or a main or redelivered handle returns only a quota notice
+- **THEN** the write awaits Pi approval, the turn is refused visibly, a diagnostic naming the tool with a generic message and a pointer to the agy logs (no free-form failure text) is shown, or a retryable rate-limit error is emitted with the binding unchanged, respectively 

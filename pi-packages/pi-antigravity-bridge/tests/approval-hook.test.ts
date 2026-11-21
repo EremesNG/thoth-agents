@@ -15,10 +15,14 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 import {
+	ALL_TOOLS_MATCHER,
+	HANDLER_DEADLINE_GRACE_MS,
+	HANDLER_TIMEOUT_MARGIN_MS,
 	approvalHookFileName,
 	buildGateGroup,
 	gateGroupKey,
 	gateHooksStaged,
+	handlerDeadlineMs,
 	hookScriptSource,
 	removeGateHooks,
 	stagedTimeoutSeconds,
@@ -57,8 +61,7 @@ test("stages into the private dir: group shape, matcher, generous timeout", () =
 	};
 	assert.equal(group.enabled, true);
 	const handler = group.PreToolUse[0].hooks[0];
-	assert.match(group.PreToolUse[0].matcher, /create_file/);
-	assert.match(group.PreToolUse[0].matcher, /run_command/);
+	assert.equal(group.PreToolUse[0].matcher, ALL_TOOLS_MATCHER, "the gate matches every native tool; the handler decides");
 	assert.equal(handler.command, 'node "/data/dir/approval-hook.mjs"');
 	// V3: timeout must exceed the park budget (soft-pass on timeout)
 	assert.ok(handler.timeout >= opts.parkBudgetMs / 1000);
@@ -192,8 +195,19 @@ test("hook script source: posts, polls, fails closed on deadline", () => {
 	assert.match(src, /\/approval/);
 	assert.match(src, /x-bridge-token/);
 	assert.equal(src.includes("secret-token"), true);
-	assert.match(src, /decision: "deny", reason: "approval gate deadline exceeded"/);
-	assert.match(src, /decision: "deny", reason: "approval gate unreachable/);
+	assert.match(src, /deny\("approval gate deadline exceeded"\)/);
+	assert.match(src, /deny\("approval gate unreachable/);
+});
+
+test("handler overall deadline sits strictly below the declared agy hook timeout with margin", () => {
+	for (const park of [0, 1_000, 60_000, 480_000, 3_600_000]) {
+		const deadline = handlerDeadlineMs(park);
+		const timeoutMs = stagedTimeoutSeconds(park) * 1000;
+		assert.ok(deadline >= park + HANDLER_DEADLINE_GRACE_MS, "outlasts the park so its terminal deny can be forwarded");
+		assert.ok(deadline + HANDLER_TIMEOUT_MARGIN_MS <= timeoutMs, `park ${park}: deadline ${deadline} + margin must fit in timeout ${timeoutMs}`);
+	}
+	const group = buildGateGroup(opts) as { PreToolUse: Array<{ hooks: Array<{ timeout: number }> }> };
+	assert.equal(group.PreToolUse[0].hooks[0].timeout, stagedTimeoutSeconds(opts.parkBudgetMs));
 });
 
 test("stagedTimeoutSeconds floors at 60s and adds margin", () => {
@@ -439,4 +453,50 @@ test("sweep compares complete JSON values independent of object key order", () =
 
 test("sweep preserves a production live-pid group", () => {
 	assert.equal(sweptForGroup(buildGateGroup(liveOpts), gateGroupKey(process.pid)), false);
+});
+
+// --- fixed pre-change fixture: the sweep must keep recognizing groups written
+// by earlier builds. This is a LITERAL (never produced by the live builder),
+// matching what 1.x sessions staged into the shared workspace hooks.json. ---
+
+test("sweep removes a dead session's group from a fixed literal pre-change fixture", () => {
+	const ws = tmpDir();
+	const script = path.join(logsDir(), approvalHookFileName(deadPid, U));
+	const literal = `{
+  "pi-bridge-gate-${deadPid}": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "create_file|write_to_file|replace_file_content|multi_replace_file_content|edit_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ${JSON.stringify("node " + JSON.stringify(script))},
+            "timeout": 540
+          }
+        ]
+      }
+    ]
+  },
+  "foreign-group": { "enabled": true }
+}
+`;
+	fs.mkdirSync(path.dirname(hooksFile(ws)), { recursive: true });
+	fs.writeFileSync(hooksFile(ws), literal);
+	assert.equal(sweepWorkspaceGateGroups(ws), 1);
+	assert.deepEqual(readKeys(ws), ["foreign-group"]);
+	fs.rmSync(ws, { recursive: true, force: true });
+});
+
+test("sweep leaves a pre-change-looking group with a changed matcher alone", () => {
+	const ws = tmpDir();
+	const script = path.join(logsDir(), approvalHookFileName(deadPid, U));
+	const group = {
+		enabled: true,
+		PreToolUse: [{ matcher: "create_file", hooks: [{ type: "command", command: "node " + JSON.stringify(script), timeout: 540 }] }],
+	};
+	fs.mkdirSync(path.dirname(hooksFile(ws)), { recursive: true });
+	fs.writeFileSync(hooksFile(ws), JSON.stringify({ [`pi-bridge-gate-${deadPid}`]: group }));
+	assert.equal(sweepWorkspaceGateGroups(ws), 0);
+	fs.rmSync(ws, { recursive: true, force: true });
 });

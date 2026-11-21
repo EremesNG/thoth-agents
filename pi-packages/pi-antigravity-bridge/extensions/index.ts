@@ -59,25 +59,43 @@ import {
 } from "../src/provider.js";
 import { PollRunFolder, type PollRunData } from "../src/poll-fold.js";
 import {
+	createNativeApprovalBase,
 	createShadowTool,
+	NATIVE_APPROVAL_TOOL,
+	describeApprovalTarget,
 	stripMarkerFields,
 	type AnyToolDefinition,
 	type GatePolicy,
 } from "../src/approval-gate.js";
+import { askUserApproval } from "../src/approval-view.js";
 import { detectPermissionGateExtensions, resolveGateMode } from "../src/approval-detect.js";
-import { approvalHookFileName, hookScriptSource, removeGateHooks, stageGateHooks, sweepWorkspaceGateGroups } from "../src/approval-hook.js";
 import {
+	approvalHookFileName,
+	buildGateGroup,
+	gateGroupKey,
+	handlerDeadlineMs,
+	hookScriptSource,
+	hooksFilePath,
+	removeGateHooks,
+	stageGateHooks,
+	sweepWorkspaceGateGroups,
+} from "../src/approval-hook.js";
+import { homeHooksFile, mergeOwnedHookGroups, verifyOwnedHookGroups, type OwnedHookSpec } from "../src/gate-delivery.js";
+import {
+	buildRunCommandGuardGroup,
 	formatRunCommandGuardReason,
 	guardHooksStaged,
+	guardHookScriptSource,
 	isRunCommandGuardActive,
 	removeRunCommandGuardHooks,
+	runCommandGuardGroupKey,
 	stageRunCommandGuardHooks,
 	writeGuardHookScript,
 } from "../src/run-command-guard.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import { stagedAcpMcpServers } from "../src/acp/mcp-servers.js";
-import { stageAgyHome, sweepStagedAgyHomes, type OwnBridgeEntry } from "../src/acp/home.js";
+import { removeStagedAgyHome, stageAgyHome, sweepStagedAgyHomes, type OwnBridgeEntry } from "../src/acp/home.js";
 import { probeGeminiDirFlag } from "../src/gemini-dir-probe.js";
 import { cleanupManagedAcpInstall } from "../src/acp/setup.js";
 import type { TurnDriver, TurnOutcome } from "../src/driver-types.js";
@@ -330,12 +348,63 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	let gateScriptPath: string | null = null;
 	let gateShadowsRegistered = false;
 	let activeApprovalPark: McpServerHandle["approvals"] | undefined;
+	// Gate intent is LATCHED from configuration at bridge start, before any
+	// staging: "expected" owned hooks never depend on staging success or file
+	// existence. gateSpec is what this instance delivers; guardVerified is the
+	// result of the last pre-dispatch read-back of the run_command guard.
+	let gateMode: ReturnType<typeof resolveGateMode> = "off";
+	let gateSpec: OwnedHookSpec | null = null;
+	let guardVerified = false;
+	let lastAcpHome: string | undefined;
+	const guardSpec = (guard: GuardSnapshot = getGuardContext()): OwnedHookSpec => ({
+		label: "run_command guard",
+		groupKey: runCommandGuardGroupKey(),
+		group: buildRunCommandGuardGroup(guardScriptPath),
+		scriptPath: guardScriptPath,
+		scriptSource: guardHookScriptSource(formatRunCommandGuardReason(guard.serverName)),
+	});
+	const refuseGate = (why: string): never => {
+		throw new Error(`Antigravity approval gate is enabled but ${why}; refusing to dispatch this turn (fail closed).`);
+	};
+	/** Pre-dispatch delivery check, both carriers: with the gate enabled, read
+	 *  back the owned edit-gate group (and the expected guard group) in the
+	 *  carrier's delivery location and refuse the turn unless the gate is
+	 *  usable. A bad guard does not refuse: it makes the edit gate deny
+	 *  run_command itself (see denyApprovalReason below). */
+	function verifyGateDelivery(carrier: "acp" | "stream-json"): void {
+		guardVerified = false;
+		if (gateMode === "off") return;
+		if (!mcpHandle || !gateSpec) refuseGate("its bridge or hook handler is unavailable");
+		let file: string;
+		if (carrier === "acp") {
+			if (process.env.AGY_AGENTS_ROOT) refuseGate("AGY_AGENTS_ROOT bypasses private ACP home staging, the only gate delivery on ACP");
+			if (!lastAcpHome) refuseGate("no private ACP home with the owned hook group is staged");
+			file = homeHooksFile(lastAcpHome!);
+		} else {
+			file = hooksFilePath(bridgeDir);
+		}
+		const guard = getGuardContext();
+		const specs = guard.active ? [gateSpec!, guardSpec(guard)] : [gateSpec!];
+		const result = verifyOwnedHookGroups(file, specs);
+		const gateProblem = result.get(gateSpec!.groupKey);
+		if (gateProblem) refuseGate(gateProblem);
+		const guardProblem = guard.active ? result.get(runCommandGuardGroupKey()) : undefined;
+		guardVerified = guard.active && guardProblem === null;
+		if (guard.active && !guardVerified) fileLog.log("run-command-guard-unverified", { carrier, reason: guardProblem }, "warn");
+	}
 	function syncRunCommandGuardHooks(guard: GuardSnapshot = getGuardContext()): boolean {
 		if (guard.active) {
 			const reason = formatRunCommandGuardReason(guard.serverName);
 			writeGuardHookScript(guardScriptPath, reason);
 			if (engine === "acp") {
-				stageRunCommandGuardHooks(acpHooksDir, guardScriptPath);
+				// Gate enabled: the guard rides the verified private home next to the
+				// edit gate; the hooks-only add-dir is the gate-off delivery.
+				if (gateMode !== "off") {
+					removeRunCommandGuardHooks(acpHooksDir);
+					try { fs.rmSync(acpHooksDir, { recursive: true, force: true }); } catch { /* best effort */ }
+				} else {
+					stageRunCommandGuardHooks(acpHooksDir, guardScriptPath);
+				}
 				removeRunCommandGuardHooks(bridgeDir);
 			} else {
 				stageRunCommandGuardHooks(bridgeDir, guardScriptPath);
@@ -369,13 +438,32 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		if (registration.wrote) ownedDescriptorCacheName = bridgeServerName(process.pid, instanceId);
 	}
 	function stageEngineHome(prefix: "acp-home" | "agy-home"): string | undefined {
+		if (prefix === "acp-home" && gateMode !== "off" && process.env.AGY_AGENTS_ROOT) {
+			refuseGate("AGY_AGENTS_ROOT bypasses private ACP home staging, the only gate delivery on ACP");
+		}
 		if (process.env.AGY_AGENTS_ROOT) return undefined;
 		if (prefix === "agy-home" && !streamHomeSupported) return undefined;
 		const ownBridge: OwnBridgeEntry | undefined = mcpHandle ? {
 			name: bridgeDiscovery === "private" ? serverName : prefix === "acp-home" ? acpServerName : bridgeServerName(process.pid, instanceId),
 			port: mcpHandle.port, token: mcpHandle.token, tokenHeader: TOKEN_HEADER,
 		} : undefined;
-		try { return stageAgyHome({ prefix, ownBridge }); }
+		try {
+			const home = stageAgyHome({ prefix, ownBridge });
+			if (prefix === "acp-home" && gateMode !== "off") {
+				// Deliver the owned groups through the private home's config/hooks.json
+				// (foreign groups preserved). A failure releases the home and fails the turn.
+				try {
+					if (!gateSpec) refuseGate("its bridge or hook handler is unavailable");
+					const guard = getGuardContext();
+					mergeOwnedHookGroups(homeHooksFile(home), guard.active ? [gateSpec!, guardSpec(guard)] : [gateSpec!]);
+				} catch (error) {
+					removeStagedAgyHome(home);
+					throw error;
+				}
+				lastAcpHome = home;
+			}
+			return home;
+		}
 		catch (error) {
 			if (prefix === "acp-home") throw new Error(`Cannot stage isolated ACP home: ${String(error)}`);
 			warnHomeFallback(`staging failed: ${String(error)}`);
@@ -399,6 +487,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	]);
 	const streamDriver = new StreamDriver(bridgeDir);
 	streamDriver.stageHome = () => stageEngineHome("agy-home");
+	streamDriver.verifyDelivery = () => verifyGateDelivery("stream-json");
 	// Mirror the stream driver's lifecycle ring into the daily file log
 	// (spawn/exit/abort/stall/recycle). The ACP driver reaches the same file
 	// through acpLog below.
@@ -424,7 +513,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	const acpDriver = new AcpDriver({
 		bin: resolveAgyBinary,
 		stageHome: () => stageEngineHome("acp-home"),
-		hooksDir: () => (guardHooksStaged(acpHooksDir) ? acpHooksDir : undefined),
+		hooksDir: () => (gateMode === "off" && guardHooksStaged(acpHooksDir) ? acpHooksDir : undefined),
+		verifyDelivery: () => verifyGateDelivery("acp"),
 		// Resolved per turn: /agy and AGY_USAGE_ESTIMATE changes apply without
 		// a restart. Without this the driver defaults to "estimate" and the
 		// config knob (incl. "off") is dead.
@@ -764,7 +854,11 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	});
 
 	async function startBridge(epoch: number): Promise<void> {
-		if (stopped || epoch !== lifecycleEpoch) return;
+		if (stopped || epoch !== lifecycleEpoch || mcpHandle) return;
+		// Latch once before async startup. Hook placement, verification and Pi
+		// approval wiring must agree even if configuration changes mid-start.
+		const mode = resolveGateMode(loadConfig().approvals.gateMode, detectPermissionGateExtensions());
+		gateMode = mode;
 		// agy presence check (stream-json engine): the CLI is the whole engine,
 		// so a missing binary means every Antigravity turn would fail. Warn once
 		// per extension instance when the bridge first starts (first Antigravity
@@ -858,7 +952,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			sessionGuardSnapshot = { active: false, serverName: currentDiscoveryServerName() };
 			return; // user opted out
 		}
-		if (mcpHandle) return; // already running (reload re-fires session_start)
 		// pi loads project skill locations only after the project is trusted;
 		// mirror that gate. Global skill dirs are always scanned.
 		const skills: SkillLite[] = scanSkills(projectTrusted ? process.cwd() : undefined);
@@ -967,11 +1060,16 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				listTools,
 				onToolCall: bridgeOnToolCall,
 				onApproval: (ticket, payload) => roundTrips.onApproval(ticket, payload),
+				// run_command routing under the edit gate: guard expected but not
+				// verified-delivered -> the gate itself denies with the Pi bash redirect
+				// (independent of approvals.mode); verified -> the guard hook owns the
+				// denial and the gate passes; guard intentionally inactive -> Pi approval.
 				denyApprovalReason: (name) => {
 					if (name !== "run_command") return undefined;
 					const guard = getGuardContext();
-					return guard.active ? formatRunCommandGuardReason(guard.serverName) : undefined;
+					return guard.active && !guardVerified ? formatRunCommandGuardReason(guard.serverName) : undefined;
 				},
+				allowApproval: (name) => name === "run_command" && getGuardContext().active && guardVerified,
 			},
 			{
 				log: mcpLog, configDir: bridgeDir, serverName,
@@ -1011,9 +1109,18 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (engine === "stream-json" && (!streamHomeSupported || process.env.AGY_AGENTS_ROOT)) registerLegacyFallback();
 
 			// --- Headless run_command guard (non-tui) ---------------------------
-			const guardActive = syncRunCommandGuardHooks();
-			if (guardActive) {
-				fileLog.log("run-command-guard-staged", { engine, server: currentDiscoveryServerName() }, "info");
+			// With the edit gate enabled, a guard-only staging failure must not abort startup: the edit gate is
+			// wired below and the pre-dispatch read-back leaves guardVerified false,
+			// so the gate itself denies run_command with the Pi bash redirect.
+			try {
+				if (syncRunCommandGuardHooks()) {
+					fileLog.log("run-command-guard-staged", { engine, server: currentDiscoveryServerName() }, "info");
+				}
+			} catch (error) {
+				// Gate off: no edit gate to carry the redirect, so fail visibly as before.
+				if (gateMode === "off") throw error;
+				guardVerified = false;
+				fileLog.log("run-command-guard-stage-failed", { engine, message: String(error) }, "warn");
 			}
 
 			// --- Approval gate (docs/TODO.md 2.5) ------------------------------
@@ -1022,8 +1129,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// pi's permission extensions gate it like any native call. Off until
 			// enabled (auto = on only when a third-party gate extension exists).
 			{
-				const cfg = loadConfig();
-				const mode = resolveGateMode(cfg.approvals.gateMode, detectPermissionGateExtensions());
 				if (mode === "dedicated") {
 					// The explicit antigravity_approve variant is planned; until it
 					// ships, dedicated stages the same shadow tools. Say so, so the
@@ -1049,27 +1154,38 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					// embedded (peer review 2026-09-07).
 					const scriptPath = path.join(logsDir(), approvalHookFileName(process.pid, instanceId));
 					fs.mkdirSync(path.dirname(scriptPath), { recursive: true, mode: 0o700 });
-					fs.writeFileSync(
-						scriptPath,
-						hookScriptSource({
-							port: r.handle.port,
-							token: r.handle.token,
-							deadlineMs: APPROVAL_PARK_MS,
-						}),
-						{ mode: 0o600 },
-					);
-					gateScriptPath = scriptPath;
-					// Private per-pid staging (issue #5 isolation): the gate group goes
-					// into the bridge add-dir that ONLY this session's agy receives.
-					// Standalone sessions in the workspace never load it.
-					const staged = stageGateHooks(bridgeDir, {
+					const scriptSource = hookScriptSource({
 						port: r.handle.port,
 						token: r.handle.token,
-						scriptPath,
-						parkBudgetMs: APPROVAL_PARK_MS,
-						excludeRunCommand: guardActive,
+						deadlineMs: handlerDeadlineMs(APPROVAL_PARK_MS),
+						ownServerName: currentDiscoveryServerName(),
 					});
-					fileLog.log("approval-staged", { mode, script: scriptPath, ...staged }, staged.wrote ? "info" : "debug");
+					fs.writeFileSync(scriptPath, scriptSource, { mode: 0o600 });
+					gateScriptPath = scriptPath;
+					const gateOpts = { port: r.handle.port, token: r.handle.token, scriptPath, parkBudgetMs: APPROVAL_PARK_MS };
+					gateSpec = {
+						label: "edit gate",
+						groupKey: gateGroupKey(),
+						group: buildGateGroup(gateOpts),
+						scriptPath,
+						scriptSource,
+					};
+					if (engine === "stream-json") {
+						// Private per-pid staging (issue #5 isolation): the gate group goes
+						// into the bridge add-dir that ONLY this session's agy receives.
+						// Standalone sessions in the workspace never load it. A staging
+						// failure is not swallowed into a soft pass: the pre-dispatch
+						// read-back refuses every gated turn. ACP delivers through its
+						// private home instead (stageEngineHome).
+						try {
+							const staged = stageGateHooks(bridgeDir, gateOpts);
+							fileLog.log("approval-staged", { mode, script: scriptPath, ...staged }, staged.wrote ? "info" : "debug");
+						} catch (error) {
+							fileLog.log("approval-stage-failed", { message: String(error) }, "warn");
+						}
+					} else {
+						removeGateHooks(bridgeDir);
+					}
 
 					// Shadow bases: factory twins of pi's own builtins (public API).
 					// pi.getAllTools() is unusable here: it returns ToolInfo, which
@@ -1085,6 +1201,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 							bash: createBashToolDefinition(gateCwd) as unknown as AnyToolDefinition,
 							write: createWriteToolDefinition(gateCwd) as unknown as AnyToolDefinition,
 							edit: createEditToolDefinition(gateCwd) as unknown as AnyToolDefinition,
+							[NATIVE_APPROVAL_TOOL]: createNativeApprovalBase(),
 						};
 						const policy: GatePolicy = async ({ tool, params, ctx }) => {
 							const askMode = loadConfig().approvals.mode;
@@ -1092,24 +1209,17 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 							if (askMode === "deny") {
 								return { allow: false, reason: `blocked by approval gate (mode: deny): ${tool}` };
 							}
-							const extCtx = ctx as { hasUI?: boolean; ui?: Pick<ExtensionUIContext, "confirm"> } | undefined;
+							const extCtx = ctx as { hasUI?: boolean; ui?: Pick<ExtensionUIContext, "confirm" | "custom"> } | undefined;
 							if (!extCtx?.hasUI || typeof extCtx.ui?.confirm !== "function") {
 								return { allow: false, reason: `approval gate: no UI to approve ${tool} (headless)` };
 							}
-							const what =
-								typeof params.command === "string"
-									? params.command
-									: typeof params.path === "string"
-										? params.path
-										: JSON.stringify(stripMarkerFields(params)).slice(0, 200);
+							const what = describeApprovalTarget(params);
 							// Dialog lock: parallel agy tool approvals queue up instead of
 							// clobbering the live dialog (which silently loses the approval).
-							// Capture the narrowed method: TS drops the guard's narrowing
-							// inside the deferred closure.
-							const uiConfirm = extCtx.ui.confirm.bind(extCtx.ui);
-							const ok = await withDialogLock(() =>
-								uiConfirm(`agy ${tool}?`, what, { timeout: APPROVAL_PARK_MS }),
-							);
+							// Raw unknown-tool arguments get the scrollable, default-No view
+							// (bounded viewports clip a plain confirm); bash/write/edit keep
+							// the standard confirm.
+							const ok = await askUserApproval(extCtx.ui, tool, params, what, APPROVAL_PARK_MS, withDialogLock);
 							return ok ? { allow: true } : { allow: false, reason: `declined in pi (agy ${tool})` };
 						};
 						for (const base of Object.values(bases)) {
@@ -1150,6 +1260,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			roundTrips.approvalPark = undefined;
 			roundTrips.clearEscalations(FAIL_REASON_SHUTDOWN);
 			clearGuardSnapshot();
+			gateMode = "off";
+			gateSpec = null;
+			guardVerified = false;
+			lastAcpHome = undefined;
 			// "recycle", NOT "shutdown": pi fires session_shutdown on /new, /resume
 			// and /fork (docs/extensions.md session lifecycle), not only on process
 			// exit. The drivers are process-lifetime singletons; closing them with

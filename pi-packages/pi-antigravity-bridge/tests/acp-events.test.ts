@@ -35,6 +35,21 @@ describe("acp/events mapUpdate", () => {
   assert.deepEqual(mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "native", name, status: "completed", rawOutput: "ok" }), { kind: "tool_done", toolCallId: "native", output: "ok", mcpServer: server });
   assert.deepEqual(mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "native", name, status: "failed", rawOutput: "bad" }), { kind: "tool_error", toolCallId: "native", message: "bad", mcpServer: server });
  });
+ test("partial _meta.mcp (tool without server) still marks MCP provenance on start/done/error, even on a native-name collision", () => {
+  for (const meta of [{ mcp: { tool: "run_command" } }, { mcp: { tool: "bash" } }, { mcp: { unknownKey: 1 } }]) {
+   const start = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "p", title: "Running run_command", _meta: meta });
+   assert.ok(start && start.kind === "tool_start");
+   assert.equal(start.mcpServer, undefined); assert.equal(start.mcp, true, JSON.stringify(meta));
+   const done = mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "p", status: "completed", rawOutput: "ok", _meta: meta });
+   assert.ok(done && done.kind === "tool_done"); assert.equal(done.mcp, true);
+   const err = mapUpdate({ sessionUpdate: "tool_call_update", toolCallId: "p", status: "failed", rawOutput: "bad", name: "run_command", _meta: meta });
+   assert.ok(err && err.kind === "tool_error"); assert.equal(err.mcp, true); assert.equal(err.name, undefined, "explicit native name never overrides MCP marker");
+  }
+  const plain = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "n", title: "Running run_command" });
+  assert.ok(plain && plain.kind === "tool_start"); assert.equal(plain.mcp, undefined, "no marker, no MCP flag");
+  const serverOnly = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "s", _meta: { mcp: { server: "srv", tool: "t" } } });
+  assert.ok(serverOnly && serverOnly.kind === "tool_start"); assert.equal(serverOnly.mcpServer, "srv"); assert.equal(serverOnly.mcp, undefined);
+ });
  test("unknown native MCP names stay unguessed", () => {
   const mapped = mapUpdate({ sessionUpdate: "tool_call", toolCallId: "foreign", name: "mcp_my_server_hyphen-tool", title: "Run arbitrary display text" });
   assert.ok(mapped && mapped.kind === "tool_start"); assert.equal(mapped.name, "mcp_my_server_hyphen-tool"); assert.equal(mapped.mcpServer, undefined);
@@ -214,6 +229,15 @@ describe("acp/events mapUpdate", () => {
 			toolCallId: "t1",
 			message: "File not found: /x/nope.txt",
 		});
+	});
+
+	test("tool_call_update failed preserves explicit tool identity, but never alongside MCP metadata", () => {
+		const base = { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "failed", rawOutput: "bad" };
+		assert.deepEqual(mapUpdate({ ...base, name: "read_file" }), { kind: "tool_error", toolCallId: "t1", message: "bad", name: "read_file" });
+		assert.deepEqual(
+			mapUpdate({ ...base, name: "read_file", _meta: { mcp: { server: "s", tool: "t" } } }),
+			{ kind: "tool_error", toolCallId: "t1", message: "bad", mcpServer: "s" },
+		);
 	});
 
 	test("tool_call_update in_progress maps to null (nothing to render)", () => {

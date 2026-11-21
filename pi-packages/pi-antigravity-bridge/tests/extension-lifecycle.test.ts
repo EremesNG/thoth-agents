@@ -1208,7 +1208,7 @@ for await (const _line of readline.createInterface({ input: process.stdin })) {
 	await vi.waitFor(() => expect(fs.existsSync(path.join(os.homedir(), ".pi", "agent", "antigravity-bridge"))).toBe(true));
 	let ticket1 = "";
 	await vi.waitFor(async () => {
-		const res = await postApproval("edit_file", { TargetFile: "a.ts", SearchText: "x", ReplacementContent: "y" });
+		const res = await postApproval("edit_file", { TargetFile: path.join(os.tmpdir(), "a.ts"), SearchText: "x", ReplacementContent: "y" });
 		expect(typeof res.body.ticket).toBe("string");
 		ticket1 = res.body.ticket!;
 	});
@@ -1244,7 +1244,7 @@ for await (const _line of readline.createInterface({ input: process.stdin })) {
 	const turn2 = s.turn("gate-rebind-2");
 	let ticket2 = "";
 	await vi.waitFor(async () => {
-		const res = await postApproval("edit_file", { TargetFile: "b.ts", SearchText: "a", ReplacementContent: "b" });
+		const res = await postApproval("edit_file", { TargetFile: path.join(os.tmpdir(), "b.ts"), SearchText: "a", ReplacementContent: "b" });
 		expect(typeof res.body.ticket).toBe("string");
 		ticket2 = res.body.ticket!;
 	});
@@ -1255,7 +1255,7 @@ for await (const _line of readline.createInterface({ input: process.stdin })) {
 	);
 	assert.match(JSON.stringify(res2), /Approved by approval gate: edit_file/);
 
-	const writeApproval = await postApproval("write_to_file", { TargetFile: "c.ts", CodeContent: "hi" });
+	const writeApproval = await postApproval("write_to_file", { TargetFile: path.join(os.tmpdir(), "c.ts"), CodeContent: "hi" });
 	assert.ok(typeof writeApproval.body.ticket === "string");
 	const res3 = await writeShadow.execute(
 		"call-3",
@@ -1274,7 +1274,7 @@ for await (const _line of readline.createInterface({ input: process.stdin })) {
 	const turn3 = s.turn("gate-rebind-3");
 	let ticket4 = "";
 	await vi.waitFor(async () => {
-		const res = await postApproval("edit_file", { TargetFile: "d.ts", SearchText: "1", ReplacementContent: "2" });
+		const res = await postApproval("edit_file", { TargetFile: path.join(os.tmpdir(), "d.ts"), SearchText: "1", ReplacementContent: "2" });
 		expect(typeof res.body.ticket).toBe("string");
 		ticket4 = res.body.ticket!;
 	});

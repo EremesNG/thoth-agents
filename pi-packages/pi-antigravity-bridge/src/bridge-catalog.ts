@@ -1,4 +1,5 @@
 import type { BridgeTools } from "./config.js";
+import { NATIVE_APPROVAL_TOOL } from "./approval-gate.js";
 import { POLL_TOOL_NAME } from "./provider.js";
 import { ACTIVATE_SKILL_TOOL_NAME } from "./skills.js";
 
@@ -23,6 +24,7 @@ const BRIDGE_INTERNAL_TOOLS = new Set([
 	"agy_web_search",
 	"agy_read_url",
 	POLL_TOOL_NAME,
+	NATIVE_APPROVAL_TOOL,
 	ACTIVATE_SKILL_TOOL_NAME,
 	TOOL_INFO_TOOL_NAME,
 	CALL_TOOL_NAME,

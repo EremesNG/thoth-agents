@@ -31,7 +31,7 @@ import {
 	LATEST_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
-import { GATED_AGY_TOOL_SET } from "./approval-hook.js";
+import { isMcpToolCall, isReadOnlyAgyTool } from "./native-tool-policy.js";
 import { normalizeToolSchema } from "./tool-schema.js";
 import { emitLifecycle } from "./lifecycle.js";
 
@@ -116,6 +116,11 @@ export interface McpBridgeDeps {
 	/** Optional synchronous deny for tools owned by a static guard (e.g.
 	 *  non-interactive run_command), so they never park for approval. */
 	denyApprovalReason?(toolName: string): string | undefined;
+	/** Optional synchronous pass for a tool whose denial a verified separate
+	 *  guard hook owns (run_command while the headless guard is delivered),
+	 *  so the edit gate neither parks nor double-decides it. Consulted after
+	 *  denyApprovalReason. */
+	allowApproval?(toolName: string): boolean;
 }
 
 /** Clamp an unsupported MCP-Protocol-Version header down to the SDK's LATEST.
@@ -452,15 +457,17 @@ export async function startMcpServer(
 			crypto.timingSafeEqual(Buffer.from(received), Buffer.from(token))
 		);
 	};
-	const readBody = async (req: http.IncomingMessage): Promise<string | null> => {
-		let body = "";
+	const bodyDecoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+	const readBody = async (req: http.IncomingMessage): Promise<Buffer | null> => {
+		const chunks: Buffer[] = [];
 		let bytes = 0;
-		for await (const chunk of req) {
-			body += chunk;
+		// Leave the socket open long enough to send 413 before closing it.
+		for await (const chunk of req.iterator({ destroyOnReturn: false }) as AsyncIterable<Buffer>) {
 			bytes += chunk.length;
 			if (bytes > MAX_BODY_BYTES) return null;
+			chunks.push(chunk);
 		}
-		return body;
+		return Buffer.concat(chunks, bytes);
 	};
 	const approvalRoute = async (
 		req: http.IncomingMessage,
@@ -480,7 +487,7 @@ export async function startMcpServer(
 			}
 			let payload: ApprovalPayload;
 			try {
-				const parsed = JSON.parse(body) as ApprovalPayload;
+				const parsed = JSON.parse(bodyDecoder.decode(body)) as ApprovalPayload;
 				const name = parsed?.toolCall?.name;
 				if (typeof name !== "string" || name.length === 0) throw new Error("no toolCall.name");
 				if (!parsed.toolCall.args || typeof parsed.toolCall.args !== "object") {
@@ -491,17 +498,27 @@ export async function startMcpServer(
 				res.writeHead(400, { "content-type": "application/json" }).end('{"error":"invalid payload"}');
 				return;
 			}
-			// Defense in depth: the hooks matcher should never let an ungated
-			// tool through; deny directly instead of parking.
-			if (!GATED_AGY_TOOL_SET.has(payload.toolCall.name)) {
-				log("approval-ungated", { name: payload.toolCall.name });
-				denyDirect(res, `tool ${payload.toolCall.name} is not in the approval matcher set`);
+			// Allow-by-exception (defense in depth; the handler decides the same
+			// way locally): only the read-only allowlist and positively identified
+			// MCP calls pass without approval. Every other native tool - including
+			// names outside any finite list - parks for Pi approval.
+			if (isReadOnlyAgyTool(payload.toolCall.name) || isMcpToolCall(payload.toolCall.name, payload.toolCall.args, discoveryServerName)) {
+				log("approval-passthrough", { name: payload.toolCall.name });
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(decisionBody({ allow: true }));
 				return;
 			}
 			const guardedDeny = deps.denyApprovalReason?.(payload.toolCall.name);
 			if (guardedDeny) {
 				log("approval-guarded-deny", { name: payload.toolCall.name });
 				denyDirect(res, guardedDeny);
+				return;
+			}
+			if (deps.allowApproval?.(payload.toolCall.name)) {
+				// The verified run_command guard owns this call's denial.
+				log("approval-guard-owned", { name: payload.toolCall.name });
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(decisionBody({ allow: true }));
 				return;
 			}
 			if (typeof deps.onApproval !== "function") {
@@ -586,18 +603,8 @@ export async function startMcpServer(
 					return;
 				}
 				// #4: cap request body size.
-				let body = "";
-				let bytes = 0;
-				let tooLarge = false;
-				for await (const chunk of req) {
-					body += chunk;
-					bytes += chunk.length;
-					if (bytes > MAX_BODY_BYTES) {
-						tooLarge = true;
-						break;
-					}
-				}
-				if (tooLarge) {
+				const body = await readBody(req);
+				if (body === null) {
 					// We bailed before draining the oversize body; close the connection
 					// so the unread bytes can't desync the next request on this socket.
 					res.writeHead(413, { "content-type": "application/json", connection: "close" }).end('{"error":"payload too large"}');
@@ -605,7 +612,7 @@ export async function startMcpServer(
 				}
 				let parsed: { method?: string; params?: { protocolVersion?: string } };
 				try {
-					parsed = JSON.parse(body);
+					parsed = JSON.parse(bodyDecoder.decode(body));
 				} catch {
 					res.writeHead(400).end("invalid json");
 					return;

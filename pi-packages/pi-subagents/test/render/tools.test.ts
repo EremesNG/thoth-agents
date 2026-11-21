@@ -10,7 +10,7 @@ import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
 
-function expectNativeShell(lines: string[], width: number) {
+function expectNativeShell(lines: readonly string[], width: number) {
   expect(env.stripAnsi(lines[0])).toBe(' '.repeat(width));
   expect(env.stripAnsi(lines.at(-1)!)).toBe(' '.repeat(width));
   expect(lines.join('')).not.toContain('╭');

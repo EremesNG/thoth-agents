@@ -1060,7 +1060,7 @@ describe('work panel continuation budget', () => {
 describe('work panel fail-closed focus observation', () => {
   it.each([
     'getFocusedComponent',
-    'hasOverlay',
+    'overlayStack',
     'getEditorText',
   ])('does not guess editor focus or emptiness when %s is unavailable', async (method) => {
     const session = uiSession();

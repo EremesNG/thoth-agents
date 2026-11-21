@@ -193,7 +193,7 @@ test.each([
 		},
 		{ expanded: false, isPartial: false },
 		theme,
-	) as { render: (width: number) => string[] };
+	) as { render: (width: number) => readonly string[] };
 	expect(rendered.render(120).join("\n")).toContain(`✓ AskAntigravity ${expected}`);
 });
 

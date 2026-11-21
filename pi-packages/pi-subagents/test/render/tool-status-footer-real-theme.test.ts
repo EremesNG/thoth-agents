@@ -38,7 +38,7 @@ async function installThemeKit() {
   });
 }
 
-function footer(component: { render(width: number): string[] }) {
+function footer(component: { render(width: number): readonly string[] }) {
   return stripTerminalSequences(component.render(120).at(-1) ?? '');
 }
 

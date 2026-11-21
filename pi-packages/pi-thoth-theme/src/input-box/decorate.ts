@@ -31,7 +31,7 @@ import type { WorkingState } from './state.ts';
 export const MIN_INPUT_BOX_WIDTH = 16;
 
 interface EditorLike {
-  render(width: number): string[];
+  render(width: number): readonly string[];
   invalidate?(): void;
   renderTopBorder(width: number, hiddenLineCount: number): string;
   renderBottomBorder(width: number, hiddenLineCount: number): string;
@@ -141,7 +141,10 @@ export function decorateEditor(
   let revision = settingsRevision();
   const muted = (text: string) => deps.theme.fg?.('muted', text) ?? text;
 
-  function nativeRender(receiver: EditorLike, width: number): string[] {
+  function nativeRender(
+    receiver: EditorLike,
+    width: number,
+  ): readonly string[] {
     fallback = true;
     try {
       return originals.render.call(receiver, width);
@@ -154,7 +157,7 @@ export function decorateEditor(
     render: {
       configurable: true,
       writable: true,
-      value(this: EditorLike, width: number): string[] {
+      value(this: EditorLike, width: number): readonly string[] {
         boxRendered = false;
         if (revision !== settingsRevision()) {
           revision = settingsRevision();
@@ -181,7 +184,7 @@ export function decorateEditor(
         outerWidth = boxWidth;
         top = undefined;
         bottom = undefined;
-        let lines: string[];
+        let lines: readonly string[];
         try {
           lines = originals.render.call(this, outerWidth - 2);
         } finally {

@@ -1,7 +1,8 @@
+import type { Component } from '@earendil-works/pi-tui';
 import { detachRenderContext, getRenderKit } from '@thoth-agents/pi-core';
 
 interface RenderComponent {
-  render(width: number): string[];
+  render: Component['render'];
   invalidate(): void;
   handleMouse?(event: unknown): unknown;
 }

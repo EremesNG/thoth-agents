@@ -27,7 +27,7 @@ const theme = {
   bold: (text: string) => text,
 } as Theme;
 
-function expectBorderTone(lines: string[], tone: keyof typeof colors) {
+function expectBorderTone(lines: readonly string[], tone: keyof typeof colors) {
   expect(lines.length).toBeGreaterThan(0);
   for (const line of lines) {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI marker matching

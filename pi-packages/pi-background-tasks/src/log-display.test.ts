@@ -25,7 +25,7 @@ const theme = {
   fg: (color: string, text: string) => `<${color}>${text}</>`,
 };
 
-function plain(lines: string[]): string {
+function plain(lines: readonly string[]): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip terminal ANSI styling.
   return lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "").replace(/<\/?[a-zA-Z][\w-]*>/g, "").replace(/<\/>/g, "");
 }

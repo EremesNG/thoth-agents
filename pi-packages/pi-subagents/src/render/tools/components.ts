@@ -1,4 +1,8 @@
-import { Box, stripTerminalSequences } from '@earendil-works/pi-tui';
+import {
+  Box,
+  type Component,
+  stripTerminalSequences,
+} from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
   isAnimationEffectEnabled,
@@ -126,7 +130,10 @@ export function boxedComponent(
   const memo = createKitRenderMemo();
   // Cache only KIT output; the sentinel keeps native rendering uncached.
   const nativeFallback: string[] = [];
-  const renderLines = (width: number, kit?: ThothRenderKit): string[] => {
+  const renderLines = (
+    width: number,
+    kit?: ThothRenderKit,
+  ): ReturnType<Component['render']> => {
     const theme = options?.theme;
     const rawLines = Array.isArray(linesOrText)
       ? linesOrText.flatMap((line) => line.split('\n'))
@@ -259,7 +266,7 @@ export function boxedComponent(
       }
       return undefined;
     },
-    render(width: number): string[] {
+    render(width: number) {
       const lines = memo.render(width, (kit) =>
         kit ? renderLines(width, kit) : nativeFallback,
       );

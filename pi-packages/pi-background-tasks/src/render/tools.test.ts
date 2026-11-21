@@ -91,7 +91,7 @@ afterEach(() => {
 });
 // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip terminal ANSI styling.
 const ansi = /\u001b\[[0-9;]*m/g;
-const strip = (lines: string[]) => lines.join('\n').replace(ansi, '');
+const strip = (lines: readonly string[]) => lines.join('\n').replace(ansi, '');
 
 function compose(
   name: string,

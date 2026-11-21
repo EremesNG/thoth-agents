@@ -1,12 +1,19 @@
 import { initTheme } from '@earendil-works/pi-coding-agent';
 import type { EditorComponent } from '@earendil-works/pi-tui';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { openOwnedOverlay } from '../src/owned-overlay.js';
+import { ensureWorkPanel, registerWorkPanelProvider } from '../src/index.js';
+import {
+  acquireEditorSlotFocus,
+  openOwnedOverlay,
+  overlayFocusRestorer,
+} from '../src/owned-overlay.js';
 import { registerEditorSlot } from '../src/panel.js';
 import {
+  breakOverlayVisibility,
   inputComponent,
   ownedOverlaySession,
 } from './owned-overlay-fixture.js';
+import { provider, uiSession } from './work-panel-fixture.js';
 
 const cleanups: Array<() => void> = [];
 beforeAll(() => initTheme('dark'));
@@ -97,6 +104,30 @@ it.each([
   expect(panel.handleInput).toHaveBeenCalledExactlyOnceWith('\x1b');
   close();
   await result;
+});
+
+it.each([
+  'non-callable',
+  'throwing getter',
+  'throwing method',
+] as const)('leaves focus alone when overlay visibility is unknown (%s)', (failure) => {
+  const { ctx, tui, editor } = session();
+  const slot = registerEditorSlot(
+    ctx,
+    { key: 'question' },
+    () => editor as unknown as EditorComponent,
+  );
+  if (!slot) throw new Error('Editor slot unavailable');
+  cleanups.push(() => slot.dispose());
+  const foreign = inputComponent('Foreign');
+  const handle = tui.showOverlay(foreign);
+  cleanups.push(() => handle.hide());
+  expect(tui.getFocusedComponent()).toBe(foreign);
+  cleanups.push(breakOverlayVisibility(tui, failure));
+  expect(() => slot.acquireFocus()).not.toThrow();
+  expect(tui.getFocusedComponent()).toBe(foreign);
+  expect(() => slot.releaseFocus()).not.toThrow();
+  expect(tui.getFocusedComponent()).toBe(foreign);
 });
 
 it.each([
@@ -217,4 +248,232 @@ it.each([
   await result;
   input('editor');
   expect(editor.handleInput).toHaveBeenCalledExactlyOnceWith('editor');
+});
+
+const corruptions = [
+  'missing',
+  'non-callable',
+  'throwing getter',
+  'throwing method',
+  'wrong-typed value',
+] as const;
+type Corruption = (typeof corruptions)[number];
+
+function corrupt(target: object, key: PropertyKey, failure: Corruption) {
+  const original = Object.getOwnPropertyDescriptor(target, key);
+  const fail = () => {
+    throw new Error(`Incompatible ${String(key)}`);
+  };
+  if (failure === 'missing' && !original && !(key in target)) return;
+  if (failure === 'missing' && original) Reflect.deleteProperty(target, key);
+  else
+    Object.defineProperty(target, key, {
+      configurable: true,
+      ...(failure === 'throwing getter'
+        ? { get: fail }
+        : {
+            value: {
+              missing: undefined, // Shadow a prototype method.
+              'non-callable': 42,
+              'throwing method': fail,
+              'wrong-typed value': () => 'incompatible',
+            }[failure],
+          }),
+    });
+  cleanups.push(() => {
+    if (original) Object.defineProperty(target, key, original);
+    else Reflect.deleteProperty(target, key);
+  });
+}
+
+it.each([
+  'missing',
+  'non-callable',
+  'throwing getter',
+] as const)('does not report active root input with invalid children (%s) and no overlay', (failure) => {
+  const { ctx, tui, editor } = session();
+  const slot = registerEditorSlot(
+    ctx,
+    { key: 'question' },
+    () => editor as unknown as EditorComponent,
+  );
+  if (!slot) throw new Error('Editor slot unavailable');
+  cleanups.push(() => slot.dispose());
+  expect(tui.hasOverlay()).toBe(false);
+  expect(slot.isRootEditorInputActive()).toBe(true);
+  corrupt(tui, 'children', failure);
+  expect(slot.isRootEditorInputActive()).toBe(false);
+});
+
+const handlesKey = Symbol.for('thoth.pi-core.owned-overlay-handles');
+it.each(
+  [
+    'getFocusedComponent',
+    'focusedComponent',
+    'overlayStack',
+    'isOverlayVisible',
+    'children',
+    'overlay entry component',
+    'overlay entry preFocus',
+    'overlay entry hidden',
+    'overlay visibility callback',
+    'owned handle registry',
+    'owned handle map',
+    'owned map get',
+  ].flatMap((member) =>
+    corruptions
+      // A missing optional callback means the overlay is always visible.
+      .filter(
+        (failure) =>
+          member !== 'overlay visibility callback' || failure !== 'missing',
+      )
+      .map((failure) => ({ member, failure })),
+  ),
+)('fails closed for $member ($failure)', async ({ member, failure }) => {
+  const { ctx, tui, editor, editorContainer } = session();
+  const slot = registerEditorSlot(
+    ctx,
+    { key: 'question' },
+    () => editor as unknown as EditorComponent,
+  );
+  if (!slot) throw new Error('Editor slot unavailable');
+  cleanups.push(() => slot.dispose());
+  const foreign = inputComponent('Foreign');
+  const panel = inputComponent('Owned');
+  let close = () => {};
+  const result = openOwnedOverlay<void>(ctx, (_tui, _theme, _keys, done) => {
+    close = done;
+    return panel;
+  });
+  await Promise.resolve();
+  cleanups.push(() => close());
+  const handle = tui.showOverlay(foreign, { visible: () => true });
+  cleanups.push(() => handle.hide());
+  const mounted = editorContainer.children[0];
+  const stack = Reflect.get(tui, 'overlayStack');
+  const entry = stack.at(-1);
+  const handles = Reflect.get(globalThis, handlesKey).tuis;
+  const focus = Object.getOwnPropertyDescriptor(tui, 'focusedComponent');
+  const setFocus = vi.spyOn(tui, 'setFocus');
+  cleanups.push(() => setFocus.mockRestore());
+  const actualFocus = () =>
+    member === 'focusedComponent' || member === 'getFocusedComponent'
+      ? focus?.value
+      : tui.getFocusedComponent();
+  const targets: Record<string, [object, PropertyKey]> = {
+    'overlay entry component': [entry, 'component'],
+    'overlay entry preFocus': [entry, 'preFocus'],
+    'overlay entry hidden': [entry, 'hidden'],
+    'overlay visibility callback': [entry.options, 'visible'],
+    'owned handle registry': [globalThis, handlesKey],
+    'owned handle map': [Reflect.get(globalThis, handlesKey), 'tuis'],
+    'owned map get': [handles.get(tui), 'get'],
+  };
+  if (member === 'getFocusedComponent')
+    corrupt(tui, 'focusedComponent', 'missing');
+  if (member === 'focusedComponent')
+    corrupt(tui, 'getFocusedComponent', 'missing');
+  corrupt(...(targets[member] ?? [tui, member]), failure);
+  expect(() => slot.acquireFocus()).not.toThrow();
+  expect(() => slot.releaseFocus()).not.toThrow();
+  expect(setFocus).not.toHaveBeenCalled();
+  expect(actualFocus()).toBe(foreign);
+  // Check eligibility while the editor itself is selected, too. Changing the
+  // backing field directly avoids exercising Pi's lifecycle under corruption.
+  if (member !== 'focusedComponent' && member !== 'getFocusedComponent') {
+    Reflect.set(tui, 'focusedComponent', mounted);
+    expect(slot.isRootEditorInputActive()).toBe(false);
+    Reflect.set(tui, 'focusedComponent', foreign);
+  } else {
+    expect(slot.isRootEditorInputActive()).toBe(false);
+  }
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  await result;
+});
+
+it('keeps the front owned overlay focused if the lower overlay throws on unfocus', async () => {
+  const { ctx, tui, editor, input } = session();
+  const slot = registerEditorSlot(
+    ctx,
+    { key: 'question' },
+    () => editor as unknown as EditorComponent,
+  );
+  if (!slot) throw new Error('Editor slot unavailable');
+  cleanups.push(() => slot.dispose());
+  const lower = inputComponent('Lower');
+  const front = inputComponent('Front');
+  for (const component of [lower, front]) {
+    let close = () => {};
+    void openOwnedOverlay<void>(
+      ctx,
+      (_tui, _theme, _keys, done) => {
+        close = done;
+        return component;
+      },
+      {
+        onHandle(handle) {
+          if (component === lower)
+            vi.spyOn(handle, 'unfocus').mockImplementation(() => {
+              throw new Error('Cannot unfocus lower overlay');
+            });
+        },
+      },
+    );
+    await Promise.resolve();
+    cleanups.push(() => close());
+  }
+  expect(tui.getFocusedComponent()).toBe(front);
+  expect(() => slot.acquireFocus()).not.toThrow();
+  expect(tui.getFocusedComponent()).toBe(front);
+  input('next');
+  expect(front.handleInput).toHaveBeenCalledExactlyOnceWith('next');
+});
+
+it('does not run a deferred foreign restoration if focus became unknown', () => {
+  const { tui } = session();
+  const foreign = inputComponent('Foreign');
+  tui.showOverlay(foreign);
+  const restore = overlayFocusRestorer(tui);
+  tui.setFocus(null);
+  const setFocus = vi.spyOn(tui, 'setFocus');
+  cleanups.push(() => setFocus.mockRestore());
+  corrupt(tui, 'getFocusedComponent', 'missing');
+  corrupt(tui, 'focusedComponent', 'missing');
+  expect(restore).not.toThrow();
+  expect(setFocus).not.toHaveBeenCalled();
+});
+
+it.each([
+  null,
+  undefined,
+])('can acquire with known-empty focus (%s)', (empty) => {
+  const { tui, editor } = session();
+  vi.spyOn(tui, 'getFocusedComponent').mockReturnValue(empty as null);
+  const setFocus = vi.spyOn(tui, 'setFocus');
+  acquireEditorSlotFocus(tui, editor);
+  expect(setFocus).toHaveBeenCalledWith(editor);
+});
+
+it.each(
+  corruptions,
+)('keeps the work detail open when its focus is unknown (%s)', async (failure) => {
+  const { tui } = session();
+  const work = uiSession(tui);
+  cleanups.push(
+    registerWorkPanelProvider(work.ctx, provider()),
+    await ensureWorkPanel(work.ctx),
+  );
+  work.key('\x1b[D');
+  work.key('\r');
+  await Promise.resolve();
+  const detail = work.customComponent;
+  expect(tui.getFocusedComponent()).toBe(detail);
+  const setFocus = vi.spyOn(tui, 'setFocus');
+  cleanups.push(() => setFocus.mockRestore());
+  corrupt(tui, 'getFocusedComponent', failure);
+  corrupt(tui, 'focusedComponent', 'missing');
+  detail.focused = false;
+  await Promise.resolve();
+  expect(tui.hasOverlay()).toBe(true);
+  expect(setFocus).not.toHaveBeenCalled();
 });

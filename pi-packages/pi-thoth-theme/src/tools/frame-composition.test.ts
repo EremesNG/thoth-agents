@@ -61,7 +61,7 @@ function createTestComponent(
   );
 }
 
-function assertBorderContinuity(lines: string[]) {
+function assertBorderContinuity(lines: readonly string[]) {
   const plain = lines.map(stripTerminalSequences);
   const content = plain[0] === '' ? plain.slice(1) : plain;
 

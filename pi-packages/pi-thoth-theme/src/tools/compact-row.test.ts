@@ -17,7 +17,7 @@ const theme = {
   bold: (text: string) => text,
 } as unknown as Theme;
 
-const plain = (rows: string[]) =>
+const plain = (rows: readonly string[]) =>
   rows.map((row) => stripTerminalSequences(row));
 
 function base(over: Partial<CompactRowInput> = {}): CompactRowInput {
@@ -219,7 +219,8 @@ function ctx(over: Record<string, unknown> = {}) {
 const text = (output: string) => ({
   content: [{ type: 'text', text: output }],
 });
-const strip = (rows: string[]) => rows.map((r) => stripTerminalSequences(r));
+const strip = (rows: readonly string[]) =>
+  rows.map((r) => stripTerminalSequences(r));
 
 function renderAll(
   tool: any,
@@ -229,12 +230,12 @@ function renderAll(
   opts: any,
 ) {
   const call = tool.renderCall(args, theme, c);
-  const before: string[] = call.render(80);
+  const before = call.render(80);
   const res = tool.renderResult(result, opts, theme, c);
   return {
     before,
-    call: call.render(80) as string[],
-    result: res.render(80) as string[],
+    call: call.render(80),
+    result: res.render(80),
   };
 }
 
@@ -392,9 +393,7 @@ describe.each([
     const long = { command: 'x'.repeat(80), q: 'y'.repeat(80) };
     const c = ctx({ args: long });
     tool.renderCall(long, theme, c);
-    const rows: string[] = tool
-      .renderResult(text('x'), done, theme, c)
-      .render(30);
+    const rows = tool.renderResult(text('x'), done, theme, c).render(30);
     expect(rows).toHaveLength(1);
     expect(visibleWidth(rows[0])).toBeLessThanOrEqual(30);
     expect(stripTerminalSequences(rows[0])).toContain('ctrl+o');

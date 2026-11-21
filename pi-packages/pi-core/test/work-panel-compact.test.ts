@@ -94,7 +94,7 @@ it.each([
     }),
     await ensureWorkPanel(session.ctx),
   );
-  const full: string[] = session.render(32);
+  const full = session.render(32);
   expect(full[0]).toContain('Todos · ◐1 ✓9');
   expect(full.findIndex((line) => line.includes('plan'))).toBe(1);
   expect(full.findIndex((line) => line.includes('Live'))).toBe(2);
@@ -182,7 +182,7 @@ it('merges an opted-in selected completed summary into height overflow and keeps
   session.key('\x1b[B');
   session.key('\x1b[B');
   session.tui.terminal.rows = 8;
-  const lines: string[] = session.render();
+  const lines = session.render();
   expect(lines.filter((line) => /\+\d+ done/.test(line))).toEqual([
     '› +8 done',
   ]);

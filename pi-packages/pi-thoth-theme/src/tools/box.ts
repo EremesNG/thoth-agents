@@ -256,9 +256,7 @@ export function renderBox(
   return result.map((l) => truncateBoxLine(l, safeWidth));
 }
 
-export function createComponent(
-  renderFn: (width: number) => string[],
-): Component {
+export function createComponent(renderFn: Component['render']): Component {
   return cachedComponent((width) => {
     const safeWidth = Math.max(0, Math.floor(width));
     if (safeWidth <= 0) return [];

@@ -4,13 +4,15 @@ import type {
   Theme,
 } from '@earendil-works/pi-coding-agent';
 import type { Component, EditorComponent, TUI } from '@earendil-works/pi-tui';
-import { hasBlockingOverlay } from './decorative-overlay.js';
+import { readBlockingOverlay } from './decorative-overlay.js';
 import {
   acquireEditorSlotFocus,
   focusedForeignOverlay,
   overlayFocusRestorer,
   preservingOverlayFocus,
 } from './owned-overlay.js';
+
+import { readTuiChildren, readTuiFocus, UNKNOWN_TUI } from './tui-read.js';
 
 type EditorFactory = NonNullable<
   ReturnType<ExtensionContext['ui']['getEditorComponent']>
@@ -210,16 +212,15 @@ export function registerEditorSlot(
         },
         releaseFocus: () => {
           releaseDisplacedFocus();
-          if (!disposed && active() && !focusedForeignOverlay(tui))
+          if (!disposed && active() && focusedForeignOverlay(tui) === undefined)
             acquireEditorSlotFocus(tui, mounted);
         },
         isRootEditorInputActive: () =>
           active() &&
           !replacement() &&
-          (
-            tui as TUI & { getFocusedComponent?(): Component | null }
-          ).getFocusedComponent?.() === mounted &&
-          !hasBlockingOverlay(tui),
+          readTuiFocus(tui) === mounted &&
+          readTuiChildren(tui, true) !== UNKNOWN_TUI &&
+          readBlockingOverlay(tui) === false,
         dispose() {
           if (disposed) return;
           disposed = true;

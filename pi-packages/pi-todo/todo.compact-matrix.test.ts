@@ -86,7 +86,7 @@ function setup(density: ToolDensity, mode: Mode) {
   return { tool, renderCall: tool.renderCall, renderResult: tool.renderResult };
 }
 
-const plain = (rows: string[]) =>
+const plain = (rows: readonly string[]) =>
   rows.map((r) => stripTerminalSequences(r).trimEnd());
 
 /** Exactly one leading glyph: the second token is the title, not a glyph. */

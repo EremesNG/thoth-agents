@@ -82,8 +82,8 @@ function createTrackingTheme() {
 // never parse the SDK input. Compare against escaped SDK rows, using literal
 // control-picture expectations independent of the production escape helper.
 function expectGrepDataRows(
-  rendered: string[],
-  sdkRows: string[],
+  rendered: readonly string[],
+  sdkRows: readonly string[],
   mode: 'grouped' | 'raw',
 ) {
   const plain = rendered.map(stripTerminalSequences);

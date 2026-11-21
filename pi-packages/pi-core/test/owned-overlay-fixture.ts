@@ -79,6 +79,27 @@ export function overlayLifecycle(ctx: ExtensionContext) {
   };
 }
 
+export function breakOverlayVisibility(
+  tui: TuiMainScreen,
+  failure: 'non-callable' | 'throwing getter' | 'throwing method',
+): () => void {
+  const key = 'isOverlayVisible';
+  const original = Object.getOwnPropertyDescriptor(tui, key);
+  const fail = () => {
+    throw new Error('Incompatible overlay visibility read');
+  };
+  Object.defineProperty(tui, key, {
+    configurable: true,
+    ...(failure === 'throwing getter'
+      ? { get: fail }
+      : { value: failure === 'throwing method' ? fail : true }),
+  });
+  return () => {
+    if (original) Object.defineProperty(tui, key, original);
+    else Reflect.deleteProperty(tui, key);
+  };
+}
+
 /** Real SDK UI methods, without constructing the unrelated agent runtime. */
 export function ownedOverlaySession(options: { introspection?: boolean } = {}) {
   let input: (data: string) => void = () => {};
@@ -128,6 +149,8 @@ export function ownedOverlaySession(options: { introspection?: boolean } = {}) {
     editorContainer,
     keybindings: {},
     extensionDialogs: [],
+    // showExtensionCustom tracks active overlays by handle in Pi 1.6.
+    extensionOverlays: new Map(),
   }) as SdkMode;
   const completions = vi.fn();
   const custom: Custom = (factory, options) =>

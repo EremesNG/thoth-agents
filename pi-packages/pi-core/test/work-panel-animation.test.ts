@@ -258,7 +258,7 @@ describe('work panel shared animation', () => {
       await ensureWorkPanel(session.ctx),
     );
     expect(session.render()).toContain('  ◐ Task · 0s');
-    const rendered: string[][] = [];
+    const rendered: (readonly string[])[] = [];
     session.tui.requestRender.mockClear();
     session.tui.requestRender.mockImplementation(() =>
       rendered.push(session.render()),
@@ -603,7 +603,7 @@ describe('work panel shared animation', () => {
       }),
       await ensureWorkPanel(session.ctx),
     );
-    const frames: Array<{ at: number; lines: string[] }> = [];
+    const frames: Array<{ at: number; lines: readonly string[] }> = [];
     session.tui.requestRender.mockClear();
     session.tui.requestRender.mockImplementation(() => {
       frames.push({ at: Date.now(), lines: session.render() });
@@ -647,7 +647,7 @@ describe('work panel shared animation', () => {
       }),
       await ensureWorkPanel(session.ctx),
     );
-    const frames: Array<{ at: number; lines: string[] }> = [];
+    const frames: Array<{ at: number; lines: readonly string[] }> = [];
     session.tui.requestRender.mockClear();
     session.tui.requestRender.mockImplementation(() => {
       frames.push({ at: Date.now(), lines: session.render() });

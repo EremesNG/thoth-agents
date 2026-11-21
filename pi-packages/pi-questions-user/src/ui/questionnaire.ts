@@ -722,7 +722,7 @@ export class QuestionnaireComponent implements Component {
     );
   }
 
-  private contextLines(question: Question, width: number): string[] {
+  private contextLines(question: Question, width: number): readonly string[] {
     return question.context?.trim()
       ? this.markdown.render(question.context, width)
       : [];
@@ -792,7 +792,7 @@ export class QuestionnaireComponent implements Component {
     return fixed(visible, layout.promptRows);
   }
 
-  private renderContext(layout: Layout): string[] {
+  private renderContext(layout: Layout): readonly string[] {
     const lines = this.question
       ? this.contextLines(this.question, layout.inner)
       : [];

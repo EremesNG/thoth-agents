@@ -85,7 +85,7 @@ export function createTestRenderKit(
       ];
     },
     cachedComponent(render) {
-      const cache = new Map<number, string[]>();
+      const cache = new Map<number, ReturnType<typeof render>>();
       return {
         render(width) {
           let lines = cache.get(width);

@@ -1,12 +1,14 @@
-import type { Component, OverlayOptions, TUI } from '@earendil-works/pi-tui';
+import type { Component, TUI } from '@earendil-works/pi-tui';
 import { editorSlotSupportsDecorativeOverlays } from './editor-slot.js';
+import {
+  guardedTuiRead,
+  readTuiOverlays,
+  readVisibleTuiOverlays,
+  tuiMethod,
+  UNKNOWN_TUI,
+} from './tui-read.js';
 import { workPanelRegistry } from './work-panel-state.js';
 
-interface Entry {
-  component: Component;
-  hidden: boolean;
-  options?: OverlayOptions;
-}
 interface Decorations {
   components: WeakSet<Component>;
   owners: WeakMap<Component, number>;
@@ -26,37 +28,16 @@ function decorations(tui: TUI): Decorations {
   return state;
 }
 
-/** Guard only the fields used below; bounds do not exist before the first render. */
-function overlayEntries(tui: TUI): Entry[] | undefined {
-  const stack: unknown = (tui as TUI & { overlayStack?: unknown }).overlayStack;
-  if (!Array.isArray(stack)) return undefined;
-  if (
-    !stack.every(
-      (entry) =>
-        entry &&
-        typeof entry === 'object' &&
-        entry.component &&
-        typeof entry.component.render === 'function' &&
-        typeof entry.component.invalidate === 'function' &&
-        typeof entry.hidden === 'boolean' &&
-        (entry.options === undefined ||
-          (entry.options &&
-            typeof entry.options === 'object' &&
-            (entry.options.visible === undefined ||
-              typeof entry.options.visible === 'function'))),
-    )
-  )
-    return undefined;
-  return stack;
-}
-
 /** Undefined means the caller must disable its decorative overlay, not mount it. */
 export function registerDecorativeOverlay(
   tui: TUI,
   component: Component,
 ): (() => void) | undefined {
   try {
-    if (!overlayEntries(tui) || !editorSlotSupportsDecorativeOverlays(tui))
+    if (
+      readTuiOverlays(tui) === UNKNOWN_TUI ||
+      !editorSlotSupportsDecorativeOverlays(tui)
+    )
       return undefined;
     // An old host owns pre-feature closures even when its registry is compatible.
     if (
@@ -85,23 +66,25 @@ export function registerDecorativeOverlay(
 }
 
 /** Every visible unregistered overlay blocks, even non-capturing foreign ones. */
+export function readBlockingOverlay(tui: TUI, entries = readTuiOverlays(tui)) {
+  return guardedTuiRead<boolean>(() => {
+    const visible = readVisibleTuiOverlays(tui, entries);
+    if (visible === UNKNOWN_TUI) return UNKNOWN_TUI;
+    return visible.some(
+      (entry) => !decorations(tui).components.has(entry.component),
+    );
+  });
+}
+
 export function hasBlockingOverlay(tui: TUI): boolean {
-  try {
-    const stack = overlayEntries(tui);
-    if (stack)
-      return stack.some(
-        (entry) =>
-          !entry.hidden &&
-          (!entry.options?.visible ||
-            entry.options.visible(tui.terminal.columns, tui.terminal.rows)) &&
-          !decorations(tui).components.has(entry.component),
-      );
-  } catch {
-    // Private shape/accessors or a visibility callback may be unsupported.
-  }
-  try {
-    return tui.hasOverlay?.() !== false;
-  } catch {
-    return true;
-  }
+  const entries = readTuiOverlays(tui);
+  if (entries !== UNKNOWN_TUI)
+    return readBlockingOverlay(tui, entries) !== false;
+  // Compatibility for public-only runtimes; editor-input eligibility uses the
+  // strict snapshot above and does not infer focus eligibility from this fallback.
+  const hasOverlay = tuiMethod(tui, 'hasOverlay');
+  return (
+    hasOverlay === UNKNOWN_TUI ||
+    guardedTuiRead(() => hasOverlay.call(tui)) !== false
+  );
 }

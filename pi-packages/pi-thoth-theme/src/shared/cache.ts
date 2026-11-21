@@ -2,13 +2,11 @@ import type { Component } from '@earendil-works/pi-tui';
 import { settingsRevision } from './settings-revision.ts';
 
 /** Cache lines per instance, settings revision and width. */
-export function cachedComponent(
-  renderFn: (width: number) => string[],
-): Component {
-  const cache = new Map<number, string[]>();
+export function cachedComponent(renderFn: Component['render']): Component {
+  const cache = new Map<number, ReturnType<Component['render']>>();
   let revision = settingsRevision();
   return {
-    render(width: number): string[] {
+    render(width: number) {
       if (revision !== settingsRevision()) {
         cache.clear();
         revision = settingsRevision();

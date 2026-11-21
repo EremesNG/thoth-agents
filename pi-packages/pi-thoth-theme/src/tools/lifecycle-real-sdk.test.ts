@@ -22,7 +22,7 @@ const config: ThemeConfig = {
 beforeAll(() => initTheme('dark', false));
 
 function expectBorderTone(
-  lines: string[],
+  lines: readonly string[],
   theme: Theme,
   tone: 'accent' | 'success' | 'error',
 ) {

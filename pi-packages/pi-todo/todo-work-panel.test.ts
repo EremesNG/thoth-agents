@@ -110,7 +110,7 @@ it.each(
     cleanups.push(() => slot.dispose());
     expect(session.render(120)).toEqual([`Todos ${counts}`]);
   } else {
-    const rendered: string[] = session.render(120);
+    const rendered = session.render(120);
     expect(rendered[0]).toContain(
       `Todos ${mode === 'ascii' ? '|' : '·'} ${counts}`,
     );
@@ -263,7 +263,7 @@ it.each([
   cleanups.push(registerWorkPanelProvider(session.ctx, provider));
   cleanups.push(await ensureWorkPanel(session.ctx));
 
-  const lines: string[] = session.render();
+  const lines = session.render();
   expect(lines[0]).toContain('Todos · ✓7');
   expect(lines.some((line) => line.includes('Finished 1'))).toBe(true);
   expect(provider.visibleCount()).toBe(7);
@@ -333,7 +333,7 @@ it('opens the panel from the heading, a row and the dropped-done summary, and dr
   cleanups.push(registerWorkPanelProvider(session.ctx, provider));
   cleanups.push(await ensureWorkPanel(session.ctx));
 
-  const lines: string[] = session.render();
+  const lines = session.render();
   expect(lines[0]).toBe('◆ Todos · ◐1 ○1 ✓14');
   expect(lines.some((line) => line.includes('Open one'))).toBe(true);
   expect(lines.some((line) => line.includes('Open two'))).toBe(true);
@@ -756,7 +756,7 @@ it('merges the completed cap with height folding without duplicate done summarie
   for (let index = 0; index < 12; index++) session.key('\x1b[B');
   for (const height of [40, 16, 12, 10, 8, 6]) {
     session.tui.terminal.rows = height;
-    const lines: string[] = session.render();
+    const lines = session.render();
     expect(
       lines.filter((line) => /\+\d+ done/.test(line)),
       `height ${height}`,

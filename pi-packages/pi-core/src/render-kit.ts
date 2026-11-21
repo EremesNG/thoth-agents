@@ -221,7 +221,7 @@ export interface ThothRenderKit {
     options?: RenderCollapseOptions,
   ): string[];
   /** Per-instance, per-width cache; invalidate clears all widths. */
-  cachedComponent(render: (width: number) => string[]): Component;
+  cachedComponent(render: Component['render']): Component;
   /** Call at render time; timers and state cleanup belong to the registering UI owner. */
   indicator(
     theme: RenderKitTheme,
@@ -560,14 +560,20 @@ export function detachRenderContext<T>(context: T): T {
 /** Memoize input-stable transcript lines; look up the kit even on cache hits. */
 export function createKitRenderMemo() {
   let cached:
-    | { width: number; kit: ThothRenderKit | undefined; lines: string[] }
+    | {
+        width: number;
+        kit: ThothRenderKit | undefined;
+        lines: ReturnType<Component['render']>;
+      }
     | undefined;
 
   return {
     render(
       width: number,
-      build: (kit: ThothRenderKit | undefined) => string[],
-    ): string[] {
+      build: (
+        kit: ThothRenderKit | undefined,
+      ) => ReturnType<Component['render']>,
+    ): ReturnType<Component['render']> {
       const kit = getRenderKit();
       if (!cached || cached.width !== width || cached.kit !== kit) {
         cached = { width, kit, lines: build(kit) };

@@ -110,7 +110,7 @@ it.each([
     );
   }
   cleanups.push(await ensureWorkPanel(session.ctx));
-  const full: string[] = session.render(120);
+  const full = session.render(120);
   for (const label of ['Agents', 'Background'])
     expect(full.find((line) => line.includes(`${label} `))).toContain(counts);
   occupy(session);

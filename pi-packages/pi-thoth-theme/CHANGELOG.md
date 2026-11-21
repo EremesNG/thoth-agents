@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+
+- Support read-only component output in welcome, editor, and tool views on Pi 1.6.
+
 ## [0.10.0] - 2026-11-15
 
 ### Added

@@ -5,7 +5,7 @@ import type {
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
+import { Box, type Component, Text } from "@earendil-works/pi-tui";
 import {
 	type RenderKitToken,
 	registerRenderKit,
@@ -88,7 +88,7 @@ async function askTool(): Promise<
 test.each(['call', 'partial result', 'result'])('AskAntigravity %s releases previous components', async (slot) => {
   const tool = await askTool();
   const state = {};
-  const { latest, previous } = renderChain((lastComponent) => {
+  const { latest, previous } = renderChain<Component>((lastComponent) => {
     const ctx = context({ state, lastComponent });
     return slot === 'call'
       ? tool.renderCall({ prompt: 'inspect' }, theme, ctx)
@@ -100,7 +100,7 @@ test.each(['call', 'partial result', 'result'])('AskAntigravity %s releases prev
 
 test('card helper releases previous components', async () => {
   const state = {};
-  const { latest, previous } = renderChain((lastComponent) => renderToolCard(theme, 'ok', () => ({ body: ['ok'] }), 'end', { state, lastComponent, isPartial: false } as never));
+  const { latest, previous } = renderChain<Component>((lastComponent) => renderToolCard(theme, 'ok', () => ({ body: ['ok'] }), 'end', { state, lastComponent, isPartial: false } as never));
   await assertCollected(previous);
   expect(latest.render(80).length).toBeGreaterThan(0);
 });
@@ -109,7 +109,7 @@ function nativeBox(
 	text: string,
 	role: "toolPendingBg" | "toolSuccessBg" | "toolErrorBg",
 	width: number,
-): string[] {
+): readonly string[] {
 	const box = new Box(1, 1, (row) => theme.bg(role, row));
 	box.addChild(new Text(text, 0, 0));
 	return box.render(width);

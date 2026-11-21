@@ -26,7 +26,8 @@ function config(collapsed?: ToolDensity): ThemeConfig {
   };
 }
 
-const plain = (rows: string[]) => rows.map((r) => stripTerminalSequences(r));
+const plain = (rows: readonly string[]) =>
+  rows.map((r) => stripTerminalSequences(r));
 const text = (output: string, details: unknown = {}) => ({
   content: [{ type: 'text' as const, text: output }],
   details,

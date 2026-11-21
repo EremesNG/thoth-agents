@@ -330,7 +330,7 @@ it.each([
   cleanup.push(await ensureWorkPanel(work.ctx));
   app.handlers.get('session_start')?.({}, app.ctx);
   expect(work.render().join('\n')).not.toContain('Task one');
-  const foreign = { render: () => work.render(), invalidate() {} };
+  const foreign = { render: () => [...work.render()], invalidate() {} };
   if (regular) app.proxy.render = originalRender;
   else if ('setLayoutRoot' in app.tui) app.tui.setLayoutRoot(foreign);
   // Do not run the sidebar observer, refresh, commands, input or timers.
@@ -364,7 +364,7 @@ it.each([
   app.handlers.get('session_start')?.({}, app.ctx);
   expect(getUIPreferences().absorbedWorkPanelSources).toContain('test-source');
   expect(work.render().join('\n')).not.toContain('Task one');
-  const foreign = { render: () => work.render(), invalidate() {} };
+  const foreign = { render: () => [...work.render()], invalidate() {} };
   if (regular) app.proxy.render = originalRender;
   else if ('setLayoutRoot' in app.tui) app.tui.setLayoutRoot(foreign);
   // A foreign fullscreen root no longer includes the lifecycle widget. Invoke

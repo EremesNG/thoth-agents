@@ -6,14 +6,14 @@ const MAX_ENTRIES = 200;
 interface Entry {
   markdown: Markdown;
   width?: number;
-  lines?: string[];
+  lines?: readonly string[];
 }
 
 /** Parses each markdown source once and reuses rendered lines per width. */
 export class MarkdownCache {
   private readonly entries = new Map<string, Entry>();
 
-  render(source: string, width: number): string[] {
+  render(source: string, width: number): readonly string[] {
     let entry = this.entries.get(source);
     if (!entry) {
       if (this.entries.size >= MAX_ENTRIES) this.entries.clear();

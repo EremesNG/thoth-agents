@@ -1,5 +1,6 @@
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { keyHint, keyText } from '@earendil-works/pi-coding-agent';
+import type { Component } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -61,7 +62,7 @@ it.each([
 ])('todo %s releases previous components', async (slot) => {
   const tool = setup();
   const state = {};
-  const { latest, previous } = renderChain((lastComponent) => {
+  const { latest, previous } = renderChain<Component>((lastComponent) => {
     const ctx = context({ state, lastComponent });
     return slot === 'call'
       ? tool.renderCall(ctx.args, makeTheme(), ctx)

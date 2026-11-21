@@ -8,6 +8,14 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 - Shared per-session native tool activity registry for tracking in-flight provider tools across independently loaded package copies.
 
+### Changed
+
+- Support caching read-only render output from Pi 1.6. Treat cached lines as read-only.
+
+### Fixed
+
+- Leave focus unchanged when Pi's overlay visibility cannot be determined.
+
 ## [0.10.1] - 2026-11-15
 
 ### Added

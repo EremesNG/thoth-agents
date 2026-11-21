@@ -649,7 +649,7 @@ describe('SDK-produced notice appendices', () => {
     try {
       await writeFile(
         join(dir, 'part-123-file.ts'),
-        `before  \nneedle ${'x'.repeat(600)}\nafter  \n`,
+        `before  \nneedle ${'x'.repeat(600)}\nafter  \n\nneedle again\n`,
       );
       const result = await createGrepToolDefinition(dir).execute(
         'sdk-grep-notice',

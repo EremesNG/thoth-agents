@@ -971,7 +971,10 @@ describe('registerStatusLine', () => {
   });
 
   /** Plain top/bottom borders of a decorated editor at `width`. */
-  function borders(editor: { render(width: number): string[] }, width: number) {
+  function borders(
+    editor: { render(width: number): readonly string[] },
+    width: number,
+  ) {
     const lines = editor.render(width).map(stripTerminalSequences);
     return {
       top: lines[0],

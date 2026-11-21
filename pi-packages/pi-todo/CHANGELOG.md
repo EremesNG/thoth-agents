@@ -4,6 +4,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+
+- Support read-only native tool card output on Pi 1.6.
+
 ## [0.6.2] - 2026-11-15
 
 ### Changed

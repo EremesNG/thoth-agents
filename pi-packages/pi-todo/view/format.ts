@@ -172,7 +172,7 @@ function renderNative(
   width: number,
   status: RenderStatus,
   part: 'full' | 'start' | 'end',
-): string[] {
+): ReturnType<Component['render']> {
   const role =
     status === 'pending' || status === 'running'
       ? 'toolPendingBg'

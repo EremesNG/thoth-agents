@@ -8,6 +8,10 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 - Keep an already scheduled or in-flight command watch on its existing schedule when it is resumed, instead of forcing an immediate poll.
 
+### Changed
+
+- Verify transcript and task log display with Pi 1.6.
+
 ## [0.8.1] - 2026-11-15
 
 ### Fixed

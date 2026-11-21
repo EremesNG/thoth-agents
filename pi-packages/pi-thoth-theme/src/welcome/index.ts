@@ -63,7 +63,7 @@ export class WelcomeComponent implements Component {
     this._disposed = true;
   }
 
-  render(width: number): string[] {
+  render(width: number) {
     return this.renderCache.render(width);
   }
 }

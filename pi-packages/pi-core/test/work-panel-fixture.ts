@@ -19,7 +19,22 @@ export function uiSession(realTui?: TuiMainScreen) {
     terminal: { rows: 40, columns: 120 },
     requestRender: vi.fn(),
     getFocusedComponent: () => focused,
+    get children() {
+      return editor ? [editor] : [];
+    },
     hasOverlay: () => overlay,
+    get overlayStack() {
+      return overlay
+        ? [
+            {
+              component: customComponent ?? editor,
+              preFocus: editor ?? null,
+              hidden: false,
+            },
+          ]
+        : [];
+    },
+    isOverlayVisible: () => overlay,
     hideOverlay: () => {
       overlay = false;
       focused = editor;
@@ -122,7 +137,7 @@ export function uiSession(realTui?: TuiMainScreen) {
     ui,
     tui,
     baseFactory,
-    render: (width = 100) => widget?.render(width) ?? [],
+    render: (width = 100): readonly string[] => widget?.render(width) ?? [],
     key: (data: string) => [...listeners][0]?.(data),
     setText: (value: string) => {
       text = value;
@@ -142,7 +157,8 @@ export function uiSession(realTui?: TuiMainScreen) {
       return customComponent;
     },
     customKey: (data: string) => customComponent?.handleInput(data),
-    customRender: (width = 100) => customComponent?.render(width) ?? [],
+    customRender: (width = 100): readonly string[] =>
+      customComponent?.render(width) ?? [],
   };
 }
 

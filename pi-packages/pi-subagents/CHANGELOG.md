@@ -9,6 +9,10 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 - Apply the tool stall budget to provider-native tools running in subagent sessions and include them in stall diagnostics.
 
+### Changed
+
+- Support read-only render output in subagent transcripts and tool cards on Pi 1.6.
+
 ## [0.16.0] - 2026-11-15
 
 ### Added

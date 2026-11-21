@@ -26,8 +26,10 @@ async function installKit(density: 'frame' | 'line' | 'compact') {
   onTestFinished(() => withdrawRenderKit(token));
 }
 
-const rows = (component: { render(width: number): string[] }, width = 100) =>
-  component.render(width).map((row) => stripTerminalSequences(row));
+const rows = (
+  component: { render(width: number): readonly string[] },
+  width = 100,
+) => component.render(width).map((row) => stripTerminalSequences(row));
 
 const context = (isError = false, isPartial = false) => ({
   executionStarted: true,

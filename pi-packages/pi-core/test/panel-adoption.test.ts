@@ -11,7 +11,7 @@ import {
 import { createTestRenderKit } from '../src/testing.js';
 import { provider, uiSession } from './work-panel-fixture.js';
 
-const digest = (rows: string[]) =>
+const digest = (rows: readonly string[]) =>
   createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 const theme = {
   fg: (role: string, value: string) =>

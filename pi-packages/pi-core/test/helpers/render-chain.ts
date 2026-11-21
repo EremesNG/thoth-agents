@@ -8,7 +8,7 @@ setFlagsFromString('--expose-gc');
 const gc = runInNewContext('gc') as () => void;
 
 export function renderChain<
-  C extends { render(width: number): string[]; invalidate(): void },
+  C extends { render(width: number): readonly string[]; invalidate(): void },
 >(render: (previous: C | undefined, index: number) => C) {
   const previous: WeakRef<C>[] = [];
   let latest = render(undefined, 0);

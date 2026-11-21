@@ -11,6 +11,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Changed
 
+- Support Pi 1.6 render output in native event cards.
+
 - Suspend the inactivity guard during native tool execution on both carriers, and raise the default headless turn cap to 30 minutes.
 - Publish in-flight native tools by Pi session so subagent watchdogs apply tool-aware stall budgets, without duplicating identified Pi-bridge calls. For stream-json frames lacking server identity, a unique matching bridge park is inferred; an unrelated concurrent unidentified MCP call with the same target remains indistinguishable.
 

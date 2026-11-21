@@ -69,12 +69,12 @@ it.each([
   const layout = session.ui.custom.mock.calls[0][1].overlayOptions;
   const initialWidth = layout().width;
   expect(initialWidth).toBeLessThan(100);
-  const first: string[] = session.customRender(initialWidth);
+  const first = session.customRender(initialWidth);
   expect(first).toHaveLength(7);
   session.customKey(keys.up);
   expect(session.customRender(initialWidth)[0]).toContain('Short');
   session.customKey(keys.down);
-  const second: string[] = session.customRender(layout().width);
+  const second = session.customRender(layout().width);
   expect(second[0]).toContain('Long description title');
   expect(second.join('\n')).toContain('Third line.');
   expect(second).toHaveLength(first.length);
@@ -89,7 +89,7 @@ it.each([
   expect(agentOpen).not.toHaveBeenCalled();
   liveText =
     'New output that is much wider than the opening description.\n'.repeat(20);
-  const refreshed: string[] = session.customRender(initialWidth);
+  const refreshed = session.customRender(initialWidth);
   expect(refreshed).toHaveLength(first.length);
   expect(refreshed.at(-1)?.trimEnd()).toMatch(/^╰/);
   expect(layout().width).toBe(initialWidth);
@@ -208,7 +208,7 @@ it('uses the registered card with a title and pads every themed row to its full 
   );
   session.key(keys.left);
   session.key(keys.enter);
-  const lines: string[] = session.customRender(48);
+  const lines = session.customRender(48);
   expect(card).toHaveBeenCalledWith(
     session.ui.theme,
     expect.objectContaining({ title: 'Themed detail' }),
@@ -346,7 +346,7 @@ it.each([
   );
   session.key(keys.left);
   session.key(keys.enter);
-  const lines: string[] = session.customRender(60);
+  const lines = session.customRender(60);
   expect(lines.join('\n')).toContain('(no description)');
   expect(styles).toContainEqual(['dim', '(no description)']);
   expect(lines.join('\n')).not.toMatch(/folded|Enter|l 10\/25|x |unavailable/);
@@ -443,7 +443,7 @@ it('centers the overlay at at most 100 columns or 90% and keeps its frame inside
     session.tui.terminal.columns = columns;
     session.tui.terminal.rows = rows;
     expect(layout().width).toBe(width);
-    const lines: string[] = session.customRender(width);
+    const lines = session.customRender(width);
     expect(lines.length).toBeLessThanOrEqual(height);
     expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).toContain('line 29');
@@ -469,7 +469,7 @@ it('pads ANSI-styled rows containing wide characters by terminal columns', async
   session.key(keys.left);
   session.key(keys.enter);
   for (const width of [12, 24, 60]) {
-    const lines: string[] = session.customRender(width);
+    const lines = session.customRender(width);
     expect(lines.every((line) => visibleWidth(line) === width)).toBe(true);
     for (const line of lines) {
       const composite = compositeTuiLine(
@@ -502,7 +502,7 @@ it.each([
   );
   session.key(keys.left);
   session.key(keys.enter);
-  const lines: string[] = session.customRender(60);
+  const lines = session.customRender(60);
   expect(lines).toHaveLength(2);
   expect(lines.at(-1)).toMatch(/^╰/);
   expect(session.customRender(0)).toEqual([]);
@@ -532,7 +532,7 @@ it('opens a content-sized opaque native card with expanded short sections and ap
   );
   session.key(keys.left);
   session.key(keys.enter);
-  const lines: string[] = session.customRender(60);
+  const lines = session.customRender(60);
   expect(lines[0]).toMatch(/^╭.*Write tests.*╮$/);
   expect(lines.at(-1)).toMatch(/^╰─+╯$/);
   expect(lines).toHaveLength(9);
@@ -585,7 +585,7 @@ it('re-resolves detail metadata and hints after registration, replacement and wi
       {},
     );
     cleanups.push(() => withdrawRenderKit(token));
-    const lines: string[] = session.customRender(80);
+    const lines = session.customRender(80);
     expect(lines.join('\n')).toContain(`count ${separator} 0`);
     expect(lines.join('\n')).toContain(
       `^v move ${separator} x cancel ${separator} Esc back`,
@@ -627,7 +627,7 @@ it('measures folded preview separators using the registered glyph width', async 
   );
   session.key(keys.left);
   session.key(keys.enter);
-  const lines: string[] = session.customRender(32);
+  const lines = session.customRender(32);
   expect(lines.join('\n')).toContain(' :: folded');
   expect(lines.every((line) => visibleWidth(line) === 32)).toBe(true);
 });

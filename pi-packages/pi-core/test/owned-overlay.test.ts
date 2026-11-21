@@ -171,6 +171,40 @@ it('settles external owned-handle removal as cancellation, without closing a new
   expect(tui.hasOverlay()).toBe(false);
 });
 
+it('lets the SDK close an overlay after delivery of a handle with a throwing hide getter', async () => {
+  const { ctx, tui, editor } = session();
+  const custom = ctx.ui.custom;
+  let close: (result: string) => void = () => {};
+  ctx.ui.custom = (factory, options) =>
+    custom(factory, {
+      ...options,
+      onHandle(handle) {
+        const original = Object.getOwnPropertyDescriptor(handle, 'hide');
+        if (!original) throw new Error('Expected a native hide method');
+        Object.defineProperty(handle, 'hide', {
+          configurable: true,
+          get() {
+            throw new Error('Cannot read hide during registration');
+          },
+        });
+        try {
+          options?.onHandle?.(handle);
+        } finally {
+          Object.defineProperty(handle, 'hide', original);
+        }
+        expect(tui.hasOverlay()).toBe(true);
+        close('answer');
+      },
+    });
+  const result = openOwnedOverlay<string>(ctx, (_tui, _theme, _keys, done) => {
+    close = done;
+    return inputComponent('Question');
+  });
+  await expect(result).resolves.toBe('answer');
+  expect(tui.hasOverlay()).toBe(false);
+  expect(tui.getFocusedComponent()).toBe(editor);
+});
+
 it('repairs a detached preFocus to the mounted editor after SDK editor replacement', async () => {
   const { ctx, tui, editor, editorContainer, input } = session();
   const component = inputComponent('History');

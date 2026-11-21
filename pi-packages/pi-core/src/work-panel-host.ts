@@ -1,5 +1,5 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
-import type { Component, TUI } from '@earendil-works/pi-tui';
+import type { TUI } from '@earendil-works/pi-tui';
 import {
   isAnimationEffectEnabled,
   subscribeAnimationLevel,
@@ -13,6 +13,11 @@ import {
 import { openOwnedOverlay } from './owned-overlay.js';
 import { matchesPanelKey } from './panel-key.js';
 import { resolveIcon } from './render-kit.js';
+import {
+  readTerminalDimension,
+  readTuiFocus,
+  UNKNOWN_TUI,
+} from './tui-read.js';
 import { getUIPreferences, subscribeUIPreferences } from './ui-preferences.js';
 import type {
   WorkPanelAction,
@@ -42,7 +47,6 @@ import { workPanelRegistry } from './work-panel-state.js';
 const WIDGET_KEY = 'thoth-work-panel';
 const CLOSE_KEY = 'thoth-work-panel-close';
 const CLOSE_ARM_MS = 3000;
-type FocusTUI = TUI & { getFocusedComponent?(): Component | null };
 type EditorFactory = NonNullable<
   ReturnType<ExtensionContext['ui']['getEditorComponent']>
 >;
@@ -79,7 +83,7 @@ export function createWorkPanelHost(
   let requestProviderRender: (() => void) | undefined;
   let slot: EditorSlotHandle | undefined;
   let removeLifecycle: (() => void) | undefined;
-  let tui: FocusTUI | undefined;
+  let tui: TUI | undefined;
   let focused = false;
   let selectedKey: string | undefined;
   let closeArm: { key: string; at: number } | undefined;
@@ -97,14 +101,14 @@ export function createWorkPanelHost(
     const liveTui = panelTui ?? tui;
     return liveTui ? isEditorReplaced(liveTui) : false;
   };
+  function dimension(key: 'rows' | 'columns', fallback: number) {
+    const panel = readTerminalDimension(panelTui, key);
+    if (panel !== UNKNOWN_TUI) return panel;
+    const main = readTerminalDimension(tui, key);
+    return main === UNKNOWN_TUI ? fallback : main;
+  }
   const panelBudget = () =>
-    Math.min(
-      12,
-      Math.max(
-        0,
-        Math.floor((panelTui?.terminal.rows ?? tui?.terminal.rows ?? 24) / 2),
-      ),
-    );
+    Math.min(12, Math.max(0, Math.floor(dimension('rows', 24) / 2)));
 
   function refreshStatusCue(count: number, force = false): void {
     const next =
@@ -149,10 +153,7 @@ export function createWorkPanelHost(
     const overflow = current.some(({ provider }) => provider.selectableSummary)
       ? panelOverflowEntries(
           current,
-          panelWidth ??
-            panelTui?.terminal.columns ??
-            tui?.terminal.columns ??
-            100,
+          panelWidth ?? dimension('columns', 100),
           Date.now(),
           panelBudget(),
           focused ? selectedKey : undefined,
@@ -287,7 +288,8 @@ export function createWorkPanelHost(
               }
             },
             onFocusLost: () => {
-              if ((detailTui as FocusTUI).getFocusedComponent?.() !== component)
+              const focus = readTuiFocus(detailTui);
+              if (focus !== UNKNOWN_TUI && focus !== component)
                 component.dismiss();
             },
             requestRender: () => detailTui.requestRender(),

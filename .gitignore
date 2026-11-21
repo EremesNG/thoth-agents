@@ -80,3 +80,5 @@ wheels/
 
 # Pi background task output
 .pi/tasks/
+
+.junie/

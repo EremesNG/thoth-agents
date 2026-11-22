@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateCost, normalizeContext, type Usage } from "@earendil-works/pi-ai";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import { beforeAll, expect, test } from "vitest";
+import { beforeAll, expect, test, vi } from "vitest";
 import { warmJobLauncher } from "./helpers/warm-job-launcher.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import type { DriverActivity, TurnDriver } from "../src/driver-types.js";
@@ -131,11 +131,12 @@ test("unmapped ids stay unpriced and log once, without guessing from CLI names",
 	expect(events).toHaveLength(2);
 });
 
-async function finalUsage(driver: TurnDriver, entry: AgyModelEntry, engine: "stream-json" | "acp") {
+async function finalUsage(driver: TurnDriver, entry: AgyModelEntry, engine: "stream-json" | "acp", contextWindow?: number) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-message-cost-"));
 	const streamSimple = createStreamSimple({
 		entries: [entry],
 		driver,
+		acpDriver: engine === "acp" ? driver : undefined,
 		engine,
 		store: new SessionStore(path.join(dir, "sessions.json")),
 		roundTrips: new ToolRoundTrips(driver),
@@ -143,7 +144,7 @@ async function finalUsage(driver: TurnDriver, entry: AgyModelEntry, engine: "str
 	const seenCosts: number[] = [];
 	try {
 		const stream = streamSimple(
-			toPiModel(entry),
+			{ ...toPiModel(entry), ...(contextWindow === undefined ? {} : { contextWindow }) },
 			normalizeContext({ messages: [{ role: "user", content: "one two three", timestamp: 0 }] }),
 		);
 		for await (const event of stream) {
@@ -162,7 +163,7 @@ test("stream-json terminal message has cost from normalized Pi id, not CLI slug"
 	const activities: DriverActivity[] = [
 		{
 			type: "usage",
-			usage: { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 1_000_000 },
+			usage: { total_tokens: 3_000, input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 1_000_000 },
 		},
 		{ type: "text", delta: "priced answer" },
 	];
@@ -184,7 +185,9 @@ test("stream-json terminal message has cost from normalized Pi id, not CLI slug"
 		driver,
 		{ full: "gemini-3.6-flash", id: "gemini-3-6-flash", efforts: ["low", "high"] },
 		"stream-json",
+		3_500,
 	);
+	expect(result.usage.input + result.usage.cacheRead).toBe(2_000_000);
 	expect(result.usage.cost.total).toBe(4.575);
 	expect(result.seenCosts).toEqual([4.575]);
 });
@@ -201,6 +204,7 @@ test("ACP terminal exact usage replaces live estimates and recomputes every cost
 		driver,
 		{ full: "claude-sonnet-4-6", id: "claude-sonnet-4-6" },
 		"acp",
+		3500,
 	);
 	// Three prompt + two response word estimates were priced before text emission.
 	expect(result.seenCosts[0]).toBeCloseTo(0.000039, 12);
@@ -216,4 +220,55 @@ test("ACP terminal exact usage replaces live estimates and recomputes every cost
 	expect(result.usage.cost.cacheRead).toBeCloseTo(0.0009, 12);
 	expect(result.usage.cost.cacheWrite).toBeCloseTo(0.015, 12);
 	expect(result.usage.cost.total).toBeCloseTo(0.0489, 12);
+});
+
+
+test.each([
+	[3500, 375, 1125], // occupancy exactly at context-window boundary
+	[3001, 250, 751], // rounding remainder assigned to cache reads
+	[2000, 500, 1500], // output already accounts for occupancy
+	[3501, 1000, 3000], // genuine overflow
+	[0, 1000, 3000], // invalid occupancy
+	[-1, 1000, 3000],
+	[NaN, 1000, 3000],
+])("ACP occupancy %s adjusts context components only when proven to fit", async (used, input, cacheRead) => {
+	const driver = new AcpDriver({
+		bin: process.execPath,
+		binArgs: [fileURLToPath(new URL("./helpers/fake-acp-server.mjs", import.meta.url))],
+		extraEnv: { ACP_FAKE_SCENARIO: "exact-usage-with-occupancy", ACP_FAKE_USED: String(used) },
+		log: () => {},
+	});
+	const { usage } = await finalUsage(driver, { full: "claude-sonnet-4-6", id: "claude-sonnet-4-6" }, "acp", 3500);
+	expect(usage).toMatchObject({ input, cacheRead, output: 2000, cacheWrite: 4000, totalTokens: 10000 });
+	expect(usage.cost.total).toBeCloseTo(0.0489, 12);
+});
+
+test.each(["occupancy-park", "occupancy-park-text"])("ACP %s retains occupancy and raw billing at a park before final usage", async scenario => {
+	const entry = { full: "claude-sonnet-4-6", id: "claude-sonnet-4-6" };
+	let occupancy = false;
+	const driver = new AcpDriver({ bin: process.execPath,
+		binArgs: [fileURLToPath(new URL("./helpers/fake-acp-server.mjs", import.meta.url))],
+		extraEnv: { ACP_FAKE_SCENARIO: scenario }, log: () => {} });
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-occupancy-park-"));
+	const rt = new ToolRoundTrips(driver);
+	// Observe the driver activity before submitting the synthetic park, not an arbitrary delay.
+	const run = driver.run.bind(driver);
+	vi.spyOn(driver, "run").mockImplementation(async request => {
+		const handle = await run(request);
+		return { ...handle, next: async () => {
+			const event = await handle.next();
+			if (scenario.endsWith("text") ? event?.type === "text" : event?.type === "usage" && event.usage.total_tokens === 40) occupancy = true;
+			return event;
+		} };
+	});
+	const simple = createStreamSimple({ entries: [entry], acpDriver: driver, engine: "acp", store: new SessionStore(path.join(dir, "sessions.json")), roundTrips: rt });
+	try {
+		const stream = simple({ ...toPiModel(entry), contextWindow: 100 }, normalizeContext({ messages: [{ role: "user", content: "word ".repeat(300).trim(), timestamp: 0 }] }));
+		await vi.waitFor(() => expect(occupancy).toBe(true));
+		void rt.onToolCall("park", "read", {}, new AbortController().signal).catch(() => {});
+		const answer = await stream.result();
+		expect(answer.stopReason).toBe("toolUse");
+		expect(answer.usage.input + answer.usage.cacheRead).toBe(scenario.endsWith("text") ? 39 : 40);
+		expect(answer.usage.cost.input).toBeCloseTo(0.0009, 12);
+	} finally { rt.failAll("fixture cleanup"); await driver.close("shutdown"); fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -181,7 +181,7 @@ export function handlerDeadlineMs(parkBudgetMs: number): number {
  *  printed JSON verdict before the single overall deadline (stdin reading and
  *  all bridge waits included); a valid Pi allow/deny is forwarded, anything
  *  else - failure, malformed reply, no decision in time - is deny. */
-export function hookScriptSource(opts: { port: number; token: string; deadlineMs: number; ownServerName?: string }): string {
+export function hookScriptSource(opts: { port: number; token: string; deadlineMs: number; ownServerName?: string; checkAll?: boolean }): string {
 	return `#!/usr/bin/env node
 // Bridge approval hook (generated; do not edit). Polls the pi-antigravity-bridge.
 const PORT = ${opts.port};
@@ -232,7 +232,7 @@ try {
 		// already denied above
 	} else if (typeof name !== "string" || name.length === 0) {
 		deny("approval gate payload has no tool name");
-	} else if (READ_ONLY.has(name) || isMcp(name, payload.toolCall.args)) {
+	} else if (${opts.checkAll ? "false" : "READ_ONLY.has(name) || isMcp(name, payload.toolCall.args)"}) {
 		verdict({ decision: "allow" });
 	} else {
 		let ticket = "";

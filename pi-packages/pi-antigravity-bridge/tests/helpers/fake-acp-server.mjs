@@ -29,6 +29,7 @@
 //                      "DONE" -> end_turn (Gate C: diff arrives on the
 //                      PENDING frame, run 6:10)
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import readline from "node:readline";
 
@@ -245,6 +246,11 @@ async function handle(msg) {
       return;
 
     case "session/prompt": {
+      if (params.prompt?.some(block => block.type === "text" && block.text?.includes("post-output-error"))) {
+        notifyChunk("model output before refusal");
+        result(id, { stopReason: "refusal" });
+        return;
+      }
       pendingPromptId = id;
       // Multi-turn: each new prompt replays the scenario's frames again.
       streaming = false;
@@ -395,6 +401,25 @@ async function streamPrompt() {
   if (streaming) return;
   streaming = true;
   promptCount += 1;
+  if (scenario === "helper-native-edit") {
+    // Model accept-edits executing without session/request_permission; apply the staged hook.
+    const home = process.argv[process.argv.indexOf("--gemini-dir") + 1];
+    const file = `${home}/config/hooks.json`;
+    const hooks = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+    const name = "write_file";
+    const decisions = Object.values(hooks).filter(group => group.enabled).flatMap(group =>
+      (group.PreToolUse ?? []).filter(pre => new RegExp(pre.matcher).test(name)).flatMap(pre => pre.hooks.map(hook => {
+        const script = JSON.parse(hook.command.slice("node ".length));
+        const reply = spawnSync(process.execPath, [script], { input: JSON.stringify({ toolCall: { name, args: {} } }), encoding: "utf8", timeout: 3000 });
+        return reply.status === 0 ? JSON.parse(reply.stdout) : null;
+      })));
+    logReq({ _nativeEditDecision: decisions.find(decision => decision?.decision === "deny") ?? { decision: "allow" } });
+  }
+  if (scenario.startsWith("occupancy-park")) {
+    send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { sessionUpdate: "usage_update", used: 40 } } });
+    if (scenario.endsWith("text")) notifyChunk("one");
+    return;
+  }
   if (scenario === "slow") return; // never emits, never completes
   if (scenario === "frame-overflow") {
     // Never self-exit: a successful outcome must prove transport teardown,
@@ -462,7 +487,12 @@ async function streamPrompt() {
     }
     return;
   }
-  if (scenario === "exact-usage") {
+  if (scenario === "exact-usage" || scenario === "exact-usage-with-occupancy") {
+    if (scenario === "exact-usage-with-occupancy") {
+      send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: {
+        sessionUpdate: "usage_update", used: Number(process.env.ACP_FAKE_USED), size: 3500,
+      } } });
+    }
     notifyChunk("estimated answer");
     await sleep(20);
     if (pendingPromptId !== null) {

@@ -14,6 +14,7 @@ import * as providerModule from "../src/provider.js";
 import { resetSyspromptAgentForTests } from "../src/sysprompt-agent.js";
 import { startMcpServer, TOKEN_HEADER } from "../src/mcp-server.js";
 import * as homeModule from "../src/acp/home.js";
+import * as homeProbe from "../src/gemini-dir-probe.js";
 import * as gateDeliveryModule from "../src/gate-delivery.js";
 import * as guardModule from "../src/run-command-guard.js";
 import { AcpConnection } from "../src/acp/connection.js";
@@ -308,6 +309,8 @@ function createExtensionSession(
 	initialActiveToolNames: string[] = tools.map((t) => t.name),
 ) {
 	let activeToolNames = [...initialActiveToolNames];
+	let activeSessionId = "unused";
+	let branch: unknown[] = [];
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();
 	const commands = new Map<string, any>();
 	let provider: any;
@@ -316,6 +319,7 @@ function createExtensionSession(
 		mode,
 		model: { provider: "antigravity" },
 		isProjectTrusted: () => false,
+		sessionManager: { getSessionId: () => activeSessionId, getBranch: () => branch },
 		ui: { notify: () => {}, setStatus: () => {} },
 	};
 	const pi = {
@@ -338,7 +342,9 @@ function createExtensionSession(
 		sessionId = `guard-test-${randomUUID().slice(0, 8)}`,
 		systemPrompt?: string,
 		messages: any[] = [{ role: "user", content: "hi", timestamp: 1 }],
+		options?: { cacheRetention: "none" },
 	) => {
+		activeSessionId = sessionId;
 		const model = { ...provider.models[0], provider: "antigravity", baseUrl: provider.baseUrl } as Model<Api>;
 		const stream = provider.streamSimple(
 			model,
@@ -346,7 +352,7 @@ function createExtensionSession(
 				...(systemPrompt ? { systemPrompt } : {}),
 				messages,
 			}),
-			{ cwd: process.cwd(), sessionId },
+			{ cwd: process.cwd(), sessionId, ...options },
 		);
 		const errors: string[] = [];
 		let doneMessage: any;
@@ -358,14 +364,14 @@ function createExtensionSession(
 	};
 	const turn = async (sessionId = `guard-test-${randomUUID().slice(0, 8)}`, systemPrompt?: string) =>
 		(await turnRaw(sessionId, systemPrompt)).errors;
-	return { pi, emit, command, setActiveTools, turn, turnRaw };
+	return { pi, emit, command, setActiveTools, turn, turnRaw, setBranch: (entries: unknown[]) => { branch = entries; } };
 }
 
 function eventErrorMessage(ev: any): string {
 	return ev.error?.errorMessage ?? "error";
 }
 
-function setupFakeCarrier(engine: "stream-json" | "acp", opts: { holdFile?: string } = {}) {
+function setupFakeCarrier(engine: "stream-json" | "acp", opts: { holdFile?: string; recreate?: boolean } = {}) {
 	const dir = mkTmp();
 	const launchLog = path.join(dir, "launch.json");
 	const launchesLog = path.join(dir, "launches.jsonl");
@@ -386,13 +392,15 @@ let conv = 0;
 const convIdx = process.argv.indexOf("--conversation");
 const id = convIdx !== -1 && process.argv[convIdx + 1] ? process.argv[convIdx + 1] : "conv-guard-1";
 for await (const line of readline.createInterface({ input: process.stdin })) {
+	const observedId = ${Boolean(opts.recreate)} && line.includes("handoff-owner-prompt") ? "conv-recreated" : id;
+	if (line.includes("handoff-owner-prompt")) console.log(JSON.stringify({ event: "init", init: { conversation_id: observedId } }));
 	if (line.trim()) fs.appendFileSync(${JSON.stringify(streamLog)}, line.trim() + "\\n");
 	while (${JSON.stringify(opts.holdFile ?? "")} && fs.existsSync(${JSON.stringify(opts.holdFile ?? "")})) {
 		await new Promise((r) => setTimeout(r, 20));
 	}
 	conv += 1;
-	console.log(JSON.stringify({ event: "init", init: { conversation_id: id } }));
-	console.log(JSON.stringify({ event: "result", result: { status: "SUCCESS", response: "ok", conversation_id: id } }));
+	console.log(JSON.stringify({ event: "init", init: { conversation_id: observedId } }));
+	console.log(JSON.stringify({ event: "result", result: { status: line.includes("post-output-error") ? "ERROR" : "SUCCESS", response: line.includes("handoff-owner-prompt") ? "original handoff owner reply" : "ok", conversation_id: observedId } }));
 }
 `,
 			{ mode: 0o755 },
@@ -408,6 +416,8 @@ fs.writeFileSync(${JSON.stringify(launchLog)}, JSON.stringify(process.argv));
 { const gi = process.argv.indexOf("--gemini-dir"); if (gi !== -1) { try { fs.copyFileSync(process.argv[gi + 1] + "/config/hooks.json", ${JSON.stringify(launchLog + ".home-hooks.json")}); } catch {} } }
 fs.appendFileSync(${JSON.stringify(launchesLog)}, JSON.stringify(process.argv) + "\\n");
 const logPath = ${JSON.stringify(acpLog)};
+let activeSession = "fake-session-0001";
+let recreate = false;
 const send = (obj) => process.stdout.write(JSON.stringify(obj) + "\\n");
 const rl = readline.createInterface({ input: process.stdin });
 for await (const line of rl) {
@@ -421,14 +431,18 @@ for await (const line of rl) {
 	} else if (method === "authenticate") {
 		send({ jsonrpc: "2.0", id, result: {} });
 	} else if (method === "session/new") {
-		send({ jsonrpc: "2.0", id, result: { sessionId: "fake-session-0001", modes: { currentModeId: "default", availableModes: [] }, models: { availableModels: [], currentModelId: "fake-model" }, configOptions: [] } });
+		if (recreate) activeSession = "fake-session-recreated";
+		send({ jsonrpc: "2.0", id, result: { sessionId: activeSession, modes: { currentModeId: "default", availableModes: [] }, models: { availableModels: [], currentModelId: "fake-model" }, configOptions: [] } });
 	} else if (method === "session/load") {
-		send({ jsonrpc: "2.0", id, result: { configOptions: [] } });
+		if (${Boolean(opts.recreate)} && fs.existsSync(${JSON.stringify(opts.holdFile)})) {
+			recreate = true;
+			send({ jsonrpc: "2.0", id, error: { code: -32602, message: "session missing" } });
+		} else send({ jsonrpc: "2.0", id, result: { configOptions: [] } });
 	} else if (method === "session/set_config_option") {
 		send({ jsonrpc: "2.0", id, result: { configOptions: [{ id: params.configId, currentValue: params.value, options: [], type: "select", name: params.configId, category: params.configId }] } });
 	} else if (method === "session/prompt") {
 		while (fs.existsSync(${JSON.stringify(opts.holdFile)})) await new Promise((r) => setTimeout(r, 20));
-		send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "fake-session-0001", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "OK" } } } });
+		send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: activeSession, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: params.prompt.some(block => block.text?.includes("handoff-owner-prompt")) ? "original handoff owner reply" : "OK" } } } });
 		send({ jsonrpc: "2.0", id, result: { stopReason: "end_turn" } });
 	}
 }
@@ -1721,4 +1735,403 @@ describe("AC-1/AC-2 run_command routing under the edit gate", () => {
 			await s.emit("session_shutdown");
 		}
 	});
+});
+
+test("ACP helper uses a private gate and canonical tools while the ordinary connection is still alive", async () => {
+	const hold = path.join(mkTmp(), "hold-helper");
+	const launchLog = setupFakeCarrier("acp", { holdFile: hold });
+	saveConfig({ ...GATED_CONFIG, skipPermissions: true, approvals: { gateMode: "shadow", mode: "allow" } });
+	const s = createExtensionSession("tui", [builtinBash]);
+	shutdowns.push(() => s.emit("session_shutdown"));
+	await extension(s.pi);
+	await s.emit("session_start");
+	assert.deepEqual(await s.turn("helper-isolation"), []);
+	const ownerArgs = readLaunches(launchLog)[0]!;
+	const ownerHome = ownerArgs[ownerArgs.indexOf("--gemini-dir") + 1]!;
+	const ownerHooks = path.join(ownerHome, "config", "hooks.json");
+	const ownerEndpoint = findPrivateEndpoint();
+	const canonical = (await mcpRequest(ownerEndpoint, "tools/list", {})).result.tools;
+	fs.rmSync(ownerHooks); // The helper must not verify against this shared home.
+	fs.writeFileSync(hold, "");
+	const messages = [{ role: "user", content: "helper-only", timestamp: 2 }];
+	const turn = s.turnRaw("helper-isolation", undefined, messages, { cacheRetention: "none" });
+	try {
+		const requests = () => fs.readFileSync(carrierLogs(launchLog).acp, "utf8").trim().split("\n").map(line => JSON.parse(line));
+		await vi.waitFor(() => assert.ok(requests().some(r => r.method === "session/prompt" && JSON.stringify(r.params).includes("helper-only"))), { timeout: 2000 });
+		const mcp = requests().filter(r => r.method === "session/new").at(-1).params.mcpServers[0];
+		const endpoint = { serverUrl: mcp.url, token: mcp.headers.find((h: any) => h.name === TOKEN_HEADER).value };
+		assert.notEqual(endpoint.serverUrl, ownerEndpoint.serverUrl);
+		assert.deepEqual((await mcpRequest(endpoint, "tools/list", {})).result.tools, canonical);
+		const called = await mcpRequest(endpoint, "tools/call", { name: "bash", arguments: { command: "never execute" } });
+		assert.equal(called.result.isError, true);
+		assert.match(called.result.content[0].text, /helper turns do not allow tools or approvals/i);
+		assert.match((await postApproval(endpoint, "read_file", {})).reason!, /helper turns do not allow tools or approvals/i);
+		assert.equal(fs.existsSync(ownerHome), true);
+	} finally {
+		fs.rmSync(hold, { force: true });
+		if (turn) assert.deepEqual((await turn).errors, []);
+	}
+});
+
+test("session_compact rotates only the active Pi session's ACP binding", async () => {
+	const { s, launchLog } = await startGated("acp");
+	const a = `compact-a-${randomUUID()}`;
+	const b = `compact-b-${randomUUID()}`;
+	const calls = () => fs.readFileSync(carrierLogs(launchLog).acp, "utf8").trim().split("\n")
+		.map(line => JSON.parse(line).method).filter(method => method === "session/load" || method === "session/new");
+	assert.deepEqual(await s.turn(a), []);
+	assert.deepEqual(await s.turn(b), []);
+	await s.emit("session_compact_failed", { type: "session_compact_failed" });
+	assert.deepEqual(await s.turn(a), []);
+	assert.deepEqual(calls(), ["session/new", "session/new", "session/load"]);
+	await s.emit("session_compact", { type: "session_compact" });
+	assert.deepEqual(await s.turn(a), []);
+	assert.deepEqual(await s.turn(b), []);
+	assert.deepEqual(calls(), ["session/new", "session/new", "session/load", "session/new", "session/load"]);
+});
+
+test.each(["shadow", "off"] as const)("ACP native permission from a helper is denied even under allow and skipPermissions with gate %s", async gateMode => {
+	vi.stubEnv("ACP_FAKE_SCENARIO", "permission");
+	const { s, launchLog } = await startGated("acp", { skipPermissions: true, approvals: { gateMode, mode: "allow" } });
+	const response = await s.turnRaw("native-helper", undefined, undefined, { cacheRetention: "none" });
+	assert.deepEqual(response.errors, []);
+	const requests = fs.readFileSync(carrierLogs(launchLog).acp, "utf8").trim().split("\n").map(line => JSON.parse(line));
+	const reply = requests.find(request => request.id === 100 && request.result);
+	assert.equal(reply.result.outcome.optionId, "deny");
+	assert.match(reply.result._meta.reason, /helper turns do not allow tools or approvals/i);
+});
+
+for (const engine of ["acp", "stream-json"] as const) {
+	test.each(["helper", "handoff"] as const)(`${engine} %s honors the latched gate at prompt write`, async kind => {
+		const { s, launchLog } = await startGated(engine);
+		const sid = `gated-${kind}-${randomUUID()}`;
+		const prompt = [{ role: "user", content: "write boundary request", timestamp: 1 }];
+		if (kind === "handoff") {
+			// turnRaw sets the context's session ID. Fail its initial dispatch without
+			// writing a prompt, so capture counters below concern only the handoff.
+			await s.turnRaw(sid, undefined, []);
+			await s.emit("session_compact", { type: "session_compact", compactionEntry: { summary: "gate-boundary-summary", timestamp: new Date(0).toISOString() } });
+			prompt.unshift({ role: "user", content: "The conversation history before this point was compacted into the following summary:\n\n<summary>\ngate-boundary-summary\n</summary>", timestamp: 0 });
+		}
+		saveConfig({ ...GATED_CONFIG, approvals: { gateMode: "off", mode: "allow" } });
+		const verify = gateDeliveryModule.verifyOwnedHookGroups;
+		let checks = 0;
+		let restored: (() => void) | undefined;
+		const spy = vi.spyOn(gateDeliveryModule, "verifyOwnedHookGroups").mockImplementation((file, specs) => {
+			if (++checks === 2) {
+				const bytes = fs.readFileSync(file);
+				fs.writeFileSync(file, "{}");
+				restored = () => fs.writeFileSync(file, bytes);
+			}
+			return verify(file, specs);
+		});
+		try {
+			const response = await s.turnRaw(sid, undefined, prompt, kind === "helper" ? { cacheRetention: "none" } : undefined);
+			assert.equal(checks, 2);
+			assert.match(response.errors.join("\n"), /approval gate is enabled but .*group .* (missing|could not be verified)/);
+			assert.equal(promptReached(engine, launchLog), false);
+		} finally {
+			spy.mockRestore();
+			if (kind === "handoff" && engine === "stream-json") restored?.();
+		}
+		if (kind === "handoff") {
+			assert.deepEqual((await s.turnRaw(sid, undefined, prompt)).errors, []);
+			const locations = carrierLogs(launchLog);
+			const wire = fs.readFileSync(engine === "acp" ? locations.acp : locations.stream, "utf8");
+			assert.equal(wire.match(/gate-boundary-summary/g)?.length, 1, "refusal releases the handoff for a successful retry");
+		}
+	});
+}
+
+test.each([false, true])("stream-json helper denies native tools with the shared gate off (AGY_AGENTS_ROOT override: %s)", async override => {
+	const agentsRoot = override ? mkTmp() : undefined;
+	if (agentsRoot) vi.stubEnv("AGY_AGENTS_ROOT", agentsRoot);
+	const hold = path.join(mkTmp(), "hold-gate-off-helper");
+	const launchLog = setupFakeCarrier("stream-json", { holdFile: hold });
+	saveConfig({ ...GATED_CONFIG, bridgeTools: "none", approvals: { gateMode: "off", mode: "allow" } });
+	const s = createExtensionSession("rpc", [builtinBash]);
+	shutdowns.push(() => s.emit("session_shutdown"));
+	await extension(s.pi);
+	await s.emit("session_start");
+	fs.writeFileSync(hold, "");
+	const turn = s.turnRaw("gate-off-helper", undefined, undefined, { cacheRetention: "none" });
+	try {
+		await vi.waitFor(() => assert.ok(promptReached("stream-json", launchLog)));
+		const argv = readLaunches(launchLog).at(-1)!;
+		const homeFlag = argv.indexOf("--gemini_dir");
+		assert.notEqual(homeFlag, -1);
+		assert.notEqual(argv[homeFlag + 1], agentsRoot);
+		const ownedHooks = addDirsFromArgv(argv).map(hooksFile)
+			.filter(file => fs.existsSync(file)).map(readJson);
+		const gate = ownedHooks.map(hooks => hooks[gateGroupKey()]).find(Boolean) as
+			{ PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> } | undefined;
+		assert.ok(gate, "helper carried a denial hook despite the shared gate being off");
+		const [pre] = gate.PreToolUse;
+		assert.match("run_command", new RegExp(pre.matcher));
+		assert.match("read_file", new RegExp(pre.matcher));
+		const scriptPath: string = JSON.parse(pre.hooks[0].command.slice("node ".length));
+		const { code, stdout } = await runNodeScript(fs.readFileSync(scriptPath, "utf8"));
+		assert.equal(code, 0);
+		assert.deepEqual(JSON.parse(stdout), { decision: "deny", reason: "Antigravity helper turns do not allow tools or approvals." });
+	} finally {
+		fs.rmSync(hold, { force: true });
+		assert.deepEqual((await turn).errors, []);
+	}
+	assert.deepEqual(await s.turn("ordinary-gate-off"), []);
+	if (agentsRoot) assert.equal(readLaunches(launchLog).at(-1)!.includes("--gemini_dir"), false);
+	assert.equal(addDirsFromArgv(readLaunches(launchLog).at(-1)!).some(dir => gateHooksStaged(dir)), false);
+});
+
+test.each(["stream-json", "acp"] as const)("%s helper retains private files until confirmed process close", async engine => {
+	const termination = await import("../src/process-termination.js");
+	const terminate = termination.terminateProcessTree;
+	const { s, launchLog } = await startGated(engine);
+	let child: Parameters<typeof terminate>[0] | undefined;
+	let closed: Promise<void> | undefined;
+	let confirmed = false;
+	const fault = vi.spyOn(termination, "terminateProcessTree").mockImplementationOnce(async proc => {
+		child = proc;
+		closed = new Promise(resolve => proc.once("close", () => { confirmed = true; resolve(); }));
+		// Simulates a bounded termination returning without a close notification.
+	});
+	try {
+		const result = await s.turnRaw("helper-fenced", undefined, undefined, { cacheRetention: "none" });
+		assert.deepEqual(result.errors, []);
+		await vi.waitFor(() => assert.ok(child));
+		await s.emit("session_shutdown");
+		assert.equal(confirmed, false);
+		const args = readLaunches(launchLog).at(-1)!;
+		const home = args[args.indexOf(engine === "acp" ? "--gemini-dir" : "--gemini_dir") + 1];
+		const root = path.dirname(home);
+		assert.equal(fs.existsSync(home), true);
+		assert.equal(fs.existsSync(path.join(root, "helper-approval.mjs")), true);
+		await terminate(child!);
+		await closed;
+		await vi.waitFor(() => assert.equal(fs.existsSync(root), false));
+	} finally {
+		fault.mockRestore();
+		if (child && !confirmed) await terminate(child);
+	}
+}, 15_000);
+
+test.each(["stream-json", "acp"] as const)("%s gate-off helper with AGY_AGENTS_ROOT refuses a missing denial hook at prompt write", async engine => {
+	vi.stubEnv("AGY_AGENTS_ROOT", mkTmp());
+	const { s, launchLog } = await startGated(engine, { approvals: { gateMode: "off", mode: "allow" } });
+	const verify = gateDeliveryModule.verifyOwnedHookGroups;
+	let checks = 0;
+	const spy = vi.spyOn(gateDeliveryModule, "verifyOwnedHookGroups").mockImplementation((file, specs) => {
+		if (++checks === 2) fs.rmSync(specs[0].scriptPath);
+		return verify(file, specs);
+	});
+	try {
+		const result = await s.turnRaw("gate-off-write-boundary", undefined, undefined, { cacheRetention: "none" });
+		assert.equal(checks, 2);
+		assert.match(result.errors.join("\n"), /helper edit gate.*missing or unreadable/);
+		assert.equal(promptReached(engine, launchLog), false);
+	} finally { spy.mockRestore(); }
+});
+
+test.each([false, true])("gate-off ACP helper denies a native edit without a permission request (AGY_AGENTS_ROOT override: %s)", async override => {
+	const agentsRoot = override ? mkTmp() : undefined;
+	if (agentsRoot) vi.stubEnv("AGY_AGENTS_ROOT", agentsRoot);
+	vi.stubEnv("ACP_FAKE_SCENARIO", "helper-native-edit");
+	const { s, launchLog } = await startGated("acp", { mode: "accept-edits", approvals: { gateMode: "off", mode: "allow" } });
+	assert.deepEqual((await s.turnRaw("acp-native-edit-helper", undefined, undefined, { cacheRetention: "none" })).errors, []);
+	const argv = readLaunches(launchLog).at(-1)!;
+	const homeFlag = argv.indexOf("--gemini-dir");
+	assert.notEqual(homeFlag, -1);
+	assert.notEqual(argv[homeFlag + 1], agentsRoot);
+	const wire = fs.readFileSync(carrierLogs(launchLog).acp, "utf8").trim().split("\n").map(line => JSON.parse(line));
+	assert.equal(wire.some(frame => frame.method === "session/request_permission" || frame.id === 100), false);
+	assert.deepEqual(wire.find(frame => frame._nativeEditDecision)?._nativeEditDecision,
+		{ decision: "deny", reason: "Antigravity helper turns do not allow tools or approvals." });
+});
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test.each(["ordinary", "committed handoff", "recreated after commit", "settled replay after commit", "ordinary settled replay"] as const)(
+		`${engine} %s continuation followed by steering drains the original owner`, async state => {
+		const hold = path.join(mkTmp(), "hold-steered-approval");
+		const settledReplay = state.endsWith("settled replay") || state === "settled replay after commit";
+		const recreate = state === "recreated after commit" || settledReplay;
+		const launchLog = setupFakeCarrier(engine, { holdFile: hold, recreate });
+		saveConfig(GATED_CONFIG);
+		const s = createExtensionSession("tui", [builtinBash]);
+		shutdowns.push(() => s.emit("session_shutdown"));
+		await extension(s.pi);
+		await s.emit("session_start");
+		const sid = `steering-${engine}-${state}`;
+		const rotated = !state.startsWith("ordinary");
+		const initial = { role: "user", content: rotated || recreate ? "handoff-owner-prompt" : "original prompt", timestamp: 1 };
+		const messages = [initial];
+		if (rotated) {
+			await s.turnRaw(sid, undefined, []);
+			const checkpoint = { type: "compaction", id: "rotation", summary: "approval handoff checkpoint", timestamp: new Date(0).toISOString() };
+			s.setBranch([checkpoint]);
+			await s.emit("session_compact", { type: "session_compact", compactionEntry: checkpoint });
+			messages.unshift({ role: "user", content: `The conversation history before this point was compacted into the following summary:
+
+<summary>
+approval handoff checkpoint
+</summary>`, timestamp: 0 });
+		}
+		if (recreate) {
+			const prime = { role: "user", content: "bind before recreation", timestamp: 1 };
+			assert.deepEqual((await s.turnRaw(sid, undefined, rotated ? [messages[0], prime] : [prime])).errors, []);
+		}
+		let roundTrips: providerModule.ToolRoundTrips | undefined;
+		const onApproval = providerModule.ToolRoundTrips.prototype.onApproval;
+		const capture = vi.spyOn(providerModule.ToolRoundTrips.prototype, "onApproval").mockImplementation(function (this: providerModule.ToolRoundTrips, ...args) {
+			roundTrips = this;
+			return onApproval.apply(this, args);
+		});
+		fs.writeFileSync(hold, "");
+		const started = s.turnRaw(sid, undefined, messages);
+		try {
+			await vi.waitFor(() => {
+				const logs = carrierLogs(launchLog);
+				const text = fs.readFileSync(engine === "acp" ? logs.acp : logs.stream, "utf8");
+				assert.match(text, /handoff-owner-prompt|original prompt/);
+			});
+			const approval = await postApproval(findPrivateEndpoint(), "run_command", { CommandLine: "not executed by this fixture" });
+			assert.ok(approval.ticket);
+			const parked = (await started).message;
+			assert.equal(parked.stopReason, "toolUse");
+			const resultId = settledReplay ? "settled-wrapper-marker" : approval.ticket;
+			if (settledReplay) {
+				// Use the carrier's real handle and the shared replay marker seam.
+				// ACP normally displays native tools instead of emitting wrappers.
+				const owner = roundTrips?.resultOwnerHandle(approval.ticket);
+				assert.ok(owner);
+				roundTrips!.track(resultId, "antigravity", owner);
+				fs.rmSync(hold, { force: true });
+				assert.equal((await owner.outcome).status, "OK");
+				assert.equal(roundTrips!.continuationHandle([approval.ticket]), undefined, "driver cleared the live owner");
+			}
+			const resumed = s.turnRaw(sid, undefined, [...messages, parked,
+				{ role: "toolResult", toolCallId: resultId, toolName: settledReplay ? "antigravity" : "bash", content: [{ type: "text", text: "completed" }], isError: !settledReplay, timestamp: 2 },
+				...(settledReplay ? [] : [{ role: "user", content: "steering context", timestamp: 3 }])]);
+			fs.rmSync(hold, { force: true });
+			const reply = await resumed;
+			assert.deepEqual(reply.errors, []);
+			if (rotated || recreate) assert.equal(reply.message.content.find((block: { type: string }) => block.type === "text")?.text, "original handoff owner reply");
+			const logs = carrierLogs(launchLog);
+			const wire = fs.readFileSync(engine === "acp" ? logs.acp : logs.stream, "utf8").trim().split("\n").map(line => JSON.parse(line));
+			const prompts = wire.filter(frame => frame.event === "user" || frame.method === "session/prompt");
+			assert.equal(prompts.length, recreate ? 2 : 1);
+			if (rotated) assert.match(JSON.stringify(prompts[0]), /approval handoff checkpoint/);
+			if (recreate && engine === "acp") assert.equal(prompts[1].params.sessionId, "fake-session-recreated");
+		} finally { capture.mockRestore(); fs.rmSync(hold, { force: true }); }
+	});
+}
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test(`${engine} equal-summary compactions use the latest active-branch checkpoint exactly once`, async () => {
+		const { s, launchLog } = await startGated(engine);
+		vi.stubEnv("AGY_DIGEST", "on");
+		const sid = `duplicate-summary-${randomUUID()}`;
+		const older = { type: "compaction", id: "old", timestamp: new Date(1000).toISOString(), summary: "identical-summary-xyzz" };
+		const newer = { ...older, parentId: older.id, id: "new", timestamp: new Date(2000).toISOString() };
+		await s.turnRaw(sid, undefined, []);
+		s.setBranch([older]);
+		await s.emit("session_compact", { type: "session_compact", compactionEntry: older });
+		s.setBranch([older, newer]);
+		// Pi 1.6 emits the first equal-text entry for both successful events.
+		await s.emit("session_compact", { type: "session_compact", compactionEntry: older });
+		const checkpoint = { role: "user", timestamp: Date.parse(newer.timestamp),
+			content: `The conversation history before this point was compacted into the following summary:\n\n<summary>\n${newer.summary}\n</summary>` };
+		const first = await s.turnRaw(sid, undefined, [checkpoint, { role: "user", timestamp: 3000, content: "post-output-error" }]);
+		assert.equal(first.errors.length, 1);
+		assert.deepEqual((await s.turnRaw(sid, undefined, [checkpoint, { role: "user", timestamp: 4000, content: "retry" }])).errors, []);
+		const logs = carrierLogs(launchLog);
+		const prompts = fs.readFileSync(engine === "acp" ? logs.acp : logs.stream, "utf8").trim().split("\n").map(line => JSON.parse(line))
+			.filter(frame => frame.event === "user" || frame.method === "session/prompt");
+		assert.equal(prompts.length, 2);
+		assert.equal(JSON.stringify(prompts[0]).match(/identical-summary-xyzz/g)?.length, 1);
+		assert.doesNotMatch(JSON.stringify(prompts[1]), /identical-summary-xyzz/);
+	});
+}
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test(`${engine} blank projected checkpoint is discarded without reaching the carrier`, async () => {
+		const { s, launchLog } = await startGated(engine);
+		const sid = `empty-checkpoint-${engine}`;
+		await s.turnRaw(sid, undefined, []);
+		const entry = { type: "compaction", id: "empty", summary: "", timestamp: new Date(0).toISOString() };
+		s.setBranch([entry]);
+		await s.emit("session_compact", { type: "session_compact", compactionEntry: entry });
+		const checkpoint = { role: "user", timestamp: 0, content: `The conversation history before this point was compacted into the following summary:
+
+<summary>
+
+</summary>` };
+		await s.turnRaw(sid, undefined, [checkpoint]);
+		assert.equal(promptReached(engine, launchLog), false);
+		assert.deepEqual((await s.turnRaw(sid, undefined, [checkpoint, { role: "user", timestamp: 1, content: "real input" }])).errors, []);
+		assert.deepEqual(engine === "acp" ? deliveredPromptTexts(engine, launchLog) : readStreamStdinPrompts(launchLog), ["real input"]);
+		if (engine === "acp") assert.doesNotMatch(fs.readFileSync(carrierLogs(launchLog).acp, "utf8"), /session\/load/);
+		else assert.equal(readLaunches(launchLog)[0].includes("--conversation"), false);
+	});
+}
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test(`${engine} rotation at the main retry prompt boundary leaves zero stale writes`, async () => {
+		const { s, launchLog } = await startGated(engine);
+		const sid = `stale-at-write-${engine}`;
+		assert.deepEqual(await s.turn(sid), []);
+		const checkpoint = { type: "compaction", id: "write-boundary", summary: "new checkpoint", timestamp: new Date(0).toISOString() };
+		s.setBranch([checkpoint]);
+		const verify = gateDeliveryModule.verifyOwnedHookGroups;
+		let checks = 0;
+		const spy = vi.spyOn(gateDeliveryModule, "verifyOwnedHookGroups").mockImplementation((...args) => {
+			if (++checks === 2) void s.emit("session_compact", { type: "session_compact", compactionEntry: checkpoint });
+			return verify(...args);
+		});
+		try {
+			const retry = await s.turnRaw(sid, undefined, [
+				{ role: "user", content: "already started", timestamp: 1 },
+				{ role: "assistant", provider: "antigravity", content: [{ type: "text", text: "partial reply" }], timestamp: 2 },
+			]);
+			assert.equal(checks, 2);
+			assert.match(retry.errors.join("\n"), /compaction handoff.*retry/i);
+			const prompts = engine === "acp" ? deliveredPromptTexts(engine, launchLog) : readStreamStdinPrompts(launchLog);
+			assert.deepEqual(prompts, ["hi"]);
+		} finally { spy.mockRestore(); }
+	});
+}
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test(`${engine} helper with AGY_AGENTS_ROOT refuses a private-home staging failure`, async () => {
+		vi.stubEnv("AGY_AGENTS_ROOT", mkTmp());
+		const { s, launchLog } = await startGated(engine, { approvals: { gateMode: "off", mode: "allow" } });
+		const stage = vi.spyOn(homeModule, "stageAgyHome").mockImplementation(() => { throw new Error("private test home is unwritable"); });
+		try {
+			const result = await s.turnRaw("override-stage-failure", undefined, undefined, { cacheRetention: "none" });
+			assert.equal(stage.mock.calls.length, 1);
+			assert.match(result.errors.join("\n"), /private test home is unwritable/);
+			assert.equal(promptReached(engine, launchLog), false);
+		} finally { stage.mockRestore(); }
+	});
+}
+
+test("gated ACP helper can isolate with AGY_AGENTS_ROOT while the ordinary turn still refuses", async () => {
+	vi.stubEnv("AGY_AGENTS_ROOT", mkTmp());
+	const { s, launchLog } = await startGated("acp");
+	assert.match((await s.turn()).join("\n"), /AGY_AGENTS_ROOT bypasses private ACP home staging/);
+	assert.equal(promptReached("acp", launchLog), false);
+	assert.deepEqual((await s.turnRaw("gated-override-helper", undefined, undefined, { cacheRetention: "none" })).errors, []);
+	assert.equal(promptReached("acp", launchLog), true);
+});
+
+test("stream-json helper with AGY_AGENTS_ROOT refuses when private-home capability is unavailable", async () => {
+	vi.stubEnv("AGY_AGENTS_ROOT", mkTmp());
+	const { s, launchLog } = await startGated("stream-json", { approvals: { gateMode: "off", mode: "allow" } });
+	const probe = vi.spyOn(homeProbe, "probeGeminiDirFlag").mockResolvedValue({ supported: false, unverifiedVersion: false, detail: "refused" });
+	try {
+		const helper = await s.turnRaw("override-no-capability", undefined, undefined, { cacheRetention: "none" });
+		assert.equal(probe.mock.calls.length, 1);
+		assert.match(helper.errors.join("\n"), /Cannot stage an isolated home/);
+		assert.equal(promptReached("stream-json", launchLog), false);
+		assert.deepEqual(await s.turn("legacy-ordinary"), []);
+		assert.equal(readLaunches(launchLog).at(-1)!.includes("--gemini_dir"), false);
+	} finally { probe.mockRestore(); }
 });

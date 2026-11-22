@@ -114,6 +114,8 @@ export function toPiUsage(
 	piUsage: Usage,
 	modelId: string = "",
 	log?: PricingLog,
+	contextWindow?: number,
+	observedOccupancy?: number,
 ): void {
 	if (!u) return;
 	piUsage.input = u.input_tokens ?? piUsage.input;
@@ -123,4 +125,15 @@ export function toPiUsage(
 	// agy's total_tokens excludes cached tokens; Pi's context total must include them.
 	piUsage.totalTokens = piUsage.input + piUsage.output + piUsage.cacheRead + piUsage.cacheWrite;
 	priceUsage(modelId, piUsage, log);
+	// ACP occupancy is independent of aggregate billing counts. Only correct
+	// Pi's overflow inputs, after calculating total and cost from raw usage.
+	const { input, output, cacheRead, cacheWrite } = piUsage;
+	const history = input + cacheRead;
+	if (observedOccupancy === undefined || !Number.isFinite(observedOccupancy) || observedOccupancy <= 0
+		|| contextWindow === undefined || !Number.isFinite(contextWindow) || observedOccupancy > contextWindow
+		|| !Number.isFinite(history) || history <= contextWindow
+		|| ![input, output, cacheRead, cacheWrite].every(count => Number.isFinite(count) && count >= 0)) return;
+	const budget = output < observedOccupancy ? observedOccupancy - output : observedOccupancy;
+	piUsage.input = Math.round((input / history) * budget);
+	piUsage.cacheRead = budget - piUsage.input;
 }

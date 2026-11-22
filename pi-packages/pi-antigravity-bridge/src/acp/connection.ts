@@ -53,6 +53,7 @@ export interface AcpConnectionOptions {
 	binArgs?: string[];
 	/** Stage only immediately before owned launch; failure is a visible turn error. */
 	stageHome?: () => string | undefined;
+	onProcessStarted?: (child: OwnedProcess) => void;
 	/** Optional hooks-only --add-dir directory (never shared with mcp_config.json). */
 	hooksDir?: string | (() => string | undefined);
 	/** Owning bridge's auth invalidation callback. Detached when this
@@ -70,6 +71,7 @@ export interface AcpConnectionOptions {
 	 *  "auto" selects the first allow option; "deny" consults the human
 	 *  handler (parking) or fail-closes to the first reject option. Absent =
 	 *  deny (fail closed). */
+	denyAllPermissionsReason?: string;
 	permissions?: () => "auto" | "deny";
 	/** Human gate for "deny"-policy turns. The request is PARKED: the JSON-RPC
 	 *  reply waits until the handler settles. The returned optionId is
@@ -206,6 +208,7 @@ export class AcpConnection {
 		// Bounded termination may fence without settling: only close can release.
 		if (home) child.once("close", () => removeStagedAgyHome(home));
 		this.#child = child;
+		this.#opts.onProcessStarted?.(child);
 		// Guard process errors even if subsequent transport setup throws.
 		child.on("error", (err) => {
 			this.#log("spawn-error", { message: redactText(err.message) });
@@ -321,6 +324,7 @@ export class AcpConnection {
 		images: Array<{ data: string; mimeType: string }> = [],
 		contextBlock?: { uri: string; text: string },
 		onDispatched?: () => void,
+		assertPromptCurrent?: () => void,
 	): Promise<{ stopReason: string; usage?: AgyUsage }> {
 		// Block order: images, then the embedded-context resource (pi-side
 		// digest), then the text question last (it refers to everything before
@@ -340,6 +344,7 @@ export class AcpConnection {
 			});
 		}
 		blocks.push({ type: "text", text });
+		assertPromptCurrent?.();
 		const result = (await this.request("session/prompt", {
 			sessionId,
 			prompt: blocks,
@@ -393,6 +398,13 @@ export class AcpConnection {
 		const options = Array.isArray(params?.options) ? params.options : [];
 		const allow = options.find((o) => typeof o.kind === "string" && o.kind.startsWith("allow"));
 	const denyId = options.find((o) => typeof o.kind === "string" && o.kind.startsWith("reject"))?.optionId;
+		if (this.#opts.denyAllPermissionsReason) {
+			this.#log("permission", { optionId: denyId, policy: "deny", reason: this.#opts.denyAllPermissionsReason });
+			return Promise.resolve({
+				outcome: denyId === undefined ? { outcome: "cancelled" } : { outcome: "selected", optionId: denyId },
+				_meta: { reason: this.#opts.denyAllPermissionsReason },
+			});
+		}
 		const policy = this.#opts.permissions?.() ?? "deny";
 		if (policy === "auto") {
 			const chosen = (allow ?? options[0])?.optionId;

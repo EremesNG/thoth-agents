@@ -152,6 +152,12 @@ Model ids are slugified from the `agy models` output (`Gemini 3.6 Flash (Medium)
 
 If discovery fails and no usable cached catalog exists, the built-in fallback populates the picker. Bridge startup and the stream-json version check are deferred until an Antigravity model is used, so binary/auth/network failures surface at first use.
 
+### After Pi compacts a session
+
+Successful Pi compaction starts a fresh Antigravity conversation on the next regular turn. The bridge sends a byte-bounded handoff with the latest summary and retained turns, even when `digest` is off. ACP carries it as embedded context; stream-json sends it inline. Once delivered, later turns resume the new conversation normally. If another turn is delivering the handoff, wait for it to settle and retry. Results stranded in a rotated conversation remain pollable but are not sent into a new conversation.
+
+Pi's summary helpers use independent, tool-denying connections, so they do not wait for or change the current conversation. They stage and verify their own private home even when `AGY_AGENTS_ROOT` selects legacy behavior for ordinary turns. Helpers refuse to dispatch if isolation or deny-hook verification fails. Ordinary gated ACP turns still refuse the legacy override.
+
 ### Bridge surface
 
 `config.json` selects the bridge surface. Boolean keys use JSON `true`/`false`; the matching slash commands accept `on`/`off`:

@@ -1,3 +1,5 @@
+import type { BindingOrigin } from "./sessions.js";
+
 // Engine-agnostic turn-driver contract.
 //
 // Both turn engines (stream-json driver in `driver.ts`, ACP driver in
@@ -25,6 +27,12 @@ export interface DriverProfile {
 }
 
 export interface DriverTurnRequest extends DriverProfile {
+	/** Provider routing chosen before any driver await; never refreshed by a carrier. */
+	bindingOrigin?: BindingOrigin;
+	/** Ownership fence checked synchronously at the actual prompt-write boundary. */
+	assertPromptCurrent?: () => void;
+	/** Always launch a fresh stream-json process, even with no known prior ID. */
+	forceFresh?: boolean;
 	/** Instance lifecycle fence; checked after queued waits and before launch.
 	 *  Throws when the owning session has shut down or been replaced. */
 	assertCurrent?: () => void;
@@ -84,7 +92,7 @@ export type DriverActivity =
 			diff?: { path: string; oldText?: string; newText: string };
 	  }
 	| { type: "tool_error"; stepId?: number; name: string; message: string; mcpServer?: string; toolCallId?: string }
-	| { type: "usage"; usage: AgyUsage }
+	| { type: "usage"; usage: AgyUsage; observedOccupancy?: number }
 	/** Synthetic: injected by the provider when the MCP bridge receives a call
 	 *  (G9). Parks the turn: output is expected to stall while pi executes the
 	 *  tool, so the driver suspends its idle/overall timers. */
@@ -100,10 +108,12 @@ export interface TurnOutcome {
 	aborted: boolean;
 	/** The model demonstrably produced output this turn: an agent_response
 	 *  or tool step was observed, or the settled response/usage is non-empty.
-	 *  Stream-json sets it on every outcome; ACP leaves it undefined.
+	 *  ACP records only model text, thought or tool-call updates.
 	 *  false + status OK is agy's silent over-cap drop signature (issue #2:
 	 *  prompts past ~25KB are discarded with SUCCESS, no error). */
 	modelOutputSeen?: boolean;
+	/** Unrecognized carrier result is not handoff evidence (normal settlement is unchanged). */
+	unrecognizedResult?: boolean;
 	/** Stream-json only: a result frame arrived for this turn. Undefined on
 	 *  ACP. A deadline kill or process exit before the result frame means the
 	 *  turn never committed. */
@@ -115,6 +125,7 @@ export interface TurnOutcome {
 }
 
 export interface TurnHandle {
+	readonly bindingOrigin?: BindingOrigin;
 	id: string;
 	/** Live identity observed by THIS turn, never a driver-global binding.
 	 *  Undefined until the owning transport reports a conversation/session. */

@@ -1,9 +1,15 @@
 // pi-test-node-fixture
 import readline from 'node:readline';
+import fs from 'node:fs';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const frame = (event, body) => process.stdout.write(JSON.stringify({event, [event]: body}) + '\n');
 const lines = readline.createInterface({input: process.stdin})[Symbol.asyncIterator]();
 const line = (await lines.next()).value ?? '';
+function logPrompt(line) {
+  if (line && process.env.AGY_FAKE_PROMPT_LOG) fs.appendFileSync(process.env.AGY_FAKE_PROMPT_LOG,
+    JSON.stringify({ ...JSON.parse(line), pid: process.pid }) + String.fromCharCode(10));
+}
+logPrompt(line);
 if (line.includes('CHECKPOINT-PROGRESS') || line.includes('GARBAGE-PROGRESS')) {
   frame('init', {});
   for (let i = 0; i < 12; i++) {
@@ -12,6 +18,12 @@ if (line.includes('CHECKPOINT-PROGRESS') || line.includes('GARBAGE-PROGRESS')) {
     else { console.log('unrecognized noise'); console.log('{"event":"unknown-progress"}'); }
   }
   frame('result', {status:'SUCCESS',response:'finished after progress'});
+} else if (line.includes('HANDOFF_NO_ID') || line.includes('HANDOFF_UNKNOWN')) {
+  const unknown = line.includes('HANDOFF_UNKNOWN');
+  if (unknown) frame('init', { conversation_id:'conv-unknown' });
+  frame('result', { status: unknown ? 'UNKNOWN' : 'SUCCESS', response: 'unbound answer' });
+  logPrompt((await lines.next()).value);
+  frame('result', { status:'SUCCESS', response: 'reused', conversation_id:'conv-reused-wrongly' });
 } else if (line.includes('SILENT-DROP')) {
   frame('init', {conversation_id:'conv-drop'});
   await sleep(100);

@@ -11,12 +11,17 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ### Changed
 
+- After successful Pi compaction, rotate the Antigravity conversation and send a one-shot summary and retained-context handoff on both engines, independent of the ordinary digest setting. Older turns cannot restore or delete the fresh binding; stranded results from rotated conversations remain pollable without being re-sent.
+- Run Pi summary helpers in separate, bounded connections with their own verified gate delivery. Helper bridge tools and approvals are denied without involving the active session.
+
 - Support Pi 1.6 render output in native event cards.
 
 - Suspend the inactivity guard during native tool execution on both carriers, and raise the default headless turn cap to 30 minutes.
 - Publish in-flight native tools by Pi session so subagent watchdogs apply tool-aware stall budgets, without duplicating identified Pi-bridge calls. For stream-json frames lacking server identity, a unique matching bridge park is inferred; an unrelated concurrent unidentified MCP call with the same target remains indistinguishable.
 
 ### Fixed
+
+- Avoid false Pi context-overflow detection when ACP reports occupancy within the model window but aggregated input and cache reads exceed it. Billing cost and total-token reporting are unchanged.
 
 - **Bridge POSTs preserve UTF-8 across HTTP chunks.** Approval and MCP requests decode the complete byte-limited body once. Malformed UTF-8 is rejected before a tool is dispatched or an approval is parked.
 - **Approval gate hardening (convergence round 1).** Windows UNC targets must name a server and a share (`\servershare...`); server-only forms are denied. The Pi approval dialog for an unknown native tool now shows the complete serialized arguments (no silent 1,000-character cutoff). Gated dispatch rechecks the owned hook groups and handlers a second time immediately before the prompt write on both carriers, refreshing the `run_command` guard exemption and refusing visibly if either was lost during async startup.

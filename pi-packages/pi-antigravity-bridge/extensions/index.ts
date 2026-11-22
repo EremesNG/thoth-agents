@@ -55,6 +55,7 @@ import {
 	defaultEscalateAfterMs,
 	formatEscalatedAck,
 	formatPollAnswer,
+	rotateAgySession,
 	type NativeDisplayEvent,
 } from "../src/provider.js";
 import { PollRunFolder, type PollRunData } from "../src/poll-fold.js";
@@ -92,6 +93,7 @@ import {
 	stageRunCommandGuardHooks,
 	writeGuardHookScript,
 } from "../src/run-command-guard.js";
+import type { OwnedProcess } from "../src/owned-process.js";
 import { StreamDriver } from "../src/driver.js";
 import { AcpDriver } from "../src/acp/driver.js";
 import { stagedAcpMcpServers } from "../src/acp/mcp-servers.js";
@@ -117,7 +119,7 @@ import { emitLifecycle } from "../src/lifecycle.js";
 import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.js";
 import { renderNativeEvent, renderPollRun } from "../src/native-event-render.js";
 import { registerWebTools } from "../src/web-tools.js";
-import { acquirePrivateBridgeServerName, bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
+import { acquirePrivateBridgeServerName, bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle, type McpBridgeDeps } from "../src/mcp-server.js";
 import {
 	bridgeServerName,
 	registerBridgeServer,
@@ -356,6 +358,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	let gateSpec: OwnedHookSpec | null = null;
 	let guardVerified = false;
 	let lastAcpHome: string | undefined;
+	let helperListTools: McpBridgeDeps["listTools"] | undefined;
+	const helpers = new Set<() => Promise<void>>();
 	const guardSpec = (guard: GuardSnapshot = getGuardContext()): OwnedHookSpec => ({
 		label: "run_command guard",
 		groupKey: runCommandGuardGroupKey(),
@@ -510,6 +514,15 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		const expectedExit = msg === "connection-exited" && (data as { expected?: boolean } | undefined)?.expected === true;
 		fileLog.log(msg, data, expectedExit ? "debug" : acpFailures.has(msg) ? "warn" : msg === "turn-start" ? "info" : "debug");
 	};
+	function acpMcpServers(home: string | undefined, endpoint: McpServerHandle | null | undefined) {
+		// ACP receives its authenticated bridge per session; foreign staged
+		// servers are preserved, but never substitute for the owned endpoint.
+		return [
+			...(endpoint ? [{ name: acpServerName, type: "http" as const, url: `http://127.0.0.1:${endpoint.port}/mcp`,
+				headers: [{ name: TOKEN_HEADER, value: endpoint.token }] }] : []),
+			...stagedAcpMcpServers(home, acpLog),
+		];
+	}
 	const acpDriver = new AcpDriver({
 		bin: resolveAgyBinary,
 		stageHome: () => stageEngineHome("acp-home"),
@@ -537,23 +550,107 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			});
 		},
 		log: acpLog,
-		mcpServers: (home) => {
-			const inherited = stagedAcpMcpServers(home, acpLog);
-			const handle = mcpHandle;
-			if (!handle) return inherited;
-			// The bridge 403s any request without the shared-secret header; the
-			// stream engine carries it via mcp_config.json, ACP via headers[].
-			return [
-				{
-					name: acpServerName,
-					type: "http",
-					url: `http://127.0.0.1:${handle.port}/mcp`,
-					headers: [{ name: TOKEN_HEADER, value: handle.token }],
-				},
-				...inherited,
-			];
-		},
+		mcpServers: home => acpMcpServers(home, mcpHandle),
 	});
+	/** A separate endpoint, credentials, hook handler and home for every helper.
+	 * Never copy the shared bridge endpoint into a helper's carrier config. */
+	async function createHelper(carrier: "acp" | "stream-json", signal: AbortSignal) {
+		// AGY_AGENTS_ROOT only selects legacy staging for ordinary turns. If
+		// ordinary startup skipped the stream-json probe, check it for the
+		// helper without changing the ordinary carrier's capability state.
+		if (carrier === "stream-json") {
+			const supported = streamHomeChecked ? streamHomeSupported : (await probeGeminiDirFlag(resolveAgyBinary())).supported;
+			if (!supported) throw new Error("Cannot stage an isolated home for the Antigravity helper; refusing to dispatch");
+		}
+		signal.throwIfAborted();
+		const reason = "Antigravity helper turns do not allow tools or approvals.";
+		const mode = gateMode;
+		const listTools = mcpHandle ? helperListTools : undefined;
+		if (mode !== "off" && (!listTools || !gateSpec)) refuseGate("its helper bridge or hook handler is unavailable");
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-helper-"));
+		let endpoint: McpServerHandle | undefined;
+		let home: string | undefined;
+		let turnDriver: TurnDriver | undefined;
+		let disposal: Promise<void> | undefined;
+		let release: Promise<void> | undefined;
+		let disposing = false;
+		let openProcesses = 0;
+		const releaseIfClosed = () => {
+			if (!disposing || openProcesses !== 0) return;
+			return release ??= (async () => {
+				try { await endpoint?.close(); }
+				finally { fs.rmSync(dir, { recursive: true, force: true }); }
+			})();
+		};
+		const onProcessStarted = (child: OwnedProcess) => {
+			openProcesses++;
+			child.once("close", () => {
+				openProcesses--;
+				void releaseIfClosed()?.catch(error => fileLog.log("helper-cleanup-failed", String(error), "warn"));
+			});
+		};
+		const stageHome = () => {
+			if (disposing) throw new Error("Antigravity helper is shutting down");
+			return home;
+		};
+		const dispose = () => disposal ??= (async () => {
+			disposing = true;
+			try { await turnDriver?.close("shutdown"); }
+			finally {
+				helpers.delete(dispose);
+				// A bounded close can return after fencing without confirming close.
+				// Leave those files and their deny-only endpoint owned by the carrier.
+				await releaseIfClosed();
+			}
+		})();
+		try {
+			if (listTools) {
+				const result = await startMcpServer({
+					listTools, denyAllApprovalReason: reason,
+					onToolCall: async () => ({ content: [{ type: "text", text: reason }], isError: true }),
+				}, { configDir: dir, carrierOwned: true, serverName: acpServerName, discoveryServerName: currentDiscoveryServerName() });
+				endpoint = result.handle;
+				if (!result.ok || !endpoint) throw new Error("Cannot open the isolated Antigravity helper endpoint");
+			}
+			signal.throwIfAborted();
+			const ownBridge = endpoint ? { name: acpServerName, port: endpoint.port, token: endpoint.token, tokenHeader: TOKEN_HEADER } : undefined;
+			home = stageAgyHome({ prefix: carrier === "acp" ? "acp-home" : "agy-home", ownBridge, parentDir: dir });
+			const configFile = carrier === "acp" ? homeHooksFile(home) : hooksFilePath(dir);
+			// ACP accept-edits can bypass request_permission. Both helper carriers
+			// need a verified native deny hook even when the shared gate is off.
+			const scriptPath = path.join(dir, "helper-approval.mjs");
+			const scriptSource = mode === "off" ? guardHookScriptSource(reason) : hookScriptSource({
+				port: endpoint!.port, token: endpoint!.token, deadlineMs: handlerDeadlineMs(APPROVAL_PARK_MS),
+				ownServerName: currentDiscoveryServerName(), checkAll: true });
+			fs.writeFileSync(scriptPath, scriptSource, { mode: 0o600 });
+			const spec: OwnedHookSpec = { label: "helper edit gate", groupKey: gateGroupKey(), scriptPath, scriptSource,
+				group: buildGateGroup({ port: endpoint?.port ?? 0, token: endpoint?.token ?? "", scriptPath, parkBudgetMs: APPROVAL_PARK_MS }) };
+			mergeOwnedHookGroups(configFile, [spec]);
+			const verifyDelivery = () => {
+				const problem = verifyOwnedHookGroups(configFile, [spec]).get(spec.groupKey);
+				if (problem !== null) refuseGate(problem ?? "its helper hook group could not be verified");
+			};
+			if (carrier === "acp") {
+				turnDriver = new AcpDriver({
+					bin: resolveAgyBinary, stageHome, onProcessStarted, verifyDelivery, log: acpLog,
+					usageEstimate: () => loadConfig().acp.usageEstimate, denyAllPermissionsReason: reason,
+					mcpServers: stagedHome => acpMcpServers(stagedHome, endpoint),
+				});
+			} else {
+				const stream = new StreamDriver(dir);
+				stream.stageHome = stageHome;
+				stream.onProcessStarted = onProcessStarted;
+				stream.verifyDelivery = verifyDelivery;
+				stream.log = streamDriver.log;
+				turnDriver = stream;
+			}
+			helpers.add(dispose);
+			return { driver: turnDriver, dispose };
+		} catch (error) {
+			await dispose();
+			throw error;
+		}
+	}
 	// The active engine is resolved from the latched load-time value.
 	const activeDriver = (): TurnDriver => (engine === "acp" ? acpDriver : streamDriver);
 	// The provider's stream-json slot gets the STREAM driver explicitly - never
@@ -692,6 +789,19 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	}
 	let systemPromptOptions: BuildSystemPromptOptions | undefined;
 	let sessionMode: string | undefined;
+	pi.on("session_compact", (event, ctx) => {
+		// Pi 1.6 can emit the first entry with matching summary text. Its
+		// canonical projection instead uses the last compaction on the branch.
+		const branch = ctx.sessionManager.getBranch();
+		let checkpoint = event.compactionEntry;
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i];
+			if (entry.type !== "compaction") continue;
+			checkpoint = entry;
+			break;
+		}
+		rotateAgySession(store, ctx.sessionManager.getSessionId(), ctx.cwd, engine, checkpoint);
+	});
 	pi.on("before_agent_start", (event, ctx) => {
 		systemPromptOptions = event.systemPromptOptions;
 		sessionMode = ctx.mode;
@@ -711,6 +821,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		roster,
 		engine,
 		beforeStart: ensureBridgeStarted,
+		createHelper,
 		log: fileLog.log.bind(fileLog),
 	});
 
@@ -990,6 +1101,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			});
 			return tools;
 		};
+		helperListTools = listTools;
 		// activate_skill never round-trips through pi: the bridge answers it
 		// directly by reading the SKILL.md (pi has no skill tool to execute).
 		const bridgeOnToolCall = (
@@ -1255,6 +1367,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			const h = mcpHandle;
 			mcpHandle = null;
 			activeApprovalPark = undefined;
+			await Promise.allSettled([...helpers].map(dispose => dispose()));
+			helperListTools = undefined;
 			await h?.close();
 			roundTrips.failAll(FAIL_REASON_SHUTDOWN);
 			roundTrips.approvalPark = undefined;

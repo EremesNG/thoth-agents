@@ -101,6 +101,8 @@ export interface McpStartResult {
  *  toolResult on the next stream call. Fail-closed: the provider enforces a
  *  480s timeout and rejects when no agy turn is active. */
 export interface McpBridgeDeps {
+	/** Connection-local refusal, before any approval exemptions. */
+	denyAllApprovalReason?: string;
 	listTools(): Array<{ name: string; description: string; inputSchema: object }>;
 	onToolCall(
 		callId: string,
@@ -331,6 +333,8 @@ export async function startMcpServer(
 	deps: McpBridgeDeps,
 	opts: {
 		preferredPort?: number;
+		/** Carrier-owned servers are closed by the confirmed-close resource owner. */
+		carrierOwned?: boolean;
 		/** Private discovery directory owned by the calling extension instance. */
 		configDir?: string;
 		/** Owned discovery key and MCP identity. Defaults to the legacy key. */
@@ -496,6 +500,10 @@ export async function startMcpServer(
 				payload = parsed;
 			} catch {
 				res.writeHead(400, { "content-type": "application/json" }).end('{"error":"invalid payload"}');
+				return;
+			}
+			if (deps.denyAllApprovalReason) {
+				denyDirect(res, deps.denyAllApprovalReason);
 				return;
 			}
 			// Allow-by-exception (defense in depth; the handler decides the same
@@ -675,7 +683,8 @@ export async function startMcpServer(
 			}
 			// Clean up the config dir on abrupt termination (SIGINT/SIGTERM/crash)
 			// where session_shutdown -> close() does not run. Disposed in close().
-			const disposeExitCleanup = registerExitCleanup(removeConfig);
+			if (opts.carrierOwned) httpServer.unref();
+			const disposeExitCleanup = opts.carrierOwned ? undefined : registerExitCleanup(removeConfig);
 			log("listening", { port });
 			resolve({
 				ok: true,
@@ -693,7 +702,7 @@ export async function startMcpServer(
 						}
 						await new Promise<void>((r) => httpServer.close(() => r()));
 						removeConfig();
-						disposeExitCleanup();
+						disposeExitCleanup?.();
 						log("bridge-config-removed", { port });
 						log("closed", { port });
 					},

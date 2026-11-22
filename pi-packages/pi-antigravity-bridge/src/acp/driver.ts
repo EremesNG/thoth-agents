@@ -24,7 +24,8 @@ import { emitLifecycle } from "../lifecycle.js";
 import { randomUUID } from "node:crypto";
 import { agyVersionVerdict, checkAgyCliVersion, MIN_AGY_ACP_VERSION } from "../agy-version.js";
 import type { UsageEstimate } from "../config.js";
-import { AcpConnection, type AcpMcpServer, type AcpPermissionRequest } from "./connection.js";
+import { AcpConnection,
+	type AcpConnectionOptions, type AcpMcpServer, type AcpPermissionRequest } from "./connection.js";
 import type { AcpPermissionHandler } from "./connection.js";
 import { KNOWN_NATIVE_AGY_TOOLS, KNOWN_STOP_REASONS, mapStopReason, mapUpdate, TextAccumulator, type AcpEditDiff } from "./events.js";
 import { estimateTokens, synthesizeUsage } from "./usage-estimate.js";
@@ -47,12 +48,14 @@ export interface AcpDriverOptions {
 	/** Extra argv for the binary (tests: node + fake-server script). */
 	binArgs?: string[];
 	stageHome?: () => string | undefined;
+	onProcessStarted?: AcpConnectionOptions["onProcessStarted"];
 	/** Optional hooks-only --add-dir directory for ACP PreToolUse guards. */
 	hooksDir?: string | (() => string | undefined);
 	/** Pre-dispatch delivery check (approval gate): runs after the connection
 	 *  is ready and before any session RPC or prompt. Throwing refuses the
 	 *  turn with the thrown message; the connection is retired. */
 	verifyDelivery?: () => void;
+	denyAllPermissionsReason?: string;
 	extraEnv?: Record<string, string>;
 
 	/** Owning bridge callback, attached only to this driver's connections. */
@@ -100,6 +103,8 @@ interface ActiveTurn {
 	toolBatchOpen: boolean;
 	/** Observed context occupancy, never carried into a subsequent turn. */
 	contextUsed: number | undefined;
+	lastUsageEstimate?: AgyUsage;
+	modelOutputSeen: boolean;
 	sawResult: boolean;
 	/** True once the prompt RPC was issued. Abort before this point has
 	 *  nothing to cancel: probing would risk a success-as-noop answer from a
@@ -410,14 +415,15 @@ export class AcpDriver implements TurnDriver {
 		try {
 			// Nothing to cancel before the prompt RPC exists; see promptStarted.
 			turn.promptStarted = true;
-			const result = await conn.prompt(turn.sessionId, request.prompt, request.images, request.contextBlock, onDispatched);
+			const result = await conn.prompt(turn.sessionId, request.prompt, request.images, request.contextBlock, onDispatched, request.assertPromptCurrent);
 			if (turn.closed) return;
 			turn.sawResult = true;
 			// Native exact billing counts replace estimates; correct the context gauge.
 			const usage = result.usage ? this.#contextCorrectedUsage(turn, result.usage) : undefined;
-			if (usage) this.#emit(turn, { type: "usage", usage });
+			if (usage) this.#emitUsage(turn, usage);
 			const mapped = mapStopReason(result.stopReason);
-			if (!KNOWN_STOP_REASONS.has(String(result.stopReason))) {
+			const unrecognizedResult = !KNOWN_STOP_REASONS.has(result.stopReason);
+			if (unrecognizedResult) {
 				// Not an ACP enum value: silence would hide exactly the server drift
 				// that produces an empty report.
 				this.#log("acp-unknown-stop-reason", { stopReason: String(result.stopReason) });
@@ -425,6 +431,7 @@ export class AcpDriver implements TurnDriver {
 			this.#settle(turn, {
 				conversationId: turn.sessionId,
 				status: mapped.status,
+				unrecognizedResult,
 				response: turn.response.text,
 				usage,
 				error: mapped.error,
@@ -448,6 +455,7 @@ export class AcpDriver implements TurnDriver {
 	#makeHandle(turn: ActiveTurn): TurnHandle {
 		return {
 			id: turn.id,
+			bindingOrigin: turn.request.bindingOrigin,
 			get conversationId() { return turn.sessionId || undefined; },
 			outcome: turn.outcome,
 			next: () => this.#nextActivity(turn),
@@ -474,6 +482,8 @@ export class AcpDriver implements TurnDriver {
 		if (!turn || turn.closed) return;
 		if (sessionId !== null && sessionId !== turn.sessionId) return;
 		if (turn.idleTimer) turn.idleTimer.refresh();
+		const kind = (update as { sessionUpdate?: unknown } | null)?.sessionUpdate;
+		if (kind === "agent_message_chunk" || kind === "agent_thought_chunk" || kind === "tool_call") turn.modelOutputSeen = true;
 		const mapped = mapUpdate(update);
 		if (!mapped) return;
 		switch (mapped.kind) {
@@ -499,7 +509,9 @@ export class AcpDriver implements TurnDriver {
 			}
 			case "usage": {
 				turn.contextUsed = mapped.used;
-				this.#emit(turn, { type: "usage", usage: { total_tokens: mapped.used } });
+				// Repeat the raw counters when occupancy arrives. A prior update may
+				// already have clamped the Pi-facing counters; never reprice those.
+				this.#emitUsage(turn, { ...turn.lastUsageEstimate, total_tokens: mapped.used });
 				return;
 			}
 			case "tool_start": {
@@ -617,6 +629,7 @@ export class AcpDriver implements TurnDriver {
 			bin: binary,
 			binArgs: this.#opts.binArgs,
 			stageHome: this.#opts.stageHome,
+			onProcessStarted: this.#opts.onProcessStarted,
 			hooksDir: this.#opts.hooksDir,
 			extraEnv: this.#opts.extraEnv,
 			onAuthInvalidated: this.#opts.onAuthInvalidated,
@@ -634,6 +647,7 @@ export class AcpDriver implements TurnDriver {
 				? (req) => this.#parkForPermission(req)
 				: undefined,
 			permissionParkMs: this.#opts.permissionParkMs,
+			denyAllPermissionsReason: this.#opts.denyAllPermissionsReason,
 			onUpdate: (sessionId, update) => this.#onConnectionUpdate(sessionId, update),
 			onExit: (info) => this.#onConnectionExit(conn, info),
 		});
@@ -728,6 +742,7 @@ export class AcpDriver implements TurnDriver {
 			toolBatches: 0,
 			toolBatchOpen: false,
 			contextUsed: undefined,
+			modelOutputSeen: false,
 			textDeltas: 0,
 			thoughtDeltas: 0,
 			estimatedInputTokens: estimateTokens(request.contextBlock?.text ? `${request.prompt}\n${request.contextBlock.text}` : request.prompt),
@@ -838,6 +853,7 @@ export class AcpDriver implements TurnDriver {
 
 	#settle(turn: ActiveTurn, outcome: TurnOutcome): void {
 		if (turn.closed) return;
+		outcome.modelOutputSeen = turn.modelOutputSeen;
 		// A native tool failed, the model never spoke and the turn still ended
 		// OK (known, unknown or max_tokens stop reason): never settle as an empty success.
 		// Never copy agy's failure text or unsanitized session identifiers here.
@@ -851,7 +867,7 @@ export class AcpDriver implements TurnDriver {
 			const usage = this.#syntheticUsage(turn);
 			if (usage) {
 				outcome.usage = usage;
-				this.#emit(turn, { type: "usage", usage });
+				this.#emitUsage(turn, usage);
 			}
 		}
 		turn.closed = true;
@@ -895,7 +911,14 @@ export class AcpDriver implements TurnDriver {
 	 *  This is not provider-reported billing or an exact context-window count. */
 	#emitLiveEstimate(turn: ActiveTurn): void {
 		const usage = this.#syntheticUsage(turn);
-		if (usage) this.#emit(turn, { type: "usage", usage });
+		if (usage) {
+			turn.lastUsageEstimate = usage;
+			this.#emitUsage(turn, usage);
+		}
+	}
+
+	#emitUsage(turn: ActiveTurn, usage: AgyUsage): void {
+		this.#emit(turn, { type: "usage", usage, observedOccupancy: turn.contextUsed });
 	}
 
 	#syntheticUsage(turn: ActiveTurn): AgyUsage | undefined {

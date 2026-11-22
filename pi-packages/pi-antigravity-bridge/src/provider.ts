@@ -1,3 +1,4 @@
+import { routeCompaction } from "./compaction-routing.js";
 import { projectSystemPrompt } from "./prompt-projection.js";
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 // The pi provider: streamSimple(model, context, options) -> AssistantMessageEventStream.
@@ -41,9 +42,9 @@ import { SubagentRoster } from "./subagent-roster.js";
 import { toPiUsage } from "./stream-events.js";
 import { mapAgyToolToNative } from "./native-tools.js";
 import { toAgyEffort, type AgyModelEntry } from "./models.js";
-import { SessionStore } from "./sessions.js";
+import { SessionStore, type BindingOrigin, type CompactionCheckpoint } from "./sessions.js";
 import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, type AgyConfig } from "./config.js";
 import { classifyQuotaOutcome, quotaErrorMessage } from "./quota-notice.js";
 import { GATE_MARKER, mapNativeToShadow, stripMarkerFields } from "./approval-gate.js";
 import type { ApprovalDecision, ApprovalPayload, ApprovalParkApi } from "./mcp-server.js";
@@ -250,6 +251,62 @@ function stripCompactionWrapping(t: string): string {
 	return t.trim();
 }
 
+const HANDOFF_PREAMBLE = "[Pi compacted this session. This is a fresh Antigravity conversation: use the summary and retained turns below for continuity. Do not repeat completed actions.]";
+const HANDOFF_RETRY = "Antigravity compaction handoff is in progress or superseded; retry this turn.";
+const HANDOFF_RESUME = "[Continue from the supplied compaction handoff and retained tool results. Do not repeat completed actions.]";
+const HANDOFF_BYTES = 8000;
+const PROMPT_SEPARATOR = "\n\n---\n\n";
+
+function utf8Slice(text: string, budget: number, fromEnd = false): string {
+	const bytes = Buffer.from(text);
+	if (bytes.length <= budget) return text;
+	let edge = fromEnd ? bytes.length - budget : budget;
+	// A continuation byte can never start a UTF-8 code point.
+	while (edge > 0 && edge < bytes.length && (bytes[edge]! & 0xc0) === 0x80) edge += fromEnd ? 1 : -1;
+	return (fromEnd ? bytes.subarray(edge) : bytes.subarray(0, edge)).toString();
+}
+
+// Pi 1.6 convertToLlm projects compactionSummary as one user text block with
+// this exact prefix and suffix, without carrying its former role or metadata.
+const PI_SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+const PI_SUMMARY_SUFFIX = "\n</summary>";
+
+/** Match only Pi's canonical projection position against the event snapshot. */
+function checkpointIndex(messages: Message[], checkpoint?: CompactionCheckpoint): number {
+	if (!checkpoint) return -1;
+	const first = messages.findIndex(message => message.role !== "system");
+	const projected = messages[first];
+	return projected?.role === "user" && projected.timestamp === new Date(checkpoint.timestamp).getTime() &&
+		blocksToText(projected.content) === PI_SUMMARY_PREFIX + checkpoint.summary + PI_SUMMARY_SUFFIX ? first : -1;
+}
+
+function prepareHandoff(context: TranscriptContext, engine: "acp" | "stream-json", excludeToolCallIds: ReadonlySet<string>, checkpoint?: CompactionCheckpoint) {
+	const summary = checkpoint?.summary.trim();
+	const retained = context.messages.slice(checkpointIndex(context.messages, checkpoint) + 1);
+
+	const parts: string[] = [];
+	for (const message of retained.slice(0, userSuffixStart(retained))) {
+		if (message.role === "toolResult" && excludeToolCallIds.has(message.toolCallId)) continue;
+		if (message.role === "system") continue;
+		const text = blocksToText(message.content).trim();
+		if (!text) continue;
+		const label = message.role === "assistant" ? `assistant from ${message.provider}`
+			: message.role === "toolResult" ? `tool result: ${message.toolName}${message.isError ? " (error)" : ""}` : "earlier user message";
+		parts.push(`[${label}]\n${text}`);
+	}
+	const retainedContext = { ...context, messages: retained };
+	if (!summary && !parts.length) return { context: retainedContext, text: "" };
+	const lastRole = retained.at(-1)?.role;
+	const resume = (lastRole === "assistant" || lastRole === "toolResult") &&
+		!extractUserPrompt(retainedContext) && extractImages(retainedContext, engine).length === 0 ? HANDOFF_RESUME : undefined;
+	const sep = "\n\n";
+	const label = "[pi compaction summary]\n";
+	const remaining = HANDOFF_BYTES - Buffer.byteLength(HANDOFF_PREAMBLE + sep + PROMPT_SEPARATOR + (resume ?? ""));
+	const summaryPart = summary ? label + utf8Slice(summary, (parts.length ? Math.floor(remaining / 2) : remaining) - Buffer.byteLength(label)) : "";
+	const tail = utf8Slice(parts.join(sep), remaining - Buffer.byteLength(summaryPart + (summaryPart ? sep : "")), true);
+	return { context: retainedContext, resume, text: [HANDOFF_PREAMBLE, summaryPart, tail].filter(Boolean).join(sep) };
+}
+
 export interface DigestOptions {
 	/** Provider id whose assistant turns are already in agy's own DB and so
 	 *  must be skipped to avoid double-counting. Default "antigravity". */
@@ -400,6 +457,12 @@ function sessionKey(
 	return base + (engine === "acp" ? "@acp" : "");
 }
 
+/** Called only after Pi committed a compaction. */
+export function rotateAgySession(store: SessionStore, sessionId: string, cwd: string, engine: "stream-json" | "acp", checkpoint?: CompactionCheckpoint): void {
+	const previous = store.rotate(sessionKey({ sessionId }, cwd, engine), checkpoint);
+	if (previous) stagedAgentByConversation.delete(previous.conversationId);
+}
+
 /** Track which content block is currently open so we close-on-switch.
  *  At most one of textIdx / thinkingIdx is non-null at a time. */
 export interface BlockState {
@@ -422,7 +485,13 @@ export interface NativeDisplayEvent {
 	diff?: string;
 }
 
+export interface HelperConnection {
+	driver: TurnDriver;
+	dispose(): Promise<void>;
+}
+
 export interface StreamSimpleDeps {
+	createHelper?: (engine: "stream-json" | "acp", signal: AbortSignal) => Promise<HelperConnection>;
 	/** Latest structured Pi prompt options for this extension's agent run. */
 	getSystemPromptOptions?: () => BuildSystemPromptOptions | undefined;
 	/** Current Pi extension session mode; missing modes are non-interactive. */
@@ -554,6 +623,23 @@ export interface PollView {
 	conversationId?: string;
 }
 
+type ClaimedResult = PollView & { callId: string; bindingOrigin?: BindingOrigin };
+
+// A handoff that parked without an observed identity released its claim. Its
+// continuation still acknowledges Pi's tools, but cannot publish that abandoned binding.
+const unboundHandoffTurns = new WeakSet<TurnHandle["outcome"]>();
+interface TurnDispatchStamp {
+	readonly origin: BindingOrigin;
+	readonly requestedConversation: string | null;
+	publishedConversation?: string;
+}
+// All driver wrappers for one dispatch share the outcome promise, even
+// after the driver clears its active handle before resolving settlement.
+const handleDispatches = new WeakMap<TurnHandle["outcome"], TurnDispatchStamp>();
+function originOf(handle: TurnHandle): BindingOrigin | undefined {
+	return handle.bindingOrigin ?? handleDispatches.get(handle.outcome)?.origin;
+}
+
 /** A park's immutable origin; only THAT handle's outcome can bind its route.
  *  The object outlives pending entries and is never rebound after session reset. */
 interface RoundTripOwner {
@@ -631,12 +717,12 @@ export class EscalationRegistry {
 	 *  dispatching provider commits it with markDelivered; a failed start
 	 *  releases it with unclaim. Failed parks are excluded until their real
 	 *  toolResult arrives through the tombstone path and becomes done. */
-	claimUndelivered(callId: string): (PollView & { callId: string }) | undefined {
+	claimUndelivered(callId: string): ClaimedResult | undefined {
 		const e = this.#calls.get(callId);
 		if (!e || e.state !== "done" || e.delivered || this.#claims.has(callId)) return undefined;
 		e.delivered = false;
 		this.#claims.add(callId);
-		return { ...this.poll(callId)!, callId };
+		return { ...this.poll(callId)!, callId, bindingOrigin: e.owner && originOf(e.owner.handle) };
 	}
 
 	/** Registry-wide sweep: claim every done-but-undelivered result. A
@@ -644,8 +730,8 @@ export class EscalationRegistry {
 	 *  entry), so a strand that survives its first pass can only be found
 	 *  here, not in a later pass's results. Failed escalations stay with the
 	 *  tombstone path. */
-	claimAllUndelivered(): Array<PollView & { callId: string }> {
-		const out: Array<PollView & { callId: string }> = [];
+	claimAllUndelivered(): ClaimedResult[] {
+		const out: ClaimedResult[] = [];
 		for (const callId of this.#calls.keys()) {
 			const claimed = this.claimUndelivered(callId);
 			if (claimed) out.push(claimed);
@@ -774,6 +860,9 @@ export class ToolRoundTrips {
 	 *  late-delivery path (see buildLateResultPrompt). */
 	#dead = new Map<string, { name: string; reason: string; owner?: RoundTripOwner }>();
 	#escalations = new EscalationRegistry();
+	// Keep only ownership stamps for the extension lifetime, independently of
+	// poll eviction. Pi can project retained results long after a poll expires.
+	#escalatedOrigins = new Map<string, BindingOrigin>();
 	#escalateAfterMs: number | ((name: string) => number);
 	#replayTtlMs: number;
 	#replayEpoch = 0;
@@ -826,9 +915,26 @@ export class ToolRoundTrips {
 		for (const id of ids) {
 			const entry = this.#pending.get(id);
 			const owner = entry?.owner;
-			if (owner && owner.driver.reentry()?.id === owner.handle.id) return owner.handle;
+			if (owner && owner.driver.reentry()?.outcome === owner.handle.outcome) return owner.handle;
 		}
 		return undefined;
+	}
+
+	/** Find live replay without consuming markers for a rejected contender. */
+	liveReplayIds(ids: string[]): string[] {
+		const active = this.#getDriver().activeHandle;
+		if (!active) return [];
+		const handle = this.#replayTurns.get(active.id)?.handle;
+		return handle?.outcome === active.outcome ? ids.filter(id => this.#replayIds.get(id) === active.id) : [];
+	}
+
+	replayHandle(id: string): TurnHandle | undefined {
+		const turnId = this.#replayIds.get(id);
+		return turnId === undefined ? undefined : this.#replayTurns.get(turnId)?.handle;
+	}
+
+	resultOwnerHandle(id: string): TurnHandle | undefined {
+		return this.replayHandle(id) ?? this.#pending.get(id)?.owner?.handle ?? this.#dead.get(id)?.owner?.handle;
 	}
 
 	/** Take the original handle for a matching replay, active or settled. */
@@ -885,9 +991,19 @@ export class ToolRoundTrips {
 		const dead = this.#dead.get(toolCallId);
 		if (!dead) return false;
 		this.#dead.delete(toolCallId);
-		this.#escalations.escalate(toolCallId, dead.name, dead.owner);
+		this.#registerEscalation(toolCallId, dead.name, dead.owner);
 		this.#escalations.settleDone(toolCallId, text, isError, images, dead.reason);
 		return true;
+	}
+
+	#registerEscalation(callId: string, name: string, owner?: RoundTripOwner): void {
+		const origin = owner && originOf(owner.handle);
+		if (origin) this.#escalatedOrigins.set(callId, origin);
+		this.#escalations.escalate(callId, name, owner);
+	}
+
+	escalationOrigin(callId: string): BindingOrigin | undefined {
+		return this.#escalatedOrigins.get(callId);
 	}
 
 	/** Poll view for an escalated or recovered failed call. Fast calls that
@@ -903,14 +1019,14 @@ export class ToolRoundTrips {
 
 	/** Single-use claim of a settled-but-undelivered escalated result (the
 	 *  model ended its turn instead of polling). */
-	claimUndelivered(callId: string): (PollView & { callId: string }) | undefined {
+	claimUndelivered(callId: string): ClaimedResult | undefined {
 		return this.#escalations.claimUndelivered(callId);
 	}
 
 	/** Registry-wide sweep for done-but-undelivered results: a toolResult is
 	 *  consumed by its own pass, so multi-pass strands are only findable
 	 *  here. */
-	claimAllUndelivered(): Array<PollView & { callId: string }> {
+	claimAllUndelivered(): ClaimedResult[] {
 		return this.#escalations.claimAllUndelivered();
 	}
 
@@ -1090,7 +1206,7 @@ export class ToolRoundTrips {
 							this.#fail(callId, `escalated bridge call timed out after ${ESCALATED_TIMEOUT_MS / 60_000} minutes`);
 						}, ESCALATED_TIMEOUT_MS);
 					}
-					this.#escalations.escalate(callId, e.name, e.owner);
+					this.#registerEscalation(callId, e.name, e.owner);
 					resolve({ escalated: true, callId, name: e.name });
 				}, escalateAfterMs);
 			}
@@ -1282,6 +1398,8 @@ export interface DriverDeps {
 /** Map one DriverActivity onto the open pi stream. Returns "parked" when the
  *  activity ended the pi call with a toolUse round-trip. */
 export interface ActivityFeatures {
+	beforePark?: () => void;
+	contextWindow?: number;
 	handle?: TurnHandle;
 	replayEpoch?: number;
 	replay?: WrapperReplay;
@@ -1372,7 +1490,8 @@ export function consumeActivity(
 			}
 			return "continue";
 		case "usage":
-			toPiUsage(activity.usage, partial.usage, partial.model, feats.log);
+			toPiUsage(activity.usage, partial.usage, partial.model, feats.log, feats.contextWindow,
+				feats.engine === "acp" ? activity.observedOccupancy : undefined);
 			return "continue";
 		case "tool_start":
 			// Transient status while Antigravity executes; no Pi tool call or
@@ -1447,6 +1566,7 @@ export function consumeActivity(
 				feats.roundTrips.track(id, mapped.tool, feats.handle, feats.replayEpoch);
 				// pi requires a reasoning argument on read/edit-class builtin calls
 				// (validated against the wrapped schema); harmless where absent.
+				feats.beforePark?.();
 				emitToolUse(stream, blocks, id, mapped.tool, {
 					reasoning: `re-exec of agy ${activity.name} for display`,
 					...mapped.args,
@@ -1461,6 +1581,7 @@ export function consumeActivity(
 				const id = nextRtId("wrap");
 				feats.replay.set(id, activity.output ?? "(agy recorded no output)");
 				feats.roundTrips.track(id, activity.name, feats.handle, feats.replayEpoch);
+				feats.beforePark?.();
 				emitToolUse(stream, blocks, id, "antigravity", { tool: activity.name, key: id });
 				return "parked";
 			}
@@ -1476,6 +1597,7 @@ export function consumeActivity(
 			// executes; the toolResult returns on the next stream call.
 			// Driver args are JSON-decoded off the agy wire, so the JsonValue
 			// cast is sound.
+			feats.beforePark?.();
 			emitToolUse(stream, blocks, activity.callId, activity.name, activity.args as Record<string, JsonValue>);
 			return "parked";
 		}
@@ -1602,12 +1724,13 @@ async function runTurnDriver(
 	const blocks: BlockState = { partial, textIdx: null, thinkingIdx: null, started: false };
 
 	let handle: TurnHandle | undefined;
+	let handoff: { origin: BindingOrigin; claim: symbol; text: string; resume?: string } | undefined;
 	let startupTimeoutMs = DEFAULT_WAIT_TIMEOUT_MS;
 	const replayEpoch = deps.roundTrips.replayEpoch;
 	try {
 		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? process.cwd();
 		const key = sessionKey(options, cwd, deps.engine);
-		const existing = store.get(key);
+		const { binding: existing, origin } = store.select(key);
 		const messageCount = context.messages.length;
 		const config = loadConfig();
 		startupTimeoutMs = config.startupTimeoutMs;
@@ -1618,17 +1741,99 @@ async function runTurnDriver(
 		const ownedResultIds = new Set([...deps.roundTrips.continuationIds, ...deps.roundTrips.deadIds]);
 		for (const message of context.messages) {
 			if (message.role !== "toolResult") continue;
-			const id = (message as { toolCallId?: string }).toolCallId;
-			if (id && deps.roundTrips.poll(id)) ownedResultIds.add(id);
+			const id = message.toolCallId;
+			const owner = deps.roundTrips.escalationOrigin(id);
+			if (deps.roundTrips.poll(id) || (owner && !store.isCurrent(owner))) ownedResultIds.add(id);
 		}
 		const results = collectToolResults(context.messages, deps.roundTrips.continuationIds);
-		const isContinuation = results.length > 0;
-		const resultIds = results.map(r => r.toolCallId);
-		const continuationHandle = deps.roundTrips.takeReplay(resultIds) ?? deps.roundTrips.continuationHandle(resultIds);
+		const handoffState = existing ? undefined : store.handoffState(origin);
+		const committed = existing && store.committedHandoff(origin, existing.conversationId);
+		const rotationActive = Boolean(handoffState || committed);
+		const ids = results.map(r => r.toolCallId);
+		// Until publication, only the tail can establish a continuation. A
+		// published binding restores transcript-wide matching for its own owner,
+		// including when Pi appends steering after a tool or approval result.
+		let tailStart = messageCount;
+		while (tailStart > 0 && context.messages[tailStart - 1].role === "toolResult") tailStart--;
+		const tail = context.messages.slice(tailStart);
+		const currentOwnerIds = committed ? ids.filter(id => {
+			const owner = deps.roundTrips.resultOwnerHandle(id);
+			const stamp = owner && originOf(owner);
+			return stamp?.key === origin.key && stamp.generation === origin.generation;
+		}) : [];
+		const candidateIds = committed ? currentOwnerIds : rotationActive
+			? collectToolResults(tail, ids).map(r => r.toolCallId) : [];
+		const livePark = rotationActive ? deps.roundTrips.continuationHandle(candidateIds) : undefined;
+		const liveReplayIds = rotationActive ? deps.roundTrips.liveReplayIds(candidateIds) : [];
+		// A recreated carrier keeps its dispatch stamp after settlement. Use
+		// the requested (or first published) binding, never the observed ID,
+		// to establish that settled history belongs to this binding.
+		const boundIds = committed ? currentOwnerIds.filter(id => {
+			const owner = deps.roundTrips.resultOwnerHandle(id);
+			const dispatch = owner && handleDispatches.get(owner.outcome);
+			return dispatch?.requestedConversation === existing?.conversationId ||
+				dispatch?.publishedConversation === existing?.conversationId;
+		}) : [];
+		const replayIds = (committed ? boundIds : candidateIds).filter(id => deps.roundTrips.replayHandle(id));
+		const currentReplay = replayIds.filter(id => {
+			const stamp = originOf(deps.roundTrips.replayHandle(id)!);
+			return stamp?.key === origin.key && store.isCurrent(stamp);
+		});
+		const armedCheckpoint = store.checkpointForHandoff(origin);
+		const oldResult = (message: Message): boolean => {
+			if (message.role !== "toolResult") return false;
+			const owner = deps.roundTrips.resultOwnerHandle(message.toolCallId);
+			const stamp = deps.roundTrips.escalationOrigin(message.toolCallId) ?? (owner && originOf(owner));
+			return stamp?.key === origin.key && stamp.generation < origin.generation;
+		};
+		// A completion-only pass settles the old owner, not the fresh conversation.
+		// Keep pending replay tails eligible for a handoff; unlike escrow results,
+		// they represent a Pi retry rather than a completion notification.
+		const oldCompletionOnly = tail.length > 0 && tail.every(oldResult);
+		// Owner generations survive binding deletion and replacement. Keep real
+		// retry replays eligible while a handoff is unpublished (R4), but do not
+		// promote an escrow notification into a prompt or bridge notice.
+		const registryOnly = !livePark && !liveReplayIds.length && !currentReplay.length && !boundIds.length && (
+			(oldCompletionOnly && (!handoffState || !replayIds.length)) ||
+			(handoffState === "pending" && !replayIds.length && tail.length > 0 &&
+				checkpointIndex(context.messages, armedCheckpoint) < 0 && ids.some(id => deps.roundTrips.poll(id)))
+		);
+		const action = routeCompaction({
+			handoff: committed ? "committed" : handoffState === "claimed" ? "claimed-by-other" : handoffState ?? "none",
+			tail: context.messages[messageCount - 1]?.role === "user" ? "user" : "tool-result",
+			replay: livePark || liveReplayIds.length ? "live-owner" : currentReplay.length ? "inactive-current-generation"
+				: replayIds.length ? "inactive-older-generation" : "none",
+			digest: config.digest, registryOnly,
+		});
+		const committedIds = committed ? ids.filter(id => boundIds.includes(id) || liveReplayIds.includes(id)) : [];
+		const resultIds = committed ? committedIds : action === "ordinary-unrotated"
+			? ids.filter(id => {
+				const owner = deps.roundTrips.escalationOrigin(id);
+				return !owner || store.isCurrent(owner);
+			}) : action === "re-enter-live-owner" ? liveReplayIds : action === "replay-current-tail" ? currentReplay : [];
+		const isContinuation = Boolean(livePark || resultIds.length);
+		const continuationHandle = committed
+			? deps.roundTrips.takeReplay(committedIds) ?? livePark
+			: livePark ?? deps.roundTrips.takeReplay(resultIds) ?? deps.roundTrips.continuationHandle(resultIds);
+		const discarded = store.discardedCheckpoint(origin);
+		const suppressedIndex = checkpointIndex(context.messages,
+			action === "ordinary-bound-suppress-checkpoint" && committed ? committed.checkpoint : discarded);
+		let promptContext = suppressedIndex < 0 ? context
+			: { ...context, messages: context.messages.filter((_, index) => index !== suppressedIndex) };
+		const forceFresh = action === "claim-fresh-handoff";
+		if (forceFresh) {
+			const prepared = prepareHandoff(context, deps.engine, ownedResultIds, armedCheckpoint);
+			const claim = store.claimHandoff(origin)!;
+			promptContext = prepared.context;
+			if (prepared.text) {
+				handoff = { origin, claim, text: prepared.text, resume: prepared.resume };
+			} else store.resolveHandoff(origin, claim, true);
+		}
+
 		// Escalated calls answer through bridge_poll_result, not through an agy
 		// turn waiting on the park, so note them before resolving.
-		const escalatedNames = results
-			.map((r) => deps.roundTrips.poll(r.toolCallId)?.name)
+		const escalatedNames = resultIds
+			.map(id => deps.roundTrips.poll(id)?.name)
 			.filter((n): n is string => Boolean(n));
 		// Images ride tool results on BOTH engines (ACP probe 2026-09-05;
 		// stream-json probe 2026-09-07: the CLI's MCP client delivers tool-result
@@ -1655,6 +1860,22 @@ async function runTurnDriver(
 			deps.log?.("late-result-deferred", { count: deps.roundTrips.deadIds.length }, "info");
 		}
 
+		// Recording tool results is independent of dispatch. A rejected contender
+		// must leave already-finished strands pollable, without acknowledging delivery.
+		if (action === "refuse-retry") {
+			finalize(stream, blocks, "error", HANDOFF_RETRY);
+			return;
+		}
+
+		const userPrompt = extractUserPrompt(promptContext);
+		const images = extractImages(promptContext, deps.engine);
+		const lastRole = promptContext.messages.at(-1)?.role;
+		// Retry shape and carrier availability are separate: a genuine tail
+		// must reach normal resume/error handling even when no binding exists.
+		const retryTail = lastRole === "assistant" || (lastRole === "toolResult" && !oldCompletionOnly);
+		const bookkeepingOnly = action === "settle-registry-only" ||
+			((rotationActive || discarded) && !isContinuation && !userPrompt?.trim() && !images.length && !handoff?.resume && !retryTail);
+
 		const entry = entries.find((e) => e.id === model.id) ?? null;
 		const agyModel = entry?.full ?? model.id;
 		const effort = entry?.efforts?.length ? toAgyEffort(options?.reasoning, entry.efforts) : undefined;
@@ -1668,18 +1889,28 @@ async function runTurnDriver(
 			beforeStartAssert?.();
 			return beforeStartAssert;
 		};
-		const startTurn = async (request: Pick<DriverTurnRequest, "conversationId" | "prompt" | "images" | "agent" | "contextBlock">): Promise<TurnHandle> => {
+		const startTurn = async (request: Pick<DriverTurnRequest, "conversationId" | "prompt" | "images" | "agent" | "contextBlock" | "assertPromptCurrent" | "forceFresh">, bindingOrigin = origin): Promise<TurnHandle> => {
+			// A provider pass can drain already-acknowledged work, but cannot
+			// authorize another write after its routing snapshot is invalidated.
+			const assertGeneration = () => {
+				if (!store.isCurrent(origin) || !store.isCurrent(bindingOrigin)) throw new Error(HANDOFF_RETRY);
+			};
+			assertGeneration();
 			const assertReady = await ensureStartedOnce();
-			return deps.driver.run({
-				assertCurrent: assertReady, cwd, model: agyModel, effort,
+			assertGeneration();
+			const started = await deps.driver.run({
+				bindingOrigin, assertCurrent: () => { assertReady?.(); assertGeneration(); }, cwd, model: agyModel, effort,
 				mode: config.mode, skipPermissions: config.skipPermissions,
 				timeoutMin: config.turnTimeoutMin, inactivityMin: config.inactivityTimeoutMin,
 				startupTimeoutMs, queueTimeoutMs: config.queueTimeoutMs, signal: options?.signal,
 				...request,
+				assertPromptCurrent: () => { assertGeneration(); request.assertPromptCurrent?.(); },
 			});
+			handleDispatches.set(started.outcome, { origin: bindingOrigin, requestedConversation: request.conversationId ?? null });
+			return started;
 		};
 		const diffCtx = new TurnDiffContext(createExecGitOps());
-		const drainTurn = async (h: TurnHandle): Promise<"parked" | undefined> => {
+		const drainTurn = async (h: TurnHandle, beforePark?: () => void): Promise<"parked" | undefined> => {
 			let native = nativeTurns.get(h.outcome);
 			if (!native) {
 				native = new NativeTurnActivity((options as { sessionId?: string } | undefined)?.sessionId, h, deps.roundTrips, options?.signal);
@@ -1688,9 +1919,9 @@ async function runTurnDriver(
 			let parked = false;
 			// Each replay marker must retain THIS handle, not the preceding turn.
 			const feats: ActivityFeatures = {
-				handle: h, replayEpoch, replay: deps.replay, nativeActive: deps.nativeActive,
+				handle: h, beforePark, replayEpoch, replay: deps.replay, nativeActive: deps.nativeActive,
 				roundTrips: deps.roundTrips, engine: deps.engine, onNativeEvent: deps.onNativeEvent,
-				roster: deps.roster, log: deps.log,
+				roster: deps.roster, log: deps.log, contextWindow: model.contextWindow,
 			};
 			const outcomeFailure = h.outcome.then(() => new Promise<never>(() => {}));
 			try {
@@ -1710,33 +1941,49 @@ async function runTurnDriver(
 		};
 		const deliverStranded = async (): Promise<{ stopped: boolean; delivered: Set<string>; unknown: boolean }> => {
 			const delivered = new Set<string>();
+			if (!store.isCurrent(origin)) return { stopped: false, delivered, unknown: false };
 			const unstarted = new Set<string>();
-			const groups = new Map<string, { callIds: string[]; results: LateToolResult[] }>();
+			const groups = new Map<string, { conversationId: string; bindingOrigin?: BindingOrigin; callIds: string[]; results: LateToolResult[] }>();
 			let unknown = false;
 			for (const view of deps.roundTrips.claimAllUndelivered()) {
 				// Never infer ownership from a later user turn or another call's stamp.
+				if (view.bindingOrigin && !store.isCurrent(view.bindingOrigin)) {
+					deps.roundTrips.unclaim(view.callId);
+					continue;
+				}
 				if (!view.conversationId) {
 					deps.roundTrips.unclaim(view.callId);
 					unknown = true;
 					continue;
 				}
 				unstarted.add(view.callId);
-				const group = groups.get(view.conversationId) ?? { callIds: [], results: [] };
+				const route = JSON.stringify([view.conversationId, view.bindingOrigin?.key, view.bindingOrigin?.generation]);
+				const group = groups.get(route) ?? { conversationId: view.conversationId, bindingOrigin: view.bindingOrigin, callIds: [], results: [] };
 				group.callIds.push(view.callId);
 				group.results.push({ name: view.name, text: view.text ?? "(no output)", isError: view.isError ?? false,
 					images: view.images,
 					reason: view.reason ?? "you never received this result: you ended your turn without calling bridge_poll_result" });
-				groups.set(view.conversationId, group);
+				groups.set(route, group);
 			}
 			try {
-				for (const [conversationId, group] of groups) {
+				for (const group of groups.values()) {
+					if (!store.isCurrent(origin)) break;
+					const { conversationId } = group;
 					deps.log?.("escalated-redelivery", { tools: group.results.map(r => r.name), conversationId }, "info");
 					const images = group.results.flatMap(result => result.images ?? []);
-					handle = await startTurn({
-						conversationId, prompt: buildLateResultPrompt(group.results),
-						images: images.length > 0 ? images : undefined,
-						agent: config.agent ?? stagedAgentByConversation.get(conversationId),
-					});
+					const owner = group.bindingOrigin;
+					if (owner && !store.isCurrent(owner)) continue;
+					try {
+						handle = await startTurn({
+							conversationId, prompt: buildLateResultPrompt(group.results),
+							images: images.length > 0 ? images : undefined,
+							agent: config.agent ?? stagedAgentByConversation.get(conversationId),
+						}, owner);
+					} catch (error) {
+						if (!store.isCurrent(origin)) break;
+						if (owner && !store.isCurrent(owner)) continue;
+						throw error;
+					}
 					// Both drivers publish only after prompt dispatch. Commit these
 					// claims even if the dispatched turn subsequently fails or parks;
 					// only groups that never dispatch may be retried.
@@ -1748,7 +1995,7 @@ async function runTurnDriver(
 					const textBefore = blocks.partial.content.filter(b => b.type === "text").map(b => b.text).join("");
 					if (await drainTurn(handle) === "parked") return { stopped: true, delivered, unknown };
 					const outcome = await handle.outcome;
-					if (outcome.aborted || outcome.status === "ERROR" || outcome.modelOutputSeen === false) {
+					if (outcome.aborted || outcome.status === "ERROR" || (deps.engine === "stream-json" && outcome.modelOutputSeen === false)) {
 						finalize(stream, blocks, outcome.aborted ? "aborted" : "error",
 							outcome.aborted ? "Operation aborted" : outcome.error ?? "agy late delivery produced no model output");
 						return { stopped: true, delivered, unknown };
@@ -1769,13 +2016,21 @@ async function runTurnDriver(
 			}
 		};
 		const active = isContinuation ? continuationHandle : undefined;
-		const userPrompt = extractUserPrompt(context);
-		const images = extractImages(context, deps.engine);
 		// Dispatch fresh input first: if recovery parks, the next Pi context is
 		// a toolResult and would otherwise lose this user's prompt.
-		const freshInput = !isContinuation && (userPrompt || images.length > 0);
-		const boundary = active || freshInput ? undefined : await deliverStranded();
+		const freshInput = !isContinuation && (handoff || userPrompt || images.length > 0);
+		const boundary = bookkeepingOnly || (!active && !freshInput) ? await deliverStranded() : undefined;
 		if (boundary?.stopped) return;
+		// A sweep can lose the generation at its write guard. Never fall back
+		// from a cancelled completion delivery to a retry on the old binding.
+		if (bookkeepingOnly || (!active && !store.isCurrent(origin))) {
+			const completionOnly = !freshInput && tail.length > 0 && tail.every(message =>
+				message.role === "toolResult" && Boolean(deps.roundTrips.poll(message.toolCallId)?.state === "done" ||
+					deps.roundTrips.escalationOrigin(message.toolCallId)));
+			if (bookkeepingOnly || completionOnly || boundary?.delivered.size) finalize(stream, blocks, "stop");
+			else finalize(stream, blocks, "error", HANDOFF_RETRY);
+			return;
+		}
 
 		// Name of the carrier agent staged for THIS turn's fresh or refreshed
 		// conversation, if any. Recorded into stagedAgentByConversation once the
@@ -1785,9 +2040,33 @@ async function runTurnDriver(
 		let clearStagedAgent = false;
 		let deliveredGuardActive: boolean | undefined;
 		let inlineRetryRequest: Parameters<typeof startTurn>[0] | undefined;
+		// Continuations and recovered strands keep the original dispatch's stamp.
+		const canMutateBinding = (): boolean => {
+			const owningOrigin = (handle && originOf(handle)) ?? origin;
+			return owningOrigin.key === key && store.isCurrent(origin) && store.isCurrent(owningOrigin) &&
+				(!handle || !unboundHandoffTurns.has(handle.outcome));
+		};
+		const assertHandoff = handoff ? () => {
+			if (!handoff || !store.ownsHandoff(handoff.origin, handoff.claim)) throw new Error(HANDOFF_RETRY);
+		} : undefined;
+		const resolveHandoff = (conversationId: string | undefined): void => {
+			if (!handoff || !handle || !store.ownsHandoff(handoff.origin, handoff.claim)) return;
+			if (conversationId) {
+				const dispatch = handleDispatches.get(handle.outcome);
+				if (dispatch) dispatch.publishedConversation = conversationId;
+				store.set(handoff.origin.key, {
+					conversationId, lastStepIdx: -1, lastMessageCount: messageCount,
+					...(deliveredGuardActive !== undefined ? { runCommandGuardActive: deliveredGuardActive } : {}),
+				});
+				if (stagedAgentName) stagedAgentByConversation.set(conversationId, stagedAgentName);
+				unboundHandoffTurns.delete(handle.outcome);
+			}
+			store.resolveHandoff(handoff.origin, handoff.claim, Boolean(conversationId), conversationId);
+		};
+		const commitHandoffPark = handoff ? () => resolveHandoff(handle?.conversationId) : undefined;
 		const commitParkedTurn = (): void => {
 			const conversationId = handle?.conversationId;
-			if (isContinuation || !conversationId) return;
+			if (handoff || isContinuation || !conversationId || !canMutateBinding()) return;
 			if (!existing && !store.get(key)) {
 				store.set(key, {
 					conversationId,
@@ -1830,15 +2109,14 @@ async function runTurnDriver(
 			// A retry-dropped tail can resume only its bound conversation. A sweep
 			// delivering to a different known owner must not suppress it. Unknown
 			// owners still block prompting: a retry must not steal their result.
-			const lastRole = context.messages[messageCount - 1]?.role;
 			const resume =
 				!userPrompt &&
 				images.length === 0 &&
 				!!existing?.conversationId &&
 				!boundary?.unknown &&
 				!boundary?.delivered.has(existing.conversationId) &&
-				(lastRole === "assistant" || lastRole === "toolResult");
-			const prompt = resume ? RESUME_PROMPT : userPrompt;
+				retryTail;
+			const prompt = resume ? RESUME_PROMPT : handoff?.resume ?? userPrompt;
 			// An image-only message (no text) is valid on both engines; only fail
 			// when there is nothing at all to send (no text, no images, no late
 			// tool results to deliver).
@@ -1851,14 +2129,15 @@ async function runTurnDriver(
 				finalize(stream, blocks, "error", "No user message to send to agy.");
 				return;
 			}
-			const watermark = existing?.lastMessageCount ?? 0;
+			const originalWatermark = existing?.lastMessageCount ?? 0;
+			const watermark = suppressedIndex >= 0 && suppressedIndex < originalWatermark ? originalWatermark - 1 : originalWatermark;
 			// Synthetic resumes use agy's own history, not a stale pi-side digest.
 			// Recovery prompts dispatch separately in their owning conversations.
 			// Normal stream-json digests exclude the user suffix; ACP keeps its
 			// legacy last-message behavior.
-			const digest = config.digest && !resume
+			const digest = !handoff && config.digest && !resume
 					? buildContextDigest(
-							context.messages,
+							promptContext.messages,
 							watermark,
 							{ excludeTrailingUserSuffix: deps.engine === "stream-json", excludeToolCallIds: ownedResultIds },
 						)
@@ -1871,7 +2150,7 @@ async function runTurnDriver(
 			// surface, and the model needs the use-for-continuity-only instruction.
 			// The uri is suffixed per turn so a deduping server cannot serve stale
 			// content on turn 2+.
-			const embeddedDigest = deps.engine === "acp" && digest ? digest : undefined;
+			const embeddedDigest = deps.engine === "acp" ? handoff?.text ?? (digest ? `${DIGEST_PREAMBLE}\n\n${digest}` : undefined) : undefined;
 			// G10, fresh conversations only (bound conversations ride agy's own
 			// history; re-sending would bloat every prompt and bust the cache).
 			// stream-json delivery is a staged agent file, NOT prompt text: agy's
@@ -1957,16 +2236,20 @@ async function runTurnDriver(
 			} else if (needsGuardRefresh) {
 				inlineGuardNote = toolPriorityNote(mode, guard);
 			}
+			const currentPrompt = handoff && deps.engine === "stream-json"
+				? [handoff.text, prompt].filter(Boolean).join(PROMPT_SEPARATOR) : prompt ?? "";
 			const basePrompt = deps.engine === "acp"
 				? buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "", mode, guard)
-				: buildPortablePrompt(sysPrompt, digest, prompt ?? "", mode, guard);
+				: buildPortablePrompt(sysPrompt, digest, currentPrompt, mode, guard);
 			const fullPrompt = inlineGuardNote
 				? [inlineGuardNote, basePrompt].filter(Boolean).join("\n\n---\n\n")
 				: basePrompt;
 			if (stagedAgentName && !existing?.conversationId) {
 				inlineRetryRequest = {
 					conversationId: null,
-					prompt: buildPortablePrompt(projected, digest, prompt ?? "", mode, guard),
+					prompt: buildPortablePrompt(projected, digest, currentPrompt, mode, guard),
+					assertPromptCurrent: assertHandoff,
+					forceFresh,
 					images: images.length > 0 ? images : undefined,
 				};
 			}
@@ -1974,15 +2257,18 @@ async function runTurnDriver(
 				handle = await startTurn({
 					conversationId: existing?.conversationId ?? null,
 					prompt: fullPrompt,
+					assertPromptCurrent: assertHandoff,
+					forceFresh,
 					images: images.length > 0 ? images : undefined,
 					agent,
 					contextBlock: embeddedDigest
 						? {
 								uri: `urn:pi-bridge:context-digest/${messageCount}`,
-								text: `${DIGEST_PREAMBLE}\n\n${embeddedDigest}`,
+								text: embeddedDigest,
 							}
 						: undefined,
 				});
+				if (handoff) unboundHandoffTurns.add(handle.outcome);
 				pendingTurnMeta.set(handle.outcome, {
 					stagedAgentName,
 					clearStagedAgent,
@@ -1997,7 +2283,7 @@ async function runTurnDriver(
 		}
 
 		ensureStarted(stream, blocks);
-		if (await drainTurn(handle) === "parked") {
+		if (await drainTurn(handle, commitHandoffPark) === "parked") {
 			// Only the fresh dispatch may establish its first binding, or an
 			// existing binding may record a refreshed guard note/carrier. Never
 			// borrow a driver's current identity or overwrite a concurrent binding.
@@ -2009,23 +2295,35 @@ async function runTurnDriver(
 		// Only an actually dispatched automatic carrier can take this path. The
 		// saved request exists only for fresh stream-json dispatches, not staging
 		// failures, explicit agents, ACP, disabled delivery or continuations.
-		if (inlineRetryRequest && !existing?.conversationId &&
+		if (inlineRetryRequest && !existing?.conversationId && store.isCurrent(origin) &&
 			outcome.status === "ERROR" && outcome.modelOutputSeen === false &&
 			!outcome.aborted && !options?.signal?.aborted &&
 			/RESOURCE_EXHAUSTED|\b429\b/i.test(outcome.error ?? "")) {
+			if (handoff && routeCompaction({
+				handoff: store.ownsHandoff(handoff.origin, handoff.claim) ? "claimed-by-self" : "claimed-by-other",
+				tail: "user", replay: "none", digest: config.digest, retryAfterError: true,
+			}) !== "continue-owned-handoff") {
+				finalize(stream, blocks, "error", HANDOFF_RETRY);
+				return;
+			}
 			deps.log?.("sysprompt-inline-retry", { reason: "carrier-resource-exhausted", conversation: outcome.conversationId ?? null }, "warn");
+			if (!store.isCurrent(origin)) {
+				finalize(stream, blocks, "error", HANDOFF_RETRY);
+				return;
+			}
 			await waitWithDeadline(deps.driver.close("recycle", "system-prompt carrier rejected; retry inline"), startupTimeoutMs, "inline retry process termination");
 			const retryGuardActive = deliveredGuardActive;
 			pendingTurnMeta.delete(handle.outcome);
 			stagedAgentName = undefined;
 			clearStagedAgent = true;
 			handle = await startTurn(inlineRetryRequest);
+			if (handoff) unboundHandoffTurns.add(handle.outcome);
 			pendingTurnMeta.set(handle.outcome, {
 				stagedAgentName: undefined,
 				clearStagedAgent: true,
 				deliveredGuardActive: retryGuardActive,
 			});
-			if (await drainTurn(handle) === "parked") {
+			if (await drainTurn(handle, commitHandoffPark) === "parked") {
 				commitParkedTurn();
 				return;
 			}
@@ -2039,7 +2337,7 @@ async function runTurnDriver(
 		// (probe 2026-09-30: resume of a dropped-turn conversation never returns
 		// a result frame). stream-json only: the ACP driver leaves the evidence
 		// fields undefined.
-		const silentDrop = outcome.status === "OK" && outcome.modelOutputSeen === false;
+		const silentDrop = deps.engine === "stream-json" && outcome.status === "OK" && outcome.modelOutputSeen === false;
 		const poisonedResume =
 			outcome.status === "ERROR" &&
 			outcome.deadline !== undefined &&
@@ -2047,7 +2345,7 @@ async function runTurnDriver(
 			outcome.modelOutputSeen === false &&
 			Boolean(existing?.conversationId);
 		if (silentDrop || poisonedResume) {
-			if (existing?.conversationId || outcome.conversationId) {
+			if (!handoff && (existing?.conversationId || outcome.conversationId) && canMutateBinding()) {
 				store.delete(key);
 				if (outcome.conversationId) stagedAgentByConversation.delete(outcome.conversationId);
 			}
@@ -2086,7 +2384,13 @@ async function runTurnDriver(
 			finalize(stream, blocks, "error", quotaErrorMessage(quota));
 			return;
 		}
-		if (outcome.conversationId) {
+		if (handoff) {
+			// run() only publishes after the carrier acknowledges the prompt write.
+			const delivered = outcome.status !== "UNKNOWN" && !outcome.unrecognizedResult &&
+				!outcome.aborted && !options?.signal?.aborted && outcome.modelOutputSeen === true;
+			resolveHandoff(delivered ? handle.conversationId ?? outcome.conversationId : undefined);
+		}
+		if (!handoff && outcome.conversationId && canMutateBinding()) {
 			// A different id than the stored one means the driver recreated the
 			// conversation under us (ACP session-load fallback, stream-json CLI
 			// dropping a stale --conversation). The recreated conversation has seen
@@ -2146,7 +2450,81 @@ async function runTurnDriver(
 		} catch { /* Cleanup failure must not leave the Pi stream open. */ }
 		finalize(stream, blocks, "error", `agy turn failed: ${message}`);
 	} finally {
+		if (handoff) store.resolveHandoff(handoff.origin, handoff.claim, false);
 		if (!blocks.ended) finalize(stream, blocks, "error", "agy turn ended without an outcome");
+	}
+}
+
+/** Helpers have no session binding, replay store, or approval owner. */
+async function runHelper(
+	stream: AssistantMessageEventStream,
+	model: Model<Api>,
+	context: TranscriptContext,
+	options: SimpleStreamOptions,
+	engine: "stream-json" | "acp",
+	config: AgyConfig,
+	deps: StreamSimpleDeps,
+): Promise<void> {
+	const blocks: BlockState = { partial: newAssistant(model), textIdx: null, thinkingIdx: null, started: false };
+	const startup = config.startupTimeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
+	const deadline = (config.turnTimeoutMin || DEFAULT_TIMEOUT_MIN) * 60_000;
+	const controller = new AbortController();
+	const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
+	let connection: HelperConnection | undefined;
+	try {
+		const work = async () => {
+			const assertReady = await waitWithDeadline(Promise.resolve(deps.beforeStart?.()), startup, "helper bridge startup");
+			signal.throwIfAborted();
+			if (!deps.createHelper) throw new Error("isolated helper connection is unavailable");
+			const owned = await deps.createHelper(engine, signal);
+			if (signal.aborted) {
+				await owned.dispose();
+				signal.throwIfAborted();
+			}
+			connection = owned;
+			const entry = deps.entries.find(e => e.id === model.id);
+			const cwd = (options as { cwd?: string }).cwd ?? process.cwd();
+			const prompt = [getCurrentSystemPrompt(context.messages), extractUserPrompt(context)].filter(Boolean).join("\n\n---\n\n");
+			const assertCurrent = () => { signal.throwIfAborted(); assertReady?.(); };
+			const handle = await owned.driver.run({
+				assertCurrent, assertPromptCurrent: assertCurrent,
+				cwd, model: entry?.full ?? model.id, mode: config.mode,
+				effort: entry?.efforts?.length ? toAgyEffort(options.reasoning, entry.efforts) : undefined,
+				skipPermissions: false, conversationId: null, prompt, images: extractImages(context, engine),
+				timeoutMin: deadline / 60_000, inactivityMin: config.inactivityTimeoutMin,
+				startupTimeoutMs: startup, queueTimeoutMs: startup, signal,
+			});
+			const diff = new TurnDiffContext(createExecGitOps());
+			const features = { engine, contextWindow: model.contextWindow, log: deps.log };
+			let activity: DriverActivity | null;
+			while ((activity = await handle.next())) {
+				// No bridge work or native tool replay can escape the helper.
+				if (signal.aborted) break;
+				if (activity.type === "text" || activity.type === "thought" || activity.type === "usage") {
+					consumeActivity(stream, blocks, activity, diff, cwd, features);
+				}
+			}
+			return await handle.outcome;
+		};
+		const outcome = await waitWithDeadline(work(), deadline, "helper turn");
+		const quota = classifyQuotaOutcome(outcome, blocks.thinkingIdx !== null);
+		if (outcome.aborted || signal.aborted) finalize(stream, blocks, "aborted", "Operation aborted");
+		else if (quota) finalize(stream, blocks, "error", quotaErrorMessage(quota));
+		else if (outcome.status !== "OK" || outcome.modelOutputSeen === false) {
+			finalize(stream, blocks, "error", outcome.error ?? "agy helper returned no model output");
+		} else {
+			if (blocks.textIdx === null && outcome.response) appendText(stream, blocks, outcome.response);
+			finalize(stream, blocks, "stop");
+		}
+	} catch (error) {
+		if (options.signal?.aborted) finalize(stream, blocks, "aborted", "Operation aborted");
+		else finalize(stream, blocks, "error", `agy helper failed: ${error instanceof Error ? error.message : String(error)}`);
+	} finally {
+		controller.abort();
+		if (connection) {
+			try { await waitWithDeadline(connection.dispose(), startup, "helper termination"); }
+			catch (error) { deps.log?.("helper-cleanup-failed", String(error), "warn"); }
+		}
 	}
 }
 
@@ -2171,6 +2549,7 @@ export function createStreamSimple(
 		const config = loadConfig();
 		const engine = deps.engine ?? config.engine;
 		const selected = engine === "acp" && deps.acpDriver ? deps.acpDriver : deps.driver;
+		const actualEngine = selected && selected === deps.acpDriver ? "acp" : "stream-json";
 		// Refuse before beforeStart: neither engine enforces review-only (#1181;
 		// ACP additionally has no plan mode, RC01). Never start agy for a refusal.
 		if (config.readOnly || config.mode === "plan") {
@@ -2180,6 +2559,10 @@ export function createStreamSimple(
 			finalize(stream, blocks, "error", config.readOnly
 				? "readOnly cannot be enforced on provider turns: the agy CLI has no review-only enforcement (#1181). This turn is refused. Enforce read-only in the host (tool restrictions or the approval gate), then /agy readonly off (AGY_READONLY overrides config)."
 				: "Plan mode cannot be enforced on provider turns: the agy CLI can execute writes in the same turn (#1181), and ACP has no plan mode (RC01). This turn is refused. Enforce review-only in the host; /agy mode accept-edits to run.");
+			return stream;
+		}
+		if (options?.cacheRetention === "none" || options?.disableContinuation === true) {
+			void runHelper(stream, model, context, options, actualEngine, config, { ...deps, log });
 			return stream;
 		}
 		if (selected && roundTrips) {
@@ -2198,7 +2581,7 @@ export function createStreamSimple(
 				// ACP driver is absent, the config switch falls back to stream,
 				// and keying the session as @acp would store a stream
 				// conversationId under the wrong engine scope.
-				engine: selected === deps.acpDriver ? "acp" : "stream-json",
+				engine: actualEngine,
 				log,
 			});
 		} else {

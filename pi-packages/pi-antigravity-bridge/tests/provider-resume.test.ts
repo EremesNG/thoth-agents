@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, test, vi } from "vitest";
 import { normalizeContext, type Api, type Message, type Model } from "@earendil-works/pi-ai";
-import { createStreamSimple, ToolRoundTrips } from "../src/provider.js";
+import { createStreamSimple, rotateAgySession, ToolRoundTrips } from "../src/provider.js";
 import type { DriverTurnRequest, TurnDriver, TurnHandle } from "../src/driver-types.js";
 import { SessionStore } from "../src/sessions.js";
 import { StreamDriver } from "../src/driver.js";
@@ -169,3 +169,163 @@ test("ACP handles expose the session observed during their own setup, including 
 		assert.equal(handle.conversationId, "fake-session-0001");
 	} finally { await driver.close("shutdown"); }
 }, 15_000);
+
+const helperFlags = [{ cacheRetention: "none" }, { disableContinuation: true }] as const;
+for (const engine of ["stream-json", "acp"] as const) {
+	test.each(helperFlags)(`${engine} helper %j runs while the predecessor is parked`, async flag => {
+		vi.stubEnv("PATH", `${path.join(import.meta.dirname, "helpers", "fake-agy-bin")}${path.delimiter}${process.env.PATH}`);
+		vi.stubEnv("AGY_SYSTEM_PROMPT", "off");
+		vi.stubEnv("AGY_QUEUE_TIMEOUT_MS", "500");
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-helper-"));
+		dirs.push(dir);
+		const newDriver = (scenario: string) => engine === "stream-json" ? new StreamDriver() : new AcpDriver({
+			bin: process.execPath, binArgs: [path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs")],
+			extraEnv: { ACP_FAKE_SCENARIO: scenario },
+		});
+		const owner = newDriver("slow");
+		const helper = newDriver("happy");
+		const store = new SessionStore(path.join(dir, "sessions.json"));
+		const rt = new ToolRoundTrips(owner, undefined, { escalateAfterMs: name => name === "stranded" ? 5 : 60_000 });
+		const deps = { entries: [], store, driver: owner, engine, roundTrips: rt,
+			acpDriver: engine === "acp" ? owner : undefined,
+			createHelper: async () => ({ driver: helper, dispose: () => helper.close("shutdown") }),
+		};
+		const simple = createStreamSimple(deps);
+		try {
+			const options = { sessionId: "helper-park", signal: AbortSignal.timeout(4000) };
+			const original = simple(model, normalizeContext({ messages: [user("HANG")] }), { sessionId: options.sessionId });
+			await vi.waitFor(() => assert.ok(owner.activeHandle?.conversationId), { timeout: 2500 });
+			const running = owner.activeHandle!;
+			const parked = rt.onToolCall("owner-call", "read", {}, new AbortController().signal);
+			let released = false;
+			void parked.then(() => { released = true; }, () => { released = true; });
+			assert.equal((await original.result()).stopReason, "toolUse");
+			const key = `sid:${options.sessionId}${engine === "acp" ? "@acp" : ""}`;
+			await vi.waitFor(() => assert.equal(store.get(key)?.conversationId, running.conversationId));
+			const binding = store.get(key);
+			assert.equal(binding?.conversationId, running.conversationId);
+			const stranded = await rt.onToolCall("stranded-call", "stranded", {}, new AbortController().signal);
+			assert.ok("escalated" in stranded);
+			rt.resolve("stranded-call", "untouched escrow result", false);
+			const answer = await simple(model, normalizeContext({ messages: [result("stranded-call", "untouched escrow result"), user("summarize only")] }), { ...options, ...flag }).result();
+			assert.equal(answer.stopReason, "stop", answer.errorMessage);
+			assert.equal(owner.activeHandle?.outcome, running.outcome);
+			assert.equal(released, false);
+			assert.notEqual(rt.poll("stranded-call")?.delivered, true);
+			assert.ok(rt.claimUndelivered("stranded-call"));
+			assert.deepEqual(store.get(key), binding);
+		} finally {
+			rt.failAll("fixture cleanup");
+			rt.clearEscalations("fixture cleanup");
+			await Promise.all([owner.close("shutdown"), helper.close("shutdown")]);
+		}
+	}, 12_000);
+}
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test.each(["before-strand", "at-boundary", "done-at-boundary", "after-commit"] as const)(`${engine} leaves a rotated owner result pollable (%s)`, async timing => {
+		const atBoundary = timing === "at-boundary" || timing === "done-at-boundary";
+		vi.stubEnv("PATH", `${path.join(import.meta.dirname, "helpers", "fake-agy-bin")}${path.delimiter}${process.env.PATH}`);
+		vi.stubEnv("AGY_SYSTEM_PROMPT", "off");
+		vi.stubEnv("AGY_DIGEST", "off");
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-strand-rotation-"));
+		dirs.push(dir);
+		const log = path.join(dir, "prompts.jsonl");
+		vi.stubEnv("AGY_FAKE_PROMPT_LOG", log);
+		const store = new SessionStore(path.join(dir, "sessions.json"));
+		const sessionId = "strand-rotated";
+		const rotate = () => rotateAgySession(store, sessionId, dir, engine, { summary: "latest public summary", timestamp: new Date(0).toISOString() });
+		let checks = 0;
+		let armed = false;
+		const verify = () => { if (armed && ++checks === 2) rotate(); };
+		const env = { ACP_FAKE_SCENARIO: "slow", ACP_FAKE_LOG: log };
+		const streamDriver = new StreamDriver();
+		streamDriver.verifyDelivery = verify;
+		const acpDriver = engine === "acp" ? new AcpDriver({ bin: process.execPath,
+			binArgs: [path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs")], extraEnv: env, verifyDelivery: verify }) : undefined;
+		const driver = acpDriver ?? streamDriver;
+		const rt = new ToolRoundTrips(driver, undefined, { escalateAfterMs: 5 });
+		const simple = createStreamSimple({ entries: [], store, driver: streamDriver, acpDriver,
+			engine, roundTrips: rt, log: event => { if (atBoundary && event === "escalated-redelivery") armed = true; } });
+		const run = (messages: Message[]) => simple(model, normalizeContext({ messages }), { sessionId }).result();
+		const callId = "rotated-away-call-id";
+		const payload = "ROTATED-AWAY_DISTINCTIVE_RESULT_BODY_13F31C";
+		const toolResult = result(callId, payload);
+		const summary = user("The conversation history before this point was compacted into the following summary:\n\n<summary>\nlatest public summary\n</summary>");
+		const prompts = () => fs.readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line))
+			.filter(record => record.event === "user" || record.method === "session/prompt");
+		try {
+			const original = run([user("HANG")]);
+			// ACP learns its session ID before dispatch. Wait for the peer's
+			// actual wire receipt before parking and retiring that connection.
+			await vi.waitFor(() => {
+				assert.ok(driver.activeHandle?.conversationId);
+				assert.equal(prompts().length, 1);
+			}, { timeout: 2500 });
+			const origin = driver.activeHandle!;
+			const ack = rt.onToolCall(callId, "read", {}, new AbortController().signal);
+			assert.equal((await original).stopReason, "toolUse");
+			assert.ok("escalated" in await ack);
+			await driver.close("recycle", "retire owner");
+			assert.ok((await origin.outcome).conversationId);
+			env.ACP_FAKE_SCENARIO = "load-fails";
+			if (atBoundary) {
+				if (timing === "done-at-boundary") assert.ok(rt.resolve(callId, payload, false));
+				await run([assistant("owner response"), toolResult]);
+				assert.equal(checks, 2, "rotation happened at the real write-boundary check");
+				assert.equal(prompts().length, 1, "reserved strand writes no prompt");
+				armed = false;
+			} else {
+				rotate();
+				if (timing !== "after-commit") {
+					await run([summary, assistant("owner response"), toolResult]);
+					assert.equal(prompts().length, 1, "old completion alone must not claim the handoff");
+				}
+			}
+			const next = await run([summary, assistant("retained response"), ...(timing === "after-commit" ? [] : [toolResult]), user("new turn")]);
+			assert.equal(next.stopReason, "stop", next.errorMessage);
+			assert.equal(prompts().length, 2);
+			if (timing === "after-commit") {
+				assert.equal(rt.poll(callId)?.state, "running");
+				const completed = await run([summary, user("new turn"), assistant("finished fresh turn"), toolResult]);
+				assert.equal(completed.stopReason, "stop", completed.errorMessage);
+				assert.equal(prompts().length, 2, "completion-only pass must not write another prompt");
+				assert.equal(rt.poll(callId)?.state, "done");
+			}
+			const wire = JSON.stringify(prompts()); // Includes ACP embedded Context and stream-json inline text.
+			assert.doesNotMatch(wire, new RegExp(`${callId}|${payload}`));
+			assert.match(wire, /latest public summary/);
+			assert.equal(rt.poll(callId)?.text, payload);
+			assert.notEqual(rt.poll(callId)?.delivered, true);
+			assert.ok(rt.claimUndelivered(callId), "cancelled reservation was released");
+		} finally {
+			rt.clearEscalations("fixture cleanup");
+			await driver.close("shutdown");
+		}
+	}, 12_000);
+}
+
+test.each(["HANDOFF_NO_ID", "HANDOFF_UNKNOWN"])("stream-json %s relinquishes the handoff and retries in a fresh process", async first => {
+	vi.stubEnv("PATH", `${path.join(import.meta.dirname, "helpers", "fake-agy-bin")}${path.delimiter}${process.env.PATH}`);
+	vi.stubEnv("AGY_DIGEST", "off");
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-handoff-retry-"));
+	dirs.push(dir);
+	const log = path.join(dir, "prompts.jsonl");
+	vi.stubEnv("AGY_FAKE_PROMPT_LOG", log);
+	const store = new SessionStore(path.join(dir, "sessions.json"));
+	const driver = new StreamDriver();
+	const simple = createStreamSimple({ entries: [], store, driver, engine: "stream-json", roundTrips: new ToolRoundTrips(driver) });
+	const sessionId = "handoff-retry";
+	const summary = user("The conversation history before this point was compacted into the following summary:\n\n<summary>\nhandoff again\n</summary>");
+	const run = (prompt: string) => simple(model, normalizeContext({ messages: [summary, user(prompt)] }), { sessionId }).result();
+	try {
+		rotateAgySession(store, sessionId, dir, "stream-json", { summary: "handoff again", timestamp: new Date(0).toISOString() });
+		await run(first);
+		assert.equal(store.get(`sid:${sessionId}`), null);
+		assert.equal((await run("retry")).stopReason, "stop");
+		const [a, b] = fs.readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+		assert.notEqual(a.pid, b.pid);
+		assert.match(a.message.content, /handoff again/);
+		assert.match(b.message.content, /handoff again/);
+	} finally { await driver.close("shutdown"); }
+});

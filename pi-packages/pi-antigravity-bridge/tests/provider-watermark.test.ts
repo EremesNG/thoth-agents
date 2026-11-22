@@ -27,6 +27,7 @@ import {
 	SYSTEM_PROMPT_PREAMBLE,
 	ToolRoundTrips,
 	createStreamSimple,
+	rotateAgySession,
 } from "../src/provider.js";
 import { resetSyspromptAgentForTests } from "../src/sysprompt-agent.js";
 import { SessionStore } from "../src/sessions.js";
@@ -319,7 +320,7 @@ test("aborted turn on the same conversation: watermark is not advanced", async (
 });
 
 /** A live originating handle whose bridge calls can park more than once. */
-function parkingHarness(engine: "stream-json" | "acp", conversationId: string | null = "park-own") {
+function parkingHarness(engine: "stream-json" | "acp", conversationId: string | null = "park-own", beforeStart?: () => Promise<void>) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-park-watermark-"));
 	const store = new SessionStore(path.join(dir, "sessions.json"));
 	const key = `cwd:${dir}${engine === "acp" ? "@acp" : ""}`;
@@ -336,13 +337,13 @@ function parkingHarness(engine: "stream-json" | "acp", conversationId: string | 
 	const rt = new ToolRoundTrips(driver);
 	const park = (id: string) => { void rt.onToolCall(id, "read", {}, new AbortController().signal).catch(() => {}); };
 	const simple = createStreamSimple({ entries: [], store, driver, acpDriver: engine === "acp" ? driver : undefined,
-		engine, roundTrips: rt });
+		engine, roundTrips: rt, beforeStart });
 	const run = async (context: TranscriptContext) => {
 		const events = [];
 		for await (const event of simple(model, context, { cwd: dir } as SimpleStreamOptions)) events.push(event);
 		return events;
 	};
-	return { store, key, handle, requests, park, finish: (outcome: TurnOutcome) => finish(outcome), run,
+	return { store, key, handle, requests, park, rotate: (summary?: string) => rotateAgySession(store, "", dir, engine, summary === undefined ? undefined : { summary, timestamp: new Date(0).toISOString() }), finish: (outcome: TurnOutcome) => finish(outcome), run,
 		async resume(id: string) {
 			const context = contextWith(["first task", "intervening"]);
 			context.messages.push({ role: "toolResult", toolCallId: id, toolName: "read",
@@ -458,4 +459,76 @@ test("first park transfers the staged carrier to the bound conversation", async 
 			assert.equal(request?.conversationId, "park-carrier");
 		} finally { h.cleanup(); fs.rmSync(root, { recursive: true, force: true }); }
 	});
+});
+
+for (const engine of ["stream-json", "acp"] as const) {
+	test(`${engine} rotation during startup prevents a stale first park from publishing`, async () => {
+		let release!: () => void;
+		const startup = new Promise<void>(resolve => { release = resolve; });
+		const h = parkingHarness(engine, "park-own", () => startup);
+		try {
+			const next = h.run(contextWith(["first task"]));
+			h.rotate();
+			release();
+			await next;
+			assert.equal(h.store.get(h.key), null);
+		} finally { h.cleanup(); }
+	});
+
+	test(`${engine} a pre-compaction continuation cannot delete the newly published binding`, async () => {
+		const h = parkingHarness(engine);
+		try {
+			await h.run(contextWith(["first task"]));
+			h.rotate();
+			h.store.set(h.key, { conversationId: "fresh", lastStepIdx: -1, lastMessageCount: 20, runCommandGuardActive: true });
+			h.finish({ status: "OK", response: "old answer", finished: true, aborted: false, conversationId: "park-own" });
+			const events = await h.resume("park-1");
+			assert.equal(events.at(-1)?.type, "done");
+			assert.equal(h.store.get(h.key)?.conversationId, "fresh");
+			assert.equal(h.store.get(h.key)?.runCommandGuardActive, true);
+			assert.equal(h.requests.length, 1, "acknowledged results must not be dispatched again");
+		} finally { h.cleanup(); }
+	});
+}
+
+test("a rotation queued during an in-flight binding write is persisted", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-rotation-persist-"));
+	const storePath = path.join(dir, "sessions.json");
+	const store = new SessionStore(storePath);
+	const rename = fs.promises.rename.bind(fs.promises);
+	let release!: () => void;
+	let ready!: () => void;
+	const entered = new Promise<void>(resolve => { ready = resolve; });
+	const blocked = new Promise<void>(resolve => { release = resolve; });
+	const spy = vi.spyOn(fs.promises, "rename").mockImplementationOnce(async (from, to) => {
+		ready();
+		await blocked;
+		await rename(from, to);
+	});
+	try {
+		store.set("sid:test", { conversationId: "before-rotation", lastStepIdx: -1 });
+		await entered;
+		rotateAgySession(store, "test", dir, "stream-json");
+		release();
+		await vi.waitFor(() => assert.deepEqual(JSON.parse(fs.readFileSync(storePath, "utf8")), {}));
+	} finally {
+		release();
+		spy.mockRestore();
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("a first park with no carrier identity releases the claim and its continuation cannot steal it", async () => {
+	const h = parkingHarness("stream-json", null);
+	try {
+		h.rotate("checkpoint");
+		const context = normalizeContext({ messages: [{ ...user("The conversation history before this point was compacted into the following summary:\n\n<summary>\ncheckpoint\n</summary>"), timestamp: 0 }, user("go")] });
+		await h.run(context);
+		assert.match(h.requests[0]!.prompt, /checkpoint/);
+		assert.equal(h.store.get(h.key), null);
+		h.finish({ conversationId: "seen-too-late", status: "OK", response: "ok", aborted: false, finished: true });
+		await h.resume("park-1");
+		assert.equal(h.store.get(h.key), null);
+		assert.equal(h.requests.length, 1);
+	} finally { h.cleanup(); }
 });

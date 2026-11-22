@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
 
 Ported SHAs: `62b2a20` (approval gate for agy 1.5.11 + ACP, #18), `b5aa839` (issue #18 review hardening, diagnostic half and fail-closed merge), `9ba4314` (silent ACP tool failures), `9d20772` (quota notice as retryable error). Local adaptations: the gate matcher is all-tools with allow-by-exception decided in the handler (upstream kept a finite mutator list); the ACP home `config/hooks.json` merge is verified by read-back before every dispatch on both carriers and gated ACP under `AGY_AGENTS_ROOT` is refused; known write/edit tools need an absolute target; unknown tools use the hidden `agy_native_approval` shadow; the hook handler owns one overall deadline below agy's timeout (documented residual: a crashed or killed hook process); native-failure provenance is positive-only and the diagnostic omits agy failure text entirely (tool name, fixed message and a transcript pointer); quota classification is shared by the main and late-redelivery settlement and leaves bindings untouched. Not ported here: compaction/rotation (`59376a7`, `806e712`, `79f8cde`, `ec307b5`), agent-directory resolution (`8dee43b`), ACP startup timeout (`f6fb22d`).
 
+### Compaction continuity sync (agy-compaction-rotation)
+
+Adapted `59376a72c`, `806e71291`, `79f8cde2f`, and the compaction handoff subset of `ec307b546`. The local clamp uses proven ACP occupancy only and preserves billing. Pi compaction rotates an engine-scoped binding, fencing settlements by generation and allowing one delivery-confirmed handoff. Summary helpers use a separate carrier and a deny-only bridge; stranded results from rotated conversations remain pollable without being prompted into another conversation. The ordinary digest stays opt-in. The default-on digest, toast, persisted fingerprints, agent-directory resolution and ACP startup-timeout changes were not ported here.
+
 Earlier unreleased notes below describe the pre-migration baseline and are retained as history, not current setup instructions. Current behavior: [ENGINES.md](docs/ENGINES.md).
 
 ### Changed

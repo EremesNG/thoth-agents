@@ -118,6 +118,7 @@ async function nextActivity(turn: ActiveTurn): Promise<DriverActivity | null> {
 function makeHandle(turn: ActiveTurn): TurnHandle {
 	return {
 		id: turn.id,
+		bindingOrigin: turn.request.bindingOrigin,
 		get conversationId() { return turn.conversationId; },
 		outcome: turn.outcome,
 		next: () => nextActivity(turn),
@@ -209,6 +210,8 @@ export class StreamDriver implements TurnDriver {
 
 	/** Restaged for each owned process, never shared across instances. */
 	stageHome?: () => string | undefined;
+	/** Resource owners can observe the carrier's actual close, not bounded shutdown. */
+	onProcessStarted?: (child: OwnedProcess) => void;
 
 	/** Pre-dispatch delivery check (approval gate): runs before every turn is
 	 *  created. Throwing refuses the turn with the thrown message. */
@@ -334,6 +337,7 @@ export class StreamDriver implements TurnDriver {
 				// Async startup above can outlive the pre-start read-back: recheck the
 				// owned groups and handlers at the write boundary; a throw refuses visibly.
 				this.verifyDelivery?.();
+				request.assertPromptCurrent?.();
 				await new Promise<void>((resolve, reject) => {
 					child.stdin!.write(line, err => err ? reject(err) : resolve());
 				});
@@ -498,6 +502,7 @@ export class StreamDriver implements TurnDriver {
 		// emit no close, retaining uncertain homes for the dead-owner sweep.
 		if (home) child.once("close", () => removeStagedAgyHome(home));
 		this.#child = child;
+		this.onProcessStarted?.(child);
 		// The facade returns before the asynchronous Windows launch completes.
 		const startupMs = request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
 		const launchTimer = !child.pid && startupMs > 0 ? setTimeout(() => {
@@ -713,6 +718,7 @@ export class StreamDriver implements TurnDriver {
 				this.#settle(turn, {
 					conversationId: turn.conversationId,
 					status,
+					unrecognizedResult: !ok && r.status !== "ERROR" && r.status !== "FAILURE" && r.status !== "FAILED",
 					response,
 					error: status === "ERROR" ? (r.error ?? "agy reported an error") : undefined,
 					usage: r.usage ?? turn.usage,
@@ -844,6 +850,7 @@ export class StreamDriver implements TurnDriver {
 	}
 
 	#recycleCause(next: DriverTurnRequest): string | undefined {
+		if (next.forceFresh && this.#child) return "compaction-handoff";
 		const cur = this.#profile;
 		if (!cur) return undefined;
 		if (cur.cwd !== next.cwd) return "cwd";

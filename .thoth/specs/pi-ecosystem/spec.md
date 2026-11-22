@@ -498,13 +498,13 @@ Subagent tool results and progress updates MUST build task details through one e
 
 ### Requirement: Antigravity bridge re-delivers unpolled escalated results
 
-`@thoth-agents/pi-antigravity-bridge` MUST re-deliver, exactly once and at the next turn boundary, each escalated bridge call result that completed but was never returned by a poll, as a late prompt in the conversation it belongs to, keeping it pollable and leaving a result with no known conversation pollable without prompting.
+`@thoth-agents/pi-antigravity-bridge` MUST re-deliver, exactly once and at the next turn boundary, each escalated bridge call result that completed but was never returned by a poll, as a late prompt in the conversation it belongs to, keeping it pollable and leaving a result with no known conversation pollable without prompting; when the result's conversation was rotated away by a Pi compaction it MUST NOT prompt any conversation with it and MUST keep its existing pollability unchanged.
 
 #### Scenario: Antigravity bridge re-delivers unpolled escalated results
 
-- **GIVEN** an escalated bridge call that completes after the model ended its turn without polling
+- **GIVEN** an escalated bridge call that completes after the model ended its turn without polling; WHEN the next turn boundary is reached; THEN the result is delivered once as a late prompt in its conversation and remains pollable; and GIVEN such a result whose conversation was rotated away by a successful compaction
 - **WHEN** the next turn boundary is reached
-- **THEN** the result is delivered once as a late prompt in its conversation and remains pollable
+- **THEN** no conversation is prompted with it, it remains pollable through the existing poll path 
 
 ### Requirement: Background completion callbacks wait for an idle agent
 
@@ -648,13 +648,13 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 ### Requirement: Antigravity bridge resumes retry-dropped tails
 
-`@thoth-agents/pi-antigravity-bridge` MUST resume a bound conversation with a synthetic continuation prompt when a provider turn's context ends in an assistant or tool-result message with no new user input, images or late results, MUST keep failing visibly when no conversation is bound, and MUST bind a conversation at a turn's first park only from that turn's originating handle.
+`@thoth-agents/pi-antigravity-bridge` MUST resume a bound conversation with a synthetic continuation prompt when a provider turn's context ends in an assistant or tool-result message with no new user input, images or late results, MUST keep failing visibly when no conversation is bound unless a compaction handoff is pending for that Pi session (in which case the tail is resumed in a fresh agy conversation through the one-shot handoff with its synthetic resume), and MUST bind a conversation at a turn's first park only from that turn's originating handle.
 
 #### Scenario: Antigravity bridge resumes retry-dropped tails
 
-- **GIVEN** a bound Antigravity conversation; WHEN Pi retries a turn whose context ends in an assistant or tool-result message without new user input; THEN the bridge dispatches a continuation prompt into that conversation instead of erroring; and GIVEN two concurrent turns
-- **WHEN** one parks first
-- **THEN** only its own conversation is bound
+- **GIVEN** a bound Antigravity conversation; WHEN Pi retries a turn whose context ends in an assistant or tool-result message without new user input; THEN the bridge dispatches a continuation prompt into that conversation instead of erroring; and GIVEN two concurrent turns; WHEN one parks first; THEN only its own conversation is bound; and GIVEN a Pi session whose binding was rotated by a successful compaction with a pending handoff
+- **WHEN** Pi retries a tool-result-ending turn without new user input
+- **THEN** the tail is resumed in a fresh conversation carrying the handoff instead of failing 
 
 ### Requirement: Antigravity bridge delivers images on every path
 
@@ -814,7 +814,7 @@ In a Pi session without a dialog-capable UI, the Junie bridge MUST launch Junie 
 
 - **GIVEN** an isolated agy configuration with a stdio server `codegraph` and another Pi bridge entry, and separately an ACP session with `AGY_AGENTS_ROOT` set
 - **WHEN** an ACP session is created or loaded, or the `AGY_AGENTS_ROOT` session starts a turn with the edit-approval gate enabled
-- **THEN** `mcpServers` contains this bridge entry and `codegraph` but not the other bridge entry and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home, while the gated `AGY_AGENTS_ROOT` turn is refused with a visible error and the same session with the gate disabled keeps the previous ACP behavior 
+- **THEN** `mcpServers` contains this bridge entry and `codegraph` but not the other bridge entry and `agy acp` was started with `--agent` naming the minimal carrier staged inside that home, while the gated `AGY_AGENTS_ROOT` turn is refused with a visible error and the same session with the gate disabled keeps the previous ACP behavior
 
 ### Requirement: Pi subagent model fallback chains
 
@@ -874,4 +874,14 @@ When the edit-approval gate is enabled, the bridge MUST NOT dispatch an agy turn
 
 - **GIVEN** the Antigravity bridge with the edit-approval gate enabled on agy >=1.5.11
 - **WHEN** agy issues `write_file` or an edit with current argument shapes, the owned hook group cannot be verified, a native tool fails with no model text, or a main or redelivered handle returns only a quota notice
-- **THEN** the write awaits Pi approval, the turn is refused visibly, a diagnostic naming the tool with a generic message and a pointer to the agy logs (no free-form failure text) is shown, or a retryable rate-limit error is emitted with the binding unchanged, respectively 
+- **THEN** the write awaits Pi approval, the turn is refused visibly, a diagnostic naming the tool with a generic message and a pointer to the agy logs (no free-form failure text) is shown, or a retryable rate-limit error is emitted with the binding unchanged, respectively
+
+### Requirement: Antigravity bridge rotates its agy conversation after Pi compaction
+
+After a successful Pi compaction the Antigravity bridge MUST start the next non-helper turn of that Pi session in a fresh agy conversation that receives a one-shot handoff of the compaction summary and bridge-owned retained context, MUST prevent any handle created before the rotation from writing or deleting the post-rotation binding, MUST run Pi helper calls (`cacheRetention: "none"` or `disableContinuation: true`) in fresh conversations without touching bindings, and MUST clamp aggregated input/cache-read usage to ACP-reported occupancy when that occupancy fits the context window.
+
+#### Scenario: Antigravity bridge rotates its agy conversation after Pi compaction
+
+- **GIVEN** an Antigravity-backed Pi session with a bound agy conversation and a parked tool round trip
+- **WHEN** Pi compaction succeeds, the parked continuation later settles, and the next user turn runs
+- **THEN** the stale settlement leaves the new binding untouched, the next turn starts a fresh agy conversation carrying the compaction summary once, and ACP occupancy within the window does not report an overflow 

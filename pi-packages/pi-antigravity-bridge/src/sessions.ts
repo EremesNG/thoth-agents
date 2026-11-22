@@ -35,6 +35,16 @@ export interface AgySession {
 	runCommandGuardActive?: boolean;
 }
 
+export interface CompactionCheckpoint {
+	readonly summary: string;
+	readonly timestamp: string;
+}
+
+export interface BindingOrigin {
+	readonly key: string;
+	readonly generation: number;
+}
+
 type StoreMap = Record<string, AgySession>;
 
 /** Narrow untrusted parsed JSON into a clean StoreMap, validating each entry's
@@ -73,6 +83,7 @@ function narrowStoreMap(parsed: unknown): StoreMap {
 export class SessionStore {
 	private readonly path: string;
 	private cache: StoreMap = {};
+	private readonly rotations = new Map<string, { generation: number; handoff?: true | symbol; checkpoint?: CompactionCheckpoint; committedConversationId?: string }>();
 	private readonly dirty = new Set<string>();
 	private readonly removed = new Set<string>();
 	private writeChain: Promise<void> = Promise.resolve();
@@ -103,6 +114,60 @@ export class SessionStore {
 		};
 	}
 
+	select(key: string): { binding: AgySession | null; origin: BindingOrigin } {
+		return { binding: this.get(key), origin: { key, generation: this.rotations.get(key)?.generation ?? 0 } };
+	}
+
+	isCurrent(origin: BindingOrigin): boolean {
+		return origin.generation === (this.rotations.get(origin.key)?.generation ?? 0);
+	}
+
+	handoffState(origin: BindingOrigin): "pending" | "claimed" | undefined {
+		const handoff = this.isCurrent(origin) ? this.rotations.get(origin.key)?.handoff : undefined;
+		return handoff === true ? "pending" : handoff ? "claimed" : undefined;
+	}
+
+	checkpointForHandoff(origin: BindingOrigin): CompactionCheckpoint | undefined {
+		return this.handoffState(origin) ? this.rotations.get(origin.key)?.checkpoint : undefined;
+	}
+
+	/** Empty handoffs never bind, but their projected checkpoint is not user input. */
+	discardedCheckpoint(origin: BindingOrigin): CompactionCheckpoint | undefined {
+		const rotation = this.isCurrent(origin) ? this.rotations.get(origin.key) : undefined;
+		return rotation?.handoff === undefined && rotation?.committedConversationId === undefined && !rotation?.checkpoint?.summary.trim()
+			? rotation?.checkpoint : undefined;
+	}
+
+	committedHandoff(origin: BindingOrigin, conversationId: string): { checkpoint?: CompactionCheckpoint } | undefined {
+		const rotation = this.isCurrent(origin) ? this.rotations.get(origin.key) : undefined;
+		return rotation?.committedConversationId === conversationId ? rotation : undefined;
+	}
+
+	claimHandoff(origin: BindingOrigin): symbol | undefined {
+		if (this.handoffState(origin) !== "pending") return;
+		const claim = Symbol("compaction handoff");
+		this.rotations.get(origin.key)!.handoff = claim;
+		return claim;
+	}
+
+	ownsHandoff(origin: BindingOrigin, claim: symbol): boolean {
+		return this.isCurrent(origin) && this.rotations.get(origin.key)?.handoff === claim;
+	}
+
+	resolveHandoff(origin: BindingOrigin, claim: symbol, delivered: boolean, conversationId?: string): void {
+		if (!this.ownsHandoff(origin, claim)) return;
+		const rotation = this.rotations.get(origin.key)!;
+		rotation.handoff = delivered ? undefined : true;
+		if (delivered) rotation.committedConversationId = conversationId;
+	}
+
+	rotate(key: string, checkpoint?: CompactionCheckpoint): AgySession | null {
+		const existing = this.get(key);
+		this.rotations.set(key, { generation: (this.rotations.get(key)?.generation ?? 0) + 1, handoff: true, checkpoint: checkpoint && { summary: checkpoint.summary, timestamp: checkpoint.timestamp } });
+		this.delete(key);
+		return existing;
+	}
+
 	/** Update one session and persist atomically (temp file + rename). The
 	 *  write is queued; callers don't need to await it. */
 	set(key: string, session: AgySession): void {
@@ -124,6 +189,8 @@ export class SessionStore {
 	 *  the gate on the next turn (issue #1). The write is queued. */
 	delete(key: string): void {
 		delete this.cache[key];
+		const rotation = this.rotations.get(key);
+		if (rotation) delete rotation.committedConversationId;
 		this.dirty.delete(key);
 		this.removed.add(key);
 		this.writeChain = this.writeChain
@@ -148,10 +215,10 @@ export class SessionStore {
 			/* missing or corrupt  -  start from empty */
 		}
 		const merged: StoreMap = { ...disk };
-		for (const key of this.dirty) {
-			merged[key] = this.cache[key];
-		}
-		for (const key of this.removed) {
+		const writes = [...this.dirty].map(key => [key, this.cache[key]] as const);
+		const deletions = [...this.removed];
+		for (const [key, value] of writes) merged[key] = value;
+		for (const key of deletions) {
 			delete merged[key];
 		}
 
@@ -160,16 +227,18 @@ export class SessionStore {
 			mode: 0o600,
 		});
 		await fs.promises.rename(tmp, this.path);
-		this.dirty.clear();
-		// Mirror dirty: once the deletion is durable, stop re-asserting it. A
-		// later unrelated persist must not destroy a record another process
-		// wrote for that key after our delete landed.
-		this.removed.clear();
+		// A rotation or another set may have queued a newer mutation while the
+		// rename was pending. Retire only the mutations this write published.
+		for (const [key, value] of writes) {
+			if (this.cache[key] === value) this.dirty.delete(key);
+		}
+		for (const key of deletions) this.removed.delete(key);
 	}
 
 	/** Wipe all session bindings (forces fresh agy conversations on every
 	 *  active session). Used by the /agy clear command. */
 	clear(): void {
+		for (const rotation of this.rotations.values()) delete rotation.committedConversationId;
 		this.cache = {};
 		this.dirty.clear();
 		this.removed.clear();

@@ -36,7 +36,7 @@ describe('background tool definition publication', () => {
     ['codemode', undefined, 'deferred'],
     ['tool_search', undefined, 'deferred'],
     ['codemode', 'direct', 'direct'],
-  ])('reconciles exposure with %s active and override %s', async (discovery, override, exposure) => {
+  ])('reconciles exposure and preserves execution modes with %s active and override %s', async (discovery, override, exposure) => {
     vi.stubEnv('THOTH_AGENTS_PI_EXPOSURE', override);
     const host = lifecycleHost('adaptive-exposure', true);
     let active = [...host.tools.keys(), 'read', ...(discovery ? [discovery] : [])];
@@ -46,6 +46,18 @@ describe('background tool definition publication', () => {
     try {
       await host.emit('session_start');
       expect(host.tools.get('bg_task_spawn')).toBe(direct);
+      const modes = Object.fromEntries(
+        [...host.tools].map(([name, tool]) => [name, tool.executionMode]),
+      );
+      expect(modes).toStrictEqual({
+        bg_task_spawn: 'sequential',
+        bg_task_watch: 'sequential',
+        bg_task_stop: 'sequential',
+        bg_task_clear: 'sequential',
+        bg_task_status: undefined,
+        bg_task_list: undefined,
+        bg_task_log: undefined,
+      });
       for (const name of ['bg_task_list', 'bg_task_log', 'bg_task_stop', 'bg_task_clear']) {
         expect(host.tools.get(name)).toMatchObject({ exposure, defaultActive: exposure === 'direct' });
         expect(active.includes(name)).toBe(exposure === 'direct');

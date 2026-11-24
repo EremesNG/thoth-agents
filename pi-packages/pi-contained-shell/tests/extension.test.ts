@@ -32,12 +32,30 @@ function host() {
   return { pi, ctx, handlers };
 }
 describe('extension', () => {
-  it('is a complete no-op on linux', () => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+  it.each([
+    'linux',
+    'darwin',
+  ] as const)('is a complete no-op on %s', (platform) => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
     const { pi } = host();
     extension(pi);
     expect(pi.registerTool).not.toHaveBeenCalled();
     expect(pi.on).not.toHaveBeenCalled();
+  });
+  it('registers bash and powershell for sequential execution on win32', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const { pi } = host();
+    extension(pi);
+    const registrations = vi.mocked(pi.registerTool).mock.calls;
+    expect(
+      registrations.map(([{ name, executionMode }]) => ({
+        name,
+        executionMode,
+      })),
+    ).toEqual([
+      { name: 'bash', executionMode: 'sequential' },
+      { name: 'powershell', executionMode: 'sequential' },
+    ]);
   });
   it.skipIf(process.platform !== 'win32')(
     'does not warn through a stale session context when warm-up fails after shutdown',

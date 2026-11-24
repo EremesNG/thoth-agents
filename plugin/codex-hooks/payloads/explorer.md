@@ -56,6 +56,10 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.
 - Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
+<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>
+
 <questions>
 Use `request_user_input` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first, then escalate the unresolved question to the root through openQuestions as the question, the possible options and the facts for each option, without recommending one.
 </questions>

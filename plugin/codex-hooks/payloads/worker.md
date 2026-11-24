@@ -52,6 +52,10 @@ Handle bounded engineering implementation (business logic, backend, systems, mec
 - `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.
 - Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
+<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>
+
 <questions>
 Use `request_user_input` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first and ask one targeted question with a recommended default.
 </questions>

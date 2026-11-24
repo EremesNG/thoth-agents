@@ -31,9 +31,11 @@ it.each([
       active = names;
     },
   } as ExtensionAPI);
+  expect([...tools.keys()]).toEqual(['AskCodex']);
   expect(tools.get('AskCodex')).toMatchObject({
     exposure: 'direct',
     defaultActive: true,
+    executionMode: 'sequential',
   });
   expect(getPublishedToolDefinition('AskCodex')).toBeUndefined();
   active.push('AskCodex');
@@ -43,6 +45,7 @@ it.each([
     expect(tools.get('AskCodex')).toMatchObject({
       exposure,
       defaultActive: exposure === 'direct',
+      executionMode: 'sequential',
     });
     expect(active.includes('AskCodex')).toBe(exposure === 'direct');
     expect(active).toContain('read');

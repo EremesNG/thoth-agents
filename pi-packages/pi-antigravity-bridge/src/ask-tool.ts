@@ -452,6 +452,7 @@ export async function registerAskAntigravityTool(
 	}
 	pi.registerTool({
 		name: "AskAntigravity",
+		executionMode: "sequential",
 		namespace: ANTIGRAVITY_NAMESPACE,
 		label: "Ask Antigravity",
 		renderShell: "self",

@@ -10,6 +10,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentExtendTool(manager: SubagentManager) {
   return {
     name: 'subagent_extend',
+    executionMode: 'sequential' as const,
     label: 'Subagent Extend',
     description:
       'Extend a running task within its total time ceiling and extension count; require evidence of useful progress.',

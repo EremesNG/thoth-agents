@@ -80,6 +80,7 @@ export function installDoubleEscapeCancel(
 export function createSubagentRunTool(manager: SubagentManager, pi: any) {
   return {
     name: 'subagent_run',
+    executionMode: 'sequential' as const,
     label: 'Subagent Run',
     description: 'Delegate a task to exactly one markdown-defined subagent.',
     promptSnippet: 'Omit mode: background by default.',

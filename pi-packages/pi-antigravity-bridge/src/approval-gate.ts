@@ -286,5 +286,10 @@ export function createShadowTool(base: AnyToolDefinition, policy: GatePolicy, op
 			details: { gate: "allow", native },
 		};
 	};
-	return { ...base, parameters: withGateMarkerSchema(base.parameters), execute } as AnyToolDefinition;
+	return {
+		...base,
+		executionMode: "sequential",
+		parameters: withGateMarkerSchema(base.parameters),
+		execute,
+	};
 }

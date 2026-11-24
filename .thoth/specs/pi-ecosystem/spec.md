@@ -504,7 +504,7 @@ Subagent tool results and progress updates MUST build task details through one e
 
 - **GIVEN** an escalated bridge call that completes after the model ended its turn without polling; WHEN the next turn boundary is reached; THEN the result is delivered once as a late prompt in its conversation and remains pollable; and GIVEN such a result whose conversation was rotated away by a successful compaction
 - **WHEN** the next turn boundary is reached
-- **THEN** no conversation is prompted with it, it remains pollable through the existing poll path 
+- **THEN** no conversation is prompted with it, it remains pollable through the existing poll path
 
 ### Requirement: Background completion callbacks wait for an idle agent
 
@@ -654,7 +654,7 @@ The pi-thoth-theme editor-border context bar MUST draw its eight cells in Unicod
 
 - **GIVEN** a bound Antigravity conversation; WHEN Pi retries a turn whose context ends in an assistant or tool-result message without new user input; THEN the bridge dispatches a continuation prompt into that conversation instead of erroring; and GIVEN two concurrent turns; WHEN one parks first; THEN only its own conversation is bound; and GIVEN a Pi session whose binding was rotated by a successful compaction with a pending handoff
 - **WHEN** Pi retries a tool-result-ending turn without new user input
-- **THEN** the tail is resumed in a fresh conversation carrying the handoff instead of failing 
+- **THEN** the tail is resumed in a fresh conversation carrying the handoff instead of failing
 
 ### Requirement: Antigravity bridge delivers images on every path
 
@@ -884,4 +884,14 @@ After a successful Pi compaction the Antigravity bridge MUST start the next non-
 
 - **GIVEN** an Antigravity-backed Pi session with a bound agy conversation and a parked tool round trip
 - **WHEN** Pi compaction succeeds, the parked continuation later settles, and the next user turn runs
-- **THEN** the stale settlement leaves the new binding untouched, the next turn starts a fresh agy conversation carrying the compaction summary once, and ACP occupancy within the window does not report an overflow 
+- **THEN** the stale settlement leaves the new binding untouched, the next turn starts a fresh agy conversation carrying the compaction summary once, and ACP occupancy within the window does not report an overflow
+
+### Requirement: Ordered execution for side-effecting Pi tools
+
+Thoth-owned Pi tool definitions with side effects (subagent lifecycle, messaging and result acknowledgment, background task spawn/watch/stop/clear, todo, user questions, external-agent asks, Antigravity approval shadows and approval tool, child orchestrator channel) and the Windows contained-shell `bash` and `powershell` tools MUST declare `executionMode: "sequential"` so any assistant-message batch containing one executes in emitted order, while read-only Thoth tools MUST remain eligible for parallel execution, in root and pi-subagents child sessions under every provider on SDK versions that honor execution modes.
+
+#### Scenario: Ordered execution for side-effecting Pi tools
+
+- **GIVEN** a Windows Pi session with Thoth contained-shell and any provider
+- **WHEN** one assistant message calls `edit` and then `bash`; THEN `bash` starts only after `edit` completes; and WHEN one message calls only read-only tools
+- **THEN** they may execute concurrently

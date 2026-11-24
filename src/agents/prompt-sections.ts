@@ -147,6 +147,10 @@ function roleText(template: string): RoleTextSection {
   return { kind: 'role-text', template };
 }
 
+const TOOL_EXECUTION_SECTION = roleText(`<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>`);
+
 function roleTemplate(role: AgentPromptRole): string {
   return `{{role.${role}}}`;
 }
@@ -262,6 +266,7 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 - Invalid: no approval; at most one format-only repair; preserve findings/verdict. No validator: blocks only gate approvals; report drift.
 - Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals. Judge scope, evidence, checks, freshness/provenance; validation is not authorization.
 </delegation>`),
+    TOOL_EXECUTION_SECTION,
     createQuestionProtocolSection(),
   ];
 }
@@ -362,6 +367,7 @@ ${role.responsibility}
         ]
       : []),
     createSubagentRulesSection(),
+    TOOL_EXECUTION_SECTION,
     createQuestionProtocolSection('child', roleName),
     roleText(`<return-contract>
 ${renderSpecialistResultContract(roleName)}

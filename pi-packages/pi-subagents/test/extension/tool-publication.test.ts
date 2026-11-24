@@ -9,6 +9,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import subagentsExtension from '../../src/extension/subagents-extension.js';
 import type { SubagentManager } from '../../src/manager.js';
 import {
+  createAskOrchestratorTool,
+  createNotifyOrchestratorTool,
+} from '../../src/runner/orchestrator-tool.js';
+import {
   resetPiComponentCacheForTests,
   resolveSubagentExternalToolDefinitionFromInfo,
 } from '../../src/thread-view.js';
@@ -47,6 +51,45 @@ function fixture(hasUI = true) {
 }
 
 describe('subagents tool definition publication', () => {
+  it('marks side-effecting host and child tools sequential, leaving reads unset', async () => {
+    const configFile = path.join(env.tmp, 'isolated-agent', 'subagents.json');
+    fs.mkdirSync(path.dirname(configFile), { recursive: true });
+    fs.writeFileSync(
+      configFile,
+      JSON.stringify({ enable_continue: true, enable_ask_orchestrator: true }),
+    );
+    const host = fixture(false);
+    try {
+      const tools = [
+        ...host.tools.values(),
+        createAskOrchestratorTool(undefined),
+        createNotifyOrchestratorTool(undefined),
+      ];
+      const modes = Object.fromEntries(
+        tools.map((tool) => [
+          tool.name,
+          'executionMode' in tool ? tool.executionMode : undefined,
+        ]),
+      );
+      expect(modes).toStrictEqual({
+        subagent_run: 'sequential',
+        subagent_continue: 'sequential',
+        subagent_reply: 'sequential',
+        subagent_send_message: 'sequential',
+        subagent_cancel: 'sequential',
+        subagent_extend: 'sequential',
+        subagent_result: 'sequential',
+        ask_orchestrator: 'sequential',
+        notify_orchestrator: 'sequential',
+        subagent_list_agents: undefined,
+        subagent_list_tasks: undefined,
+        subagent_status: undefined,
+      });
+    } finally {
+      await host.emit('session_shutdown');
+    }
+  });
+
   it('restores root renderers and releases child-only definitions when a headless child shuts down', async () => {
     const root = fixture(false);
     const child = fixture(false);

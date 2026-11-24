@@ -14,6 +14,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentResultTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_result',
+    executionMode: 'sequential' as const,
     label: 'Subagent Result',
     description: 'Read a task result.',
     parameters: Type.Object({ task_id: Type.String() }),

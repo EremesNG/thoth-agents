@@ -880,6 +880,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// from provider requests; models must not call it.
 	registerTool({
 		name: "antigravity",
+		executionMode: "sequential",
 		label: "Antigravity",
 		description: "",
 		prepareLoadout: () => ({ hiddenDeclarations: ["antigravity"] }),

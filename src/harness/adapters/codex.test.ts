@@ -108,7 +108,8 @@ describe('Codex adapter v0.3', () => {
     const root = renderCodexRootInstructions();
 
     // Output-style +194 net of duplicate trims; cap +190 stays within +200.
-    expect(root.length).toBeLessThanOrEqual(15_290);
+    // The 15,290-character cap allows 201 more for the shared tool-execution section.
+    expect(root.length).toBeLessThanOrEqual(15_491);
     expect(root).toContain('Root:');
     expect(root).toContain(
       'Direct-work exceptions: known low-risk mechanical work (reviewed commits included)',
@@ -256,7 +257,8 @@ describe('Codex adapter v0.3', () => {
         .replace(/\n<!-- thoth-agents:codex-root:end -->\n$/, ''),
     );
     // Output-style +194 net of duplicate trims; cap +185 stays within +200.
-    expect(root.length).toBeLessThanOrEqual(15_210);
+    // The 15,210-character cap allows 201 more for the shared tool-execution section.
+    expect(root.length).toBeLessThanOrEqual(15_411);
     for (const rule of [
       'multi-agent v1 `wait_agent` + enabled/trusted plugin hooks only',
       '`agent` = status-map key, not provenance',

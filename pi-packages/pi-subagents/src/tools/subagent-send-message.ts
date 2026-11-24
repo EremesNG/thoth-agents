@@ -10,6 +10,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentSendMessageTool(manager: SubagentManager) {
   return {
     name: 'subagent_send_message',
+    executionMode: 'sequential' as const,
     label: 'Subagent Send Message',
     description: 'Queue live steering for a running background task.',
     parameters: Type.Object({

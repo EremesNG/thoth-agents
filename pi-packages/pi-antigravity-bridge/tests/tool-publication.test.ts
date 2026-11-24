@@ -113,6 +113,19 @@ test.each([true, false])("post-startup shadow tools publish only for UI sessions
 	assert.equal(s.tools.some(tool => tool.name === "bash"), false, "bridge startup is lazy for another provider");
 	await s.emit("model_select", { model: { provider: "antigravity" } });
 	assert.deepEqual(s.tools.slice(-4).map(tool => tool.name), ["bash", "write", "edit", "agy_native_approval"]);
+	expect(Object.fromEntries(s.tools.map(tool => [
+		tool.name,
+		"executionMode" in tool ? tool.executionMode : undefined,
+	]))).toStrictEqual({
+		AskAntigravity: "sequential",
+		antigravity: "sequential",
+		bash: "sequential",
+		write: "sequential",
+		edit: "sequential",
+		agy_native_approval: "sequential",
+		agy_web_search: undefined,
+		agy_read_url: undefined,
+	});
 	for (const tool of s.tools) assert.strictEqual(getPublishedToolDefinition(tool.name), hasUI ? tool : undefined);
 	await s.emit("session_shutdown");
 	for (const tool of s.tools) assert.equal(getPublishedToolDefinition(tool.name), undefined);

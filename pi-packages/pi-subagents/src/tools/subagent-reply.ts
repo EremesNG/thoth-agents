@@ -10,6 +10,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentReplyTool(manager: SubagentManager) {
   return {
     name: 'subagent_reply',
+    executionMode: 'sequential' as const,
     label: 'Subagent Reply',
     description:
       'Answer a pending ask_orchestrator question. Omit request_id only if the task has exactly one pending question.',

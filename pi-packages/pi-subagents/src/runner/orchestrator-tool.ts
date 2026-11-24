@@ -14,6 +14,7 @@ export function createAskOrchestratorTool(
 ): ToolDefinition<typeof parameters> {
   return {
     name: 'ask_orchestrator',
+    executionMode: 'sequential',
     exposure: 'model-only',
     label: 'Ask Orchestrator',
     description:
@@ -34,6 +35,7 @@ export function createNotifyOrchestratorTool(
 ): ToolDefinition<typeof parameters> {
   return {
     name: 'notify_orchestrator',
+    executionMode: 'sequential',
     exposure: 'model-only',
     label: 'Notify Orchestrator',
     description:

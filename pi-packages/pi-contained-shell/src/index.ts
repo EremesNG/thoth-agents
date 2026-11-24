@@ -67,12 +67,18 @@ export default function containedShell(pi: ExtensionAPI): void {
     console.warn(WARNING);
   };
   const definitions = [
-    createBashToolDefinition(process.cwd(), {
-      operations: createContainedOperations('bash', () => warn()),
-    }),
-    createPowerShellToolDefinition(process.cwd(), {
-      operations: createContainedOperations('powershell', () => warn()),
-    }),
+    {
+      ...createBashToolDefinition(process.cwd(), {
+        operations: createContainedOperations('bash', () => warn()),
+      }),
+      executionMode: 'sequential' as const,
+    },
+    {
+      ...createPowerShellToolDefinition(process.cwd(), {
+        operations: createContainedOperations('powershell', () => warn()),
+      }),
+      executionMode: 'sequential' as const,
+    },
   ];
   for (const definition of definitions) pi.registerTool(definition);
   let publication: ToolDefinitionHandle | undefined;

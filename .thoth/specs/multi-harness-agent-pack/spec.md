@@ -586,3 +586,13 @@ Every generated specialist (child) prompt on every harness MUST state that nothi
 - **GIVEN** generated Pi, OpenCode, Codex and Claude Code specialist prompts
 - **WHEN** they are rendered
 - **THEN** each contains the turn-end rule exactly once and no orchestrator prompt contains it
+
+### Requirement: Same-message tool call dependencies
+
+Default root and specialist instructions for every supported harness MUST state that tool calls emitted in one assistant message may run concurrently and that a call depending on another call's result or side effect must be emitted only after that result arrives.
+
+#### Scenario: Same-message tool call dependencies
+
+- **GIVEN** the rendered root or any specialist prompt for OpenCode, Codex, Claude Code or Pi
+- **WHEN** it is inspected
+- **THEN** it contains the same-message tool-call dependency guidance

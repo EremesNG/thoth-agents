@@ -15,6 +15,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentCancelTool(manager: SubagentManager, pi?: any) {
   return {
     name: 'subagent_cancel',
+    executionMode: 'sequential' as const,
     label: 'Subagent Cancel',
     description: 'Cancel a running task.',
     parameters: Type.Object({ task_id: Type.String() }),

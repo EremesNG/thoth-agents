@@ -32,6 +32,12 @@ function fixture(hasUI = true) {
 }
 
 describe('todo tool definition publication', () => {
+  it('registers only the sequential todo tool', () => {
+    const { tools } = fixture(false);
+    expect([...tools.keys()]).toEqual(['todo']);
+    expect(tools.get('todo')).toHaveProperty('executionMode', 'sequential');
+  });
+
   it('publishes the full host definition only on a UI session start', async () => {
     const host = fixture();
     expect(getPublishedToolDefinition('todo')).toBeUndefined();

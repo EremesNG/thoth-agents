@@ -34,6 +34,7 @@ import { fail, ok } from './tool-response.js';
 export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
   return {
     name: 'subagent_continue',
+    executionMode: 'sequential' as const,
     label: 'Subagent Continue',
     description:
       'Continue a completed, failed, or cancelled task in its exact persisted nested Pi session, keeping task_id.',

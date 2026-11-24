@@ -83,6 +83,7 @@ export const DEFAULT_PROMPT_GUIDELINES: string[] = [
 export function registerTodoTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: TOOL_NAME,
+    executionMode: 'sequential',
     label: TOOL_LABEL,
     description:
       'Use for 3+ steps, user task lists, delegated units or SDD phases; capture requirements immediately after new instructions. Create items up front; mark in_progress BEFORE starting, complete immediately when done. Parallel in_progress allowed. Skip trivial single tasks and conversation. Actions: create, update, list, get, delete, clear (reset all), batch. Lifecycle: pending → in_progress → completed; deleted is a tombstone.',

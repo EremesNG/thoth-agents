@@ -58,6 +58,10 @@ Independently review plans when selected and provide independent judgment for ar
 - `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.
 - Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
+<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>
+
 <questions>
 Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions with the material choices and a recommended default.
 </questions>

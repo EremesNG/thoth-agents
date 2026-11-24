@@ -63,6 +63,10 @@ Gather current authoritative evidence and separate documented facts from inferen
 - `.thoth/`: work/specs/constitution/history—not provider memory; no artifact mirrors.
 - Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
+<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>
+
 <questions>
 Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions as the question, the possible options and the facts for each option, without recommending one.
 </questions>

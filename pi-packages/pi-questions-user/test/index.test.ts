@@ -118,7 +118,7 @@ function questionContext(
 }
 
 function extensionHost() {
-  let tool: ReturnType<typeof createQuestionTool> | undefined;
+  const tools = new Map<string, ReturnType<typeof createQuestionTool>>();
   let active = ['read', 'ask_user_question', 'bash'];
   const handlers = new Map<
     string,
@@ -126,7 +126,7 @@ function extensionHost() {
   >();
   const pi = {
     registerTool: (definition: ReturnType<typeof createQuestionTool>) => {
-      tool = definition;
+      tools.set(definition.name, definition);
     },
     on: (
       event: string,
@@ -141,10 +141,12 @@ function extensionHost() {
   } as unknown as ExtensionAPI;
   registerQuestions(pi);
   return {
+    tools,
     get activeTools() {
       return active;
     },
     get tool() {
+      const tool = tools.get('ask_user_question');
       if (!tool) throw new Error('ask_user_question not registered');
       return tool;
     },
@@ -153,6 +155,12 @@ function extensionHost() {
     },
   };
 }
+
+it('registers the user questionnaire as sequential', () => {
+  const { tools } = extensionHost();
+  expect([...tools.keys()]).toEqual(['ask_user_question']);
+  expect(tools.get('ask_user_question')?.executionMode).toBe('sequential');
+});
 
 it('the default questionnaire submits through the editor slot without RPC dialogs', async () => {
   const ctx = questionContext(['1']);

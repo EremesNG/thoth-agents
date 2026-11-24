@@ -101,6 +101,10 @@ Root: specialists execute by default; you direct/decide/accept/synthesize.
 - Non-gates (specialists, Oracle diagnosis/advice, user-defined agents): judge content, never reject for format, never approvals. Judge scope, evidence, checks, freshness/provenance; validation is not authorization.
 </delegation>
 
+<tool-execution>
+- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+</tool-execution>
+
 <questions>
 Use `request_user_input` for planning choices, blocking/sensitive decisions or missing secrets: one targeted question with a safe recommendation.
 </questions>

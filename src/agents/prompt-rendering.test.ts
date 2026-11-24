@@ -45,6 +45,8 @@ const TURN_END_RULE =
   'Nothing wakes you after your turn ends: run checks in the foreground and finish all work before ending your turn.';
 const ROOT_READER_HANDOFF_RULE =
   'For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.';
+const DEPENDENT_TOOL_CALL_RULE =
+  "Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.";
 const ROOT_RENDERERS = [
   [
     'OpenCode',
@@ -134,6 +136,22 @@ function sectionsFor(role: AgentRoleName) {
 }
 
 describe('AI-first prompt rendering', () => {
+  test.each(
+    ROOT_RENDERERS,
+  )('tells the %s root to emit dependent tool calls in later messages', (_harness, render) => {
+    expect(render()).toContain(DEPENDENT_TOOL_CALL_RULE);
+  });
+
+  test.each(
+    HARNESS_RENDERERS,
+  )('tells every $harness specialist to emit dependent tool calls in later messages', ({
+    render,
+  }) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      expect.soft(render(role), role).toContain(DEPENDENT_TOOL_CALL_RULE);
+    }
+  });
+
   test.each(
     ROOT_RENDERERS,
   )('renders one answer-first output style in %s', (_harness, render) => {
@@ -846,13 +864,13 @@ describe('AI-first prompt rendering', () => {
   test.each([
     ...DIALECTS,
     PI_PROMPT_DIALECT,
-  ])('keeps shared specialist prompts under 5116 characters in $harness', (dialect) => {
-    // The child turn-end rule adds 116 characters including its bullet and newline.
+  ])('keeps shared specialist prompts compact in $harness', (dialect) => {
+    // The 5,116-character cap allows 201 more for the shared tool-execution section.
     for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
       expect(
         renderRolePrompt(sectionsFor(role), dialect).length,
         role,
-      ).toBeLessThan(5_116);
+      ).toBeLessThan(5_317);
     }
   });
 
@@ -1149,14 +1167,11 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      // Output-style +194 net of duplicate trims; cap +185 stays within +200.
-      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 14_010],
-      // Output-style +194 net of duplicate trims; cap +190 stays within +200.
-      [renderCodexRootInstructions(), 15_290],
-      // Output-style +194 net of duplicate trims; cap +190 stays within +200.
-      [renderClaudeCodeRootInstructions(), 14_690],
-      // Output-style +194 net of duplicate trims; cap +185 stays within +200; operator details stay routed.
-      [piRoot, 17_160],
+      // Each prior cap increases only by the 201-character tool-execution section.
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 14_211],
+      [renderCodexRootInstructions(), 15_491],
+      [renderClaudeCodeRootInstructions(), 14_891],
+      [piRoot, 17_361],
     ] as const;
     // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
     for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
@@ -1178,53 +1193,53 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "d1fd17b37deaca1bbc0a6efcb25429482be1808aee7719f8cda5cecc239170b1",
-          "13b6af9a0599f80d11fd9986652bd19c76c94e36f7112be14d9a276f56cd81f9",
-          "67579de49210ba90d802532ed9b4e0bdf325476eb18c671613d4bafff54cd13c",
-          "b5a7869f739696823d7fc01ad3c21360b3822247867e4a7e00907154b8fdf154",
-          "9e26e86b5ce6f2d8432170164dc817bec838d3cfadf20698adb44c1af4921034",
-          "d6ad64c414485dfd3c007829c9f021fc09a163ed747b4dfee22de839dc5b6858",
+          "07ed0fab39c4d0188d6ea53b8b5a176b01735d884190599d78a3a63618ca5e69",
+          "23ac486c0848e31bca06f8d1468b42b8852c611d0ac22139920e06d2712351d7",
+          "b4e496e9a52a9c9e06f6677614b42e4bd7164aebf4907310161b0246f075ce7f",
+          "755a465e6e67bd275c572aa4601dbe59bfa14824dde4b1620222d3994b6715b2",
+          "6332c16f5273c6003bd86c25e55fba4e0d7490dc90b76b2b9a499d732296e92c",
+          "8ee6eaaf7a7bdf2f8897fa6743e6402d724ae03114376cf4789e3ff0bed69f35",
         ],
       ],
       [
         "codex",
         [
-          "d9e98b505ce6d6b42c86814664280c9f6a92c0acf2bcf8289cef696b3c86abaa",
-          "6031f0dc79c4c84a6cc1f1b7b633f4f21a709a66bd2ec7d4fb75316fb44dfa0b",
-          "0a0d4930ea813cce4f415ade53480f1effbaa0730017d7e6fa6e8c017031e6af",
-          "9109286ed9b956d2bd0f4eb3c3ba13acb12436777d406779cb4512a735412a15",
-          "b97112d13d608623fccbeca844431297770c513d866d25fde6e42b620d2b88a0",
-          "92fc3ad7183a495d8cdff12e04f1d49dbcd111287d8c6278d1d039e1e6bf53a5",
+          "9d723e276890e9028a7ae0b410726fd019582751abc834ad01e877bc1f7d4de8",
+          "379089ec39e067edba770c92dafcf67fc0c38d866bdf971a49075da22172b98d",
+          "ee672655bd82797a23581702d3f4eb5c25b6c6cbed25d441a12d723d7274e127",
+          "425228371bf4b037fd95ba60ad798065474a4e7e4e286e3239ff6d6a3b2b20f3",
+          "812da6c791d9812b503f5305286eb93b0103b61b3d8bedf5f6cbbd73b5d463df",
+          "0b97f5c7a493180fcbbe1511db78756912b5b54bc190624665f3de96ce5d0faf",
         ],
       ],
       [
         "claude",
         [
-          "3473e335bbb417217e481f6877ec8bf2f8e3558453ef1da8ca598c12f9a2c32c",
-          "05036dca0225baf2acf115e15ddd8728337e35d1d73f852ab26df5062f5e4e22",
-          "84baf3978d35a237cda8891a1a10a9ed51d36df96e2a5e8195d55475a0e03c7d",
-          "84db62e7a58abff475e10bb92657c5021a729dd951547dcf1556e7f19f45250d",
-          "57a68a135c177f9fff242d51a1c5266a993dac41ddd71c8711456f83d132a4f5",
-          "6d50739075f9b4cde89e501ffaff14dec74409cba4209aab7d2a0d3ae0fafb28",
+          "62dd4c085bc26c1357c1046db5faf91414d51b3ba3f9c1bfbcb94733cc1b905b",
+          "c968843bb775196ef5d3601da1c2b8e3c41d5bc8a7181df0841a51ffffac2ef4",
+          "883b2b16bee1c069c64591d3252ae007218e7b49d935996ad18784b234fc8ed8",
+          "da4bc849bc47634bd36d25dab744e537d2f636bb2796fa8e4b1a99fa3cddd417",
+          "485d070d607a963a0b9e1bf4c3c68bb5b259837b7880b0bf2342ea6b5bd37b62",
+          "1603ea4f2a9b44af9da8ef046e23ecfc9769daf1aefc52307997b27bac7f3cc2",
         ],
       ],
     ]
   `);
 });
 
-// Creative ownership changes root and write-capable specialists only.
+// Pin the full configured prompts, including the shared tool-execution section.
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '32de798bf33ad803e7fcc395b79b052e373654fcfea617a87f5a0b0e35cb7388',
+    '7c8ea8b8afab3d13a601c6ba69cbe1647f582573a548f64458d382ef391390d7',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    'f1b62e7e434efe8437696fc69a745ced664c45e4b2a2f8567df3fbaf7df3bf8b',
+    '0160156fd58802f0be9e72eef5aa7592599240d5c63371aaa2bfe1648164fa3f',
   ],
   [
     PI_PROMPT_DIALECT,
-    '6f2048e6d74cb389581cc109ae9ea92848ab916145453324b6f8b6b030e5e5e5',
+    '38bf776835e201cd72121e9ff26509ec6907a7e8a75106060b247e403856cf19',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>
@@ -1248,8 +1263,8 @@ test('Codex hook root enforces capacity-aware scoped continuation', () => {
     'utf8',
   );
   expect(shippedPayload).toBe(payload);
-  // Output-style +194 net of duplicate trims; cap +185 stays within +200.
-  expect(shippedPayload.length).toBeLessThanOrEqual(15_210);
+  // The prior cap increases only by the 201-character tool-execution section.
+  expect(shippedPayload.length).toBeLessThanOrEqual(15_411);
   for (const rule of [
     'fork_turns: "none"',
     'role instructions from the plugin hook, not inherited history',

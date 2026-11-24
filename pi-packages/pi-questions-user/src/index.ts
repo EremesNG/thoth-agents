@@ -28,6 +28,7 @@ export function createQuestionTool(
   const rendering = createQuestionRenderBridge();
   return {
     name: TOOL_NAME,
+    executionMode: 'sequential',
     exposure: 'model-only',
     label: 'Ask User Question',
     description:

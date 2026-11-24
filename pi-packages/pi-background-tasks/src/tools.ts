@@ -176,6 +176,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_spawn",
+    executionMode: "sequential",
     exposure: "direct",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_spawn"),
@@ -193,6 +194,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_watch",
+    executionMode: "sequential",
     exposure: "direct",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_watch"),
@@ -249,6 +251,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   occasional.register({
     name: "bg_task_stop",
+    executionMode: "sequential",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_stop"),
     label: "BG Stop",
@@ -264,6 +267,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   occasional.register({
     name: "bg_task_clear",
+    executionMode: "sequential",
     namespace: BACKGROUND_NAMESPACE,
     ...backgroundToolRenderers("bg_task_clear"),
     label: "BG Clear",

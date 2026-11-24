@@ -324,16 +324,17 @@ describe('AI-first prompt rendering', () => {
   test.each(
     ROOT_RENDERERS,
   )('anchors user-facing language to real human messages and explicit requests in %s', (_harness, render) => {
+    const prompt = render();
     const workflow =
-      render().match(/<sdd-workflow>([\s\S]*?)<\/sdd-workflow>/)?.[1] ?? '';
+      prompt.match(/<sdd-workflow>([\s\S]*?)<\/sdd-workflow>/)?.[1] ?? '';
     expect(workflow).toMatch(
       /Replies\/questions\/options: use the last real human message language \(including question-tool answers\)/i,
     );
     expect(workflow).toMatch(
       /explicit language requests persist until human switches/i,
     );
-    expect(workflow).toMatch(
-      /Delegation\/records\/code\/artifacts may stay English/i,
+    expect(prompt).not.toMatch(
+      /Delegation\/records\/code\/artifacts may\s+stay English/i,
     );
   });
 
@@ -1177,7 +1178,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "b29f876aa07041deca1fdb8ac1fdc278d4d01b87ed7f41c1311139e6065ce8b3",
+          "d1fd17b37deaca1bbc0a6efcb25429482be1808aee7719f8cda5cecc239170b1",
           "13b6af9a0599f80d11fd9986652bd19c76c94e36f7112be14d9a276f56cd81f9",
           "67579de49210ba90d802532ed9b4e0bdf325476eb18c671613d4bafff54cd13c",
           "b5a7869f739696823d7fc01ad3c21360b3822247867e4a7e00907154b8fdf154",
@@ -1188,7 +1189,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "codex",
         [
-          "34b8cba56fffe570dbf8e2e86b179df3bdfefc28290978060a4c266e6298d3a6",
+          "d9e98b505ce6d6b42c86814664280c9f6a92c0acf2bcf8289cef696b3c86abaa",
           "6031f0dc79c4c84a6cc1f1b7b633f4f21a709a66bd2ec7d4fb75316fb44dfa0b",
           "0a0d4930ea813cce4f415ade53480f1effbaa0730017d7e6fa6e8c017031e6af",
           "9109286ed9b956d2bd0f4eb3c3ba13acb12436777d406779cb4512a735412a15",
@@ -1199,7 +1200,7 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "claude",
         [
-          "2a0846a7d4195db2585fed600ffb69276c637e964330d7d0a65f0cb4c44a3cfd",
+          "3473e335bbb417217e481f6877ec8bf2f8e3558453ef1da8ca598c12f9a2c32c",
           "05036dca0225baf2acf115e15ddd8728337e35d1d73f852ab26df5062f5e4e22",
           "84baf3978d35a237cda8891a1a10a9ed51d36df96e2a5e8195d55475a0e03c7d",
           "84db62e7a58abff475e10bb92657c5021a729dd951547dcf1556e7f19f45250d",
@@ -1215,15 +1216,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '6d8a9943ceaabb0016b6d430632776289a27a8cca7b614cd777dd1ea1ce5fef6',
+    '32de798bf33ad803e7fcc395b79b052e373654fcfea617a87f5a0b0e35cb7388',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '8994f66c9ac93efc0e1a928575c508593bfb109e1f0bace17cf58e945b800be1',
+    'f1b62e7e434efe8437696fc69a745ced664c45e4b2a2f8567df3fbaf7df3bf8b',
   ],
   [
     PI_PROMPT_DIALECT,
-    '250f00c27b635cf55f7852401c9fa2b752d4b8f711de3d49fe7b10d4fe2d3b9d',
+    '6f2048e6d74cb389581cc109ae9ea92848ab916145453324b6f8b6b030e5e5e5',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>

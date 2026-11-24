@@ -429,7 +429,7 @@ The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jo
 
 ### Requirement: Reply in the user's language
 
-Default root orchestrator instructions for every supported harness MUST direct user-facing replies, questions and options to use the language of the user's most recent real message and keep it until the user switches; human answers to question tools and explicit language requests count as real user messages, an explicit language request takes precedence over the latest message's language and persists until the human switches, and English tool results, notifications, reminders and injected context never switch the reply language; delegated assignments, change records, code and generated artifacts MAY remain in English.
+Default root orchestrator instructions for every supported harness MUST direct user-facing replies, questions and options to use the language of the user's most recent real message and keep it until the user switches; human answers to question tools and explicit language requests count as real user messages, an explicit language request takes precedence over the latest message's language and persists until the human switches, and English tool results, notifications, reminders and injected context never switch the reply language.
 
 #### Scenario: Reply in the user's language
 

@@ -13,11 +13,22 @@ export function workPanelUI() {
   let text = "";
   let detail: Component | undefined;
   let finishDetail: (() => void) | undefined;
+  const foreign: Component = { render: () => [], invalidate() {} };
   const tui = {
     terminal: { rows: 50, columns: 120, write(data: string) { uiCalls.push(data); } },
     requestRender() {},
     getFocusedComponent: () => focused,
-    hasOverlay: () => overlay,
+    setFocus: (target: Component | null) => { focused = target; },
+    // pi-core inspects the tree and visible overlays before routing editor input.
+    get children() {
+      return editor ? [editor] : [];
+    },
+    get overlayStack() {
+      return overlay
+        ? [{ component: detail ?? foreign, preFocus: editor ?? null, hidden: false }]
+        : [];
+    },
+    isOverlayVisible: (entry: { hidden: boolean }) => !entry.hidden,
   };
   const ui = {
     theme: { fg: (_role: string, value: string) => value },

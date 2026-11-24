@@ -528,7 +528,7 @@ describe('message render kit discovery', () => {
 describe('Agents work-panel render kit discovery', () => {
   it.each([
     100, 80, 50, 35, 24,
-  ])('preserves compact metrics at width %i when the KIT is installed and withdrawn', async (width) => {
+  ])('fits prioritized metrics at width %i when the KIT is installed and withdrawn', async (width) => {
     const clock = vi
       .spyOn(Date, 'now')
       .mockReturnValue(Date.parse('2026-01-01T00:00:12Z'));
@@ -577,11 +577,28 @@ describe('Agents work-panel render kit discovery', () => {
       expect(heading).toHaveBeenCalled();
       expect(tree).toHaveBeenCalled();
       for (const output of [native, lines]) {
-        expect(output.join(' ')).toContain('⠋');
-        for (const metric of output === native
-          ? metrics
-          : ['* 5', '↑20k ↓10k', 'ctx 62.0%', 'tok/s 75', '◷ 12s'])
-          expect(output.join(' ')).toContain(metric);
+        const isNative = output === native;
+        const text = output.join(' ');
+        expect(text).toContain('⠋');
+        if (width >= 80) {
+          for (const metric of isNative
+            ? metrics
+            : ['* 5', '↑20k ↓10k', 'ctx 62.0%', 'tok/s 75', '◷ 12s'])
+            expect(text).toContain(metric);
+        } else {
+          // Narrow entries get one metric line, shedding tools and tokens first.
+          expect(output).toHaveLength(4); // heading, identity, metrics, hint
+          expect(text).not.toContain(isNative ? 'tools 5' : '* 5');
+          expect(text).not.toContain('↑20k ↓10k');
+          const continuation = isNative
+            ? width === 24
+              ? 'ctx 62.0% · 75 tok/…'
+              : `ctx 62.0% · 75 tok/s · ${width === 35 ? 'elapsed…' : 'elapsed 12s'}`
+            : width === 24
+              ? 'ctx 62.0% · tok/…'
+              : 'ctx 62.0% · tok/s 75 · ◷ 12s';
+          expect(output[2].trim()).toBe(continuation);
+        }
         expect(
           output.every((line: string) => visibleWidth(line) <= width),
         ).toBe(true);

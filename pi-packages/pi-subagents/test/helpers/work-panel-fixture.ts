@@ -15,12 +15,31 @@ export function workPanelSession(cwd: string, sessionId = 'work-session') {
     invalidate() {},
   });
   const listeners = new Set<(data: string) => any>();
+  const foreign = { render: () => [], invalidate() {}, handleInput: vi.fn() };
   const tui = {
     mode: 'fullscreen',
     terminal: { rows: 40 },
     requestRender: vi.fn(),
     getFocusedComponent: () => focused,
-    hasOverlay: () => overlay,
+    setFocus: (target: unknown) => {
+      focused = target;
+    },
+    // pi-core inspects the tree and visible overlays before routing editor input.
+    get children() {
+      return editor ? [editor] : [];
+    },
+    get overlayStack() {
+      return overlay
+        ? [
+            {
+              component: component ?? foreign,
+              preFocus: editor ?? null,
+              hidden: false,
+            },
+          ]
+        : [];
+    },
+    isOverlayVisible: (entry: { hidden: boolean }) => !entry.hidden,
   };
   const theme = { fg: (_role: string, value: string) => value };
   const ui = {
@@ -79,7 +98,7 @@ export function workPanelSession(cwd: string, sessionId = 'work-session') {
       focused = editor;
     },
     focusOther: () => {
-      focused = { handleInput: vi.fn() };
+      focused = foreign;
     },
     focusPanel: () => {
       focused = component;

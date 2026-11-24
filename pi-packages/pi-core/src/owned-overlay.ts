@@ -84,7 +84,8 @@ function readHandleMap(tui: TUI) {
   if (handles === UNKNOWN_TUI) return UNKNOWN_TUI;
   return guardedTuiRead<Map<Component, OverlayHandle> | undefined>(() => {
     const map: unknown = handles.get(tui);
-    return map === undefined || map instanceof Map ? map : UNKNOWN_TUI;
+    if (map === undefined) return undefined;
+    return map instanceof Map ? map : UNKNOWN_TUI;
   });
 }
 

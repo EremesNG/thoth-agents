@@ -4,9 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-24
+
 ### Added
 
 - Shared per-session native tool activity registry for tracking in-flight provider tools across independently loaded package copies.
+- Let Work panel providers opt into a single stats continuation row by dropping lower-priority metrics before truncating.
 
 ### Changed
 

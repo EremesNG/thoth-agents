@@ -5,13 +5,25 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
-### Fixed
+## [0.17.0] - 2026-11-24
 
-- Apply the tool stall budget to provider-native tools running in subagent sessions and include them in stall diagnostics.
+### Added
+
+- Opt into ordered fallback models for subagents. Eligible provider errors retry in the same session, and results show each model attempt.
+- View effective fallback chains and their sources in `/subagents-model`, and edit chains for saved profiles.
 
 ### Changed
 
 - Support read-only render output in subagent transcripts and tool cards on Pi 1.6.
+- Raise the default subagent `timeout_ms` to 30 minutes.
+- Keep subagent entries to at most two rows in narrow Work panels, dropping lower-priority metrics before truncating.
+
+### Fixed
+
+- Apply the tool stall budget to provider-native tools running in subagent sessions and include them in stall diagnostics.
+- Hide the “agent settled” transcript row when an attempt yields a final response; keep it for attempts without one.
+- Preserve final responses through post-turn compaction instead of reporting a stale tool failure.
+- Enforce the total timeout even if a model reports success at or after the deadline.
 
 ## [0.16.0] - 2026-11-15
 

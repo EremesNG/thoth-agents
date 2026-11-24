@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-24
+
 ### Fixed
 
 - Keep an already scheduled or in-flight command watch on its existing schedule when it is resumed, instead of forcing an immediate poll.

@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-24
+
 ### Added
 
 - Guard native `run_command` in non-interactive sessions (`mode !== "tui"`) via a dedicated `PreToolUse` hook on both engines when `runCommandGuard` (default `true`) is enabled and an active, non-hidden Pi `bash` tool exists, routing shell commands to Pi's bridged `bash` tool (exposed even when built-in-source while guarded). Guard state (hooks, prompt note, and built-in `bash` source admission) is frozen once per Pi session lifecycle; mid-session setting or `bash` activation changes apply on the next session, while hiding or deactivating `bash` still removes it from the live MCP catalog immediately. Explicit `systemPrompt: false` suppresses guard-refresh prompt notes while the `PreToolUse` hook still enforces.
@@ -13,16 +15,14 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 - After successful Pi compaction, rotate the Antigravity conversation and send a one-shot summary and retained-context handoff on both engines, independent of the ordinary digest setting. Older turns cannot restore or delete the fresh binding; stranded results from rotated conversations remain pollable without being re-sent.
 - Run Pi summary helpers in separate, bounded connections with their own verified gate delivery. Helper bridge tools and approvals are denied without involving the active session.
-
 - Support Pi 1.6 render output in native event cards.
-
+- In non-interactive Pi sessions, guide Antigravity to run long commands in the foreground rather than recommending background work.
 - Suspend the inactivity guard during native tool execution on both carriers, and raise the default headless turn cap to 30 minutes.
 - Publish in-flight native tools by Pi session so subagent watchdogs apply tool-aware stall budgets, without duplicating identified Pi-bridge calls. For stream-json frames lacking server identity, a unique matching bridge park is inferred; an unrelated concurrent unidentified MCP call with the same target remains indistinguishable.
 
 ### Fixed
 
 - Avoid false Pi context-overflow detection when ACP reports occupancy within the model window but aggregated input and cache reads exceed it. Billing cost and total-token reporting are unchanged.
-
 - **Bridge POSTs preserve UTF-8 across HTTP chunks.** Approval and MCP requests decode the complete byte-limited body once. Malformed UTF-8 is rejected before a tool is dispatched or an approval is parked.
 - **Approval gate hardening (convergence round 1).** Windows UNC targets must name a server and a share (`\servershare...`); server-only forms are denied. The Pi approval dialog for an unknown native tool now shows the complete serialized arguments (no silent 1,000-character cutoff). Gated dispatch rechecks the owned hook groups and handlers a second time immediately before the prompt write on both carriers, refreshing the `run_command` guard exemption and refusing visibly if either was lost during async startup.
 - **ACP native failure diagnostics cover attested ACP names.** `read_file` joins the native inventory, and an explicit tool name carried on a failed update is used when the start record is missing; MCP-marked failures stay excluded.
@@ -32,7 +32,6 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 - **Hook handler always emits a verdict before agy's hook timeout.** One overall deadline (park budget + 20s, at least 30s below the declared hook `timeout`) covers stdin reading and every bridge wait; a valid Pi allow/deny is forwarded, anything else denies.
 - **ACP turns whose native tool failed no longer settle as an empty success (upstream `9ba4314`, `b5aa839`).** A non-aborted OK or unknown-stop-reason turn with no model text and a positively identified native tool failure settles with a visible diagnostic naming the failed tool and pointing to the agy conversation transcript. The diagnostic uses a fixed message and never includes agy's failure text; unknown stop reasons are logged. MCP failures (including metadata-less foreign ones) and failures of unknown provenance are unchanged.
 - **Quota-notice-only turns settle as retryable provider errors (upstream `9d20772`).** An OK handle on either transport whose only output is an account-quota notice becomes `agy rate limit (ResourceExhausted): Antigravity quota exhausted; resets in …` at both the main and late-result redelivery settlement, classified before fallback output or any binding/watermark mutation (an existing binding is never deleted or replaced). Wording is accepted by Pi's retry classifier and avoids `quota exceeded`/billing wording.
-
 - **Approval display, startup consistency and ACP diagnostics.** Unknown-tool approvals hard-wrap reversible escaped JSON without dropping whitespace. Gate staging, verification and approval wiring use one startup mode.
 - **Convergence round 3.** The unknown-tool approval view unlocks Yes only after every body row has actually been rendered in view at the current width (End skipping the middle, key input without render, or a resize re-wrap no longer grant coverage). A guard-only staging failure is tolerated only when the edit gate is enabled; with the gate off it fails startup visibly as before. A non-aborted `max_tokens` turn with a native failure and no model text now surfaces the native-failure diagnostic. `_meta.mcp.tool` without a server still marks MCP provenance (never native), even when the tool name collides with a native name. Quota detection enumerates the attested account-quota headlines (Individual quota reached, Daily quota reached, Quota exhausted) with no generic prefix, so "Storage quota limit reached." or "Disk quota exceeded." stay ordinary text.
 - **Convergence round 2.** The unknown-tool approval view is scrollable and bounded to the viewport (80x24 verified): Yes/No stay visible, the full raw arguments are reachable, Yes is locked until the tail has been in view, and Enter on the default No denies. A guard-only staging failure at startup no longer aborts bridge startup: the edit gate is still wired with the guard unverified, so `run_command` is denied with the Pi bash redirect. An explicit failed-update tool name now wins over a generic start name (`read` vs `read_file`) for the native failure diagnostic; MCP exclusions are unchanged. Quota detection matches only whole attested notice forms (the "Individual quota reached ..." notice, "Daily quota reached for this model. Try again tomorrow.", "Quota exhausted. Resets in ..."); keyword prose is ordinary text.

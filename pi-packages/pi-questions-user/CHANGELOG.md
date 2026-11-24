@@ -4,6 +4,8 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-24
+
 ### Changed
 
 - Support read-only Markdown render output in questionnaire previews on Pi 1.6.

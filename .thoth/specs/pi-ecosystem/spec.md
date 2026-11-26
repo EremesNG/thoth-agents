@@ -895,3 +895,13 @@ Thoth-owned Pi tool definitions with side effects (subagent lifecycle, messaging
 - **GIVEN** a Windows Pi session with Thoth contained-shell and any provider
 - **WHEN** one assistant message calls `edit` and then `bash`; THEN `bash` starts only after `edit` completes; and WHEN one message calls only read-only tools
 - **THEN** they may execute concurrently
+
+### Requirement: Claude bridge delivers complete non-streaming fallback tool batches
+
+`@thoth-agents/pi-claude-bridge` MUST, on a Claude Code configuration whose frame-before-dispatch ordering it has qualified, deliver every served tool call of a Claude Code non-streaming fallback reply to Pi in exactly one tool-use turn published only at a verified completion fence; on any configuration it MUST end the turn with an explicit error, never a successful tool-use turn, when it has observed a relevant failure before publishing or when no completion evidence arrives within its bound; rejected-call recording stays as already required.
+
+#### Scenario: Claude bridge delivers complete non-streaming fallback tool batches
+
+- **GIVEN** a qualified configuration where Claude Code retried an overloaded streaming request and answered with a non-streaming reply containing three tool calls
+- **WHEN** the bridge receives the reply as separate same-id assistant frames and Claude Code dispatches the first call
+- **THEN** Pi executes all three calls in one turn, whereas an error result or Claude Code rejection observed before publishing ends the turn with one explicit error carrying an observed actionable cause and no tool runs, and a missing fence within the bound or an unqualified configuration ends the turn with an explicit error instead of hanging or publishing success 

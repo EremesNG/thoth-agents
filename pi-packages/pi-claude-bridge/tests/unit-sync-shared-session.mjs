@@ -159,7 +159,10 @@ describe("narration session reuse and imports", () => {
 		c.resetTurnState(model);
 		const stream = c.currentPiStream = createAssistantMessageEventStream();
 		const completed = { ...narrationSdk, uuid: answerId };
-		await __test.consumeQuery((async function* () { yield completed; })(), new Map(), model, () => false, c);
+		await __test.consumeQuery((async function* () {
+			yield completed;
+			yield { type: "result", subtype: "success", is_error: false, result: "" };
+		})(), new Map(), model, () => false, c);
 		__test.finalizeCurrentStream(c);
 		const output = await stream.result();
 		assert.deepEqual(output.content, narration().content);

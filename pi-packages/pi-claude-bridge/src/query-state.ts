@@ -7,6 +7,8 @@
 // Extracted from index.ts so tests can import without activating the extension.
 
 import type { AssistantMessage, AssistantMessageEventStream, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { McpCallIngress, McpRequestId, QueryProcess } from "./query-process.js";
 import type { McpResult } from "./extract-tool-results.js";
 import type { PromptStream } from "./prompt-stream.js";
 import { LiveRecording } from "./session-sync.js";
@@ -39,6 +41,17 @@ export interface AssistantStep {
 	emitted?: { digest: string; index: number; template: AssistantMessage; ids: string[] };
 }
 
+export interface FallbackBatch {
+	state: "Collecting" | "ReadyLive" | "Committed" | "AwaitReplacement" | "Failed" | "Cancelled";
+	readonly stream: AssistantMessageEventStream;
+	readonly process: QueryProcess | undefined;
+	readonly messageId: string;
+	readonly frames: Extract<SDKMessage, { type: "assistant" }>[];
+	readonly tools: Map<string, { name: string; sequence?: number }>;
+	lastSequence?: number;
+	fence?: { toolUseId: string; sequence: number };
+}
+
 export class QueryContext {
 	// Query-scoped (fully isolated per query)
 	activeQuery: unknown | null = null;
@@ -54,17 +67,30 @@ export class QueryContext {
 	lastAssistantMessageId: string | undefined;
 	turnAssistantIds: string[] = [];
 	/** Synchronous progress capture before killing/discarding this query. */
-	commitRecording: ((dirty: boolean) => void) | null = null;
+	commitRecording: ((dirty: boolean, saveAfterExit?: boolean) => void) | null = null;
 	stopProcess: (() => void) | null = null;
 	/** Abandoned after a history rewrite or fatal tool rejection. Its completion
 	 *  must not touch the session state or pi stream: a replacement query has
 	 *  rebuilt both, or the rejection has already committed its final recording.
-	 *  A context runs at most one SDK query (every fresh query gets a new one),
-	 *  so this marks that query abandoned too. */
+	 *  This abandons the whole context, including a hookless SDK launch retry. */
 	discarded = false;
+	/** Terminal failure observed before the SDK iterator settles. */
+	observedFailure: Error | undefined;
+	/** One server per SDK launch, including the hookless retry. A genuine close
+	 *  rules out fallback tool publication for the rest of that generation. */
+	mcpGeneration: { closeRequested: boolean; disconnect?: Error } | undefined;
+	get mcpDisconnect(): Error | undefined { return this.mcpGeneration?.disconnect; }
+	requestMcpClose(): void {
+		if (this.mcpGeneration) this.mcpGeneration.closeRequested = true;
+	}
+	/** Stdout ended; only the SDK's clean exhaustion can confirm success. */
+	outputEnded = false;
+	failLiveQuery: ((error: unknown) => void) | null = null;
 	sawResult = false;
 	pendingToolCalls = new Map<string, PendingToolCall>();
 	pendingResults = new Map<string, McpResult>();
+	/** Ids whose Pi results reached an MCP handler and have not been echoed by the CLI. */
+	unacknowledgedPiToolResults = new Set<string>();
 	/** Pi names whose advertised Claude schema nests a root union under input.
 	 *  Query-scoped: an ordinary tool's own input property must never be unwrapped. */
 	wrappedToolNames = new Set<string>();
@@ -74,6 +100,8 @@ export class QueryContext {
 	turnToolCallIds: string[] = [];
 	/** Query-lifetime ids dispatched by Claude Code to our MCP handler. */
 	dispatchedToolCalls = new Set<string>();
+	/** Published identities survive continuation stream resets and late assistant echoes. */
+	publishedToolCalls = new Map<string, string>();
 	/** Streaming-input handle for the active query — how steers reach CC mid-turn. */
 	promptStream: PromptStream | null = null;
 	/** Steers written or awaiting a write, not yet incorporated into a turn. */
@@ -125,9 +153,39 @@ export class QueryContext {
 	turnStreamOpen = false;
 	/** turnBlocks length at that message_start: where an abandoned attempt's blocks begin. */
 	turnStreamBlockStart = 0;
-	/** API message id of the non-streaming fallback being delivered from `assistant`
-	 *  messages. The SDK hands it over one block per message, all under this id. */
-	turnFallbackMessageId: string | undefined;
+	queryProcess: QueryProcess | undefined;
+	fallbackQualified = false;
+	qualifiedFallbackRuntime = false;
+	fallbackBatch: FallbackBatch | undefined;
+	fallbackWatchdog: ReturnType<typeof setTimeout> | undefined;
+	/** The first raw fallback fragment after each not-yet-reduced response boundary. */
+	rawFallbackDeadlines: { sequence: number; expiresAt: number }[] = [];
+	fallbackDispatches = new Map<string, { name: string; ingress: McpCallIngress; requestId: McpRequestId }>();
+	// Provisional until a served tool is staged in this Pi stream and attempt.
+	fallbackViolation: Error | undefined;
+	fallbackAttempt = 0;
+	onFallbackDecision?: (sequence: number, decision: string) => void;
+	fallbackRetrySequence = 0;
+	/** Late frames/callbacks for a retried response cannot participate in a new attempt. */
+	invalidatedFallbackMessageIds = new Set<string>();
+	invalidatedFallbackToolIds = new Set<string>();
+	checkFallbackGate: (() => void) | undefined;
+
+	get pendingFallback(): FallbackBatch | undefined {
+		const batch = this.fallbackBatch;
+		return batch && (batch.state === "Collecting" || batch.state === "ReadyLive" || batch.state === "AwaitReplacement") ? batch : undefined;
+	}
+
+	finishFallback(state: "Committed" | "Failed" | "Cancelled"): void {
+		clearTimeout(this.fallbackWatchdog);
+		this.fallbackWatchdog = undefined;
+		this.rawFallbackDeadlines = [];
+		const batch = this.pendingFallback;
+		if (!batch) return;
+		batch.state = state;
+		batch.frames.length = 0;
+		batch.tools.clear();
+	}
 
 	get turnBlocks(): Array<any> {
 		if (!this.turnOutput) throw new Error("turnBlocks accessed before resetTurnState");
@@ -143,9 +201,14 @@ export class QueryContext {
 		for (const pending of this.pendingToolCalls.values()) pending.resolve({ content: [{ type: "text", text: reason }] });
 		this.pendingToolCalls.clear();
 		this.pendingResults.clear();
+		this.unacknowledgedPiToolResults.clear();
 	}
 
 	resetTurnState(model: Model<any>): void {
+		this.finishFallback("Cancelled");
+		this.fallbackBatch = undefined;
+		this.fallbackViolation = undefined;
+		this.fallbackDispatches.clear();
 		this.turnOutput = newAssistantOutput(model, "", "stop");
 		this.lastAssistantMessageId = undefined;
 		this.turnAssistantIds = [];
@@ -156,7 +219,6 @@ export class QueryContext {
 		this.turnStreamMessageId = undefined;
 		this.turnStreamOpen = false;
 		this.turnStreamBlockStart = 0;
-		this.turnFallbackMessageId = undefined;
 		// turnToolCallIds is NOT reset — it persists across tool-result delivery
 		// callbacks within the same assistant message so results can be routed to
 		// this query while its handlers are still pending.

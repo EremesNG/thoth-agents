@@ -23,7 +23,14 @@ for (const timing of ["before-stop", "after-stop", "nonstreaming"]) it(`complete
 	const event = (event) => ({ type: "stream_event", parent_tool_use_id: null, event });
 	const completed = { type: "assistant", parent_tool_use_id: null, uuid: "assistant-uuid", message: { id: "msg_tools", model: model.id, content: blocks } };
 	const sdk = (async function* () {
-		if (timing === "nonstreaming") { yield completed; return; }
+		if (timing === "nonstreaming") {
+			const ingress = { sequence: 2, controlRequestId: "dispatch" };
+			c.fallbackQualified = true;
+			c.queryProcess = { reducedWatermark: 2, ingressWatermark: 2, acknowledge: () => 1, getMcpCall: () => ingress };
+			c.fallbackDispatches.set("union", { name: "Actions", ingress, requestId: 1 });
+			yield completed;
+			return;
+		}
 		yield event({ type: "message_start", message: { id: "msg_tools" } });
 		for (const [index, block] of blocks.entries()) {
 			yield event({ type: "content_block_start", index, content_block: { ...block, input: {} } });

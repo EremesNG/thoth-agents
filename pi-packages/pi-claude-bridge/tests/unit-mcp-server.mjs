@@ -8,6 +8,7 @@
  * actually receives rather than an intermediate representation.
  */
 import { describe, it, before } from "node:test";
+import { setImmediate } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { createToolServer } from "../src/mcp-server.js";
 import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -167,6 +168,28 @@ describe("MCP tool schema advertisement", () => {
 	it("preserves anyOf branches", () => {
 		assert.deepStrictEqual(listed.properties.either.anyOf, [{ type: "string" }, { type: "number" }]);
 	});
+});
+
+it("suppresses a raw protocol error echo, but not a transport send failure", async () => {
+	const errors = [];
+	let ordered = true;
+	const server = createToolServer("custom-tools", [], undefined, (error) => errors.push(error), () => ordered);
+	const transport = { start: async () => {}, close: async () => {}, send: async () => { throw new Error("send failed"); } };
+	await server.instance.connect(transport);
+	try {
+		const unsolicited = { jsonrpc: "2.0", id: 9, result: {} };
+		assert.match(server.inspectProtocolMessage(unsolicited).message, /unknown message ID/);
+		transport.onmessage(unsolicited);
+		assert.deepEqual(errors, []);
+		transport.onmessage({ jsonrpc: "2.0", id: 10, method: "tools/list" });
+		await setImmediate();
+		assert.equal(errors.length, 1);
+		assert.match(errors[0].message, /send failed/);
+		ordered = false;
+		transport.onmessage(unsolicited);
+		assert.equal(errors.length, 2);
+		assert.match(errors[1].message, /unknown message ID/);
+	} finally { await server.instance.close(); }
 });
 
 // Local root unions preserve constraints under input; the tests above cover that contract.

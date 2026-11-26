@@ -10,8 +10,7 @@
  * the MCP handler for results that never came, and the turn sat on "Working" until
  * the user aborted it.
  *
- * A fallback with parallel tool calls still loses all but the first: the stream ends
- * on the first tool_use block, and nothing marks the message's last block (PR #225).
+ * See unit-fallback-parallel-tool-calls.mjs for multi-call fallback coverage.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -35,9 +34,31 @@ function makeCtx() {
 	return c;
 }
 
-async function consume(c, messages) {
-	async function* gen() { for (const m of messages) yield m; }
-	await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c);
+async function consume(c, messages, fenceToolId) {
+	let reduced = 0;
+	const ingress = { sequence: messages.length + 1, controlRequestId: "dispatch" };
+	const server = __test.buildMcpServers([{ name: "bash", description: "", parameters: { type: "object" } }], c)["custom-tools"].instance;
+	const transport = { start: async () => {}, close: async () => {}, send: async () => {} };
+	await server.connect(transport);
+	c.fallbackQualified = true;
+	c.queryProcess = {
+		get ingressWatermark() { return reduced; },
+		get reducedWatermark() { return reduced; },
+		acknowledge() { return ++reduced; },
+		getMcpCall: () => ingress,
+	};
+	async function* gen() {
+		yield* messages;
+		if (fenceToolId) {
+			++reduced;
+			transport.onmessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+				name: "bash", arguments: {}, _meta: { "claudecode/toolUseId": fenceToolId },
+			} });
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+	}
+	try { await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c); }
+	finally { c.releasePendingToolCalls("test complete"); await server.close(); }
 }
 
 const streamEvent = (event) => ({ type: "stream_event", event });
@@ -62,7 +83,7 @@ describe("non-streaming fallback after a stalled stream", () => {
 	it("delivers the fallback in place of the dead stream and ends the turn on its tool call", async () => {
 		const c = makeCtx();
 		const stream = c.currentPiStream;
-		await consume(c, [...stalledStream("msg_dead"), ...fallbackMessages("msg_fallback")]);
+		await consume(c, [...stalledStream("msg_dead"), ...fallbackMessages("msg_fallback")], "toolu_a");
 
 		// The dead stream's partial thinking and tool call are dropped, not replayed.
 		assert.deepStrictEqual(c.turnOutput.content.map((b) => [b.type, b.id]),

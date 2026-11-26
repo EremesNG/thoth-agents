@@ -63,12 +63,29 @@ async function deliver(t, messages, history = [{ role: "user", content: "Use the
 	const registered = provider(t);
 	__test.setQuery((request) => {
 		inspectQuery(request);
+		const fallbackId = messages[0]?.type === "assistant" && messages[0].message.content[0].id;
+		const transport = { start: async () => {}, close: async () => {}, send: async () => {} };
+		const server = request.options.mcpServers["custom-tools"].instance;
 		const sdk = (async function* () {
-			for (const message of messages) yield message;
+			if (fallbackId) {
+				const c = [...__test.activeQueryContexts].find((ctx) => ctx.piSessionId === t.name);
+				await server.connect(transport);
+				let sequence = 0;
+				const ingress = { sequence: messages.length + 1, controlRequestId: "dispatch" };
+				c.fallbackQualified = true;
+				c.queryProcess = { get ingressWatermark() { return sequence; }, get reducedWatermark() { return sequence; },
+					acknowledge: () => ++sequence, getMcpCall: () => ingress };
+				yield* messages;
+				++sequence;
+				transport.onmessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+					name: "Actions", arguments: {}, _meta: { "claudecode/toolUseId": fallbackId },
+				} });
+				await new Promise((resolve) => setImmediate(resolve));
+			} else yield* messages;
 			yield { type: "result", subtype: "success", is_error: false, result: "done" };
 		})();
 		sdk.interrupt = async () => {};
-		sdk.close = () => {};
+		sdk.close = () => { if (fallbackId) return server.close(); };
 		return sdk;
 	});
 	const result = await registered.streamSimple(registered.models[0], { messages: history, tools }, { sessionId: t.name }).result();

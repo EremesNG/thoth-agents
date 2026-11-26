@@ -63,8 +63,8 @@ function preferMuslBinary(): boolean {
 	return report != null && report.header?.glibcVersionRuntime === undefined;
 }
 
-// Mirrors the SDK 0.3.308 native resolver (not publicly exported). Resolve from
-// the SDK entry, not the bridge, so optional packages match the installed SDK.
+// Mirrors the pinned SDK 0.3.321 native resolver (not publicly exported). Resolve
+// from the SDK entry so optional packages match the installed SDK.
 export function resolveSdkClaudeExecutable({ platform = process.platform, arch = process.arch, preferMusl, resolve = resolveSdkPackage, exists = nodeFs.existsSync }: {
 	platform?: string; arch?: string; preferMusl?: boolean;
 	resolve?: (specifier: string) => string; exists?: (path: string) => boolean;
@@ -120,6 +120,8 @@ export function spawnClaudeRuntime({ command, args, ...spawnOptions }: SpawnOpti
 	// The provider's custom spawner owns stderr. Consume it even without
 	// a callback, and decode across chunks just like the SDK's built-in launcher.
 	child.stderr.setEncoding("utf8");
-	child.stderr.on("data", (data: string) => stderr?.(data));
+	const onStderr = (data: string) => stderr?.(data);
+	child.stderr.on("data", onStderr);
+	child.once("close", () => child.stderr.off("data", onStderr));
 	return child;
 }

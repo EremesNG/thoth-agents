@@ -46,7 +46,7 @@ const TURN_END_RULE =
 const ROOT_READER_HANDOFF_RULE =
   'For root LLM: terse key: value; answer first. Keep evidence anchors/uncertainty; omit repeats, logs, empty non-gate fields. Aim ≤2k chars; completeness wins. Gates: unchanged JSON.';
 const DEPENDENT_TOOL_CALL_RULE =
-  "Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.";
+  'Same-message tool calls may run concurrently. Emit dependent calls in a later message after the needed result or side effect.';
 const ROOT_RENDERERS = [
   [
     'OpenCode',
@@ -157,11 +157,11 @@ describe('AI-first prompt rendering', () => {
   )('renders one answer-first output style in %s', (_harness, render) => {
     const prompt = render();
     const style = `<output-style>
-- Answer first; no preamble, restated request or recap.
-- Default ≤6 sentences or ≤5 bullets; longer only if content demands.
-- No tool-call narration; update only at phase starts or plan-changing facts, ≤2 sentences.
-- Brevity never reduces work depth, evidence, verification or required contract/gate fields.
-- Use child answers/anchors directly; request only missing decision-critical evidence.
+- Answer first; no preamble, restatement or recap.
+- ≤6 sentences or ≤5 bullets unless content demands more.
+- No tool-call narration. Updates: ≤2 sentences, only at phase starts or plan-changing facts.
+- Keep work depth, evidence, verification and required contract/gate fields.
+- Use child answers/anchors directly; ask only for missing decision-critical evidence.
 </output-style>`;
     expect(prompt.match(/<output-style>/g)).toHaveLength(1);
     expect(prompt).toContain(`</operating-model>\n\n${style}`);
@@ -615,10 +615,10 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     expect(prompt).toContain(
-      'Native execution and terminal results are the sole authority',
+      'Only native execution and terminal results are authoritative',
     );
     expect(prompt).toContain(
-      'never polling, timers or an invented executor, queue, scheduler, wait API or lifecycle mirror',
+      'never polling, timers, custom executors, queues, schedulers, wait APIs or lifecycle mirrors',
     );
     expect(prompt).toContain('native execution state stays with the harness');
     expect(prompt).toContain('Recover: record, relevant diff/dirty files');
@@ -662,10 +662,10 @@ describe('AI-first prompt rendering', () => {
       expect(prompt).toContain(
         'Freeze relevant inputs before final validation',
       );
-      expect(prompt).toContain('rerun only checks invalidated by later edits');
-      expect(prompt).toContain('no status/log polling merely to wait');
+      expect(prompt).toContain('rerun only checks later edits invalidate');
+      expect(prompt).toContain('no status/log polling just to wait');
       expect(prompt).toContain(
-        'late notification must preserve the substantive handoff',
+        'Late notifications must keep the substantive handoff',
       );
       expect(prompt).toContain('Use exact supplied skill paths');
     }
@@ -720,13 +720,13 @@ describe('AI-first prompt rendering', () => {
   )('%s proactively recalls and saves verified memory', (_harness, render) => {
     const root = render();
     expect(root).toContain(
-      'Unprompted: recall prior project memory with task key terms before exploring/planning/dispatching non-trivial work; skip trivial/conversational turns.',
+      'Recall project memory unprompted using task key terms before nontrivial exploration/planning/dispatch; skip trivial/chat turns.',
     );
     expect(root).toContain(
-      'Save durable knowledge once verified, unprompted: decisions, discoveries/findings, bugs with root cause/fix, what worked/failed, non-obvious conventions and lessons from accepted specialist results.',
+      'Save verified durable knowledge unprompted: decisions, findings, bug causes/fixes, successes/failures, non-obvious conventions and lessons from accepted specialist results.',
     );
     expect(root).toContain(
-      "Recovered handoff's pending action done: record its outcome.",
+      'Record outcomes of completed actions from recovered handoffs.',
     );
     expect(root).toContain(
       'Follow installed `thoth-mem` skill; never invent its protocol.',
@@ -1167,7 +1167,7 @@ describe('AI-first prompt rendering', () => {
       'When `codemode` is available, batch independent reads, research and memory calls in one script',
     );
     const roots = [
-      // Each prior cap increases only by the 201-character tool-execution section.
+      // Existing caps include headroom for the shared tool-execution section.
       [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 14_211],
       [renderCodexRootInstructions(), 15_491],
       [renderClaudeCodeRootInstructions(), 14_891],
@@ -1193,34 +1193,34 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "07ed0fab39c4d0188d6ea53b8b5a176b01735d884190599d78a3a63618ca5e69",
-          "23ac486c0848e31bca06f8d1468b42b8852c611d0ac22139920e06d2712351d7",
-          "b4e496e9a52a9c9e06f6677614b42e4bd7164aebf4907310161b0246f075ce7f",
-          "755a465e6e67bd275c572aa4601dbe59bfa14824dde4b1620222d3994b6715b2",
-          "6332c16f5273c6003bd86c25e55fba4e0d7490dc90b76b2b9a499d732296e92c",
-          "8ee6eaaf7a7bdf2f8897fa6743e6402d724ae03114376cf4789e3ff0bed69f35",
+          "f0d6cc00294c61fd197109a5fbadd124ee72be415ee0cb6b13167a2346a89940",
+          "1293eff7acaa8c26e7c9451aeaf544324219a696465ed6382bc5d883066862fd",
+          "4ac65c0543157f9e78f3186c41846b53519139677e6b2e6eea8cb49af96a0896",
+          "010a45b9b54b228c24605abe00a9eea2249859ece4f9f4d9892afd7011f10024",
+          "0fb385b676b4cfb4f540a385ad91ec972733da2b4e6f8cc8fce0135e4ee5b6f5",
+          "289727ae78299667e16fa05b09035a20ffaa3ea7fe015c32f0cf85fa073ab71e",
         ],
       ],
       [
         "codex",
         [
-          "9d723e276890e9028a7ae0b410726fd019582751abc834ad01e877bc1f7d4de8",
-          "379089ec39e067edba770c92dafcf67fc0c38d866bdf971a49075da22172b98d",
-          "ee672655bd82797a23581702d3f4eb5c25b6c6cbed25d441a12d723d7274e127",
-          "425228371bf4b037fd95ba60ad798065474a4e7e4e286e3239ff6d6a3b2b20f3",
-          "812da6c791d9812b503f5305286eb93b0103b61b3d8bedf5f6cbbd73b5d463df",
-          "0b97f5c7a493180fcbbe1511db78756912b5b54bc190624665f3de96ce5d0faf",
+          "67336ac3e93e2e873cb0749e2c503bc40b7f7073f8bad21bb24a305d8f9edfc7",
+          "621de5a27344f95847d89d2176c456b1bf5a309ecac937b60a3c39c0b1662e35",
+          "99a9e522543b37e0d487858ab1d7ff4d34169e94256ffe1ee3defb1845acc74d",
+          "9b1b23a01fe7c70177d17b89cf06c399c2de7e6c6ae0db2502246f758ec1a897",
+          "41509325c4d952c8535b30688106c383e63199f9192399e6ee1496df38e2ecec",
+          "bd2f21f6a05f25dd71d1bed4a35435003fa8d99f6364e1d7493d578e57e6f921",
         ],
       ],
       [
         "claude",
         [
-          "62dd4c085bc26c1357c1046db5faf91414d51b3ba3f9c1bfbcb94733cc1b905b",
-          "c968843bb775196ef5d3601da1c2b8e3c41d5bc8a7181df0841a51ffffac2ef4",
-          "883b2b16bee1c069c64591d3252ae007218e7b49d935996ad18784b234fc8ed8",
-          "da4bc849bc47634bd36d25dab744e537d2f636bb2796fa8e4b1a99fa3cddd417",
-          "485d070d607a963a0b9e1bf4c3c68bb5b259837b7880b0bf2342ea6b5bd37b62",
-          "1603ea4f2a9b44af9da8ef046e23ecfc9769daf1aefc52307997b27bac7f3cc2",
+          "e28e2302d27e2c3c62b8e1dc3c3988f97ed4f0c5eb453e0b9456d7cbeaed6039",
+          "977ef23e0e8313737de503277cc3a78d8c623296eaf7e63ec77df01493ba7fed",
+          "28765ff6f81c3692d7e6690b7a48208ad6b40ff52672f5c37c3603a0be19bbec",
+          "8f245a9c858682952c375c05de6ec4e22130e9466dba432b46cfd78c427809a2",
+          "7b1a3a0c607cd1d5f4ed6cccee3834ce10b510b168e8080bfc4b6178cd1bd30a",
+          "93c44ae769c11aded7771847cf57f622c5a0d22979a79e1fda091e8e88260e8d",
         ],
       ],
     ]
@@ -1231,15 +1231,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '7c8ea8b8afab3d13a601c6ba69cbe1647f582573a548f64458d382ef391390d7',
+    '5c48ee4bcfcc7c68c6040959fe7b0b81107bbe34dfb5780d82eb4771a80f2345',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    '0160156fd58802f0be9e72eef5aa7592599240d5c63371aaa2bfe1648164fa3f',
+    'aceb17a9c24b31e2a573c21d3defe5008c9fa04420c9f1e4803dda45b099836e',
   ],
   [
     PI_PROMPT_DIALECT,
-    '38bf776835e201cd72121e9ff26509ec6907a7e8a75106060b247e403856cf19',
+    '5c21347319711120ac5b4ef1595beb3fb2d59e4038be08908fcdf88fc03c4ef9',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>
@@ -1263,7 +1263,7 @@ test('Codex hook root enforces capacity-aware scoped continuation', () => {
     'utf8',
   );
   expect(shippedPayload).toBe(payload);
-  // The prior cap increases only by the 201-character tool-execution section.
+  // This cap includes headroom for the shared tool-execution section.
   expect(shippedPayload.length).toBeLessThanOrEqual(15_411);
   for (const rule of [
     'fork_turns: "none"',

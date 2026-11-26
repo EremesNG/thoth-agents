@@ -202,11 +202,11 @@ export const AGENT_ROLES = [
     dispatch: 'task',
     canMutateWorkspace: false,
     scope:
-      'diagnosis, architecture, optional focused plan review, and independent verification',
+      'diagnosis, architecture, optional focused plan review, independent verification',
     responsibility:
-      'Independently review plans when selected and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review selected plans and do artifact-backed or material-risk final verification. Flag correctness risks and judge contract compliance.',
     useWhen: [
-      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
+      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or independent judgment for artifact-backed final verification.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',

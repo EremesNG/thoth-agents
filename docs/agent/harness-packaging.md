@@ -107,7 +107,7 @@
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=0.3.0`.
   The root package and all thirteen `pi-packages/*` members declare Pi SDK peers
-  `>=1.5.0`, pin development SDK/TUI dependencies to `1.6.0`, and require Node
+  `>=1.5.0`, pin development SDK/TUI dependencies to `1.6.1`, and require Node
   `>=22.19.0`. Features requiring APIs above this Pi floor must be runtime-guarded.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
   typed, versioned `pi.events` channels, session-state publish/request/subscribe

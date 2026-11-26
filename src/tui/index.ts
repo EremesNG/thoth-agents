@@ -14,8 +14,23 @@ const TOOLS_SLASH = 'subagents-tools';
 const plugin: Plugin.Definition = {
   id: 'thoth-agents.model-profiles',
   setup(context) {
-    const rpc = context.client.rpc(profileRpc) as unknown as RpcPort;
-    const toolsRpc = context.client.rpc(toolRpc) as unknown as ToolsRpcPort;
+    // Resolve on each open so a route change can't redirect an existing draft.
+    function panelRpc<Port>(
+      definition: typeof profileRpc | typeof toolRpc,
+    ): Port {
+      const { directory } = context.location ?? context.data.location.default();
+      const options = { location: { directory } };
+      const rpc = context.client.rpc(definition) as unknown as Record<
+        string,
+        (input: unknown, request: typeof options) => Promise<unknown>
+      >;
+      return Object.fromEntries(
+        Object.keys(definition.methods).map((method) => [
+          method,
+          (input: unknown) => rpc[method](input, options),
+        ]),
+      ) as Port;
+    }
     const sessionID = () => {
       const route = context.ui.router.current();
       return route.type === 'session' ? route.sessionID : undefined;
@@ -49,7 +64,13 @@ const plugin: Plugin.Definition = {
           palette: true,
           slash: { name: SLASH },
           run: () =>
-            exclusive(() => runModelProfilesFlow({ ui, rpc, sessionID })),
+            exclusive(() =>
+              runModelProfilesFlow({
+                ui,
+                rpc: panelRpc<RpcPort>(profileRpc),
+                sessionID,
+              }),
+            ),
         },
         {
           id: 'thoth-agents.subagents-tools',
@@ -57,7 +78,10 @@ const plugin: Plugin.Definition = {
           description: 'View and edit per-role allow/ask/deny tool overrides',
           palette: true,
           slash: { name: TOOLS_SLASH },
-          run: () => exclusive(() => runToolsFlow({ ui, rpc: toolsRpc })),
+          run: () =>
+            exclusive(() =>
+              runToolsFlow({ ui, rpc: panelRpc<ToolsRpcPort>(toolRpc) }),
+            ),
         },
       ],
     }));

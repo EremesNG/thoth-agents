@@ -1,5 +1,10 @@
+import type { Plugin } from '@opencode/plugin/tui';
 import { describe, expect, it, vi } from 'vitest';
+import { profileRpc } from '../opencode/profile-rpc';
+import { toolRpc } from '../opencode/tool-rpc';
 import plugin from './index';
+
+type Context = Parameters<Plugin.Definition['setup']>[0];
 
 describe('tui entry', () => {
   it('registers both slash commands sharing one reentrancy guard', async () => {
@@ -18,6 +23,7 @@ describe('tui entry', () => {
       value: { specialists: [], inventory: [], roles: [], warnings: [] },
     });
     plugin.setup({
+      location: { directory: 'C:/home-project' },
       client: { rpc: () => ({ state }) },
       ui: {
         router: { current: () => ({ type: 'home' }) },
@@ -44,4 +50,60 @@ describe('tui entry', () => {
     release?.();
     await first;
   });
+});
+
+it.each([
+  { slash: 'subagents-tools', definition: toolRpc, input: {} },
+  {
+    slash: 'subagents-model',
+    definition: profileRpc,
+    input: { sessionID: 'session-test' },
+  },
+])('routes /$slash to the location active when opened', async ({
+  slash,
+  definition,
+  input,
+}) => {
+  const state = vi.fn().mockResolvedValue({
+    ok: false,
+    error: {
+      code: 'OPERATION_FAILED',
+      message: 'Stop after the initial request',
+    },
+  });
+  const rpc = vi.fn(() => ({ state }));
+  const layer = vi.fn<Context['keymap']['layer']>();
+  let location: { directory: string } | undefined;
+  let route: ReturnType<Context['ui']['router']['current']> = { type: 'home' };
+  const home = { directory: 'C:/home-project' };
+  const session = { directory: 'C:/session-project' };
+  await plugin.setup({
+    get location() {
+      return location;
+    },
+    data: { location: { default: () => home } },
+    client: { rpc },
+    keymap: { layer },
+    ui: {
+      dialog: {},
+      router: { current: () => route },
+      toast: { show: vi.fn() },
+    },
+  } as unknown as Context);
+  const [getLayer] = layer.mock.calls[0];
+  const command = getLayer().commands?.find(
+    (command) => command.slash?.name === slash,
+  );
+  if (!command) throw new Error(`Missing /${slash} command`);
+
+  await command.run();
+  location = session;
+  route = { type: 'session', sessionID: 'session-test' };
+  await command.run();
+
+  expect(rpc).toHaveBeenCalledWith(definition);
+  expect(state.mock.calls).toEqual([
+    [{}, { location: home }],
+    [input, { location: session }],
+  ]);
 });

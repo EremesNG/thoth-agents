@@ -3,6 +3,7 @@ import { it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSession, getSessionPath } from "cc-session-io";
@@ -64,7 +65,7 @@ function fakeQuery({ options, prompt }) {
 		appendFileSync(deferred ? pending : path, JSON.stringify(value) + "\n");
 		return value;
 	};
-	const childCode = `const fs=require('fs'),crypto=require('crypto'); const stop=()=>{if(${Boolean(script.hang)})return;setTimeout(()=>{const q=${JSON.stringify(pending)};if(fs.existsSync(q)){fs.appendFileSync(${JSON.stringify(path)},fs.readFileSync(q));fs.unlinkSync(q);}if(${Boolean(script.late)}){const p=${JSON.stringify(path)};const r=fs.readFileSync(p,'utf8').trim().split('\\n').map(JSON.parse).filter(r=>r.uuid).at(-1);fs.appendFileSync(p,JSON.stringify({type:'attachment',uuid:crypto.randomUUID(),parentUuid:r.uuid,sessionId:${JSON.stringify(id)},attachment:{type:'interrupted',text:'late-exit-marker'}})+'\\n');}process.exit(0)},${script.late ? 60 : 0})};process.on('SIGTERM',stop);process.stdin.on('data',stop);process.stdout.write('READY\\n');setInterval(()=>{},1000);`;
+	const childCode = `const fs=require('fs'),crypto=require('crypto'); const stop=()=>{if(${Boolean(script.hang)})return;setTimeout(()=>{const q=${JSON.stringify(pending)};if(fs.existsSync(q)){fs.appendFileSync(${JSON.stringify(path)},fs.readFileSync(q));fs.unlinkSync(q);}if(${Boolean(script.late)}){const p=${JSON.stringify(path)};const r=fs.readFileSync(p,'utf8').trim().split('\\n').map(JSON.parse).filter(r=>r.uuid).at(-1);fs.appendFileSync(p,JSON.stringify({type:'attachment',uuid:crypto.randomUUID(),parentUuid:r.uuid,sessionId:${JSON.stringify(id)},attachment:{type:'interrupted',text:'late-exit-marker'}})+'\\n');}process.exit(0)},${script.late ? 60 : 0})};process.on('SIGTERM',stop);process.stdin.on('data',stop);process.${script.cleanup ? "stderr" : "stdout"}.write('READY\\n');setInterval(()=>{},1000);`;
 	const child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ["-e", childCode], cwd: root, env: process.env, signal: new AbortController().signal });
 	// Windows SIGTERM force-kills Node without running its handlers. Use the
 	// fixture's stdin shutdown protocol there to exercise real late flush/close.
@@ -78,20 +79,22 @@ function fakeQuery({ options, prompt }) {
 		};
 	}
 
-	const ready = once(child.stdout, "data");
+	const ready = once(script.cleanup ? child.stderr : child.stdout, "data");
 	const exited = once(child, "close");
 	let release, stopped = false;
 	const parked = new Promise((r) => { release = r; });
-	const entry = { options, path, exited, child };
+	const entry = { options, path, exited, child, closeCalls: 0 };
 	calls.push(entry);
 	const gen = (async function* () {
 		await ready;
+		if (script.pause) await script.pause;
 		const input = typeof prompt === "string" ? null : prompt[Symbol.asyncIterator]();
 		const initial = input ? (await input.next()).value : { message: { content: prompt } };
 		if (input) void (async () => {
 			for await (const _ of input) { /* Drain stdin like the SDK transport. */ }
 		})().catch(() => {});
 		entry.pulled = true;
+		entry.promptUuid = initial.uuid;
 		// CC pulled the prompt from stdin, then dies booting: no record, no replay.
 		if (script.boot) { await parked; return; }
 		record("user", initial.message.content, initial.uuid);
@@ -99,9 +102,54 @@ function fakeQuery({ options, prompt }) {
 		if (!script.preInit && input) yield { type: "user", isReplay: true, parent_tool_use_id: null, uuid: initial.uuid, session_id: id, message: initial.message };
 		if (script.tool) {
 			const value = record("assistant", [{ type: "tool_use", id: script.toolId ?? "X", name: "mcp__custom-tools__read", input: {} }], undefined, script.deferTool);
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: "tool-api" } } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: value.message.content[0] } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_stop", index: 0 } };
 			yield { type: "assistant", parent_tool_use_id: null, uuid: value.uuid, message: { id: "tool-api", model: model.id, content: value.message.content } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "message_stop" } };
 			await parked;
 			if (stopped) return;
+		}
+		if (script.cleanup) {
+			try {
+				if (script.rejection) {
+					const block = { type: "tool_use", id: "never-dispatched", name: "mcp__custom-tools__read", input: {} };
+					const value = record("assistant", [block]);
+					const apiId = "rejected-api-step";
+					if (script.rejection === "streaming") {
+						// Base recognizes the streamed call before message_stop, but
+						// would publish immediately if fed the fallback frame alone.
+						yield { type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: apiId } } };
+						yield { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: block } };
+					}
+					yield { type: "assistant", parent_tool_use_id: null, uuid: value.uuid, message: { id: apiId, model: model.id, stop_reason: "tool_use", content: [block] } };
+					const result = { type: "tool_result", tool_use_id: block.id, is_error: true, content: "CC refused the unhanded call" };
+					record("user", [result], "cc-rejected-record");
+					yield { type: "user", parent_tool_use_id: null, uuid: "cc-rejected-record", message: { role: "user", content: [result] } };
+				} else {
+					yield { type: "result", subtype: "error_during_execution", is_error: true, errors: ["ordinary SDK error held at return"], session_id: id };
+				}
+				assert.fail("the iterator must be closed at the intended failure");
+			} finally {
+				script.cleanup.entered.resolve();
+				await script.cleanup.release.promise;
+				script.cleanup.returned.resolve();
+			}
+			return;
+		}
+		if (script.sessionDamage) {
+			const answer = { type: "text", text: "answer without a transcript record" };
+			const reset = script.sessionDamage === "reset";
+			if (reset) yield { type: "conversation_reset", session_id: id, new_conversation_id: "new-conversation" };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id: "api-damaged-answer" } } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: answer } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_stop", index: 0 } };
+			yield { type: "assistant", parent_tool_use_id: null, uuid: "missing-answer-record", session_id: reset ? "new-conversation" : id,
+				message: { id: "api-damaged-answer", model: model.id, content: [answer] } };
+			yield { type: "stream_event", parent_tool_use_id: null, event: { type: "message_stop" } };
+			yield { type: "result", subtype: "success", is_error: false, result: answer.text, session_id: id };
+			if (!reset) yield { type: "system", subtype: "session_writes_lost", lost: ["transcript"], transcript_session_ids: [id], error_code: "ENOSPC", session_id: id };
+			return;
 		}
 		if (!script.error) {
 			const value = record("assistant", [{ type: "text", text: "answer" }]);
@@ -110,7 +158,7 @@ function fakeQuery({ options, prompt }) {
 		yield { type: "result", subtype: "success", is_error: Boolean(script.error), result: script.error ?? "answer", session_id: id };
 	})();
 	gen.interrupt = async () => {};
-	gen.close = () => { stopped = true; release(); if (!child.killed) child.kill("SIGTERM"); };
+	gen.close = () => { entry.closeCalls++; stopped = true; release(); if (!child.killed) child.kill("SIGTERM"); };
 	return gen;
 }
 afterEach(async () => {
@@ -122,6 +170,101 @@ afterEach(async () => {
 	await Promise.all(calls.map((c) => c.exited));
 	await tick();
 });
+
+// Copy this test file unchanged into a detached a41cfa92 worktree and set
+// CLAUDE_BRIDGE_ROUND11_BASE=1 when running only these comparison cases.
+const round11Base = process.env.CLAUDE_BRIDGE_ROUND11_BASE === "1";
+for (const scenario of ["SDK error", "SDK error with same-session continuation", "CC rejection", "ordinary streaming rejection control"]) {
+	if (round11Base && scenario.endsWith("control")) continue;
+	it(`round 11 blocked cleanup: ${scenario}`, { timeout: 7000 }, async (t) => {
+		const cleanup = { entered: Promise.withResolvers(), release: Promise.withResolvers(), returned: Promise.withResolvers() };
+		const nextReady = Promise.withResolvers();
+		const reject = !scenario.startsWith("SDK error");
+		const fallback = scenario === "CC rejection" && !round11Base;
+		// A fresh same-session call supersedes the still-open SDK error on base.
+		// Measure it separately so it cannot mask natural terminal/shutdown behavior.
+		const tryNextWhileHeld = scenario !== "SDK error";
+		const ask = user("old prompt");
+		scripts.push({});
+		const answer = await call([ask]).result();
+		assert.equal(answer.stopReason, "stop");
+		const prefix = persisted();
+		assert.equal(prefix.uuids.length, 2);
+		const history = [ask, answer, user("acknowledged prompt")];
+		scripts.push({ cleanup, rejection: reject ? fallback ? "fallback" : "streaming" : undefined });
+		const stream = call(history);
+		const owner = [...__test.activeQueryContexts].find((context) => context.currentPiStream === stream);
+		const events = [];
+		const delivered = (async () => { for await (const event of stream) events.push(event); })();
+		const count = () => events.filter(({ type }) => type === "error" || type === "done").length;
+		const snapshot = (entry) => ({
+			terminal: count(),
+			closeRequested: entry.closeCalls > 0,
+			childExited: entry.child.exitCode !== null || entry.child.signalCode !== null,
+			memory: __test.getSharedSession("pi")?.uuids.length,
+			disk: persisted()?.uuids.length,
+			nextLaunched: calls.length === 3,
+		});
+		try {
+			await cleanup.entered.promise;
+			const entry = calls[1];
+			assert.ok(entry.promptUuid, "the third record is the SDK's acknowledged prompt");
+			const expectedUuids = [...prefix.uuids, entry.promptUuid];
+			const transcript = readFileSync(entry.path, "utf8").trim().split("\n").map(JSON.parse);
+			assert.deepEqual(transcript.filter((record) => expectedUuids.includes(record.uuid)).map(({ uuid }) => uuid), expectedUuids);
+			assert.equal(owner.dispatchedToolCalls.size, 0, "no handler ever dispatched the rejected id");
+			if (!reject) assert.equal(owner.sawResult, true, "the reducer reached the error result on both revisions");
+			await tick();
+			const cause = reject ? /Claude Code rejected.*CC refused the unhanded call/ : /ordinary SDK error held at return/;
+			// Base records the ordinary SDK cause on its output but does not deliver it.
+			assert.match(events.find(({ type }) => type === "error")?.error.errorMessage ?? owner.turnOutput.errorMessage, cause);
+			const heldAtEntry = snapshot(entry);
+			const waitForExit = async () => {
+				const timer = new AbortController();
+				try { await Promise.race([entry.exited, delay(1000, undefined, { signal: timer.signal })]); }
+				finally { timer.abort(); }
+				await tick();
+			};
+			await waitForExit();
+			const heldBeforeNext = snapshot(entry);
+			const heldMemory = __test.getSharedSession("pi")?.uuids;
+			const heldDisk = persisted()?.uuids;
+			// Measure next-query progress without letting its snapshot replace the one under test.
+			const continueSession = () => {
+				scripts.push({ pause: nextReady.promise });
+				return call([...history, user("same-session continuation")]);
+			};
+			const next = tryNextWhileHeld ? continueSession() : undefined;
+			if (next) await waitForExit();
+			const held = snapshot(entry);
+			cleanup.release.resolve();
+			await Promise.all([cleanup.returned.promise, delivered, entry.exited]);
+			await tick();
+			const released = snapshot(entry);
+			const releasedMemory = __test.getSharedSession("pi")?.uuids;
+			const releasedDisk = persisted()?.uuids;
+			nextReady.resolve();
+			const nextResult = (await (next ?? continueSession()).result()).stopReason;
+			t.diagnostic(JSON.stringify({ setup: reject ? fallback ? "fallback" : "streaming" : "result", heldAtEntry, heldBeforeNext, held, released, nextResult,
+				events: events.map(({ type }) => type), capturedUndispatchedResult: releasedMemory?.includes("cc-rejected-record") || releasedDisk?.includes("cc-rejected-record") }));
+			assert.deepEqual(events.filter(({ type }) => type === "error" || type === "done").map(({ type }) => type), ["error"]);
+			if (fallback) assert.deepEqual(events.map(({ type }) => type), ["error"], "no staged event or result escapes");
+			assert.match(events.at(-1).error.errorMessage, round11Base && !reject && tryNextWhileHeld ? /Conversation replaced/ : cause);
+			assert.equal(nextResult, "stop");
+			assert.equal(heldBeforeNext.terminal, round11Base && !reject ? 0 : 1);
+			assert.equal(heldAtEntry.closeRequested, !round11Base || reject, "SDK close requested before iterator cleanup can block");
+			assert.equal(heldBeforeNext.childExited, !round11Base || reject, "real child exit while iterator cleanup is held");
+			assert.equal(held.nextLaunched, tryNextWhileHeld, "following same-session call is not stuck behind held cleanup");
+			assert.deepEqual(heldMemory, round11Base && !reject ? prefix.uuids : expectedUuids, "memory at held checkpoint");
+			assert.deepEqual(heldDisk, !round11Base && (!reject || fallback) ? expectedUuids : prefix.uuids, "disk at held checkpoint");
+			assert.deepEqual(releasedMemory, expectedUuids, "only the acknowledged prefix survives release");
+			assert.deepEqual(releasedDisk, expectedUuids, "the acknowledged prefix is saved within the matched release bound");
+		} finally {
+			cleanup.release.resolve();
+			nextReady.resolve();
+		}
+	});
+}
 
 for (const { name, prior, selected, expected } of [
 	{ name: "a same-length edit", prior: [user("SECRET_BEFORE_REWRITE")],
@@ -232,6 +375,7 @@ it("a launch that throws fails the turn and deletes the session it imported", as
 	const output = await call([user("prior"), say("prior answer"), user("retry")]).result();
 	assert.equal(output.stopReason, "error");
 	assert.match(output.errorMessage, /spawn failed/);
+	await tick(); // The session is cleaned up after the terminal event.
 	assert.ok(launched.resume, "the rebuild wrote pi's history to a file before launch");
 	assert.equal(existsSync(getSessionPath(launched.resume, launched.cwd, root)), false);
 	assert.equal(__test.getSharedSession("pi"), null);
@@ -408,6 +552,25 @@ it("a restart on another model imports pi's history instead of reusing the point
 	assert.equal(persisted().ccSessionId, calls[1].options.resume);
 });
 
+for (const [sessionDamage, error] of [["reset", /reset.*new-conversation/], ["write loss", /lost transcript.*ENOSPC/]]) {
+	it(`ordinary ${sessionDamage} preserves the last valid resume pointer`, { timeout: 5000 }, async () => {
+		const ask = user("warm");
+		scripts.push({});
+		const answer = await call([ask]).result();
+		const saved = __test.getSharedSession("pi");
+		scripts.push({ sessionDamage });
+		const events = await Array.fromAsync(call([ask, answer, user("continue")]));
+		const terminal = events.filter((event) => event.type === "done" || event.type === "error");
+		assert.deepEqual(terminal.map((event) => event.type), ["error"]);
+		assert.match(terminal[0].error.errorMessage, error);
+		await calls[1].exited;
+		assert.equal(calls[1].options.resume, saved.ccSessionId);
+		assert.doesNotMatch(readFileSync(calls[1].path, "utf8"), /missing-answer-record/);
+		assert.strictEqual(__test.getSharedSession("pi"), saved);
+		assert.deepEqual(persisted(), stored(saved));
+	});
+}
+
 it("a restart whose transcript is gone drops the persisted pointer and imports", async () => {
 	const ask = user("warm");
 	scripts.push({});
@@ -556,8 +719,8 @@ it("an abort cancels a fresh query's wait on a stopping writer", { timeout: 5000
 	await calls[0].exited;
 });
 
-it("a failed state save ends the turn with that error and is fatal, never retried as a query failure", async () => {
-	// The surfaced rejection must kill the process, so the scenario runs in a child.
+it("a failed state save ends the turn with that error without a host exit or retry", async () => {
+	// Run in a child to verify the detached finalizer cannot terminate the host.
 	const script = `
 		import { createHash } from "node:crypto";
 		import { mkdirSync } from "node:fs";
@@ -570,7 +733,9 @@ it("a failed state save ends the turn with that error and is fatal, never retrie
 		mod.__test.getSharedSession("pi");
 		const file = "s-" + createHash("sha256").update("pi", "utf16le").digest("hex") + ".json";
 		mkdirSync(join(process.env.PI_CODING_AGENT_DIR, "claude-bridge", "sessions", file, "occupied"), { recursive: true });
+		let launches = 0;
 		mod.__test.setQuery(({ prompt, options }) => {
+			launches++;
 			const gen = (async function* () {
 				const initial = (await prompt[Symbol.asyncIterator]().next()).value;
 				const recorded = recordSdkTurn(options, initial, "answer");
@@ -585,7 +750,7 @@ it("a failed state save ends the turn with that error and is fatal, never retrie
 		});
 		const output = await provider.streamSimple(model, { messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] }, { sessionId: "pi" }).result();
 		console.log(JSON.stringify({ stopReason: output.stopReason, errorMessage: output.errorMessage }));
-		setTimeout(() => console.log("survived"), 200);
+		setTimeout(() => console.log("survived", launches), 200);
 	`;
 	const child = spawn(process.execPath, ["--import", "tsx", "--import", "./tests/lib/setup.mjs", "--input-type=module", "-e", script], { stdio: ["ignore", "pipe", "pipe"] });
 	let stdout = "", stderr = "";
@@ -595,12 +760,11 @@ it("a failed state save ends the turn with that error and is fatal, never retrie
 	const lines = stdout.trim().split("\n");
 	assert.deepEqual(JSON.parse(lines[0]).stopReason, "error", stdout + stderr);
 	assert.match(JSON.parse(lines[0]).errorMessage, process.platform === "win32" ? /EPERM/ : /EISDIR/);
-	assert.notEqual(code, 0, "the failed save is not swallowed");
-	assert.ok(!lines.includes("survived"));
-	assert.match(stderr, process.platform === "win32" ? /EPERM/ : /EISDIR/);
+	assert.equal(code, 0, stderr);
+	assert.ok(lines.includes("survived 1"), stdout + stderr);
 });
 
-it("an unexpected session id ends the turn, commits nothing, and is fatal", async () => {
+for (const parked of [false, true]) it(`an unexpected session id fails without a host exit and commits nothing${parked ? " before a parked fallback" : ""}`, async () => {
 	const script = `
 		import { createHash } from "node:crypto";
 		import { existsSync } from "node:fs";
@@ -611,19 +775,34 @@ it("an unexpected session id ends the turn, commits nothing, and is fatal", asyn
 		const model = provider.models[0];
 		const file = join(process.env.PI_CODING_AGENT_DIR, "claude-bridge", "sessions", "s-" + createHash("sha256").update("pi", "utf16le").digest("hex") + ".json");
 		mod.__test.setQuery(({ prompt }) => {
+			const parked = Promise.withResolvers();
 			const gen = (async function* () {
 				const initial = (await prompt[Symbol.asyncIterator]().next()).value;
+				if (${parked}) {
+					for (const id of ["toolu_a", "toolu_b"]) yield {
+						type: "assistant", parent_tool_use_id: null, uuid: id,
+						message: { id: "fallback", model: model.id, stop_reason: "tool_use", content: [
+							{ type: "tool_use", id, name: "mcp__custom-tools__read", input: { path: "log" } },
+						] },
+					};
+				}
 				yield { type: "system", subtype: "init", session_id: "wrong-session" };
+				if (${parked}) { await parked.promise; return; }
 				yield { type: "user", isReplay: true, parent_tool_use_id: null, uuid: initial.uuid, message: initial.message };
 				yield { type: "assistant", parent_tool_use_id: null, uuid: "answer-uuid", message: { id: "answer", model: model.id, content: [{ type: "text", text: "answer" }] } };
 				yield { type: "result", subtype: "success", is_error: false, result: "answer", session_id: "wrong-session" };
 			})();
 			gen.interrupt = async () => {};
-			gen.close = () => {};
+			gen.close = parked.resolve;
 			return gen;
 		});
-		const output = await provider.streamSimple(model, { messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] }, { sessionId: "pi" }).result();
-		console.log(JSON.stringify({ stopReason: output.stopReason, errorMessage: output.errorMessage, state: mod.__test.getSharedSession("pi"), saved: existsSync(file) }));
+		const stream = provider.streamSimple(model, { messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [
+			{ name: "read", description: "Read a file", parameters: { type: "object", properties: { path: { type: "string" } } } },
+		] }, { sessionId: "pi" });
+		const output = await stream.result();
+		const events = [];
+		for await (const event of stream) events.push(event.type);
+		console.log(JSON.stringify({ stopReason: output.stopReason, errorMessage: output.errorMessage, events, state: mod.__test.getSharedSession("pi"), saved: existsSync(file) }));
 		setTimeout(() => console.log("survived"), 200);
 	`;
 	const child = spawn(process.execPath, ["--import", "tsx", "--import", "./tests/lib/setup.mjs", "--input-type=module", "-e", script], { stdio: ["ignore", "pipe", "pipe"] });
@@ -635,9 +814,9 @@ it("an unexpected session id ends the turn, commits nothing, and is fatal", asyn
 	const result = JSON.parse(lines[0]);
 	assert.equal(result.stopReason, "error", stdout + stderr);
 	assert.match(result.errorMessage, /unexpected session wrong-session/);
+	assert.deepEqual(result.events, ["error"]);
 	assert.equal(result.state, null, "no state under the wrong target");
 	assert.equal(result.saved, false);
-	assert.notEqual(code, 0, "the protocol violation is not swallowed");
-	assert.ok(!lines.includes("survived"));
-	assert.match(stderr, /unexpected session wrong-session/);
+	assert.equal(code, 0, stderr);
+	assert.ok(lines.includes("survived"));
 });

@@ -31,9 +31,31 @@ function makeCtx() {
 	return c;
 }
 
-async function consume(c, messages) {
-	async function* gen() { for (const m of messages) yield m; }
-	await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c);
+async function consume(c, messages, fenceToolId) {
+	let sequence = 0;
+	const ingress = { sequence: messages.length + 1, controlRequestId: "dispatch" };
+	const server = fenceToolId && __test.buildMcpServers([{ name: "bash", description: "", parameters: { type: "object" } }], c)["custom-tools"].instance;
+	const transport = { start: async () => {}, close: async () => {}, send: async () => {} };
+	if (server) {
+		c.fallbackQualified = true;
+		c.queryProcess = {
+			get ingressWatermark() { return sequence; }, get reducedWatermark() { return sequence; },
+			acknowledge() { return ++sequence; }, getMcpCall: () => ingress,
+		};
+		await server.connect(transport);
+	}
+	async function* gen() {
+		yield* messages;
+		if (server) {
+			++sequence;
+			transport.onmessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+				name: "bash", arguments: {}, _meta: { "claudecode/toolUseId": fenceToolId },
+			} });
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+	}
+	try { await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c); }
+	finally { if (server) { c.releasePendingToolCalls("fixture complete"); await server.close(); } }
 }
 
 const streamEvent = (event) => ({ type: "stream_event", event });
@@ -76,11 +98,11 @@ describe("tool_use for a tool we do not serve", () => {
 		const c = makeCtx();
 		await consume(c, [{
 			type: "assistant",
-			message: { content: [
+			message: { id: "msg_fallback", content: [
 				{ type: "tool_use", name: "bash", id: "toolu_phantom", input: { command: "ls" } },
 				{ type: "tool_use", name: "mcp__custom-tools__bash", id: "toolu_retry", input: { command: "ls" } },
 			] },
-		}]);
+		}], "toolu_retry");
 
 		const toolCalls = c.turnOutput.content.filter((b) => b.type === "toolCall");
 		assert.deepStrictEqual(toolCalls.map((b) => [b.name, b.id]), [["bash", "toolu_retry"]]);

@@ -102,7 +102,7 @@ it("fallback-emitted narration completes signed-thinking recording coverage with
 		] },
 	};
 	const logStart = debugLog().length;
-	await consume(c, [completed]);
+	await consume(c, [completed, { type: "result", subtype: "success", is_error: false, result: "Done." }]);
 	__test.finalizeCurrentStream(c);
 	const output = await stream.result();
 	assert.deepEqual(output.content, [
@@ -225,6 +225,7 @@ for (const laterTurn of [false, true]) it(`${laterTurn ? "later-turn" : "absorbe
 		...(laterTurn ? [complete("before-steer", "before replay")] : []),
 		replay,
 		complete("after-steer", "after replay"),
+		{ type: "result", subtype: "success", is_error: false, result: "after replay" },
 	]);
 	__test.finalizeCurrentStream(c);
 	const output = await stream.result();

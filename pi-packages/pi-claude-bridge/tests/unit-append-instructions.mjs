@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,7 +36,7 @@ const submitInput = (sessionId, prompt = "test prompt") => ({
 });
 const signal = new AbortController().signal;
 
-async function turn(append, { piSessionId = "parent", script = {}, promptOptions, tools = [], model = provider.models[0] } = {}) {
+async function turn(append, { piSessionId = "parent", script = {}, promptOptions, tools = [], model = provider.models[0], events, signal } = {}) {
 	const systemPromptOptions = { appendSystemPrompt: append, ...promptOptions };
 	const systemPrompt = promptOptions
 		? buildSystemPrompt({ cwd: "/append-sections", selectedTools: [], ...systemPromptOptions })
@@ -47,9 +47,9 @@ async function turn(append, { piSessionId = "parent", script = {}, promptOptions
 	messages.push({ role: "user", content: "Report current instructions", timestamp: 0 });
 	histories.set(piSessionId, messages);
 	nextScript = script;
-	const result = await provider
-		.streamSimple(model, { systemPrompt, messages, tools }, { sessionId: piSessionId })
-		.result();
+	const stream = provider.streamSimple(model, { systemPrompt, messages, tools }, { sessionId: piSessionId, signal });
+	if (events) for await (const event of stream) events.push(event);
+	const result = await stream.result();
 	messages.push(result);
 	// .result() resolves before the bridge's finally removes the query context.
 	await new Promise((resolve) => setImmediate(resolve));
@@ -231,6 +231,38 @@ function fakeClaudeProcess(
 			return true;
 		},
 	});
+}
+
+// Run the installed SDK and bridge's ordered ingress against a scripted CLI.
+// The hook-bearing process rejects initialization but leaves stdout open for SDK teardown.
+function hookRetryCli({ rejectHooks, sessionId, textOnly, toolIds }) {
+	return `
+		const send = (...frames) => process.stdout.write(frames.map(frame => JSON.stringify(frame) + "\\n").join(""));
+		let user, released;
+		const complete = () => {
+			if (!user || !released) return;
+			const session_id = ${JSON.stringify(sessionId)};
+			const toolIds = ${JSON.stringify(toolIds)};
+			const frame = (content, stop_reason) => ({ type: "assistant", parent_tool_use_id: null, session_id,
+				message: { id: "msg_hook_retry", content: [content], stop_reason } });
+			send({ type: "system", subtype: "init", session_id, claude_code_version: "2.1.321" },
+				{ ...user, isReplay: true, parent_tool_use_id: null, session_id });
+			if (${textOnly}) send(frame({ type: "text", text: "replacement text" }, "end_turn"),
+				{ type: "result", subtype: "success", is_error: false, result: "replacement text" });
+			else send(...toolIds.map(id => frame({ type: "tool_use", name: "mcp__custom-tools__ping", id, input: {} }, "tool_use")),
+				{ type: "control_request", request_id: "first-tool", request: { subtype: "mcp_message", server_name: "custom-tools",
+					message: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ping", arguments: {},
+						_meta: { "claudecode/toolUseId": toolIds[0] } } } } });
+		};
+		require("node:readline").createInterface({ input: process.stdin }).on("line", line => {
+			const message = JSON.parse(line);
+			if (message.request?.subtype === "initialize") send({ type: "control_response", response: ${rejectHooks}
+				? { subtype: "error", request_id: message.request_id, error: "Hook initialization rejected" }
+				: { subtype: "success", request_id: message.request_id, response: {} } });
+			else if (message.type === "user") { user = message; complete(); }
+			else if (message.testRelease) { released = true; complete(); }
+		});
+	`;
 }
 
 function useEagerSdk({ hideInitializationResult = false, ...transport } = {}) {
@@ -655,6 +687,76 @@ describe("appended instructions on resumed queries", () => {
 			assert.equal(calls.length, 3, "exactly one attempt with hooks and one fallback query");
 			if (failure === "initializationError") assert.equal(calls[1].closed, true);
 			assert.match(context(await turn("Value=B")), /Value=B/);
+		});
+	}
+
+	for (const mode of ["fallback", "text-only", "stale close", "genuine close"]) {
+		it(`keeps MCP close ownership across real SDK hook-init retry: ${mode}`, { timeout: 6000 }, async (t) => {
+			const first = await turn("Value=A");
+			const controller = new AbortController();
+			const children = [];
+			t.after(async () => {
+				controller.abort();
+				for (const [child, closed] of children) {
+					if (child.exitCode === null && child.signalCode === null) child.kill();
+					await closed;
+				}
+			});
+			const attempts = [];
+			const replacementReady = Promise.withResolvers();
+			const toolIds = ["toolu_retry_alpha", "toolu_retry_beta"];
+			let abandonedClose, closeBeforeEof, abandonmentDisconnect;
+			__test.setQuery(({ prompt, options }) => {
+				const rejectHooks = Boolean(options.hooks);
+				const server = options.mcpServers["custom-tools"].instance.server;
+				attempts.push({ resume: options.resume, rejectHooks, server });
+				const ctx = [...__test.activeQueryContexts].findLast((c) => c.queryProcess);
+				if (rejectHooks) {
+					abandonedClose = server.onclose;
+					server.onclose = () => {
+						closeBeforeEof ??= !ctx.outputEnded;
+						abandonedClose();
+						abandonmentDisconnect ??= ctx.mcpDisconnect;
+					};
+				}
+				let child;
+				const sdk = sdkQuery({ prompt, options: { ...options, pathToClaudeCodeExecutable: process.execPath,
+					spawnClaudeCodeProcess(spawnOptions) {
+						const script = hookRetryCli({ rejectHooks, sessionId: options.resume, textOnly: mode === "text-only", toolIds });
+						child = options.spawnClaudeCodeProcess({ ...spawnOptions, command: process.execPath, args: ["-e", script] });
+						children.push([child, once(child, "close")]);
+						// The CLI identity was qualified separately; keep the real ingress and fence.
+						ctx.qualifiedFallbackRuntime = true;
+						return child;
+					},
+				} });
+				if (!rejectHooks) replacementReady.resolve(sdk.initializationResult().then(async () => {
+					assert.ok(server.transport, "the hookless replacement starts with a connected MCP transport");
+					if (mode === "genuine close") await server.close();
+					if (mode === "stale close") abandonedClose();
+					child.stdin.write('{"testRelease":true}\n');
+				}));
+				return sdk;
+			});
+			const events = [];
+			const tools = [{ name: "ping", description: "ping", parameters: { type: "object", properties: {} } }];
+			await Promise.all([turn("Value=B", { tools, events, signal: controller.signal }), replacementReady.promise]);
+			assert.deepEqual(attempts.map(({ resume, rejectHooks }) => [resume, rejectHooks]), [[first.sessionId, true], [first.sessionId, false]]);
+			assert.equal(closeBeforeEof, true, "the SDK closes the abandoned server before stdout EOF");
+			const terminal = events.filter(({ type }) => type === "done" || type === "error");
+			const toolEvents = events.filter(({ type }) => type.startsWith("toolcall_"));
+			const expected = mode === "text-only" ? ["done", "stop"] : mode === "genuine close" ? ["error", "error"] : ["done", "toolUse"];
+			assert.deepEqual(terminal.map(({ type, reason }) => [type, reason]), [expected], JSON.stringify(events));
+			if (expected[1] === "toolUse") {
+				assert.deepEqual(toolEvents.map(({ type }) => type), ["toolcall_start", "toolcall_end", "toolcall_start", "toolcall_end"]);
+				assert.deepEqual(terminal[0].message.content.map(({ id }) => id), toolIds);
+			} else {
+				assert.deepEqual(toolEvents, []);
+				if (mode === "text-only") assert.deepEqual(terminal[0].message.content, [{ type: "text", text: "replacement text" }]);
+				else assert.match(terminal[0].error.errorMessage, /MCP server disconnected/);
+			}
+			assert.equal(abandonmentDisconnect, undefined, "owner-requested close must not record a disconnect");
+			assert.notEqual(attempts[0].server, attempts[1].server, "each SDK query owns a distinct MCP server");
 		});
 	}
 

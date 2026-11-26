@@ -94,11 +94,13 @@ describe("a rate-limited failure", () => {
 	it("labels only the failure it caused, not a later one", async () => {
 		const c = makeCtx();
 		await consume(c, [rejection, limitResult]);
-		// The failure ends that query; the context's next query fails on its own.
-		c.resetTurnState(fakeModel);
-		await consume(c, [errorResult]);
+		// The failure ends that query and clears its held rejection. A new
+		// query has its own context, just like a fresh provider launch.
+		assert.strictEqual(c.rateLimitRejection, null);
+		const next = makeCtx();
+		await consume(next, [errorResult]);
 
-		assert.strictEqual(c.turnOutput.errorMessage, errorResult.result);
+		assert.strictEqual(next.turnOutput.errorMessage, errorResult.result);
 	});
 });
 
@@ -119,15 +121,16 @@ describe("an extra-usage refusal with no plan window rejected", () => {
 });
 
 describe("error results", () => {
-	it("marks the turn errored and finalizes with an error event", async () => {
+	it("marks the turn errored and delivers the error during consumption", async () => {
 		const c = makeCtx();
+		const stream = c.currentPiStream;
 		await consume(c, [errorResult]);
 
 		assert.strictEqual(c.turnOutput.stopReason, "error");
 		assert.strictEqual(c.turnOutput.errorMessage, errorResult.result);
-
-		const stream = c.currentPiStream;
-		__test.finalizeCurrentStream(c);
+		assert.strictEqual(c.currentPiStream, null);
+		__test.finalizeCurrentStream(c); // Cannot emit a second terminal event.
+		assert.deepStrictEqual(stream.events.map((e) => e.type), ["error", "end"]);
 		const terminal = stream.events.at(-2);
 		assert.strictEqual(terminal.type, "error");
 		assert.strictEqual(terminal.reason, "error");
@@ -141,14 +144,14 @@ describe("error results", () => {
 	// error.
 	it("keeps a synthetic report off the stream, so failover is still possible", async () => {
 		const c = makeCtx();
+		const stream = c.currentPiStream;
 		await consume(c, [
 			{ type: "assistant", message: { model: "<synthetic>", content: [{ type: "text", text: errorResult.result }] } },
 			errorResult,
 		]);
 
-		const stream = c.currentPiStream;
-		__test.finalizeCurrentStream(c);
-
+		assert.strictEqual(c.currentPiStream, null);
+		assert.deepStrictEqual(stream.events.filter((e) => e.type === "done" || e.type === "error").map((e) => e.type), ["error"]);
 		const beforeTerminal = stream.events.slice(0, -2);
 		assert.ok(
 			beforeTerminal.every((e) => e.type === "start" || e.type.startsWith("thinking_")),

@@ -68,10 +68,32 @@ function newTurn() {
 	return { c, events };
 }
 
-async function run(messages) {
+async function run(messages, fenceToolId) {
 	const { c, events } = newTurn();
-	async function* gen() { for (const m of messages) yield m; }
-	await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c);
+	let sequence = 0;
+	const ingress = { sequence: messages.length + 1, controlRequestId: "dispatch" };
+	const server = fenceToolId && __test.buildMcpServers([{ name: "bash", description: "", parameters: { type: "object" } }], c)["custom-tools"].instance;
+	const transport = { start: async () => {}, close: async () => {}, send: async () => {} };
+	if (server) {
+		c.fallbackQualified = true;
+		c.queryProcess = {
+			get ingressWatermark() { return sequence; }, get reducedWatermark() { return sequence; },
+			acknowledge() { return ++sequence; }, getMcpCall: () => ingress,
+		};
+		await server.connect(transport);
+	}
+	async function* gen() {
+		yield* messages;
+		if (server) {
+			++sequence;
+			transport.onmessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+				name: "bash", arguments: {}, _meta: { "claudecode/toolUseId": fenceToolId },
+			} });
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+	}
+	try { await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c); }
+	finally { if (server) { c.releasePendingToolCalls("fixture complete"); await server.close(); } }
 	return { c, events, content: c.turnOutput.content };
 }
 
@@ -469,7 +491,7 @@ describe("progress updates in the non-streaming fallback", () => {
 				{ type: "thinking" },
 				{ type: "text", text: "Done." },
 			] },
-		}]);
+		}, { type: "result", subtype: "success", is_error: false, result: "Done." }]);
 		assert.deepEqual(content, [
 			{ type: "thinking", thinking: " \n", thinkingSignature: NARRATION },
 			{ type: "text", text: long, textSignature: NARRATION },
@@ -487,7 +509,7 @@ describe("progress updates in the non-streaming fallback", () => {
 				{ type: "thinking", thinking: UPDATE, signature: NARRATION },
 				{ type: "tool_use", name: "mcp__custom-tools__bash", id: "toolu_a", input: { command: "ls" } },
 			] },
-		}]);
+		}], "toolu_a");
 
 		assert.deepStrictEqual(content.map((b) => b.type), ["thinking", "text", "toolCall"]);
 		assert.strictEqual(content[1].text, UPDATE);

@@ -57,14 +57,16 @@ beforeEach(() => {
 				const value = record("assistant", content);
 				return { type: "assistant", parent_tool_use_id: null, uuid: value.uuid, session_id: sessionId, message: { id, model: model.id, content } };
 			};
-			if (script.beforePi) {
+			function* toolTurn(content, id) {
 				const event = (event) => ({ type: "stream_event", parent_tool_use_id: null, event });
-				yield event({ type: "message_start", message: { id: `msg_${script.tool}`, usage: {} } });
-				yield event({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: script.tool, name: "mcp__custom-tools__read", input: {} } });
-				yield event({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } });
+				yield event({ type: "message_start", message: { id, usage: {} } });
+				yield event({ type: "content_block_start", index: 0, content_block: { ...content, input: {} } });
+				yield event({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(content.input) } });
+				yield sdkAssistant([content], id);
 				yield event({ type: "content_block_stop", index: 0 });
+				if (!script.beforePi) yield event({ type: "message_stop" });
 			}
-			if (script.tool) yield sdkAssistant([{ type: "tool_use", id: script.tool, name: "mcp__custom-tools__read", input: { path: "a" } }], `msg_${script.tool}`);
+			if (script.tool) yield* toolTurn({ type: "tool_use", id: script.tool, name: "mcp__custom-tools__read", input: { path: "a" } }, `msg_${script.tool}`);
 			if (script.wait) await script.wait;
 			if (script.result || script.rejected) {
 				// Claude Code calls the MCP handler before writing an accepted call's result.
@@ -72,7 +74,7 @@ beforeEach(() => {
 				const value = record("user", [{ type: "tool_result", tool_use_id: script.result ?? script.rejected, content: script.rejected ? "Permission denied by hook" : "file" }]);
 				yield { type: "user", parent_tool_use_id: null, uuid: value.uuid, message: value.message };
 			}
-			if (script.edit) yield sdkAssistant([{ type: "tool_use", id: "edit-id", name: "mcp__custom-tools__edit", input: { path: "a", edits: script.edit } }], "msg_edit");
+			if (script.edit) yield* toolTurn({ type: "tool_use", id: "edit-id", name: "mcp__custom-tools__edit", input: { path: "a", edits: script.edit } }, "msg_edit");
 			else yield sdkAssistant([{ type: "text", text: script.text ?? "answer" }], `msg_final_${sessionId}`);
 			yield { type: "result", subtype: "success", is_error: false, result: script.text ?? "answer", session_id: sessionId };
 		})();

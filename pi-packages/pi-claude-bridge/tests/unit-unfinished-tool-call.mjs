@@ -38,9 +38,31 @@ function makeCtx() {
 	return c;
 }
 
-async function consume(c, messages) {
-	async function* gen() { for (const m of messages) yield m; }
-	await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c);
+async function consume(c, messages, fenceToolId) {
+	let sequence = 0;
+	const ingress = { sequence: messages.length + 1, controlRequestId: "dispatch" };
+	const server = fenceToolId && __test.buildMcpServers([{ name: "notify_parent", description: "", parameters: { type: "object" } }], c)["custom-tools"].instance;
+	const transport = { start: async () => {}, close: async () => {}, send: async () => {} };
+	if (server) {
+		c.fallbackQualified = true;
+		c.queryProcess = {
+			get ingressWatermark() { return sequence; }, get reducedWatermark() { return sequence; },
+			acknowledge() { return ++sequence; }, getMcpCall: () => ingress,
+		};
+		await server.connect(transport);
+	}
+	async function* gen() {
+		yield* messages;
+		if (server) {
+			++sequence;
+			transport.onmessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+				name: "notify_parent", arguments: {}, _meta: { "claudecode/toolUseId": fenceToolId },
+			} });
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+	}
+	try { await __test.consumeQuery(gen(), toolMap, fakeModel, () => false, c); }
+	finally { if (server) { c.releasePendingToolCalls("fixture complete"); await server.close(); } }
 }
 
 const streamEvent = (event) => ({ type: "stream_event", event });
@@ -110,7 +132,7 @@ describe("a tool call whose content_block_stop never arrived", () => {
 			{ type: "assistant", message: { id: "msg_resumed", content: [
 				{ type: "tool_use", name: "mcp__custom-tools__notify_parent", id: "toolu_resumed", input: { summary: "Both fixes done." } },
 			] } },
-		]);
+		], "toolu_resumed");
 
 		assert.deepStrictEqual(c.turnOutput.content.map((b) => [b.type, b.id, b.arguments]),
 			[["text", undefined, undefined], ["toolCall", "toolu_resumed", { summary: "Both fixes done." }]]);

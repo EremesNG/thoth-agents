@@ -148,7 +148,7 @@ function roleText(template: string): RoleTextSection {
 }
 
 const TOOL_EXECUTION_SECTION = roleText(`<tool-execution>
-- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+- Same-message tool calls may run concurrently. Emit dependent calls in a later message after the needed result or side effect.
 </tool-execution>`);
 
 function roleTemplate(role: AgentPromptRole): string {
@@ -183,9 +183,9 @@ function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
 - ${policy.decisions.readyDispatch} through \`{{backgroundDelegationTool}}\`{{backgroundWaitInstruction}}
 - ${policy.decisions.refill}; no global wave barrier.
 - Accept only {{lifecycleTerminalState}} after intent/checks/freshness reconciliation. {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
-- Native execution and terminal results are the sole authority: native waits/notifications, never polling, timers or an invented executor, queue, scheduler, wait API or lifecycle mirror; ${policy.decisions.degradation}.
-- On native attention/missed milestone: inspect/steer/narrow/stop safely; timeout is a safety ceiling, not a progress plan. No attention delivery: return at agreed milestone; reconcile termination before replacing writer.
-- After two consecutive attempts without new evidence/progress: return partial evidence/smallest blocker; duration alone does not invalidate useful work.
+- Only native execution and terminal results are authoritative: native waits/notifications, never polling, timers, custom executors, queues, schedulers, wait APIs or lifecycle mirrors; ${policy.decisions.degradation}.
+- Native attention/missed milestone: inspect and safely steer/narrow/stop. Timeout is a safety ceiling, not a progress plan. Without attention delivery, return at agreed milestone; confirm termination before replacing writer.
+- Two consecutive attempts without new evidence/progress: report partial evidence and smallest blocker. Time alone doesn't invalidate useful work.
 </task-shaping>`;
 }
 
@@ -199,18 +199,18 @@ ${policy.implementationOwnership.rootIdentity}
 </role>
 
 <operating-model>
-- Max delegation depth ${policy.maxDelegationDepth}; children never delegate.
-- One writer per mutable surface; parallelize only non-overlapping work.
+- Delegation depth ≤${policy.maxDelegationDepth}; children never delegate.
+- One writer per mutable surface; parallel work must not overlap.
 - Preserve unrelated changes; report risks/capability gaps.
 - {{progressInstruction}}
 </operating-model>
 
 <output-style>
-- Answer first; no preamble, restated request or recap.
-- Default ≤6 sentences or ≤5 bullets; longer only if content demands.
-- No tool-call narration; update only at phase starts or plan-changing facts, ≤2 sentences.
-- Brevity never reduces work depth, evidence, verification or required contract/gate fields.
-- Use child answers/anchors directly; request only missing decision-critical evidence.
+- Answer first; no preamble, restatement or recap.
+- ≤6 sentences or ≤5 bullets unless content demands more.
+- No tool-call narration. Updates: ≤2 sentences, only at phase starts or plan-changing facts.
+- Keep work depth, evidence, verification and required contract/gate fields.
+- Use child answers/anchors directly; ask only for missing decision-critical evidence.
 </output-style>
 
 <delegation-lifecycle>
@@ -239,19 +239,19 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 </sdd-workflow>
 
 <external-skills>
-- Bundled \`thoth-sdd\` skill: phase, \`templates/change.md\`, record validator; \`thoth-constitution\` only for explicit constitution lifecycle.
-- Behavior changes need installed \`tdd\`; post-implementation: behavior-preserving \`simplify\`.
-- SDD: never use thoth-agents CLI, \`npx skills add\` or network for missing contracts; report installation drift.
-- progressive-context-router: only repository instruction/context-router work.
+- Bundled \`thoth-sdd\` skill: phase, \`templates/change.md\`, validator. \`thoth-constitution\`: explicit constitution lifecycle only.
+- Behavior changes: installed \`tdd\`; after implementation, behavior-preserving \`simplify\`.
+- Missing SDD contracts: report installation drift; no thoth-agents CLI, \`npx skills add\` or network.
+- progressive-context-router: repo instruction/context-router work only.
 - Use grill-me when material human-owned decisions remain unresolved.
 </external-skills>
 
 <memory>
-- Unprompted: recall prior project memory with task key terms before exploring/planning/dispatching non-trivial work; skip trivial/conversational turns.
-- Save durable knowledge once verified, unprompted: decisions, discoveries/findings, bugs with root cause/fix, what worked/failed, non-obvious conventions and lessons from accepted specialist results.
-- Recovered handoff's pending action done: record its outcome.
+- Recall project memory unprompted using task key terms before nontrivial exploration/planning/dispatch; skip trivial/chat turns.
+- Save verified durable knowledge unprompted: decisions, findings, bug causes/fixes, successes/failures, non-obvious conventions and lessons from accepted specialist results.
+- Record outcomes of completed actions from recovered handoffs.
 - Follow installed \`thoth-mem\` skill; never invent its protocol. Root owns verified identity/lifecycle/intent/authorization; children get scoped MEMORY.
-- \`.thoth/\` holds active project work, not provider memory; do not mirror work artifacts. Memory failure does not block unrelated work.
+- \`.thoth/\` holds active project work, not provider memory; do not mirror work artifacts. Continue unrelated work if memory fails.
 </memory>
 
 <artifacts>
@@ -284,8 +284,8 @@ const ROLE_SPECIFIC_RULES: Record<
     'Cite every substantive external claim and label inference explicitly.',
   ],
   oracle: [
-    'Separate observations, risks and recommendations; review stated requirements/contracts, not invented scope.',
-    'For plan review or final verify, load matching bundled thoth-sdd guidance; remain read-only.',
+    'Separate observations/risks/recommendations; judge only stated requirements/contracts.',
+    'Plan review/final verify: load matching bundled thoth-sdd guidance; stay read-only.',
     'Self-review cannot substitute for oracle.',
   ],
   designer: [
@@ -445,17 +445,17 @@ function renderSubagentRules(
       : dialect.tools.progressTool
         ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
         : '- Do not delegate further; root owns progress.',
-    '- Use terminating checks; avoid watch processes and indefinite waits.',
+    '- Checks must terminate; no watches or indefinite waits.',
     '- Nothing wakes you after your turn ends: run checks in the foreground and finish all work before ending your turn.',
-    '- Preserve operator-selected model/effort. Stop after the assigned outcome and checks; never expand scope to fill a timeout.',
-    '- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.',
+    '- Keep operator-selected model/effort. Stop after the assigned outcome/checks; never expand scope to fill a timeout.',
+    '- Two consecutive attempts without new evidence/progress: report partial evidence and smallest blocker; no repeat searches or unchanged failing commands.',
     dialect.harness === 'pi'
       ? '- Use the native skill catalog or exact supplied skill paths. If a skill named by the assignment or required by the current phase contract cannot be loaded, return a blocker instead of improvising; do not search the user home or install replacements.'
       : '- Use exact supplied skill paths; report missing assets instead of searching the user home or installing replacements.',
-    '- During edits use focused checks. Freeze relevant inputs before final validation; rerun only checks invalidated by later edits. Reuse fresh evidence for unchanged inputs, not full suites per child.',
-    '- Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.',
-    '- Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.',
-    '- Never discard or overwrite unrelated working-tree changes.',
+    '- Use focused edit checks. Freeze relevant inputs before final validation; rerun only checks later edits invalidate. Reuse fresh evidence, not full suites per child, for unchanged inputs.',
+    '- Native command completion only; no status/log polling just to wait. Batch independent short reads/checks if supported; no process wrappers.',
+    '- Reconcile owned background commands before return. Late notifications must keep the substantive handoff, not a bare acknowledgment.',
+    '- Never discard/overwrite unrelated working-tree changes.',
   ];
 
   if (section.memoryAccess === 'dispatch-scoped') {

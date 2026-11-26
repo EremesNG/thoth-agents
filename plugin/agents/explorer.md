@@ -46,15 +46,15 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 </evidence-only>
 
 - Do not delegate further or call `TodoWrite`; root owns progress.
-- Use terminating checks; avoid watch processes and indefinite waits.
+- Checks must terminate; no watches or indefinite waits.
 - Nothing wakes you after your turn ends: run checks in the foreground and finish all work before ending your turn.
-- Preserve operator-selected model/effort. Stop after the assigned outcome and checks; never expand scope to fill a timeout.
-- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.
+- Keep operator-selected model/effort. Stop after the assigned outcome/checks; never expand scope to fill a timeout.
+- Two consecutive attempts without new evidence/progress: report partial evidence and smallest blocker; no repeat searches or unchanged failing commands.
 - Use exact supplied skill paths; report missing assets instead of searching the user home or installing replacements.
-- During edits use focused checks. Freeze relevant inputs before final validation; rerun only checks invalidated by later edits. Reuse fresh evidence for unchanged inputs, not full suites per child.
-- Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.
-- Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.
-- Never discard or overwrite unrelated working-tree changes.
+- Use focused edit checks. Freeze relevant inputs before final validation; rerun only checks later edits invalidate. Reuse fresh evidence, not full suites per child, for unchanged inputs.
+- Native command completion only; no status/log polling just to wait. Batch independent short reads/checks if supported; no process wrappers.
+- Reconcile owned background commands before return. Late notifications must keep the substantive handoff, not a bare acknowledgment.
+- Never discard/overwrite unrelated working-tree changes.
 - `none`: no provider work; `recall`: bounded reads; `observe`: + bounded durable observation in scope.
 - `recall`/`observe`: installed `thoth-mem` skill; do not invent provider mechanics/claim unconfirmed effects.
 - Only dispatch identity, verbatim; never derive. If missing, report memory unavailable.
@@ -63,7 +63,7 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - Report unavailable/degraded/stale/contradictory/insufficient memory; continue unrelated safe work.
 
 <tool-execution>
-- Same-message tool calls may run concurrently; emit a call that depends on another call's result or side effect only after that result arrives, in a later message.
+- Same-message tool calls may run concurrently. Emit dependent calls in a later message after the needed result or side effect.
 </tool-execution>
 
 <questions>

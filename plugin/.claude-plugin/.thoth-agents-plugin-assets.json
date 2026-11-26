@@ -9,32 +9,32 @@
     {
       "path": "agents/designer.md",
       "kind": "agent-config",
-      "sha256": "sha256:506f0e70c5ae98a990f798a99bcb7b469db9431c95aad68e00ad03f1cecc5ca1"
+      "sha256": "sha256:c976ec8a134670069d9ea2235e7311efa47f8874aab257c1202e15dc894e5014"
     },
     {
       "path": "agents/explorer.md",
       "kind": "agent-config",
-      "sha256": "sha256:0c4b395e00185277ccf3f996b323fbfab6c1117b1805caf5e836470c8b498b50"
+      "sha256": "sha256:9ad66975979f4d7287a647a3c264404f75a2e755064d41c97cfb56037907cad0"
     },
     {
       "path": "agents/librarian.md",
       "kind": "agent-config",
-      "sha256": "sha256:f9fb082279dea79880b903ff3dc12e0227137126e0c05f17f5a9e625a1ee94f5"
+      "sha256": "sha256:697eb8a19f1e3a6e6b950208c7114f8b4a0815f3fdd1d71ff7ab58a4287cea2f"
     },
     {
       "path": "agents/oracle.md",
       "kind": "agent-config",
-      "sha256": "sha256:8f9637527c0cac02194124c5b90e55d5232d54dea892350b4b844bdd87b4968e"
+      "sha256": "sha256:ec5c8d01c13642a968d485c0a3d85f875392cdb96acf0153c31eacb9fe4d8ec0"
     },
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:3cf0c0ab30026807b9f66bd0f824076d5c7a5b5af8cf873880f83bf38b109b57"
+      "sha256": "sha256:81064233b136cf0709a6f2e98dfc28b035549c1a65cd67a64ee8c2c04d5faa59"
     },
     {
       "path": "agents/worker.md",
       "kind": "agent-config",
-      "sha256": "sha256:2c507b9977ca6106a5baf97729b3a846b17fa508037df5622d5b9cceda571d18"
+      "sha256": "sha256:c4e9f14ad19d72e7db5ff96b792f9a21ab496d6ea8983677499a43058fb69a85"
     },
     {
       "path": "claude-hooks/hooks.json",

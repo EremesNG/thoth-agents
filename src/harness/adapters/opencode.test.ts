@@ -84,7 +84,7 @@ describe('OpenCode harness adapter v0.3', () => {
 
     expect(root).toContain('Root:');
     expect(root).toContain('.thoth/changes/<id>/<id>.md');
-    expect(root).toContain('Bundled `thoth-sdd` skill');
+    expect(root).toContain('`thoth-sdd`: phase/`templates/change.md`/validator');
     expect(root).toContain(
       'fresh read-only subagent agent:"oracle" for substantial/material risk',
     );

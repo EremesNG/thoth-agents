@@ -5,6 +5,8 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-27
+
 ### Fixed
 
 - Publish Claude Code’s non-streaming tool calls together at a verified dispatch fence. Fail without running the batch if the bridge observes a failure before publication, reaches EOF, or cannot verify the fence in time. A retry discards the staged batch so the replacement can proceed. This fixes [upstream #237](https://github.com/elidickinson/pi-claude-bridge/issues/237) and supersedes the quiet-timer approach of [upstream PR #225](https://github.com/elidickinson/pi-claude-bridge/pull/225).

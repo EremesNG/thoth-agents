@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-27
+
+### Changed
+
+- Run side-effecting tools in the order the model emitted them by declaring `executionMode: "sequential"`, so a tool batch never reorders or overlaps their effects.
+
 ## [0.6.3] - 2026-11-24
 
 ### Changed

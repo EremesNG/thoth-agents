@@ -4,6 +4,12 @@ All notable changes to this Thoth package are documented here in Keep a Changelo
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-27
+
+### Changed
+
+- Run contained `bash` and `powershell` sequentially in emitted order.
+
 ## [0.1.1] - 2026-11-10
 
 ### Changed

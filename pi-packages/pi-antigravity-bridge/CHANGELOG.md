@@ -5,6 +5,12 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-27
+
+### Changed
+
+- Run side-effecting tools in the order the model emitted them by declaring `executionMode: "sequential"`, so a tool batch never reorders or overlaps their effects.
+
 ## [0.10.0] - 2026-11-24
 
 ### Added

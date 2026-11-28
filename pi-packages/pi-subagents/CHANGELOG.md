@@ -5,6 +5,13 @@ Upstream history, including the former mixed local notes, is preserved unchanged
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-27
+
+### Changed
+
+- Run `subagent_*` lifecycle tools and `ask_orchestrator` sequentially in emitted order.
+- `subagents-configuration` skill: describe skill-path requirements for delegated assignments.
+
 ## [0.17.0] - 2026-11-24
 
 ### Added

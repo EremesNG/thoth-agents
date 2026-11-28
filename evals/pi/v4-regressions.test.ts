@@ -83,6 +83,10 @@ it('v4 background Oracle assignment is correlated through native details.tasks b
   const id = 'subtask_thoth-oracle_1791701889718_7adc7964';
   const result: EvaluationResult = {
     ...base,
+    loadedSkills: [
+      { name: 'plan-reviewer', filePath: '/skills/plan-reviewer/SKILL.md' },
+      { name: 'thoth-sdd', filePath: '/skills/thoth-sdd/SKILL.md' },
+    ],
     subagents: [
       {
         id: 'dispatch',
@@ -91,7 +95,7 @@ it('v4 background Oracle assignment is correlated through native details.tasks b
         name: 'subagent_run',
         args: {
           agent: 'thoth-oracle',
-          task: 'MEMORY: none. Independent plan review.',
+          task: 'SKILLS: plan-reviewer — /skills/plan-reviewer/SKILL.md; thoth-sdd — /skills/thoth-sdd/SKILL.md\nMEMORY: none. Independent plan review.',
           mode: 'background',
         },
         result: { details: { tasks: [{ id }] } },
@@ -111,10 +115,10 @@ it('v4 background Oracle assignment is correlated through native details.tasks b
   };
   result.tools = [...result.subagents];
   const trial = {
-    ...item('plan-review-no-forwarded-skills'),
+    ...item('plan-review-forwarded-skills'),
     live: {
-      ...item('plan-review-no-forwarded-skills').live,
-      expectations: ['oracle-no-forwarded-skills' as const],
+      ...item('plan-review-forwarded-skills').live,
+      expectations: ['oracle-forwarded-skills' as const],
     },
   };
   expect(gradeCase(trial, result)).toEqual([]);

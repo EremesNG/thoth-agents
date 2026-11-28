@@ -328,7 +328,7 @@
   Global `<agent-dir>/subagents.json` therefore requests
   `session_resources: "lean"` and `enable_continue: false`; lean filters
   `before_agent_start` and `session_start`, while full child resources are
-  unsupported. Lean children retain their specialist prompt and receive a
+  unsupported. Lean children retain their specialist prompt and may receive a
   metadata-only skill catalog (name, description, location), not skill bodies,
   context files, prompt templates, themes, or root injection. Discovery uses
   native user skills, configured packages, and trusted project/ancestor skills
@@ -341,7 +341,8 @@
   Thoth config `agents.<role>.skills` generates that Pi-only field; sync preserves
   operator-edited filters. Global/project `lean_skills` defaults to true;
   `lean_skills: false` disables child catalogs without enabling full resources.
-  Explicit assignment paths remain available alongside catalog discovery.
+  Do not assume child skill access. Every Thoth assignment includes `SKILLS`
+  with each required skill's name and absolute `SKILL.md` path, or `none`.
   Trusted packages in `lifecycle_passthrough` (default: the Claude, Antigravity
   and Junie provider bridges, background tasks and `@thoth-agents/pi-openai-fast`; never
   thoth-agents) are the exception: they keep their full lifecycle in children,

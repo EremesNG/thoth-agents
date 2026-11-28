@@ -20,7 +20,8 @@ No process tools, wrappers, reports, or temporary artifacts.
   from bounded work and supervision, not changing those settings.
 - Each assignment delivers one independently acceptable outcome. Start from its
   accepted inputs and named dependencies; state the concrete output, exact known
-  entrypoints and skill paths, owner, owned writes and interface boundaries,
+  entrypoints, `SKILLS` (required names with absolute `SKILL.md` paths, or `none`),
+  owner, owned writes and interface boundaries,
   focused checks with pass evidence, and a meaningful return milestone and stop
   condition. Read-only assignments state `none` for writes. Do not delegate an
   entire broad integration without separately acceptable outputs or split by

@@ -104,8 +104,14 @@ it('requires correct review kind and digest, not just valid Oracle JSON', () => 
   gradeEvaluation(item('verification-fresh-oracle'), bound);
   expect(bound.status).toBe('FAIL');
 });
-it('requires catalog-driven plan approval, canonical choices, Stop handling and no forwarded path', () => {
+it('requires plan approval, canonical choices, Stop handling and both forwarded skills', () => {
   const result = trace('o1', envelope('plan-review', 'OKAY'));
+  result.loadedSkills = [
+    { name: 'plan-reviewer', filePath: '/skills/plan-reviewer/SKILL.md' },
+    { name: 'thoth-sdd', filePath: '/skills/thoth-sdd/SKILL.md' },
+  ];
+  result.tasks[0].task.task =
+    'SKILLS:\n- plan-reviewer — `/skills/plan-reviewer/SKILL.md`\n- thoth-sdd — `/skills/thoth-sdd/SKILL.md`\nMEMORY: none';
   const question = (labels: string[], at: number, answer: string) => ({
     at,
     answer: { answer },
@@ -125,24 +131,29 @@ it('requires catalog-driven plan approval, canonical choices, Stop handling and 
     question([reviewLabel, skipLabel], 1, reviewLabel),
     question(['Implement', 'Stop'], 4, 'Stop'),
   ];
-  gradeEvaluation(item('plan-review-no-forwarded-skills'), result);
+  gradeEvaluation(item('plan-review-forwarded-skills'), result);
   expect(result.status, result.reasons.join('; ')).toBe('PASS');
-  const forwarded = {
-    ...result,
-    status: 'PASS' as const,
-    reasons: [],
-    tasks: [
-      {
-        ...result.tasks[0],
-        task: {
-          ...result.tasks[0].task,
-          task: 'Read /skills/plan-reviewer/SKILL.md',
+  for (const task of [
+    'Read /skills/plan-reviewer/SKILL.md and /skills/thoth-sdd/SKILL.md',
+    'SKILLS: plan-reviewer — skills/plan-reviewer/SKILL.md; thoth-sdd — /skills/thoth-sdd/SKILL.md',
+    'SKILLS: plan-reviewer — /skills/plan-reviewer/SKILL.md',
+    'SKILLS: plan-reviewer — /skills/plan-reviewer/SKILL.md; another-skill — /skills/thoth-sdd/SKILL.md',
+    'SKILLS: none\nMemory: none\n- plan-reviewer — /skills/plan-reviewer/SKILL.md\n- thoth-sdd — /skills/thoth-sdd/SKILL.md',
+  ]) {
+    const missing = {
+      ...result,
+      status: 'PASS' as const,
+      reasons: [],
+      tasks: [
+        {
+          ...result.tasks[0],
+          task: { ...result.tasks[0].task, task },
         },
-      },
-    ],
-  };
-  gradeEvaluation(item('plan-review-no-forwarded-skills'), forwarded);
-  expect(forwarded.status).toBe('FAIL');
+      ],
+    };
+    gradeEvaluation(item('plan-review-forwarded-skills'), missing);
+    expect(missing.status, task).toBe('FAIL');
+  }
   const unsafe = {
     ...result,
     status: 'PASS' as const,
@@ -156,7 +167,7 @@ it('requires catalog-driven plan approval, canonical choices, Stop handling and 
       },
     ],
   };
-  gradeEvaluation(item('plan-review-no-forwarded-skills'), unsafe);
+  gradeEvaluation(item('plan-review-forwarded-skills'), unsafe);
   expect(unsafe.status).toBe('FAIL');
   const invalid = {
     ...result,
@@ -177,11 +188,13 @@ it('requires catalog-driven plan approval, canonical choices, Stop handling and 
       },
     ],
   };
-  gradeEvaluation(item('plan-review-no-forwarded-skills'), invalid);
+  gradeEvaluation(item('plan-review-forwarded-skills'), invalid);
   expect(invalid.status).toBe('FAIL');
 });
-it('requires designer successful native read from the same task and no forwarded path', () => {
-  const skill = '.pi/skills/fixture-ui-guidelines/SKILL.md';
+it('requires a forwarded project skill and a successful native read by the same designer', () => {
+  const workspace = 'C:\\project with spaces';
+  const skill = `${workspace}\\.pi\\skills\\fixture-ui-guidelines\\SKILL.md`;
+  const assignment = `SKILLS: fixture-ui-guidelines — "${skill}"\nMEMORY: none.`;
   const read = {
     taskId: 'd1',
     id: 'r',
@@ -190,12 +203,12 @@ it('requires designer successful native read from the same task and no forwarded
     completed: true,
     isError: false,
   };
-  for (const [calls, forwarded, expected] of [
-    [[], false, 'FAIL'],
-    [[{ ...read, isError: true }], false, 'FAIL'],
-    [[{ ...read, taskId: 'other' }], false, 'FAIL'],
-    [[read], true, 'FAIL'],
-    [[read], false, 'PASS'],
+  for (const [calls, task, expected] of [
+    [[], assignment, 'FAIL'],
+    [[{ ...read, isError: true }], assignment, 'FAIL'],
+    [[{ ...read, taskId: 'other' }], assignment, 'FAIL'],
+    [[read], 'SKILLS: none\nMEMORY: none.', 'FAIL'],
+    [[read], assignment, 'PASS'],
   ] as const) {
     const result = trace(
       'd1',
@@ -207,11 +220,10 @@ openQuestions: none
 nextAction: none`,
       'thoth-designer',
     );
+    result.workspace = workspace;
     result.childTools = [...calls];
-    if (forwarded) {
-      result.tasks[0].task.task = `Read ${skill}`;
-      result.subagents[0].args.task = `Read ${skill}`;
-    }
+    result.tasks[0].task.task = task;
+    result.subagents[0].args.task = task;
     gradeEvaluation(item('designer-project-skill'), result);
     expect(result.status, result.reasons.join('; ')).toBe(expected);
   }
@@ -219,13 +231,17 @@ nextAction: none`,
 
 it('does not accept designer read evidence before task completion', () => {
   const result = trace('d1', 'conclusion: Work in progress.', 'thoth-designer');
+  result.workspace = '/workspace';
+  const skill = '/workspace/.pi/skills/fixture-ui-guidelines/SKILL.md';
+  result.tasks[0].task.task = `SKILLS: fixture-ui-guidelines — ${skill}\nMEMORY: none.`;
+  result.subagents[0].args.task = result.tasks[0].task.task;
   result.tasks[0].task.status = 'running';
   result.childTools = [
     {
       taskId: 'd1',
       id: 'r',
       name: 'read',
-      args: { path: '.pi/skills/fixture-ui-guidelines/SKILL.md' },
+      args: { path: skill },
       completed: true,
       isError: false,
     },

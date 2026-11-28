@@ -157,11 +157,11 @@ describe('AI-first prompt rendering', () => {
   )('renders one answer-first output style in %s', (_harness, render) => {
     const prompt = render();
     const style = `<output-style>
-- Answer first; no preamble, restatement or recap.
-- ≤6 sentences or ≤5 bullets unless content demands more.
-- No tool-call narration. Updates: ≤2 sentences, only at phase starts or plan-changing facts.
-- Keep work depth, evidence, verification and required contract/gate fields.
-- Use child answers/anchors directly; ask only for missing decision-critical evidence.
+- Answer first; skip preamble/restatement/recap.
+- ≤6 sentences or ≤5 bullets unless needed.
+- No tool narration. Updates: ≤2 sentences at phase starts or plan-changing facts only.
+- Preserve depth, evidence, checks and required contract/gate fields.
+- Use child answers/anchors; ask only for missing decision-critical evidence.
 </output-style>`;
     expect(prompt.match(/<output-style>/g)).toHaveLength(1);
     expect(prompt).toContain(`</operating-model>\n\n${style}`);
@@ -206,7 +206,7 @@ describe('AI-first prompt rendering', () => {
       /REJECT: root repairs same record\/reruns affected gates\/fresh Oracle; repeat until OKAY or human-owned material blocker/,
     );
     expect(prompt).toMatch(
-      /Small: before delegation\/implementation root states brief in-session scope\/owner\/focused-verification plan; no record\/planning phases/,
+      /Small: before delegation\/implementation, root states brief scope\/owner\/focused verification in-session; no record\/planning phases/,
     );
   });
 
@@ -430,10 +430,8 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/bounded technical unknowns.*resolution strategy/i);
     expect(prompt).toMatch(/thoth-sdd.*phase.*change\.md/i);
     expect(prompt).not.toMatch(/bundled `thoth-work` skill|work\.yaml/);
-    expect(prompt).toContain(
-      '- Use grill-me when material human-owned decisions remain unresolved.',
-    );
-    expect(prompt).toMatch(/no extra discovery\/specification docs/i);
+    expect(prompt).toMatch(/grill-me: unresolved material human decisions/i);
+    expect(prompt).toMatch(/no extra discovery\/spec docs/i);
   });
 
   test.each([
@@ -536,7 +534,13 @@ describe('AI-first prompt rendering', () => {
     );
     expect(prompt).toMatch(/preserve operator-selected model\/effort/i);
     expect(prompt).toMatch(/one independently acceptable outcome/i);
-    expect(prompt).toMatch(/exact known.*skill paths/i);
+    expect(prompt).toMatch(
+      /SKILLS \(every required skill: name \+ absolute `SKILL\.md` path \(global or project\), or `none`\); MEMORY/,
+    );
+    expect(prompt).toContain('Never assume child skill access');
+    expect(prompt).toMatch(
+      /Resolve missing required paths.*visible catalog\/context or known install roots.*block dispatch and report why/,
+    );
     expect(prompt).toMatch(/two consecutive.*without new evidence/i);
     expect(prompt).toMatch(/native attention.*inspect.*steer/i);
     expect(prompt).toMatch(/timeout.*not.*progress/i);
@@ -667,7 +671,23 @@ describe('AI-first prompt rendering', () => {
       expect(prompt).toContain(
         'Late notifications must keep the substantive handoff',
       );
-      expect(prompt).toContain('Use exact supplied skill paths');
+    }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('requires every specialist to read supplied skills in $harness', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const prompt = renderRolePrompt(sectionsFor(role), dialect);
+      expect(prompt).toContain(
+        'Read supplied `SKILL.md` paths with `read` or equivalent',
+      );
+      expect(prompt).toContain(
+        'if a required path is missing or unreadable, report a blocker',
+      );
+      expect(prompt).toContain('no home searching or installing');
+      expect(prompt).not.toContain('native skill catalog');
     }
   });
 
@@ -1193,34 +1213,34 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
       [
         "opencode",
         [
-          "f0d6cc00294c61fd197109a5fbadd124ee72be415ee0cb6b13167a2346a89940",
-          "1293eff7acaa8c26e7c9451aeaf544324219a696465ed6382bc5d883066862fd",
-          "4ac65c0543157f9e78f3186c41846b53519139677e6b2e6eea8cb49af96a0896",
-          "010a45b9b54b228c24605abe00a9eea2249859ece4f9f4d9892afd7011f10024",
-          "0fb385b676b4cfb4f540a385ad91ec972733da2b4e6f8cc8fce0135e4ee5b6f5",
-          "289727ae78299667e16fa05b09035a20ffaa3ea7fe015c32f0cf85fa073ab71e",
+          "6129810cd7308ee617fc66bfcdafcf2d3962a6f8eced4cb45e49a0d0ed243f24",
+          "f4a5d2e6da71a9cb0fcedb6f6d4761bef2e4b3b0259cc2e79610ebe98a71f69d",
+          "ab92b2e7c4fa48fd32e84867829ca4586e333c67398657364eb7134c70e6ab5d",
+          "cf902488d162bb440003d309c4d848264c929625791128ef0a4e26c57224e99d",
+          "6f382aa84723c17319cb183303587e1aa0075dd8d22528952116e91eb170d6b8",
+          "33a19c4854d262f2b178c9fa5524f9931add5f5b22a567539281989b277202cd",
         ],
       ],
       [
         "codex",
         [
-          "67336ac3e93e2e873cb0749e2c503bc40b7f7073f8bad21bb24a305d8f9edfc7",
-          "621de5a27344f95847d89d2176c456b1bf5a309ecac937b60a3c39c0b1662e35",
-          "99a9e522543b37e0d487858ab1d7ff4d34169e94256ffe1ee3defb1845acc74d",
-          "9b1b23a01fe7c70177d17b89cf06c399c2de7e6c6ae0db2502246f758ec1a897",
-          "41509325c4d952c8535b30688106c383e63199f9192399e6ee1496df38e2ecec",
-          "bd2f21f6a05f25dd71d1bed4a35435003fa8d99f6364e1d7493d578e57e6f921",
+          "50a31bc64d9c464eed9f54b4573ce1b62ca2dc5b9ff9e97fad5b87b392ffb826",
+          "04396edc82a9887c49d204757644b28e6a136d033335cd979870559ba508f47d",
+          "54abdadd45c13fc1df8f72b1b406655d9a8a3619c2c70ad76e1c3b47a93461de",
+          "c9475b3c8b688c9546fc3e5cfdf24e3ff86b22657606334c6fe7829e190bc07b",
+          "53ac41a1a0a145d094e5c6eaf57a3ac9c40c1334186ced08b487b4ddb738a644",
+          "c94142b1cba2e2465d6650316fd6426c22d85955a894035a92a7bd073579dabe",
         ],
       ],
       [
         "claude",
         [
-          "e28e2302d27e2c3c62b8e1dc3c3988f97ed4f0c5eb453e0b9456d7cbeaed6039",
-          "977ef23e0e8313737de503277cc3a78d8c623296eaf7e63ec77df01493ba7fed",
-          "28765ff6f81c3692d7e6690b7a48208ad6b40ff52672f5c37c3603a0be19bbec",
-          "8f245a9c858682952c375c05de6ec4e22130e9466dba432b46cfd78c427809a2",
-          "7b1a3a0c607cd1d5f4ed6cccee3834ce10b510b168e8080bfc4b6178cd1bd30a",
-          "93c44ae769c11aded7771847cf57f622c5a0d22979a79e1fda091e8e88260e8d",
+          "7ab98681d13851a1d0c9d00413639a8a7242eba49877adcaf1001067546fb626",
+          "972aabff2b75cabe64537efa4041f3e1ff4db56f90e9c92fba481e83166b139d",
+          "ab5c09eb05f96dd90bbe1dc6ee9c205858e5b3828ab251517411c23aeb1c1862",
+          "b605e7bb0ec3fb0327d30cbfe8bff99da54eb661091e880ba8f171cc2edc4a9a",
+          "722856ea303a0b570453f138acbb87bb75620151849ba23ab7264cec31ca7928",
+          "3a7ff51604d584a788c56b7b109ac355305f34954046bbd4048670e32b99c407",
         ],
       ],
     ]
@@ -1231,15 +1251,15 @@ test('pins non-Pi gate-only result prompt snapshots', () => {
 test.each([
   [
     OPENCODE_PROMPT_DIALECT,
-    '5c48ee4bcfcc7c68c6040959fe7b0b81107bbe34dfb5780d82eb4771a80f2345',
+    'db0bbeb342bec0a47a8f75b93557e294c96be5ba10709ba1be5f8beaac76af26',
   ],
   [
     CLAUDE_CODE_PROMPT_DIALECT,
-    'aceb17a9c24b31e2a573c21d3defe5008c9fa04420c9f1e4803dda45b099836e',
+    '5fc3d61c919837b73365971487c31929b09374b07bf650152d4a37c0af1aeaff',
   ],
   [
     PI_PROMPT_DIALECT,
-    '5c21347319711120ac5b4ef1595beb3fb2d59e4038be08908fcdf88fc03c4ef9',
+    '230850cecd23a77021c72a09d6ba97a3333dd171e360b95677f628d7bf2717b7',
   ],
 ] as const)('preserves %s prompts byte-for-byte', (dialect, digest) => {
   const prompts = getAgentPackContract().roles.map(({ name }) =>

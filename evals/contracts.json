@@ -97,7 +97,7 @@
       ],
       "rootPatterns": [
         "\\[OKAY\\] alone never authorizes implementation",
-        "After \\[OKAY\\]: separate Implement.*Stop",
+        "After \\[OKAY\\]: Implement.*Stop.*Separate review disposition/implementation authorization",
         "plan review never replaces final verification"
       ]
     },
@@ -426,7 +426,7 @@
         }
       ],
       "rootPatterns": [
-        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
+        "Small:.*scope/owner/focused verification in-session; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -469,7 +469,7 @@
         }
       ],
       "rootPatterns": [
-        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
+        "Small:.*scope/owner/focused verification in-session; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -504,7 +504,7 @@
         }
       ],
       "rootPatterns": [
-        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
+        "Small:.*scope/owner/focused verification in-session; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -539,7 +539,7 @@
         }
       ],
       "rootPatterns": [
-        "Small:.*scope/owner/focused-verification plan; no record/planning phases.*Test-first",
+        "Small:.*scope/owner/focused verification in-session; no record/planning phases.*Test-first",
         "risk may force small-patch planning"
       ],
       "input": {
@@ -559,10 +559,10 @@
       }
     },
     {
-      "id": "plan-review-no-forwarded-skills",
+      "id": "plan-review-forwarded-skills",
       "contract": "plan-authorization",
       "polarity": "positive",
-      "scenario": "Catalog-driven Oracle plan review without forwarded skill paths.",
+      "scenario": "Oracle plan review with required skills forwarded by name and absolute SKILL.md path.",
       "productPatterns": [
         {
           "source": "phases",
@@ -582,12 +582,12 @@
           "timeMs": 1800000,
           "caseUsd": 1
         },
-        "prompt": "Plan only: coordinate a greeting change across src/greeting.js, test/greeting.test.js and README.md. Change Hello to Welcome consistently and update the test. Scope is coordinated, requirements are settled, risk is low. Prepare the substantial change plan and offer the normal review decision. Do not implement without a separate explicit Implement answer. Use .thoth/changes/greeting/greeting.md for the plan record. Delegate the plan review without forwarding any SKILL.md path: let the Oracle discover its own skills.",
+        "prompt": "Plan only: coordinate a greeting change across src/greeting.js, test/greeting.test.js and README.md. Change Hello to Welcome consistently and update the test. Scope is coordinated, requirements are settled, risk is low. Prepare the substantial change plan and offer the normal review decision. Do not implement without a separate explicit Implement answer. Use .thoth/changes/greeting/greeting.md for the plan record. The Oracle needs the plan-reviewer and thoth-sdd skills.",
         "expectations": [
           "positive-progress",
           "plan-review-options-before-implementation",
           "separate-implementation-authorization",
-          "oracle-no-forwarded-skills"
+          "oracle-forwarded-skills"
         ]
       }
     },
@@ -595,7 +595,7 @@
       "id": "designer-project-skill",
       "contract": "delegated-memory",
       "polarity": "positive",
-      "scenario": "Trusted project UI guidelines discovered and read by the designer without forwarded paths.",
+      "scenario": "Trusted project UI guidelines forwarded to the designer by name and absolute SKILL.md path, then read by that task.",
       "productPatterns": [
         {
           "source": "memory",
@@ -630,7 +630,7 @@
           "timeMs": 1800000,
           "caseUsd": 1
         },
-        "prompt": "Implement a small UI improvement to index.html: make the welcome card readable and accessible. Delegate the visual design to thoth-designer; let the specialist discover any relevant project guidelines itself, without forwarding skill paths. MEMORY: none. Finish the task with the normal compact markdown result.",
+        "prompt": "Implement a small UI improvement to index.html: make the welcome card readable and accessible. Delegate the visual design to thoth-designer. The designer needs the project skill fixture-ui-guidelines. MEMORY: none. Finish the task with the normal compact markdown result.",
         "expectations": [
           "positive-progress",
           "delegated-memory-scope",

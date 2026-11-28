@@ -29,7 +29,7 @@ const fixtureNames: Record<string, string> = {
   'plan-review-choice': 'ready',
   'verification-fresh-oracle': 'closeout',
   'memory-recall-bounded-reads': 'discovery',
-  'plan-review-no-forwarded-skills': 'plan-review-no-forwarded-skills',
+  'plan-review-forwarded-skills': 'plan-review-no-forwarded-skills',
   'designer-project-skill': 'designer',
 };
 export const reviewLabel = 'Review plan with Oracle (Recommended)';
@@ -91,6 +91,43 @@ function oracleApproval(result: EvaluationResult, plan: boolean) {
 }
 const missingApproval = 'No valid expected Oracle approval envelope';
 export const designerSkillPath = '.pi/skills/fixture-ui-guidelines/SKILL.md';
+
+function forwardsSkill(
+  text: string | undefined,
+  name: string,
+  filePath: string,
+) {
+  const normalize = (value: string) => value.replaceAll('\\', '/');
+  const expected = normalize(filePath);
+  if (!/^(?:\/|[A-Za-z]:\/)/.test(expected)) return false;
+  const lines = text?.split(/\r?\n/) ?? [];
+  const heading =
+    /^(?:[-*]\s+)?(?:SKILLS:|\*\*SKILLS:\*\*|\*\*SKILLS\*\*:)\s*/i;
+  const start = lines.findIndex((line) => heading.test(line.trim()));
+  if (start === -1) return false;
+  const inline = lines[start].trim().replace(heading, '');
+  if (/^`?none\b/i.test(inline)) return false;
+  const entries = inline ? [inline] : [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.trim() && !entries.length) continue;
+    if (!/^\s|^[-*]\s+/.test(line) || !line.trim()) break;
+    if (/^\s*(?:[-*]\s+)?\**(?:[A-Z][A-Z_ ]+|[Mm]emory)\**:/.test(line)) break;
+    entries.push(line);
+  }
+  return entries
+    .flatMap((line) => line.split(';'))
+    .some((entry) => {
+      const pair =
+        /^\s*(?:[-*]\s+)?[`*]*([\w-]+)[`*]*(?:\s*[:=—–-]\s*|\s+)(.+)$/.exec(
+          entry,
+        );
+      return (
+        pair?.[1] === name &&
+        normalize(pair[2].trim().replace(/^[`"']|[`"']$/g, '')) === expected
+      );
+    });
+}
+
 function assignment(result: EvaluationResult, task: Record<string, unknown>) {
   if (typeof task.task === 'string') return task.task;
   const dispatch = result.subagents.find((call) => {
@@ -256,38 +293,49 @@ export function gradeCase(item: LiveCase, result: EvaluationResult): string[] {
           reasons.push('No fresh thoth-oracle dispatch');
         break;
       }
-      case 'oracle-no-forwarded-skills': {
+      case 'oracle-forwarded-skills': {
         const approved = oracleApproval(result, true);
         if (
           !approved.some(({ task }) => {
             const text = assignment(result, task);
-            return text !== undefined && !/SKILL\.md\b/i.test(text);
+            return ['plan-reviewer', 'thoth-sdd'].every((name) =>
+              result.loadedSkills.some(
+                (skill) =>
+                  skill.name === name &&
+                  forwardsSkill(text, name, skill.filePath),
+              ),
+            );
           })
         )
           reasons.push(
-            'No approved Oracle task with an assignment free of SKILL.md paths',
+            'No approved Oracle task with both required skills and their absolute SKILL.md paths in SKILLS',
           );
         break;
       }
       case 'designer-project-skill': {
         const designers = completedTasks(result, 'thoth-designer');
+        const skillPath = result.workspace
+          ? `${result.workspace}/${designerSkillPath}`
+          : undefined;
         if (
           !designers.some(({ task }) => {
-            const text = assignment(result, task);
             return (
-              text !== undefined &&
-              !/SKILL\.md\b/i.test(text) &&
+              skillPath !== undefined &&
+              forwardsSkill(
+                assignment(result, task),
+                'fixture-ui-guidelines',
+                skillPath,
+              ) &&
               successfulSkillRead(
                 result.childTools ?? [],
                 String(task.id ?? task.task_id ?? ''),
-                designerSkillPath,
-                result.workspace,
+                skillPath,
               )
             );
           })
         )
           reasons.push(
-            'No completed designer task with a successful task-attributed project skill read and no forwarded path',
+            'No completed designer task with the project skill name and absolute SKILL.md path in SKILLS and a successful same-task read',
           );
         break;
       }

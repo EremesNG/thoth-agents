@@ -17,37 +17,37 @@
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/designer.md",
       "reference": "./codex-hooks/payloads/designer.md",
-      "sha256": "sha256:1df095b198c3c0134ee53747e083c23db7cb338a4144ab31c07a6bd85a2b6ab0"
+      "sha256": "sha256:fd94c3e82dadd6f7a737ae556d4e306040a2479f17b6ef094b1443d5812db0b8"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/explorer.md",
       "reference": "./codex-hooks/payloads/explorer.md",
-      "sha256": "sha256:0ba9ac86fa8ada3e2401ea283c43188fd1825f045373aaa20e82266c5ac5885b"
+      "sha256": "sha256:8efed1c2a8bf44ae61744811bcb5eeac32b535117f417c029c36828c0ae047c4"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/librarian.md",
       "reference": "./codex-hooks/payloads/librarian.md",
-      "sha256": "sha256:ff3685930662be6d5d76bf3cff1127312d07aa8feddc36c8254c65eb439b9389"
+      "sha256": "sha256:bc85277306a0128cde3e1ba06fdf5ea3515c14901813da4f6f9eee5e5ebf3b60"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/oracle.md",
       "reference": "./codex-hooks/payloads/oracle.md",
-      "sha256": "sha256:3f25c686cf577e6c3fe759930f59a16cecfb96edd6db90f7a9c28551f3238633"
+      "sha256": "sha256:789e36d56a018f94beb6a6a75da764d1517c50dad86f2dce468eaed484c681a9"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/root.md",
       "reference": "./codex-hooks/payloads/root.md",
-      "sha256": "sha256:c06a077878877b2e55cfac93b173a74f4a49d38da5fcb089e34300807f8e5414"
+      "sha256": "sha256:cf65d551a96997ffd9dad5cfda87687a50d7f9eb7efb98724efcab3ef5640d53"
     },
     {
       "field": "hooks",
       "path": ".codex-plugin/codex-hooks/payloads/worker.md",
       "reference": "./codex-hooks/payloads/worker.md",
-      "sha256": "sha256:05aef87468c0b625a4b30d60b7d2c6a28cac820b462d27a8fe5c6535c93f3c68"
+      "sha256": "sha256:caf70ed7e0064bc97299aa8eb7634ade951c74f8b0a69d1e2d0dcf01f1d96922"
     },
     {
       "field": "mcpServers",

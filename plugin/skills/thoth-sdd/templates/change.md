@@ -50,7 +50,8 @@ writes the record.
 
 - [ ] AC-1: TBD
   - Outcome: one result that root can accept independently
-  - Known entrypoints and skill paths: exact paths needed for this outcome
+  - Known entrypoints: exact paths needed for this outcome
+  - SKILLS: each required skill's name and absolute `SKILL.md` path (global or project), or `none`
   - Inputs: concrete accepted evidence or upstream outputs
   - Dependencies: named upstream units and their accepted outputs, or none
   - Output: concrete finding, decision, or artifact

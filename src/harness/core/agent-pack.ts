@@ -346,7 +346,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       unitOutcome:
         'Each exploration, research, planning, implementation or verification unit has one independently acceptable outcome',
       unitEnvelope:
-        'Assignment: phase, record if any, requirements, accepted upstream inputs, result produced; owned writes, compatible reads/interfaces/shared resources; focused checks with pass evidence, native return milestone, stop condition; MEMORY (`none`/`recall`/`observe`) verified project/root session identity (or `unavailable`), verbatim',
+        'Every assignment: phase, record if any, requirements, exact known entrypoints, accepted upstream inputs, result produced; owned writes, compatible reads/interfaces/shared resources; focused checks with pass evidence, native return milestone, stop condition; SKILLS (every required skill: name + absolute `SKILL.md` path (global or project), or `none`); MEMORY (`none`/`recall`/`observe`) verified project/root session identity (or `unavailable`), verbatim',
       phaseSplitting:
         'Split phases with separately acceptable outcomes before dispatch; keep cohesive tiny edits together',
       independentDiscovery:

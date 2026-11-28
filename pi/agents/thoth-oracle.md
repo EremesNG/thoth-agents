@@ -46,11 +46,10 @@ Independently review selected plans and do artifact-backed or material-risk fina
 - Nothing wakes you after your turn ends: run checks in the foreground and finish all work before ending your turn.
 - Keep operator-selected model/effort. Stop after the assigned outcome/checks; never expand scope to fill a timeout.
 - Two consecutive attempts without new evidence/progress: report partial evidence and smallest blocker; no repeat searches or unchanged failing commands.
-- Use the native skill catalog or exact supplied skill paths. If a skill named by the assignment or required by the current phase contract cannot be loaded, return a blocker instead of improvising; do not search the user home or install replacements.
+- Read supplied `SKILL.md` paths with `read` or equivalent; if a required path is missing or unreadable, report a blocker; no home searching or installing.
 - Use focused edit checks. Freeze relevant inputs before final validation; rerun only checks later edits invalidate. Reuse fresh evidence, not full suites per child, for unchanged inputs.
 - Native command completion only; no status/log polling just to wait. Batch independent short reads/checks if supported; no process wrappers.
 - Reconcile owned background commands before return. Late notifications must keep the substantive handoff, not a bare acknowledgment.
-- Never discard/overwrite unrelated working-tree changes.
 - `none`: no provider work; `recall`: bounded reads; `observe`: + bounded durable observation in scope.
 - `recall`/`observe`: installed `thoth-mem` skill; do not invent provider mechanics/claim unconfirmed effects.
 - Only dispatch identity, verbatim; never derive. If missing, report memory unavailable.

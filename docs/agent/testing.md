@@ -69,12 +69,12 @@ source of product instructions.
 Numeric caps must be positive and finite. There is one trial per selected case
 per invocation. IDs are `small-no-record`, `plan-review-choice`,
 `verification-fresh-oracle`, `memory-recall-bounded-reads`,
-`plan-review-no-forwarded-skills`, and `designer-project-skill`. The catalog plan
+`plan-review-forwarded-skills`, and `designer-project-skill`. The forwarded-skills plan
 case requires canonical review choices, a valid Oracle plan-review OKAY, a separate
-Implement/Stop question answered Stop, no implementation writes, and no SKILL.md
-path in the Oracle assignment. The designer case requires a completed designer
-task and a successful native read of the trusted fixture project skill by that
-same designer task, without a forwarded path.
+Implement/Stop question answered Stop, no implementation writes, and both
+`plan-reviewer` and `thoth-sdd` names and absolute `SKILL.md` paths in `SKILLS`.
+The designer case requires the fixture project skill name and absolute path in
+`SKILLS` and a successful native read of that path by the completed designer task.
 
 A case's `live.caps` in `contracts.json` may override `timeMs`, `turns` and
 `caseUsd`. Precedence is explicit environment variable, then case override,
@@ -209,12 +209,12 @@ Ordinary specialist returns use compact markdown and custom agents keep their ow
 format; neither is envelope-graded or counts as approval. The memory case retains
 explicit MEMORY scope checks on every delegation, with no envelope requirement.
 
-For the designer catalog case, claims in the result are **not**
+For the designer project skill case, claims in the result are **not**
 read evidence. Before cleanup the harness reads eval-owned native child JSONL
 sessions from task `nested_session_path`, pairs `toolCall`/`toolResult` by call ID,
 and retains task attribution. Only a completed non-error `read` of the expected
 project SKILL.md by the completed designer task counts. Negative offline traces
-cover missing reads, failed reads, another task's reads, and forwarded paths.
+cover missing reads, failed reads, another task's reads, and missing forwarding.
 
 `THOTH_EVAL_VERBOSE=1` prints parent skill names, ordered tools, scripted
 questions, subagent assignment path flags, task statuses/result excerpts,

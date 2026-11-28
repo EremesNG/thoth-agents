@@ -327,7 +327,6 @@ describe('Pi adapter', () => {
       /<pi-runtime>([\s\S]*?)<\/pi-runtime>/,
     )?.[1];
     expect(runtime).toContain('Children run with lean resources');
-    expect(runtime).toContain('their own native skill catalog');
     expect(runtime).toContain(
       'Child tool lists are runtime-filtered; role boundaries are instruction-level policy. Neither is an OS sandbox',
     );
@@ -407,18 +406,17 @@ test.each([
   }
 });
 
-test('uses native specialist catalogs and blocks unavailable protocol skills', () => {
+test('requires forwarded skills without relying on the Pi child catalog', () => {
   const root = renderPiRootInstructions();
-  expect(root).toContain('skill paths are optional complements');
-  expect(root).toContain('specialists have their own native skill catalog');
+  expect(root).toContain('<pi-runtime>');
+  expect(root).toContain('Never assume child skill access');
+  expect(root).not.toMatch(
+    /native skill catalog|own skill catalog|optional complements/i,
+  );
   for (const child of piAdapter.render({ projectRoot: process.cwd() })
     .artifacts) {
     expect(child.content).toContain(
-      'Use the native skill catalog or exact supplied skill paths',
+      'Read supplied `SKILL.md` paths with `read` or equivalent',
     );
-    expect(child.content).toContain(
-      'named by the assignment or required by the current phase contract',
-    );
-    expect(child.content).toContain('return a blocker instead of improvising');
   }
 });

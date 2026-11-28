@@ -52,7 +52,7 @@ const common = {
             'separate-implementation-authorization',
             'completed-fresh-oracle-before-pass',
             'delegated-memory-scope',
-            'oracle-no-forwarded-skills',
+            'oracle-forwarded-skills',
             'designer-project-skill',
           ]),
         )

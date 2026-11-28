@@ -7,29 +7,29 @@ import { runEvaluation } from './harness';
 import { gradeEvaluation, liveCases } from './live-cases';
 import { syntheticProvider } from './synthetic-provider';
 
-it('real SDK children discover repository skills and only trusted project skills, with native read evidence', async () => {
+it('real SDK children see only trusted project skills and read the forwarded path', async () => {
   const skill = '.pi/skills/fixture-ui-guidelines/SKILL.md';
   for (const trusted of [true, false]) {
     console.log(`Child catalog self-test: projectTrusted=${trusted}`);
+    const assignment = {
+      agent: 'thoth-designer',
+      mode: 'background',
+      task: 'SKILLS: none\nMEMORY: none. Inspect the welcome card.',
+    };
+    const readArgs = { path: '' };
     const parent = syntheticProvider([
       {
         calls: [
           {
             name: 'subagent_run',
-            args: {
-              agent: 'thoth-designer',
-              mode: 'background',
-              task: 'MEMORY: none. Inspect the welcome card and discover relevant guidelines from your catalog.',
-            },
+            args: assignment,
           },
         ],
       },
       { text: 'Done.' },
     ]);
     const child = syntheticProvider([
-      ...(trusted
-        ? [{ calls: [{ name: 'read', args: { path: skill } }] }]
-        : []),
+      ...(trusted ? [{ calls: [{ name: 'read', args: readArgs }] }] : []),
       { text: 'conclusion: Improved the card.' },
     ]);
     let repositoryCatalog = false;
@@ -68,7 +68,11 @@ it('real SDK children discover repository skills and only trusted project skills
           return parent.streamSimple(model, context, options);
         },
       },
-      inspect: ({ agentDir }) => {
+      inspect: ({ agentDir, cwd }) => {
+        if (trusted) {
+          readArgs.path = path.join(cwd, skill);
+          assignment.task = `SKILLS: fixture-ui-guidelines — "${readArgs.path}"\nMEMORY: none. Inspect the welcome card.`;
+        }
         const settings = JSON.parse(
           fs.readFileSync(path.join(agentDir, 'settings.json'), 'utf8'),
         );
@@ -109,6 +113,6 @@ it('real SDK children discover repository skills and only trusted project skills
         result.workspace,
       ),
     ).toBe(trusted);
-    expect(result.subagents[0].args.task).not.toContain('SKILL.md');
+    expect(result.subagents[0].args.task).toBe(assignment.task);
   }
 }, 180000);

@@ -119,8 +119,14 @@ steps plus verification). Keep one list per change; prefix items with the change
 ID when several changes are active. This native progress view is not a sidecar
 record and never replaces SDD gates or authorization.
 
-Apply these rules across all workflow stages. Each assignment names one
-independently acceptable outcome, exact known entrypoints and skill paths,
+Apply these rules across all workflow stages. Before every dispatch, list each
+required skill by name and absolute `SKILL.md` path (global or project) in
+`SKILLS`, or use `none`. Never assume child skill access. Resolve unknown paths
+from visible catalog/context or known install roots; if unresolved, report a
+blocker without dispatching. Children read supplied paths and report missing or
+unreadable required paths without searching the user home or installing.
+
+Each assignment names one independently acceptable outcome, exact known entrypoints,
 concrete accepted inputs and dependencies, its produced result, owned writes and
 interface boundaries, focused checks with pass evidence, and a meaningful return
 milestone and stop condition. A task row names one outcome and may repeat an
